@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, List, Sequence, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, List, Sequence, JsArray, JsObject, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -682,6 +682,53 @@ describe('reference', () => {
       });
 
       await expect(Promise.resolve(refNode.render(context))).resolves.toBe('fallback');
+      expect(context.referenceStack).toBe(0);
+    });
+
+    it('keeps direct index target semantics per container kind', async () => {
+      const targetList = list([any('red'), any('blue')]);
+      const targetArray = new JsArray([any('one'), any('two')]);
+      const targetObject = new JsObject({ tone: any('green') });
+      const targetRules = rules([
+        decl({ name: 'tone', value: any('orange') }),
+        vardecl({ name: 'toneVar', value: any('purple') })
+      ]);
+      const node = rules([
+        vardecl({ name: 'targetList', value: targetList }),
+        vardecl({ name: 'targetArray', value: targetArray }),
+        vardecl({ name: 'targetObject', value: targetObject }),
+        vardecl({ name: 'targetRules', value: targetRules })
+      ]);
+      setRulesContext(await node.eval(context));
+
+      await expect(Promise.resolve(ref({
+        target: ref({ key: 'targetList' }, { type: 'variable' }),
+        key: quoted('missing')
+      }, {
+        type: 'index',
+        fallbackValue: any('fallback')
+      }).render(context))).resolves.toBe('fallback');
+
+      await expect(Promise.resolve(ref({
+        target: ref({ key: 'targetArray' }, { type: 'variable' }),
+        key: 1
+      }, { type: 'index' }).render(context))).resolves.toBe('two');
+
+      await expect(Promise.resolve(ref({
+        target: ref({ key: 'targetObject' }, { type: 'variable' }),
+        key: quoted('tone')
+      }, { type: 'index' }).render(context))).resolves.toBe('green');
+
+      await expect(Promise.resolve(ref({
+        target: ref({ key: 'targetRules' }, { type: 'variable' }),
+        key: quoted('tone')
+      }, { type: 'index' }).render(context))).resolves.toBe('orange');
+
+      await expect(Promise.resolve(ref({
+        target: ref({ key: 'targetRules' }, { type: 'variable' }),
+        key: 'toneVar'
+      }, { type: 'index' }).render(context))).resolves.toBe('purple');
+
       expect(context.referenceStack).toBe(0);
     });
 

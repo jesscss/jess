@@ -1200,7 +1200,11 @@ function isDirectIndexContainerTarget(
 ): boolean {
   return referenceNode.options.type === 'index'
     && referenceNode.value.target !== undefined
-    && isNode(resolvedTarget, N.List | N.Sequence);
+    && (
+      isNode(resolvedTarget, N.List | N.Sequence | N.Rules)
+      || resolvedTarget instanceof JsArray
+      || resolvedTarget instanceof JsObject
+    );
 }
 
 function getRedirectReferenceTargetKey(

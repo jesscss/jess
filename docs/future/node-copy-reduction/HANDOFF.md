@@ -126,6 +126,10 @@ truth, the immediate pop queue, and verification.
   result-node ownership have not all moved into the invocation record. The
   remaining eval-state flag is named `writeRuntimeState`; do not reintroduce
   "write to node" wording unless the code really writes node fields.
+- At-rule body eval context state now carries the canonical source at-rule.
+  Nested `@layer` parent-name lookup reads that source body instead of the
+  derived eval frame, so one more registration fact is off the frame identity.
+  The derived body frame still exists for body registration/eval ownership.
 - Dynamic call fallback render/resolve now evaluates through `CallEvalState`
   without constructing a copied fallback `Call` surface. The state carries
   name, args, content, caller, mark-important, and rules-like variable lookup
@@ -138,7 +142,11 @@ truth, the immediate pop queue, and verification.
 - Dynamic optional fallback call args now reuse source-free static `List` and
   `Sequence` containers instead of copying them solely for source-parent
   safety. Source-backed or dynamic arg containers still own an eval target when
-  preserving source parents.
+  preserving source parents. Fallback call `contentNode` is stricter:
+  finalized output must own content when the source call already parents it,
+  because reusing it would steal the source content parent. This intentionally
+  raises the copy-leaves audit by one until a smaller content placement record
+  exists.
 - Reference fallback values now reuse source-free static `List` containers as
   inert output when every child is already a reusable leaf. Dynamic fallback
   containers, source-backed declaration/variable containers, and rules-like
@@ -154,7 +162,8 @@ truth, the immediate pop queue, and verification.
   containers no longer trigger the mixin namespace redirect.
 - Direct `index` lookups whose target resolves to a `List` or `Sequence` no
   longer reinterpret that target text as a mixin-ruleset key before lookup.
-  They stay on the direct-target path and can fall back normally. This only
+  Direct `index` lookups whose explicit target resolves to `JsArray`,
+  `JsObject`, or `Rules` also stay on the direct-target path. This only
   narrows the ambiguous namespace redirect; it does not make lists/sequences
   general property maps.
 - Reference render still uses `evalNode(context)` and then native rendering of
@@ -196,9 +205,9 @@ truth, the immediate pop queue, and verification.
   serializer semantics.
 - Generated `:is(...)` pseudo rendering now has a
   `GeneratedPseudoPlacementState` prototype. It carries only source/name/arg
-  plus the proven single-selector-list wrapper omission flag for placement
-  rendering and must not grow into a selector AST replacement. A queue pass
-  found no second proven fact yet; add one only with selector-shape evidence.
+  plus the proven single-selector-list wrapper omission flag and render-time
+  normalized argument text for placement rendering. It must not grow into a
+  selector AST replacement; add another fact only with selector-shape evidence.
 - Selector mutation-helper inventory was rechecked across
   `CompoundSelector`, `ComplexSelector`, `SelectorList`, and generated pseudos.
   `withComponents(...)` / `withSelectors(...)` still own unchanged source
@@ -231,8 +240,10 @@ truth, the immediate pop queue, and verification.
   placement. The slot also carries whether ambient lookup may enter the
   wrapper. Lookup still must not switch to source segments blindly; output
   children are the scope/frame-bearing surface. Slot attachment now owns
-  `referenceMode` clearing for generated output wrappers, so wrapper call sites
-  should not repeat that option write after `attachMixinOutputSlot(...)`.
+  `referenceMode` clearing for generated output wrappers; the old recursive
+  `clearReferenceModeForMixinOutput(...)` pass was dead scaffolding and is
+  gone. Wrapper call sites should not repeat reference-mode cleanup after
+  `attachMixinOutputSlot(...)`.
 - The next `MixinOutputSlot` boundary was audited. Direct comment children
   cannot move into the slot as a loose side list because mixin output must
   preserve source order among comments, declarations, nested rules, and lookup
@@ -398,13 +409,13 @@ trend.
 
 | # | Focus | Main result |
 | --- | --- | --- |
-| 1 | Direct-target guard / slot fact / state naming | Direct index targets that resolve to `List`/`Sequence` no longer redirect through mixin namespace lookup; mixin-output `referenceMode` clearing moved into `attachMixinOutputSlot(...)`; at-rule eval-state naming now reflects runtime side state instead of node-field writes; selector/ruleset ownership blockers remain documented. |
-| 2 | At-rule output facts / sequence text / fallback args | At-rule body hoist frames no longer mutate the canonical at-rule during eval; source-free reference `Sequence` paths render text-only for runtime/declaration lookups; static fallback call arg containers avoid copies; selector, mixin-output, and ruleset-as-mixin audits documented current ownership blockers. |
-| 3 | Body resolve / nil guard / assignment sequence / lookup proof | Public at-rule resolve skips render-frame prelude writes; guarded nil selectors render through owned guard/body output; merged sequence assignment output streams from state; ampersand state owns input item facts; mixin-output lookup tests prove type/target-specific traversal; source-free fallback `Sequence` is inert reference output. |
-| 4 | Layer state / lookup policy / text containers / nil body | At-rule layer-name registration moved out of extend-root scratch into invocation state; lookup entry gates are lookup-owned; source-free direct-reference and declaration assignment containers avoid owned result copies; ampersand placement carries item text/count; simple nil-selector render skips wrapper prep and evaluates an owned body directly. |
-| 5 | Registration facts / runtime containers / slot gates | At-rule body registration state owns the pushed-extend-root fact; source-free runtime-binding `List` containers render text-only while `default()` and public resolve stay owned; ampersand placement state carries final result text; registry/reference child searches use entry-aware mixin-output gating. |
-| 6 | Public adapter / reference leak / placement cleanup | Public at-rule body resolve goes through an explicit result adapter; runtime-binding containers have a default-guard proof and fixed reference-stack cleanup; ampersand placement state owns the final result pointer; mixin-output entry search uses slot gating. |
-| 7 | State-first at-rule/reference/slot pass | At-rule body result finalization prefers invocation state over eval-frame runtime scratch. Declaration-reference source-free `List` containers render text-only, while runtime/direct containers stay owned after a caught `default()` regression. |
+| 1 | Source-layer state / direct targets / fallback content | Nested at-rule layer lookup now reads canonical source state instead of derived eval-frame identity; direct `index` targets cover `List`, `Sequence`, `JsArray`, `JsObject`, and `Rules`; fallback call content now owns output content instead of stealing the source parent; dead mixin reference-mode cleanup was removed. |
+| 2 | Direct-target guard / slot fact / state naming | Direct index targets that resolve to `List`/`Sequence` no longer redirect through mixin namespace lookup; mixin-output `referenceMode` clearing moved into `attachMixinOutputSlot(...)`; at-rule eval-state naming now reflects runtime side state instead of node-field writes; selector/ruleset ownership blockers remain documented. |
+| 3 | At-rule output facts / sequence text / fallback args | At-rule body hoist frames no longer mutate the canonical at-rule during eval; source-free reference `Sequence` paths render text-only for runtime/declaration lookups; static fallback call arg containers avoid copies; selector, mixin-output, and ruleset-as-mixin audits documented current ownership blockers. |
+| 4 | Body resolve / nil guard / assignment sequence / lookup proof | Public at-rule resolve skips render-frame prelude writes; guarded nil selectors render through owned guard/body output; merged sequence assignment output streams from state; ampersand state owns input item facts; mixin-output lookup tests prove type/target-specific traversal; source-free fallback `Sequence` is inert reference output. |
+| 5 | Layer state / lookup policy / text containers / nil body | At-rule layer-name registration moved out of extend-root scratch into invocation state; lookup entry gates are lookup-owned; source-free direct-reference and declaration assignment containers avoid owned result copies; ampersand placement carries item text/count; simple nil-selector render skips wrapper prep and evaluates an owned body directly. |
+| 6 | Registration facts / runtime containers / slot gates | At-rule body registration state owns the pushed-extend-root fact; source-free runtime-binding `List` containers render text-only while `default()` and public resolve stay owned; ampersand placement state carries final result text; registry/reference child searches use entry-aware mixin-output gating. |
+| 7 | Public adapter / reference leak / placement cleanup | Public at-rule body resolve goes through an explicit result adapter; runtime-binding containers have a default-guard proof and fixed reference-stack cleanup; ampersand placement state owns the final result pointer; mixin-output entry search uses slot gating. |
 
 ## Metrics Snapshot
 
@@ -418,19 +429,19 @@ Latest static audit:
 
 | `new-node` | `derive` | `with-surface` | `copy-leaves` | `clone-leaves` | module | eval | prepare | resolve |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 308 | 30 | 41 | 29 | 0 | 379 | 27 | 2 | 0 |
+| 308 | 30 | 41 | 30 | 0 | 380 | 27 | 2 | 0 |
 
 Recent hot-path medians. `#1` is the latest pass.
 
 | # | Pass | `functions` | `import-ref` | `mixins-guards` | `extend` | `media` | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Direct-target guard / slot fact / state naming | 21.70ms | 29.14ms | 33.26ms | 16.12ms | 7.87ms | mostly noise versus #2; media compares faster but RSD is 24.2%, so treat as descriptive only |
-| 2 | At-rule output facts / sequence text / fallback args | 22.95ms | 29.04ms | 33.12ms | 16.07ms | 8.86ms | media compares slower to #3, but the preceding read-only run was 8.13ms and RSD is high; treat this as descriptive/noisy, not a regression claim |
-| 3 | Body resolve / nil guard / assignment sequence / lookup proof | 21.53ms | 28.68ms | 32.12ms | 15.43ms | 7.53ms | slower than #4, but the preceding read-only run was similar; RSD remains high and static counts are near-flat, so treat as descriptive only |
-| 4 | Layer state / lookup policy / text containers / nil body | 18.27ms | 22.52ms | 27.40ms | 13.99ms | 6.09ms | recorded after read-only run; all medians compare faster than prior saved row, but RSD remains high, so treat as descriptive only |
-| 5 | Registration facts / runtime containers / slot gates | 21.62ms | 28.90ms | 32.34ms | 15.52ms | 7.95ms | recorded after read-only run; mostly noise versus #6, media lower but high RSD; no speed claim |
-| 6 | Public adapter / reference leak / placement cleanup | 20.95ms | 27.39ms | 33.16ms | 15.68ms | 8.86ms | recorded after a read-only repeat; functions/import noise-better, extend faster, media slower, RSD high; no speed claim |
-| 7 | State-first at-rule/reference/slot pass | 21.64ms | 28.66ms | 32.23ms | 18.99ms | 7.65ms | descriptive sample only; later adjacent runs moved mixed directions, so this row is not evidence of a regression |
+| 1 | Source-layer state / direct targets / fallback content | 21.70ms | 28.79ms | 32.54ms | 15.45ms | 9.18ms | media compares slower to #2, but read-only media was 8.41ms and saved RSD is 20.9%; treat as descriptive/noisy, not a regression claim |
+| 2 | Direct-target guard / slot fact / state naming | 21.70ms | 29.14ms | 33.26ms | 16.12ms | 7.87ms | mostly noise versus #3; media compares faster but RSD is 24.2%, so treat as descriptive only |
+| 3 | At-rule output facts / sequence text / fallback args | 22.95ms | 29.04ms | 33.12ms | 16.07ms | 8.86ms | media compares slower to #4, but the preceding read-only run was 8.13ms and RSD is high; treat this as descriptive/noisy, not a regression claim |
+| 4 | Body resolve / nil guard / assignment sequence / lookup proof | 21.53ms | 28.68ms | 32.12ms | 15.43ms | 7.53ms | slower than #5, but the preceding read-only run was similar; RSD remains high and static counts are near-flat, so treat as descriptive only |
+| 5 | Layer state / lookup policy / text containers / nil body | 18.27ms | 22.52ms | 27.40ms | 13.99ms | 6.09ms | recorded after read-only run; all medians compare faster than prior saved row, but RSD remains high, so treat as descriptive only |
+| 6 | Registration facts / runtime containers / slot gates | 21.62ms | 28.90ms | 32.34ms | 15.52ms | 7.95ms | recorded after read-only run; mostly noise versus #7, media lower but high RSD; no speed claim |
+| 7 | Public adapter / reference leak / placement cleanup | 20.95ms | 27.39ms | 33.16ms | 15.68ms | 8.86ms | recorded after a read-only repeat; functions/import noise-better, extend faster, media slower, RSD high; no speed claim |
 
 Measurement commands:
 
@@ -480,50 +491,52 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Move at-rule body registration state off the eval frame.**
+1. **Move another at-rule body fact into the eval record.**
 
-   - Goal: move one concrete registration fact still read through the derived
-     body eval frame into `AtRuleBodyEvalRecord` or its context state.
+   - Goal: move one of the body-to-eval/final-rules/parent-extend-root facts
+     out of derived-frame scratch and into `AtRuleBodyEvalRecord` or
+     invocation-local context state.
    - Required proof: nested `@layer`/`@media`, same-name layer extends,
      root-hoist sibling order, async/throw cleanup, public resolve ownership,
      and source body parentage.
 
-2. **Clarify direct-target container semantics.**
+2. **Prototype fallback-call content placement state.**
 
-   - Goal: prove the intended behavior for direct `index` lookups on `List`,
-     `Sequence`, `JsArray`, `JsObject`, and `Rules`, then narrow or document
-     the direct-target lookup table.
-   - Required proof: direct lookup fallback, numeric index behavior,
-     quoted/unquoted keys, public `resolve(...)` ownership, stack cleanup, and
-     no accidental mixin namespace redirect.
-
-3. **Narrow dynamic fallback call content ownership.**
-
-   - Goal: audit fallback calls with `contentNode` and decide whether content
-     can share the same source-free static inert-container rule as args.
+   - Goal: keep the new source-parent safety while reducing the owned content
+     copy for the safest content shape, or document the exact missing state.
    - Required proof: optional CSS calls with content, async content render,
-     JS metadata raw args, caller restoration, important flags, and
-     source-backed content parentage.
+     JS metadata raw args, caller restoration, important flags, source-backed
+     content parentage, and the copy-leaves audit delta.
 
-4. **Prototype one generated-pseudo placement-state field.**
+3. **Narrow direct-target resolve ownership.**
 
-   - Goal: add exactly one proven fact to `GeneratedPseudoPlacementState`, or
-     document why generated pseudo output still needs the owned pseudo wrapper.
+   - Goal: after the direct-target lookup table is proven, decide whether
+     direct `JsArray`/`JsObject`/`Rules` hits can reuse source-free scalar or
+     container output during render/resolve without public metadata.
+   - Required proof: numeric index behavior, quoted/unquoted keys, fallback,
+     public `resolve(...)` ownership, stack cleanup, and no namespace redirect.
+
+4. **Finish the generated-pseudo placement-state proof.**
+
+   - Goal: either use the normalized arg text to avoid one generated pseudo
+     wrapper path, or document why selector-bit/extend/source-parent state
+     still requires the wrapper.
    - Required proof: `:is(...)`, unknown pseudo args, nested pseudos, selector
      bit metadata, extend matching, source parentage, and output parity.
 
-5. **Continue mixin-output slot fact migration.**
+5. **Move one mixin-output wrapper fact into the slot.**
 
-   - Goal: move another wrapper option/fact into `MixinOutputSlot` only if the
-     helper can own it for every attach site.
+   - Goal: migrate a real wrapper-owned fact such as source index, lookup gate,
+     or serializer gate into `MixinOutputSlot` only if every attach site can
+     let the helper own it.
    - Required proof: ordered comments/declarations/rules, targeted lookups,
      scope frame, caller fallback, rule indexes, repeated placements,
      `referenceMode` clearing, and serializer gating.
 
-6. **Revisit ruleset-as-mixin child copying with one candidate path.**
+6. **Prototype one ruleset-as-mixin placement path.**
 
-   - Goal: pick one ruleset-as-mixin output path and either avoid child copying
-     with placement state or write down the exact missing state field.
+   - Goal: pick a narrow ruleset-as-mixin output path and either avoid child
+     copying with placement state or record the exact missing state field.
    - Required proof: complex parent ampersands, nested array-path lookups,
      hoist/root output, source parentage, scope/frame state, and focused copy
      counts.

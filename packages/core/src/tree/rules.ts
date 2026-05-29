@@ -4446,30 +4446,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
       return String(raw);
     };
     const restrictMixinOutputLookup = thisContext.leakyRules !== true;
-    const clearReferenceModeForMixinOutput = (node: Node): void => {
-      // Nested import wrappers that explicitly carry reference mode must keep
-      // owning that render gate even when mixin output is made publicly visible.
-      if (
-        isNode(node, N.Rules)
-        && (
-          node.options.referenceMode === true
-          || node._hasReferenceImports
-        )
-      ) {
-        return;
-      }
-      const nestedRules = childRulesOf(node);
-      if (nestedRules) {
-        clearReferenceModeForMixinOutput(nestedRules);
-      }
-      if (isNode(node, N.Rules)) {
-        for (const child of node.value) {
-          if (isNode(child, N.Rules | N.Ruleset | N.AtRule)) {
-            clearReferenceModeForMixinOutput(child);
-          }
-        }
-      }
-    };
     const DEF_FALSE_EITHER = -1;
     const DEF_NONE = 0;
     const DEF_TRUE = 1;
@@ -4512,7 +4488,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
           restrictMixinOutputLookup
         );
         markMixinOutputSource(newRules, getRootSourceRules(getMixinEntryRules(candidate)));
-        clearReferenceModeForMixinOutput(newRules);
         outputRules.push(newRules);
       } catch (error) {
         // If recursion was detected (ReferenceError), skip this candidate
@@ -4553,7 +4528,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
         // Mark generated mixin output with lookup policy from leakyRules.
         attachMixinOutputSlot(rules, sourceRules, restrictMixinOutputLookup);
-        clearReferenceModeForMixinOutput(rules);
         markMixinOutputSource(rules, sourceRules);
         outputRules.push(rules);
         continue;
@@ -4584,7 +4558,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
         }
         // Mark generated mixin output with lookup policy from leakyRules.
         attachMixinOutputSlot(unlocked, sourceRules, restrictMixinOutputLookup);
-        clearReferenceModeForMixinOutput(unlocked);
         markMixinOutputSource(unlocked, sourceRules);
         Reflect.set(unlocked, 'index', candidate.index);
         // Evaluate immediately while the call-site parent chain is intact.
@@ -4926,7 +4899,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
         getRootSourceRules(output.sourceNode && isNode(output.sourceNode, N.Rules) ? output.sourceNode : output),
         restrictMixinOutputLookup
       );
-      clearReferenceModeForMixinOutput(output);
     } else {
       /**
        * Wrap these in rules marked as mixin output. The slot decides whether

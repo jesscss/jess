@@ -70,6 +70,7 @@ type AtRuleBodyRuntimeState = {
 };
 
 type AtRuleBodyEvalContextState = {
+  source: AtRule;
   evalFrame: AtRule;
   evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
@@ -223,12 +224,14 @@ function createAtRuleBodyEvalContextState(
   node: AtRule,
   context: Context,
   options: {
+    source?: AtRule;
     evaluatedPrelude?: Node;
     writeEvaluatedPrelude?: boolean;
     writeRuntimeState?: boolean;
   } = {}
 ): AtRuleBodyEvalContextState {
   return {
+    source: options.source ?? node,
     evalFrame: node,
     evaluatedPrelude: options.evaluatedPrelude,
     frameState: createAtRuleBodyFrameState(node, context),
@@ -568,6 +571,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       evalFrame,
       evaluatedPrelude,
       contextState: createAtRuleBodyEvalContextState(evalFrame, context, {
+        source: this,
         evaluatedPrelude,
         writeEvaluatedPrelude: options.writeEvaluatedPrelude,
         writeRuntimeState: options.writeRuntimeState
@@ -947,7 +951,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (activeBodyStates) {
           for (let i = activeBodyStates.length - 1; i >= 0; i--) {
             const state = activeBodyStates[i]!;
-            const frame = state.evalFrame;
+            const frame = state.source;
             if (frame === node || frame.value.name?.toTrimmedString?.() !== '@layer') {
               continue;
             }

@@ -71,6 +71,7 @@ type CallEvalState = {
 type FinalizedCallSyntax = {
   name: string | Node;
   args?: List<Node>;
+  contentNode?: Node;
 };
 
 /**
@@ -154,14 +155,25 @@ export class Call extends Node<CallValue, CallOptions> {
   private createFinalizedCallOutput(state: CallEvalState, syntax: FinalizedCallSyntax): Call {
     return state.source.deriveCall(
       {
-        ...state.source.value,
         name: syntax.name,
-        args: syntax.args
+        args: syntax.args,
+        ...(syntax.contentNode && { contentNode: syntax.contentNode })
       },
       state.source._options
         ? { ...state.source._options, silentFail: false }
         : { silentFail: false }
     );
+  }
+
+  private createFinalizedCallContentNode(state: CallEvalState): Node | undefined {
+    const { contentNode } = state;
+    if (!contentNode) {
+      return undefined;
+    }
+    if (!contentNode.parent && contentNode.location.length === 0 && contentNode.hasFlag(F_STATIC)) {
+      return contentNode;
+    }
+    return copyWithReusableLeaves(contentNode);
   }
 
   private async evalFinalizedCallSyntax(
@@ -180,7 +192,8 @@ export class Call extends Node<CallValue, CallOptions> {
         name: typeof name === 'string' || name instanceof Node
           ? name
           : stringifyValueOf(name),
-        args: evaluatedArgs
+        args: evaluatedArgs,
+        contentNode: state.source.createFinalizedCallContentNode(state)
       }
     );
   }
@@ -883,7 +896,8 @@ export class Call extends Node<CallValue, CallOptions> {
         state,
         {
           name: typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n),
-          args: evaluatedArgs
+          args: evaluatedArgs,
+          contentNode: this.createFinalizedCallContentNode(state)
         }
       );
       return this.markCallOutput(node);
