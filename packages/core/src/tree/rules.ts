@@ -61,11 +61,10 @@ import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
 import {
   attachMixinOutputSlot,
+  assignMixinOutputRuleIndexes,
   blocksAmbientMixinOutputLookup,
   canEnterRulesEntryForLookup,
-  getMixinOutputChildSegments,
-  getMixinOutputSourceChild,
-  getMixinOutputSourceIndex
+  getMixinOutputChildSegments
 } from './util/mixin-output-slot.js';
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
 import type { CallSignature } from './util/recursion-helper.js';
@@ -4915,19 +4914,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         output.push(rule);
       }
       attachMixinOutputSlot(output, emptyOutputSourceRules, restrictMixinOutputLookup);
-      let outputRuleIndex = 0;
-      for (const rule of output.value) {
-        const sourceChild = getMixinOutputSourceChild(output, rule) ?? rule;
-        const sourceIndex = getMixinOutputSourceIndex(output, rule);
-        /** Set a sequential index for lookup sorting from slot source order. */
-        Reflect.set(
-          rule,
-          'index',
-          isIndexedRuleChild(sourceChild)
-            ? sourceIndex ?? outputRuleIndex++
-            : undefined
-        );
-      }
+      assignMixinOutputRuleIndexes(output, isIndexedRuleChild);
     }
 
     /**

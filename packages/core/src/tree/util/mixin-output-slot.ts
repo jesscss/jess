@@ -73,6 +73,24 @@ export function getMixinOutputSourceChildren(outputRules: Rules): Node[] | undef
     .filter((source): source is Node => source !== undefined);
 }
 
+export function assignMixinOutputRuleIndexes(
+  outputRules: Rules,
+  isIndexedRuleChild: (node: Node) => boolean
+): void {
+  let outputRuleIndex = 0;
+  for (const outputChild of outputRules.value) {
+    const sourceChild = getMixinOutputSourceChild(outputRules, outputChild) ?? outputChild;
+    const sourceIndex = getMixinOutputSourceIndex(outputRules, outputChild);
+    Reflect.set(
+      outputChild,
+      'index',
+      isIndexedRuleChild(sourceChild)
+        ? sourceIndex ?? outputRuleIndex++
+        : undefined
+    );
+  }
+}
+
 function validateMixinOutputSlot(slot: MixinOutputSlot): void {
   for (const segment of slot.childSegments) {
     if (slot.sourceRules.value[segment.index] !== segment.source) {

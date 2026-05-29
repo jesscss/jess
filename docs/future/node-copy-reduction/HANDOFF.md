@@ -87,6 +87,9 @@ truth, the immediate pop queue, and verification.
   pairing and the evaluated body output on the invocation
   `AtRuleBodyEvalRecord` before public output writes. This is a staging step
   toward deleting the derived body frame, not a new render-state model.
+  Nested `@layer` name state also writes through the invocation record before
+  registration consumes it; the active context state only mirrors it for
+  stack lookup while nested layers are being evaluated.
 - At-rule body eval registration state also owns the nestable-body
   `pushedExtendRoot` fact that final registration consumes. Keep moving
   body-registration facts into invocation-local state before trying to delete
@@ -143,7 +146,9 @@ truth, the immediate pop queue, and verification.
   `Sequence` containers instead of copying them solely for source-parent
   safety. Source-free static fallback call content is also reused as inert
   frozen output. Source-backed or dynamic arg/content containers still own an
-  eval target when preserving source parents.
+  eval target when preserving source parents. Fallback call content now has a
+  tiny `CallContentPlacementState`; it records source content and selected
+  output content only, and must not become a parallel call/body AST.
 - Reference fallback values now reuse source-free static `List` containers as
   inert output when every child is already a reusable leaf. Dynamic fallback
   containers, source-backed declaration/variable containers, and rules-like
@@ -157,6 +162,8 @@ truth, the immediate pop queue, and verification.
   sequence values still need broader shape proof before becoming a general
   text-only target, but direct index targets that resolve to list/sequence
   containers no longer trigger the mixin namespace redirect.
+  Public direct-target `resolve(...)` remains an owned-result boundary for
+  containers; render is the text-only path.
 - Direct `index` lookups whose target resolves to a `List` or `Sequence` no
   longer reinterpret that target text as a mixin-ruleset key before lookup.
   Direct `index` lookups whose explicit target resolves to `JsArray`,
@@ -262,9 +269,11 @@ truth, the immediate pop queue, and verification.
   placements, rule indexes, `referenceMode` clearing, and caller fallback
   behavior. The slot no longer stores a stale `rulesVisibility` snapshot; rule
   visibility stays on the actual output `Rules` surface until that whole
-  responsibility moves. The next slot record must carry those facts before
-  deleting a real generated `Rules` wrapper responsibility; source child
-  segments alone are diagnostic/order metadata.
+  responsibility moves. Mixin-output rule-index assignment is now behind a slot
+  helper, but lookup still searches owned output children. The next slot
+  record must carry those facts before deleting a real generated `Rules`
+  wrapper responsibility; source child segments alone are diagnostic/order
+  metadata.
 - Ruleset-as-mixin child ownership was re-audited against complex parent
   ampersands and nested array-path lookups. Source-free scalar leaves are
   already reused, but output children for ruleset-as-mixin calls still need
@@ -273,7 +282,10 @@ truth, the immediate pop queue, and verification.
   placement record for one proven path, not another direct source-child search.
   The simple declaration placement proof now locks that in: the output
   declaration is owned by the output `Rules`, source declaration parentage stays
-  canonical, and reusable scalar leaves remain source-owned.
+  canonical, and reusable scalar leaves remain source-owned. Nested rules and
+  direct comment children are also covered by slot mapping proof, so the
+  future placement record must preserve full source order, not only declaration
+  children.
 - Ruleset render materialization was re-audited. Source selector and source
   body parentage stay canonical during direct render/resolve. Unevaluated
   rulesets now own the body `Rules` surface when registration/eval would
@@ -419,13 +431,13 @@ trend.
 
 | # | Focus | Main result |
 | --- | --- | --- |
-| 1 | Record output / generated pseudo / direct containers | At-rule evaluated body output moved onto `AtRuleBodyEvalRecord`; generated dynamic `:is($selector-list)` output omits the wrapper when placement-proven; source-free direct index containers render text-only; mixin slot no longer stores unused `rulesVisibility`; source-backed fallback content remains owned with tests. |
-| 2 | Eval-record facts / fallback content / slot identity | At-rule body registration pairing moved onto `AtRuleBodyEvalRecord`; source-free static fallback call content now reuses frozen inert output; direct index scalar hits render text-only; `MixinOutputSlot` is the sole mixin-output identity; generated pseudo and ruleset-as-mixin proofs document current ownership blockers. |
-| 3 | Source-layer state / direct targets / fallback content | Nested at-rule layer lookup now reads canonical source state instead of derived eval-frame identity; direct `index` targets cover `List`, `Sequence`, `JsArray`, `JsObject`, and `Rules`; fallback call content now owns output content instead of stealing the source parent; dead mixin reference-mode cleanup was removed. |
-| 4 | Direct-target guard / slot fact / state naming | Direct index targets that resolve to `List`/`Sequence` no longer redirect through mixin namespace lookup; mixin-output `referenceMode` clearing moved into `attachMixinOutputSlot(...)`; at-rule eval-state naming now reflects runtime side state instead of node-field writes; selector/ruleset ownership blockers remain documented. |
-| 5 | At-rule output facts / sequence text / fallback args | At-rule body hoist frames no longer mutate the canonical at-rule during eval; source-free reference `Sequence` paths render text-only for runtime/declaration lookups; static fallback call arg containers avoid copies; selector, mixin-output, and ruleset-as-mixin audits documented current ownership blockers. |
-| 6 | Body resolve / nil guard / assignment sequence / lookup proof | Public at-rule resolve skips render-frame prelude writes; guarded nil selectors render through owned guard/body output; merged sequence assignment output streams from state; ampersand state owns input item facts; mixin-output lookup tests prove type/target-specific traversal; source-free fallback `Sequence` is inert reference output. |
-| 7 | Layer state / lookup policy / text containers / nil body | At-rule layer-name registration moved out of extend-root scratch into invocation state; lookup entry gates are lookup-owned; source-free direct-reference and declaration assignment containers avoid owned result copies; ampersand placement carries item text/count; simple nil-selector render skips wrapper prep and evaluates an owned body directly. |
+| 1 | Layer record / content state / slot indexes | At-rule layer names now write through `AtRuleBodyEvalRecord`; fallback call content has a small placement-state record; public direct-target resolve is documented as owned while render stays text-only; generated dynamic `:is(...)` keysets are covered; mixin-output rule indexes moved behind a slot helper; ruleset-as-mixin nested/comment mapping is proven. |
+| 2 | Record output / generated pseudo / direct containers | At-rule evaluated body output moved onto `AtRuleBodyEvalRecord`; generated dynamic `:is($selector-list)` output omits the wrapper when placement-proven; source-free direct index containers render text-only; mixin slot no longer stores unused `rulesVisibility`; source-backed fallback content remains owned with tests. |
+| 3 | Eval-record facts / fallback content / slot identity | At-rule body registration pairing moved onto `AtRuleBodyEvalRecord`; source-free static fallback call content now reuses frozen inert output; direct index scalar hits render text-only; `MixinOutputSlot` is the sole mixin-output identity; generated pseudo and ruleset-as-mixin proofs document current ownership blockers. |
+| 4 | Source-layer state / direct targets / fallback content | Nested at-rule layer lookup now reads canonical source state instead of derived eval-frame identity; direct `index` targets cover `List`, `Sequence`, `JsArray`, `JsObject`, and `Rules`; fallback call content now owns output content instead of stealing the source parent; dead mixin reference-mode cleanup was removed. |
+| 5 | Direct-target guard / slot fact / state naming | Direct index targets that resolve to `List`/`Sequence` no longer redirect through mixin namespace lookup; mixin-output `referenceMode` clearing moved into `attachMixinOutputSlot(...)`; at-rule eval-state naming now reflects runtime side state instead of node-field writes; selector/ruleset ownership blockers remain documented. |
+| 6 | At-rule output facts / sequence text / fallback args | At-rule body hoist frames no longer mutate the canonical at-rule during eval; source-free reference `Sequence` paths render text-only for runtime/declaration lookups; static fallback call arg containers avoid copies; selector, mixin-output, and ruleset-as-mixin audits documented current ownership blockers. |
+| 7 | Body resolve / nil guard / assignment sequence / lookup proof | Public at-rule resolve skips render-frame prelude writes; guarded nil selectors render through owned guard/body output; merged sequence assignment output streams from state; ampersand state owns input item facts; mixin-output lookup tests prove type/target-specific traversal; source-free fallback `Sequence` is inert reference output. |
 
 ## Metrics Snapshot
 
@@ -445,13 +457,13 @@ Recent hot-path medians. `#1` is the latest pass.
 
 | # | Pass | `functions` | `import-ref` | `mixins-guards` | `extend` | `media` | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Record output / generated pseudo / direct containers | 22.06ms | 28.10ms | 33.21ms | 15.83ms | 8.76ms | read-only sample was 21.47/31.60/32.74/15.66/7.62ms; saved run is mixed and media RSD is 26.1%, so treat as descriptive only |
-| 2 | Eval-record facts / fallback content / slot identity | 21.36ms | 27.92ms | 32.47ms | 15.64ms | 7.56ms | read-only sample was similar; saved media compares faster than #3, but RSD is 16.4%, so treat as descriptive only |
-| 3 | Source-layer state / direct targets / fallback content | 21.70ms | 28.79ms | 32.54ms | 15.45ms | 9.18ms | media compares slower to #4, but read-only media was 8.41ms and saved RSD is 20.9%; treat as descriptive/noisy, not a regression claim |
-| 4 | Direct-target guard / slot fact / state naming | 21.70ms | 29.14ms | 33.26ms | 16.12ms | 7.87ms | mostly noise versus #5; media compares faster but RSD is 24.2%, so treat as descriptive only |
-| 5 | At-rule output facts / sequence text / fallback args | 22.95ms | 29.04ms | 33.12ms | 16.07ms | 8.86ms | media compares slower to #6, but the preceding read-only run was 8.13ms and RSD is high; treat this as descriptive/noisy, not a regression claim |
-| 6 | Body resolve / nil guard / assignment sequence / lookup proof | 21.53ms | 28.68ms | 32.12ms | 15.43ms | 7.53ms | slower than #7, but the preceding read-only run was similar; RSD remains high and static counts are near-flat, so treat as descriptive only |
-| 7 | Layer state / lookup policy / text containers / nil body | 18.27ms | 22.52ms | 27.40ms | 13.99ms | 6.09ms | recorded after read-only run; all medians compare faster than prior saved row, but RSD remains high, so treat as descriptive only |
+| 1 | Layer record / content state / slot indexes | 21.28ms | 26.64ms | 31.22ms | 18.18ms | 7.33ms | read-only sample was 20.21/26.18/30.54/15.13/6.86ms; saved `extend` blipped slower while media was faster and RSD remains high, so treat as descriptive only |
+| 2 | Record output / generated pseudo / direct containers | 22.06ms | 28.10ms | 33.21ms | 15.83ms | 8.76ms | read-only sample was 21.47/31.60/32.74/15.66/7.62ms; saved run is mixed and media RSD is 26.1%, so treat as descriptive only |
+| 3 | Eval-record facts / fallback content / slot identity | 21.36ms | 27.92ms | 32.47ms | 15.64ms | 7.56ms | read-only sample was similar; saved media compares faster than #4, but RSD is 16.4%, so treat as descriptive only |
+| 4 | Source-layer state / direct targets / fallback content | 21.70ms | 28.79ms | 32.54ms | 15.45ms | 9.18ms | media compares slower to #5, but read-only media was 8.41ms and saved RSD is 20.9%; treat as descriptive/noisy, not a regression claim |
+| 5 | Direct-target guard / slot fact / state naming | 21.70ms | 29.14ms | 33.26ms | 16.12ms | 7.87ms | mostly noise versus #6; media compares faster but RSD is 24.2%, so treat as descriptive only |
+| 6 | At-rule output facts / sequence text / fallback args | 22.95ms | 29.04ms | 33.12ms | 16.07ms | 8.86ms | media compares slower to #7, but the preceding read-only run was 8.13ms and RSD is high; treat this as descriptive/noisy, not a regression claim |
+| 7 | Body resolve / nil guard / assignment sequence / lookup proof | 21.53ms | 28.68ms | 32.12ms | 15.43ms | 7.53ms | slower than older row, but the preceding read-only run was similar; RSD remains high and static counts are near-flat, so treat as descriptive only |
 
 Measurement commands:
 
@@ -501,52 +513,54 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Delete one remaining at-rule body derived-frame dependency.**
+1. **Move at-rule body frame cleanup into the invocation record.**
 
-   - Goal: inventory the remaining derived-body-frame readers/writers and move
-     a whole responsibility family into `AtRuleBodyEvalRecord`, not another
-     runtime map.
+   - Goal: carry root-only frame clearing and cleanup through
+     `AtRuleBodyEvalRecord` so another registration/eval responsibility stops
+     depending on derived-frame identity.
    - Required proof: nested `@layer`/`@media`, same-name layer extends,
      root-hoist sibling order, async/throw cleanup, public resolve ownership,
      and source body parentage.
 
-2. **Design fallback-call content placement state for source-backed content.**
+2. **Use fallback-call content placement state for async/dynamic content.**
 
-   - Goal: inventory source-backed, dynamic, and async content paths and reduce
-     one safe shape without stealing source parents, or record the exact
-     placement-state field that is missing.
+   - Goal: make `CallContentPlacementState` carry the next content fact needed
+     to reduce one source-backed or async content copy without stealing source
+     parents.
    - Required proof: optional CSS calls with content, async content render,
      JS metadata raw args, caller restoration, important flags, source-backed
      content parentage, and the copy-leaves audit delta.
 
-3. **Narrow public direct-target resolve ownership for source-free containers.**
+3. **Narrow direct-target render for `JsArray`/`JsObject` scalar and container hits.**
 
-   - Goal: decide whether any public `resolve(...)` direct-target container
-     result can avoid public metadata while preserving API identity and parent
-     safety, or document why text-only must remain render-only.
+   - Goal: keep public resolve owned, but see whether render can avoid any
+     remaining result metadata/copies for direct object/array hits beyond
+     list/sequence containers.
    - Required proof: numeric index behavior, quoted/unquoted keys, fallback,
      public `resolve(...)` ownership, stack cleanup, and no namespace redirect.
 
-4. **Audit generated pseudo omission against extend/keyset behavior.**
+4. **Move one generated-pseudo selector-bit fact into placement state.**
 
-   - Goal: prove the dynamic generated `:is(...)` omission rule across extend
-     matching and selector-bit metadata before moving more wrapper facts into
-     placement state.
+   - Goal: after the keyset proof, decide whether bit-library attachment or
+     keyset reuse can live on `GeneratedPseudoPlacementState` without replacing
+     the selector wrapper.
    - Required proof: `:is(...)`, unknown pseudo args, nested pseudos, selector
      bit metadata, extend matching, source parentage, and output parity.
 
-5. **Move mixin-output rule-index assignment behind slot helpers.**
+5. **Move one more mixin-output wrapper responsibility into slot helpers.**
 
-   - Goal: make source/output index mapping and rule-index assignment a single
-     slot-owned helper family while keeping lookup on owned output children.
+   - Goal: pick scope frame, caller fallback, serializer gate, or child
+     placement and either move a whole responsibility into slot helpers or
+     document the missing state exactly.
    - Required proof: ordered comments/declarations/rules, targeted lookups,
      scope frame, caller fallback, rule indexes, repeated placements,
      `referenceMode` clearing, and serializer gating.
 
-6. **Expand ruleset-as-mixin placement proof beyond simple declarations.**
+6. **Prototype a ruleset-as-mixin placement record for mapped child order.**
 
-   - Goal: cover nested rules and comment/declaration order so the future
-     placement record is based on representative output, not one easy case.
+   - Goal: use the declaration plus nested/comment mapping proofs to create the
+     smallest record that can carry source order while output children remain
+     owned.
    - Required proof: complex parent ampersands, nested array-path lookups,
      hoist/root output, source parentage, scope/frame state, and focused copy
      counts.

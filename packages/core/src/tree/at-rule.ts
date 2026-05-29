@@ -88,6 +88,7 @@ type AtRuleBodyEvalRecord = {
   evalFrame: AtRule;
   evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
+  layerName?: string;
   registration?: AtRuleBodyRegistrationState;
   contextState: AtRuleBodyEvalContextState;
 };
@@ -339,6 +340,17 @@ function storeAtRuleBodyRecordRegistration(
 ): AtRuleBodyRegistrationState {
   record.registration = registration;
   return registration;
+}
+
+function storeAtRuleBodyRecordLayerName(
+  record: AtRuleBodyEvalRecord,
+  layerName: string | undefined
+): void {
+  record.layerName = layerName;
+  record.contextState.layerName = layerName;
+  if (record.registration && layerName !== undefined) {
+    record.registration.layerName = layerName;
+  }
 }
 
 function hasCommentChild(value: unknown): boolean {
@@ -1214,10 +1226,13 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
           // Extract and store layer name AFTER pushing to frames but BEFORE evaluating rules
           // This ensures parent layers are already on the stack when we look for them
-          bodyEvalContextState.layerName = this._extractAndStoreLayerName(
-            node,
-            context,
-            bodyEvalContextState.evaluatedPrelude
+          storeAtRuleBodyRecordLayerName(
+            bodyEvalRecord,
+            this._extractAndStoreLayerName(
+              node,
+              context,
+              bodyEvalContextState.evaluatedPrelude
+            )
           );
 
           const finishPreparedBody = (prepState: AtRuleBodyEvalPrepState): MaybePromise<AtRule> => {
@@ -1227,7 +1242,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               finalRules: bodyToEval,
               pushedExtendRoot,
               ...(parentExtendRoot !== undefined && { parentExtendRoot }),
-              ...(bodyEvalContextState.layerName !== undefined && { layerName: bodyEvalContextState.layerName })
+              ...(bodyEvalRecord.layerName !== undefined && { layerName: bodyEvalRecord.layerName })
             });
             const onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
             restoreRulesetFrames = activateAtRuleBodyEvalContextState(bodyEvalContextState, context);

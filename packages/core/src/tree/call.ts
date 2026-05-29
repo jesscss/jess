@@ -74,6 +74,12 @@ type FinalizedCallSyntax = {
   contentNode?: Node;
 };
 
+type CallContentPlacementState = {
+  source: Call;
+  contentNode: Node;
+  output?: Node;
+};
+
 /**
  * This is an exported type that allows extra properties
  * and specifies the shape of `this` for a function call.
@@ -165,16 +171,26 @@ export class Call extends Node<CallValue, CallOptions> {
     );
   }
 
-  private createFinalizedCallContentNode(state: CallEvalState): Node | undefined {
+  private createFinalizedCallContentState(state: CallEvalState): CallContentPlacementState | undefined {
     const { contentNode } = state;
     if (!contentNode) {
       return undefined;
     }
+    const placement: CallContentPlacementState = {
+      source: state.source,
+      contentNode
+    };
     if (contentNode.location.length === 0 && contentNode.hasFlag(F_STATIC)) {
       contentNode.frozen = true;
-      return contentNode;
+      placement.output = contentNode;
+      return placement;
     }
-    return copyWithReusableLeaves(contentNode);
+    placement.output = copyWithReusableLeaves(contentNode);
+    return placement;
+  }
+
+  private createFinalizedCallContentNode(state: CallEvalState): Node | undefined {
+    return this.createFinalizedCallContentState(state)?.output;
   }
 
   private async evalFinalizedCallSyntax(

@@ -802,6 +802,33 @@ describe('reference', () => {
       }
     });
 
+    it('keeps public direct index container resolve owned while preserving source parents', async () => {
+      const targetObject = new JsObject({
+        tones: list([any('one'), any('two')])
+      });
+      const node = rules([
+        vardecl({ name: 'targetObject', value: targetObject })
+      ]);
+      setRulesContext(await node.eval(context));
+      const refNode = ref({
+        target: ref({ key: 'targetObject' }, { type: 'variable' }),
+        key: quoted('tones')
+      }, { type: 'index' });
+      const sourceList = targetObject.value.tones;
+      if (!(sourceList instanceof List)) {
+        throw new Error('Expected source list');
+      }
+
+      const resolved = await refNode.resolve(context);
+
+      expect(resolved).not.toBe(sourceList);
+      expect(resolved.toTrimmedString()).toBe('one, two');
+      expect(sourceList.parent).not.toBe(refNode);
+      expect(resolved.parent).not.toBe(refNode);
+      expect(refNode.parent).toBeUndefined();
+      expect(context.referenceStack).toBe(0);
+    });
+
     it('keeps referenced source value containers canonical after resolve(context)', async () => {
       const value = list([
         any('one'),

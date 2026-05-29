@@ -251,4 +251,27 @@ describe('PseudoSelector', () => {
     expect(sourceArg?.parent).toBe(pseudoNode);
     expect(pseudoNode.toTrimmedString()).toBe(':is($capture-selector-list)');
   });
+
+  it('keeps evaluated generated :is() keysets aligned with selector-list omission', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-selector-list'),
+        value: sellist([sel([el('.foo'), co(' '), el('.bar')])])
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+
+    const pseudoNode = pseudo({
+      name: ':is',
+      arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
+    });
+    pseudoNode.generated = true;
+    const resolved = await pseudoNode.resolve(context);
+
+    expect(resolved).toBeInstanceOf(PseudoSelector);
+    expect(resolved.render(context)).toBe('.foo .bar');
+    expect(resolved.keySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+    expect(resolved.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(resolved.requiredKeySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+  });
 });

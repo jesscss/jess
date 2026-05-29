@@ -362,6 +362,51 @@ describe('Mixin', () => {
       expect(sourceValue.parent).toBe(sourceDecl);
     });
 
+    it('keeps ruleset-as-mixin nested placement order mapped through the slot', async () => {
+      const sourceComment = comment('/* placement */');
+      const sourceNested = ruleset({
+        selector: el('.nested'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const sourceBody = rules([
+        sourceComment,
+        sourceNested
+      ]);
+      const sourceRuleset = ruleset({
+        selector: el('.my-mixin'),
+        rules: sourceBody
+      });
+      const callerRules = rules([]);
+      const root = rules([
+        sourceRuleset,
+        ruleset({
+          selector: el('.test'),
+          rules: callerRules
+        })
+      ]);
+      context.root = root;
+      context.rulesContext = callerRules;
+
+      const mixinCall = call({ name: ref({ key: '.my-mixin' }, { type: 'mixin-ruleset' }) });
+      callerRules.adopt(mixinCall);
+      const result = await mixinCall.eval(context);
+
+      expect(result).toBeInstanceOf(RulesClass);
+      if (!(result instanceof RulesClass)) {
+        throw new Error('Expected Rules result');
+      }
+      expect(getMixinOutputSourceChildren(result)).toEqual(sourceBody.value);
+      expect(result.value.map(child => getMixinOutputSourceChild(result, child))).toEqual(sourceBody.value);
+      expect(sourceBody.value.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.value);
+      expect(result.value[0]).not.toBe(sourceComment);
+      expect(result.value[1]).not.toBe(sourceNested);
+      expect(sourceComment.parent).toBe(sourceBody);
+      expect(sourceNested.parent).toBe(sourceBody);
+      expect(result.value.map(child => child.parent)).toEqual([result, result]);
+    });
+
     it('should call a mixin with parameters', async () => {
       // Create a mixin with a parameter: .my-mixin(@color) { color: @color; }
       const mixinDef = mixin({
