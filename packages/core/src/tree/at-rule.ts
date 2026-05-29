@@ -582,7 +582,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         const record = this.createBodyEvalRecord(context, evaluatedPrelude, options);
         let evaluated: MaybePromise<Node>;
         try {
-          evaluated = record.evalFrame.evalBodyNode(context, record);
+          evaluated = this.evalBodyNode(context, record);
         } catch (error) {
           throw error;
         }
@@ -1193,7 +1193,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     context: Context,
     bodyEvalRecord: AtRuleBodyEvalRecord
   ): MaybePromise<AtRule | Nil> {
-    let node = this as AtRule;
+    const source = bodyEvalRecord.source;
+    let node = bodyEvalRecord.evalFrame;
     const bodyEvalContextState = bodyEvalRecord.contextState;
     // @plugin is handled by the Less compatibility plugin during preparation.
     // If we reach eval and it's still visible, no plugin processed it.
@@ -1223,7 +1224,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (prelude) {
           // Evaluate the prelude in the outer (enclosing) Rules scope, not the nested @media Rules scope.
           // This matches Less behavior for mixin parameters referenced from nested @media preludes.
-          const out = this.evalPreludeValue(prelude, context);
+          const out = source.evalPreludeValue(prelude, context);
           if (isThenable(out)) {
             return Promise.resolve(out).then(
               (n) => {
@@ -1241,7 +1242,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           if (context.opts.collapseNesting && node.isNestable()) {
             setAtRuleBodyEvalOutput(bodyEvalContextState, { hoistToRoot: true });
           }
-          return this.runBodyEvalInvocation(context, bodyEvalRecord, node, (restoreBodyEvalContext) => {
+          return source.runBodyEvalInvocation(context, bodyEvalRecord, node, (restoreBodyEvalContext) => {
             const finishPreparedBody = (prepState: AtRuleBodyEvalPrepState): MaybePromise<AtRule> => {
               const { bodyToEval } = storeAtRuleBodyRecordPrepState(bodyEvalRecord, prepState);
               const registration = createAtRuleBodyRecordRegistration(bodyEvalRecord);
@@ -1260,7 +1261,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                 storeAtRuleBodyEvalRecordRules(bodyEvalRecord, finalRules);
                 registration.finalRules = finalRules;
                 if (registration.pushedExtendRoot && node.isNestable()) {
-                  this._registerEvaluatedNestableBody(node, context, registration);
+                  source._registerEvaluatedNestableBody(node, context, registration);
                 }
                 return node;
               };
@@ -1273,7 +1274,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               return finishEval(evalOut as Rules);
             };
 
-            const preparedBody = this._prepareNestableBodyForEval(
+            const preparedBody = source._prepareNestableBodyForEval(
               node,
               rules,
               context,
@@ -1316,7 +1317,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     context.frames.push(node);
     storeAtRuleBodyRecordLayerName(
       bodyEvalRecord,
-      this._extractAndStoreLayerName(
+      bodyEvalRecord.source._extractAndStoreLayerName(
         node,
         context,
         bodyEvalContextState.evaluatedPrelude

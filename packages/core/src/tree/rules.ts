@@ -4547,11 +4547,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // Caller ancestry is additive and only exposed through fallbackFrame when
         // leakyRules is enabled.
         candidate.parent!.adopt(unlocked);
-        if (thisContext.leakyRules === true && parentFrame) {
-          assignMixinOutputFallbackFrame(unlocked, parentFrame);
-        }
         // Mark generated mixin output with lookup policy from leakyRules.
-        attachMixinOutputSlot(unlocked, sourceRules, restrictMixinOutputLookup);
+        attachMixinOutputSlot(unlocked, sourceRules, restrictMixinOutputLookup, {
+          fallbackFrame: thisContext.leakyRules === true ? parentFrame : undefined
+        });
         Reflect.set(unlocked, 'index', candidate.index);
         // Evaluate immediately while the call-site parent chain is intact.
         // Variables in the enclosing scope (e.g. @hover-background declared before the

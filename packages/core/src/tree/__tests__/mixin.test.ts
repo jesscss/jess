@@ -1168,6 +1168,8 @@ describe('Mixin', () => {
       const source = rules([
         decl({ name: 'color', value: any('red') })
       ]);
+      const fallbackRules = rules([]);
+      const fallbackFrame = fallbackRules.getScopeFrame();
       const output = rules([
         decl({ name: 'color', value: any('red') })
       ], {
@@ -1178,10 +1180,11 @@ describe('Mixin', () => {
           VarDeclaration: 'private'
         }
       });
-      attachMixinOutputSlot(output, source, true);
+      attachMixinOutputSlot(output, source, true, { fallbackFrame });
       const entry = { node: output };
 
       expect(output.options.referenceMode).toBe(false);
+      expect(output.getScopeFrame().fallbackFrame).toBe(fallbackFrame);
       expect(canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: false })).toBe(false);
       expect(canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(true);
       expect(canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(false);

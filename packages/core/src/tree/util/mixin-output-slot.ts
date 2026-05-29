@@ -246,6 +246,7 @@ export function attachMixinOutputSlot(
   sourceRules: Rules,
   restrictAmbientLookup: boolean,
   options?: {
+    fallbackFrame?: Rules['scopeFrame'];
     rulesetPlacement?: boolean;
   }
 ): MixinOutputSlot {
@@ -278,5 +279,6 @@ export function attachMixinOutputSlot(
   markMixinOutputSource(outputRules, sourceRules);
   outputRules.options.mixinOutputSlot = slot;
   outputRules.options.referenceMode = false;
+  assignMixinOutputFallbackFrame(outputRules, options?.fallbackFrame);
   return slot;
 }

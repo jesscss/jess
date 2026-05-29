@@ -593,8 +593,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       this.adopt(evaluatedRules);
       return evaluatedRules;
     }
-    // Shallow clone the Rules wrapper. The children are shared with the
-    // canonical tree/session result for this import placement — per-render
+    // Derive an import-owned Rules wrapper. The children are shared with the
+    // canonical tree/session result for this import placement; per-render
     // options (visibility, reference mode) are set on the wrapper below;
     // downstream serialization propagates `referenceMode` via PrintOptions,
     // so we don't need to mutate every child's `options.referenceMode`.
@@ -822,8 +822,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
 
             try {
-              // Prepare registration first to get the cloned Rules (if cloning occurs)
-              // sourceNode is already set above, so the cloned Rules will have it
+              // Prepare registration first so any owned registration wrapper
+              // keeps source identity from the import placement.
               const preparedRules = await rules.prepareRegistration(context);
               if (!(preparedRules instanceof Rules)) {
                 throw new TypeError('Expected imported rules registration prep to return Rules');
@@ -878,8 +878,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         }
 
         // For import type, register the final Rules as a child root of the parent
-        // so extends from the parent can find rulesets in the imported Rules
-        // Do this AFTER getFinalRules because it returns a cloned Rules
+        // so extends from the parent can find rulesets in the imported Rules.
+        // Do this after getFinalRules because it may return a placement-owned Rules.
         if (type === 'import') {
           const currentParentExtendRoot = context.extendRoots.getCurrentExtendRoot();
           // Import type is mutable by default (unless explicitly mutable: false)
@@ -897,7 +897,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
           // For imports that evaluated under a local extend root (protected import or implicit _dedupe
           // reference traversal), rulesets were registered against the pre-finalized Rules root. Since
-          // getFinalRules can clone, re-register all descendant rulesets under finalRules' extend root set.
+          // getFinalRules can derive a placement wrapper; re-register all descendant rulesets
+          // under finalRules' extend root set.
           if (shouldReRegisterLocalRootRulesets) {
             for (const maybeRuleset of finalRules.nodes()) {
               if (isNode(maybeRuleset, N.Ruleset)) {
