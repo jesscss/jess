@@ -630,6 +630,10 @@ describe('AtRule', () => {
     expect(sourceName.parent).toBe(node);
     expect(sourcePrelude?.parent).toBe(node);
     expect(sourceRules?.parent).toBe(node);
+    expect(node.value.prelude).toBe(sourcePrelude);
+    if (resolved instanceof AtRule) {
+      expect(resolved.value.prelude).not.toBe(sourcePrelude);
+    }
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();

@@ -623,6 +623,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         name: state.name,
         value,
         listValue: normalized.listValue,
+        spaceValue: normalized.spaceValue,
         important,
         importantText,
         normalizedFromAssign: state.normalizedFromAssign,
@@ -638,18 +639,26 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private normalizeMergedLeadingPlaceholderForRender(
     state: DeclarationRegistrationState,
     value: Node
-  ): { value: Node; listValue?: Node[] } {
+  ): { value: Node; listValue?: Node[]; spaceValue?: Node[] } {
     const normalizedAssign = state.normalizedFromAssign;
     const isListMergedAssign =
       normalizedAssign === AssignmentType.Add
       || normalizedAssign === AssignmentType.MergeList;
-    if (!isListMergedAssign || !isNode(value, N.List)) {
+    const isSpaceMergedAssign = normalizedAssign === AssignmentType.MergeSequence;
+    const isMergedContainer = (
+      (isListMergedAssign && isNode(value, N.List))
+      || (isSpaceMergedAssign && isNode(value, N.Sequence))
+    );
+    if (!isMergedContainer) {
       return { value };
     }
     const mergedItems: Node[] = [];
     let emptyPlaceholder: Node | undefined;
     const collect = (child: Node): void => {
-      if (isNode(child, N.List)) {
+      if (
+        (isListMergedAssign && isNode(child, N.List))
+        || (isSpaceMergedAssign && isNode(child, N.Sequence))
+      ) {
         for (const item of child.value) {
           collect(item);
         }
@@ -672,7 +681,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (mergedItems.length === 1) {
       return { value: mergedItems[0]! };
     }
-    return { value, listValue: mergedItems };
+    return isListMergedAssign
+      ? { value, listValue: mergedItems }
+      : { value, spaceValue: mergedItems };
   }
 
   private evalPreparedState(context: Context): MaybePromise<DeclarationEvalState> {

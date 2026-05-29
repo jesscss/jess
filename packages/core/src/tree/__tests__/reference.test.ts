@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, List, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, List, Sequence, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -876,6 +876,38 @@ describe('reference', () => {
       expect(resolved).toBe(fallback);
       expect(resolved.toTrimmedString()).toBe('red');
       expect(refNode.toTrimmedString()).toBe('$missing');
+    });
+
+    it('reuses source-free static fallback sequences as inert output containers', async () => {
+      const fallback = spaced([any('red'), any('blue')]);
+      const originalClone = Sequence.prototype.clone;
+      let sequenceClones = 0;
+      Sequence.prototype.clone = function cloneForCounting(
+        this: Sequence,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        sequenceClones++;
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const refNode = ref(
+          { key: 'missing' },
+          {
+            type: 'variable',
+            fallbackValue: fallback
+          }
+        );
+
+        const resolved = await refNode.resolve(context);
+
+        expect(resolved).toBe(fallback);
+        expect(resolved.toTrimmedString()).toBe('red blue');
+        expect(sequenceClones).toBe(0);
+        expect(refNode.toTrimmedString()).toBe('$missing');
+      } finally {
+        Sequence.prototype.clone = originalClone;
+      }
     });
 
     it('preserves direct mixin-ruleset hits instead of returning the live canonical mixin', async () => {

@@ -757,6 +757,33 @@ describe('Declaration', () => {
     }
   });
 
+  it('renders merged declaration sequences without a temporary sequence surface', () => {
+    const node = decl({
+      name: any('background-color'),
+      value: spaced([
+        new Nil(),
+        any('red'),
+        any('foo')
+      ])
+    }, { normalizedFromAssign: AssignmentType.MergeSequence });
+    const originalToTrimmedString = Sequence.prototype.toTrimmedString;
+    let sequencePrinterCalls = 0;
+    Sequence.prototype.toTrimmedString = function toTrimmedStringForCounting(
+      this: Sequence,
+      ...args: Parameters<typeof originalToTrimmedString>
+    ): ReturnType<typeof originalToTrimmedString> {
+      sequencePrinterCalls++;
+      return originalToTrimmedString.apply(this, args);
+    };
+
+    try {
+      expect(node.render(context)).toBe('background-color: red foo');
+      expect(sequencePrinterCalls).toBe(0);
+    } finally {
+      Sequence.prototype.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
   it('renders assignment merges without evaluating temporary sequence containers', async () => {
     const root = rules([
       decl({

@@ -1290,7 +1290,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       );
     }
     return pipe(
-      () => this.evalBodyResult(context),
+      () => this.evalBodyResult(context, { writeEvaluatedPrelude: false }),
       result => this.resolveBodyResult(result)
     );
   }

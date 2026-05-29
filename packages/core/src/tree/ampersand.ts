@@ -99,6 +99,8 @@ type AmpersandAppendPlacementState = {
   templateReplacementSelectors?: Selector[];
   templateReplacementValues?: string[];
   hoistToRoot: boolean;
+  inputItemTexts: string[];
+  inputItemCount: number;
   result?: Selector | Nil;
   resultItemTexts?: string[];
   resultItemCount?: number;
@@ -106,12 +108,23 @@ type AmpersandAppendPlacementState = {
   selectorBits: Context['selectorBits'];
 };
 
+function getSelectorItemTexts(selector: Selector | Nil): string[] {
+  if (isNode(selector, N.SelectorList)) {
+    return selector.value.map(item => item.toTrimmedString());
+  }
+  if (isNode(selector, N.Nil)) {
+    return [];
+  }
+  return [selector.toTrimmedString()];
+}
+
 function createAmpersandAppendPlacementState(
   source: Ampersand,
   selector: Selector | Nil,
   context: Context,
   appendValue?: string
 ): AmpersandAppendPlacementState {
+  const inputItemTexts = getSelectorItemTexts(selector);
   return {
     source,
     selector,
@@ -119,6 +132,8 @@ function createAmpersandAppendPlacementState(
     templateMerge: appendValue?.includes('&') === true,
     templateParts: appendValue?.includes('&') === true ? appendValue.split('&') : undefined,
     hoistToRoot: appendValue !== undefined || source.hoistToRoot === true,
+    inputItemTexts,
+    inputItemCount: inputItemTexts.length,
     selectorBits: context.selectorBits
   };
 }
@@ -277,16 +292,8 @@ function finishAmpersandAppendPlacement(
 ): Selector | Nil {
   placement.selector = selector;
   placement.result = selector;
-  if (isNode(selector, N.SelectorList)) {
-    placement.resultItemTexts = selector.value.map(item => item.toTrimmedString());
-    placement.resultItemCount = placement.resultItemTexts.length;
-  } else if (!isNode(selector, N.Nil)) {
-    placement.resultItemTexts = [selector.toTrimmedString()];
-    placement.resultItemCount = 1;
-  } else {
-    placement.resultItemTexts = [];
-    placement.resultItemCount = 0;
-  }
+  placement.resultItemTexts = getSelectorItemTexts(selector);
+  placement.resultItemCount = placement.resultItemTexts.length;
   placement.resultText = placement.resultItemTexts.length === 1
     ? placement.resultItemTexts[0]
     : selector.toTrimmedString();

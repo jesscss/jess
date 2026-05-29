@@ -627,6 +627,27 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     return ownedBody.eval(context);
   }
 
+  private evalNilSelectorForRender(context: Context): MaybePromise<Rules | Nil> {
+    const { guard } = this.value;
+    if (!guard) {
+      return this.evalNilSelectorBodyForRender(context);
+    }
+    if (guard instanceof Nil) {
+      return guard;
+    }
+    const ownedGuard = copyOwnedWithReusableLeaves(guard);
+    if (!(ownedGuard instanceof Node)) {
+      throw new TypeError('Expected nil-selector render guard copy to remain a Node');
+    }
+    return pipe(
+      () => ownedGuard.eval(context),
+      (guardResult) => {
+        const guardPasses = Boolean(guardResult instanceof Bool && guardResult.value === true);
+        return guardPasses ? this.evalNilSelectorBodyForRender(context) : new Nil();
+      }
+    );
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
@@ -659,10 +680,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       }
       if (
         this.value.selector instanceof Nil
-        && !this.value.guard
         && !this.registrationPrepared
       ) {
-        return this.evalNilSelectorBodyForRender(context);
+        return this.evalNilSelectorForRender(context);
       }
       return this.registrationPrepared
         ? this.eval(context)

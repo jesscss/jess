@@ -557,6 +557,61 @@ describe('Rule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('renders guarded nil-selector rulesets through owned guard and body output', async () => {
+    const guard = condition([bool(true)]);
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = ruleset({
+      selector: new Nil(),
+      guard,
+      rules: body
+    });
+    const originalPrepareRegistration = RulesClass.prototype.prepareRegistration;
+    let prepareCalls = 0;
+    RulesClass.prototype.prepareRegistration = function countRulesPrep(
+      this: RulesClass,
+      ...args: Parameters<typeof originalPrepareRegistration>
+    ): ReturnType<typeof originalPrepareRegistration> {
+      prepareCalls++;
+      return originalPrepareRegistration.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;\n');
+      expect(prepareCalls).toBe(0);
+      expect(guard.parent).toBe(node);
+      expect(body.parent).toBe(node);
+      expect(guard.evaluated).toBe(false);
+      expect(body.evaluated).toBe(false);
+      expect(node.evaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
+    } finally {
+      RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
+    }
+  });
+
+  it('skips failed guarded nil-selector rulesets without mutating source state', async () => {
+    const guard = condition([bool(false)]);
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = ruleset({
+      selector: new Nil(),
+      guard,
+      rules: body
+    });
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('');
+    expect(guard.parent).toBe(node);
+    expect(body.parent).toBe(node);
+    expect(guard.evaluated).toBe(false);
+    expect(body.evaluated).toBe(false);
+    expect(node.value.guard).toBe(guard);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
   it('keeps guarded nested rulesets on an owned body path while preserving source parentage', async () => {
     const selector = sellist([sel([el('.parent')])]);
     const child = ruleset({

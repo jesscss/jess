@@ -1339,7 +1339,7 @@ function canReuseReferenceValue(node: Node): boolean {
 }
 
 function canReuseSourceFreeTextContainer(node: Node): boolean {
-  if (!isNode(node, N.List)) {
+  if (!isNode(node, N.List | N.Sequence)) {
     return false;
   }
   if (node.location.length !== 0 || !node.hasFlag(F_STATIC)) {

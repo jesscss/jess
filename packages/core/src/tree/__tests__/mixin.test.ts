@@ -3,7 +3,7 @@ import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { MixinRegistry } from '../util/registry-utils.js';
 import { renderNodeToString } from '../util/render-buffer.js';
-import { canEnterMixinOutputForLookup, canEnterRulesEntryForLookup, getMixinOutputChildForSource, getMixinOutputSourceChild, getMixinOutputSourceChildren, getMixinOutputSourceIndex } from '../util/mixin-output-slot.js';
+import { attachMixinOutputSlot, canEnterMixinOutputForLookup, canEnterRulesEntryForLookup, getMixinOutputChildForSource, getMixinOutputSourceChild, getMixinOutputSourceChildren, getMixinOutputSourceIndex } from '../util/mixin-output-slot.js';
 
 let context: Context;
 
@@ -1064,6 +1064,32 @@ describe('Mixin', () => {
       expect(secondResult.value.map((child, index) => child === result.value[index])).toEqual(
         mixinBody.value.map(() => false)
       );
+    });
+
+    it('keeps mixin-output entry traversal lookup-owned and type-specific', () => {
+      const source = rules([
+        decl({ name: 'color', value: any('red') })
+      ]);
+      const output = rules([
+        decl({ name: 'color', value: any('red') })
+      ], {
+        rulesVisibility: {
+          Declaration: 'public',
+          Mixin: 'public',
+          Ruleset: 'public',
+          VarDeclaration: 'private'
+        }
+      });
+      attachMixinOutputSlot(output, source, true);
+      const entry = { node: output };
+
+      expect(canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: false })).toBe(false);
+      expect(canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(true);
+      expect(canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(false);
+      expect(canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: true })).toBe(true);
+
+      output.options.rulesVisibility.VarDeclaration = 'public';
+      expect(canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(true);
     });
 
     it('does not shallow-clone mixin body children to create param guard wrappers', async () => {
