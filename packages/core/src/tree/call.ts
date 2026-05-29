@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation, type TreeContext } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, F_STATIC, type NodeLocation, type TreeContext } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -213,7 +213,12 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const out: Node[] = [];
     for (const node of nodes.value) {
-      const evalTarget = options?.preserveSourceParents && isNode(node, N.List | N.Sequence)
+      const canUseStaticContainer = (
+        isNode(node, N.List | N.Sequence)
+        && node.location.length === 0
+        && node.hasFlag(F_STATIC)
+      );
+      const evalTarget = options?.preserveSourceParents && isNode(node, N.List | N.Sequence) && !canUseStaticContainer
         ? copyWithReusableLeaves(node)
         : node;
       const evald = await evalTarget.eval(context) as Node;

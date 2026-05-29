@@ -1151,9 +1151,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     // Store frames snapshot for hoisting serialization
     if (context.opts.collapseNesting || node.hoistToRoot) {
       const frames = [...context.frames];
-      if (bodyEvalContextState.writeOutputStateToNode) {
-        node.frames = frames;
-      }
       setAtRuleBodyEvalOutput(bodyEvalContextState, {
         ...bodyEvalContextState.frameState.output,
         frames
@@ -1188,9 +1185,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         let { rules } = node.value;
         if (rules) {
           if (context.opts.collapseNesting && node.isNestable()) {
-            if (bodyEvalContextState.writeOutputStateToNode) {
-              node.hoistToRoot = true;
-            }
             setAtRuleBodyEvalOutput(bodyEvalContextState, { hoistToRoot: true });
           }
           let restoreRulesetFrames = () => undefined;

@@ -1277,6 +1277,37 @@ describe('Call', () => {
     }
   });
 
+  it('does not copy source-free static fallback call arg containers', async () => {
+    const originalCopy = Sequence.prototype.copy;
+    let sequenceCopies = 0;
+    Sequence.prototype.copy = function copyForCounting(
+      this: Sequence,
+      ...args: Parameters<typeof originalCopy>
+    ): ReturnType<typeof originalCopy> {
+      sequenceCopies++;
+      return originalCopy.apply(this, args);
+    };
+
+    const arg = seq([any('red'), dimension([10, 'px'])]);
+    const args = list([arg]);
+    const rule = call({
+      name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
+      args
+    }, { silentFail: true });
+
+    try {
+      const resolved = await rule.eval(context);
+
+      expect(isNode(resolved, N.Call)).toBe(true);
+      expect(resolved.toTrimmedString()).toBe('missing-fn(red 10px)');
+      expect(sequenceCopies).toBe(0);
+      expect(args.parent).toBe(rule);
+      expect(arg.parent).toBe(args);
+    } finally {
+      Sequence.prototype.copy = originalCopy;
+    }
+  });
+
   it('derives optional JS failure call output without shallow-cloning the source call', async () => {
     const root = rules([]);
     root.register('function', new JsFunction({

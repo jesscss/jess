@@ -373,6 +373,63 @@ describe('reference', () => {
       }
     });
 
+    it('renders source-free runtime-binding sequences as text without container copies', async () => {
+      const sourceValue = spaced([any('red'), any('blue')]);
+      const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
+      const runtimeScope = rules([]);
+      runtimeScope.scopeFrame = buildScopeFrame(
+        undefined,
+        runtimeScope,
+        undefined,
+        new Map([
+          ['tone', {
+            value: sourceValue,
+            sourceNode: paramDecl
+          }]
+        ])
+      );
+      context.rulesContext = runtimeScope;
+      const sourceParent = sourceValue.parent;
+      const buffer = createRenderBuffer('segmented');
+      const originalCopy = Sequence.prototype.copy;
+      const originalInherit = Sequence.prototype.inherit;
+      let sourceValueCopies = 0;
+      let sourceValueInherits = 0;
+      Sequence.prototype.copy = function copyForCounting(
+        this: Sequence,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this === sourceValue) {
+          sourceValueCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+      Sequence.prototype.inherit = function inheritForCounting(
+        this: Sequence,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === sourceValue) {
+          sourceValueInherits++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        const refNode = ref({ key: 'tone' }, { type: 'variable' });
+
+        expect(await Promise.resolve(refNode.render(context))).toBe('red blue');
+        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red blue');
+        expect(buffer.segments).toEqual(['red blue']);
+        expect(sourceValueCopies).toBe(0);
+        expect(sourceValueInherits).toBe(0);
+        expect(sourceValue.parent).toBe(sourceParent);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        Sequence.prototype.copy = originalCopy;
+        Sequence.prototype.inherit = originalInherit;
+      }
+    });
+
     it('keeps runtime-binding containers owned for public resolve', async () => {
       const sourceValue = list([any('red'), any('blue')]);
       const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
@@ -555,6 +612,55 @@ describe('reference', () => {
       } finally {
         List.prototype.copy = originalCopy;
         List.prototype.inherit = originalInherit;
+      }
+    });
+
+    it('renders source-free declaration reference sequences as text without container copies', async () => {
+      const sourceValue = spaced([any('red'), any('blue')]);
+      const node = rules([
+        decl({
+          name: any('src'),
+          value: sourceValue
+        })
+      ]);
+      const sourceParent = sourceValue.parent;
+      setRulesContext(await node.eval(context));
+      const refNode = ref({ key: 'src' }, { type: 'declaration' });
+      const buffer = createRenderBuffer('segmented');
+      const originalCopy = Sequence.prototype.copy;
+      const originalInherit = Sequence.prototype.inherit;
+      let sourceValueCopies = 0;
+      let sourceValueInherits = 0;
+      Sequence.prototype.copy = function copyForCounting(
+        this: Sequence,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this === sourceValue) {
+          sourceValueCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+      Sequence.prototype.inherit = function inheritForCounting(
+        this: Sequence,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === sourceValue) {
+          sourceValueInherits++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        expect(await Promise.resolve(refNode.render(context))).toBe('red blue');
+        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red blue');
+        expect(buffer.segments).toEqual(['red blue']);
+        expect(sourceValueCopies).toBe(0);
+        expect(sourceValueInherits).toBe(0);
+        expect(sourceValue.parent).toBe(sourceParent);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        Sequence.prototype.copy = originalCopy;
+        Sequence.prototype.inherit = originalInherit;
       }
     });
 

@@ -525,6 +525,33 @@ describe('AtRule', () => {
     expect(node.evaluated).toBe(false);
   });
 
+  it('keeps body eval output frames in runtime state instead of mutating at-rule fields', async () => {
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    context = new Context({ bubbleRootAtRules: true });
+    context.frames = [parentFrame];
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: rules([
+        decl({ name: 'font-family', value: any('Jess') })
+      ])
+    });
+
+    const evaluated = await Promise.resolve(node.eval(context));
+
+    expect(evaluated).toBe(node);
+    expect(node.frames).toBeUndefined();
+    expect(node.hoistToRoot).toBeUndefined();
+    expect(node.isHoisted({ collapseNesting: false })).toBe(true);
+    expect(node.toTrimmedString()).toBeString(`
+      @font-face {
+        font-family: Jess;
+      }
+    `);
+  });
+
   it('carries direct body-render prelude evaluation through body state once', async () => {
     const root = rules([
       vardecl({
