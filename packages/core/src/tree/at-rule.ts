@@ -76,7 +76,6 @@ type AtRuleBodyEvalContextState = {
   evaluatedBody?: Rules;
   output?: AtRuleBodyOutputState;
   layerName?: string;
-  frameState: AtRuleBodyFrameState;
   frameCount: number;
   extendRootStackLength: number;
   writeEvaluatedPrelude: boolean;
@@ -86,6 +85,7 @@ type AtRuleBodyEvalContextState = {
 type AtRuleBodyEvalRecord = {
   source: AtRule;
   evalFrame: AtRule;
+  frameState: AtRuleBodyFrameState;
   evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
   layerName?: string;
@@ -236,7 +236,6 @@ function createAtRuleBodyEvalContextState(
     source: options.source ?? node,
     evalFrame: node,
     evaluatedPrelude: options.evaluatedPrelude,
-    frameState: createAtRuleBodyFrameState(node, context),
     frameCount: context.frames.length,
     extendRootStackLength: context.extendRoots.extendRootStack.length,
     writeEvaluatedPrelude: options.writeEvaluatedPrelude ?? true,
@@ -244,20 +243,21 @@ function createAtRuleBodyEvalContextState(
   };
 }
 
-function activateAtRuleBodyEvalContextState(
-  state: AtRuleBodyEvalContextState,
+function activateAtRuleBodyEvalRecordFrameState(
+  record: AtRuleBodyEvalRecord,
   context: Context
 ): () => void {
-  return activateAtRuleBodyFrameState(state.frameState, context);
+  return activateAtRuleBodyFrameState(record.frameState, context);
 }
 
-function restoreAtRuleBodyEvalContextState(
-  state: AtRuleBodyEvalContextState,
+function restoreAtRuleBodyEvalRecord(
+  record: AtRuleBodyEvalRecord,
   context: Context
 ): void {
+  const state = record.contextState;
   popAtRuleBodyEvalContextState(context, state);
   context.frames.length = state.frameCount;
-  state.frameState.restoreRulesetFrames();
+  record.frameState.restoreRulesetFrames();
   while (context.extendRoots.extendRootStack.length > state.extendRootStackLength) {
     context.extendRoots.popExtendRoot();
   }
@@ -586,6 +586,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return {
       source: this,
       evalFrame,
+      frameState: createAtRuleBodyFrameState(this, context),
       evaluatedPrelude,
       contextState: createAtRuleBodyEvalContextState(evalFrame, context, {
         source: this,
@@ -1157,6 +1158,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return this.evalBodyNode(context, {
       source: this,
       evalFrame: this,
+      frameState: createAtRuleBodyFrameState(this, context),
       contextState: createAtRuleBodyEvalContextState(this, context)
     });
   }
@@ -1178,11 +1180,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (context.opts.collapseNesting || node.hoistToRoot) {
       const frames = [...context.frames];
       setAtRuleBodyEvalOutput(bodyEvalContextState, {
-        ...bodyEvalContextState.frameState.output,
+        ...bodyEvalRecord.frameState.output,
         frames
       });
-    } else if (bodyEvalContextState.frameState.output) {
-      setAtRuleBodyEvalOutput(bodyEvalContextState, bodyEvalContextState.frameState.output);
+    } else if (bodyEvalRecord.frameState.output) {
+      setAtRuleBodyEvalOutput(bodyEvalContextState, bodyEvalRecord.frameState.output);
     }
 
     return pipe(
@@ -1215,7 +1217,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           }
           let restoreRulesetFrames = () => undefined;
           const restoreBodyEvalContext = () => {
-            restoreAtRuleBodyEvalContextState(bodyEvalContextState, context);
+            restoreAtRuleBodyEvalRecord(bodyEvalRecord, context);
           };
           // Push to frames before evaluating rules so we can use context.frames to find parent layers
           // This allows nested layers to find their parent layer names
@@ -1245,7 +1247,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               ...(bodyEvalRecord.layerName !== undefined && { layerName: bodyEvalRecord.layerName })
             });
             const onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
-            restoreRulesetFrames = activateAtRuleBodyEvalContextState(bodyEvalContextState, context);
+            restoreRulesetFrames = activateAtRuleBodyEvalRecordFrameState(bodyEvalRecord, context);
             let evalOut: MaybePromise<Rules>;
             try {
               evalOut = bodyToEval.eval(context);

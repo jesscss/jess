@@ -357,6 +357,8 @@ describe('Mixin', () => {
       expect(outputDecl).not.toBe(sourceDecl);
       expect(getMixinOutputSourceChild(result, outputDecl!)).toBe(sourceDecl);
       expect(getMixinOutputChildForSource(result, sourceDecl)).toBe(outputDecl);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.sourceRules).toBe(sourceBody);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.outputRules).toBe(result);
       expect(outputDecl?.parent).toBe(result);
       expect(sourceDecl.parent).toBe(sourceBody);
       expect(sourceValue.parent).toBe(sourceDecl);
@@ -400,6 +402,8 @@ describe('Mixin', () => {
       expect(getMixinOutputSourceChildren(result)).toEqual(sourceBody.value);
       expect(result.value.map(child => getMixinOutputSourceChild(result, child))).toEqual(sourceBody.value);
       expect(sourceBody.value.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.value);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map(segment => segment.source)).toEqual(sourceBody.value);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map(segment => segment.output)).toEqual(result.value);
       expect(result.value[0]).not.toBe(sourceComment);
       expect(result.value[1]).not.toBe(sourceNested);
       expect(sourceComment.parent).toBe(sourceBody);

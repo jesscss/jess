@@ -77,6 +77,7 @@ type FinalizedCallSyntax = {
 type CallContentPlacementState = {
   source: Call;
   contentNode: Node;
+  reusesSourceContent: boolean;
   output?: Node;
 };
 
@@ -178,10 +179,12 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const placement: CallContentPlacementState = {
       source: state.source,
-      contentNode
+      contentNode,
+      reusesSourceContent: false
     };
     if (contentNode.location.length === 0 && contentNode.hasFlag(F_STATIC)) {
       contentNode.frozen = true;
+      placement.reusesSourceContent = true;
       placement.output = contentNode;
       return placement;
     }

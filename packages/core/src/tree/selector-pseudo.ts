@@ -7,6 +7,7 @@ import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
+import type { BitSetLibrary } from './util/bitset.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
@@ -29,6 +30,7 @@ type GeneratedPseudoPlacementState = {
   name: ':is';
   arg: Selector;
   argText?: string;
+  keySetLibrary?: BitSetLibrary<string>;
   omitWrapperForSingleSelectorList: boolean;
 };
 
@@ -41,6 +43,7 @@ function getGeneratedPseudoPlacementState(source: PseudoSelector): GeneratedPseu
       source,
       name,
       arg,
+      keySetLibrary: source.keySetLibrary,
       omitWrapperForSingleSelectorList: isNode(arg, N.SelectorList) || generatedPseudoOmitWrapper.has(source)
     };
   }
@@ -61,6 +64,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     const generatedState = getGeneratedPseudoPlacementState(this);
     if (generatedState) {
       ({ name, arg } = generatedState);
+      if (generatedState.keySetLibrary) {
+        attachSelectorBitLibrary(arg, generatedState.keySetLibrary);
+      }
       const argMark = w.mark();
       arg.toString(options);
       w.replaceSince(argMark, normalizeSelectorArg, arg);

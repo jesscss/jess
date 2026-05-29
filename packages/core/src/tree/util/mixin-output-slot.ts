@@ -21,6 +21,7 @@ export type MixinOutputSlot = {
   outputBySource: ReadonlyMap<Node, Node>;
   sourceIndexByOutput: ReadonlyMap<Node, number>;
   ambientLookup: boolean;
+  rulesetPlacement?: RulesetMixinPlacementRecord;
 };
 
 export type MixinOutputChildSegment = {
@@ -29,6 +30,24 @@ export type MixinOutputChildSegment = {
   output?: Node;
   index: number;
 };
+
+export type RulesetMixinPlacementRecord = {
+  sourceRules: Rules;
+  outputRules: Rules;
+  childSegments: readonly MixinOutputChildSegment[];
+};
+
+function createRulesetMixinPlacementRecord(
+  sourceRules: Rules,
+  outputRules: Rules,
+  childSegments = getMixinOutputChildSegments(sourceRules, outputRules)
+): RulesetMixinPlacementRecord {
+  return {
+    sourceRules,
+    outputRules,
+    childSegments
+  };
+}
 
 export function getMixinOutputChildSegments(
   sourceRules: Rules,
@@ -89,6 +108,13 @@ export function assignMixinOutputRuleIndexes(
         : undefined
     );
   }
+}
+
+export function markMixinOutputSource(
+  outputRules: Rules,
+  sourceRules: Rules
+): void {
+  outputRules.sourceNode = sourceRules.sourceNode ?? sourceRules;
 }
 
 function validateMixinOutputSlot(slot: MixinOutputSlot): void {
@@ -189,8 +215,12 @@ export function canEnterRulesEntryForLookup(
 export function attachMixinOutputSlot(
   outputRules: Rules,
   sourceRules: Rules,
-  restrictAmbientLookup: boolean
+  restrictAmbientLookup: boolean,
+  options?: {
+    rulesetPlacement?: boolean;
+  }
 ): MixinOutputSlot {
+  const existingRulesetPlacement = outputRules.options.mixinOutputSlot?.rulesetPlacement;
   const childSegments = getMixinOutputChildSegments(sourceRules, outputRules);
   const slot: MixinOutputSlot = {
     sourceRules,
@@ -211,7 +241,12 @@ export function attachMixinOutputSlot(
         .filter((segment): segment is MixinOutputChildSegment & { output: Node } => segment.output !== undefined)
         .map(segment => [segment.output, segment.index])
     ),
-    ambientLookup: !restrictAmbientLookup
+    ambientLookup: !restrictAmbientLookup,
+    ...(options?.rulesetPlacement
+      ? { rulesetPlacement: createRulesetMixinPlacementRecord(sourceRules, outputRules, childSegments) }
+      : existingRulesetPlacement
+        ? { rulesetPlacement: existingRulesetPlacement }
+        : {})
   };
   validateMixinOutputSlot(slot);
   outputRules.options.mixinOutputSlot = slot;

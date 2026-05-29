@@ -64,7 +64,8 @@ import {
   assignMixinOutputRuleIndexes,
   blocksAmbientMixinOutputLookup,
   canEnterRulesEntryForLookup,
-  getMixinOutputChildSegments
+  getMixinOutputChildSegments,
+  markMixinOutputSource
 } from './util/mixin-output-slot.js';
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
 import type { CallSignature } from './util/recursion-helper.js';
@@ -4076,9 +4077,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
     function createEmptyDerivedRules(sourceRules: Rules): Rules {
       return createDerivedRulesSurface(sourceRules);
     }
-    function markMixinOutputSource(output: Rules, sourceRules: Rules): void {
-      output.sourceNode = sourceRules.sourceNode ?? sourceRules;
-    }
     function createCallableRulesSurface(sourceRules: Rules, copyChildren: boolean): Rules {
       if (!copyChildren) {
         return sourceRules.derive();
@@ -4523,7 +4521,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
         rules.index = candidate.index;
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
         // Mark generated mixin output with lookup policy from leakyRules.
-        attachMixinOutputSlot(rules, sourceRules, restrictMixinOutputLookup);
+        attachMixinOutputSlot(rules, sourceRules, restrictMixinOutputLookup, {
+          rulesetPlacement: true
+        });
         markMixinOutputSource(rules, sourceRules);
         outputRules.push(rules);
         continue;

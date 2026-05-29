@@ -734,30 +734,42 @@ describe('reference', () => {
 
     it('renders source-free direct index scalar hits without applying reference metadata', async () => {
       const targetArray = new JsArray([any('one'), any('two')]);
+      const targetObject = new JsObject({ tone: any('green') });
       const node = rules([
-        vardecl({ name: 'targetArray', value: targetArray })
+        vardecl({ name: 'targetArray', value: targetArray }),
+        vardecl({ name: 'targetObject', value: targetObject })
       ]);
       setRulesContext(await node.eval(context));
-      const refNode = ref({
+      const arrayRefNode = ref({
         target: ref({ key: 'targetArray' }, { type: 'variable' }),
         key: 1
       }, { type: 'index' });
+      const objectRefNode = ref({
+        target: ref({ key: 'targetObject' }, { type: 'variable' }),
+        key: quoted('tone')
+      }, { type: 'index' });
+      const sourceTone = targetObject.value.tone;
+      if (!(sourceTone instanceof Any)) {
+        throw new Error('Expected object scalar');
+      }
       const originalInherit = Any.prototype.inherit;
       let inheritedFromReference = 0;
       Any.prototype.inherit = function inheritForCounting(
         this: Any,
         ...args: Parameters<typeof originalInherit>
       ): ReturnType<typeof originalInherit> {
-        if (args[0] === refNode) {
+        if (args[0] === arrayRefNode || args[0] === objectRefNode) {
           inheritedFromReference++;
         }
         return originalInherit.apply(this, args);
       };
 
       try {
-        expect(await Promise.resolve(refNode.render(context))).toBe('two');
+        expect(await Promise.resolve(arrayRefNode.render(context))).toBe('two');
+        expect(await Promise.resolve(objectRefNode.render(context))).toBe('green');
         expect(inheritedFromReference).toBe(0);
         expect(targetArray.value[1]?.parent).toBe(targetArray);
+        expect(sourceTone.parent).toBe(targetObject);
         expect(context.referenceStack).toBe(0);
       } finally {
         Any.prototype.inherit = originalInherit;
