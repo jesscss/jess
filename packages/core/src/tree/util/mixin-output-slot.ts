@@ -41,19 +41,25 @@ export type RulesetMixinPlacementRecord = {
 function createRulesetMixinPlacementRecord(
   sourceRules: Rules,
   outputRules: Rules,
-  childSegments = getMixinOutputChildSegments(sourceRules, outputRules)
+  childSegments = getMixinOutputChildSegments(sourceRules, outputRules),
+  sourceIndexByOutput = createSourceIndexByOutput(childSegments)
 ): RulesetMixinPlacementRecord {
-  const sourceIndexByOutput = new Map(
-    childSegments
-      .filter((segment): segment is MixinOutputChildSegment & { output: Node } => segment.output !== undefined)
-      .map(segment => [segment.output, segment.index])
-  );
   return {
     sourceRules,
     outputRules,
     childSegments,
     sourceIndexByOutput
   };
+}
+
+function createSourceIndexByOutput(
+  childSegments: readonly MixinOutputChildSegment[]
+): ReadonlyMap<Node, number> {
+  return new Map(
+    childSegments
+      .filter((segment): segment is MixinOutputChildSegment & { output: Node } => segment.output !== undefined)
+      .map(segment => [segment.output, segment.index])
+  );
 }
 
 export function getMixinOutputChildSegments(
@@ -245,6 +251,7 @@ export function attachMixinOutputSlot(
 ): MixinOutputSlot {
   const existingRulesetPlacement = outputRules.options.mixinOutputSlot?.rulesetPlacement;
   const childSegments = getMixinOutputChildSegments(sourceRules, outputRules);
+  const sourceIndexByOutput = createSourceIndexByOutput(childSegments);
   const slot: MixinOutputSlot = {
     sourceRules,
     outputRules,
@@ -259,14 +266,10 @@ export function attachMixinOutputSlot(
         .filter((segment): segment is MixinOutputChildSegment & { output: Node } => segment.output !== undefined)
         .map(segment => [segment.source, segment.output])
     ),
-    sourceIndexByOutput: new Map(
-      childSegments
-        .filter((segment): segment is MixinOutputChildSegment & { output: Node } => segment.output !== undefined)
-        .map(segment => [segment.output, segment.index])
-    ),
+    sourceIndexByOutput,
     ambientLookup: !restrictAmbientLookup,
     ...(options?.rulesetPlacement
-      ? { rulesetPlacement: createRulesetMixinPlacementRecord(sourceRules, outputRules, childSegments) }
+      ? { rulesetPlacement: createRulesetMixinPlacementRecord(sourceRules, outputRules, childSegments, sourceIndexByOutput) }
       : existingRulesetPlacement
         ? { rulesetPlacement: existingRulesetPlacement }
         : {})

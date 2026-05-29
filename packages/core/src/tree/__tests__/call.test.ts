@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { Any, Call, JsFunction, List, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, list, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Any, Call, F_NON_STATIC, JsFunction, List, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, list, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
@@ -1364,6 +1364,29 @@ describe('Call', () => {
     }
     expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
     expect(resolved.value.contentNode).not.toBe(content);
+    expect(content.parent).toBe(rule);
+  });
+
+  it('owns dynamic source-free fallback call content before output serialization', async () => {
+    const content = seq([any('raw'), any('content')]);
+    content.addFlag(F_NON_STATIC);
+    const rule = call({
+      name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
+      args: list([any('red')]),
+      contentNode: content
+    }, { silentFail: true });
+
+    const resolved = await rule.resolve(context);
+
+    expect(isNode(resolved, N.Call)).toBe(true);
+    if (!isNode(resolved, N.Call)) {
+      throw new Error('Expected call fallback output');
+    }
+    const outputContent = resolved.value.contentNode;
+    expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
+    expect(outputContent).toBeInstanceOf(Sequence);
+    expect(outputContent).not.toBe(content);
+    expect(outputContent?.frozen).toBe(true);
     expect(content.parent).toBe(rule);
   });
 
