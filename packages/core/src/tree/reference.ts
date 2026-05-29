@@ -1507,6 +1507,7 @@ function finalizeRuntimeVarBindingResult(
       context.popReference();
       return evald;
     }
+    context.popReference();
     return cloneReferenceResultNode(referenceNode, evald);
   };
   const shouldUseDefinitionRulesContext = isNode(bindingSource, N.VarDeclaration) && (

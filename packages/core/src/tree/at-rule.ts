@@ -125,6 +125,13 @@ type AtRuleBodyEvalResult = {
   output?: AtRuleBodyOutputState;
 };
 
+type AtRuleBodyPublicResultState = {
+  node: AtRule;
+  evaluatedPrelude?: Node;
+  evaluatedBody?: Rules;
+  output?: AtRuleBodyOutputState;
+};
+
 const atRuleBodyRuntimeState = new WeakMap<AtRule, AtRuleBodyRuntimeState>();
 
 function liftedAtRulePreludeRulesContext(rulesContext: Context['rulesContext']): Context['rulesContext'] {
@@ -335,6 +342,33 @@ function readAtRuleBodyEvalRecordResult(
     evaluatedBody: record.contextState.evaluatedBody ?? runtime?.evaluatedBody,
     output: record.contextState.output ?? runtime?.output
   };
+}
+
+function createAtRuleBodyPublicResultState(
+  result: AtRuleBodyEvalResult
+): AtRuleBodyPublicResultState {
+  const node = result.node instanceof Nil ? result.evalFrame : result.node;
+  return {
+    node,
+    evaluatedPrelude: result.evaluatedPrelude,
+    evaluatedBody: result.evaluatedBody,
+    output: result.output
+  };
+}
+
+function applyAtRuleBodyPublicResultState(
+  state: AtRuleBodyPublicResultState
+): AtRule {
+  if (state.evaluatedPrelude) {
+    state.node.value.prelude = state.evaluatedPrelude;
+  }
+  if (state.evaluatedBody) {
+    updateAtRuleBodyRuntimeState(state.node, { evaluatedBody: state.evaluatedBody });
+  }
+  if (state.output) {
+    updateAtRuleBodyRuntimeState(state.node, { output: state.output });
+  }
+  return state.node;
 }
 
 export const NESTABLE_AT_RULES = ['@media', '@supports', '@layer', '@container', '@scope'] as const;
@@ -623,11 +657,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private resolveBodyResult(result: AtRuleBodyEvalResult): AtRule {
-    const node = result.node instanceof Nil ? result.evalFrame : result.node;
-    if (result.evaluatedPrelude) {
-      node.value.prelude = result.evaluatedPrelude;
-    }
-    return node;
+    return applyAtRuleBodyPublicResultState(
+      createAtRuleBodyPublicResultState(result)
+    );
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;

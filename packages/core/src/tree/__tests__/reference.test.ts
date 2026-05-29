@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, List, F_MAY_ASYNC, F_NON_STATIC, type Node } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, List, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -282,6 +282,38 @@ describe('reference', () => {
         Any.prototype.copy = originalCopy;
         sourceValue.inherit = originalInherit;
       }
+    });
+
+    it('keeps runtime-binding containers on the owned output path for default guards', async () => {
+      const sourceDefault = defaultguard();
+      const sourceValue = list([sourceDefault]);
+      const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
+      const runtimeScope = rules([]);
+      runtimeScope.scopeFrame = buildScopeFrame(
+        undefined,
+        runtimeScope,
+        undefined,
+        new Map([
+          ['tone', {
+            value: sourceValue,
+            sourceNode: paramDecl
+          }]
+        ])
+      );
+      context.rulesContext = runtimeScope;
+      context.isDefault = true;
+      const sourceParent = sourceValue.parent;
+      const defaultParent = sourceDefault.parent;
+      const buffer = createRenderBuffer('segmented');
+
+      const refNode = ref({ key: 'tone' }, { type: 'variable' });
+
+      expect(await Promise.resolve(refNode.render(context))).toBe('true');
+      expect(await Promise.resolve(refNode.render(context, buffer))).toBe('true');
+      expect(buffer.segments).toEqual(['true']);
+      expect(sourceValue.parent).toBe(sourceParent);
+      expect(sourceDefault.parent).toBe(defaultParent);
+      expect(context.referenceStack).toBe(0);
     });
 
     it('resolves a variable value without touching render state', async () => {

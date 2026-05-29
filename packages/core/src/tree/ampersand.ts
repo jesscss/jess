@@ -99,6 +99,7 @@ type AmpersandAppendPlacementState = {
   templateReplacementSelectors?: Selector[];
   templateReplacementValues?: string[];
   hoistToRoot: boolean;
+  result?: Selector | Nil;
   selectorBits: Context['selectorBits'];
 };
 
@@ -267,9 +268,16 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
   return { selector, appended: false };
 }
 
-function markAppendedAmpersandHoist(output: Selector): Selector {
-  output.hoistToRoot = true;
-  return output;
+function finishAmpersandAppendPlacement(
+  placement: AmpersandAppendPlacementState,
+  selector: Selector | Nil
+): Selector | Nil {
+  placement.selector = selector;
+  placement.result = selector;
+  if (placement.hoistToRoot) {
+    placement.result.hoistToRoot = true;
+  }
+  return placement.result;
 }
 
 /**
@@ -526,14 +534,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       // the new top-level selector (marked hoistToRoot so composeSelector
       // won't re-prepend the parent). A SelectorList or ComplexSelector
       // result renders correctly on its own at the top level.
-      placement.selector = selector;
-      const result: Selector | Nil = placement.appendValue !== undefined && !isNode(selector, N.Nil)
-        ? markAppendedAmpersandHoist(selector)
-        : selector;
-      if (placement.hoistToRoot) {
-        result.hoistToRoot = true;
-      }
-      return result;
+      return finishAmpersandAppendPlacement(placement, selector);
     }
 
     let frame = atIndex(context.rulesetFrames, -1);

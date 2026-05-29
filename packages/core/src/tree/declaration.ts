@@ -223,6 +223,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return canReuseLeaf(node) ? reuseLeaf(node) : this.copyValueForDerived(node);
   }
 
+  private ownMergedAssignmentOutputItem(node: Node): Node {
+    return canReuseLeaf(node) ? reuseLeaf(node) : this.copyValueForDerived(node);
+  }
+
   private copyImportantForDerived(node: Any<'flag'> | undefined): Any<'flag'> | undefined {
     if (!node) {
       return undefined;
@@ -940,11 +944,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           if (mergedItems.length === 1) {
             const item = mergedItems[0]!;
-            setVal(canReuseLeaf(item) ? reuseLeaf(item) : copyWithReusableLeaves(item));
+            setVal(this.ownMergedAssignmentOutputItem(item));
             return;
           }
           setVal(new List(mergedItems.map(item => (
-            canReuseLeaf(item) ? reuseLeaf(item) : copyWithReusableLeaves(item)
+            this.ownMergedAssignmentOutputItem(item)
           ))));
         };
         /** Registration prep already stabilized the name; eval handles the value. */

@@ -635,6 +635,56 @@ describe('AtRule', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('resolves body at-rule output through a public result adapter', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('screen')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const originalRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const evaluatedRules = rules([
+      decl({ name: 'color', value: any('blue') })
+    ]);
+    originalRules.prepareRegistration = function prepareReplacementBody() {
+      evaluatedRules.registrationPrepared = true;
+      return evaluatedRules;
+    };
+    evaluatedRules.eval = function evalReplacementBody(
+      this: Rules,
+      ..._args: Parameters<typeof evaluatedRules.eval>
+    ): ReturnType<typeof evaluatedRules.eval> {
+      evaluatedRules.evaluated = true;
+      return evaluatedRules;
+    };
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: originalRules
+    });
+
+    const resolved = await Promise.resolve(node.resolve(context));
+
+    expect(resolved).toBeInstanceOf(AtRule);
+    if (!(resolved instanceof AtRule)) {
+      throw new Error('Expected AtRule result');
+    }
+    expect(resolved).not.toBe(node);
+    expect(resolved.getRenderRules()).not.toBe(originalRules);
+    expect(resolved.toTrimmedString()).toBeString(`
+      @media screen {
+        color: red;
+      }
+    `);
+    expect(node.value.rules).toBe(originalRules);
+    expect(originalRules.parent).toBe(node);
+  });
+
   it('resolves static at-rules without deriving or evaluating', () => {
     const node = atrule({
       name: any('@namespace', { role: 'atkeyword' }),

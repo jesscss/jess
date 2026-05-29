@@ -144,13 +144,24 @@ export function canSearchMixinOutputRules(
   return rules.options?.isMixinOutput !== true || hasTarget === true;
 }
 
+export function canSearchMixinOutputEntry(
+  entry: RulesEntryLike,
+  hasTarget: boolean | undefined
+): boolean {
+  if (!isMixinOutputRules(entry.node)) {
+    return true;
+  }
+  return canSearchMixinOutputRules(entry.node, hasTarget);
+}
+
 export function canSearchRulesEntry(
   entry: RulesEntryLike,
   type: LookupVisibility | undefined,
   hasTarget: boolean | undefined
 ): boolean {
   if (isMixinOutputRules(entry.node)) {
-    return hasTarget === true;
+    return canSearchMixinOutputEntry(entry, hasTarget)
+      && (type === undefined || isVisibleRulesEntry(entry, type));
   }
   return type !== undefined && isVisibleRulesEntry(entry, type);
 }

@@ -503,6 +503,46 @@ describe('Rule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('keeps nested nil-selector rulesets on the owned body path', async () => {
+    const nestedBody = rules([
+      ruleset({
+        selector: sellist([sel([el('.child')])]),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      })
+    ]);
+    const node = ruleset({
+      selector: new Nil(),
+      rules: nestedBody
+    });
+    const originalRender = nestedBody.render;
+    let sourceBodyRenderCalls = 0;
+    nestedBody.render = function countSourceBodyRender(
+      this: typeof nestedBody,
+      ...args: Parameters<typeof originalRender>
+    ): ReturnType<typeof originalRender> {
+      sourceBodyRenderCalls++;
+      return originalRender.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+        .child {
+          color: red;
+        }
+      `);
+    } finally {
+      nestedBody.render = originalRender;
+    }
+
+    expect(sourceBodyRenderCalls).toBe(0);
+    expect(nestedBody.parent).toBe(node);
+    expect(nestedBody.value[0]?.parent).toBe(nestedBody);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
   it('keeps guarded nested rulesets on an owned body path while preserving source parentage', async () => {
     const selector = sellist([sel([el('.parent')])]);
     const child = ruleset({
