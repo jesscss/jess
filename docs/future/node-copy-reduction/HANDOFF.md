@@ -110,13 +110,15 @@ truth, the immediate pop queue, and verification.
   cleanup, ruleset-frame restoration, and extend-root stack cleanup now run
   through a single invocation runner. Direct body render uses the canonical
   source at-rule as the frame and stores visibility/prelude/body/output facts
-  on the invocation record, but it still owns a copied body `Rules` eval target
-  so source children are not evaluated or reparented.
+  on the invocation record. Plain static body rules render directly without an
+  owned body eval target; dynamic, nestable-registration, hoist, and non-plain
+  body rules still own a body `Rules` eval target so source children are not
+  evaluated or reparented.
 - The remaining body at-rule isolation surface is still real for two reasons:
-  direct render still needs a smaller owned body-eval target than a copied
-  `Rules`, and public `resolve(...)` still needs an owned result at-rule. The
-  next deletion attempt should split public-result ownership from direct render
-  further without mutating source rules.
+  direct render still needs a smaller owned body-eval target for dynamic or
+  registration-bearing bodies, and public `resolve(...)` still needs an owned
+  result at-rule. The next deletion attempt should split public-result
+  ownership from direct render further without mutating source rules.
 - At-rule body state design checkpoint: the replacement record should be
   invocation-local, not another runtime `WeakMap` model. It must carry the
   source at-rule, an owned public result frame only when public `resolve(...)`
@@ -140,10 +142,11 @@ truth, the immediate pop queue, and verification.
 - At-rule body eval output facts for hoist frames and hoist-to-root now stay in
   invocation/runtime state during eval. Direct eval no longer writes
   `frames`/`hoistToRoot` onto the canonical at-rule just to preserve body
-  render output. Direct render no longer needs a copied at-rule frame, but it
-  still owns body rules for eval. Public resolve still owns a result node. The
-  remaining eval-state flag is named `writeRuntimeState`; do not reintroduce
-  "write to node" wording unless the code really writes node fields.
+  render output. Direct render no longer needs a copied at-rule frame, and
+  plain static body rules avoid body eval entirely. Public resolve still owns a
+  result node. The remaining eval-state flag is named `writeRuntimeState`; do
+  not reintroduce "write to node" wording unless the code really writes node
+  fields.
 - At-rule body eval no longer keeps an active context-state stack for nested
   layer lookup. Active invocation records carry the canonical source at-rule
   and layer name; this removed the old context-state mirror.
@@ -488,13 +491,13 @@ trend.
 
 | # | Focus | Main result |
 | --- | --- | --- |
-| 1 | Full queue pop: direct at-rule body render frame | The 15-item queue was processed and replaced. Direct body render now uses the canonical source at-rule as the frame and carries visibility on `AtRuleBodyEvalRecord`, while still owning the body `Rules` eval target to avoid source mutation. Public resolve still owns a result at-rule. Reference, optional-call, selector, ampersand, import, declaration, guard, control, and scalar surfaces were re-audited with focused suites and kept as blockers where no safe deletion was proven. Static counts stayed flat because the audit counts source sites, not runtime branch allocation. |
-| 2 | Full queue pop: at-rule body registration record prep | The 15-item queue was processed and replaced. At-rule body registration prep now returns `AtRuleBodyRegistrationState` from the invocation record boundary, so the body walker no longer separately stores prepared-body state and builds registration state. Reference, optional-call, selector, ampersand, import, declaration, guard, control, and scalar surfaces were re-audited with focused suites and kept as blockers where no safe deletion was proven. Static counts stayed flat after avoiding defensive allocation growth. |
-| 3 | Full queue pop: at-rule layer record stack | The 15-item queue was processed and replaced. Nested `@layer` name lookup moved from the active context-state mirror to active `AtRuleBodyEvalRecord` entries, and the now-unread context-state stack was deleted. Focused at-rule proof covers registered nested layer names and source child parentage. Reference, optional-call, selector, ampersand, import, declaration, guard, control, and scalar surfaces were re-audited with focused suites and kept as blockers where no safe deletion was proven. |
-| 4 | Full queue pop: fallback/object reference text render | The 15-item queue was processed and replaced. Source-backed static fallback containers and source-backed `JsObject` direct-index containers now use the render-only text path without container copy/inherit while public fallback/direct-index resolve stays owned. At-rule/call/import/declaration/guard/control/scalar/selector surfaces were re-audited with focused suites and kept as semantic blockers where no safe deletion was proven. |
-| 5 | Full queue pop: runtime-binding reference render | The 15-item queue was processed and replaced. Runtime-binding reference render now has an explicit render-only source-backed static container path, so static `List` bindings can render without container copy/eval while public resolve stays owned. Reference predicates were renamed around public-return versus render-text boundaries. At-rule/call/import/declaration/guard/control/scalar surfaces were audited with focused suites and kept as semantic blockers where no safe deletion was proven. |
-| 6 | Full queue pop: reference text containers / pseudo state | The 15-item queue was processed and replaced. Source-backed static declaration-reference and direct-index `List` containers now render text-only without copying or inheriting the source container; public resolve/fallback ownership remains narrow. Generated pseudo placement no longer carries unused `argText`, and the hallucinated `??` condition test is gone. At-rule/import/guard/control/scalar items were audited and left as real blockers, not fake-deleted. |
-| 7 | Full queue pop: fallback syntax / queue refresh | The 15-item queue was processed and replaced with sharper next surfaces. No-content and contextual-`!important` CSS optional fallback calls now render finalized syntax from `CallEvalState` without deriving a fallback `Call`; optional JS calls still fall through to the JS execution path. Static audit stayed unchanged; saved/read-only hot-path rows were noise-band samples except noisy `media`. |
+| 1 | Full queue pop: static at-rule body direct render | The 15-item queue was processed and replaced. Direct at-rule render now skips the owned body `Rules` eval target for plain static body rules, while keeping the owned target for dynamic, hoist, nestable-registration, and non-plain bodies. Focused proof counts zero `Rules.eval()` calls for a dynamic prelude with a static declaration body and verifies source body parentage stays canonical. Reference, optional-call, selector, ampersand, import, declaration, guard, control, and scalar surfaces were re-audited with focused suites and kept as blockers where no safe deletion was proven. Static counts stayed flat because this is a runtime branch reduction. |
+| 2 | Full queue pop: direct at-rule body render frame | The 15-item queue was processed and replaced. Direct body render now uses the canonical source at-rule as the frame and carries visibility on `AtRuleBodyEvalRecord`, while still owning the body `Rules` eval target to avoid source mutation. Public resolve still owns a result at-rule. Reference, optional-call, selector, ampersand, import, declaration, guard, control, and scalar surfaces were re-audited with focused suites and kept as blockers where no safe deletion was proven. Static counts stayed flat because the audit counts source sites, not runtime branch allocation. |
+| 3 | Full queue pop: at-rule body registration record prep | The 15-item queue was processed and replaced. At-rule body registration prep now returns `AtRuleBodyRegistrationState` from the invocation record boundary, so the body walker no longer separately stores prepared-body state and builds registration state. Reference, optional-call, selector, ampersand, import, declaration, guard, control, and scalar surfaces were re-audited with focused suites and kept as blockers where no safe deletion was proven. Static counts stayed flat after avoiding defensive allocation growth. |
+| 4 | Full queue pop: at-rule layer record stack | The 15-item queue was processed and replaced. Nested `@layer` name lookup moved from the active context-state mirror to active `AtRuleBodyEvalRecord` entries, and the now-unread context-state stack was deleted. Focused at-rule proof covers registered nested layer names and source child parentage. Reference, optional-call, selector, ampersand, import, declaration, guard, control, and scalar surfaces were re-audited with focused suites and kept as blockers where no safe deletion was proven. |
+| 5 | Full queue pop: fallback/object reference text render | The 15-item queue was processed and replaced. Source-backed static fallback containers and source-backed `JsObject` direct-index containers now use the render-only text path without container copy/inherit while public fallback/direct-index resolve stays owned. At-rule/call/import/declaration/guard/control/scalar/selector surfaces were re-audited with focused suites and kept as semantic blockers where no safe deletion was proven. |
+| 6 | Full queue pop: runtime-binding reference render | The 15-item queue was processed and replaced. Runtime-binding reference render now has an explicit render-only source-backed static container path, so static `List` bindings can render without container copy/eval while public resolve stays owned. Reference predicates were renamed around public-return versus render-text boundaries. At-rule/call/import/declaration/guard/control/scalar surfaces were audited with focused suites and kept as semantic blockers where no safe deletion was proven. |
+| 7 | Full queue pop: reference text containers / pseudo state | The 15-item queue was processed and replaced. Source-backed static declaration-reference and direct-index `List` containers now render text-only without copying or inheriting the source container; public resolve/fallback ownership remains narrow. Generated pseudo placement no longer carries unused `argText`, and the hallucinated `??` condition test is gone. At-rule/import/guard/control/scalar items were audited and left as real blockers, not fake-deleted. |
 
 ## Metrics Snapshot
 
@@ -514,13 +517,13 @@ Recent hot-path medians. `#1` is the latest pass.
 
 | # | Pass | `functions` | `import-ref` | `mixins-guards` | `extend` | `media` | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Full queue pop: direct at-rule body render frame | 21.17ms | 30.65ms | 32.00ms | 16.29ms | 8.88ms | read-only sample was 22.86/33.61/33.23/19.08/7.82ms; saved comparison showed `functions`/`import-ref` faster but with high RSD on several fixtures, so treat as descriptive until repeated |
-| 2 | Full queue pop: at-rule body registration record prep | 24.09ms | 33.58ms | 34.08ms | 16.03ms | 8.43ms | read-only sample was 24.19/33.81/33.75/15.91/8.73ms; saved comparison was inside the noise band for every fixture, with high RSD on `functions`, `mixins-guards`, and `media`, so treat as descriptive only |
-| 3 | Full queue pop: at-rule layer record stack | 22.68ms | 31.70ms | 32.57ms | 15.63ms | 7.94ms | read-only sample was 22.83/32.23/32.36/15.76/7.76ms; saved comparison was inside the noise band for every fixture, with high `functions` RSD, so treat as descriptive only |
-| 4 | Full queue pop: fallback/object reference text render | 23.35ms | 30.66ms | 33.95ms | 16.20ms | 8.07ms | read-only sample was 23.61/30.66/33.34/16.33/8.01ms; saved comparison was noise except `functions` at 8.1% slower with 14.5% RSD, and read-only `media` had 52.4% RSD, so treat as descriptive/suspicious only |
-| 5 | Full queue pop: runtime-binding reference render | 21.60ms | 29.85ms | 33.07ms | 16.26ms | 8.29ms | read-only sample was 21.33/29.67/33.07/16.16/8.14ms; saved comparison was inside the noise band for every fixture, so treat as descriptive only |
-| 6 | Full queue pop: reference text containers / pseudo state | 21.53ms | 28.99ms | 31.94ms | 15.63ms | 8.92ms | read-only sample was 21.21/28.99/31.92/15.42/7.57ms; saved comparison was noise except `media` at 20.0% slower with 22.1% RSD, so treat as descriptive only |
-| 7 | Full queue pop: fallback syntax / queue refresh | 21.40ms | 27.59ms | 30.66ms | 15.44ms | 7.43ms | read-only sample was 21.45/27.24/31.36/15.19/7.44ms; saved comparison was noise except `media` at 8.1% slower with 19.7% RSD, so treat as descriptive only |
+| 1 | Full queue pop: static at-rule body direct render | 23.13ms | 30.70ms | 32.58ms | 16.32ms | 7.82ms | read-only sample was 22.71/31.21/33.86/16.12/9.21ms; saved comparison had high `functions` RSD and noisy `media`, so treat as descriptive/suspicious only |
+| 2 | Full queue pop: direct at-rule body render frame | 21.17ms | 30.65ms | 32.00ms | 16.29ms | 8.88ms | read-only sample was 22.86/33.61/33.23/19.08/7.82ms; saved comparison showed `functions`/`import-ref` faster but with high RSD on several fixtures, so treat as descriptive until repeated |
+| 3 | Full queue pop: at-rule body registration record prep | 24.09ms | 33.58ms | 34.08ms | 16.03ms | 8.43ms | read-only sample was 24.19/33.81/33.75/15.91/8.73ms; saved comparison was inside the noise band for every fixture, with high RSD on `functions`, `mixins-guards`, and `media`, so treat as descriptive only |
+| 4 | Full queue pop: at-rule layer record stack | 22.68ms | 31.70ms | 32.57ms | 15.63ms | 7.94ms | read-only sample was 22.83/32.23/32.36/15.76/7.76ms; saved comparison was inside the noise band for every fixture, with high `functions` RSD, so treat as descriptive only |
+| 5 | Full queue pop: fallback/object reference text render | 23.35ms | 30.66ms | 33.95ms | 16.20ms | 8.07ms | read-only sample was 23.61/30.66/33.34/16.33/8.01ms; saved comparison was noise except `functions` at 8.1% slower with 14.5% RSD, and read-only `media` had 52.4% RSD, so treat as descriptive/suspicious only |
+| 6 | Full queue pop: runtime-binding reference render | 21.60ms | 29.85ms | 33.07ms | 16.26ms | 8.29ms | read-only sample was 21.33/29.67/33.07/16.16/8.14ms; saved comparison was inside the noise band for every fixture, so treat as descriptive only |
+| 7 | Full queue pop: reference text containers / pseudo state | 21.53ms | 28.99ms | 31.94ms | 15.63ms | 8.92ms | read-only sample was 21.21/28.99/31.92/15.42/7.57ms; saved comparison was noise except `media` at 20.0% slower with 22.1% RSD, so treat as descriptive only |
 
 Measurement commands:
 
@@ -574,12 +577,12 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Shrink direct at-rule body render below an owned `Rules` eval target.**
+1. **Shrink dynamic at-rule body render below an owned `Rules` eval target.**
 
-   Direct render no longer derives an `AtRule`, but it still copies the body
-   `Rules` before eval. Delete or shrink that only if body registration,
-   child eval, visibility, layer/extend registration, and source parentage
-   prove the canonical source body is never evaluated or reparented.
+   Plain static body rules now render directly. Dynamic, nestable-registration,
+   hoist, and non-plain bodies still own a body `Rules` eval target. Reduce
+   only one of those families at a time with parentage, visibility,
+   layer/extend registration, and output proof.
 
 2. **Split public at-rule resolve result ownership from body eval invocation.**
 
@@ -595,78 +598,79 @@ family can be audited and reduced.
    all agree without mutating source visibility or leaking visible empty
    containers.
 
-4. **Reduce optional JS fallback failure output at the non-metadata boundary.**
+4. **Unify plain static at-rule body direct-render detection with Rules helpers.**
+
+   `AtRule` now has a local plain-static body predicate matching the Rules
+   source-direct rule. Share or move that helper only if the import boundary is
+   clean and it does not create circular tree dependencies.
+
+5. **Reduce optional JS fallback failure output at the non-metadata boundary.**
 
    Metadata rawArgs and callback args remain owned user-code API. Target only
    the non-metadata optional JS failure output path, and prove single user-code
    invocation plus source call parentage. Do not execute optional JS calls from
    the render-preview probe.
 
-5. **Reduce dynamic fallback containers only with text-render proof.**
+6. **Reduce dynamic fallback containers only with text-render proof.**
 
    Static source-backed fallback containers are render-text now. Dynamic
    fallback containers still own eval output. Add proof before reducing: the
    dynamic result must render text without leaking public fallback metadata.
 
-6. **Inventory rules-like reference render preservation as one family.**
+7. **Inventory rules-like reference render preservation as one family.**
 
    Rules/Collection/Mixin/Ruleset references still own or preserve output
    surfaces. Inventory which cases are public API versus render-only text and
    do not weaken mixin-ruleset lookup behavior.
 
-7. **Enforce reference public-return/render-text predicate separation.**
+8. **Enforce reference public-return/render-text predicate separation.**
 
    Add a focused regression if a future path tries to reuse source-backed
    containers through the public-return predicate. Avoid adding ambiguous
    "reuse" helpers.
 
-8. **Move one generated pseudo metadata fact with selector proof.**
+9. **Move one generated pseudo metadata fact with selector proof.**
 
    The generated pseudo wrapper still owns visibility/keysets/composed text.
    Pick one fact and move it only with tests covering parentage, extend
    metadata, selector-bit library, wrapper omission, and nested unknown pseudos.
 
-9. **Reduce ampersand append/template wrapper work with complex cases.**
+10. **Reduce ampersand append/template wrapper work with complex cases.**
 
    Cover complex parent selectors, template merge, hoist/root placement,
    selector-bit metadata, and final selector text before replacing generated
    selector wrappers with placement state.
 
-10. **Trim ruleset header/cache carrier state around generated pseudo headers.**
+11. **Trim ruleset header/cache carrier state around generated pseudo headers.**
 
    Focus on header cache and generated pseudo header behavior, not old trivia
    plumbing. Delete state only where render-local carrier facts already prove
    source selectors remain canonical.
 
-11. **Reduce import-style first-use placement for non-mutating plain imports.**
+12. **Reduce import-style first-use placement for non-mutating plain imports.**
 
    Target non-reference, non-multiple, no-`with`, cache-stable imports. Keep
    once/cache/source-map behavior intact and measure because speed decides the
    import surface.
 
-12. **Decide inline import raw text streaming with source-map/postlude proof.**
+13. **Decide inline import raw text streaming with source-map/postlude proof.**
 
    Inline imports still allocate `Any(source)`. Replace only if raw text,
    postlude wrapping, and source-map/public output behavior can stream
    directly.
 
-13. **Reduce declaration custom-property interpolation state only.**
+14. **Reduce declaration custom-property interpolation state only.**
 
    Custom properties must preserve authored raw value text after the colon
    except evaluated interpolation. Target the interpolation path, not raw value
    spacing normalization.
 
-14. **Keep or remove fresh guard/condition `Bool` with public mutability proof.**
+15. **Keep or remove fresh guard/condition `Bool` with public mutability proof.**
 
    Render is text-only. Public eval/resolve returns fresh `Bool`; only reduce
    this if returned-node mutability, parentage, and source ownership are
    explicitly proven safe.
 
-15. **Audit control-node zero-output public `Rules` surfaces.**
-
-   `$if`, `$for`, and `$while` stream render output. Public eval still returns
-   generated empty/multi-output `Rules` surfaces. Remove only if public
-   visibility and loop mutation semantics stay intact.
 
 ## Backlog
 

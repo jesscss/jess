@@ -85,6 +85,7 @@ type AtRuleBodyEvalRecord = {
   source: AtRule;
   evalFrame: AtRule;
   bodyRules?: Rules;
+  renderSourceBody?: boolean;
   frameState: AtRuleBodyFrameState;
   preparedBody?: AtRuleBodyEvalPrepState;
   evaluatedPrelude?: Node;
@@ -415,6 +416,21 @@ function hasCommentChild(value: unknown): boolean {
   return false;
 }
 
+function canRenderSourceBodyRulesDirectly(rules: Rules): boolean {
+  return rules.hasFlag(F_STATIC) && rules.value.every((node) => {
+    if (isNode(node, N.Comment | N.Nil)) {
+      return true;
+    }
+    if (!isNode(node, N.Declaration) || !node.hasFlag(F_STATIC)) {
+      return false;
+    }
+    const assign = Reflect.get(node.options, 'assign');
+    const normalizedFromAssign = Reflect.get(node.options, 'normalizedFromAssign');
+    return normalizedFromAssign === undefined
+      && (assign === undefined || assign === ':');
+  });
+}
+
 function isAtRuleBodyRenderState(value: unknown): value is AtRuleBodyRenderState {
   return Boolean(value && typeof value === 'object' && Reflect.get(value, 'kind') === 'body-render');
 }
@@ -638,11 +654,21 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
   ): AtRuleBodyEvalRecord {
     const evalFrame = options.useSourceFrame ? this : this.deriveAtRule(this.value);
+    const sourceRules = this.value.rules;
+    const frameState = createAtRuleBodyFrameState(this, context);
+    const renderSourceBody = Boolean(
+      options.useSourceFrame
+      && sourceRules
+      && canRenderSourceBodyRulesDirectly(sourceRules)
+      && !context.opts.collapseNesting
+      && !frameState.output
+    );
     return {
       source: this,
       evalFrame,
-      ...(options.useSourceFrame && this.value.rules ? { bodyRules: this.ownRules(this.value.rules) } : undefined),
-      frameState: createAtRuleBodyFrameState(this, context),
+      ...(renderSourceBody ? { renderSourceBody } : undefined),
+      ...(options.useSourceFrame && sourceRules && !renderSourceBody ? { bodyRules: this.ownRules(sourceRules) } : undefined),
+      frameState,
       evaluatedPrelude,
       contextState: createAtRuleBodyEvalContextState(evalFrame, context, {
         evaluatedPrelude,
@@ -1272,6 +1298,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       () => {
         let rules = bodyEvalRecord.bodyRules ?? node.value.rules;
         if (rules) {
+          if (bodyEvalRecord.renderSourceBody) {
+            return node;
+          }
           if (context.opts.collapseNesting && node.isNestable()) {
             setAtRuleBodyEvalOutput(bodyEvalContextState, { hoistToRoot: true });
           }

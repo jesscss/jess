@@ -533,6 +533,47 @@ describe('AtRule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('renders plain static body rules without an owned body eval target', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('print')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: sourceRules
+    });
+    const originalEval = Rules.prototype.eval;
+    let rulesEvalCalls = 0;
+    Rules.prototype.eval = function countRulesEval(
+      this: Rules,
+      ...args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      rulesEvalCalls++;
+      return originalEval.apply(this, args);
+    };
+    try {
+      expect(await Promise.resolve(node.render(context))).toBeString(`
+        @media print {
+          color: red;
+        }
+      `);
+    } finally {
+      Rules.prototype.eval = originalEval;
+    }
+    expect(rulesEvalCalls).toBe(0);
+    expect(sourceRules.parent).toBe(node);
+    expect(sourceRules.evaluated).toBe(false);
+  });
+
   it('keeps direct body-render visibility off the source at-rule', async () => {
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),
