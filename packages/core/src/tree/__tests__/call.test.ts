@@ -1558,10 +1558,25 @@ describe('Call', () => {
   });
 
   it('renders and resolves optional JS failure fallback without evaluating the source call surface', async () => {
+    const deriveCallDescriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
+    const originalDeriveCall = deriveCallDescriptor?.value;
+    if (!deriveCallDescriptor || typeof originalDeriveCall !== 'function') {
+      throw new Error('Expected Call.deriveCall for JS failure fallback proof');
+    }
+    let derivedCalls = 0;
+    Object.defineProperty(Call.prototype, 'deriveCall', {
+      ...deriveCallDescriptor,
+      value: function deriveCallForCounting(this: Call, ...callArgs: unknown[]) {
+        derivedCalls++;
+        return Reflect.apply(originalDeriveCall, this, callArgs);
+      }
+    });
+    let calls = 0;
     const root = rules([]);
     root.register('function', new JsFunction({
       name: 'bad',
       fn: () => {
+        calls++;
         throw new Error('bad function');
       },
       allowOptional: true
@@ -1573,17 +1588,25 @@ describe('Call', () => {
     const rule = call({ name, args }, { silentFail: true });
     const buffer = createRenderBuffer('flat');
 
-    await expect(Promise.resolve(rule.render(context))).resolves.toBe('bad(red 10px)');
-    expect(await rule.render(context, buffer)).toBe('bad(red 10px)');
-    const resolved = await rule.resolve(context);
+    try {
+      await expect(Promise.resolve(rule.render(context))).resolves.toBe('bad(red 10px)');
+      expect(derivedCalls).toBe(0);
+      expect(await rule.render(context, buffer)).toBe('bad(red 10px)');
+      expect(derivedCalls).toBe(0);
+      const resolved = await rule.resolve(context);
 
-    expect(buffer.parts).toEqual(['bad(red 10px)']);
-    expect(isNode(resolved, N.Call)).toBe(true);
-    expect(resolved.toTrimmedString()).toBe('bad(red 10px)');
-    expect(args.parent).toBe(rule);
-    expect(name.parent).toBe(rule);
-    expect(name.evaluated).toBe(false);
-    expect(rule.evaluated).toBe(false);
+      expect(buffer.parts).toEqual(['bad(red 10px)']);
+      expect(isNode(resolved, N.Call)).toBe(true);
+      expect(resolved.toTrimmedString()).toBe('bad(red 10px)');
+      expect(derivedCalls).toBe(1);
+      expect(calls).toBe(3);
+      expect(args.parent).toBe(rule);
+      expect(name.parent).toBe(rule);
+      expect(name.evaluated).toBe(false);
+      expect(rule.evaluated).toBe(false);
+    } finally {
+      Object.defineProperty(Call.prototype, 'deriveCall', deriveCallDescriptor);
+    }
   });
 
   it('does not clone childless source-free scalar leaves before resolving callback arg lists', async () => {

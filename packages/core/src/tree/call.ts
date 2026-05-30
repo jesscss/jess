@@ -81,6 +81,8 @@ type CallContentPlacementState = {
   output?: Node;
 };
 
+type OptionalFallbackRenderOutput = Node | string;
+
 /**
  * This is an exported type that allows extra properties
  * and specifies the shape of `this` for a function call.
@@ -315,7 +317,15 @@ export class Call extends Node<CallValue, CallOptions> {
     }
   }
 
-  private async evalOptionalFallbackOutput(context: Context): Promise<Node | undefined> {
+  private evalOptionalFallbackOutput(context: Context): Promise<Node | undefined>;
+  private evalOptionalFallbackOutput(
+    context: Context,
+    renderFailureWith: PrintOptions
+  ): Promise<OptionalFallbackRenderOutput | undefined>;
+  private async evalOptionalFallbackOutput(
+    context: Context,
+    renderFailureWith?: PrintOptions
+  ): Promise<OptionalFallbackRenderOutput | undefined> {
     if (
       typeof this.value.name === 'string'
       || !this.options?.silentFail
@@ -358,6 +368,9 @@ export class Call extends Node<CallValue, CallOptions> {
             const fallbackName = isNode(this.value.name, N.Reference) && this.value.name.options.fallbackValue === true
               ? String(this.value.name.value.key)
               : stringifyValueOf(fn);
+            if (renderFailureWith) {
+              return this.renderFinalizedCallSyntax(fallbackName, state, context, renderFailureWith);
+            }
             return this.markCallOutput(await this.evalFinalizedCallSyntax(context, state, fallbackName));
           }
         });
@@ -714,9 +727,13 @@ export class Call extends Node<CallValue, CallOptions> {
                 fallbackText => fallbackText
                   ? writeRenderTextResult(bufferOrOptions, fallbackText)
                   : pipe(
-                      () => this.evalOptionalFallbackOutput(context),
+                      () => this.evalOptionalFallbackOutput(context, prepared),
                       fallback => fallback
-                        ? this.renderOutput(context, fallback, bufferOrOptions, options)
+                        ? (
+                            typeof fallback === 'string'
+                              ? writeRenderTextResult(bufferOrOptions, fallback)
+                              : this.renderOutput(context, fallback, bufferOrOptions, options)
+                          )
                         : pipe(
                             () => this.evalMetadataDynamicFunction(context),
                             metadataOutput => metadataOutput
@@ -754,9 +771,13 @@ export class Call extends Node<CallValue, CallOptions> {
             fallbackText => fallbackText
               ? fallbackText
               : pipe(
-                  () => this.evalOptionalFallbackOutput(context),
+                  () => this.evalOptionalFallbackOutput(context, prepared),
                   fallback => fallback
-                    ? this.renderOutput(context, fallback, bufferOrOptions, options)
+                    ? (
+                        typeof fallback === 'string'
+                          ? fallback
+                          : this.renderOutput(context, fallback, bufferOrOptions, options)
+                      )
                     : pipe(
                         () => this.evalMetadataDynamicFunction(context),
                         metadataOutput => metadataOutput
