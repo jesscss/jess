@@ -69,6 +69,7 @@ import {
 } from './util/mixin-output-slot.js';
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
 import type { CallSignature } from './util/recursion-helper.js';
+import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
@@ -110,23 +111,6 @@ function isCharsetNode(node: Node): node is Any<'charset'> {
 function isImportAtRule(node: Node): node is AtRule {
   return isNode(node, N.AtRule)
     && String(node.value.name.valueOf?.() ?? node.value.name ?? '').trim() === '@import';
-}
-
-function isPlainStaticRuleLeaf(node: Node): boolean {
-  if (isNode(node, N.Comment | N.Nil)) {
-    return true;
-  }
-  if (!isNode(node, N.Declaration) || !node.hasFlag(F_STATIC)) {
-    return false;
-  }
-  const assign = Reflect.get(node.options, 'assign');
-  const normalizedFromAssign = Reflect.get(node.options, 'normalizedFromAssign');
-  return normalizedFromAssign === undefined
-    && (assign === undefined || assign === ':');
-}
-
-function canRenderStaticRulesDirectly(rules: Rules): boolean {
-  return rules.hasFlag(F_STATIC) && rules.value.every(isPlainStaticRuleLeaf);
 }
 
 function renderRulesToString(

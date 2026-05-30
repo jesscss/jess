@@ -14,6 +14,7 @@ import { Nil } from './nil.js';
 import { createTriviaMap, emitCommentTriviaAfterNode } from './util/trivia.js';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 import { withRulesContext } from './util/context.js';
+import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 
 /**
  * When collapseNesting/hoist wrapped at-rule rules in a single Ruleset(&),
@@ -416,21 +417,6 @@ function hasCommentChild(value: unknown): boolean {
   return false;
 }
 
-function canRenderSourceBodyRulesDirectly(rules: Rules): boolean {
-  return rules.hasFlag(F_STATIC) && rules.value.every((node) => {
-    if (isNode(node, N.Comment | N.Nil)) {
-      return true;
-    }
-    if (!isNode(node, N.Declaration) || !node.hasFlag(F_STATIC)) {
-      return false;
-    }
-    const assign = Reflect.get(node.options, 'assign');
-    const normalizedFromAssign = Reflect.get(node.options, 'normalizedFromAssign');
-    return normalizedFromAssign === undefined
-      && (assign === undefined || assign === ':');
-  });
-}
-
 function isAtRuleBodyRenderState(value: unknown): value is AtRuleBodyRenderState {
   return Boolean(value && typeof value === 'object' && Reflect.get(value, 'kind') === 'body-render');
 }
@@ -659,7 +645,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     const renderSourceBody = Boolean(
       options.useSourceFrame
       && sourceRules
-      && canRenderSourceBodyRulesDirectly(sourceRules)
+      && canRenderStaticRulesDirectly(sourceRules)
       && !context.opts.collapseNesting
       && !frameState.output
     );

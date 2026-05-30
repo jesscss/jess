@@ -589,6 +589,37 @@ describe('AtRule', () => {
     expect(node.value.rules?.evaluated).toBe(false);
   });
 
+  it('keeps public body-resolve visibility on the owned result', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('screen')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const sourceRules = rules([
+      vardecl({ name: 'hidden', value: any('yes') })
+    ]);
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: sourceRules
+    });
+
+    const resolved = await Promise.resolve(node.resolve(context));
+
+    expect(resolved.toString()).toBe('');
+    expect(node.visible).toBe(true);
+    expect(node.value.rules).toBe(sourceRules);
+    expect(sourceRules.parent).toBe(node);
+    if (resolved instanceof AtRule) {
+      expect(resolved).not.toBe(node);
+      expect(resolved.visible).toBe(false);
+    }
+  });
+
   it('keeps direct body-render hoist facts off the source at-rule', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
