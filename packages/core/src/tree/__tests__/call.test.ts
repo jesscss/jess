@@ -1367,6 +1367,85 @@ describe('Call', () => {
     expect(content.parent).toBe(rule);
   });
 
+  it('renders source-backed fallback call content without owning output content', async () => {
+    const originalCopy = Sequence.prototype.copy;
+    const deriveCallDescriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
+    const originalDeriveCall = deriveCallDescriptor?.value;
+    if (!deriveCallDescriptor || typeof originalDeriveCall !== 'function') {
+      throw new Error('Expected Call.deriveCall for render-only fallback proof');
+    }
+    let sequenceCopies = 0;
+    let derivedCalls = 0;
+    Sequence.prototype.copy = function copyForCounting(
+      this: Sequence,
+      ...args: Parameters<typeof originalCopy>
+    ): ReturnType<typeof originalCopy> {
+      sequenceCopies++;
+      return originalCopy.apply(this, args);
+    };
+    Object.defineProperty(Call.prototype, 'deriveCall', {
+      ...deriveCallDescriptor,
+      value: function deriveCallForCounting(this: Call, ...args: unknown[]) {
+        derivedCalls++;
+        return Reflect.apply(originalDeriveCall, this, args);
+      }
+    });
+    const content = new Sequence(
+      [any('raw'), any('content')],
+      undefined,
+      [10, 1, 11, 20, 1, 21]
+    );
+    const rule = call({
+      name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
+      args: list([any('red')]),
+      contentNode: content
+    }, { silentFail: true });
+    const buffer = createRenderBuffer('flat');
+
+    try {
+      await expect(Promise.resolve(rule.render(context))).resolves.toBe('missing-fn(red): raw content');
+      expect(await rule.render(context, buffer)).toBe('missing-fn(red): raw content');
+
+      expect(sequenceCopies).toBe(0);
+      expect(derivedCalls).toBe(0);
+      expect(buffer.parts).toEqual(['missing-fn(red): raw content']);
+      expect(content.parent).toBe(rule);
+      expect(rule.evaluated).toBe(false);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      Sequence.prototype.copy = originalCopy;
+      Object.defineProperty(Call.prototype, 'deriveCall', deriveCallDescriptor);
+    }
+  });
+
+  it('does not probe optional JS calls with content before rendering them', async () => {
+    let calls = 0;
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'wrap',
+      fn: () => {
+        calls++;
+        return any('wrapped');
+      },
+      allowOptional: true
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const rule = call({
+      name: ref({ key: 'wrap' }, { type: 'function', fallbackValue: true }),
+      args: list([]),
+      contentNode: new Sequence(
+        [any('raw'), any('content')],
+        undefined,
+        [10, 1, 11, 20, 1, 21]
+      )
+    }, { silentFail: true });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('wrapped');
+
+    expect(calls).toBe(1);
+  });
+
   it('owns dynamic source-free fallback call content before output serialization', async () => {
     const content = seq([any('raw'), any('content')]);
     content.addFlag(F_NON_STATIC);

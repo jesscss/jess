@@ -581,6 +581,80 @@ export class Call extends Node<CallValue, CallOptions> {
     return finishCall();
   }
 
+  private renderFinalizedCallSyntax(
+    name: string | Node | unknown,
+    state: CallEvalState,
+    context: Context,
+    prepared: PrintOptions
+  ): MaybePromise<string> {
+    const w = getPrintOptions(prepared).writer!;
+    const mark = w.mark();
+    if (typeof name === 'string') {
+      w.add(name, state.source);
+    } else if (name instanceof Node) {
+      name.toTrimmedString(prepared);
+    } else {
+      w.add(stringifyValueOf(name), state.source);
+    }
+    w.add('(');
+    const finishCall = (): MaybePromise<string> => {
+      w.add(')');
+      if (state.markImportant) {
+        w.add(' !important');
+      }
+      if (state.contentNode) {
+        w.add(': ');
+        const renderedContent = this.renderChildToActiveWriter(state.contentNode, context, prepared);
+        return isThenable(renderedContent)
+          ? renderedContent.then(() => w.getSince(mark))
+          : w.getSince(mark);
+      }
+      return w.getSince(mark);
+    };
+    const renderedArgs = this.serializeRenderedArgs(state.args, context, prepared);
+    return isThenable(renderedArgs)
+      ? renderedArgs.then(finishCall)
+      : finishCall();
+  }
+
+  private async renderOptionalFallbackCallSyntax(
+    context: Context,
+    prepared: PrintOptions
+  ): Promise<string | undefined> {
+    if (
+      typeof this.value.name === 'string'
+      || !this.options?.silentFail
+      || this.options?.markImportant
+      || !this.value.contentNode
+    ) {
+      return undefined;
+    }
+
+    const state = this.createEvalState(context);
+    const name = state.name;
+    if (typeof name === 'string') {
+      return undefined;
+    }
+    return this.runInCallFrame(context, {}, async () => {
+      let evaluatedName: unknown = await name.eval(context);
+      if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
+        evaluatedName = await evaluatedName.eval(context);
+      }
+      const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName;
+      if (isExtendedFn(fn)) {
+        return undefined;
+      }
+      if (
+        isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
+        || evaluatedName instanceof MixinCollection
+        || Array.isArray(evaluatedName)
+      ) {
+        return undefined;
+      }
+      return this.renderFinalizedCallSyntax(evaluatedName, state, context, prepared);
+    });
+  }
+
   constructor(value: CallValue, options?: CallOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     // Function calls are always non-static and may be async
@@ -632,21 +706,27 @@ export class Call extends Node<CallValue, CallOptions> {
         );
       }
       if (typeof this.value.name !== 'string') {
+        const prepared = prepareBufferPrintState(context, options);
         return pipe(
           () => this.evalPlainDynamicFunction(context),
           node => node
             ? this.renderOutput(context, node, bufferOrOptions, options)
             : pipe(
-                () => this.evalOptionalFallbackOutput(context),
-                fallback => fallback
-                  ? this.renderOutput(context, fallback, bufferOrOptions, options)
+                () => this.renderOptionalFallbackCallSyntax(context, prepared),
+                fallbackText => fallbackText
+                  ? writeRenderTextResult(bufferOrOptions, fallbackText)
                   : pipe(
-                      () => this.evalMetadataDynamicFunction(context),
-                      metadataOutput => metadataOutput
-                        ? this.renderOutput(context, metadataOutput, bufferOrOptions, options)
+                      () => this.evalOptionalFallbackOutput(context),
+                      fallback => fallback
+                        ? this.renderOutput(context, fallback, bufferOrOptions, options)
                         : pipe(
-                            () => this.evalState(context),
-                            output => this.renderOutput(context, output, bufferOrOptions, options)
+                            () => this.evalMetadataDynamicFunction(context),
+                            metadataOutput => metadataOutput
+                              ? this.renderOutput(context, metadataOutput, bufferOrOptions, options)
+                              : pipe(
+                                  () => this.evalState(context),
+                                  output => this.renderOutput(context, output, bufferOrOptions, options)
+                                )
                           )
                     )
               )
@@ -672,16 +752,21 @@ export class Call extends Node<CallValue, CallOptions> {
       node => node
         ? this.renderOutput(context, node, bufferOrOptions, options)
         : pipe(
-            () => this.evalOptionalFallbackOutput(context),
-            fallback => fallback
-              ? this.renderOutput(context, fallback, bufferOrOptions, options)
+            () => this.renderOptionalFallbackCallSyntax(context, prepared),
+            fallbackText => fallbackText
+              ? fallbackText
               : pipe(
-                  () => this.evalMetadataDynamicFunction(context),
-                  metadataOutput => metadataOutput
-                    ? this.renderOutput(context, metadataOutput, bufferOrOptions, options)
+                  () => this.evalOptionalFallbackOutput(context),
+                  fallback => fallback
+                    ? this.renderOutput(context, fallback, bufferOrOptions, options)
                     : pipe(
-                        () => this.evalState(context),
-                        output => this.renderOutput(context, output, bufferOrOptions, options)
+                        () => this.evalMetadataDynamicFunction(context),
+                        metadataOutput => metadataOutput
+                          ? this.renderOutput(context, metadataOutput, bufferOrOptions, options)
+                          : pipe(
+                              () => this.evalState(context),
+                              output => this.renderOutput(context, output, bufferOrOptions, options)
+                            )
                       )
                 )
           )
