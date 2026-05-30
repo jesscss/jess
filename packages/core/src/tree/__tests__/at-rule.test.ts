@@ -843,6 +843,70 @@ describe('AtRule', () => {
     expect(originalRules.parent).toBe(node);
   });
 
+  it('resolves body at-rules with the source frame while owning the public result at the adapter', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('screen')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const sourceRules = rules([
+      ruleset({
+        selector: el('.box'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      })
+    ]);
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: sourceRules
+    });
+    const sourcePrelude = node.value.prelude;
+    const originalPrepareRegistration = Rules.prototype.prepareRegistration;
+    const bodyPrepFrames: Node[] = [];
+    Rules.prototype.prepareRegistration = function countBodyPrepFrame(
+      this: Rules,
+      ...args: Parameters<typeof originalPrepareRegistration>
+    ): ReturnType<typeof originalPrepareRegistration> {
+      if (this !== context.root) {
+        bodyPrepFrames.push(context.frames.at(-1)!);
+      }
+      return originalPrepareRegistration.apply(this, args);
+    };
+
+    let resolved: Node;
+    try {
+      resolved = await Promise.resolve(node.resolve(context));
+    } finally {
+      Rules.prototype.prepareRegistration = originalPrepareRegistration;
+    }
+
+    expect(bodyPrepFrames).toContain(node);
+    expect(resolved).toBeInstanceOf(AtRule);
+    if (!(resolved instanceof AtRule)) {
+      throw new Error('Expected AtRule result');
+    }
+    expect(resolved).not.toBe(node);
+    expect(resolved.toTrimmedString()).toBeString(`
+      @media screen {
+        .box {
+          color: red;
+        }
+      }
+    `);
+    expect(node.value.prelude).toBe(sourcePrelude);
+    expect(sourcePrelude?.parent).toBe(node);
+    expect(node.value.rules).toBe(sourceRules);
+    expect(sourceRules.parent).toBe(node);
+    expect(node.evaluated).toBe(false);
+    expect(node.visible).toBe(true);
+  });
+
   it('resolves static at-rules without deriving or evaluating', () => {
     const node = atrule({
       name: any('@namespace', { role: 'atkeyword' }),

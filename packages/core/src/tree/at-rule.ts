@@ -602,7 +602,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       writeEvaluatedPrelude?: boolean;
       writeRuntimeState?: boolean;
       writeVisibility?: boolean;
-      useSourceFrame?: boolean;
     } = {}
   ): MaybePromise<AtRuleBodyEvalResult> {
     return pipe(
@@ -636,15 +635,13 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       writeEvaluatedPrelude?: boolean;
       writeRuntimeState?: boolean;
       writeVisibility?: boolean;
-      useSourceFrame?: boolean;
     }
   ): AtRuleBodyEvalRecord {
-    const evalFrame = options.useSourceFrame ? this : this.deriveAtRule(this.value);
+    const evalFrame = this;
     const sourceRules = this.value.rules;
     const frameState = createAtRuleBodyFrameState(this, context);
     const renderSourceBody = Boolean(
-      options.useSourceFrame
-      && sourceRules
+      sourceRules
       && canRenderStaticRulesDirectly(sourceRules)
       && !context.opts.collapseNesting
       && !frameState.output
@@ -653,7 +650,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       source: this,
       evalFrame,
       ...(renderSourceBody ? { renderSourceBody } : undefined),
-      ...(options.useSourceFrame && sourceRules && !renderSourceBody ? { bodyRules: this.ownRules(sourceRules) } : undefined),
+      ...(sourceRules && !renderSourceBody ? { bodyRules: this.ownRules(sourceRules) } : undefined),
       frameState,
       evaluatedPrelude,
       contextState: createAtRuleBodyEvalContextState(evalFrame, context, {
@@ -670,8 +667,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       () => this.evalBodyResult(context, {
         writeEvaluatedPrelude: false,
         writeRuntimeState: false,
-        writeVisibility: false,
-        useSourceFrame: true
+        writeVisibility: false
       }),
       result => this.createBodyRenderState(result)
     );
@@ -781,6 +777,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private resolveBodyResult(result: AtRuleBodyEvalResult): AtRule {
+    result = {
+      ...result,
+      node: this.deriveAtRule(this.value)
+    };
     return applyAtRuleBodyPublicResultState(
       createAtRuleBodyPublicResultState(result)
     );
@@ -1408,7 +1408,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       );
     }
     return pipe(
-      () => this.evalBodyResult(context, { writeEvaluatedPrelude: false }),
+      () => this.evalBodyResult(context, {
+        writeEvaluatedPrelude: false,
+        writeRuntimeState: false,
+        writeVisibility: false
+      }),
       result => this.resolveBodyResult(result)
     );
   }
