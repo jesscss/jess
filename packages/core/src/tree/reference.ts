@@ -1367,8 +1367,22 @@ function canReuseSourceFreeTextContainer(node: Node): boolean {
   return node.value.every(child => child instanceof Node && canReuseLeaf(child));
 }
 
+function canRenderTextOnlyReferenceContainer(node: Node): boolean {
+  if (!isNode(node, N.List | N.Sequence)) {
+    return false;
+  }
+  if (!node.hasFlag(F_STATIC)) {
+    return false;
+  }
+  return node.value.every(child => child instanceof Node && canReuseLeaf(child));
+}
+
 function canReuseTextOnlyReferenceValue(node: Node): boolean {
   return canReuseReferenceValue(node) || canReuseSourceFreeTextContainer(node);
+}
+
+function canRenderTextOnlyReferenceValue(node: Node): boolean {
+  return canReuseReferenceValue(node) || canRenderTextOnlyReferenceContainer(node);
 }
 
 function canReuseFallbackValue(node: Node): boolean {
@@ -1385,7 +1399,7 @@ function evaluateFallbackValue(
   if (canReuseFallbackValue(fallbackValue)) {
     if (
       options.textOnly === true
-      && canReuseTextOnlyReferenceValue(fallbackValue)
+      && canRenderTextOnlyReferenceValue(fallbackValue)
     ) {
       context.popReference();
       return fallbackValue;
@@ -1485,7 +1499,7 @@ function finalizeDirectNodeReferenceResult(
   options: { textOnly?: boolean } = {}
 ): Node {
   context.popReference();
-  if (options.textOnly === true && canReuseTextOnlyReferenceValue(result)) {
+  if (options.textOnly === true && canRenderTextOnlyReferenceValue(result)) {
     return result;
   }
   if (
@@ -1517,7 +1531,7 @@ function finalizeRuntimeVarBindingResult(
       context.popReference();
       return evald;
     }
-    if (options.textOnly === true && canReuseTextOnlyReferenceValue(evald)) {
+    if (options.textOnly === true && canRenderTextOnlyReferenceValue(evald)) {
       context.popReference();
       return evald;
     }
@@ -1611,7 +1625,7 @@ function finalizeEvaluatedDeclarationReference(
   isMergedAssign: boolean,
   options: { textOnly?: boolean } = {}
 ): Node {
-  if (options.textOnly === true && !isMergedAssign && canReuseReferenceValue(evaluatedNode)) {
+  if (options.textOnly === true && !isMergedAssign && canRenderTextOnlyReferenceValue(evaluatedNode)) {
     return evaluatedNode;
   }
   const resultNode = isMergedAssign
@@ -1639,7 +1653,7 @@ function finalizeDeclarationReferenceResult(
     options.textOnly === true
     && !hasImportantDeclarationValue(declaration)
     && !isMergedAssign
-    && canReuseTextOnlyReferenceValue(declarationValue)
+    && canRenderTextOnlyReferenceValue(declarationValue)
   ) {
     context.popReference();
     return declarationValue;

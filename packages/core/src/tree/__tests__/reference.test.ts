@@ -664,6 +664,56 @@ describe('reference', () => {
       }
     });
 
+    it('renders source-backed static declaration reference containers as text without container copies', async () => {
+      const sourceValue = list([any('red'), any('blue')]);
+      sourceValue._location = [10, 1, 11, 20, 1, 21];
+      const node = rules([
+        decl({
+          name: any('src'),
+          value: sourceValue
+        })
+      ]);
+      const sourceParent = sourceValue.parent;
+      setRulesContext(await node.eval(context));
+      const refNode = ref({ key: 'src' }, { type: 'declaration' });
+      const buffer = createRenderBuffer('segmented');
+      const originalCopy = List.prototype.copy;
+      const originalInherit = List.prototype.inherit;
+      let sourceValueCopies = 0;
+      let sourceValueInherits = 0;
+      List.prototype.copy = function copyForCounting(
+        this: List,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this === sourceValue) {
+          sourceValueCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === sourceValue) {
+          sourceValueInherits++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        expect(await Promise.resolve(refNode.render(context))).toBe('red, blue');
+        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red, blue');
+        expect(buffer.segments).toEqual(['red, blue']);
+        expect(sourceValueCopies).toBe(0);
+        expect(sourceValueInherits).toBe(0);
+        expect(sourceValue.parent).toBe(sourceParent);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        List.prototype.copy = originalCopy;
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
     it('does not redirect direct index sequence targets as mixin keys', async () => {
       const targetValue = spaced([any('red'), any('blue')]);
       const node = rules([
@@ -834,6 +884,53 @@ describe('reference', () => {
       } finally {
         List.prototype.inherit = originalListInherit;
         Sequence.prototype.inherit = originalSequenceInherit;
+      }
+    });
+
+    it('renders source-backed direct index container hits without container copies', async () => {
+      const sourceList = list([any('alpha'), any('beta')]);
+      sourceList._location = [10, 1, 11, 20, 1, 21];
+      const targetArray = new JsArray([sourceList]);
+      const node = rules([
+        vardecl({ name: 'targetArray', value: targetArray })
+      ]);
+      setRulesContext(await node.eval(context));
+      const refNode = ref({
+        target: ref({ key: 'targetArray' }, { type: 'variable' }),
+        key: 0
+      }, { type: 'index' });
+      const originalCopy = List.prototype.copy;
+      const originalInherit = List.prototype.inherit;
+      let sourceListCopies = 0;
+      let sourceListInherits = 0;
+      List.prototype.copy = function copyForCounting(
+        this: List,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this === sourceList) {
+          sourceListCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === sourceList || args[0] === refNode) {
+          sourceListInherits++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        expect(await Promise.resolve(refNode.render(context))).toBe('alpha, beta');
+        expect(sourceListCopies).toBe(0);
+        expect(sourceListInherits).toBe(0);
+        expect(sourceList.parent).toBe(targetArray);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        List.prototype.copy = originalCopy;
+        List.prototype.inherit = originalInherit;
       }
     });
 

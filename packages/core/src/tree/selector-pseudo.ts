@@ -29,7 +29,6 @@ type GeneratedPseudoPlacementState = {
   source: PseudoSelector;
   name: ':is';
   arg: Selector;
-  argText?: string;
   keySetLibrary?: BitSetLibrary<string>;
   omitWrapperForSingleSelectorList: boolean;
 };
@@ -70,11 +69,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       const argMark = w.mark();
       arg.toString(options);
       w.replaceSince(argMark, normalizeSelectorArg, arg);
-      const stateWithText: GeneratedPseudoPlacementState = {
-        ...generatedState,
-        argText: w.getSince(argMark)
-      };
-      const out = stateWithText.argText ?? '';
+      const out = w.getSince(argMark);
       if (generatedState.omitWrapperForSingleSelectorList && !out.includes(',')) {
         return w.getSince(mark);
       }

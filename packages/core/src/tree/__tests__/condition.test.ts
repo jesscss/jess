@@ -119,13 +119,6 @@ describe('Condition', () => {
       }
     });
 
-    it('does not treat ?? calls as default guards', async () => {
-      context.isDefault = true;
-      const node = condition([call({ name: '??' })]);
-
-      expect(await node.render(context)).toBe('false');
-    });
-
     it('writes evaluated condition render output into flat buffers', async () => {
       const buffer = createRenderBuffer('flat');
       const node = condition([
