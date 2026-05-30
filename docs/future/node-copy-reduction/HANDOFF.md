@@ -169,9 +169,10 @@ truth, the immediate pop queue, and verification.
   tiny `CallContentPlacementState`; it records source content, whether static
   source content was reused, and selected output content only. It must not
   become a parallel call/body AST. Direct render of CSS-style optional
-  fallback calls with source-backed content now emits finalized call syntax
-  from state instead of deriving a fallback `Call` or owning output content; public
-  `resolve(...)` still owns source-backed and dynamic content output. Dynamic
+  fallback calls now emits finalized call syntax from state for source-backed
+  content, no-content calls, and contextual `!important` output instead of
+  deriving a fallback `Call` or owning output content; public `resolve(...)`
+  still owns source-backed and dynamic content output. Dynamic
   source-free fallback content still owns a frozen output container before
   public result serialization; the direct-render reuse path is intentionally
   narrower.
@@ -483,13 +484,13 @@ trend.
 
 | # | Focus | Main result |
 | --- | --- | --- |
-| 1 | Full queue pop: fallback content render syntax | The 15-item queue was processed and replaced with the next 15 surfaces. Source-backed optional fallback call content now renders from `CallEvalState` syntax without deriving a fallback `Call` or owning output content; public resolve still owns source-backed/dynamic content. Static audit stayed unchanged; hot-path rows were noise-band samples. |
-| 2 | Slot duplicate policy / metrics | Duplicate-declaration preservation for restricted generated mixin output moved behind `keepsDuplicateMixinOutputDeclaration(...)`, with the existing ancestry proof extended to cover the policy. Static audit stayed unchanged; saved/read-only hot-path rows were mixed and still descriptive only. |
-| 3 | Slot serializer gate / queue refresh / metrics | Mixin-output restricted ancestry detection moved from `serialize-helper.ts` into `isFromRestrictedMixinOutput(...)` with a focused mixin proof. The rest of the queue was re-audited against current blockers; no broad at-rule, fallback-call, selector, import, guard, control, or scalar deletion was taken without new semantic proof. |
-| 4 | Full queue pop: at-rule receiver / slot fallback / import wording | The previous 15-item queue was processed. Code changes narrowed at-rule body eval to the source plus invocation record, moved detached generated-output fallback wiring into `attachMixinOutputSlot(...)`, and removed stale import clone wording. The rest of the queue was re-audited against existing focused proofs and replaced with narrower next surfaces rather than left stale. |
-| 5 | At-rule runner / mixin slot identity / scalar cleanup | At-rule body frame push/pop and async cleanup now run through an invocation runner; `attachMixinOutputSlot(...)` owns generated-output source identity; the stale import deep-clone comment is gone; dimension unit lookup uses one shared map; negative eval reuses a constant `-1` dimension; unused `Condition.getBool(...)` allocation path was removed. |
-| 6 | Expanded queue / slot allocation / fallback content | Handoff instructions now keep a 15-item queue; ruleset-as-mixin placement reuses the slot source-index map instead of allocating a duplicate; dynamic source-free fallback content is proven to own a frozen output container; at-rule/generated-selector blockers are now split into sharper next surfaces. |
-| 7 | Record prep / slot helpers / container proofs | At-rule prepared body state now lives on `AtRuleBodyEvalRecord` before registration; fallback-call content static reuse has copy-count proof; direct `JsArray`/`JsObject` container hits render text-only; nested generated pseudo text/metadata boundary is covered; caller fallback wiring moved behind a mixin-slot helper; ruleset-as-mixin placement records now carry source indexes. |
+| 1 | Full queue pop: fallback syntax / queue refresh | The 15-item queue was processed and replaced with sharper next surfaces. No-content and contextual-`!important` CSS optional fallback calls now render finalized syntax from `CallEvalState` without deriving a fallback `Call`; optional JS calls still fall through to the JS execution path. Static audit stayed unchanged; saved/read-only hot-path rows were noise-band samples except noisy `media`. |
+| 2 | Full queue pop: fallback content render syntax | The 15-item queue was processed and replaced with the next 15 surfaces. Source-backed optional fallback call content now renders from `CallEvalState` syntax without deriving a fallback `Call` or owning output content; public resolve still owns source-backed/dynamic content. Static audit stayed unchanged; hot-path rows were noise-band samples. |
+| 3 | Slot duplicate policy / metrics | Duplicate-declaration preservation for restricted generated mixin output moved behind `keepsDuplicateMixinOutputDeclaration(...)`, with the existing ancestry proof extended to cover the policy. Static audit stayed unchanged; saved/read-only hot-path rows were mixed and still descriptive only. |
+| 4 | Slot serializer gate / queue refresh / metrics | Mixin-output restricted ancestry detection moved from `serialize-helper.ts` into `isFromRestrictedMixinOutput(...)` with a focused mixin proof. The rest of the queue was re-audited against current blockers; no broad at-rule, fallback-call, selector, import, guard, control, or scalar deletion was taken without new semantic proof. |
+| 5 | Full queue pop: at-rule receiver / slot fallback / import wording | The previous 15-item queue was processed. Code changes narrowed at-rule body eval to the source plus invocation record, moved detached generated-output fallback wiring into `attachMixinOutputSlot(...)`, and removed stale import clone wording. The rest of the queue was re-audited against existing focused proofs and replaced with narrower next surfaces rather than left stale. |
+| 6 | At-rule runner / mixin slot identity / scalar cleanup | At-rule body frame push/pop and async cleanup now run through an invocation runner; `attachMixinOutputSlot(...)` owns generated-output source identity; the stale import deep-clone comment is gone; dimension unit lookup uses one shared map; negative eval reuses a constant `-1` dimension; unused `Condition.getBool(...)` allocation path was removed. |
+| 7 | Expanded queue / slot allocation / fallback content | Handoff instructions now keep a 15-item queue; ruleset-as-mixin placement reuses the slot source-index map instead of allocating a duplicate; dynamic source-free fallback content is proven to own a frozen output container; at-rule/generated-selector blockers are now split into sharper next surfaces. |
 
 ## Metrics Snapshot
 
@@ -509,13 +510,13 @@ Recent hot-path medians. `#1` is the latest pass.
 
 | # | Pass | `functions` | `import-ref` | `mixins-guards` | `extend` | `media` | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Full queue pop: fallback content render syntax | 20.32ms | 26.49ms | 31.21ms | 14.74ms | 6.88ms | read-only sample was 21.42/26.71/30.40/18.06/8.87ms with high `extend` variance; saved comparison was inside the noise band for every fixture, so treat as descriptive only |
-| 2 | Slot duplicate policy / metrics | 21.42ms | 27.35ms | 32.11ms | 15.49ms | 7.31ms | read-only sample was 21.17/28.68/34.11/16.48/7.63ms; saved comparison had import-ref/media faster and the rest noise, but the previous saved row was noisy, so treat as descriptive only |
-| 3 | Slot serializer gate / queue refresh / metrics | 22.38ms | 31.85ms | 33.53ms | 15.95ms | 8.92ms | read-only sample was 22.82/31.92/33.43/16.05/8.68ms; saved comparison was mostly slower but import-ref RSD was 69.7% and media RSD 19.0%, so treat as descriptive only |
-| 4 | Full queue pop: at-rule receiver / slot fallback / import wording | 20.45ms | 25.87ms | 30.37ms | 15.25ms | 7.16ms | read-only sample was 20.72/27.09/30.12/15.74/7.46ms; saved comparison versus prior row is inside noise band, so treat as descriptive only |
-| 5 | At-rule runner / mixin slot identity / scalar cleanup | 20.73ms | 26.26ms | 30.65ms | 14.84ms | 7.20ms | read-only sample was 20.63/27.56/31.15/15.00/7.18ms; saved comparison versus prior row is inside noise band, so treat as descriptive only |
-| 6 | Expanded queue / slot allocation / fallback content | 21.51ms | 28.25ms | 31.24ms | 15.24ms | 7.24ms | read-only sample was 20.60/26.60/30.27/15.26/7.35ms; saved comparison stayed inside threshold, so treat as descriptive only |
-| 7 | Record prep / slot helpers / container proofs | 20.68ms | 27.11ms | 30.83ms | 15.05ms | 7.06ms | read-only sample was 21.34/26.46/31.15/14.80/6.75ms; saved comparison stayed inside threshold and `mixins-guards` RSD was 24.9%, so treat as descriptive only |
+| 1 | Full queue pop: fallback syntax / queue refresh | 21.40ms | 27.59ms | 30.66ms | 15.44ms | 7.43ms | read-only sample was 21.45/27.24/31.36/15.19/7.44ms; saved comparison was noise except `media` at 8.1% slower with 19.7% RSD, so treat as descriptive only |
+| 2 | Full queue pop: fallback content render syntax | 20.32ms | 26.49ms | 31.21ms | 14.74ms | 6.88ms | read-only sample was 21.42/26.71/30.40/18.06/8.87ms with high `extend` variance; saved comparison was inside the noise band for every fixture, so treat as descriptive only |
+| 3 | Slot duplicate policy / metrics | 21.42ms | 27.35ms | 32.11ms | 15.49ms | 7.31ms | read-only sample was 21.17/28.68/34.11/16.48/7.63ms; saved comparison had import-ref/media faster and the rest noise, but the previous saved row was noisy, so treat as descriptive only |
+| 4 | Slot serializer gate / queue refresh / metrics | 22.38ms | 31.85ms | 33.53ms | 15.95ms | 8.92ms | read-only sample was 22.82/31.92/33.43/16.05/8.68ms; saved comparison was mostly slower but import-ref RSD was 69.7% and media RSD 19.0%, so treat as descriptive only |
+| 5 | Full queue pop: at-rule receiver / slot fallback / import wording | 20.45ms | 25.87ms | 30.37ms | 15.25ms | 7.16ms | read-only sample was 20.72/27.09/30.12/15.74/7.46ms; saved comparison versus prior row is inside noise band, so treat as descriptive only |
+| 6 | At-rule runner / mixin slot identity / scalar cleanup | 20.73ms | 26.26ms | 30.65ms | 14.84ms | 7.20ms | read-only sample was 20.63/27.56/31.15/15.00/7.18ms; saved comparison versus prior row is inside noise band, so treat as descriptive only |
+| 7 | Expanded queue / slot allocation / fallback content | 21.51ms | 28.25ms | 31.24ms | 15.24ms | 7.24ms | read-only sample was 20.60/26.60/30.27/15.26/7.35ms; saved comparison stayed inside threshold, so treat as descriptive only |
 
 Measurement commands:
 
@@ -567,90 +568,94 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Split at-rule body result ownership from eval-frame identity.**
+1. **Delete one at-rule body eval-frame responsibility with proof.**
 
-   Prove the smallest public-result adapter for body at-rules: direct render
-   should consume invocation state, while public `resolve(...)` may own a
-   result at-rule only at the result boundary.
+   Start from `AtRuleBodyEvalRecord` and move exactly one remaining body
+   registration/eval fact off the derived body frame. Candidate facts are
+   same-name nested layer registration, body-to-eval/final-rules pairing, or
+   final hoist/root output. Add a focused test that source body parentage stays
+   canonical.
 
-2. **Move nestable at-rule registration effects into invocation state.**
+2. **Narrow at-rule public-result adapter after the next fact move.**
 
-   Target body-to-eval/final-rules, layer name, pushed extend root, and
-   same-name nested layer registration. Do not delete the remaining eval frame
-   until those effects no longer need an owned receiver.
+   Once another body fact is record-owned, prove whether public
+   `resolve(...)` can create its owned result at the boundary without using
+   that owned result as the eval helper receiver.
 
-3. **Narrow optional fallback calls without content to render-only syntax.**
+3. **Audit optional JS fallback render after CSS syntax narrowing.**
 
-   Source-backed fallback content now renders without deriving a fallback
-   `Call`. Check whether no-content optional fallbacks can use the same syntax
-   path while preserving JS optional failure behavior and public
-   `resolve(...)` ownership.
+   CSS optional fallback syntax is now render-only for content/no-content and
+   contextual `!important`. Re-check optional JS failure and metadata failure
+   paths so they still call user functions once, preserve raw args where
+   required, and do not derive source calls except at public/JS failure output
+   boundaries.
 
-4. **Audit mark-important fallback calls before render-only expansion.**
-
-   `markImportant` still blocks the new fallback syntax path. Decide whether
-   important output can be contextual text during render, or whether rules
-   output must keep owned mutation semantics.
-
-5. **Narrow direct-reference source-backed container render.**
+4. **Narrow direct-reference source-backed container render.**
 
    Inventory source-backed direct-target `List`/`Sequence`/object hits and
    add one focused proof only if render can stay text-only while public
    `resolve(...)` remains owned.
 
-6. **Design generated-selector placement from one concrete wrapper.**
+5. **Move one generated-pseudo selector fact into placement state.**
 
-   Pick one generated `:is(...)` or unknown-pseudo selector case and move only
-   a runtime-used fact into placement state. Required facts are parentage,
-   visibility, extend metadata, keysets, and composed text.
+   Pick one generated `:is(...)` or unknown-pseudo selector case and move a
+   runtime-used fact only if tests prove parentage, visibility, extend
+   metadata, keysets, and composed text stay correct.
 
-7. **Audit ampersand append placement against output selectors.**
+6. **Audit ampersand append placement against output selectors.**
 
    Decide whether final selector text, hoist/root placement, or template
    replacement facts can leave generated selector wrappers without losing
    selector-bit metadata or source parentage.
 
-8. **Trim ruleset header/carrier render state after TriviaMap cleanup.**
+7. **Trim ruleset header/carrier render state after TriviaMap cleanup.**
 
    Delete only header/comment plumbing that no longer owns a parse/render
    boundary. Keep real frame-header cache behavior and generated pseudo header
    behavior.
 
-9. **Reduce import-style first-use placement surfaces.**
+8. **Reduce import-style first-use placement surfaces.**
 
    Plain imports still materialize a first-use placement state. Replace it
    only where import reference/once/multiple/cache/source-map behavior proves
    the explicit state is faster or no slower.
 
-10. **Audit inline import source text allocation.**
+9. **Audit inline import source text allocation.**
 
    Inline imports still create an `Any` source node from loaded text. Decide
    whether inline source can stream as text without changing postlude wrapping
    or public source-map behavior.
 
-11. **Keep custom-property render raw while reducing declaration state.**
+10. **Keep custom-property render raw while reducing declaration state.**
 
    Custom properties are covered for raw value text. The next declaration win
    is reducing assignment/custom state without source-slice comparisons or
    changing public registration/resolve surfaces.
 
-12. **Audit guard allocation at the public-result boundary.**
+11. **Audit guard allocation at the public-result boundary.**
 
    `DefaultGuard` and `Condition` render text-only, but public eval/resolve
    still returns `Bool`. Reduce only if parent/source ownership of returned
    bools stays correct.
 
-13. **Audit control-node generated output surfaces.**
+12. **Audit control-node generated output surfaces.**
 
    `$if/$for/$while` stream render output, but eval still returns generated
    rule surfaces. Remove only pure control markers; loop mutation and public
    visibility remain semantic.
 
-14. **Audit scalar math wrapper creation by operation family.**
+13. **Audit scalar math wrapper creation by operation family.**
 
    Check `Operation`, `Negative`, and `Dimension` together against strict
    units, color math, slash preservation, calc, modulo/division, and Less
    math-mode fixtures.
+
+14. **Run one helper-family reduction pass.**
+
+   Pick a whole family (`inherit(...)`, `derive*`, or
+   `copyWithReusableLeaves(...)`) within one node surface and reduce it only
+   where tests prove a real ownership boundary can move to state or direct
+   render text.
 
 15. **Run the next measured structural pass after another reduction.**
 

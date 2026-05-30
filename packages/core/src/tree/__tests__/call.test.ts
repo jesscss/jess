@@ -357,6 +357,19 @@ describe('Call', () => {
   });
 
   it('renders optional non-string fallback calls through native output', async () => {
+    const deriveCallDescriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
+    const originalDeriveCall = deriveCallDescriptor?.value;
+    if (!deriveCallDescriptor || typeof originalDeriveCall !== 'function') {
+      throw new Error('Expected Call.deriveCall for render-only fallback proof');
+    }
+    let derivedCalls = 0;
+    Object.defineProperty(Call.prototype, 'deriveCall', {
+      ...deriveCallDescriptor,
+      value: function deriveCallForCounting(this: Call, ...callArgs: unknown[]) {
+        derivedCalls++;
+        return Reflect.apply(originalDeriveCall, this, callArgs);
+      }
+    });
     const args = list([seq([any('red'), dimension([10, 'px'])])]);
     const name = ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true });
     const rule = call({
@@ -368,13 +381,19 @@ describe('Call', () => {
     };
     const buffer = createRenderBuffer('flat');
 
-    await expect(Promise.resolve(rule.render(context))).resolves.toBe('missing-fn(red 10px)');
-    expect(await rule.render(context, buffer)).toBe('missing-fn(red 10px)');
-    expect(buffer.parts).toEqual(['missing-fn(red 10px)']);
-    expect(args.parent).toBe(rule);
-    expect(name.parent).toBe(rule);
-    expect(name.evaluated).toBe(false);
-    expect(rule.evaluated).toBe(false);
+    try {
+      await expect(Promise.resolve(rule.render(context))).resolves.toBe('missing-fn(red 10px)');
+      expect(await rule.render(context, buffer)).toBe('missing-fn(red 10px)');
+      expect(buffer.parts).toEqual(['missing-fn(red 10px)']);
+      expect(derivedCalls).toBe(0);
+      expect(args.parent).toBe(rule);
+      expect(name.parent).toBe(rule);
+      expect(name.evaluated).toBe(false);
+      expect(rule.evaluated).toBe(false);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      Object.defineProperty(Call.prototype, 'deriveCall', deriveCallDescriptor);
+    }
   });
 
   it('resolves optional missing dynamic function fallback without evaluating the source call surface', async () => {
@@ -390,6 +409,35 @@ describe('Call', () => {
     expect(name.parent).toBe(rule);
     expect(name.evaluated).toBe(false);
     expect(rule.evaluated).toBe(false);
+  });
+
+  it('renders important optional CSS fallback syntax without deriving output', async () => {
+    const deriveCallDescriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
+    const originalDeriveCall = deriveCallDescriptor?.value;
+    if (!deriveCallDescriptor || typeof originalDeriveCall !== 'function') {
+      throw new Error('Expected Call.deriveCall for important fallback proof');
+    }
+    let derivedCalls = 0;
+    Object.defineProperty(Call.prototype, 'deriveCall', {
+      ...deriveCallDescriptor,
+      value: function deriveCallForCounting(this: Call, ...callArgs: unknown[]) {
+        derivedCalls++;
+        return Reflect.apply(originalDeriveCall, this, callArgs);
+      }
+    });
+    const rule = call({
+      name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
+      args: list([any('red')])
+    }, { silentFail: true, markImportant: true });
+
+    try {
+      await expect(Promise.resolve(rule.render(context))).resolves.toBe('missing-fn(red) !important');
+      expect(derivedCalls).toBe(0);
+      expect(rule.evaluated).toBe(false);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      Object.defineProperty(Call.prototype, 'deriveCall', deriveCallDescriptor);
+    }
   });
 
   it('writes finalized CSS call output into segmented buffers', () => {

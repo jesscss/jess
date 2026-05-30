@@ -624,8 +624,6 @@ export class Call extends Node<CallValue, CallOptions> {
     if (
       typeof this.value.name === 'string'
       || !this.options?.silentFail
-      || this.options?.markImportant
-      || !this.value.contentNode
     ) {
       return undefined;
     }
