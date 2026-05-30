@@ -364,6 +364,14 @@ function createAtRuleBodyRecordRegistration(
   });
 }
 
+function createAtRuleBodyRegistrationFromPrep(
+  record: AtRuleBodyEvalRecord,
+  preparedBody: AtRuleBodyEvalPrepState
+): AtRuleBodyRegistrationState {
+  storeAtRuleBodyRecordPrepState(record, preparedBody);
+  return createAtRuleBodyRecordRegistration(record);
+}
+
 function storeAtRuleBodyRecordLayerName(
   record: AtRuleBodyEvalRecord,
   layerName: string | undefined
@@ -1037,17 +1045,18 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return registration;
   }
 
-  private _prepareNestableBodyForEval(
-    node: AtRule,
-    rules: Rules,
+  private _prepareBodyRegistrationForEval(
+    record: AtRuleBodyEvalRecord,
     context: Context,
     restoreBodyEvalContext: () => void
-  ): MaybePromise<AtRuleBodyEvalPrepState> {
+  ): MaybePromise<AtRuleBodyRegistrationState> {
+    const node = record.evalFrame;
+    const rules = node.value.rules!;
     if (!node.isNestable()) {
-      return {
+      return createAtRuleBodyRegistrationFromPrep(record, {
         bodyToEval: rules,
         pushedExtendRoot: false
-      };
+      });
     }
     const parentExtendRoot = context.extendRoots.getCurrentExtendRoot();
     let preparedRules: MaybePromise<Node>;
@@ -1057,17 +1066,17 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       restoreBodyEvalContext();
       throw error;
     }
-    const finish = (resolved: Node): AtRuleBodyEvalPrepState => {
+    const finish = (resolved: Node): AtRuleBodyRegistrationState => {
       if (!(resolved instanceof Rules)) {
         restoreBodyEvalContext();
         throw new TypeError('Expected at-rule body registration prep to return Rules');
       }
       context.extendRoots.pushExtendRoot(resolved);
-      return {
+      return createAtRuleBodyRegistrationFromPrep(record, {
         bodyToEval: resolved,
         parentExtendRoot,
         pushedExtendRoot: true
-      };
+      });
     };
     return isThenable(preparedRules)
       ? preparedRules.then(finish, (error) => {
@@ -1237,9 +1246,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             setAtRuleBodyEvalOutput(bodyEvalContextState, { hoistToRoot: true });
           }
           return source.runBodyEvalInvocation(context, bodyEvalRecord, node, (restoreBodyEvalContext) => {
-            const finishPreparedBody = (prepState: AtRuleBodyEvalPrepState): MaybePromise<AtRule> => {
-              const { bodyToEval } = storeAtRuleBodyRecordPrepState(bodyEvalRecord, prepState);
-              const registration = createAtRuleBodyRecordRegistration(bodyEvalRecord);
+            const finishPreparedBody = (registration: AtRuleBodyRegistrationState): MaybePromise<AtRule> => {
+              const { bodyToEval } = registration;
               const onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
               const restoreRulesetFrames = activateAtRuleBodyEvalRecordFrameState(bodyEvalRecord, context);
               let evalOut: MaybePromise<Rules>;
@@ -1268,16 +1276,15 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               return finishEval(evalOut as Rules);
             };
 
-            const preparedBody = source._prepareNestableBodyForEval(
-              node,
-              rules,
+            const registration = source._prepareBodyRegistrationForEval(
+              bodyEvalRecord,
               context,
               restoreBodyEvalContext
             );
-            if (isThenable(preparedBody)) {
-              return preparedBody.then(finishPreparedBody);
+            if (isThenable(registration)) {
+              return registration.then(finishPreparedBody);
             }
-            return finishPreparedBody(preparedBody);
+            return finishPreparedBody(registration);
           });
         }
         return node;
