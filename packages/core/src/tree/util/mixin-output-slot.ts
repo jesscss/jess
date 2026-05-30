@@ -207,6 +207,40 @@ export function blocksAmbientMixinOutputLookup(rules: Rules): boolean {
   return false;
 }
 
+type SourceChainNode = {
+  type?: string;
+  options?: {
+    mixinOutputSlot?: Pick<MixinOutputSlot, 'ambientLookup'>;
+  };
+  sourceNode?: unknown;
+  parent?: unknown;
+};
+
+function isSourceChainNode(value: unknown): value is SourceChainNode {
+  return value !== null && typeof value === 'object';
+}
+
+export function isFromRestrictedMixinOutput(node: unknown): boolean {
+  const queue: unknown[] = [node];
+  const seen = new Set<unknown>();
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!isSourceChainNode(current) || seen.has(current)) {
+      continue;
+    }
+    seen.add(current);
+    if (current.type === 'Rules' && current.options?.mixinOutputSlot?.ambientLookup === false) {
+      return true;
+    }
+    queue.push(current.sourceNode, current.parent);
+  }
+  return false;
+}
+
+export function keepsDuplicateMixinOutputDeclaration(node: unknown): boolean {
+  return isFromRestrictedMixinOutput(node);
+}
+
 export function canEnterMixinOutputForLookup(
   entry: RulesEntryLike,
   lookup: {

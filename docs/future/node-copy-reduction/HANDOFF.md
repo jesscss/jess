@@ -296,6 +296,12 @@ truth, the immediate pop queue, and verification.
   ritual. Detached generated output caller fallback wiring can also be passed
   through slot attachment; ordinary mixin body fallback still remains earlier
   because guards/body eval need that fallback before an output slot exists.
+  Serializer ancestry checks for restricted generated output now go through
+  `isFromRestrictedMixinOutput(...)`, so serializer code does not
+  open-code the slot/source-chain rule. Duplicate-declaration preservation for
+  restricted generated output now goes through
+  `keepsDuplicateMixinOutputDeclaration(...)`, keeping that serializer
+  policy with the slot facts it depends on.
 - The next `MixinOutputSlot` boundary was audited. Direct comment children
   cannot move into the slot as a loose side list because mixin output must
   preserve source order among comments, declarations, nested rules, and lookup
@@ -473,13 +479,13 @@ trend.
 
 | # | Focus | Main result |
 | --- | --- | --- |
-| 1 | Full queue pop: at-rule receiver / slot fallback / import wording | The previous 15-item queue was processed. Code changes narrowed at-rule body eval to the source plus invocation record, moved detached generated-output fallback wiring into `attachMixinOutputSlot(...)`, and removed stale import clone wording. The rest of the queue was re-audited against existing focused proofs and replaced with narrower next surfaces rather than left stale. |
-| 2 | At-rule runner / mixin slot identity / scalar cleanup | At-rule body frame push/pop and async cleanup now run through an invocation runner; `attachMixinOutputSlot(...)` owns generated-output source identity; the stale import deep-clone comment is gone; dimension unit lookup uses one shared map; negative eval reuses a constant `-1` dimension; unused `Condition.getBool(...)` allocation path was removed. |
-| 3 | Expanded queue / slot allocation / fallback content | Handoff instructions now keep a 15-item queue; ruleset-as-mixin placement reuses the slot source-index map instead of allocating a duplicate; dynamic source-free fallback content is proven to own a frozen output container; at-rule/generated-selector blockers are now split into sharper next surfaces. |
-| 4 | Record prep / slot helpers / container proofs | At-rule prepared body state now lives on `AtRuleBodyEvalRecord` before registration; fallback-call content static reuse has copy-count proof; direct `JsArray`/`JsObject` container hits render text-only; nested generated pseudo text/metadata boundary is covered; caller fallback wiring moved behind a mixin-slot helper; ruleset-as-mixin placement records now carry source indexes. |
-| 5 | Record cleanup / placement records | At-rule root-only frame cleanup moved onto `AtRuleBodyEvalRecord`; fallback call content state records source reuse; direct `JsObject` scalar render proof was added; generated pseudo placement carries selector-bit library state; mixin source marking moved into slot helpers; ruleset-as-mixin slots now carry a small placement record. |
-| 6 | Layer record / content state / slot indexes | At-rule layer names now write through `AtRuleBodyEvalRecord`; fallback call content has a small placement-state record; public direct-target resolve is documented as owned while render stays text-only; generated dynamic `:is(...)` keysets are covered; mixin-output rule indexes moved behind a slot helper; ruleset-as-mixin nested/comment mapping is proven. |
-| 7 | Record output / generated pseudo / direct containers | At-rule evaluated body output moved onto `AtRuleBodyEvalRecord`; generated dynamic `:is($selector-list)` output omits the wrapper when placement-proven; source-free direct index containers render text-only; mixin slot no longer stores unused `rulesVisibility`; source-backed fallback content remains owned with tests. |
+| 1 | Slot duplicate policy / metrics | Duplicate-declaration preservation for restricted generated mixin output moved behind `keepsDuplicateMixinOutputDeclaration(...)`, with the existing ancestry proof extended to cover the policy. Static audit stayed unchanged; saved/read-only hot-path rows were mixed and still descriptive only. |
+| 2 | Slot serializer gate / queue refresh / metrics | Mixin-output restricted ancestry detection moved from `serialize-helper.ts` into `isFromRestrictedMixinOutput(...)` with a focused mixin proof. The rest of the queue was re-audited against current blockers; no broad at-rule, fallback-call, selector, import, guard, control, or scalar deletion was taken without new semantic proof. |
+| 3 | Full queue pop: at-rule receiver / slot fallback / import wording | The previous 15-item queue was processed. Code changes narrowed at-rule body eval to the source plus invocation record, moved detached generated-output fallback wiring into `attachMixinOutputSlot(...)`, and removed stale import clone wording. The rest of the queue was re-audited against existing focused proofs and replaced with narrower next surfaces rather than left stale. |
+| 4 | At-rule runner / mixin slot identity / scalar cleanup | At-rule body frame push/pop and async cleanup now run through an invocation runner; `attachMixinOutputSlot(...)` owns generated-output source identity; the stale import deep-clone comment is gone; dimension unit lookup uses one shared map; negative eval reuses a constant `-1` dimension; unused `Condition.getBool(...)` allocation path was removed. |
+| 5 | Expanded queue / slot allocation / fallback content | Handoff instructions now keep a 15-item queue; ruleset-as-mixin placement reuses the slot source-index map instead of allocating a duplicate; dynamic source-free fallback content is proven to own a frozen output container; at-rule/generated-selector blockers are now split into sharper next surfaces. |
+| 6 | Record prep / slot helpers / container proofs | At-rule prepared body state now lives on `AtRuleBodyEvalRecord` before registration; fallback-call content static reuse has copy-count proof; direct `JsArray`/`JsObject` container hits render text-only; nested generated pseudo text/metadata boundary is covered; caller fallback wiring moved behind a mixin-slot helper; ruleset-as-mixin placement records now carry source indexes. |
+| 7 | Record cleanup / placement records | At-rule root-only frame cleanup moved onto `AtRuleBodyEvalRecord`; fallback call content state records source reuse; direct `JsObject` scalar render proof was added; generated pseudo placement carries selector-bit library state; mixin source marking moved into slot helpers; ruleset-as-mixin slots now carry a small placement record. |
 
 ## Metrics Snapshot
 
@@ -499,13 +505,13 @@ Recent hot-path medians. `#1` is the latest pass.
 
 | # | Pass | `functions` | `import-ref` | `mixins-guards` | `extend` | `media` | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Full queue pop: at-rule receiver / slot fallback / import wording | 20.45ms | 25.87ms | 30.37ms | 15.25ms | 7.16ms | read-only sample was 20.72/27.09/30.12/15.74/7.46ms; saved comparison versus prior row is inside noise band, so treat as descriptive only |
-| 2 | At-rule runner / mixin slot identity / scalar cleanup | 20.73ms | 26.26ms | 30.65ms | 14.84ms | 7.20ms | read-only sample was 20.63/27.56/31.15/15.00/7.18ms; saved comparison versus prior row is inside noise band, so treat as descriptive only |
-| 3 | Expanded queue / slot allocation / fallback content | 21.51ms | 28.25ms | 31.24ms | 15.24ms | 7.24ms | read-only sample was 20.60/26.60/30.27/15.26/7.35ms; saved comparison stayed inside threshold, so treat as descriptive only |
-| 4 | Record prep / slot helpers / container proofs | 20.68ms | 27.11ms | 30.83ms | 15.05ms | 7.06ms | read-only sample was 21.34/26.46/31.15/14.80/6.75ms; saved comparison stayed inside threshold and `mixins-guards` RSD was 24.9%, so treat as descriptive only |
-| 5 | Record cleanup / placement records | 20.64ms | 25.81ms | 31.06ms | 15.09ms | 6.76ms | read-only sample was 20.36/26.66/31.14/15.42/7.40ms; saved `extend` compares faster to #5, but static counts are unchanged and RSD remains high, so treat as descriptive only |
-| 6 | Layer record / content state / slot indexes | 21.28ms | 26.64ms | 31.22ms | 18.18ms | 7.33ms | read-only sample was 20.21/26.18/30.54/15.13/6.86ms; saved `extend` blipped slower while media was faster and RSD remains high, so treat as descriptive only |
-| 7 | Record output / generated pseudo / direct containers | 22.06ms | 28.10ms | 33.21ms | 15.83ms | 8.76ms | read-only sample was 21.47/31.60/32.74/15.66/7.62ms; saved run is mixed and media RSD is 26.1%, so treat as descriptive only |
+| 1 | Slot duplicate policy / metrics | 21.42ms | 27.35ms | 32.11ms | 15.49ms | 7.31ms | read-only sample was 21.17/28.68/34.11/16.48/7.63ms; saved comparison had import-ref/media faster and the rest noise, but the previous saved row was noisy, so treat as descriptive only |
+| 2 | Slot serializer gate / queue refresh / metrics | 22.38ms | 31.85ms | 33.53ms | 15.95ms | 8.92ms | read-only sample was 22.82/31.92/33.43/16.05/8.68ms; saved comparison was mostly slower but import-ref RSD was 69.7% and media RSD 19.0%, so treat as descriptive only |
+| 3 | Full queue pop: at-rule receiver / slot fallback / import wording | 20.45ms | 25.87ms | 30.37ms | 15.25ms | 7.16ms | read-only sample was 20.72/27.09/30.12/15.74/7.46ms; saved comparison versus prior row is inside noise band, so treat as descriptive only |
+| 4 | At-rule runner / mixin slot identity / scalar cleanup | 20.73ms | 26.26ms | 30.65ms | 14.84ms | 7.20ms | read-only sample was 20.63/27.56/31.15/15.00/7.18ms; saved comparison versus prior row is inside noise band, so treat as descriptive only |
+| 5 | Expanded queue / slot allocation / fallback content | 21.51ms | 28.25ms | 31.24ms | 15.24ms | 7.24ms | read-only sample was 20.60/26.60/30.27/15.26/7.35ms; saved comparison stayed inside threshold, so treat as descriptive only |
+| 6 | Record prep / slot helpers / container proofs | 20.68ms | 27.11ms | 30.83ms | 15.05ms | 7.06ms | read-only sample was 21.34/26.46/31.15/14.80/6.75ms; saved comparison stayed inside threshold and `mixins-guards` RSD was 24.9%, so treat as descriptive only |
+| 7 | Record cleanup / placement records | 20.64ms | 25.81ms | 31.06ms | 15.09ms | 6.76ms | read-only sample was 20.36/26.66/31.14/15.42/7.40ms; saved `extend` compares faster to #5, but static counts are unchanged and RSD remains high, so treat as descriptive only |
 
 Measurement commands:
 
@@ -600,14 +606,18 @@ family can be audited and reduced.
      selector bit metadata, extend matching, source parentage, and output
      parity.
 
-6. **Move mixin-output serializer gates into slot helpers.**
+6. **Move another mixin-output serializer/search policy into slot helpers.**
 
-   - Goal: after source identity, rule indexes, reference-mode clearing, and
-     detached fallback wiring, move the next whole serializer/search gate into
-     `MixinOutputSlot` only if it shrinks call-site responsibility.
+   - Goal: after source identity, rule indexes, reference-mode clearing,
+     detached fallback wiring, and restricted-output ancestry detection, move
+     the next whole serializer/search policy into `MixinOutputSlot` only if it
+     shrinks call-site responsibility. Duplicate-declaration preservation is
+     now slot-owned; do not split out another helper unless it carries a real
+     serializer/search decision.
    - Required proof: ordered comments/declarations/rules, targeted lookups,
      scope frame, caller fallback, rule indexes, repeated placements,
-     reference-mode clearing, and serializer gating.
+     reference-mode clearing, reference/import comment filtering, and
+     serializer gating.
 
 7. **Extend ruleset-as-mixin placement only with runtime-used facts.**
 
@@ -672,10 +682,10 @@ family can be audited and reduced.
    - Required proof: strict units, color math, slash values, calc, negative
      dimensions, modulo/division, and Less math-mode fixtures.
 
-15. **Run the next measured structural pass.**
+15. **Run the next measured structural pass after another reduction.**
 
-   - Goal: pair the next reduction with static audit plus read-only and saved
-     hot-path samples; keep the metrics table ordered and concise.
+   - Goal: pair the next real reduction with static audit plus read-only and
+     saved hot-path samples; keep the metrics table ordered and concise.
    - Required proof: static audit, read-only hot-path run, saved hot-path row,
      table update, and no speed/regression claim from one noisy sample.
 

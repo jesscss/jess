@@ -11,7 +11,9 @@ import {
   getMixinOutputSourceChild,
   getMixinOutputSourceChildren,
   getMixinOutputSourceIndex,
-  getRulesetMixinPlacementSourceIndex
+  getRulesetMixinPlacementSourceIndex,
+  isFromRestrictedMixinOutput,
+  keepsDuplicateMixinOutputDeclaration
 } from '../util/mixin-output-slot.js';
 
 let context: Context;
@@ -1192,6 +1194,26 @@ describe('Mixin', () => {
 
       output.options.rulesVisibility.VarDeclaration = 'public';
       expect(canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(true);
+    });
+
+    it('detects restricted mixin-output ancestry through the slot helper', () => {
+      const source = rules([
+        decl({ name: 'color', value: any('red') })
+      ]);
+      const restrictedOutput = rules([
+        decl({ name: 'color', value: any('red') })
+      ]);
+      attachMixinOutputSlot(restrictedOutput, source, true);
+
+      const ambientOutput = rules([
+        decl({ name: 'color', value: any('blue') })
+      ]);
+      attachMixinOutputSlot(ambientOutput, source, false);
+
+      expect(isFromRestrictedMixinOutput(restrictedOutput.value[0])).toBe(true);
+      expect(isFromRestrictedMixinOutput(ambientOutput.value[0])).toBe(false);
+      expect(keepsDuplicateMixinOutputDeclaration(restrictedOutput.value[0])).toBe(true);
+      expect(keepsDuplicateMixinOutputDeclaration(ambientOutput.value[0])).toBe(false);
     });
 
     it('does not shallow-clone mixin body children to create param guard wrappers', async () => {

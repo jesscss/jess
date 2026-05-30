@@ -23,7 +23,7 @@ import { Nil } from '../nil.js';
 import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
 import { consumeTriviaText, getPrintableTriviaTokens, isBlockCommentTriviaToken } from './trivia.js';
-import { blocksAmbientMixinOutputLookup } from './mixin-output-slot.js';
+import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
 
 type TriviaSide = 'before' | 'after';
 
@@ -524,9 +524,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     const originatesFromControl = (n: any): boolean => sourceChainHas(n, current =>
       current?.type === 'For' || current?.type === 'While' || current?.type === 'If'
     );
-    const fromGeneratedOutput = (n: any): boolean => sourceChainHas(n, current =>
-      current?.type === 'Rules' && blocksAmbientMixinOutputLookup(current)
-    );
+    const keepsDuplicateGeneratedOutput = (n: any): boolean => keepsDuplicateMixinOutputDeclaration(n);
     if (rulesToRender.length === 0) {
       return '';
     }
@@ -568,7 +566,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         && !originatesFromCall(node)
         && !originatesFromMixin(node)
         && !originatesFromControl(node)
-        && !fromGeneratedOutput(node)
+        && !keepsDuplicateGeneratedOutput(node)
       ) {
         skippedDuplicateDeclarations.add(i);
       } else {
