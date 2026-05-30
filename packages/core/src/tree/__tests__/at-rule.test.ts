@@ -574,6 +574,62 @@ describe('AtRule', () => {
     expect(sourceRules.evaluated).toBe(false);
   });
 
+  it('renders static invisible var body rules without an owned body eval target', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('print')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const variable = vardecl({ name: 'brand', value: any('red') });
+    const sourceRules = rules([
+      variable,
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: sourceRules
+    });
+    const originalRulesEval = Rules.prototype.eval;
+    const originalVarEval = variable.eval;
+    let rulesEvalCalls = 0;
+    let varEvalCalls = 0;
+    Rules.prototype.eval = function countRulesEval(
+      this: Rules,
+      ...args: Parameters<typeof originalRulesEval>
+    ): ReturnType<typeof originalRulesEval> {
+      rulesEvalCalls++;
+      return originalRulesEval.apply(this, args);
+    };
+    variable.eval = function countVarEval(
+      this: typeof variable,
+      ...args: Parameters<typeof originalVarEval>
+    ): ReturnType<typeof originalVarEval> {
+      varEvalCalls++;
+      return originalVarEval.apply(this, args);
+    };
+    try {
+      expect(await Promise.resolve(node.render(context))).toBeString(`
+        @media print {
+          color: red;
+        }
+      `);
+    } finally {
+      Rules.prototype.eval = originalRulesEval;
+      variable.eval = originalVarEval;
+    }
+    expect(rulesEvalCalls).toBe(0);
+    expect(varEvalCalls).toBe(0);
+    expect(sourceRules.parent).toBe(node);
+    expect(sourceRules.evaluated).toBe(false);
+    expect(variable.parent).toBe(sourceRules);
+    expect(variable.evaluated).toBe(false);
+  });
+
   it('keeps direct body-render visibility off the source at-rule', async () => {
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),

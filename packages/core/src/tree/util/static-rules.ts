@@ -11,6 +11,9 @@ export function isPlainStaticRuleLeaf(node: Node): boolean {
   if (isNode(node, N.Comment | N.Nil)) {
     return true;
   }
+  if (isNode(node, N.VarDeclaration) && node.hasFlag(F_STATIC) && !node.visible) {
+    return true;
+  }
   if (!isNode(node, N.Declaration) || !node.hasFlag(F_STATIC)) {
     return false;
   }
