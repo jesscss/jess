@@ -1396,11 +1396,16 @@ function evaluateFallbackValue(
   context: Context,
   options: { textOnly?: boolean } = {}
 ): MaybePromise<Node> {
+  if (
+    options.textOnly === true
+    && fallbackValue.hasFlag(F_STATIC)
+    && canRenderReferenceValueTextOnly(fallbackValue)
+  ) {
+    context.popReference();
+    return fallbackValue;
+  }
   if (canReuseFallbackValue(fallbackValue)) {
-    if (
-      options.textOnly === true
-      && canRenderReferenceValueTextOnly(fallbackValue)
-    ) {
+    if (options.textOnly === true) {
       context.popReference();
       return fallbackValue;
     }

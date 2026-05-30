@@ -992,6 +992,53 @@ describe('reference', () => {
       }
     });
 
+    it('renders source-backed direct index object container hits without container copies', async () => {
+      const sourceList = list([any('alpha'), any('beta')]);
+      sourceList._location = [10, 1, 11, 20, 1, 21];
+      const targetObject = new JsObject({ tones: sourceList });
+      const node = rules([
+        vardecl({ name: 'targetObject', value: targetObject })
+      ]);
+      setRulesContext(await node.eval(context));
+      const refNode = ref({
+        target: ref({ key: 'targetObject' }, { type: 'variable' }),
+        key: quoted('tones')
+      }, { type: 'index' });
+      const originalCopy = List.prototype.copy;
+      const originalInherit = List.prototype.inherit;
+      let sourceListCopies = 0;
+      let sourceListInherits = 0;
+      List.prototype.copy = function copyForCounting(
+        this: List,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this === sourceList) {
+          sourceListCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === sourceList || args[0] === refNode) {
+          sourceListInherits++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        expect(await Promise.resolve(refNode.render(context))).toBe('alpha, beta');
+        expect(sourceListCopies).toBe(0);
+        expect(sourceListInherits).toBe(0);
+        expect(sourceList.parent).toBe(targetObject);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        List.prototype.copy = originalCopy;
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
     it('keeps public direct index container resolve owned while preserving source parents', async () => {
       const targetObject = new JsObject({
         tones: list([any('one'), any('two')])
@@ -1207,6 +1254,53 @@ describe('reference', () => {
         expect(context.referenceStack).toBe(0);
       } finally {
         fallback.inherit = originalInherit;
+      }
+    });
+
+    it('renders source-backed static fallback containers as text without container copies', async () => {
+      const fallback = list([any('red'), any('blue')]);
+      fallback._location = [10, 1, 11, 20, 1, 21];
+      const fallbackParent = fallback.parent;
+      const originalCopy = List.prototype.copy;
+      const originalInherit = List.prototype.inherit;
+      let fallbackCopies = 0;
+      let fallbackInherits = 0;
+      List.prototype.copy = function copyForCounting(
+        this: List,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this === fallback) {
+          fallbackCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === fallback) {
+          fallbackInherits++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        const refNode = ref(
+          { key: 'missing' },
+          {
+            type: 'variable',
+            fallbackValue: fallback
+          }
+        );
+
+        expect(await Promise.resolve(refNode.render(context))).toBe('red, blue');
+        expect(fallbackCopies).toBe(0);
+        expect(fallbackInherits).toBe(0);
+        expect(fallback.parent).toBe(fallbackParent);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        List.prototype.copy = originalCopy;
+        List.prototype.inherit = originalInherit;
       }
     });
 
