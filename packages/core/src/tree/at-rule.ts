@@ -429,19 +429,15 @@ function readAtRuleBodyEvalRecordResult(
   record: AtRuleBodyEvalRecord,
   node: AtRule | Nil
 ): AtRuleBodyEvalResult {
-  const outputNode = node instanceof Nil ? record.evalFrame : node;
-  const runtime = atRuleBodyRuntimeState.get(outputNode);
   return {
     evalFrame: record.evalFrame,
     node,
     evaluatedPrelude: record.contextState.evaluatedPrelude
-      ?? runtime?.evaluatedPrelude
       ?? record.evaluatedPrelude,
     evaluatedBody: record.evaluatedBody
-      ?? record.contextState.evaluatedBody
-      ?? runtime?.evaluatedBody,
+      ?? record.contextState.evaluatedBody,
     visible: record.visible,
-    output: record.contextState.output ?? runtime?.output
+    output: record.contextState.output
   };
 }
 
