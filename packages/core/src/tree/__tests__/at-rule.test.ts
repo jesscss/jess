@@ -533,6 +533,21 @@ describe('AtRule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('keeps direct body-render visibility off the source at-rule', async () => {
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: any('screen'),
+      rules: rules([
+        vardecl({ name: 'hidden', value: any('yes') })
+      ])
+    });
+
+    expect(await Promise.resolve(node.render(context))).toBe('');
+    expect(node.visible).toBe(true);
+    expect(node.value.rules?.parent).toBe(node);
+    expect(node.value.rules?.evaluated).toBe(false);
+  });
+
   it('keeps direct body-render hoist facts off the source at-rule', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
