@@ -70,12 +70,10 @@ type AtRuleBodyRuntimeState = {
 };
 
 type AtRuleBodyEvalContextState = {
-  source: AtRule;
   evalFrame: AtRule;
   evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
   output?: AtRuleBodyOutputState;
-  layerName?: string;
   frameCount: number;
   extendRootStackLength: number;
   writeEvaluatedPrelude: boolean;
@@ -138,34 +136,34 @@ type AtRuleBodyPublicResultState = {
 };
 
 const atRuleBodyRuntimeState = new WeakMap<AtRule, AtRuleBodyRuntimeState>();
-const activeAtRuleBodyEvalContextStates = new WeakMap<Context, AtRuleBodyEvalContextState[]>();
+const activeAtRuleBodyEvalRecords = new WeakMap<Context, AtRuleBodyEvalRecord[]>();
 
-function pushAtRuleBodyEvalContextState(
+function pushAtRuleBodyEvalRecord(
   context: Context,
-  state: AtRuleBodyEvalContextState
+  record: AtRuleBodyEvalRecord
 ): void {
-  let stack = activeAtRuleBodyEvalContextStates.get(context);
+  let stack = activeAtRuleBodyEvalRecords.get(context);
   if (!stack) {
     stack = [];
-    activeAtRuleBodyEvalContextStates.set(context, stack);
+    activeAtRuleBodyEvalRecords.set(context, stack);
   }
-  stack.push(state);
+  stack.push(record);
 }
 
-function popAtRuleBodyEvalContextState(
+function popAtRuleBodyEvalRecord(
   context: Context,
-  state: AtRuleBodyEvalContextState
+  record: AtRuleBodyEvalRecord
 ): void {
-  const stack = activeAtRuleBodyEvalContextStates.get(context);
+  const stack = activeAtRuleBodyEvalRecords.get(context);
   if (!stack) {
     return;
   }
-  const index = stack.lastIndexOf(state);
+  const index = stack.lastIndexOf(record);
   if (index >= 0) {
     stack.splice(index, 1);
   }
   if (stack.length === 0) {
-    activeAtRuleBodyEvalContextStates.delete(context);
+    activeAtRuleBodyEvalRecords.delete(context);
   }
 }
 
@@ -227,14 +225,12 @@ function createAtRuleBodyEvalContextState(
   node: AtRule,
   context: Context,
   options: {
-    source?: AtRule;
     evaluatedPrelude?: Node;
     writeEvaluatedPrelude?: boolean;
     writeRuntimeState?: boolean;
   } = {}
 ): AtRuleBodyEvalContextState {
   return {
-    source: options.source ?? node,
     evalFrame: node,
     evaluatedPrelude: options.evaluatedPrelude,
     frameCount: context.frames.length,
@@ -256,7 +252,7 @@ function restoreAtRuleBodyEvalRecord(
   context: Context
 ): void {
   const state = record.contextState;
-  popAtRuleBodyEvalContextState(context, state);
+  popAtRuleBodyEvalRecord(context, record);
   context.frames.length = state.frameCount;
   record.frameState.restoreRulesetFrames();
   while (context.extendRoots.extendRootStack.length > state.extendRootStackLength) {
@@ -373,7 +369,6 @@ function storeAtRuleBodyRecordLayerName(
   layerName: string | undefined
 ): void {
   record.layerName = layerName;
-  record.contextState.layerName = layerName;
   if (record.registration && layerName !== undefined) {
     record.registration.layerName = layerName;
   }
@@ -615,7 +610,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       frameState: createAtRuleBodyFrameState(this, context),
       evaluatedPrelude,
       contextState: createAtRuleBodyEvalContextState(evalFrame, context, {
-        source: this,
         evaluatedPrelude,
         writeEvaluatedPrelude: options.writeEvaluatedPrelude,
         writeRuntimeState: options.writeRuntimeState
@@ -991,11 +985,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       const preludeStr = String(prelude.valueOf?.() ?? prelude.toTrimmedString?.() ?? prelude.toString?.() ?? '');
       if (preludeStr) {
         let parentLayerName: string | undefined;
-        const activeBodyStates = activeAtRuleBodyEvalContextStates.get(context);
-        if (activeBodyStates) {
-          for (let i = activeBodyStates.length - 1; i >= 0; i--) {
-            const state = activeBodyStates[i]!;
-            const frame = state.source;
+        const activeRecords = activeAtRuleBodyEvalRecords.get(context);
+        if (activeRecords) {
+          for (let i = activeRecords.length - 1; i >= 0; i--) {
+            const record = activeRecords[i]!;
+            const frame = record.source;
             if (frame === node || frame.value.name?.toTrimmedString?.() !== '@layer') {
               continue;
             }
@@ -1007,8 +1001,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                 || child.sourceNode === node.sourceNode
               )
             );
-            if (frameContainsNode && state.layerName) {
-              parentLayerName = state.layerName;
+            if (frameContainsNode && record.layerName) {
+              parentLayerName = record.layerName;
               break;
             }
           }
@@ -1313,7 +1307,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       restored = true;
       restoreAtRuleBodyEvalRecord(bodyEvalRecord, context);
     };
-    pushAtRuleBodyEvalContextState(context, bodyEvalContextState);
+    pushAtRuleBodyEvalRecord(context, bodyEvalRecord);
     context.frames.push(node);
     storeAtRuleBodyRecordLayerName(
       bodyEvalRecord,

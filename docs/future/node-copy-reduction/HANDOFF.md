@@ -92,11 +92,10 @@ truth, the immediate pop queue, and verification.
   pairing and the evaluated body output on the invocation
   `AtRuleBodyEvalRecord` before public output writes. This is a staging step
   toward deleting the derived body frame, not a new render-state model.
-  Nested `@layer` name state also writes through the invocation record before
-  registration consumes it; the active context state only mirrors it for
-  stack lookup while nested layers are being evaluated. Root-only body frame
-  cleanup now also lives on the invocation record; context state keeps stack
-  lengths and active lookup facts only.
+  Nested `@layer` name state also lives on the invocation record before
+  registration consumes it; nested layer lookup now walks active records, not
+  eval-frame/context-state layer facts. Root-only body frame cleanup also
+  lives on the invocation record; context state keeps stack lengths only.
 - At-rule body eval registration state also owns the nestable-body
   `pushedExtendRoot` fact that final registration consumes. Keep moving
   body-registration facts into invocation-local state before trying to delete
@@ -148,10 +147,10 @@ truth, the immediate pop queue, and verification.
   result-node ownership have not all moved into the invocation record. The
   remaining eval-state flag is named `writeRuntimeState`; do not reintroduce
   "write to node" wording unless the code really writes node fields.
-- At-rule body eval context state now carries the canonical source at-rule.
-  Nested `@layer` parent-name lookup reads that source body instead of the
-  derived eval frame, so one more registration fact is off the frame identity.
-  The derived body frame still exists for body registration/eval ownership.
+- At-rule body eval no longer keeps an active context-state stack for nested
+  layer lookup. Active invocation records carry the canonical source at-rule
+  and layer name; this removed the old context-state mirror. The derived body
+  frame still exists for body registration/eval ownership.
 - Dynamic call fallback render/resolve now evaluates through `CallEvalState`
   without constructing a copied fallback `Call` surface. The state carries
   name, args, content, caller, mark-important, and rules-like variable lookup
@@ -493,13 +492,13 @@ trend.
 
 | # | Focus | Main result |
 | --- | --- | --- |
-| 1 | Full queue pop: fallback/object reference text render | The 15-item queue was processed and replaced. Source-backed static fallback containers and source-backed `JsObject` direct-index containers now use the render-only text path without container copy/inherit while public fallback/direct-index resolve stays owned. At-rule/call/import/declaration/guard/control/scalar/selector surfaces were re-audited with focused suites and kept as semantic blockers where no safe deletion was proven. |
-| 2 | Full queue pop: runtime-binding reference render | The 15-item queue was processed and replaced. Runtime-binding reference render now has an explicit render-only source-backed static container path, so static `List` bindings can render without container copy/eval while public resolve stays owned. Reference predicates were renamed around public-return versus render-text boundaries. At-rule/call/import/declaration/guard/control/scalar surfaces were audited with focused suites and kept as semantic blockers where no safe deletion was proven. |
-| 3 | Full queue pop: reference text containers / pseudo state | The 15-item queue was processed and replaced. Source-backed static declaration-reference and direct-index `List` containers now render text-only without copying or inheriting the source container; public resolve/fallback ownership remains narrow. Generated pseudo placement no longer carries unused `argText`, and the hallucinated `??` condition test is gone. At-rule/import/guard/control/scalar items were audited and left as real blockers, not fake-deleted. |
-| 4 | Full queue pop: fallback syntax / queue refresh | The 15-item queue was processed and replaced with sharper next surfaces. No-content and contextual-`!important` CSS optional fallback calls now render finalized syntax from `CallEvalState` without deriving a fallback `Call`; optional JS calls still fall through to the JS execution path. Static audit stayed unchanged; saved/read-only hot-path rows were noise-band samples except noisy `media`. |
-| 5 | Full queue pop: fallback content render syntax | The 15-item queue was processed and replaced with the next 15 surfaces. Source-backed optional fallback call content now renders from `CallEvalState` syntax without deriving a fallback `Call` or owning output content; public resolve still owns source-backed/dynamic content. Static audit stayed unchanged; hot-path rows were noise-band samples. |
-| 6 | Slot duplicate policy / metrics | Duplicate-declaration preservation for restricted generated mixin output moved behind `keepsDuplicateMixinOutputDeclaration(...)`, with the existing ancestry proof extended to cover the policy. Static audit stayed unchanged; saved/read-only hot-path rows were mixed and still descriptive only. |
-| 7 | Slot serializer gate / queue refresh / metrics | Mixin-output restricted ancestry detection moved from `serialize-helper.ts` into `isFromRestrictedMixinOutput(...)` with a focused mixin proof. The rest of the queue was re-audited against current blockers; no broad at-rule, fallback-call, selector, import, guard, control, or scalar deletion was taken without new semantic proof. |
+| 1 | Full queue pop: at-rule layer record stack | The 15-item queue was processed and replaced. Nested `@layer` name lookup moved from the active context-state mirror to active `AtRuleBodyEvalRecord` entries, and the now-unread context-state stack was deleted. Focused at-rule proof covers registered nested layer names and source child parentage. Reference, optional-call, selector, ampersand, import, declaration, guard, control, and scalar surfaces were re-audited with focused suites and kept as blockers where no safe deletion was proven. |
+| 2 | Full queue pop: fallback/object reference text render | The 15-item queue was processed and replaced. Source-backed static fallback containers and source-backed `JsObject` direct-index containers now use the render-only text path without container copy/inherit while public fallback/direct-index resolve stays owned. At-rule/call/import/declaration/guard/control/scalar/selector surfaces were re-audited with focused suites and kept as semantic blockers where no safe deletion was proven. |
+| 3 | Full queue pop: runtime-binding reference render | The 15-item queue was processed and replaced. Runtime-binding reference render now has an explicit render-only source-backed static container path, so static `List` bindings can render without container copy/eval while public resolve stays owned. Reference predicates were renamed around public-return versus render-text boundaries. At-rule/call/import/declaration/guard/control/scalar surfaces were audited with focused suites and kept as semantic blockers where no safe deletion was proven. |
+| 4 | Full queue pop: reference text containers / pseudo state | The 15-item queue was processed and replaced. Source-backed static declaration-reference and direct-index `List` containers now render text-only without copying or inheriting the source container; public resolve/fallback ownership remains narrow. Generated pseudo placement no longer carries unused `argText`, and the hallucinated `??` condition test is gone. At-rule/import/guard/control/scalar items were audited and left as real blockers, not fake-deleted. |
+| 5 | Full queue pop: fallback syntax / queue refresh | The 15-item queue was processed and replaced with sharper next surfaces. No-content and contextual-`!important` CSS optional fallback calls now render finalized syntax from `CallEvalState` without deriving a fallback `Call`; optional JS calls still fall through to the JS execution path. Static audit stayed unchanged; saved/read-only hot-path rows were noise-band samples except noisy `media`. |
+| 6 | Full queue pop: fallback content render syntax | The 15-item queue was processed and replaced with the next 15 surfaces. Source-backed optional fallback call content now renders from `CallEvalState` syntax without deriving a fallback `Call` or owning output content; public resolve still owns source-backed/dynamic content. Static audit stayed unchanged; hot-path rows were noise-band samples. |
+| 7 | Slot duplicate policy / metrics | Duplicate-declaration preservation for restricted generated mixin output moved behind `keepsDuplicateMixinOutputDeclaration(...)`, with the existing ancestry proof extended to cover the policy. Static audit stayed unchanged; saved/read-only hot-path rows were mixed and still descriptive only. |
 
 ## Metrics Snapshot
 
@@ -519,13 +518,13 @@ Recent hot-path medians. `#1` is the latest pass.
 
 | # | Pass | `functions` | `import-ref` | `mixins-guards` | `extend` | `media` | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Full queue pop: fallback/object reference text render | 23.35ms | 30.66ms | 33.95ms | 16.20ms | 8.07ms | read-only sample was 23.61/30.66/33.34/16.33/8.01ms; saved comparison was noise except `functions` at 8.1% slower with 14.5% RSD, and read-only `media` had 52.4% RSD, so treat as descriptive/suspicious only |
-| 2 | Full queue pop: runtime-binding reference render | 21.60ms | 29.85ms | 33.07ms | 16.26ms | 8.29ms | read-only sample was 21.33/29.67/33.07/16.16/8.14ms; saved comparison was inside the noise band for every fixture, so treat as descriptive only |
-| 3 | Full queue pop: reference text containers / pseudo state | 21.53ms | 28.99ms | 31.94ms | 15.63ms | 8.92ms | read-only sample was 21.21/28.99/31.92/15.42/7.57ms; saved comparison was noise except `media` at 20.0% slower with 22.1% RSD, so treat as descriptive only |
-| 4 | Full queue pop: fallback syntax / queue refresh | 21.40ms | 27.59ms | 30.66ms | 15.44ms | 7.43ms | read-only sample was 21.45/27.24/31.36/15.19/7.44ms; saved comparison was noise except `media` at 8.1% slower with 19.7% RSD, so treat as descriptive only |
-| 5 | Full queue pop: fallback content render syntax | 20.32ms | 26.49ms | 31.21ms | 14.74ms | 6.88ms | read-only sample was 21.42/26.71/30.40/18.06/8.87ms with high `extend` variance; saved comparison was inside the noise band for every fixture, so treat as descriptive only |
-| 6 | Slot duplicate policy / metrics | 21.42ms | 27.35ms | 32.11ms | 15.49ms | 7.31ms | read-only sample was 21.17/28.68/34.11/16.48/7.63ms; saved comparison had import-ref/media faster and the rest noise, but the previous saved row was noisy, so treat as descriptive only |
-| 7 | Slot serializer gate / queue refresh / metrics | 22.38ms | 31.85ms | 33.53ms | 15.95ms | 8.92ms | read-only sample was 22.82/31.92/33.43/16.05/8.68ms; saved comparison was mostly slower but import-ref RSD was 69.7% and media RSD 19.0%, so treat as descriptive only |
+| 1 | Full queue pop: at-rule layer record stack | 22.68ms | 31.70ms | 32.57ms | 15.63ms | 7.94ms | read-only sample was 22.83/32.23/32.36/15.76/7.76ms; saved comparison was inside the noise band for every fixture, with high `functions` RSD, so treat as descriptive only |
+| 2 | Full queue pop: fallback/object reference text render | 23.35ms | 30.66ms | 33.95ms | 16.20ms | 8.07ms | read-only sample was 23.61/30.66/33.34/16.33/8.01ms; saved comparison was noise except `functions` at 8.1% slower with 14.5% RSD, and read-only `media` had 52.4% RSD, so treat as descriptive/suspicious only |
+| 3 | Full queue pop: runtime-binding reference render | 21.60ms | 29.85ms | 33.07ms | 16.26ms | 8.29ms | read-only sample was 21.33/29.67/33.07/16.16/8.14ms; saved comparison was inside the noise band for every fixture, so treat as descriptive only |
+| 4 | Full queue pop: reference text containers / pseudo state | 21.53ms | 28.99ms | 31.94ms | 15.63ms | 8.92ms | read-only sample was 21.21/28.99/31.92/15.42/7.57ms; saved comparison was noise except `media` at 20.0% slower with 22.1% RSD, so treat as descriptive only |
+| 5 | Full queue pop: fallback syntax / queue refresh | 21.40ms | 27.59ms | 30.66ms | 15.44ms | 7.43ms | read-only sample was 21.45/27.24/31.36/15.19/7.44ms; saved comparison was noise except `media` at 8.1% slower with 19.7% RSD, so treat as descriptive only |
+| 6 | Full queue pop: fallback content render syntax | 20.32ms | 26.49ms | 31.21ms | 14.74ms | 6.88ms | read-only sample was 21.42/26.71/30.40/18.06/8.87ms with high `extend` variance; saved comparison was inside the noise band for every fixture, so treat as descriptive only |
+| 7 | Slot duplicate policy / metrics | 21.42ms | 27.35ms | 32.11ms | 15.49ms | 7.31ms | read-only sample was 21.17/28.68/34.11/16.48/7.63ms; saved comparison had import-ref/media faster and the rest noise, but the previous saved row was noisy, so treat as descriptive only |
 
 Measurement commands:
 
@@ -579,45 +578,44 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Move one at-rule fact family out of eval-frame identity.**
+1. **Move at-rule body registration prep fully out of eval-frame identity.**
 
-   Work from the current `AtRuleBodyEvalRecord` inventory. The best next
-   candidates are layer-name lookup or body registration, because both still
-   read frame/context state. Move a family only with focused source-parentage
-   and nested-layer/body-registration tests.
+   Layer-name lookup is record-owned now. Target `preparedBody` plus
+   `bodyToEval/finalRules/pushedExtendRoot` as one registration family, and
+   prove source parentage, nested layer names, and extend-root cleanup.
 
-2. **Narrow at-rule public-result writes after the fact-family move.**
+2. **Narrow at-rule public-result writes around registration-owned body state.**
 
-   Public `resolve(...)` still owns a result node. Once one at-rule fact family
-   is record-owned, move the matching public write to
-   `applyAtRuleBodyPublicResultState(...)` without using the public result as
-   an eval helper receiver.
+   Public `resolve(...)` still owns a result node. After registration state is
+   record-owned, make `applyAtRuleBodyPublicResultState(...)` the only body
+   state-to-node write boundary.
 
 3. **Reduce optional JS fallback failure output at the non-metadata boundary.**
 
    Metadata rawArgs and callback args remain owned user-code API. Target only
    the non-metadata optional JS failure output path, and prove single user-code
-   invocation plus source call parentage.
+   invocation plus source call parentage. Do not execute optional JS calls from
+   the render-preview probe.
 
-4. **Audit dynamic fallback containers as the remaining reference render blocker.**
+4. **Reduce dynamic fallback containers only with text-render proof.**
 
    Static source-backed fallback containers are render-text now. Dynamic
-   fallback containers still own eval output. Reduce only if the dynamic eval
-   result can render text without leaking public fallback metadata.
+   fallback containers still own eval output. Add proof before reducing: the
+   dynamic result must render text without leaking public fallback metadata.
 
-5. **Audit rules-like reference render preservation as a family.**
+5. **Inventory rules-like reference render preservation as one family.**
 
    Rules/Collection/Mixin/Ruleset references still own or preserve output
    surfaces. Inventory which cases are public API versus render-only text and
    do not weaken mixin-ruleset lookup behavior.
 
-6. **Keep the reference public-return/render-text predicate split enforced.**
+6. **Enforce reference public-return/render-text predicate separation.**
 
    Add a focused regression if a future path tries to reuse source-backed
    containers through the public-return predicate. Avoid adding ambiguous
    "reuse" helpers.
 
-7. **Move generated pseudo metadata only with selector proof.**
+7. **Move one generated pseudo metadata fact with selector proof.**
 
    The generated pseudo wrapper still owns visibility/keysets/composed text.
    Pick one fact and move it only with tests covering parentage, extend
