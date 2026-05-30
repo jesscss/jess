@@ -430,6 +430,64 @@ describe('reference', () => {
       }
     });
 
+    it('renders source-backed runtime-binding containers as text without container copies', async () => {
+      const sourceValue = list([any('red'), any('blue')]);
+      sourceValue._location = [10, 1, 11, 20, 1, 21];
+      const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
+      const runtimeScope = rules([]);
+      runtimeScope.scopeFrame = buildScopeFrame(
+        undefined,
+        runtimeScope,
+        undefined,
+        new Map([
+          ['tone', {
+            value: sourceValue,
+            sourceNode: paramDecl
+          }]
+        ])
+      );
+      context.rulesContext = runtimeScope;
+      const sourceParent = sourceValue.parent;
+      const buffer = createRenderBuffer('segmented');
+      const originalCopy = List.prototype.copy;
+      const originalInherit = List.prototype.inherit;
+      let sourceValueCopies = 0;
+      let sourceValueInherits = 0;
+      List.prototype.copy = function copyForCounting(
+        this: List,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this === sourceValue) {
+          sourceValueCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === sourceValue) {
+          sourceValueInherits++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        const refNode = ref({ key: 'tone' }, { type: 'variable' });
+
+        expect(await Promise.resolve(refNode.render(context))).toBe('red, blue');
+        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red, blue');
+        expect(buffer.segments).toEqual(['red, blue']);
+        expect(sourceValueCopies).toBe(0);
+        expect(sourceValueInherits).toBe(0);
+        expect(sourceValue.parent).toBe(sourceParent);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        List.prototype.copy = originalCopy;
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
     it('keeps runtime-binding containers owned for public resolve', async () => {
       const sourceValue = list([any('red'), any('blue')]);
       const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });

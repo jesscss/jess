@@ -1353,11 +1353,11 @@ function copyReferenceValue(node: Node): Node {
   return copied;
 }
 
-function canReuseReferenceValue(node: Node): boolean {
+function canReturnReferenceValue(node: Node): boolean {
   return canReuseLeaf(node);
 }
 
-function canReuseSourceFreeTextContainer(node: Node): boolean {
+function canReturnSourceFreeReferenceContainer(node: Node): boolean {
   if (!isNode(node, N.List | N.Sequence)) {
     return false;
   }
@@ -1367,7 +1367,7 @@ function canReuseSourceFreeTextContainer(node: Node): boolean {
   return node.value.every(child => child instanceof Node && canReuseLeaf(child));
 }
 
-function canRenderTextOnlyReferenceContainer(node: Node): boolean {
+function canRenderReferenceContainerText(node: Node): boolean {
   if (!isNode(node, N.List | N.Sequence)) {
     return false;
   }
@@ -1377,17 +1377,17 @@ function canRenderTextOnlyReferenceContainer(node: Node): boolean {
   return node.value.every(child => child instanceof Node && canReuseLeaf(child));
 }
 
-function canReuseTextOnlyReferenceValue(node: Node): boolean {
-  return canReuseReferenceValue(node) || canReuseSourceFreeTextContainer(node);
+function canReturnReferenceValueWithoutCopy(node: Node): boolean {
+  return canReturnReferenceValue(node) || canReturnSourceFreeReferenceContainer(node);
 }
 
-function canRenderTextOnlyReferenceValue(node: Node): boolean {
-  return canReuseReferenceValue(node) || canRenderTextOnlyReferenceContainer(node);
+function canRenderReferenceValueTextOnly(node: Node): boolean {
+  return canReturnReferenceValue(node) || canRenderReferenceContainerText(node);
 }
 
 function canReuseFallbackValue(node: Node): boolean {
   return node.hasFlag(F_STATIC)
-    && canReuseTextOnlyReferenceValue(node);
+    && canReturnReferenceValueWithoutCopy(node);
 }
 
 function evaluateFallbackValue(
@@ -1399,7 +1399,7 @@ function evaluateFallbackValue(
   if (canReuseFallbackValue(fallbackValue)) {
     if (
       options.textOnly === true
-      && canRenderTextOnlyReferenceValue(fallbackValue)
+      && canRenderReferenceValueTextOnly(fallbackValue)
     ) {
       context.popReference();
       return fallbackValue;
@@ -1499,7 +1499,7 @@ function finalizeDirectNodeReferenceResult(
   options: { textOnly?: boolean } = {}
 ): Node {
   context.popReference();
-  if (options.textOnly === true && canRenderTextOnlyReferenceValue(result)) {
+  if (options.textOnly === true && canRenderReferenceValueTextOnly(result)) {
     return result;
   }
   if (
@@ -1531,11 +1531,11 @@ function finalizeRuntimeVarBindingResult(
       context.popReference();
       return evald;
     }
-    if (options.textOnly === true && canRenderTextOnlyReferenceValue(evald)) {
+    if (options.textOnly === true && canRenderReferenceValueTextOnly(evald)) {
       context.popReference();
       return evald;
     }
-    if (canReuseReferenceValue(evald)) {
+    if (canReturnReferenceValue(evald)) {
       evald.frozen = true;
       context.popReference();
       return evald;
@@ -1553,7 +1553,8 @@ function finalizeRuntimeVarBindingResult(
 
   const evaluateBinding = () => evaluateReferenceValueNode(binding.value, context, {
     preserveRulesLike: referenceNode.options?.type === 'mixin-ruleset',
-    reuseSourceFreeLeaves: true
+    reuseSourceFreeLeaves: true,
+    reuseRenderTextContainers: options.textOnly === true
   });
   const evaluateInRulesContext = () => shouldUseDefinitionRulesContext
     ? withRulesContext(
@@ -1625,7 +1626,7 @@ function finalizeEvaluatedDeclarationReference(
   isMergedAssign: boolean,
   options: { textOnly?: boolean } = {}
 ): Node {
-  if (options.textOnly === true && !isMergedAssign && canRenderTextOnlyReferenceValue(evaluatedNode)) {
+  if (options.textOnly === true && !isMergedAssign && canRenderReferenceValueTextOnly(evaluatedNode)) {
     return evaluatedNode;
   }
   const resultNode = isMergedAssign
@@ -1653,7 +1654,7 @@ function finalizeDeclarationReferenceResult(
     options.textOnly === true
     && !hasImportantDeclarationValue(declaration)
     && !isMergedAssign
-    && canRenderTextOnlyReferenceValue(declarationValue)
+    && canRenderReferenceValueTextOnly(declarationValue)
   ) {
     context.popReference();
     return declarationValue;
@@ -1767,6 +1768,7 @@ function evaluateReferenceValueNode(
   options: {
     preserveRulesLike?: boolean;
     reuseSourceFreeLeaves?: boolean;
+    reuseRenderTextContainers?: boolean;
   } = {}
 ): MaybePromise<Node> {
   if (
@@ -1792,7 +1794,10 @@ function evaluateReferenceValueNode(
     if (isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset') {
       return declValue;
     }
-    if (options.reuseSourceFreeLeaves === true && canReuseTextOnlyReferenceValue(declValue)) {
+    if (options.reuseRenderTextContainers === true && canRenderReferenceValueTextOnly(declValue)) {
+      return declValue;
+    }
+    if (options.reuseSourceFreeLeaves === true && canReturnReferenceValueWithoutCopy(declValue)) {
       return declValue;
     }
     if (options.reuseSourceFreeLeaves === true) {
