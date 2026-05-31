@@ -21,6 +21,7 @@ export type MixinOutputSlot = {
   outputBySource: ReadonlyMap<Node, Node>;
   sourceIndexByOutput: ReadonlyMap<Node, number>;
   placementChildren: readonly Node[];
+  scopeFrame: Rules['scopeFrame'];
   ambientLookup: boolean;
   fallbackFrame?: Rules['scopeFrame'];
   rulesetPlacement?: RulesetMixinPlacementRecord;
@@ -117,13 +118,17 @@ export function getMixinOutputSourceChildren(outputRules: Rules): Node[] | undef
   if (!slot) {
     return undefined;
   }
-  return outputRules.value
+  return slot.placementChildren
     .map(outputChild => slot.sourceByOutput.get(outputChild))
     .filter((source): source is Node => source !== undefined);
 }
 
 export function getMixinOutputPlacementChildren(outputRules: Rules): readonly Node[] | undefined {
   return outputRules.options.mixinOutputSlot?.placementChildren;
+}
+
+export function getMixinOutputScopeFrame(outputRules: Rules): Rules['scopeFrame'] | undefined {
+  return outputRules.options.mixinOutputSlot?.scopeFrame;
 }
 
 export function assignMixinOutputRuleIndexes(
@@ -316,6 +321,7 @@ export function attachMixinOutputSlot(
     ),
     sourceIndexByOutput,
     placementChildren: outputRules.value.slice(),
+    scopeFrame: outputRules.getScopeFrame(),
     ambientLookup: !restrictAmbientLookup,
     ...(options?.fallbackFrame ? { fallbackFrame: options.fallbackFrame } : {}),
     ...(options?.rulesetPlacement

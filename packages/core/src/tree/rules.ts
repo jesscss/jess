@@ -385,6 +385,16 @@ function copyCallableRulesSegment(segment: { source: Node }): Node {
   return copyCallableRulesNode(segment.source);
 }
 
+function createUnlockedCallableRulesSurface(sourceRules: Rules): Rules {
+  return sourceRules.derive();
+}
+
+function createOwnedCallableRulesSurface(sourceRules: Rules): Rules {
+  return sourceRules.derive(
+    getMixinOutputChildSegments(sourceRules).map(copyCallableRulesSegment)
+  );
+}
+
 function isStyleImportPathResolutionError(error: unknown): boolean {
   return error instanceof Error && Reflect.get(error, '_isPathResolutionError') === true;
 }
@@ -4060,14 +4070,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
     }
     function createEmptyDerivedRules(sourceRules: Rules): Rules {
       return createDerivedRulesSurface(sourceRules);
-    }
-    function createUnlockedCallableRulesSurface(sourceRules: Rules): Rules {
-      return sourceRules.derive();
-    }
-    function createOwnedCallableRulesSurface(sourceRules: Rules): Rules {
-      return sourceRules.derive(
-        getMixinOutputChildSegments(sourceRules).map(copyCallableRulesSegment)
-      );
     }
     const resolvedParamBindings = new WeakMap<CallableEntry, {
       bindings: RuntimeVarBindingRecord[];

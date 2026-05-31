@@ -358,6 +358,11 @@ truth, the immediate pop queue, and verification.
   lookup/render still use the owned output children. Rule index assignment now
   reads through `getMixinOutputRuleIndex(...)`, so source-order indexes are a
   slot-owned fact instead of a raw child-index convention.
+- Mixin-output slots also record the output scope frame via
+  `getMixinOutputScopeFrame(...)`, and source-child collection now walks the
+  slot's placement-child snapshot instead of the live wrapper value array.
+  This keeps moving wrapper facts into the slot record while preserving the
+  invariant that owned output children remain the render/lookup surface.
 - Ruleset-as-mixin child ownership was re-audited against complex parent
   ampersands and nested array-path lookups. Source-free scalar leaves are
   already reused, but output children for ruleset-as-mixin calls still need
@@ -411,8 +416,12 @@ truth, the immediate pop queue, and verification.
 - Unguarded static nil-selector source streaming is now locked for declaration,
   comment, invisible variable, and nil child bodies. Nested rulesets, guarded
   nil selectors, and registration-sensitive bodies remain on owned-body paths.
+- Dynamic nil-selector bodies remain an owned-body boundary. A focused proof
+  covers variable lookup inside a nil-selector body: output is correct, source
+  body render is not called, and canonical body parentage is preserved.
 - Callable `Rules` construction is split into named unlocked and owned helper
-  paths. Detached/static callable rules can still use the unlocked wrapper;
+  paths, and those helpers now live outside the long mixin-eval body.
+  Detached/static callable rules can still use the unlocked wrapper;
   ruleset-as-mixin and dynamic callable rules use the owned child-placement
   path because child parentage and lookup indexes remain semantic.
 - `Dimension.operate(...)` and `Color.operate(...)` now share
@@ -420,6 +429,10 @@ truth, the immediate pop queue, and verification.
   helper is deliberately metadata-only: it does not reduce constructor count,
   but it makes future operation result narrowing one boundary instead of two
   local ad hoc patterns.
+- Metadata `rawArgs` remains an owned mutable `List` API boundary, but
+  source-free scalar leaves inside copied metadata args are still reusable.
+  The focused proof now covers the owned sequence surface and scalar-leaf reuse
+  in the same metadata JS call.
 - When Less fixture expectations intentionally diverge from Less 4 output,
   preserve the old Less expectation under the matching `legacy/` expectation
   path before changing the active Jess expectation.
@@ -730,16 +743,16 @@ trend.
 
 | # | Focus | Main result |
 | --- | --- | --- |
-| 1 | Full 15 queue pass: slot placement state, callable split, nil-selector proof, and operation finalizer | `MixinOutputSlot` now owns placement-child snapshots and rule-index lookup helpers while keeping output children as the lookup/render surface; callable `Rules` construction is split into named unlocked/owned helpers; static nil-selector comment/invisible-var/nil bodies are locked on source streaming; dimension/color operation results share `finalizeOperationResult(...)`. Import placement, rules-like reference, direct-index public resolve, declaration adapter, at-rule cleanup, rawArgs, and generated-selector lanes remain queued as focused prototypes. Static `new-node` stayed 293. |
-| 2 | Full 15 queue pass: backlog-driven placement/state prototypes | Unguarded static nil-selector bodies now stream directly from source without owned body eval; mixin-output fallback frames are slot-owned facts; `Rules.derive(...)` empty-frame/fallback-frame behavior and first-use source-free scalar import placement are locked by focused proofs. Import postlude/cache-hit, rules-like reference, direct-index public resolve, declaration merge/important, at-rule cleanup, color finalizer, and rawArgs items remain backlog lanes with sharper next prototypes. Static `new-node` stayed 293. |
-| 3 | Full 15 queue pass: slot/import/reference boundary audit | Mixin-output lookup records, callable `Rules` surfaces, first-use import/comment placement, import postlude, compose wrappers, rules-like references, direct-index predicates, declaration merge/contextual-important paths, at-rule records, nil-selector rulesets, color finalizers, rawArgs, and measurement triggers were audited. Existing slot/import/reference/declaration/at-rule/ruleset tests prove the current boundaries; no semantic code change or measurement rerun was warranted. Static `new-node` stayed 293. |
-| 4 | Full 15 queue pass: placement-record blockers and rawArgs audit | Mixin output, `Rules.derive(...)`, first-use import, compose cache-hit, rules-like reference, declaration assignment, contextual important, at-rule/ruleset body, dimension/color operation, rawArgs, ampersand template, and import timing items were audited. Existing focused tests prove the current blockers; source-free scalar rawArgs already avoid leaf clones while preserving the owned mutable list. Static `new-node` stayed 293. |
-| 5 | Full 15 queue pass: module-context boundary audit | `Rules`, import placement, rules-like references, declaration adapters, public materializers, at-rule body state, dimension/color operations, call dynamic/rawArgs state, and ampersand placement were audited and kept as current ownership/public-result boundaries. Focused surface tests and full changed baseline passed; static `new-node` stayed 293 with zero eval/prepare/resolve contexts. |
-| 6 | Full 15 queue pass: eval/prepare allocation frontier closure | Complex, compound, and selector-list eval result surfaces now route through named selector finalizers, while loop/import error construction is helper-owned. The eval, prepare-registration, and resolve allocation frontier is zero; declaration finalizers, public materializers, rules-like references, first-use imports, import timing, color probes, and rawArgs probes were audited and kept. Static `new-node` dropped to 293. |
-| 7 | Full 15 queue pass: ampersand/pseudo/call helper ownership | Ampersand selector-list template output, generated suffix ampersands, append errors, and parentless Nil outputs now route through named helper/finalizer boundaries; contextual call `!important` and generated pseudo eval output do the same. Rules-like references, first-use imports, selector `with*` placement, declaration finalizers, materializers, dynamic fallback, color, and rawArgs were audited and kept. Static `new-node` stayed 294 while eval contexts dropped to 5. |
-| 8 | Full 15 queue pass: Nil helper family and eval allocation reclassify | Ruleset failed-guard public eval output and selector empty-collapse eval output now use `createPublicNil(...)`, while preserving fresh guard/result surfaces and inherited selector metadata. The remaining eval-context allocations are now ten classified public-result, error, or selector-placement boundaries; parser ambiguity, generated pseudo clone state, import/rules-like placement, materializers, color, dynamic fallback, and rawArgs were audited and kept. Static `new-node` dropped to 294 and eval contexts to 10. |
-| 9 | Full 15 queue pass: Bool helper family and placement clone proof | `Condition`, `Paren(default())`, and boolean primitive `cast(...)` now share `createPublicBool(...)`, leaving one direct `Bool` constructor under tree code; parsed ambiguous `default()` pairs have an explicit matching-error fixture; generated pseudo placement state now survives clone; `Declaration` metadata and the dimension-to-color bridge have named public-result finalizers. Ampersand selector-list merge, import placement, rules-like references, remaining materializers, and non-JS dynamic fallbacks were kept as real boundaries. Static `new-node` dropped to 300. |
-| 10 | Full 15 queue pass: default Bool helper and explicit placement/finalizer state | `DefaultGuard.evalNode(...)` now uses `createPublicBool(...)`, removing the direct eval allocation while preserving fresh mutable public results; parsed negated `default()` mixin output has a no-public-Bool-render suppression fixture; generated pseudo omission moved from `WeakMap` override to declared placement state; `AtRule` metadata and `Dimension.operate(...)` inheritance now have shared finalizers. Ampersand, import, rules-like reference, fallback, and remaining materializer surfaces were classified as real boundaries. Static `new-node` dropped to 302 and eval contexts to 14. |
+| 1 | Full 15 queue pass: slot scope state, callable extraction, nil/rawArgs blockers | `MixinOutputSlot` now owns output scope-frame state and source-child collection reads the placement-child snapshot; callable `Rules` unlocked/owned helpers moved out of the long mixin-eval body; dynamic nil-selector bodies and metadata `rawArgs` have focused blocker proofs while preserving scalar-leaf reuse. Import placement, rules-like references, declaration adapters, at-rule cleanup, and generated-selector lanes remain queued as focused prototypes. Static `new-node` stayed 293. |
+| 2 | Full 15 queue pass: slot placement state, callable split, nil-selector proof, and operation finalizer | `MixinOutputSlot` now owns placement-child snapshots and rule-index lookup helpers while keeping output children as the lookup/render surface; callable `Rules` construction is split into named unlocked/owned helpers; static nil-selector comment/invisible-var/nil bodies are locked on source streaming; dimension/color operation results share `finalizeOperationResult(...)`. Import placement, rules-like reference, direct-index public resolve, declaration adapter, at-rule cleanup, rawArgs, and generated-selector lanes remain queued as focused prototypes. Static `new-node` stayed 293. |
+| 3 | Full 15 queue pass: backlog-driven placement/state prototypes | Unguarded static nil-selector bodies now stream directly from source without owned body eval; mixin-output fallback frames are slot-owned facts; `Rules.derive(...)` empty-frame/fallback-frame behavior and first-use source-free scalar import placement are locked by focused proofs. Import postlude/cache-hit, rules-like reference, direct-index public resolve, declaration merge/important, at-rule cleanup, color finalizer, and rawArgs items remain backlog lanes with sharper next prototypes. Static `new-node` stayed 293. |
+| 4 | Full 15 queue pass: slot/import/reference boundary audit | Mixin-output lookup records, callable `Rules` surfaces, first-use import/comment placement, import postlude, compose wrappers, rules-like references, direct-index predicates, declaration merge/contextual-important paths, at-rule records, nil-selector rulesets, color finalizers, rawArgs, and measurement triggers were audited. Existing slot/import/reference/declaration/at-rule/ruleset tests prove the current boundaries; no semantic code change or measurement rerun was warranted. Static `new-node` stayed 293. |
+| 5 | Full 15 queue pass: placement-record blockers and rawArgs audit | Mixin output, `Rules.derive(...)`, first-use import, compose cache-hit, rules-like reference, declaration assignment, contextual important, at-rule/ruleset body, dimension/color operation, rawArgs, ampersand template, and import timing items were audited. Existing focused tests prove the current blockers; source-free scalar rawArgs already avoid leaf clones while preserving the owned mutable list. Static `new-node` stayed 293. |
+| 6 | Full 15 queue pass: module-context boundary audit | `Rules`, import placement, rules-like references, declaration adapters, public materializers, at-rule body state, dimension/color operations, call dynamic/rawArgs state, and ampersand placement were audited and kept as current ownership/public-result boundaries. Focused surface tests and full changed baseline passed; static `new-node` stayed 293 with zero eval/prepare/resolve contexts. |
+| 7 | Full 15 queue pass: eval/prepare allocation frontier closure | Complex, compound, and selector-list eval result surfaces now route through named selector finalizers, while loop/import error construction is helper-owned. The eval, prepare-registration, and resolve allocation frontier is zero; declaration finalizers, public materializers, rules-like references, first-use imports, import timing, color probes, and rawArgs probes were audited and kept. Static `new-node` dropped to 293. |
+| 8 | Full 15 queue pass: ampersand/pseudo/call helper ownership | Ampersand selector-list template output, generated suffix ampersands, append errors, and parentless Nil outputs now route through named helper/finalizer boundaries; contextual call `!important` and generated pseudo eval output do the same. Rules-like references, first-use imports, selector `with*` placement, declaration finalizers, materializers, dynamic fallback, color, and rawArgs were audited and kept. Static `new-node` stayed 294 while eval contexts dropped to 5. |
+| 9 | Full 15 queue pass: Nil helper family and eval allocation reclassify | Ruleset failed-guard public eval output and selector empty-collapse eval output now use `createPublicNil(...)`, while preserving fresh guard/result surfaces and inherited selector metadata. The remaining eval-context allocations are now ten classified public-result, error, or selector-placement boundaries; parser ambiguity, generated pseudo clone state, import/rules-like placement, materializers, color, dynamic fallback, and rawArgs were audited and kept. Static `new-node` dropped to 294 and eval contexts to 10. |
+| 10 | Full 15 queue pass: Bool helper family and placement clone proof | `Condition`, `Paren(default())`, and boolean primitive `cast(...)` now share `createPublicBool(...)`, leaving one direct `Bool` constructor under tree code; parsed ambiguous `default()` pairs have an explicit matching-error fixture; generated pseudo placement state now survives clone; `Declaration` metadata and the dimension-to-color bridge have named public-result finalizers. Ampersand selector-list merge, import placement, rules-like references, remaining materializers, and non-JS dynamic fallbacks were kept as real boundaries. Static `new-node` dropped to 300. |
 
 ## Metrics Snapshot
 
@@ -759,16 +772,16 @@ Recent hot-path medians. `#1` is the latest pass.
 
 | # | Pass | `functions` | `import-ref` | `mixins-guards` | `extend` | `media` | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Full 15 queue pass: slot placement state, callable split, nil-selector proof, and operation finalizer | 21.53ms | 30.25ms | 33.38ms | 15.96ms | 7.92ms | includes slot placement-child/rule-index state, callable helper split, static nil-selector comment/invisible-var proof, and shared operation finalizer; RSD 8.4%-19.9%, so no speed claim |
-| 2 | Full 15 queue pass: backlog-driven placement/state prototypes | 21.89ms | 29.74ms | 32.55ms | 15.41ms | 8.06ms | includes nil-selector direct source streaming and slot-owned fallback metadata; `functions` RSD 23.3% and `media` RSD 26.7%, so no speed claim |
-| 3 | Full 15 queue pass: slot/import/reference boundary audit | 20.36ms | 26.53ms | 32.24ms | 16.11ms | 7.87ms | read-only row after auditing current slot/import/reference/declaration/at-rule boundaries with no production semantic change; `mixins-guards` RSD was 53.6% and other rows stayed noisy, so no speed claim |
-| 4 | Full 15 queue pass: placement-record blockers and rawArgs audit | 20.12ms | 28.09ms | 31.00ms | 16.63ms | 8.05ms | read-only row after auditing placement-record blockers and rawArgs scalar reuse with no code semantic change; `extend` had 92.8% RSD and other rows stayed noisy, so no speed claim |
-| 5 | Full 15 queue pass: module-context boundary audit | 21.69ms | 28.27ms | 31.23ms | 18.19ms | 7.91ms | read-only row after auditing current module-context boundaries with no code semantic change; RSD stayed 12.8%-31.6%, so no speed claim |
-| 6 | Full 15 queue pass: eval/prepare allocation frontier closure | 22.32ms | 29.56ms | 31.91ms | 15.92ms | 7.35ms | read-only row after moving selector placement and loop/import error construction out of eval/prepare contexts; RSD stayed 8.9%-16.9%, so no speed claim |
-| 7 | Full 15 queue pass: ampersand/pseudo/call helper ownership | 20.65ms | 25.30ms | 30.29ms | 17.80ms | 6.82ms | read-only row after helper-owned ampersand, call important, and generated pseudo placement constructors; `mixins-guards` RSD was 22.2% and `functions`/`import-ref`/`media` RSD stayed high, so no speed claim |
-| 8 | Full 15 queue pass: Nil helper family and eval allocation reclassify | 19.39ms | 24.56ms | 29.53ms | 14.53ms | 6.61ms | read-only row after helper-owned ruleset/selector Nil eval outputs; initial hot-path run raced the baseline core clean and failed with `ERR_MODULE_NOT_FOUND`, rerun passed; RSD stayed 9.0%-17.0%, so no speed claim |
-| 9 | Full 15 queue pass: Bool helper family and placement clone proof | 21.82ms | 29.08ms | 32.68ms | 15.95ms | 7.69ms | saved row after Bool helper family and placement/finalizer proof work; first run raced the core build and failed, rerun passed; import/mixins/media RSD stayed high, so no speed claim |
-| 10 | Full 15 queue pass: default Bool helper and explicit placement/finalizer state | 23.06ms | 28.07ms | 32.13ms | 16.22ms | 8.30ms | read-only row after default guard helper and placement/finalizer refactors; `media` RSD 19.3% and `functions` RSD 16.8%, so no speed claim |
+| 1 | Full 15 queue pass: slot scope state, callable extraction, nil/rawArgs blockers | 22.01ms | 28.81ms | 31.62ms | 15.62ms | 7.39ms | includes slot scope-frame state, callable helper extraction, dynamic nil-selector blocker proof, and rawArgs scalar-reuse proof; RSD 8.6%-19.0%, so no speed claim |
+| 2 | Full 15 queue pass: slot placement state, callable split, nil-selector proof, and operation finalizer | 21.53ms | 30.25ms | 33.38ms | 15.96ms | 7.92ms | includes slot placement-child/rule-index state, callable helper split, static nil-selector comment/invisible-var proof, and shared operation finalizer; RSD 8.4%-19.9%, so no speed claim |
+| 3 | Full 15 queue pass: backlog-driven placement/state prototypes | 21.89ms | 29.74ms | 32.55ms | 15.41ms | 8.06ms | includes nil-selector direct source streaming and slot-owned fallback metadata; `functions` RSD 23.3% and `media` RSD 26.7%, so no speed claim |
+| 4 | Full 15 queue pass: slot/import/reference boundary audit | 20.36ms | 26.53ms | 32.24ms | 16.11ms | 7.87ms | read-only row after auditing current slot/import/reference/declaration/at-rule boundaries with no production semantic change; `mixins-guards` RSD was 53.6% and other rows stayed noisy, so no speed claim |
+| 5 | Full 15 queue pass: placement-record blockers and rawArgs audit | 20.12ms | 28.09ms | 31.00ms | 16.63ms | 8.05ms | read-only row after auditing placement-record blockers and rawArgs scalar reuse with no code semantic change; `extend` had 92.8% RSD and other rows stayed noisy, so no speed claim |
+| 6 | Full 15 queue pass: module-context boundary audit | 21.69ms | 28.27ms | 31.23ms | 18.19ms | 7.91ms | read-only row after auditing current module-context boundaries with no code semantic change; RSD stayed 12.8%-31.6%, so no speed claim |
+| 7 | Full 15 queue pass: eval/prepare allocation frontier closure | 22.32ms | 29.56ms | 31.91ms | 15.92ms | 7.35ms | read-only row after moving selector placement and loop/import error construction out of eval/prepare contexts; RSD stayed 8.9%-16.9%, so no speed claim |
+| 8 | Full 15 queue pass: ampersand/pseudo/call helper ownership | 20.65ms | 25.30ms | 30.29ms | 17.80ms | 6.82ms | read-only row after helper-owned ampersand, call important, and generated pseudo placement constructors; `mixins-guards` RSD was 22.2% and `functions`/`import-ref`/`media` RSD stayed high, so no speed claim |
+| 9 | Full 15 queue pass: Nil helper family and eval allocation reclassify | 19.39ms | 24.56ms | 29.53ms | 14.53ms | 6.61ms | read-only row after helper-owned ruleset/selector Nil eval outputs; initial hot-path run raced the baseline core clean and failed with `ERR_MODULE_NOT_FOUND`, rerun passed; RSD stayed 9.0%-17.0%, so no speed claim |
+| 10 | Full 15 queue pass: Bool helper family and placement clone proof | 21.82ms | 29.08ms | 32.68ms | 15.95ms | 7.69ms | saved row after Bool helper family and placement/finalizer proof work; first run raced the core build and failed, rerun passed; import/mixins/media RSD stayed high, so no speed claim |
 
 Targeted timing notes from prior adjacent benchmark passes:
 
@@ -784,7 +797,7 @@ Targeted timing notes from prior adjacent benchmark passes:
   measured hot spot yet.
 - `callWithContext(...)` rawArgs microbenchmark:
   latest adjacent repeat was `plain positional` 0.0003ms median and
-  `metadata rawArgs` 0.0024ms median over 750 iterations. This isolates
+  `metadata rawArgs` 0.0023ms median over 750 iterations. This isolates
   API-boundary overhead better than plugin-heavy
   fixtures, but it is still a microbenchmark rather than a stylesheet verdict.
 - `Color.operate(...)` microbenchmark: latest adjacent repeat was dimension
@@ -873,20 +886,21 @@ first inventory step for a still-unknown backlog lane. At this point, most
 lanes are known enough that the next item should be a prototype or reduction
 attempt with focused tests.
 
-1. **Mixin output slots: move one lookup predicate to placement-child state.**
+1. **Mixin output slots: route one lookup read through slot placement state.**
 
-   Backlog lane: mixin output slots. Try routing one targeted lookup or
-   ancestry helper through `getMixinOutputPlacementChildren(...)` while still
-   searching owned output children. Success narrows wrapper responsibilities;
-   failure should add a focused proof that placement-child state is still only
-   diagnostic/order metadata.
+   Backlog lane: mixin output slots. Pick a narrow lookup read that currently
+   reconstructs body/source order from the output wrapper and route it through
+   slot placement/index helpers while still searching owned output children.
+   Success removes one wrapper-order dependency; failure should prove why that
+   read must remain live-output driven.
 
-2. **Mixin output slots: prototype slot-owned scope-frame metadata for one no-param mixin.**
+2. **Mixin output slots: prototype visibility/reference gate state for one no-param mixin.**
 
-   Backlog lane: mixin output slots. Record the output scope frame on the slot
-   beside fallback frame and placement children. Success moves one more wrapper
-   fact into explicit state; failure should prove which lookup/render consumer
-   still requires the frame on the `Rules` wrapper.
+   Backlog lane: mixin output slots. Scope frame and fallback frame are now
+   slot facts; try moving one visibility/reference gate into the slot for a
+   no-param, no-guard mixin output. Success narrows wrapper runtime state;
+   failure should lock the exact render or lookup consumer that still reads the
+   gate from `Rules`.
 
 3. **Mutation helpers: reduce one empty-output `Rules.derive(...)` path.**
 
@@ -895,12 +909,13 @@ attempt with focused tests.
    not the issue. Success deletes a derive family; failure records the exact
    inherited option/source/scope facts that still require `derive(...)`.
 
-4. **Mutation helpers: move one callable helper branch into a top-level helper.**
+4. **Mutation helpers: extract one derived rules surface helper family.**
 
-   Backlog lane: mutation-helper reduction. The callable construction branches
-   are named locally now; lift one branch only if the extracted helper keeps
-   ruleset-as-mixin, detached-ruleset, and static mixin tests green and makes
-   ownership reasons clearer outside the long mixin-eval body.
+   Backlog lane: mutation-helper reduction. Callable construction helpers are
+   top-level now; pick the next repeated derived `Rules` surface family and
+   extract the ownership boundary into a named helper. Success removes local
+   ad hoc option mutation; failure should document the exact child/scope/fallback
+   fact that prevents shared handling.
 
 5. **Import placement: prototype nested source-free scalar body placement.**
 
@@ -953,18 +968,21 @@ attempt with focused tests.
    length state over body `Rules` ownership. Success removes an eval-frame
    dependency; failure adds async cleanup proof.
 
-13. **Ruleset body state: prove the next smallest dynamic nil-selector blocker.**
+13. **Ruleset body state: prototype side-state for one dynamic nil-selector scalar declaration.**
 
    Backlog lane: at-rule and ruleset body state. Static nil-selector bodies are
-   now covered for declarations, comments, invisible vars, and nil children.
-   Try one dynamic-but-source-safe-looking child shape; if it cannot stream,
-   lock the exact owned-body requirement with a focused test.
+   covered, and variable-backed nil-selector declarations are now locked as an
+   owned-body blocker. Try the smallest dynamic scalar declaration shape that
+   could carry output as side state; if it cannot stream, add the focused proof
+   for the specific dynamic fact.
 
-14. **Dynamic call state: prototype narrower metadata `rawArgs` container ownership.**
+14. **Dynamic call state: split metadata `rawArgs` list ownership from placement record.**
 
    Backlog lane: dynamic call state. Preserve mutable `this.rawArgs`. Try
-   narrowing the owned container shape without cloning source-free leaves or
-   weakening failure isolation; measure rawArgs only if production code moves.
+   moving source/placement bookkeeping for metadata raw args beside the owned
+   `List` API boundary, keeping source-free scalar leaf reuse. Success narrows
+   copied container responsibilities; failure should prove which mutable API
+   behavior still requires the owned list to carry that fact directly.
 
 15. **Generated selector state: move one generated pseudo or ampersand fact into declared state.**
 

@@ -1,4 +1,4 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, condition, bool, comment } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, condition, bool, comment, ref } from '../index.js';
 import { Context } from '../../context.js';
 import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
@@ -603,6 +603,40 @@ describe('Rule', () => {
     expect(sourceBodyRenderCalls).toBe(0);
     expect(nestedBody.parent).toBe(node);
     expect(nestedBody.value[0]?.parent).toBe(nestedBody);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('keeps dynamic nil-selector bodies on an owned body path', async () => {
+    const dynamicBody = rules([
+      vardecl({ name: any('shade'), value: any('red') }),
+      decl({ name: 'color', value: ref({ key: 'shade' }, { type: 'variable' }) })
+    ]);
+    const node = ruleset({
+      selector: new Nil(),
+      rules: dynamicBody
+    });
+    const originalRender = dynamicBody.render;
+    let sourceBodyRenderCalls = 0;
+    dynamicBody.render = function countSourceBodyRender(
+      this: typeof dynamicBody,
+      ...args: Parameters<typeof originalRender>
+    ): ReturnType<typeof originalRender> {
+      sourceBodyRenderCalls++;
+      return originalRender.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;\n');
+      const buffer = createRenderBuffer('flat');
+      await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('color: red;\n');
+      expect(buffer.parts).toEqual(['color: red;\n']);
+    } finally {
+      dynamicBody.render = originalRender;
+    }
+
+    expect(sourceBodyRenderCalls).toBe(0);
+    expect(dynamicBody.parent).toBe(node);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });

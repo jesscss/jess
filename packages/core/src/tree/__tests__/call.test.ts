@@ -365,7 +365,8 @@ describe('Call', () => {
     }
 
     const root = rules([]);
-    const originalValue = new CountingSequence([any('red'), dimension(10, 'px')]);
+    const originalLeaf = any('red');
+    const originalValue = new CountingSequence([originalLeaf, dimension(10, 'px')]);
     const originalArgs = list([originalValue]);
     root.register('function', new JsFunction({
       name: 'echo',
@@ -962,7 +963,8 @@ describe('Call', () => {
     context.root = root;
     context.rulesContext = root;
 
-    const originalValue = new CountingSequence([any('red'), dimension(10, 'px')]);
+    const originalLeaf = any('red');
+    const originalValue = new CountingSequence([originalLeaf, dimension(10, 'px')]);
     const originalArgs = list([originalValue]);
     const rule = call({
       name: ref({ key: 'first' }, { type: 'function' }),
@@ -976,6 +978,7 @@ describe('Call', () => {
       expect(result.toTrimmedString()).toBe('ok');
       expect(CountingSequence.constructedCopies).toBe(1);
       expect(rawArg).not.toBe(originalValue);
+      expect(rawArg instanceof Sequence ? rawArg.value[0] : undefined).toBe(originalLeaf);
       expect(rawArg?.parent?.parent).toBe(rule);
       expect(originalValue.parent).toBe(originalArgs);
       expect(originalArgs.parent).toBe(rule);
