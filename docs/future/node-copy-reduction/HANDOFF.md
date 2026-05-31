@@ -292,10 +292,15 @@ truth, the immediate pop queue, and verification.
 - Ampersand append/template evaluation now has a tiny
   `AmpersandAppendPlacementState` prototype. It currently carries only source,
   selected parent/output selector, input selector item text/count, append text,
-  template-merge mode, hoist fact, template parts, template replacement
-  selectors/text, selector bit library, final result pointer, and final result
-  text. It does not replace generated selector output; it is a staging point
-  for proving which generated facts can move out of selector wrappers.
+  template-merge mode, hoist fact, template parts, selector bit library, final
+  result pointer, and final result text. Template replacement selectors/text
+  are derived locally at the merge boundary, not stored on placement state.
+  Proven suffix templates such as `&-theme` use structured
+  `appendSelector(...)` output, so complex selector-list parents keep selector
+  metadata and source parentage instead of flattening through one
+  `BasicSelector` string. It does not replace generated selector output; it is
+  a staging point for proving which generated facts can move out of selector
+  wrappers.
 - A `MixinOutputSlot` type now exists as an explicit compatibility record on
   generated mixin-output `Rules` wrappers. Slot-aware helpers cover
   mixin-output identity, ambient versus targeted lookup policy, visibility
@@ -455,8 +460,8 @@ Current top files by static surface count:
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
 Latest audit: `new-node: 308`, `derive: 30`, `with-surface: 41`,
-`copy-leaves: 30`, `clone-leaves: 0`, module-context count `381`,
-eval-context count `26`, prepare-registration count `2`, resolve-context count
+`copy-leaves: 30`, `clone-leaves: 0`, module-context count `384`,
+eval-context count `23`, prepare-registration count `2`, resolve-context count
 `0`. The clone-leaves frontier is zero; remaining work is reducing owned
 placement copies/state carriers, not hiding deep clone behind another helper.
 
@@ -521,13 +526,13 @@ trend.
 
 | # | Focus | Main result |
 | --- | --- | --- |
-| 1 | Full queue pop: generated pseudo placement override | The queue head was completed and the 15-item queue was refreshed. Generated `:is(...)` wrapper omission now lives in the generated pseudo placement override path instead of a standalone side map. Focused proof covers evaluated selector args, wrapper omission, source parentage, selector-bit metadata, existing nested unknown pseudo output, and generated extend behavior. Static counts stayed flat. |
-| 2 | Full queue pop: rules-like reference preservation family | Rules-like reference preservation is centralized in one helper family, with the public/callable surface explicitly separated from list/sequence text-only render containers. Focused reference proof covers render of a rules-like variable reference through a shallow owned surface with zero `Rules.clone()` calls and canonical source parentage. Static counts stayed flat. |
-| 3 | Full queue pop: dynamic fallback container render pre-copy | Dynamic reference fallback `List`/`Sequence` render now skips pre-copying the source container and lets native container render own output only when dynamic children resolve differently; public fallback resolve remains owned. Focused reference proof covers a source-backed dynamic fallback list with zero source-list copy calls, canonical source parentage, and one render-local output inherit. Default-guard/declaration suites stayed green. Static counts stayed flat. |
-| 4 | Full queue pop: root-only static at-rule body render | Static root-only at-rule bodies can now source-render even when hoist/frame side state exists, so a hoisted `@font-face` with a static declaration body skips the owned `Rules` eval target while source body parentage and source at-rule fields stay canonical. Focused at-rule proof, neighboring ruleset/render-buffer suites, audit, and hot-path measurement stayed green/noisy. Static counts stayed flat because this is a runtime branch reduction. |
-| 5 | Full queue pop: optional JS failure fallback render text | Render-only optional JS failure fallback for non-metadata JS functions now returns finalized fallback syntax text instead of deriving a fallback `Call` node; public resolve still owns the fallback `Call`, metadata/rawArgs failure remains owned, and focused proof covers two render passes with zero `deriveCall` plus one public resolve with one owned result. Reference/default-guard focused suites stayed green. Static counts stayed flat. |
-| 6 | Full queue pop: static invisible var at-rule body render | The shared static body direct-render predicate now treats static invisible `VarDeclaration` children as no-output leaves, so direct at-rule body render can skip the owned `Rules` eval target for static bodies that include invisible definitions. Focused proof covers zero `Rules.eval()` and zero `VarDeclaration.eval()` calls while source body/var parentage stays canonical. Rules/ruleset focused suites stayed green. Static counts stayed flat because this is a runtime branch reduction. |
-| 7 | Full queue pop: at-rule body result runtime-read cleanup | Body result finalization now reads evaluated prelude/body/output from the invocation record/context state only and no longer falls back to `AtRuleBodyRuntimeState`; the runtime map remains for evaluated-node render APIs. Focused at-rule proof and broader queue-family suites stayed green. Reference, optional-call, selector, ampersand, import, declaration, guard, control, and scalar surfaces were re-audited and kept as blockers where no safe deletion was proven. Static counts stayed flat. |
+| 1 | Full queue pop: structured ampersand template suffix merge | `&-suffix` template merge now uses structured `appendSelector(...)` output where proven, so complex selector-list parents keep selector-bit metadata and source parentage. Template replacement selectors/text no longer live on ampersand placement state. Focused ampersand/at-rule/extend proof stayed green; static counts stayed flat with helper context shifted out of `evalNode`. |
+| 2 | Full queue pop: generated pseudo placement override | The queue head was completed and the 15-item queue was refreshed. Generated `:is(...)` wrapper omission now lives in the generated pseudo placement override path instead of a standalone side map. Focused proof covers evaluated selector args, wrapper omission, source parentage, selector-bit metadata, existing nested unknown pseudo output, and generated extend behavior. Static counts stayed flat. |
+| 3 | Full queue pop: rules-like reference preservation family | Rules-like reference preservation is centralized in one helper family, with the public/callable surface explicitly separated from list/sequence text-only render containers. Focused reference proof covers render of a rules-like variable reference through a shallow owned surface with zero `Rules.clone()` calls and canonical source parentage. Static counts stayed flat. |
+| 4 | Full queue pop: dynamic fallback container render pre-copy | Dynamic reference fallback `List`/`Sequence` render now skips pre-copying the source container and lets native container render own output only when dynamic children resolve differently; public fallback resolve remains owned. Focused reference proof covers a source-backed dynamic fallback list with zero source-list copy calls, canonical source parentage, and one render-local output inherit. Default-guard/declaration suites stayed green. Static counts stayed flat. |
+| 5 | Full queue pop: root-only static at-rule body render | Static root-only at-rule bodies can now source-render even when hoist/frame side state exists, so a hoisted `@font-face` with a static declaration body skips the owned `Rules` eval target while source body parentage and source at-rule fields stay canonical. Focused at-rule proof, neighboring ruleset/render-buffer suites, audit, and hot-path measurement stayed green/noisy. Static counts stayed flat because this is a runtime branch reduction. |
+| 6 | Full queue pop: optional JS failure fallback render text | Render-only optional JS failure fallback for non-metadata JS functions now returns finalized fallback syntax text instead of deriving a fallback `Call` node; public resolve still owns the fallback `Call`, metadata/rawArgs failure remains owned, and focused proof covers two render passes with zero `deriveCall` plus one public resolve with one owned result. Reference/default-guard focused suites stayed green. Static counts stayed flat. |
+| 7 | Full queue pop: static invisible var at-rule body render | The shared static body direct-render predicate now treats static invisible `VarDeclaration` children as no-output leaves, so direct at-rule body render can skip the owned `Rules` eval target for static bodies that include invisible definitions. Focused proof covers zero `Rules.eval()` and zero `VarDeclaration.eval()` calls while source body/var parentage stays canonical. Rules/ruleset focused suites stayed green. Static counts stayed flat because this is a runtime branch reduction. |
 
 ## Metrics Snapshot
 
@@ -541,19 +546,19 @@ Latest static audit:
 
 | `new-node` | `derive` | `with-surface` | `copy-leaves` | `clone-leaves` | module | eval | prepare | resolve |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 308 | 30 | 41 | 30 | 0 | 381 | 26 | 2 | 0 |
+| 308 | 30 | 41 | 30 | 0 | 384 | 23 | 2 | 0 |
 
 Recent hot-path medians. `#1` is the latest pass.
 
 | # | Pass | `functions` | `import-ref` | `mixins-guards` | `extend` | `media` | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Full queue pop: generated pseudo placement override | 21.15ms | 28.30ms | 31.41ms | 16.14ms | 7.74ms | pre-change read-only sample was globally noisy and slow at 24.23/31.28/43.07/24.45/12.31ms; saved row returned near the earlier band, so do not claim speed, but the media spike did not repeat |
-| 2 | Full queue pop: rules-like reference preservation family | 21.96ms | 28.60ms | 33.08ms | 16.04ms | 9.93ms | pre-change read-only sample was 31.11/30.65/34.40/16.40/9.78ms, so the high media baseline existed before this pass; saved media was +8.7% against prior saved row with 25.0% RSD, suspicious/noisy and worth watching |
-| 3 | Full queue pop: dynamic fallback container render pre-copy | 22.32ms | 27.99ms | 32.80ms | 16.08ms | 9.13ms | mixed descriptive sample: `mixins-guards` compared faster and `media` slower while other fixtures were noise; do not claim speed without adjacent repeats |
-| 4 | Full queue pop: root-only static at-rule body render | 21.96ms | 29.63ms | 35.81ms | 16.50ms | 8.39ms | saved sample was noise for every fixture; `import-ref` stayed near 30ms instead of repeating the prior 34ms concern, but high RSD keeps this descriptive only |
-| 5 | Full queue pop: optional JS failure fallback render text | 21.88ms | 29.88ms | 34.89ms | 16.95ms | 8.66ms | saved sample had high RSD on `import-ref`/`mixins-guards`; `import-ref` no longer repeated the prior 34ms concern in this sample, but treat as descriptive/no speed claim |
-| 6 | Full queue pop: static invisible var at-rule body render | 21.93ms | 34.38ms | 34.06ms | 16.23ms | 8.43ms | read-only repeat was 32.59/34.05/32.38/16.13/9.15ms; `import-ref` repeated around 34ms while other fixtures were noisy, so treat import-reference as suspicious and watch the next adjacent runs before claiming speed |
-| 7 | Full queue pop: at-rule body result runtime-read cleanup | 22.05ms | 28.48ms | 36.36ms | 16.73ms | 8.63ms | read-only sample was 22.29/31.69/32.68/15.89/7.79ms; saved comparison had `import-ref` faster but `extend`/`media` extreme RSD and suspicious slower `media`, so treat as descriptive/noisy until repeated |
+| 1 | Full queue pop: structured ampersand template suffix merge | 21.83ms | 28.57ms | 32.30ms | 16.08ms | 8.70ms | pre-change read-only sample was globally noisy/slow at 28.84/32.33/34.68/21.08/15.60ms; saved media is +12.4% vs prior saved row but much lower than pre-change, so keep watching/no speed claim |
+| 2 | Full queue pop: generated pseudo placement override | 21.15ms | 28.30ms | 31.41ms | 16.14ms | 7.74ms | pre-change read-only sample was globally noisy and slow at 24.23/31.28/43.07/24.45/12.31ms; saved row returned near the earlier band, so do not claim speed, but the media spike did not repeat |
+| 3 | Full queue pop: rules-like reference preservation family | 21.96ms | 28.60ms | 33.08ms | 16.04ms | 9.93ms | pre-change read-only sample was 31.11/30.65/34.40/16.40/9.78ms, so the high media baseline existed before this pass; saved media was +8.7% against prior saved row with 25.0% RSD, suspicious/noisy and worth watching |
+| 4 | Full queue pop: dynamic fallback container render pre-copy | 22.32ms | 27.99ms | 32.80ms | 16.08ms | 9.13ms | mixed descriptive sample: `mixins-guards` compared faster and `media` slower while other fixtures were noise; do not claim speed without adjacent repeats |
+| 5 | Full queue pop: root-only static at-rule body render | 21.96ms | 29.63ms | 35.81ms | 16.50ms | 8.39ms | saved sample was noise for every fixture; `import-ref` stayed near 30ms instead of repeating the prior 34ms concern, but high RSD keeps this descriptive only |
+| 6 | Full queue pop: optional JS failure fallback render text | 21.88ms | 29.88ms | 34.89ms | 16.95ms | 8.66ms | saved sample had high RSD on `import-ref`/`mixins-guards`; `import-ref` no longer repeated the prior 34ms concern in this sample, but treat as descriptive/no speed claim |
+| 7 | Full queue pop: static invisible var at-rule body render | 21.93ms | 34.38ms | 34.06ms | 16.23ms | 8.43ms | read-only repeat was 32.59/34.05/32.38/16.13/9.15ms; `import-ref` repeated around 34ms while other fixtures were noisy, so treat import-reference as suspicious and watch the next adjacent runs before claiming speed |
 
 Measurement commands:
 
@@ -584,10 +589,13 @@ Measurement commands:
   direct-index cases. Do not extend that to dynamic or rules-like containers
   without ownership proof.
 - Ampersand append/template output remains generated selector output, not just
-  carrier metadata. A future placement state must carry the source ampersand,
-  source parent selector, append/template string, validated replacement text or
-  selector-list items, hoist/root placement facts, selector-bit/library facts,
-  and final selector text. It must not grow into a parallel selector AST.
+  carrier metadata. The current placement state carries source/parent/output
+  selector, append/template parts, hoist/root placement facts,
+  selector-bit/library facts, and final result text. Replacement selectors/text
+  are local merge facts, and suffix templates now preserve structure through
+  `appendSelector(...)`; prefix/mid-template forms still flatten by text until
+  focused proof says a structured model is correct. It must not grow into a
+  parallel selector AST.
 - Empty rest / `@arguments` binding placeholders preserve current Less
   behavior. Do not delete them unless the behavior is explicitly changed.
 
@@ -607,50 +615,44 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Reduce ampersand append/template wrapper work with complex cases.**
-
-   Cover complex parent selectors, template merge, hoist/root placement,
-   selector-bit metadata, and final selector text before replacing generated
-   selector wrappers with placement state.
-
-2. **Trim ruleset header/cache carrier state around generated pseudo headers.**
+1. **Trim ruleset header/cache carrier state around generated pseudo headers.**
 
    Focus on header cache and generated pseudo header behavior, not old trivia
    plumbing. Delete state only where render-local carrier facts already prove
    source selectors remain canonical.
 
-3. **Reduce import-style first-use placement for non-mutating plain imports.**
+2. **Reduce import-style first-use placement for non-mutating plain imports.**
 
    Target non-reference, non-multiple, no-`with`, cache-stable imports. Keep
    once/cache/source-map behavior intact and measure because speed decides the
    import surface.
 
-4. **Decide inline import raw text streaming with source-map/postlude proof.**
+3. **Decide inline import raw text streaming with source-map/postlude proof.**
 
    Inline imports still allocate `Any(source)`. Replace only if raw text,
    postlude wrapping, and source-map/public output behavior can stream
    directly.
 
-5. **Reduce declaration custom-property interpolation state only.**
+4. **Reduce declaration custom-property interpolation state only.**
 
    Custom properties must preserve authored raw value text after the colon
    except evaluated interpolation. Target the interpolation path, not raw value
    spacing normalization.
 
-6. **Keep or remove fresh guard/condition `Bool` with public mutability proof.**
+5. **Keep or remove fresh guard/condition `Bool` with public mutability proof.**
 
    Render is text-only. Public eval/resolve returns fresh `Bool`; only reduce
    this if returned-node mutability, parentage, and source ownership are
    explicitly proven safe.
 
-7. **Reduce public at-rule result allocation only for proven no-op body resolves.**
+6. **Reduce public at-rule result allocation only for proven no-op body resolves.**
 
    Public body `resolve(...)` now allocates its result after body eval. A
    future pass may return the source only for truly no-op dynamic body resolves,
    but must prove public mutability, visibility, prelude/body identity, and
    runtime-state behavior before removing the owned API result.
 
-8. **Reduce remaining at-rule runtime-map writes only at evaluated-node boundaries.**
+7. **Reduce remaining at-rule runtime-map writes only at evaluated-node boundaries.**
 
    Body result finalization no longer reads the runtime map. Inventory runtime
    writes and keep them only where evaluated-node render APIs consume them:
@@ -658,7 +660,7 @@ family can be audited and reduced.
    and public evaluated node serialization. Do not remove a write used by those
    APIs just because body direct render no longer needs it.
 
-9. **Recheck static direct-body render performance on import-reference.**
+8. **Recheck static direct-body render performance on import-reference.**
 
    Static invisible var body render is correct, but the first two hot-path
    samples kept `import-reference.less` around 34ms. Before expanding this
@@ -666,7 +668,7 @@ family can be audited and reduced.
    pass and tighten or revert the direct path if the slowdown holds under a
    cleaner baseline.
 
-10. **Reduce optional JS success render output only with single-invocation proof.**
+9. **Reduce optional JS success render output only with single-invocation proof.**
 
    Failure render no longer owns a fallback `Call` for non-metadata JS. Success
    output still flows through normal node output because returned nodes may
@@ -674,7 +676,7 @@ family can be audited and reduced.
    one render path can finalize text without duplicating user-code invocation
    or weakening returned-node semantics.
 
-11. **Shrink non-static at-rule body render below an owned `Rules` eval target.**
+10. **Shrink non-static at-rule body render below an owned `Rules` eval target.**
 
    Static root-only declaration/comment bodies now source-render even with
    hoist side state. Remaining at-rule body ownership is dynamic,
@@ -683,7 +685,7 @@ family can be audited and reduced.
    parentage, visibility, layer/extend registration, output proof, and
    hot-path measurement.
 
-12. **Reduce dynamic declaration/reference containers below render-local output ownership.**
+11. **Reduce dynamic declaration/reference containers below render-local output ownership.**
 
    Dynamic fallback render now skips the source pre-copy, but native
    `List`/`Sequence` render still owns a render-local output container when
@@ -692,27 +694,35 @@ family can be audited and reduced.
    changing public `resolve(...)`, assignment merges, default guards, or
    rules-like reference semantics.
 
-13. **Reduce rules-like reference surfaces only with placement-state proof.**
+12. **Reduce rules-like reference surfaces only with placement-state proof.**
 
    Rules-like reference preservation is centralized but still owns a shallow
    surface. Reduce it only when a placement record can carry lookup/callable
    identity, source-node parentage, visibility, reference-stack cleanup, and
    nested mixin-ruleset behavior without reusing mutable source nodes.
 
-14. **Watch media hot-path drift beside the next runtime change.**
+13. **Watch media hot-path drift beside the next runtime change.**
 
    `media.less` was already high in the pre-change read-only sample and stayed
    high in the saved row. Repeat measurement adjacent to the next selector,
    at-rule, or import runtime change and treat repeated high media medians as a
    real investigation target, not a one-row verdict.
 
-15. **Reduce generated pseudo wrapper only after visibility/extend placement state.**
+14. **Reduce generated pseudo wrapper only after visibility/extend placement state.**
 
    Wrapper omission is now placement state, but the generated pseudo wrapper
    still owns parentage, visibility, selector-bit metadata, extend metadata,
    and composed selector text. Do not remove the wrapper until one of those
    facts moves into a small placement record with focused selector, extend,
    and nested pseudo proof.
+
+15. **Reduce remaining ampersand template flattening only with prefix/general-template proof.**
+
+   Structured `&-suffix` templates now keep selector metadata through
+   `appendSelector(...)`. Other template shapes still flatten to
+   `BasicSelector` text because prefix/mid-template semantics are text-based.
+   Reduce only with focused prefix/general-template output, parentage,
+   selector-bit, extend, hoist, and raw comma-string proof.
 
 
 ## Backlog

@@ -436,6 +436,39 @@ describe('Ampersand', () => {
     expect(css).not.toMatch(/[,\n]\s*satsuma[,\s{]/m);
   });
 
+  it('derives complex selector-list merge templates with hoist and selector metadata', async () => {
+    const sourceSelector = sellist([
+      sel([el('.one'), co('>'), el('.child')]),
+      sel([el('.two'), co(' '), el('.child')])
+    ]);
+    const sourceChildren = [...sourceSelector.value];
+    const frame = ruleset({
+      selector: sourceSelector,
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+
+    const resolved = await amp('&-theme').resolve(context);
+
+    expect(resolved).toBeInstanceOf(Selector);
+    if (!(resolved instanceof Selector)) {
+      throw new Error(`Expected Selector, got ${resolved.type}`);
+    }
+    expect(resolved.toTrimmedString()).toBe('.one > .child-theme,\n.two .child-theme');
+    expect(resolved.hoistToRoot).toBe(true);
+    const keySet = resolved.getKeySet(context);
+    expect(context.selectorBits.hasBit(keySet, '.one')).toBe(true);
+    expect(context.selectorBits.hasBit(keySet, '.two')).toBe(true);
+    expect(context.selectorBits.hasBit(keySet, '.child-theme')).toBe(true);
+    expect(context.selectorBits.hasBit(resolved.visibleKeySet, '.one')).toBe(true);
+    expect(context.selectorBits.hasBit(resolved.visibleKeySet, '.two')).toBe(true);
+    expect(context.selectorBits.hasBit(resolved.visibleKeySet, '.child-theme')).toBe(true);
+    expect(frame.value.selector).toBe(sourceSelector);
+    expect(sourceSelector.toTrimmedString()).toBe('.one > .child,\n.two .child');
+    expect(sourceSelector.value).toEqual(sourceChildren);
+    expect(sourceChildren.map(child => child.parent)).toEqual(sourceChildren.map(() => sourceSelector));
+  });
+
   it('should validate each item individually when distributing template', async () => {
     // .one starts with '.' and '-' before '&' is ident — invalid head join per item
     const node = rules([
