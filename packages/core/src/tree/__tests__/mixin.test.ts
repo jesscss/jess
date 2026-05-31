@@ -15,6 +15,7 @@ import {
   getMixinOutputSourceChild,
   getMixinOutputSourceChildren,
   getMixinOutputSourceIndex,
+  getMixinOutputLookupState,
   getMixinOutputRuleIndex,
   getRulesetMixinPlacementSourceIndex,
   isFromRestrictedMixinOutput,
@@ -1206,6 +1207,13 @@ describe('Mixin', () => {
       expect(output.getScopeFrame().fallbackFrame).toBe(fallbackFrame);
       expect(canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: false })).toBe(false);
       expect(canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(true);
+      expect(getMixinOutputLookupState(entry, { type: 'Mixin', hasTarget: true })).toEqual({
+        ambientLookup: false,
+        canEnter: true,
+        hasTarget: true,
+        referenceMode: false,
+        visibility: 'public'
+      });
       expect(canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(false);
       expect(canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: true })).toBe(true);
 

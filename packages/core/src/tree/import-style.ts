@@ -259,6 +259,15 @@ type ImportPlacementOptionsState = {
 const importPlacementStates = new WeakMap<Rules, ImportPlacementState>();
 const importPlacementOptionsStates = new WeakMap<Rules, ImportPlacementOptionsState>();
 
+export type ImportPostludePlacementState = {
+  sourceRules: Rules;
+  outputRules: Rules;
+  postludeNames: readonly string[];
+  postludeNodes: readonly Node[];
+};
+
+const importPostludePlacementStates = new WeakMap<Rules, ImportPostludePlacementState>();
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
@@ -385,6 +394,10 @@ export function getImportPlacementReferenceMode(placementRules: Rules): RulesOpt
 export function getImportPlacementRulesVisibility(placementRules: Rules): RulesOptions['rulesVisibility'] | undefined {
   return importPlacementOptionsStates.get(placementRules)?.rulesVisibility
     ?? placementRules.options.rulesVisibility;
+}
+
+export function getImportPostludePlacement(outputRules: Rules): ImportPostludePlacementState | undefined {
+  return importPostludePlacementStates.get(outputRules);
 }
 
 /**
@@ -1137,6 +1150,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const postludeNodes = this.getPostludeNodes(postlude);
     const anchorRules = rules;
     let wrappedRules: Rules = rules;
+    const postludeNames: string[] = [];
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
       if (isNode(current, N.Call)) {
@@ -1146,14 +1160,22 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           const prelude = args.length <= 1 ? args[0] : current.value.args;
           if (prelude) {
             wrappedRules = this.wrapRulesInAtRuleSurface(anchorRules, wrappedRules, `@${callName}`, prelude);
+            postludeNames.unshift(`@${callName}`);
             continue;
           }
         }
       }
 
       wrappedRules = this.wrapRulesInAtRuleSurface(anchorRules, wrappedRules, '@media', current);
+      postludeNames.unshift('@media');
     }
 
+    importPostludePlacementStates.set(wrappedRules, {
+      sourceRules: rules,
+      outputRules: wrappedRules,
+      postludeNames,
+      postludeNodes
+    });
     return wrappedRules;
   }
 }

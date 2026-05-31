@@ -32,7 +32,7 @@ import {
   atrule
 } from '../index.js';
 import { Rules as RulesClass } from '../index.js';
-import { getImportPlacementReferenceMode, getImportPlacementRulesVisibility, getImportPlacementSourceChild } from '../import-style.js';
+import { getImportPlacementReferenceMode, getImportPlacementRulesVisibility, getImportPlacementSourceChild, getImportPostludePlacement } from '../import-style.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { Context } from '../../context.js';
@@ -2014,6 +2014,45 @@ describe('Style import', () => {
       delete referencePlacement.options.rulesVisibility;
       expect(getImportPlacementReferenceMode(referencePlacement)).toBe(true);
       expect(getImportPlacementRulesVisibility(referencePlacement)?.Ruleset).toBe('optional');
+    });
+
+    it('records postlude wrapper order beside nested import placement output', async () => {
+      context.sourceTrees.set('postlude-order.jess', rules([
+        ruleset({
+          selector: sellist([sel([el('.imported')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('postlude-order.jess'))
+        }, {
+          type: 'import',
+          importOptions: {
+            multiple: true,
+            postlude: list([
+              call({ name: 'layer', args: list([any('components')]) }),
+              call({ name: 'media', args: list([any('screen')]) })
+            ])
+          }
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const wrapped = evald.value[0];
+      expect(isNode(wrapped, N.Rules)).toBe(true);
+      if (!isNode(wrapped, N.Rules)) {
+        throw new TypeError('Expected postlude Rules wrapper');
+      }
+      const placement = getImportPostludePlacement(wrapped);
+      expect(placement?.postludeNames).toEqual(['@layer', '@media']);
+      expect(placement?.outputRules).toBe(wrapped);
+      expect(isNode(placement?.sourceRules.value[0], N.Ruleset)).toBe(true);
+      expect(isNode(wrapped.value[0], N.AtRule)).toBe(true);
+      expect(await evald.render(context)).toContain('@layer components');
     });
 
     it('import type can be imported multiple times', async () => {

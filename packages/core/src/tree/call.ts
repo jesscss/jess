@@ -103,6 +103,11 @@ export function getCallRawArgsPlacement(rawArgs: List<Node>): CallRawArgsPlaceme
   };
 }
 
+export function getCallRawArgSourceNode(rawArgs: List<Node>, index: number): Node | undefined {
+  const placement = getCallRawArgsPlacement(rawArgs);
+  return placement?.sourceArgs.value[index];
+}
+
 /**
  * This is an exported type that allows extra properties
  * and specifies the shape of `this` for a function call.

@@ -13,6 +13,14 @@ export type RulesEntryVisibility = {
   node?: Rules['options']['rulesVisibility'][string];
 };
 
+export type MixinOutputLookupState = {
+  ambientLookup: boolean;
+  canEnter: boolean;
+  hasTarget: boolean;
+  referenceMode: RulesOptions['referenceMode'];
+  visibility?: Rules['options']['rulesVisibility'][string];
+};
+
 export type MixinOutputSlot = {
   sourceRules: Rules;
   outputRules: Rules;
@@ -305,6 +313,27 @@ export function canEnterRulesEntryForLookup(
       && (type === undefined || isVisibleRulesEntry(entry, type));
   }
   return type !== undefined && isVisibleRulesEntry(entry, type);
+}
+
+export function getMixinOutputLookupState(
+  entry: RulesEntryLike,
+  lookup: {
+    type?: LookupVisibility;
+    hasTarget?: boolean;
+  }
+): MixinOutputLookupState | undefined {
+  const slot = entry.node.options?.mixinOutputSlot;
+  if (!slot) {
+    return undefined;
+  }
+  const { type } = lookup;
+  return {
+    ambientLookup: slot.ambientLookup,
+    canEnter: canEnterRulesEntryForLookup(entry, lookup),
+    hasTarget: lookup.hasTarget === true,
+    referenceMode: getMixinOutputReferenceMode(entry.node),
+    ...(type ? { visibility: getRulesEntryVisibility(entry, type) } : {})
+  };
 }
 
 export function attachMixinOutputSlot(
