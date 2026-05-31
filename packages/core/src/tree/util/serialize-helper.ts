@@ -1,7 +1,7 @@
 import type { AtRule } from '../at-rule.js';
 import type { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
-import { F_AMPERSAND, F_EXTENDED, type Node } from '../node.js';
+import { F_EXTENDED, type Node } from '../node.js';
 import type { IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
 import {
@@ -13,15 +13,12 @@ import {
   saveArrayState,
   restoreArrayState,
   saveSetState,
-  restoreSetState,
-  getCachedComposedSelector,
-  setCachedComposedSelector
+  restoreSetState
 } from './print.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import type { Selector } from '../selector.js';
-import { SelectorList } from '../selector-list.js';
 import { consumeTriviaText, getPrintableTriviaTokens, isBlockCommentTriviaToken } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
 
@@ -70,27 +67,6 @@ function captureNodeTrivia(
 
 function renderNodeText(node: Node, options: FinalPrintOptions): string {
   return options.writer.preview(() => node.toTrimmedString(options));
-}
-
-function isBareAmpersandSelectorForSerialize(sel: Selector | Nil | undefined): boolean {
-  const isBareAmpNode = (node: Selector): boolean => {
-    return isNode(node, N.Ampersand)
-      && (node.value.appendValue === undefined || node.value.appendValue === '');
-  };
-  if (!sel || sel instanceof Nil) {
-    return false;
-  }
-  if (isBareAmpNode(sel)) {
-    return true;
-  }
-  if (isNode(sel, N.ComplexSelector) || isNode(sel, N.CompoundSelector)) {
-    const [first] = sel.value;
-    return sel.value.length === 1 && first !== undefined && isBareAmpNode(first);
-  }
-  if (isNode(sel, N.SelectorList)) {
-    return (sel as SelectorList).value.every((item: Selector) => isBareAmpersandSelectorForSerialize(item));
-  }
-  return false;
 }
 
 type RenderRuleEntry = {
@@ -147,8 +123,10 @@ function canMergeSameHeaderRuleset(
   const currentSelector = currentOwn ?? currentFrame.value.selector;
   const priorSelector = priorOwn ?? priorFrame.value.selector;
   return (
-    rulesetHasExtendedTopLevelSelector(currentFrame)
-    || rulesetHasExtendedTopLevelSelector(priorFrame)
+    currentFrame.hasFlag(F_EXTENDED)
+    || priorFrame.hasFlag(F_EXTENDED)
+    || Ruleset.hasExtendedTopLevelSelector(currentFrame.value.selector)
+    || Ruleset.hasExtendedTopLevelSelector(priorFrame.value.selector)
     || isNode(currentOwn, N.Ampersand)
     || isNode(priorOwn, N.Ampersand)
     || containsNodeType(currentSelector, 'InterpolatedSelector')
@@ -211,8 +189,8 @@ export function flattenVisibleRulesForRender(
         const ownSelector = (child.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
         if (
           ownSelector
-          && isBareAmpersandSelectorForSerialize(ownSelector)
-          && !isBareAmpersandSelectorForSerialize(child.value.selector)
+          && Ruleset.isBareAmpersandSelector(ownSelector)
+          && !Ruleset.isBareAmpersandSelector(child.value.selector)
         ) {
           const visibleChildren = getContainerRules(child)!.value.filter(node => node.visible || node.fullRender);
           const hasVisibleContainers = visibleChildren.some(node => isNode(node, N.Rules | N.Ruleset | N.AtRule));
@@ -227,7 +205,7 @@ export function flattenVisibleRulesForRender(
       if (
         allowTransparentFlatten
         && isNode(child, N.Ruleset)
-        && isBareAmpersandSelectorForSerialize(child.value.selector)
+        && Ruleset.isBareAmpersandSelector(child.value.selector)
         && getContainerRules(child)
       ) {
         iterateRules(getContainerRules(child)!, true, true);
@@ -309,25 +287,6 @@ export function indent(depth: number): string {
   return ''.padStart(depth * 2);
 }
 
-function rulesetHasExtendedTopLevelSelector(node: Ruleset): boolean {
-  // The ruleset itself gets F_EXTENDED when an extend points at (or through)
-  // it, even in the self-extend case where the items themselves don't carry
-  // the flag (a self-extend adds nothing new). Check the ruleset first, then
-  // fall back to the item-level check for selectors where the ruleset flag
-  // hasn't propagated.
-  if (node.hasFlag(F_EXTENDED)) {
-    return true;
-  }
-  const selector = node.value.selector;
-  if (!selector || selector instanceof Nil) {
-    return false;
-  }
-  if (isNode(selector, N.SelectorList)) {
-    return selector.value.some(item => item.hasFlag(F_EXTENDED));
-  }
-  return selector.hasFlag(F_EXTENDED);
-}
-
 function getHoistedParent(
   node: AtRule | Ruleset,
   options: FinalPrintOptions
@@ -393,65 +352,17 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
   let isTransparentWrapper = false;
   if (options.collapseNesting && isNode(node, N.Ruleset)) {
     const rs = node as Ruleset;
-    const rawParentComposed = options.composedSelectorStack?.at(-1);
-    const referenceComposeAmpCount = ((rs.options?.ownSelector ?? rs.value.selector)?.valueOf()?.match(/&/g) ?? []).length;
-    // In reference mode, strip non-extended items from a SelectorList parent
-    // before composing. This mirrors the filter applied at header render time
-    // for reference-imported rulesets — the visible compose parent is only
-    // the items that will actually appear in the output.
-    const parentComposed = (
-      options.referenceMode === true
-      && options.referenceRenderEnabled === true
-      && rawParentComposed
-    )
-      ? Ruleset.filterExtendedForReferenceCompose(
-        rawParentComposed,
-        referenceComposeAmpCount > 1
-      ) ?? rawParentComposed
-      : rawParentComposed;
     const sel = rs.value.selector;
     const isBareAmp = sel && !(sel instanceof Nil) && isNode(sel, N.Ampersand);
     if (isBareAmp) {
       isTransparentWrapper = true;
     } else {
-      let cached = getCachedComposedSelector(options, rs);
-      if (!cached && sel && !(sel instanceof Nil)) {
-        const ownSelector = rs.options?.ownSelector;
-        const structuralParentFrame = rs.hoistToRoot === true ? rs.parent?.parent : undefined;
-        const structuralParent = isNode(structuralParentFrame, N.Ruleset)
-          ? structuralParentFrame.value.selector
-          : null;
-        const composeParent = (parentComposed && !(parentComposed instanceof Nil) ? parentComposed : null) ?? (
-          structuralParent && !(structuralParent instanceof Nil) ? structuralParent : null
-        );
-        const hasExtendedComposeContext = Boolean(
-          rulesetHasExtendedTopLevelSelector(rs)
-          || (composeParent && !(composeParent instanceof Nil) && (
-            composeParent.hasFlag(F_EXTENDED)
-            || (isNode(composeParent, N.SelectorList)
-              && composeParent.value.some(item => item.hasFlag(F_EXTENDED)))
-          ))
-        );
-        const composeInput = (
-          ownSelector
-          && !(ownSelector instanceof Nil)
-          && ownSelector.hasFlag(F_AMPERSAND)
-          && !isBareAmpersandSelectorForSerialize(ownSelector)
-          && composeParent
-          && hasExtendedComposeContext
-        )
-          ? ownSelector
-          : sel;
-        cached = composeParent
-          ? Ruleset.composeSelector(composeInput, composeParent)
-          : composeInput;
-        if (options.referenceMode === true && options.referenceRenderEnabled === true) {
-          cached = Ruleset.expandGeneratedIsForReferenceCompose(cached) ?? cached;
-        }
-        if (composeParent) {
-          setCachedComposedSelector(options, rs, cached);
-        }
-      }
+      const cached = sel && !(sel instanceof Nil)
+        ? rs.composeHeaderSelector(options, sel, undefined, {
+            skipCurrentCachedParent: false,
+            skipSameSelectorCompose: false
+          })
+        : undefined;
       if (cached) {
         pushedComposed = true;
         pushedComposedSelector = cached;
@@ -469,7 +380,8 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     );
     const inReferenceMode = previousReferenceMode || ownReferenceMode;
     const enteringReferenceMode = !previousReferenceMode && ownReferenceMode;
-    const nodeExtendsReference = isNode(node, N.Ruleset) && rulesetHasExtendedTopLevelSelector(node);
+    const nodeExtendsReference = isNode(node, N.Ruleset)
+      && (node.hasFlag(F_EXTENDED) || Ruleset.hasExtendedTopLevelSelector(node.value.selector));
     const inheritedRenderEnabled = enteringReferenceMode ? false : previousReferenceRenderEnabled;
     const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
     options.referenceMode = inReferenceMode;

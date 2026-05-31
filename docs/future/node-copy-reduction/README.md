@@ -238,9 +238,11 @@ These are architectural seams, not a live ordered queue. Use
    the possible future model: it carries only source/name/arg plus the proven
    generated `:is(...)` wrapper-omission fact. Visibility, extend metadata, and
    composed-header facts remain AST-owned until focused selector-shape tests
-   prove otherwise. Wrapper omission now lives as a generated-pseudo placement
-   override when eval collapses a generated selector-list or selector arg; it
-   is still placement state, not a parallel selector tree. Ampersand
+   prove otherwise, but ruleset header composition now has one shared path for
+   `getHeaderString(...)` and serializer frame-stack precomputation. Wrapper
+   omission now lives as a generated-pseudo placement override when eval
+   collapses a generated selector-list or selector arg; it is still placement
+   state, not a parallel selector tree. Ampersand
    append/template state is similarly narrow: replacement selectors/text are
    derived locally when needed, and proven suffix templates such as
    `&-theme` use structured selector append output instead of flattening a

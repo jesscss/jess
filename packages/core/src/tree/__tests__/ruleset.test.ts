@@ -1017,6 +1017,39 @@ describe('Rule', () => {
     expect(options.composedSelectorStack).toEqual([parentSelector]);
   });
 
+  it('serializeRulesContainer uses the ruleset header composition path', () => {
+    const parentSelector = sel([el('.parent')]);
+    const node = ruleset({
+      selector: sel([el('.child')]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const originalComposeHeaderSelector = node.composeHeaderSelector;
+    let composeHeaderSelectorCalls = 0;
+    node.composeHeaderSelector = function countHeaderComposition(
+      this: typeof node,
+      ...args: Parameters<typeof originalComposeHeaderSelector>
+    ): ReturnType<typeof originalComposeHeaderSelector> {
+      composeHeaderSelectorCalls++;
+      return originalComposeHeaderSelector.apply(this, args);
+    };
+    const options = getPrintOptions({
+      writer: new OutputWriter(),
+      collapseNesting: true,
+      composedSelectorStack: [parentSelector]
+    });
+
+    try {
+      const out = serializeRulesContainer(node, options);
+
+      expect(out).toContain('.parent .child');
+      expect(composeHeaderSelectorCalls).toBeGreaterThan(0);
+    } finally {
+      node.composeHeaderSelector = originalComposeHeaderSelector;
+    }
+  });
+
   it('getHeaderString does not cache uncomposed selectors onto the ruleset', () => {
     const node = ruleset({
       selector: sel([el('.foo')]),

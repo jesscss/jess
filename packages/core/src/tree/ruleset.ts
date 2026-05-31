@@ -767,7 +767,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       && sel.value.some(c => Ruleset.needsVisibleSelectorClone(c));
   }
 
-  private static isBareAmpersandSelector(sel: Selector | Nil): boolean {
+  static isBareAmpersandSelector(sel: Selector | Nil): boolean {
     const isBareAmpNode = (node: Selector): boolean => {
       return isNode(node, N.Ampersand)
         && (node.value.appendValue === undefined || node.value.appendValue === '');
@@ -787,7 +787,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     return false;
   }
 
-  private static hasExtendedTopLevelSelector(sel: Selector | Nil): boolean {
+  static hasExtendedTopLevelSelector(sel: Selector | Nil): boolean {
     if (!sel || sel instanceof Nil) {
       return false;
     }
@@ -999,6 +999,79 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     return SelectorList.create(expanded).inherit(selector);
   }
 
+  composeHeaderSelector(
+    options: FinalPrintOptions,
+    renderSelector: Selector,
+    referenceFilteredLocal?: Selector | Nil,
+    behavior: { skipCurrentCachedParent?: boolean; skipSameSelectorCompose?: boolean } = {}
+  ): Selector {
+    let rawParentComposed = options.composedSelectorStack?.at(-1);
+    const cachedCurrentComposed = getCachedComposedSelector(options, this);
+    if (
+      behavior.skipCurrentCachedParent !== false
+      && rawParentComposed
+      && cachedCurrentComposed
+      && rawParentComposed.valueOf() === cachedCurrentComposed.valueOf()
+    ) {
+      rawParentComposed = options.composedSelectorStack?.at(-2);
+    }
+    const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
+    const referenceComposeAmpCount = ((ownSelector ?? renderSelector).valueOf()?.match(/&/g) ?? []).length;
+    const parentComposed = (
+      options.referenceMode === true
+      && options.referenceRenderEnabled === true
+      && rawParentComposed
+    )
+      ? Ruleset.filterExtendedForReferenceCompose(
+        rawParentComposed,
+        referenceComposeAmpCount > 1
+      ) ?? rawParentComposed
+      : rawParentComposed;
+    const structuralParent = (
+      this.hoistToRoot === true
+      && this.parent?.parent
+      && isNode(this.parent.parent, N.Ruleset)
+    )
+      ? this.parent.parent.value.selector
+      : null;
+    const composeParent = parentComposed ?? (
+      structuralParent && !(structuralParent instanceof Nil) ? structuralParent : null
+    );
+    let cached = getCachedComposedSelector(options, this);
+    if (!cached) {
+      const hasExtendedComposeContext = Boolean(
+        Ruleset.hasExtendedTopLevelSelector(renderSelector)
+        || (composeParent && Ruleset.hasExtendedTopLevelSelector(composeParent))
+        || this.hasFlag(F_EXTENDED)
+      );
+      const composeInput: Selector = (
+        ownSelector
+        && !(ownSelector instanceof Nil)
+        && ownSelector.hasFlag(F_AMPERSAND)
+        && !Ruleset.isBareAmpersandSelector(ownSelector)
+        && composeParent
+        && hasExtendedComposeContext
+      )
+        ? ownSelector
+        : (referenceFilteredLocal instanceof Nil ? renderSelector : (referenceFilteredLocal ?? renderSelector));
+      cached = composeParent
+        ? (
+            behavior.skipSameSelectorCompose !== false
+            && composeInput.valueOf() === composeParent.valueOf()
+              ? composeInput
+              : Ruleset.composeSelector(composeInput, composeParent)
+          )
+        : composeInput;
+      if (options.referenceMode === true && options.referenceRenderEnabled === true) {
+        cached = Ruleset.expandGeneratedIsForReferenceCompose(cached) ?? cached;
+      }
+      if (composeParent) {
+        setCachedComposedSelector(options, this, cached);
+      }
+    }
+    return cached;
+  }
+
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const { selector } = this.value as RulesetValue;
     const idt = indent(options.depth);
@@ -1019,69 +1092,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       ? Ruleset.filterExtendedTopLevelSelectorItems(renderSelector)
       : undefined;
     if (options.collapseNesting && !(renderSelector instanceof Nil)) {
-      let rawParentComposed = options.composedSelectorStack?.at(-1);
-      const cachedCurrentComposed = getCachedComposedSelector(options, this);
-      if (
-        rawParentComposed
-        && cachedCurrentComposed
-        && rawParentComposed.valueOf() === cachedCurrentComposed.valueOf()
-      ) {
-        rawParentComposed = options.composedSelectorStack?.at(-2);
-      }
-      const referenceComposeAmpCount = (((this.options as RulesetOptions | undefined)?.ownSelector ?? selector)?.valueOf()?.match(/&/g) ?? []).length;
-      const parentComposed = (
-        options.referenceMode === true
-        && options.referenceRenderEnabled === true
-        && rawParentComposed
-      )
-        ? Ruleset.filterExtendedForReferenceCompose(
-          rawParentComposed,
-          referenceComposeAmpCount > 1
-        ) ?? rawParentComposed
-        : rawParentComposed;
-      const structuralParent = (
-        this.hoistToRoot === true
-        && this.parent?.parent
-        && isNode(this.parent.parent, N.Ruleset)
-      )
-        ? this.parent.parent.value.selector
-        : null;
-      const composeParent = parentComposed ?? (
-        structuralParent && !(structuralParent instanceof Nil) ? structuralParent : null
-      );
-      let cached = getCachedComposedSelector(options, this);
-      if (!cached) {
-        const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
-        const hasExtendedComposeContext = Boolean(
-          Ruleset.hasExtendedTopLevelSelector(renderSelector)
-          || (composeParent && Ruleset.hasExtendedTopLevelSelector(composeParent))
-          || this.hasFlag(F_EXTENDED)
-        );
-        const composeInput: Selector = (
-          ownSelector
-          && !(ownSelector instanceof Nil)
-          && ownSelector.hasFlag(F_AMPERSAND)
-          && !Ruleset.isBareAmpersandSelector(ownSelector)
-          && composeParent
-          && hasExtendedComposeContext
-        )
-          ? ownSelector
-          : (referenceFilteredLocal instanceof Nil ? renderSelector : (referenceFilteredLocal ?? renderSelector));
-        cached = composeParent
-          ? (
-              composeInput.valueOf() === composeParent.valueOf()
-                ? composeInput
-                : Ruleset.composeSelector(composeInput, composeParent)
-            )
-          : composeInput;
-        if (options.referenceMode === true && options.referenceRenderEnabled === true) {
-          cached = Ruleset.expandGeneratedIsForReferenceCompose(cached) ?? cached;
-        }
-        if (composeParent) {
-          setCachedComposedSelector(options, this, cached);
-        }
-      }
-      renderSelector = cached;
+      renderSelector = this.composeHeaderSelector(options, renderSelector, referenceFilteredLocal);
     }
     // Header filter: in reference mode, top-level selector output should
     // reflect the selectors that were actually unlocked. When an extend adds
