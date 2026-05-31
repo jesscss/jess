@@ -1,4 +1,5 @@
-import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType, type NodeLocation, type TreeContext } from './node.js';
+import { basename, dirname } from 'node:path';
+import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, TreeContext, defineType, type NodeLocation } from './node.js';
 import { type Reference } from './reference.js';
 import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
@@ -104,6 +105,20 @@ function copyImportPlacementNode(node: Node): Node {
     return reuseLeaf(node);
   }
   return constructImportPlacementNode(node, copyImportPlacementValue(node.value));
+}
+
+function getInlineSourceLocation(source: string): NodeLocation {
+  let line = 1;
+  let column = 1;
+  for (let index = 0; index < source.length; index++) {
+    if (source.charCodeAt(index) === 10) {
+      line++;
+      column = 1;
+    } else {
+      column++;
+    }
+  }
+  return [0, 1, 1, source.length, line, column];
 }
 
 /**
@@ -281,6 +296,18 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   private createImportAnchorSurface(context: Context, childNodes?: Node[]): Rules {
     return this.deriveRulesSurface(this.getImportAnchorRules(context), childNodes ?? [], { resetScopeFrame: true });
+  }
+
+  private createInlineSourceNode(source: string, resolvedPath: string): Any<'any'> {
+    const treeContext = new TreeContext({
+      file: {
+        name: basename(resolvedPath),
+        path: dirname(resolvedPath),
+        fullPath: resolvedPath,
+        source
+      }
+    });
+    return new Any(source, { role: 'any' }, getInlineSourceLocation(source), treeContext);
   }
 
   private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
@@ -706,7 +733,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             throw new Error('No source getter found');
           }
           const source = await sourceGetter.getSource!(resolvedPath);
-          const sourceNode = new Any(source, { role: 'any' });
+          const sourceNode = this.createInlineSourceNode(source, resolvedPath);
           const sourceRules = this.createImportAnchorSurface(context, [sourceNode]);
           rules = this.wrapRulesWithPostlude(sourceRules, importOptions!.postlude);
         } else {

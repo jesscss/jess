@@ -38,6 +38,8 @@ import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import { OutputWriter, getPrintOptions } from '../util/print.js';
+import { buildSourceMap } from '../util/sourcemap.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
 
@@ -2012,6 +2014,15 @@ describe('Style import', () => {
       const css = await renderNodeToString(node, inlineContext, { context: inlineContext });
       expect(css).toContain('@media (min-width: 600px)');
       expect(css).toContain('#css { color: yellow; }');
+
+      const writer = new OutputWriter();
+      wrappedImport.toString(getPrintOptions({ writer, context: inlineContext }));
+      const map = buildSourceMap(writer, {
+        file: 'out.css',
+        sourcesContent: new Map([[inlinePath, '#css { color: yellow; }\n']])
+      });
+      expect(map.sources).toContain(inlinePath);
+      expect(map.sourcesContent).toContain('#css { color: yellow; }\n');
     });
 
     it('import-inline: supports/layer postludes wrap inline source in order', async () => {
