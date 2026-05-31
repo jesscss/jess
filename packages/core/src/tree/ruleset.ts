@@ -1,7 +1,7 @@
 import { Node, F_STATIC, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
-import { Nil } from './nil.js';
+import { createPublicNil, Nil } from './nil.js';
 import { Bool } from './bool.js';
 import type { Condition } from './condition.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
@@ -32,6 +32,7 @@ import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
 import { copyOwnedWithReusableLeaves } from './util/cloning.js';
+import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -627,7 +628,16 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     return ownedBody.eval(context);
   }
 
+  private canRenderNilSelectorBodyDirectly(): boolean {
+    return !this.value.guard
+      && !this.registrationPrepared
+      && canRenderStaticRulesDirectly(this.value.rules);
+  }
+
   private evalNilSelectorForRender(context: Context): MaybePromise<Rules | Nil> {
+    if (this.canRenderNilSelectorBodyDirectly()) {
+      return this.value.rules;
+    }
     const { guard } = this.value;
     if (!guard) {
       return this.evalNilSelectorBodyForRender(context);
@@ -651,6 +661,23 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    const finishNilSelectorBodyRender = (rendered: string): string => {
+      if (rendered.endsWith('\n')) {
+        return rendered;
+      }
+      if (isRenderBuffer(bufferOrOptions)) {
+        writeRenderText(bufferOrOptions, '\n');
+      }
+      return `${rendered}\n`;
+    };
+    const renderNilSelectorBodyDirectly = (): MaybePromise<string> => {
+      const rendered = isRenderBuffer(bufferOrOptions)
+        ? this.value.rules.render(context, bufferOrOptions, options)
+        : this.value.rules.render(context, bufferOrOptions);
+      return isThenable(rendered)
+        ? rendered.then(finishNilSelectorBodyRender)
+        : finishNilSelectorBodyRender(rendered);
+    };
     const renderEvaluatedRuleset = (node: Ruleset) => {
       if (isRenderBuffer(bufferOrOptions)) {
         return writeRenderText(
@@ -671,6 +698,12 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
         ? node.render(context, bufferOrOptions, options)
         : node.render(context, bufferOrOptions);
     };
+    if (
+      this.value.selector instanceof Nil
+      && this.canRenderNilSelectorBodyDirectly()
+    ) {
+      return renderNilSelectorBodyDirectly();
+    }
     const evalForRender = (): MaybePromise<Node> => {
       if (this.evaluated) {
         return this;
@@ -1359,8 +1392,8 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
             (guardResult) => {
               const guardPasses = Boolean(guardResult instanceof Bool && guardResult.value === true);
               if (!guardPasses) {
-                this._setGuard(new Nil());
-                return new Nil();
+                this._setGuard(createPublicNil());
+                return createPublicNil();
               }
               this._setGuard(undefined);
               return undefined;

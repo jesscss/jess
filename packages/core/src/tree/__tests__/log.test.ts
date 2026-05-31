@@ -127,4 +127,44 @@ describe('Log node', () => {
     expect(buffer.parts).toEqual([]);
     expect(logNode.evaluated).toBe(false);
   });
+
+  it('renders log side effects without calling public evalNode()', async () => {
+    const logSpy = vi.fn();
+    logger.log = logSpy;
+    const logNode = new Log({
+      level: 'debug',
+      message: new Any('direct message')
+    });
+    logNode.evalNode = () => {
+      throw new Error('Log.render should run the invisible effect directly');
+    };
+
+    await expect(Promise.resolve(logNode.render(context))).resolves.toBe('');
+
+    expect(logSpy).toHaveBeenCalledWith('direct message');
+    expect(logNode.evaluated).toBe(false);
+    expect(logNode.registrationPrepared).toBe(false);
+  });
+
+  it('writes async log side effects into buffers without calling public evalNode()', async () => {
+    const warnSpy = vi.fn();
+    logger.warn = warnSpy;
+    const buffer = createRenderBuffer('flat');
+    const message = new Any('async direct message');
+    message.eval = () => Promise.resolve(new Any('async direct message'));
+    const logNode = new Log({
+      level: 'warn',
+      message
+    });
+    logNode.evalNode = () => {
+      throw new Error('Log buffer render should run the invisible effect directly');
+    };
+
+    await expect(Promise.resolve(logNode.render(context, buffer))).resolves.toBe('');
+
+    expect(warnSpy).toHaveBeenCalledWith('async direct message');
+    expect(buffer.parts).toEqual([]);
+    expect(logNode.evaluated).toBe(false);
+    expect(logNode.registrationPrepared).toBe(false);
+  });
 });

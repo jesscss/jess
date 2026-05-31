@@ -418,10 +418,14 @@ truth, the immediate pop queue, and verification.
 - Remaining broad typecheck red is separate typed-node structural debt. Do not
   let it displace runtime node-creation reduction unless it directly unlocks a
   copy/materialization deletion.
-- Queue items must stay surface-sized. A pass may choose a whole helper
-  family, node family, or eval/render surface; if only a tiny slice is safe,
-  document the broader inventory and the semantic blocker that prevented the
-  family-wide change.
+- Queue items must stay backlog-driven and surface-sized. A pass may choose a
+  whole helper family, node family, or eval/render surface; if only a tiny
+  slice is safe, document the broader inventory and the semantic blocker that
+  prevented the family-wide change. Do not refill the queue with passive audit
+  chores. Each new item must chip away at one backlog lane by attempting a
+  concrete code reduction, adding a focused blocker proof that narrows the
+  lane, or splitting a broad lane into the next implementation-sized state
+  record/prototype.
 - Current helper-family inventory is intentionally broad: roughly 189
   `.inherit(...)` sites, 55 `derive*` / `.derive(...)` sites, and 56
   reusable-leaf copy/clone sites under `packages/core/src/tree`. Treat those
@@ -447,20 +451,23 @@ checkpoint. The script ranks likely runtime surfaces; it is not a gate.
 Current top files by static surface count:
 
 1. `packages/core/src/tree/rules.ts`
-2. `packages/core/src/tree/declaration.ts`
-3. `packages/core/src/tree/import-style.ts`
+2. `packages/core/src/tree/import-style.ts`
+3. `packages/core/src/tree/at-rule.ts`
 4. `packages/core/src/tree/dimension.ts`
-5. `packages/core/src/tree/at-rule.ts`
+5. `packages/core/src/tree/declaration.ts`
 6. `packages/core/src/tree/reference.ts`
-7. `packages/core/src/tree/ampersand.ts`
+7. `packages/core/src/tree/ruleset.ts`
 8. `packages/core/src/tree/call.ts`
-9. `packages/core/src/tree/ruleset.ts`
+9. `packages/core/src/tree/ampersand.ts`
+10. `packages/core/src/tree/mixin.ts`
+11. `packages/core/src/tree/control.ts`
+12. `packages/core/src/tree/sequence.ts`
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 308`, `derive: 30`, `with-surface: 41`,
-`copy-leaves: 30`, `clone-leaves: 0`, module-context count `384`,
-eval-context count `23`, prepare-registration count `2`, resolve-context count
+Latest audit: `new-node: 293`, `derive: 30`, `with-surface: 41`,
+`copy-leaves: 30`, `clone-leaves: 0`, module-context count `394`,
+eval-context count `0`, prepare-registration count `0`, resolve-context count
 `0`. The clone-leaves frontier is zero; remaining work is reducing owned
 placement copies/state carriers, not hiding deep clone behind another helper.
 
@@ -527,6 +534,175 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   streams evaluated operands directly when math must remain operation syntax.
   Public `resolve(...)` still owns those result surfaces, and arithmetic that
   produces a real numeric/dimension value still creates that value.
+- Dynamic `Url.render(...)`, `Block.render(...)`, and `Quoted.render(...)` now
+  split wrapper syntax from public result ownership: render resolves the child
+  value and writes local wrapper syntax without calling the private
+  `withValue(...)` materializer, while public `resolve(...)` still returns an
+  owned result where needed. `Interpolated.render(...)` now resolves
+  replacements and writes scalar replacement text directly without creating
+  the public generic `Any` result. Focused tests cover flat buffers, source
+  parentage, and the no-materializer render proofs.
+- `Negative.render(...)` now renders simple resolved dimensions by writing the
+  negated scalar syntax directly instead of creating an operated result node.
+  Compound dimension and non-dimension negatives still fall back to the public
+  operation path.
+- `Expression.render(...)` now delegates list/sequence children to their child
+  render surfaces directly, so those containers do not go through the
+  expression eval wrapper just to print resolved output. Scalar/async
+  expression children still use the public eval result. `QueryCondition.render(...)`
+  now owns its resolved query syntax instead of inheriting the generic
+  `Sequence.render(...)` path.
+- `JsExpression.render(...)` now writes primitive JS results directly for
+  render-only output instead of casting them to public wrapper nodes. Public
+  `evalNode(...)`/`resolve(...)` still cast results for API compatibility, and
+  non-primitive render results still fall back through public node rendering.
+- `Extend.render(...)` and `ExtendList.render(...)` now run their invisible
+  side effects without calling public `evalNode(...)`. Public `Extend.evalNode(...)`
+  still returns a `Nil` result and public `ExtendList.evalNode(...)` still
+  returns the container surface.
+- `Condition.render(...)`, `Collection.render(...)`, and `RawRules.render(...)`
+  were audited and kept on their current direct/grouped render paths. Compound
+  `Negative.render(...)` preserve-mode units are now documented by focused
+  proof as a durable public operation boundary.
+- Broader `JsExpression.render(...)` proof now covers number, boolean,
+  null/undefined, async primitive, and non-primitive fallback results.
+  `Log.render(...)` now runs invisible diagnostic side effects directly
+  without public `evalNode(...)`, matching the extend render split. Public
+  invisible-effect APIs still return fresh `Nil` nodes through the shared
+  `createPublicNil(...)` helper.
+- `Reference.render(...)` can render the proven dynamic `JsExpression`
+  fallback scalar path text-only without copying or evaluating the fallback as
+  a public result node. Dynamic containers and rules-like references remain
+  public ownership boundaries.
+- Parser-to-core ampersand prefix/mid-template fixtures now lock the current
+  parsed Less behavior under collapse mode. Color operation and metadata
+  `callWithContext(...)` microbenchmarks exist as smaller probes before API or
+  operation-allocation changes.
+- Ampersand parentless/invisible public eval results now use
+  `createPublicNil(...)`, reducing remaining eval-context allocation sites.
+  Parsed default-guard mixin output now has focused proof that guard render
+  does not stringify public `Bool` output. JS object expression results are
+  intentionally kept on the public `JsObject` wrapper render path.
+- Generated selector metadata, rules-like reference placement, first-use import
+  placement, `AtRule`/`Declaration` adapter inheritance, remaining
+  `.withValue(...)` surfaces, broader dynamic fallback leaves, and
+  `Dimension.operate(...)` finalizers were re-audited in this pass and kept as
+  real public result or placement boundaries until narrower state exists.
+- Default guard public `Bool` creation now uses `createPublicBool(...)`, keeping
+  fresh mutable public results while removing the direct `DefaultGuard.evalNode`
+  allocation site. Parsed negated `default()` mixin output now has focused proof
+  for the non-default suppression path without stringifying public `Bool`
+  output.
+- Generated pseudo omission state now lives as declared placement state on the
+  produced pseudo node instead of an external `WeakMap` override. `AtRule`
+  derived-result metadata now goes through one explicit finalizer, and
+  `Dimension.operate(...)` result inheritance now goes through a shared
+  public-result finalizer. These are boundary-clarity changes, not semantic
+  rewrites.
+- `Condition`, `Paren(default())`, and boolean primitive `cast(...)` public
+  results now use `createPublicBool(...)`, leaving the helper as the only
+  direct `Bool` constructor site under `packages/core/src/tree`. Parsed
+  ambiguous `default()` guard pairs now have focused proof for the required
+  public matching error.
+- Generated pseudo placement omission state now survives `clone(...)`, closing
+  the first follow-up gap from making that state explicit. `Declaration`
+  public result adapters now use an explicit metadata finalizer, matching the
+  `AtRule` shape, and the dimension-to-color bridge is isolated in a named
+  public-result helper.
+- `Any` custom-property fragments remain source/static render output; focused
+  proof covers direct render without result inheritance. `Dimension.operate(...)`
+  still needs public node results for arithmetic source metadata and preserve
+  mode compound units. Color, rules-like reference, first-use import,
+  generated selector, ampersand prefix/mid-template, `AtRule`/`Declaration`
+  adapter inheritance, fallback reference, and metadata rawArgs surfaces were
+  audited in this pass and kept as real boundaries.
+- Ruleset failed-guard public eval output and selector empty-collapse eval
+  output now create inherited `Nil` results through `createPublicNil(...)`.
+  This keeps the fresh public result and guard cleanup surfaces while removing
+  direct `Nil` constructor sites from those eval paths.
+- The remaining eval-context allocation list is now ten sites: ampersand
+  selector-list/append/suffix placement, call `!important` output, control and
+  import error construction, selector `withComponents(...)` surfaces,
+  selector-list flattening, and generated pseudo placement. These are
+  currently public output, error, or selector-placement boundaries.
+- Parsed `default()` ambiguity is covered by focused less-parser guard
+  fixtures plus the changed Less compatibility baseline; no broader fixture
+  was added in this pass. Generated pseudo placement clone state, rules-like
+  reference placement, first-use import placement, declaration finalizers,
+  remaining materializers, dynamic fallback scalar frontier, color ops, and
+  rawArgs were re-audited and kept on their existing boundaries.
+- Ampersand append/template eval now routes selector-list template output,
+  generated suffix ampersands, append errors, and parentless public `Nil`
+  results through named helpers. `Call.makeImportant(...)` creates its
+  contextual `!important` flag through a public-result helper, and generated
+  pseudo eval output uses a named placement constructor. These are explicit
+  ownership boundaries, not text-only rewrites.
+- The remaining eval-context allocation list is now five sites: two error
+  constructors (`$while` overflow and missing import source getter) plus three
+  selector placement surfaces (`ComplexSelector.withComponents(...)`,
+  `CompoundSelector.withComponents(...)`, and
+  `SelectorList.withSelectors(...)`). Those selector surfaces still own
+  reordered/flattened output to preserve child parentage, selector-bit
+  libraries, and generated `:is(...)` semantics.
+- Rules-like reference placement, first-use import placement, declaration
+  metadata finalization, `.withValue(...)` / `withResolvedValue(...)` public
+  result families, dynamic fallback scalar expansion, color-operation probes,
+  and metadata rawArgs were audited in this pass and kept on their existing
+  boundaries. No import/color/rawArgs microbenchmark was repeated because no
+  corresponding semantic path changed.
+- Selector eval placement constructors now run through named finalizers:
+  `ComplexSelector.createEvaluatedComponentSurface(...)`,
+  `CompoundSelector.createEvaluatedComponentSurface(...)`, and
+  `SelectorList.createEvaluatedSelectorListSurface(...)`. Loop/import error
+  construction also moved behind small throwing helpers. The eval,
+  prepare-registration, and resolve allocation frontier is now zero in the
+  static audit; remaining counted construction is module-context ownership.
+- Declaration metadata finalizers, public `List`/`Sequence`/`Paren` and wrapper
+  `.withValue(...)` families, rules-like reference placement, first-use import
+  placement, import timing, color-operation probes, and rawArgs probes were
+  audited again in this pass and left as current boundaries unless a focused
+  semantic change lands beside them.
+- `Rules` module-context construction, first-use import placement,
+  rules-like reference placement, declaration adapters, public
+  `List`/`Sequence`/`Paren`/wrapper materializers, at-rule body state,
+  dimension/color operation result surfaces, call dynamic/rawArgs state, and
+  ampersand append/template placement were re-audited as a full queue pass.
+  Existing focused tests intentionally guard these surfaces as current
+  ownership or public-result boundaries. No import/color/rawArgs microbenchmark
+  was repeated because no corresponding semantic path changed, and no code was
+  changed solely to hide static audit categories.
+- Mixin-output wrappers, `Rules.derive(...)`, first-use import placement,
+  compose cache-hit wrappers, direct nested rules-like references, fallback
+  reference containers, declaration assignment inputs, contextual important,
+  at-rule body records, ruleset dynamic body isolation, dimension preserve
+  mode, color finalization, metadata rawArgs, ampersand prefix/mid-template
+  output, and import-reference timing were audited as a full queue pass. The
+  closest safe rawArgs experiment is already true for source-free scalar leaves:
+  the owned metadata list remains, but childless scalar leaves are not cloned.
+  No production code changed because the reducible-looking surfaces are still
+  carrying parentage, lookup, visibility, raw mutable API, or public-result
+  facts.
+- Mixin-output slot lookup state, callable `Rules` placement helpers, first-use
+  import/comment placement, import postlude and compose wrappers, rules-like
+  reference direct render, direct-index predicates, declaration merge and
+  contextual-important adapters, at-rule body registration records,
+  nil-selector ruleset render, color operation finalizers, rawArgs, and color
+  measurement triggers were audited as a full queue pass. No production code
+  changed: the slot already owns the lookup-only policy and source/order maps,
+  `createCallableRulesSurface(...)` is still a single helper because its
+  current branches are semantic ownership choices, first-use imports still need
+  owned children before eval, compose/postlude wrappers carry option/output
+  families, and the measurement-only items had no adjacent semantic change.
+- The backlog-driven queue now has two production movements and two focused
+  blocker proofs. Unguarded static nil-selector rulesets stream their body
+  directly from source `Rules.render(...)`, preserving output parity with a
+  tiny newline adapter instead of copying/evaling an owned body. Generated
+  mixin-output fallback frames are now explicit `MixinOutputSlot` facts before
+  being applied to the output scope frame. `Rules.derive(...)` now has focused
+  proof that empty scope frames are dropped while fallback frames survive, and
+  first-use source-free scalar declaration imports now have a dedicated proof
+  that placement-owned declaration children are still required while scalar
+  leaves can stay canonical.
 
 ## Recent Pass History
 
@@ -536,13 +712,16 @@ trend.
 
 | # | Focus | Main result |
 | --- | --- | --- |
-| 1 | Full 15 queue pass: paren/operation render streaming | A read-only hot-path repeat showed the previous media spike was noise while `import-reference` remained worth watching. `Paren.render(...)` now wraps evaluated child output without replacement parens, `Operation.render(...)` streams evaluated operands when syntax must remain unevaluated, CSS call args have a no-replacement-list proof, and at-rule render skips identity body runtime writes. Selector, ampersand, import, rules-like reference, public-adapter `inherit(...)`, cast, and metadata rawArgs surfaces were audited and kept as real boundaries. Static counts stayed flat. |
-| 2 | Full 15 queue pass: at-rule boundaries and container render | At-rule runtime writes were narrowed to evaluated-body boundaries and focused proofs now cover public at-rule result mutability, dynamic body eval on an owned target, optional JS success single invocation, dynamic `List`/`Sequence` render without replacement containers, and public Bool boundaries. Rules-like references, generated pseudos, ampersand prefix templates, ruleset headers, import placement, inline import streaming, and public-adapter `inherit(...)` were audited and kept as real ownership boundaries until smaller placement state exists. Static counts stayed flat. |
-| 3 | Queue pop: declaration custom-property interpolation and Bool public proof | Custom property interpolation render now evaluates replacement nodes and writes through the source `Interpolated` syntax directly, so render no longer materializes an intermediate generic `Any` just to stringify the final custom value. Guard/condition render was already text-only; focused proof now documents that public `resolve()`/`eval()` must keep fresh mutable `Bool` results. Static counts stayed flat. |
-| 4 | Full queue pop: inline import provenance decision | Inline imports still return a real public `Rules`/raw node surface because public `eval()` and postlude wrappers need inspectable output. The raw source node now carries imported-file `TreeContext`, full source content, and span data so postlude-wrapped inline output produces source-map segments for the imported CSS. Focused import/sourcemap proof stayed green. Static `new-node` rose by one for the inline-only `TreeContext`, so this is a correctness/provenance closeout, not an object-count win. |
-| 5 | Full queue pop: import first-use placement audit | The tempting shallow first-use plain import wrapper was tested and rejected: it mutates the canonical imported child parent during eval. A focused regression now proves default once/cache-stable imports still need import-local child ownership until a smaller placement record can carry parent/runtime facts without adopting source children. Production code stayed unchanged; static/hot-path metrics were not re-recorded. |
-| 6 | Full queue pop: centralized ruleset header composition | Serializer frame-stack composition now calls `Ruleset.composeHeaderSelector(...)` instead of carrying a parallel cache/generated-pseudo composition path. Focused proof covers ruleset headers, generated pseudos, nesting collapse, and extend integration; static counts stayed flat. |
-| 7 | Full queue pop: structured ampersand template suffix merge | `&-suffix` template merge now uses structured `appendSelector(...)` output where proven, so complex selector-list parents keep selector-bit metadata and source parentage. Template replacement selectors/text no longer live on ampersand placement state. Focused ampersand/at-rule/extend proof stayed green; static counts stayed flat with helper context shifted out of `evalNode`. |
+| 1 | Full 15 queue pass: backlog-driven placement/state prototypes | Unguarded static nil-selector bodies now stream directly from source without owned body eval; mixin-output fallback frames are slot-owned facts; `Rules.derive(...)` empty-frame/fallback-frame behavior and first-use source-free scalar import placement are locked by focused proofs. Import postlude/cache-hit, rules-like reference, direct-index public resolve, declaration merge/important, at-rule cleanup, color finalizer, and rawArgs items remain backlog lanes with sharper next prototypes. Static `new-node` stayed 293. |
+| 2 | Full 15 queue pass: slot/import/reference boundary audit | Mixin-output lookup records, callable `Rules` surfaces, first-use import/comment placement, import postlude, compose wrappers, rules-like references, direct-index predicates, declaration merge/contextual-important paths, at-rule records, nil-selector rulesets, color finalizers, rawArgs, and measurement triggers were audited. Existing slot/import/reference/declaration/at-rule/ruleset tests prove the current boundaries; no semantic code change or measurement rerun was warranted. Static `new-node` stayed 293. |
+| 3 | Full 15 queue pass: placement-record blockers and rawArgs audit | Mixin output, `Rules.derive(...)`, first-use import, compose cache-hit, rules-like reference, declaration assignment, contextual important, at-rule/ruleset body, dimension/color operation, rawArgs, ampersand template, and import timing items were audited. Existing focused tests prove the current blockers; source-free scalar rawArgs already avoid leaf clones while preserving the owned mutable list. Static `new-node` stayed 293. |
+| 4 | Full 15 queue pass: module-context boundary audit | `Rules`, import placement, rules-like references, declaration adapters, public materializers, at-rule body state, dimension/color operations, call dynamic/rawArgs state, and ampersand placement were audited and kept as current ownership/public-result boundaries. Focused surface tests and full changed baseline passed; static `new-node` stayed 293 with zero eval/prepare/resolve contexts. |
+| 5 | Full 15 queue pass: eval/prepare allocation frontier closure | Complex, compound, and selector-list eval result surfaces now route through named selector finalizers, while loop/import error construction is helper-owned. The eval, prepare-registration, and resolve allocation frontier is zero; declaration finalizers, public materializers, rules-like references, first-use imports, import timing, color probes, and rawArgs probes were audited and kept. Static `new-node` dropped to 293. |
+| 6 | Full 15 queue pass: ampersand/pseudo/call helper ownership | Ampersand selector-list template output, generated suffix ampersands, append errors, and parentless Nil outputs now route through named helper/finalizer boundaries; contextual call `!important` and generated pseudo eval output do the same. Rules-like references, first-use imports, selector `with*` placement, declaration finalizers, materializers, dynamic fallback, color, and rawArgs were audited and kept. Static `new-node` stayed 294 while eval contexts dropped to 5. |
+| 7 | Full 15 queue pass: Nil helper family and eval allocation reclassify | Ruleset failed-guard public eval output and selector empty-collapse eval output now use `createPublicNil(...)`, while preserving fresh guard/result surfaces and inherited selector metadata. The remaining eval-context allocations are now ten classified public-result, error, or selector-placement boundaries; parser ambiguity, generated pseudo clone state, import/rules-like placement, materializers, color, dynamic fallback, and rawArgs were audited and kept. Static `new-node` dropped to 294 and eval contexts to 10. |
+| 8 | Full 15 queue pass: Bool helper family and placement clone proof | `Condition`, `Paren(default())`, and boolean primitive `cast(...)` now share `createPublicBool(...)`, leaving one direct `Bool` constructor under tree code; parsed ambiguous `default()` pairs have an explicit matching-error fixture; generated pseudo placement state now survives clone; `Declaration` metadata and the dimension-to-color bridge have named public-result finalizers. Ampersand selector-list merge, import placement, rules-like references, remaining materializers, and non-JS dynamic fallbacks were kept as real boundaries. Static `new-node` dropped to 300. |
+| 9 | Full 15 queue pass: default Bool helper and explicit placement/finalizer state | `DefaultGuard.evalNode(...)` now uses `createPublicBool(...)`, removing the direct eval allocation while preserving fresh mutable public results; parsed negated `default()` mixin output has a no-public-Bool-render suppression fixture; generated pseudo omission moved from `WeakMap` override to declared placement state; `AtRule` metadata and `Dimension.operate(...)` inheritance now have shared finalizers. Ampersand, import, rules-like reference, fallback, and remaining materializer surfaces were classified as real boundaries. Static `new-node` dropped to 302 and eval contexts to 14. |
+| 10 | Full 15 queue pass: ampersand Nil helper and boundary classification | Ampersand parentless/invisible public eval results now use `createPublicNil(...)`, parsed default-guard mixin output has focused no-public-Bool-render proof, and JS expression object fallback is locked on the public `JsObject` wrapper render path. Generated selector metadata, rules-like reference, first-use import, adapter inheritance, `.withValue(...)`, dynamic fallback, and dimension finalizer surfaces were audited and kept as real boundaries. Static `new-node` dropped to 303 and eval contexts to 15. |
 
 ## Metrics Snapshot
 
@@ -556,19 +735,44 @@ Latest static audit:
 
 | `new-node` | `derive` | `with-surface` | `copy-leaves` | `clone-leaves` | module | eval | prepare | resolve |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 309 | 30 | 41 | 30 | 0 | 386 | 22 | 2 | 0 |
+| 293 | 30 | 41 | 30 | 0 | 394 | 0 | 0 | 0 |
 
 Recent hot-path medians. `#1` is the latest pass.
 
 | # | Pass | `functions` | `import-ref` | `mixins-guards` | `extend` | `media` | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Full 15 queue pass: paren/operation render streaming | 22.16ms | 28.43ms | 32.34ms | 17.02ms | 8.56ms | saved row was noise versus the prior saved row except media faster; pre-change read-only repeat was 21.56/31.26/31.95/16.28/7.52ms, so do not claim speed, but the prior media spike did not repeat |
-| 2 | Full 15 queue pass: at-rule and container render | 21.91ms | 29.73ms | 34.66ms | 16.89ms | 9.53ms | saved row was slower than the prior saved row for `import-ref`, `mixins-guards`, and `media`, with high RSD on `functions` and `media`; treat as a watch item, not a verdict, and repeat adjacent to the next runtime pass |
-| 3 | Queue pop: declaration custom-property interpolation and Bool public proof | 20.72ms | 27.09ms | 31.76ms | 16.65ms | 8.19ms | saved row compared faster against the noisy inline-import row, including media returning near the prior lower band; treat as encouraging but descriptive until adjacent repeats confirm |
-| 4 | Full queue pop: inline import source provenance | 21.95ms | 30.23ms | 35.16ms | 20.48ms | 12.56ms | static count rose by one for inline-only source `TreeContext`; saved media was +57% with 26.2% RSD while the change only affects inline imports, so treat as suspicious/noisy unless the next adjacent measurement repeats it |
-| 5 | Full queue pop: centralized ruleset header composition | 22.24ms | 30.16ms | 33.38ms | 19.35ms | 8.00ms | saved row had suspicious slower `extend` versus the prior saved row, but an immediate read-only repeat was 22.21/29.06/34.15/16.94/8.46ms with high `extend`/`media` RSD; keep watching, no speed claim |
-| 6 | Full queue pop: structured ampersand template suffix merge | 21.83ms | 28.57ms | 32.30ms | 16.08ms | 8.70ms | pre-change read-only sample was globally noisy/slow at 28.84/32.33/34.68/21.08/15.60ms; saved media is +12.4% vs prior saved row but much lower than pre-change, so keep watching/no speed claim |
-| 7 | Full queue pop: generated pseudo placement override | 21.15ms | 28.30ms | 31.41ms | 16.14ms | 7.74ms | pre-change read-only sample was globally noisy and slow at 24.23/31.28/43.07/24.45/12.31ms; saved row returned near the earlier band, so do not claim speed, but the media spike did not repeat |
+| 1 | Full 15 queue pass: backlog-driven placement/state prototypes | 21.89ms | 29.74ms | 32.55ms | 15.41ms | 8.06ms | includes nil-selector direct source streaming and slot-owned fallback metadata; `functions` RSD 23.3% and `media` RSD 26.7%, so no speed claim |
+| 2 | Full 15 queue pass: slot/import/reference boundary audit | 20.36ms | 26.53ms | 32.24ms | 16.11ms | 7.87ms | read-only row after auditing current slot/import/reference/declaration/at-rule boundaries with no production semantic change; `mixins-guards` RSD was 53.6% and other rows stayed noisy, so no speed claim |
+| 3 | Full 15 queue pass: placement-record blockers and rawArgs audit | 20.12ms | 28.09ms | 31.00ms | 16.63ms | 8.05ms | read-only row after auditing placement-record blockers and rawArgs scalar reuse with no code semantic change; `extend` had 92.8% RSD and other rows stayed noisy, so no speed claim |
+| 4 | Full 15 queue pass: module-context boundary audit | 21.69ms | 28.27ms | 31.23ms | 18.19ms | 7.91ms | read-only row after auditing current module-context boundaries with no code semantic change; RSD stayed 12.8%-31.6%, so no speed claim |
+| 5 | Full 15 queue pass: eval/prepare allocation frontier closure | 22.32ms | 29.56ms | 31.91ms | 15.92ms | 7.35ms | read-only row after moving selector placement and loop/import error construction out of eval/prepare contexts; RSD stayed 8.9%-16.9%, so no speed claim |
+| 6 | Full 15 queue pass: ampersand/pseudo/call helper ownership | 20.65ms | 25.30ms | 30.29ms | 17.80ms | 6.82ms | read-only row after helper-owned ampersand, call important, and generated pseudo placement constructors; `mixins-guards` RSD was 22.2% and `functions`/`import-ref`/`media` RSD stayed high, so no speed claim |
+| 7 | Full 15 queue pass: Nil helper family and eval allocation reclassify | 19.39ms | 24.56ms | 29.53ms | 14.53ms | 6.61ms | read-only row after helper-owned ruleset/selector Nil eval outputs; initial hot-path run raced the baseline core clean and failed with `ERR_MODULE_NOT_FOUND`, rerun passed; RSD stayed 9.0%-17.0%, so no speed claim |
+| 8 | Full 15 queue pass: Bool helper family and placement clone proof | 21.82ms | 29.08ms | 32.68ms | 15.95ms | 7.69ms | saved row after Bool helper family and placement/finalizer proof work; first run raced the core build and failed, rerun passed; import/mixins/media RSD stayed high, so no speed claim |
+| 9 | Full 15 queue pass: default Bool helper and explicit placement/finalizer state | 23.06ms | 28.07ms | 32.13ms | 16.22ms | 8.30ms | read-only row after default guard helper and placement/finalizer refactors; `media` RSD 19.3% and `functions` RSD 16.8%, so no speed claim |
+| 10 | Full 15 queue pass: ampersand Nil helper and boundary classification | 22.36ms | 29.71ms | 34.44ms | 17.39ms | 8.66ms | read-only row after ampersand/default-guard/object-fallback proof work; `mixins-guards` had 35.6% RSD and all rows remain descriptive/no speed claim |
+
+Targeted timing notes from prior adjacent benchmark passes:
+
+- Import-reference focused repeat: 26.46ms median over 90 iterations, with
+  19.5% RSD; keep treating import timing as noisy until repeated beside an
+  import-facing change.
+- Color fixtures: `operations` 1.11ms median, `comprehensive` 2.65ms,
+  `basic` 1.11ms with high RSD on all rows; do not use this as a color
+  allocation verdict.
+- Metadata/plugin-heavy fixtures: `plugin` 6.00ms median,
+  `plugin-preeval` 1.13ms, `functions` 19.87ms with very high RSD on the
+  plugin rows; rawArgs ownership remains an API-boundary question, not a
+  measured hot spot yet.
+- `callWithContext(...)` rawArgs microbenchmark:
+  latest adjacent repeat was `plain positional` 0.0003ms median and
+  `metadata rawArgs` 0.0024ms median over 750 iterations. This isolates
+  API-boundary overhead better than plugin-heavy
+  fixtures, but it is still a microbenchmark rather than a stylesheet verdict.
+- `Color.operate(...)` microbenchmark: latest adjacent repeat was dimension
+  add 0.0007ms median and color add 0.0006ms median over 1500 iterations. Use
+  this script for adjacent color operation changes instead of the noisier full
+  color fixture group.
 
 Measurement commands:
 
@@ -579,6 +783,10 @@ Measurement commands:
   structured fixture records to
   `docs/future/node-copy-reduction/less-hotpath-history.jsonl` and compares the
   current run against the latest saved record for each fixture.
+- `node scripts/measure-callwithcontext-rawargs.mjs [iterations]` isolates
+  plain positional versus metadata/rawArgs `callWithContext(...)` overhead.
+- `node scripts/measure-color-operation.mjs [iterations]` isolates
+  `Color.operate(...)` dimension and color operations.
 - Use `--json` or `--jsonl` for scripts, `--compare <file>` for an explicit
   baseline file, and `--threshold 0.08` to control the noise band. Keep this
   handoff as the readable summary, not the metrics database.
@@ -600,16 +808,19 @@ Measurement commands:
   fallback/declaration/direct/runtime-binding list and sequence containers can
   render text-only when their children are reusable leaves, including the
   focused source-backed fallback, declaration-reference, runtime-binding, and
-  direct-index cases. Do not extend that to dynamic or rules-like containers
-  without ownership proof.
+  direct-index cases. The only dynamic fallback scalar text-only case is the
+  focused `JsExpression` fallback proof; do not extend that to other dynamic
+  leaves or any rules-like containers without ownership proof.
 - Ampersand append/template output remains generated selector output, not just
   carrier metadata. The current placement state carries source/parent/output
   selector, append/template parts, hoist/root placement facts,
   selector-bit/library facts, and final result text. Replacement selectors/text
   are local merge facts, and suffix templates now preserve structure through
   `appendSelector(...)`; prefix/mid-template forms still flatten by text until
-  focused proof says a structured model is correct. It must not grow into a
-  parallel selector AST.
+  focused proof says a structured model is correct. Parsed collapse-mode
+  prefix/mid-template output intentionally stays on the current parser-to-core
+  semantics while hand-built core fixtures cover distribution behavior. It must
+  not grow into a parallel selector AST.
 - Empty rest / `@arguments` binding placeholders preserve current Less
   behavior. Do not delete them unless the behavior is explicitly changed.
 
@@ -620,7 +831,8 @@ handoff round should complete all fifteen queued items unless the user
 explicitly asks for a smaller slice. When an item is completed, remove it and
 add or promote enough work to leave the queue full for the next round. If an
 item is too broad, replace it with the smallest honest next checkpoint and move
-the broader theme to the backlog.
+the broader theme to the backlog. A full queue run is not finished until the
+code/docs changes are verified, committed, and pushed to the current branch.
 
 Queue items must be surface-sized, not line-sized. Prefer a whole node family,
 helper family, or eval/render surface with inventory, implementation, focused
@@ -629,116 +841,203 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Reduce `Url.render(...)` dynamic value materialization if native child render can carry it.**
+When refilling this queue, pull directly from the Backlog lanes below. A good
+queue item names:
 
-   `Url` still has a private `withValue(...)` render/resolve path. Split public
-   result ownership from render-only output the same way as `Paren`, with proof
-   for dynamic references, buffers, and source child parentage.
+- the backlog lane it advances;
+- the concrete production surface or test fixture it will touch;
+- the expected result if the idea works (deleted wrapper, narrower state
+  record, fewer module-context constructors, or faster measured eval/render);
+- the blocker proof to add if the idea fails.
 
-2. **Reduce `Block.render(...)` dynamic value materialization if wrapper syntax can stay render-local.**
+Avoid items whose only deliverable is "audit and document" unless they are the
+first inventory step for a still-unknown backlog lane. At this point, most
+lanes are known enough that the next item should be a prototype or reduction
+attempt with focused tests.
 
-   `Block` has a private `withValue(...)` surface. Audit whether render can
-   write braces around evaluated child output directly while public
-   `resolve(...)` keeps the owned `Block` result.
+1. **Mixin output slots: move one rule-index consumer to slot helpers.**
 
-3. **Reduce `Quoted.render(...)` dynamic interpolation materialization only for text-safe outputs.**
+   `assignMixinOutputRuleIndexes(...)` owns multi-child wrapper indexes, but
+   other call sites may still read raw child `index` metadata. Route one proven
+   consumer through `getMixinOutputSourceIndex(...)` or add a blocker proof.
 
-   Quoted strings still own replacement values in mixed cases. Target one
-   text-safe family with source quoting, escaping, interpolation, buffer, and
-   public resolve proof.
+2. **Mixin output slots: prototype evaluated placement child state for one no-param declaration-only mixin.**
 
-4. **Reduce `Interpolated.render(...)` replacement surfaces for scalar text replacements.**
+   Keep the output wrapper. Try recording evaluated placement children in the
+   slot beside source segments, then prove lookup/render still use the owned
+   output children.
 
-   Interpolation still uses copied replacement nodes for public output and
-   selector/declaration identity. Find a scalar render-only case where text can
-   be finalized without owning a replacement node.
+3. **Mutation helpers: replace one empty-child `Rules.derive(...)` family with direct construction.**
 
-5. **Audit arithmetic result inheritance for render-only scalar results.**
+   Start with empty fallback/import-anchor wrappers that do not need child
+   copying. Success deletes a derive call family; failure records the exact
+   inherited state that still requires `derive(...)`.
 
-   `Operation.render(...)` still creates real numeric/dimension result nodes.
-   Check whether render-only scalar results need `.inherit(this)` metadata or
-   can serialize before inheritance without affecting source maps, errors, or
-   public `resolve(...)`.
+4. **Mutation helpers: split callable `Rules` construction into named placement helpers.**
 
-6. **Audit `Dimension.operate(...)` result surfaces by unit-mode family.**
+   `createCallableRulesSurface(...)` still hides distinct paths. Rename/split
+   only if ruleset-as-mixin, detached-ruleset, and static mixin focused tests
+   stay green and the split makes ownership reasons explicit.
 
-   Dimension math is a top static node-creation file. Group by preserve,
-   strict, color fallback, and unit conversion behavior; reduce only a family
-   with output and error parity proof.
+5. **Import placement: prototype first-use source-free scalar ruleset body placement.**
 
-7. **Audit `Color.operate(...)` / color function render allocation in real Less fixtures.**
+   The declaration-only import proof still needs placement-owned declaration
+   nodes. Try the next narrower nested body case and preserve source parentage
+   and scalar leaf reuse.
 
-   Color operations are hot in color-function fixtures. Measure focused color
-   fixtures and reduce only render-only result wrappers that do not change
-   color format, alpha, or public result metadata.
+6. **Import placement: move one compose cache-hit option into explicit wrapper state.**
 
-8. **Reduce rules-like reference surface only after a concrete placement-record prototype.**
+   Start with `readonly` or `referenceMode`. Success narrows final wrapper
+   mutation; failure adds focused proof that the option must remain on the
+   `Rules` wrapper for render/eval consumers.
 
-   The shallow surface is still semantic. Build or reject one tiny
-   lookup/callable placement record prototype with nested mixin-ruleset,
-   reference stack, visibility, and source parentage proof.
+7. **Import placement: split postlude source-map/order facts from wrapper ownership.**
 
-9. **Reduce import first-use child ownership only with an import placement record prototype.**
+   Use nested `@layer`/`@supports`/`@media` proof. Move one fact into placement
+   state only if wrapper order, source parentage, and CSS output remain stable.
 
-   Current import placement children are owned because shallow wrappers mutate
-   source parentage. Try one narrow non-reference/non-multiple import family
-   with an explicit placement record; otherwise document the exact blocker.
+8. **Rules-like references: prototype render-only placement for variable-held `Rules`.**
 
-10. **Reduce generated selector wrapper only with shared selector placement state.**
+   Keep public resolve owned. Try bypassing `createRulesLikeReferenceSurface`
+   only during render and prove callable lookup/reference-stack cleanup.
 
-   Generated pseudos, ruleset headers, and extend metadata still need owned
-   selector output. Move one fact into a small placement state only if focused
-   selector/extend/header tests prove no AST-v2 growth.
+9. **Reference ownership: narrow public direct-index resolve for source-free static containers.**
 
-11. **Resolve ampersand prefix/mid-template permanence.**
+   Try returning a frozen inert source-free `List`/`Sequence` direct-index hit
+   when all children are reusable leaves. If mutability breaks, add the focused
+   public-result blocker.
 
-   Use corpus and focused tests to decide whether prefix/mid templates can be
-   structured. If they are text semantics, document that as the durable rule
-   and stop listing them as a reduction candidate.
+10. **Declaration state: move one list-merge coalescing branch into adapter state.**
 
-12. **Audit public-adapter `inherit(...)` for `AtRule` and `Declaration` as a family.**
+   Start with `&,:` after nested at-rule output. Success narrows
+   `_coalesceMergedDeclarations(...)`; failure proves source order or
+   placeholder cleanup still depends on mutation.
 
-   Do not remove one call site. Inventory result-adapter construction for both
-   families and delete only helpers whose parent/source metadata can be set
-   directly without source mutation.
+11. **Declaration state: reduce contextual-important public output for source-free scalars.**
 
-13. **Audit remaining `.withValue(...)` / `withResolvedValue(...)` materializers outside List/Sequence/Paren/Operation.**
+   Keep public result mutability. Try the source-free scalar path and add a
+   focused proof if `Any('!important')` remains required.
 
-   `List`, `Sequence`, `Paren`, and `Operation` render are split. Inventory
-   the remaining wrapper materializers and pick the next whole node family with
-   public resolve vs render-only proof.
+12. **At-rule body state: move one async cleanup/stack marker into `AtRuleBodyEvalRecord`.**
 
-14. **Audit default/fallback reference render state against dynamic leaf predicates.**
+   Prefer cleanup state over body `Rules`. Success removes an eval-frame
+   dependency; failure adds async cleanup proof.
 
-   Static text-only reference paths are broad. Recheck dynamic scalar leaves
-   and default-guard callers for one safe text-only extension without changing
-   public metadata or callable context.
+13. **Ruleset body state: expand nil-selector direct streaming to static invisible vars/comments.**
 
-15. **Measure metadata JS rawArgs cost before any API-boundary change.**
+   The declaration-only nil-selector path now streams from source. Extend only
+   if comments, nil children, invisible vars, buffer/direct output, and
+   parentage stay proven.
 
-   Existing tests prove `this.rawArgs` is mutable and isolated. Add timing or
-   instrumentation around metadata-heavy function calls before deciding whether
-   that owned arg surface is performance-relevant.
+14. **Dynamic call state: prototype narrower metadata `rawArgs` container ownership.**
+
+   Preserve mutable `this.rawArgs`. Try narrowing the owned container shape
+   without cloning source-free leaves or weakening failure isolation.
+
+15. **Operation result state: reduce one dimension/color finalizer duplication with adjacent measurement.**
+
+   Touch finalizers only with focused operation tests, then run
+   `measure-color-operation.mjs` beside the production change.
 
 
 ## Backlog
 
-- **Mutation-helper reduction.** Audit `inherit(...)`, `set(...)`,
+This backlog is not a someday list. It is the source of future queue items.
+When the immediate queue is refilled, pull from these lanes and name the lane
+in the queue item. Every lane should keep producing implementation-sized
+prototypes until it is either complete or blocked by a focused proof.
+
+- **Mutation-helper reduction.** Reduce `inherit(...)`, `set(...)`,
   `derive*`, and shallow wrapper construction in hot eval/render paths. The
   goal is not to ban them as APIs; it is to stop relying on helper-driven
   mutation as the normal eval/render strategy.
+
+  Next queue shapes:
+  - reduce one `.derive(...)` family whose children are empty or already
+    placement-owned;
+  - move one metadata/fallback/scope fact out of a wrapper and into explicit
+    state;
+  - add a focused blocker proof only when the whole helper family cannot move.
+
+- **Mixin output slots.** Replace generated mixin `Rules` wrappers
+  incrementally. The slot must eventually carry source body, evaluated
+  placement children, scope frame, visibility/reference gates, rule index, and
+  caller fallback.
+
+  Next queue shapes:
+  - move one fallback/scope/index fact into `MixinOutputSlot`;
+  - prototype one no-param/no-guard placement child state while keeping the
+    output wrapper;
+  - prove one lookup family can read slot placement state without reading
+    canonical source children as live output.
+
+- **Import placement state.** Replace import-local child/wrapper ownership only
+  after placement records can preserve source parentage, first-use eval
+  adoption, postlude nesting, visibility options, reference/multiple dedupe,
+  and cache-hit option differences.
+
+  Next queue shapes:
+  - prototype one source-free scalar first-use placement;
+  - move one compose cache-hit option family into side state;
+  - split postlude order/source-map facts from final `Rules` wrapper ownership.
+
+- **Rules-like/reference result state.** Keep public `resolve(...)` ownership,
+  but keep reducing render-only ownership for references, direct-index hits,
+  and rules-like values when text or placement state is enough.
+
+  Next queue shapes:
+  - prototype render-only placement for variable-held `Rules`;
+  - narrow one public direct-index source-free container case if mutability
+    allows it;
+  - add focused blocker proof for callable lookup/reference-stack cleanup when
+    a rules-like wrapper cannot move.
+
+- **At-rule and ruleset body state.** Delete remaining body isolation surfaces
+  only after invocation-local records can carry body output, registration,
+  root-hoist/frame facts, layer/extend state, nil-selector output, and source
+  parentage.
+
+  Next queue shapes:
+  - move one registration cleanup/stack marker from eval frame to invocation
+    record;
+  - expand static direct streaming for one ruleset/nil-selector body family;
+  - prove the smallest dynamic body case that still requires owned body rules.
+
+- **Declaration/operation result state.** Keep public result APIs mutable, but
+  narrow assignment, merge, contextual-important, dimension/color operation,
+  and metadata-finalizer surfaces where render-only state or result adapters
+  can carry the same semantics.
+
+  Next queue shapes:
+  - move one declaration merge family into adapter state;
+  - reduce one source-free contextual-important public output path;
+  - narrow duplicated dimension/color finalizer behavior only with focused
+    operation tests and adjacent measurement.
+
+- **Dynamic call state.** Replace remaining copied dynamic-call surfaces with a
+  state record that preserves evaluated/fallback name, evaluated args/content,
+  owned raw args when required, caller pointer, and parent/source safety.
+
+  Next queue shapes:
+  - narrow metadata `rawArgs` ownership without weakening mutation isolation;
+  - split fallback call content/name state from public result construction;
+  - measure rawArgs only beside a production placement change.
+
 - **Generated selector state.** Replace placement-owned selector wrappers only
   when a small side-state record can preserve source parentage, visibility,
   extend metadata, selector-bit library, hoist/root placement, and composed
   header cache without becoming AST v2.
-- **Mixin output slots.** Replace generated mixin `Rules` wrappers only when a
-  slot record can carry source body, evaluated placement children, scope frame,
-  visibility/reference gates, rule index, and caller fallback.
-- **Dynamic call state.** Replace remaining copied dynamic-call surfaces with a
-  state record that preserves evaluated/fallback name, evaluated args/content,
-  owned raw args when required, caller pointer, and parent/source safety.
+
+  Next queue shapes:
+  - move one generated-pseudo or ampersand placement fact into declared state;
+  - reduce one selector `withComponents(...)` / `withSelectors(...)` family;
+  - add blocker proof for prefix/mid-template output when structured selector
+    state is not correct.
+
 - **Typed node structural frontier.** Continue splitting `tsc --noEmit`
-  failures by node-family shape when it directly helps runtime cleanup.
+  failures by node-family shape when it directly helps runtime cleanup. Do not
+  spend queue slots on typing cleanup unless it unlocks one of the runtime
+  lanes above.
 
 ## Verification
 
@@ -775,6 +1074,12 @@ For each checkpoint:
 4. Run the nearest broader verification.
 5. Update this handoff if current truth or the immediate queue changed.
 6. Commit and push when clean.
+
+For a full 15-item queue run, step 6 is mandatory: after verification, create a
+coherent commit that includes the production/test/handoff changes for that
+queue run and push it to the branch's tracked remote. If the worktree contains
+unrelated user changes, either leave them unstaged or stop and record why the
+queue-run commit could not be made.
 
 ## Stop Conditions
 

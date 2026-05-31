@@ -21,6 +21,7 @@ export type MixinOutputSlot = {
   outputBySource: ReadonlyMap<Node, Node>;
   sourceIndexByOutput: ReadonlyMap<Node, number>;
   ambientLookup: boolean;
+  fallbackFrame?: Rules['scopeFrame'];
   rulesetPlacement?: RulesetMixinPlacementRecord;
 };
 
@@ -303,6 +304,7 @@ export function attachMixinOutputSlot(
     ),
     sourceIndexByOutput,
     ambientLookup: !restrictAmbientLookup,
+    ...(options?.fallbackFrame ? { fallbackFrame: options.fallbackFrame } : {}),
     ...(options?.rulesetPlacement
       ? { rulesetPlacement: createRulesetMixinPlacementRecord(sourceRules, outputRules, childSegments, sourceIndexByOutput) }
       : existingRulesetPlacement
@@ -313,6 +315,6 @@ export function attachMixinOutputSlot(
   markMixinOutputSource(outputRules, sourceRules);
   outputRules.options.mixinOutputSlot = slot;
   outputRules.options.referenceMode = false;
-  assignMixinOutputFallbackFrame(outputRules, options?.fallbackFrame);
+  assignMixinOutputFallbackFrame(outputRules, slot.fallbackFrame);
   return slot;
 }

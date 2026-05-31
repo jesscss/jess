@@ -5,7 +5,7 @@ import {
   defineType
 } from './node.js';
 import type { Context } from '../context.js';
-import { Nil } from './nil.js';
+import { createPublicNil, Nil } from './nil.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
@@ -72,6 +72,13 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       node.hoistToRoot = true;
     }
     return node.inherit(this);
+  }
+
+  private createEvaluatedComponentSurface(
+    value: Node[],
+    sourceValue: readonly ComplexSelectorComponent[]
+  ): this {
+    return this.withComponents(value.filter(isComplexSelectorComponent), sourceValue);
   }
 
   private collapsedComponent(
@@ -262,7 +269,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
           return Boolean(prev && next && !isNode(prev, N.Combinator) && !isNode(next, N.Combinator));
         });
         if (value.length === 0) {
-          return new Nil().inherit(selector);
+          return createPublicNil().inherit(selector);
         }
         if (value.length === 1) {
           const only = value[0]!;
@@ -285,7 +292,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         if (!changed) {
           return selector;
         }
-        return selector.withComponents(value.filter(isComplexSelectorComponent), currentValue);
+        return selector.createEvaluatedComponentSurface(value, currentValue);
       }
     );
   }
@@ -357,7 +364,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
           return Boolean(prev && next && !isNode(prev, N.Combinator) && !isNode(next, N.Combinator));
         });
         if (value.length === 0) {
-          return new Nil().inherit(selector);
+          return createPublicNil().inherit(selector);
         }
         if (value.length === 1) {
           const only = value[0]!;

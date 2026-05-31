@@ -30,6 +30,10 @@ function isExtendedFn(value: unknown): value is ExtendedFn {
   return typeof value === 'function';
 }
 
+function createImportantFlag(): Any<'flag'> {
+  return new Any<'flag'>('!important', { role: 'flag' });
+}
+
 export type CallValue = {
   /**
    * Can be an identifier or something like a mixin or variable lookup
@@ -816,7 +820,7 @@ export class Call extends Node<CallValue, CallOptions> {
 
   /** Recursively makes declarations important */
   makeImportant(rules: Rules): Rules {
-    let important = new Any<'flag'>('!important', { role: 'flag' });
+    const important = createImportantFlag();
     for (const rule of rules.value) {
       if (isNode(rule, N.Declaration)) {
         rule.value.important = important;

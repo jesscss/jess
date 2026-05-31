@@ -2,13 +2,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import {
   any,
+  Interpolated,
   interpolated,
   list,
   List,
   quoted,
   ref,
   rules,
-  type Rules as RulesClass,
+  Rules as RulesClass,
   vardecl
 } from '../index.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
@@ -22,6 +23,16 @@ class CountingWriter extends OutputWriter {
     this.captures++;
     return super.capture(fn);
   }
+}
+
+async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
+  const evald = await node.eval(context);
+  expect(evald).toBeInstanceOf(RulesClass);
+  if (!(evald instanceof RulesClass)) {
+    throw new Error('Expected Rules root');
+  }
+  context.root = evald;
+  context.rulesContext = evald;
 }
 
 describe('Interpolated', () => {
@@ -62,9 +73,7 @@ describe('Interpolated', () => {
         value: any('world')
       })
     ]);
-    const evald = await root.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, root);
 
     const interpolatedNode = interpolated({
       source: `hello-${INTERPOLATION_PLACEHOLDER}`,
@@ -84,9 +93,7 @@ describe('Interpolated', () => {
         value: any('world')
       })
     ]);
-    const evald = await root.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, root);
 
     const buffer = createRenderBuffer('flat');
     const interpolatedNode = interpolated({
@@ -117,9 +124,7 @@ describe('Interpolated', () => {
         value: any('world')
       })
     ]);
-    const evald = await root.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, root);
 
     const interpolatedNode = interpolated({
       source: `hello-${INTERPOLATION_PLACEHOLDER}`,
@@ -134,6 +139,39 @@ describe('Interpolated', () => {
     expect(interpolatedNode.registrationPrepared).toBe(false);
   });
 
+  it('renders scalar replacement text without materializing a generic public result', async () => {
+    const root = rules([
+      vardecl({
+        name: any('name'),
+        value: any('world')
+      })
+    ]);
+    await setEvaluatedRoot(context, root);
+
+    const descriptor = Object.getOwnPropertyDescriptor(Interpolated.prototype, 'createGeneric');
+    if (!descriptor) {
+      throw new Error('Expected Interpolated.createGeneric for render materialization proof');
+    }
+    Object.defineProperty(Interpolated.prototype, 'createGeneric', {
+      ...descriptor,
+      value: () => {
+        throw new Error('Interpolated render should not materialize a generic public result');
+      }
+    });
+    try {
+      const interpolatedNode = interpolated({
+        source: `hello-${INTERPOLATION_PLACEHOLDER}`,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      });
+
+      expect(await interpolatedNode.render(context)).toBe('hello-world');
+      expect(interpolatedNode.evaluated).toBe(false);
+      expect(interpolatedNode.registrationPrepared).toBe(false);
+    } finally {
+      Object.defineProperty(Interpolated.prototype, 'createGeneric', descriptor);
+    }
+  });
+
   it('resolves interpolated values without touching render state', async () => {
     const root = rules([
       vardecl({
@@ -141,9 +179,7 @@ describe('Interpolated', () => {
         value: any('world')
       })
     ]);
-    const evald = await root.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, root);
 
     const interpolatedNode = interpolated({
       source: `hello-${INTERPOLATION_PLACEHOLDER}`,
@@ -164,9 +200,7 @@ describe('Interpolated', () => {
         value: any('world')
       })
     ]);
-    const evald = await root.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, root);
 
     const interpolatedNode = interpolated({
       source: `hello-${INTERPOLATION_PLACEHOLDER}`,
@@ -189,9 +223,7 @@ describe('Interpolated', () => {
         value: any('world')
       })
     ]);
-    const evald = await root.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, root);
     const originalClone = List.prototype.clone;
     let clonedLists = 0;
     List.prototype.clone = function cloneForCounting(

@@ -1893,6 +1893,37 @@ describe('Style import', () => {
       expect(sourceChild?.parent).toBe(importedRules);
     });
 
+    it('keeps first-use source-free scalar declaration imports placement-owned while reusing the scalar leaf', async () => {
+      const red = any('red');
+      const sourceDecl = decl({ name: any('color'), value: red });
+      const importedRules = rules([sourceDecl]);
+      context.sourceTrees.set('shared-import-scalar-decl.jess', importedRules);
+
+      const node = rules([
+        style({
+          path: quoted(any('shared-import-scalar-decl.jess'))
+        }, {
+          type: 'import'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const placement = evald.value[0];
+      expect(isNode(placement, N.Rules)).toBe(true);
+      if (!isNode(placement, N.Rules)) {
+        throw new TypeError('Expected import result to be a Rules placement');
+      }
+      const placementDecl = placement.value[0];
+      expect(placementDecl).not.toBe(sourceDecl);
+      expect(sourceDecl.parent).toBe(importedRules);
+      expect(isNode(placementDecl, N.Declaration)).toBe(true);
+      if (!isNode(placementDecl, N.Declaration)) {
+        throw new TypeError('Expected placement child to be a declaration');
+      }
+      expect(placementDecl.value.value).toBe(red);
+      expect(red.parent).toBe(sourceDecl);
+    });
+
     it('import type can be imported multiple times', async () => {
       context.sourceTrees.set('imported.jess', rules([
         ruleset({

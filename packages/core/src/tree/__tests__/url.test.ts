@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { IToken } from 'chevrotain';
-import { url, quoted, ref, rules, vardecl, any, Rules as RulesClass } from '../index.js';
+import { url, quoted, ref, rules, vardecl, any, Rules as RulesClass, Url } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
@@ -13,6 +13,16 @@ class CountingWriter extends OutputWriter {
     this.captures++;
     return super.capture(fn);
   }
+}
+
+async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
+  const evald = await node.eval(context);
+  expect(evald).toBeInstanceOf(RulesClass);
+  if (!(evald instanceof RulesClass)) {
+    throw new Error('Expected Rules root');
+  }
+  context.root = evald;
+  context.rulesContext = evald;
 }
 
 const token = (image: string): IToken => ({
@@ -44,9 +54,7 @@ describe('url', () => {
         value: any('image.png')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
     const resolveUrl = urlNode.resolve.bind(urlNode);
@@ -70,9 +78,7 @@ describe('url', () => {
         value: any('image.png')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const buffer = createRenderBuffer('flat');
     const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
@@ -88,6 +94,34 @@ describe('url', () => {
     expect(urlResolveCalls).toBe(0);
     expect(urlNode.evaluated).toBe(false);
     expect(urlNode.registrationPrepared).toBe(false);
+  });
+
+  it('renders resolved url values without materializing a replacement url', async () => {
+    const node = rules([
+      vardecl({
+        name: any('asset'),
+        value: any('image.png')
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+    const descriptor = Object.getOwnPropertyDescriptor(Url.prototype, 'withValue');
+    if (!descriptor) {
+      throw new Error('Expected Url.withValue for render materialization proof');
+    }
+
+    Object.defineProperty(Url.prototype, 'withValue', {
+      ...descriptor,
+      value: () => {
+        throw new Error('Url render should not materialize a replacement url');
+      }
+    });
+    try {
+      const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
+
+      expect(await urlNode.render(context)).toBe('url("image.png")');
+    } finally {
+      Object.defineProperty(Url.prototype, 'withValue', descriptor);
+    }
   });
 
   it('does not render pure source whitespace inside url syntax', () => {
@@ -117,6 +151,12 @@ describe('url', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('keeps source url syntax when print options are passed to toTrimmedString()', () => {
+    const node = url(quoted('image.png'));
+
+    expect(node.toTrimmedString({ context })).toBe('url("image.png")');
+  });
+
   it('resolves url values without touching render state', async () => {
     const node = rules([
       vardecl({
@@ -124,9 +164,7 @@ describe('url', () => {
         value: any('image.png')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
     const resolved = await urlNode.resolve(context);
@@ -157,9 +195,7 @@ describe('url', () => {
         value: any('image.png')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
     const resolved = await urlNode.resolve(context);

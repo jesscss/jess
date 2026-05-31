@@ -23,6 +23,7 @@ export type PseudoSelectorValue = {
    */
   name: string;
   arg?: Node;
+  generatedPseudoPlacementOverride?: GeneratedPseudoPlacementOverrideState;
 };
 
 type GeneratedPseudoPlacementState = {
@@ -33,23 +34,21 @@ type GeneratedPseudoPlacementState = {
   omitWrapperForSingleSelectorList: boolean;
 };
 
-type GeneratedPseudoPlacementOverride = {
+type GeneratedPseudoPlacementOverrideState = {
   omitWrapperForSingleSelectorList?: boolean;
 };
 
-const generatedPseudoPlacementOverrides = new WeakMap<PseudoSelector, GeneratedPseudoPlacementOverride>();
-
 function setGeneratedPseudoPlacementOverride(
   source: PseudoSelector,
-  override: GeneratedPseudoPlacementOverride
+  override: GeneratedPseudoPlacementOverrideState
 ): void {
-  generatedPseudoPlacementOverrides.set(source, override);
+  source.value.generatedPseudoPlacementOverride = override;
 }
 
 function getGeneratedPseudoPlacementState(source: PseudoSelector): GeneratedPseudoPlacementState | undefined {
   const { name, arg } = source.value;
   if (source.generated && name === ':is' && arg && isNode(arg, N.Selector)) {
-    const override = generatedPseudoPlacementOverrides.get(source);
+    const override = source.value.generatedPseudoPlacementOverride;
     return {
       source,
       name,
@@ -59,6 +58,23 @@ function getGeneratedPseudoPlacementState(source: PseudoSelector): GeneratedPseu
     };
   }
   return undefined;
+}
+
+function createEvaluatedPseudoSelector(
+  source: PseudoSelector,
+  arg: Node
+): PseudoSelector {
+  const node = new PseudoSelector(
+    {
+      ...source.value,
+      arg
+    },
+    source._options ? { ...source._options } : undefined,
+    source.location.length ? source.location : undefined,
+    source.treeContext
+  ).inherit(source);
+  node.generated = source.generated;
+  return node;
 }
 
 /**
@@ -226,16 +242,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         if (evaluatedArg === currentArg) {
           return this;
         }
-        const node = new PseudoSelector(
-          {
-            ...this.value,
-            arg: evaluatedArg
-          },
-          this._options ? { ...this._options } : undefined,
-          this.location.length ? this.location : undefined,
-          this.treeContext
-        ).inherit(this);
-        node.generated = this.generated;
+        const node = createEvaluatedPseudoSelector(this, evaluatedArg);
         if (
           this.generated
           && (

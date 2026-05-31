@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { Bool, defaultguard } from '../index.js';
+import { Bool, createPublicBool, defaultguard } from '../index.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('DefaultGuard', () => {
@@ -85,6 +85,18 @@ describe('DefaultGuard', () => {
     const second = node.resolve(context);
     first.value = false;
 
+    expect(first).not.toBe(second);
+    expect(second.value).toBe(true);
+  });
+
+  it('uses the shared public Bool helper while preserving fresh mutable results', () => {
+    const first = createPublicBool(true);
+    const second = createPublicBool(true);
+
+    first.value = false;
+
+    expect(first).toBeInstanceOf(Bool);
+    expect(second).toBeInstanceOf(Bool);
     expect(first).not.toBe(second);
     expect(second.value).toBe(true);
   });

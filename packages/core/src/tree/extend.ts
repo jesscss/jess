@@ -14,7 +14,7 @@ import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { Ampersand } from './ampersand.js';
 import type { Rules } from './rules.js';
 import type { Ruleset } from './ruleset.js';
-import { Nil } from './nil.js';
+import { createPublicNil, Nil } from './nil.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import { Combinator } from './combinator.js';
 import { PseudoSelector } from './selector-pseudo.js';
@@ -108,7 +108,7 @@ export class Extend extends Node<ExtendValue> {
   // Don't prepare Extend early; evaluate it when the ruleset is in the frame.
   // This ensures the ampersand resolves to the correct ruleset selector, not the parent frame
 
-  override evalNode(context: Context): MaybePromise<Nil> {
+  private runExtendEffect(context: Context): MaybePromise<void> {
     let { selector, target, flag } = this.value;
     const { selectorBits } = context;
     attachSelectorBitLibrary(target, selectorBits);
@@ -132,16 +132,15 @@ export class Extend extends Node<ExtendValue> {
     // Get current extend root from registry stack
     const extendRoot = context.extendRoots.getCurrentExtendRoot();
     if (!extendRoot) {
-      /** Throw error? */
-      return new Nil();
+      return undefined;
     }
 
     const maybeSel = selector.eval(context);
-    const register = (sel: Selector | Nil) => {
+    const register = (sel: Selector | Nil): void => {
       if (sel instanceof Nil) {
-        return new Nil();
+        return;
       }
-      return registerExtendRecord({
+      registerExtendRecord({
         context,
         extendNode: this,
         extendRoot,
@@ -157,6 +156,13 @@ export class Extend extends Node<ExtendValue> {
       : register(maybeSel as Selector | Nil);
   }
 
+  override evalNode(context: Context): MaybePromise<Nil> {
+    const effect = this.runExtendEffect(context);
+    return isThenable(effect)
+      ? (effect as Promise<void>).then(createPublicNil)
+      : createPublicNil();
+  }
+
   override resolve(context: Context): MaybePromise<Nil> {
     return this.evalNode(context);
   }
@@ -164,7 +170,7 @@ export class Extend extends Node<ExtendValue> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
-    return renderInvisibleEffect(this.evalNode(context), bufferOrOptions);
+    return renderInvisibleEffect(this.runExtendEffect(context), bufferOrOptions);
   }
 }
 
@@ -179,7 +185,7 @@ type RegisterExtendRecordArgs = {
   currentFrame: Ruleset | undefined;
 };
 
-function registerExtendRecord(args: RegisterExtendRecordArgs): Nil {
+function registerExtendRecord(args: RegisterExtendRecordArgs): void {
   const {
     context,
     extendNode,
@@ -259,7 +265,6 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): Nil {
     || ('referenceMode' in extendRootOptions && extendRootOptions.referenceMode === true)
   );
   context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, extendNode, docOrder, fromReferenceScope]);
-  return new Nil();
 }
 
 function getRulesetOwnSelector(ruleset: Ruleset): Selector | undefined {

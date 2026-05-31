@@ -517,6 +517,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return owned;
   }
 
+  private applyDerivedMetadata(node: AtRule): AtRule {
+    node.hoistToRoot = this.hoistToRoot;
+    node.frames = this.frames ? [...this.frames] : undefined;
+    return node;
+  }
+
   private deriveAtRule(value: AtRuleValue, sourceValue: AtRuleValue = this.value): AtRule {
     const node = new AtRule(
       {
@@ -528,9 +534,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       this.location.length ? this.location : undefined,
       this.treeContext
     ).inherit(this);
-    node.hoistToRoot = this.hoistToRoot;
-    node.frames = this.frames ? [...this.frames] : undefined;
-    return node;
+    return this.applyDerivedMetadata(node);
   }
 
   /** Used for equality comparison with other at-rules */
@@ -766,9 +770,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       this.location.length ? this.location : undefined,
       this.treeContext
     ).inherit(this);
-    node.hoistToRoot = this.hoistToRoot;
-    node.frames = this.frames ? [...this.frames] : undefined;
-    return node;
+    return this.applyDerivedMetadata(node);
   }
 
   private resolveBodyResult(result: AtRuleBodyEvalResult): AtRule {

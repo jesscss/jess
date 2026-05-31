@@ -57,6 +57,10 @@ export class SelectorList extends Selector<Selector[]> {
     return node.inherit(this);
   }
 
+  private createEvaluatedSelectorListSurface(value: Selector[], sourceValue: readonly Selector[]): this {
+    return this.withSelectors(value, sourceValue);
+  }
+
   private collapsedSelector(item: Selector, sourceValue: readonly Selector[]): Selector {
     const owned = ownCollapsedSourceChild(item, sourceValue, this);
     if (!(owned instanceof Selector)) {
@@ -251,7 +255,7 @@ export class SelectorList extends Selector<Selector[]> {
         if (!changed) {
           return list;
         }
-        return list.withSelectors(flattened, currentValue);
+        return list.createEvaluatedSelectorListSurface(flattened, currentValue);
       }
     );
   }

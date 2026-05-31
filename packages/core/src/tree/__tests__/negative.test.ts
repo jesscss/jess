@@ -1,7 +1,9 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Context } from '../../context.js';
 import {
   any,
+  Dimension,
+  dimension,
   negative,
   num,
   ref,
@@ -78,6 +80,52 @@ describe('Negative', () => {
     expect(negativeResolveCalls).toBe(0);
     expect(negativeNode.evaluated).toBe(false);
     expect(negativeNode.registrationPrepared).toBe(false);
+  });
+
+  it('renders resolved dimensions without creating an operated result node', async () => {
+    const node = rules([
+      vardecl({
+        name: any('rhs'),
+        value: num(20)
+      })
+    ]);
+    await setRoot(node);
+
+    const operate = vi.spyOn(Dimension.prototype, 'operate').mockImplementation(() => {
+      throw new Error('Negative.render should not operate scalar dimensions');
+    });
+    try {
+      const negativeNode = negative(ref({ key: 'rhs' }, { type: 'variable' }));
+
+      expect(negativeNode.render(context)).toBe('-20');
+      expect(operate).not.toHaveBeenCalled();
+      expect(negativeNode.evaluated).toBe(false);
+      expect(negativeNode.registrationPrepared).toBe(false);
+    } finally {
+      operate.mockRestore();
+    }
+  });
+
+  it('keeps compound dimension negatives on the public operation boundary', async () => {
+    context.opts.unitMode = 'preserve';
+    const value = dimension({ number: 10, unit: 'px*em' });
+    let operateCalls = 0;
+    const originalOperate = value.operate;
+    value.operate = function countOperateCalls(
+      this: typeof value,
+      ...args: Parameters<typeof originalOperate>
+    ): ReturnType<typeof originalOperate> {
+      operateCalls++;
+      return originalOperate.apply(this, args);
+    };
+    const negativeNode = negative(value);
+
+    const rendered = await Promise.resolve(negativeNode.render(context));
+
+    expect(rendered).toContain('calc(');
+    expect(rendered).toContain('px');
+    expect(rendered).toContain('em');
+    expect(operateCalls).toBe(1);
   });
 
   it('resolves negative values without touching render state', async () => {

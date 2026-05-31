@@ -472,7 +472,7 @@ describe('Rule', () => {
     expect(prepareCalls).toBe(0);
   });
 
-  it('renders nil-selector rulesets through an owned body output surface', async () => {
+  it('streams unguarded static nil-selector ruleset bodies directly from source', async () => {
     const body = rules([
       decl({ name: 'color', value: any('red') })
     ]);
@@ -507,7 +507,7 @@ describe('Rule', () => {
       const buffer = createRenderBuffer('flat');
       await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('color: red;\n');
       expect(buffer.parts).toEqual(['color: red;\n']);
-      expect(bodyRenderCalls).toBe(0);
+      expect(bodyRenderCalls).toBe(2);
       expect(prepareCalls).toBe(0);
       expect(body.parent).toBe(node);
       expect(node.evaluated).toBe(false);

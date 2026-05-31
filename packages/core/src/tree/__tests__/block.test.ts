@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
-import { any, block, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
+import { any, block, Block, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
@@ -110,6 +110,34 @@ describe('Block', () => {
     expect(resolveCalls).toBe(0);
     expect(blockNode.evaluated).toBe(false);
     expect(blockNode.registrationPrepared).toBe(false);
+  });
+
+  it('renders resolved block values without materializing a replacement block', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+    const descriptor = Object.getOwnPropertyDescriptor(Block.prototype, 'withValue');
+    if (!descriptor) {
+      throw new Error('Expected Block.withValue for render materialization proof');
+    }
+
+    Object.defineProperty(Block.prototype, 'withValue', {
+      ...descriptor,
+      value: () => {
+        throw new Error('Block render should not materialize a replacement block');
+      }
+    });
+    try {
+      const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
+
+      expect(await blockNode.render(context)).toBe('{foo}');
+    } finally {
+      Object.defineProperty(Block.prototype, 'withValue', descriptor);
+    }
   });
 
   it('resolves block values without touching render state', async () => {

@@ -268,6 +268,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return copy;
   }
 
+  private applyDerivedMetadata<T extends this>(node: T): T {
+    return node.inherit(this);
+  }
+
   private withParts(value: DeclarationValue): this {
     const node: this = Reflect.construct(
       this.constructor,
@@ -278,7 +282,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         this.treeContext
       ]
     );
-    return node.inherit(this);
+    return this.applyDerivedMetadata(node);
   }
 
   private derive(): this {

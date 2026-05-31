@@ -279,6 +279,31 @@ describe('PseudoSelector', () => {
     expect(pseudoNode.toTrimmedString()).toBe(':is($capture-selector)');
   });
 
+  it('keeps generated pseudo placement state when cloned after selector evaluation', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-selector'),
+        value: sel([el('.foo'), co(' '), el('.bar')])
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+
+    const pseudoNode = pseudo({
+      name: ':is',
+      arg: ref({ key: 'capture-selector' }, { type: 'variable' })
+    });
+    pseudoNode.generated = true;
+    const resolved = await pseudoNode.resolve(context);
+    expect(resolved).toBeInstanceOf(PseudoSelector);
+    if (!(resolved instanceof PseudoSelector)) {
+      throw new Error('Expected PseudoSelector result');
+    }
+
+    const cloned = resolved.clone();
+
+    expect(cloned.render(context)).toBe('.foo .bar');
+  });
+
   it('keeps evaluated generated :is() keysets aligned with selector-list omission', async () => {
     const node = rules([
       vardecl({

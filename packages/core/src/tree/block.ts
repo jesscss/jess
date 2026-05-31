@@ -60,8 +60,8 @@ export class Block extends Node<Node, BlockOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
-      () => this.resolveValue(context),
-      node => this.renderResolvedBlock(context, node, bufferOrOptions, options)
+      () => this.resolveRenderValue(context),
+      value => this.renderResolvedBlockValue(context, value, bufferOrOptions, options)
     );
   }
 
@@ -69,9 +69,9 @@ export class Block extends Node<Node, BlockOptions> {
     return this.resolveValue(context);
   }
 
-  private renderResolvedBlock(
+  private renderResolvedBlockValue(
     context: Context,
-    node: Block,
+    value: Node,
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): string {
@@ -79,10 +79,17 @@ export class Block extends Node<Node, BlockOptions> {
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const out = node.renderBlockSyntax(node.value, prepared);
+    const out = this.renderBlockSyntax(value, prepared);
     return buffer
       ? writeRenderText(buffer, out)
       : out;
+  }
+
+  private resolveRenderValue(context: Context): MaybePromise<Node> {
+    if (this.hasFlag(F_STATIC)) {
+      return this.value;
+    }
+    return this.value.resolve(context);
   }
 
   private resolveValue(context: Context): MaybePromise<Block> {

@@ -20,6 +20,7 @@ import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
 import { JsArray } from './js-array.js';
 import { JsObject } from './js-object.js';
+import { JsExpression } from './js-expr.js';
 import { List } from './list.js';
 import { Nil } from './nil.js';
 import { comparePosition } from './util/compare.js';
@@ -1429,6 +1430,10 @@ function canRenderFallbackContainerDirectly(node: Node): boolean {
   return isNode(node, N.List | N.Sequence);
 }
 
+function canRenderDynamicFallbackScalarDirectly(node: Node): boolean {
+  return node instanceof JsExpression;
+}
+
 function canReuseFallbackValue(node: Node): boolean {
   return node.hasFlag(F_STATIC)
     && canReturnReferenceValueWithoutCopy(node);
@@ -1457,6 +1462,10 @@ function evaluateFallbackValue(
     return applyReferenceResultMetadata(referenceNode, fallbackValue, { frozen: true });
   }
   if (options.textOnly === true && canRenderFallbackContainerDirectly(fallbackValue)) {
+    context.popReference();
+    return fallbackValue;
+  }
+  if (options.textOnly === true && canRenderDynamicFallbackScalarDirectly(fallbackValue)) {
     context.popReference();
     return fallbackValue;
   }

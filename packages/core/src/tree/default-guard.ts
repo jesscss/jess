@@ -1,6 +1,6 @@
 import { type Context } from '../context.js';
 import { Node, defineType } from './node.js';
-import { Bool } from './bool.js';
+import { Bool, createPublicBool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
@@ -23,7 +23,7 @@ export class DefaultGuard extends Node<string> {
   }
 
   override evalNode(context: Context): Bool {
-    return new Bool(Boolean(context.isDefault));
+    return createPublicBool(Boolean(context.isDefault));
   }
 
   override resolve(context: Context): Bool {

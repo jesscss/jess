@@ -87,6 +87,29 @@ describe('Expression', () => {
     expect(renderedNode.registrationPrepared).toBe(false);
   });
 
+  it('renders list children directly without evaluating the expression wrapper', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    await setRoot(node);
+
+    const expressionChild = list([
+      any('one'),
+      ref({ key: 'value' }, { type: 'variable' })
+    ]);
+    expressionChild.eval = () => {
+      throw new Error('Expression.render should not evaluate child list wrappers');
+    };
+    const renderedNode = expr(expressionChild);
+
+    expect(renderedNode.render(context)).toBe('one, foo');
+    expect(renderedNode.evaluated).toBe(false);
+    expect(renderedNode.registrationPrepared).toBe(false);
+  });
+
   it('resolves expression values without touching render state', async () => {
     const node = rules([
       vardecl({

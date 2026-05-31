@@ -8,7 +8,7 @@ import { Any } from '../any.js';
 import { Color } from '../color.js';
 import { JsFunction } from '../js-function.js';
 import { JsObject } from '../js-object.js';
-import { Bool } from '../bool.js';
+import { createPublicBool } from '../bool.js';
 import { isNode } from './is-node.js';
 import isPlainObject from 'lodash-es/isPlainObject.js';
 import { createRequire } from 'node:module';
@@ -39,7 +39,7 @@ function getNodeType(value: any): Node {
     return new Nil();
   }
   if (typeof value === 'boolean') {
-    return new Bool(value);
+    return createPublicBool(value);
   }
   if (typeof value === 'function') {
     const options = Reflect.get(value, 'options');

@@ -1,6 +1,6 @@
 import { type Context } from '../context.js';
 import { F_NON_STATIC, F_VISIBLE, Node, defineType, type NodeLocation, type TreeContext } from './node.js';
-import { Bool } from './bool.js';
+import { Bool, createPublicBool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import {
@@ -146,7 +146,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   private evaluateCondition(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Bool> {
     return pipe(
       () => this.evaluateConditionBoolean(context, mode),
-      value => new Bool(value)
+      value => createPublicBool(value)
     );
   }
 

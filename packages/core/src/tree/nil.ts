@@ -54,4 +54,8 @@ export class Nil extends Node<''> {
   }
 }
 
+export function createPublicNil(): Nil {
+  return new Nil();
+}
+
 export const nil = defineType(Nil, 'Nil');

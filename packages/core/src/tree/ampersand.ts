@@ -1,5 +1,5 @@
 import { defineType, type NodeOptions, type LocationInfo, type TreeContext, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node } from './node.js';
-import { Nil } from './nil.js';
+import { createPublicNil, Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
 import { PseudoSelector } from './selector-pseudo.js';
@@ -196,6 +196,10 @@ function assertValidAmpersandTemplateJoin(template: string, replacement: string)
   }
 }
 
+function throwCannotAppendSelector(appendValue: string): never {
+  throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
+}
+
 function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
   if (
     isNode(baseSelector, N.PseudoSelector)
@@ -242,6 +246,37 @@ function mergeAmpersandTemplateSelector(
     return merged[0]!;
   }
   return new SelectorList(merged).inherit(baseSelector);
+}
+
+function mergeAmpersandTemplateSelectorList(
+  selector: SelectorList,
+  placement: AmpersandAppendPlacementState
+): SelectorList {
+  const mergedItems: Selector[] = [];
+  for (const item of selector.value) {
+    const merged = mergeAmpersandTemplateSelector(item as Selector, placement);
+    if (isNode(merged, N.SelectorList)) {
+      mergedItems.push(...merged.value);
+    } else {
+      mergedItems.push(merged);
+    }
+  }
+  return new SelectorList(mergedItems).inherit(selector);
+}
+
+function createAmpersandWithSelectorContainer(
+  source: Ampersand,
+  selectorContainer: { selector?: Selector | Nil | undefined }
+): Ampersand {
+  return new Ampersand(
+    {
+      appendValue: source.value.appendValue,
+      selectorContainer
+    },
+    source.options,
+    source.location.length === 0 ? undefined : source.location,
+    source.treeContext
+  ).inherit(source);
 }
 
 function ownSelectorForAppend(selector: Selector): Selector {
@@ -532,29 +567,20 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       let frame = atIndex(context.rulesetFrames, -1);
       let selector = storedSelector ?? frame?.selector;
       if (!selector) {
-        return new Nil();
+        return createPublicNil();
       }
       const placement = createAmpersandAppendPlacementState(this, selector, context, appendValue);
       if (appendValue && !isNode(selector, N.Nil)) {
         if (placement.templateMerge) {
           if (isNode(selector, N.SelectorList)) {
-            const mergedItems: Selector[] = [];
-            for (const item of selector.value) {
-              const merged = mergeAmpersandTemplateSelector(item as Selector, placement);
-              if (isNode(merged, N.SelectorList)) {
-                mergedItems.push(...merged.value);
-              } else {
-                mergedItems.push(merged);
-              }
-            }
-            selector = new SelectorList(mergedItems).inherit(selector);
+            selector = mergeAmpersandTemplateSelectorList(selector, placement);
           } else {
             selector = mergeAmpersandTemplateSelector(selector, placement);
           }
         } else {
           const result = appendSelector(selector, appendValue);
           if (!result.appended) {
-            throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
+            throwCannotAppendSelector(appendValue);
           }
           selector = result.selector;
         }
@@ -576,15 +602,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
      * preserve it instead of overwriting with the frame selector.
      */
     if (!amp._selectorContainer && frame && frame.selector) {
-      amp = new Ampersand(
-        {
-          appendValue: this.value.appendValue,
-          selectorContainer: frame
-        },
-        this.options,
-        this.location.length === 0 ? undefined : this.location,
-        this.treeContext
-      ).inherit(this);
+      amp = createAmpersandWithSelectorContainer(this, frame);
     } else if (!amp._selectorContainer) {
       const parentSelector = amp.parent;
       const isBareWrapperAmp = isSingleAmpersandWrapper(parentSelector);
@@ -599,7 +617,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
           meta: { selector: selectorText }
         })));
       }
-      return new Nil();
+      return createPublicNil();
     }
     return amp;
   }

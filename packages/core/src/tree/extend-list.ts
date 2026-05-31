@@ -2,7 +2,7 @@ import { Node, F_VISIBLE, defineType, type NodeLocation, type NodeOptions, type 
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Extend } from './extend.js';
 import type { Context } from '../context.js';
-import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import { serialForEach, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   type RenderBuffer,
   renderInvisibleEffect
@@ -44,7 +44,11 @@ export class ExtendList extends Node<Extend[]> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
-    return renderInvisibleEffect(this.evalNode(context), bufferOrOptions);
+    return renderInvisibleEffect(this.renderExtendEffects(context), bufferOrOptions);
+  }
+
+  private renderExtendEffects(context: Context): MaybePromise<void> {
+    return serialForEach(this.value, node => node.render(context));
   }
 }
 

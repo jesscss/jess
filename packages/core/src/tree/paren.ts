@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { Bool } from './bool.js';
+import { Bool, createPublicBool } from './bool.js';
 import { Expression } from './expression.js';
 import { Operation } from './operation.js';
 import { Node, defineType, F_NON_STATIC, type NodeLocation, type TreeContext } from './node.js';
@@ -29,7 +29,7 @@ const isOpOrExpression = (node: Node): node is Operation | Expression => {
 
 const getDefaultGuardBool = (node: Node | undefined, context: Context): Bool | undefined => {
   const value = getDefaultGuardValue(node, context);
-  return value === undefined ? undefined : new Bool(value);
+  return value === undefined ? undefined : createPublicBool(value);
 };
 
 function normalizeEscapedList(value: List): List {

@@ -38,6 +38,20 @@ describe('Any and Keyword', () => {
     expect(resolveCalls).toBe(0);
   });
 
+  it('renders custom-property Any values from source without result inheritance', async () => {
+    const context = new Context();
+    const node = any('var(--tone)', { role: 'customprop' });
+    const originalLocation = [4, 1, 5, 15, 1, 16] as const;
+    node._location = [...originalLocation];
+    node.resolve = () => {
+      throw new Error('Any.render should not resolve static custom property fragments');
+    };
+
+    expect(node.render(context)).toBe('var(--tone)');
+    expect(node.location).toEqual([...originalLocation]);
+    expect(node.sourceNode ?? node).toBe(node);
+  });
+
   it('renders Keyword syntax through toTrimmedString()', () => {
     expect(keyword('inherit').toTrimmedString()).toBe('inherit');
   });

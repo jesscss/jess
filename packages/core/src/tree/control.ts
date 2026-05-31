@@ -28,6 +28,14 @@ const PUBLIC_RULE_VISIBILITY = {
 } as const;
 const MAX_WHILE_ITERATIONS = 10000;
 
+function throwWhileIterationLimitExceeded(): never {
+  throw new Error(`$while exceeded ${MAX_WHILE_ITERATIONS} iterations`);
+}
+
+function throwInvalidWhileIterationRegistrationPrep(): never {
+  throw new TypeError('Expected $while iteration registration prep to return Rules');
+}
+
 function makeDirectiveRulesPublic(rules: Rules) {
   rules.options.rulesVisibility = {
     ...rules.options.rulesVisibility,
@@ -683,7 +691,7 @@ export class While extends Node<WhileValue> {
           }
           iterations++;
           if (iterations > MAX_WHILE_ITERATIONS) {
-            throw new Error(`$while exceeded ${MAX_WHILE_ITERATIONS} iterations`);
+            throwWhileIterationLimitExceeded();
           }
           const iterationRules = createWhileIterationSurface(originalRules, stateRules);
           const result = await iterationRules.eval(context);
@@ -726,7 +734,7 @@ export class While extends Node<WhileValue> {
         }
         iterations++;
         if (iterations > MAX_WHILE_ITERATIONS) {
-          throw new Error(`$while exceeded ${MAX_WHILE_ITERATIONS} iterations`);
+          throwWhileIterationLimitExceeded();
         }
         let iterationRules = createWhileIterationSurface(originalRules, stateRules);
         if (directMutations) {
@@ -734,7 +742,7 @@ export class While extends Node<WhileValue> {
         } else if (hasIterationStateMutation(originalRules)) {
           const preparedIterationRules = await iterationRules.prepareRegistration(context);
           if (!(preparedIterationRules instanceof Rules)) {
-            throw new TypeError('Expected $while iteration registration prep to return Rules');
+            throwInvalidWhileIterationRegistrationPrep();
           }
           await syncWhileState(stateRules, preparedIterationRules, context);
           iterationRules = preparedIterationRules;

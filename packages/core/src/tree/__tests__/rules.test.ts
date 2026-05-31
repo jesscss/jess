@@ -257,6 +257,24 @@ describe('Rules', () => {
     expect(deriveCalls).toBe(0);
   });
 
+  it('drops empty derived scope frames while preserving fallback frames', () => {
+    const source = rules([
+      decl({ name: any('color'), value: any('red') })
+    ]);
+    const emptyFrame = source.getScopeFrame();
+    expect(emptyFrame.rulesNode).toBe(source);
+
+    const emptyDerived = source.derive([]);
+    expect(emptyDerived.scopeFrame).toBeUndefined();
+
+    const fallbackRules = rules([]);
+    source.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+
+    const fallbackDerived = source.derive([]);
+    expect(fallbackDerived.scopeFrame?.rulesNode).toBe(fallbackDerived);
+    expect(fallbackDerived.scopeFrame?.fallbackFrame).toBe(fallbackRules.getScopeFrame());
+  });
+
   it('handles charset output-order bookkeeping without child registration prep', async () => {
     const charset = any('@charset "utf-8";', { role: 'charset' });
     charset.prepareRegistration = () => {

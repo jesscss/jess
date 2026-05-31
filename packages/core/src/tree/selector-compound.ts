@@ -3,7 +3,7 @@ import {
   defineType
 } from './node.js';
 import type { Context } from '../context.js';
-import { Nil } from './nil.js';
+import { createPublicNil, Nil } from './nil.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
@@ -65,6 +65,10 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
       node.hoistToRoot = true;
     }
     return node.inherit(this);
+  }
+
+  private createEvaluatedComponentSurface(value: Selector[], sourceValue: readonly Selector[]): this {
+    return this.withComponents(value, sourceValue);
   }
 
   private collapsedSelector(item: Selector, sourceValue: readonly Selector[]): Selector {
@@ -173,7 +177,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
           return aIsElement ? -1 : bIsElement ? 1 : 0;
         });
         if (value.length === 0) {
-          return (new Nil()).inherit(this);
+          return createPublicNil().inherit(this);
         }
         if (value.length === 1) {
           return this.collapsedSelector(value[0]!, currentValue);
@@ -185,7 +189,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         if (!changed) {
           return sel;
         }
-        return sel.withComponents(value, currentValue);
+        return sel.createEvaluatedComponentSurface(value, currentValue);
       }
     );
   }
@@ -228,7 +232,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
           return aIsElement ? -1 : bIsElement ? 1 : 0;
         });
         if (value.length === 0) {
-          return (new Nil()).inherit(this);
+          return createPublicNil().inherit(this);
         }
         if (value.length === 1) {
           return this.collapsedSelector(value[0]!, currentValue);

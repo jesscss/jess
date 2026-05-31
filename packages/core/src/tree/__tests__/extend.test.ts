@@ -1,91 +1,65 @@
 import { describe, expect, it } from 'vitest';
-import { ExtendFlag, el, extend } from '../index.js';
 import { Context } from '../../context.js';
-import { extendList } from '../extend-list.js';
-import { OutputWriter } from '../util/print.js';
-import { createRenderBuffer, renderNodeToBuffer } from '../util/render-buffer.js';
+import { any, decl, el, extend, rules, ruleset } from '../index.js';
+import { Extend } from '../extend.js';
+import { ExtendList, extendList } from '../extend-list.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
-class CountingWriter extends OutputWriter {
-  captures = 0;
-
-  override capture(fn: () => void): string {
-    this.captures++;
-    return super.capture(fn);
-  }
-}
-
-describe('Extend', () => {
-  it('streams source and target selectors without capture scaffolding', () => {
-    const writer = new CountingWriter();
-    const node = extend({
-      selector: el('.source'),
-      target: el('.target'),
-      flag: ExtendFlag.Exact
-    });
-
-    expect(node.toTrimmedString({ writer })).toBe('$extend .source -> .target !exact;');
-    expect(writer.captures).toBe(0);
-  });
-
-  it('writes no CSS for extend buffers while evaluating without public resolve', async () => {
+describe('Extend render', () => {
+  it('renders extend side effects without calling public evalNode()', () => {
     const context = new Context();
-    const buffer = createRenderBuffer('flat');
-    const node = extend({
-      target: el('.target'),
-      flag: ExtendFlag.Exact
-    });
-    node.resolve = () => {
-      throw new Error('Extend buffer render should use evalNode');
-    };
-
-    await expect(Promise.resolve(renderNodeToBuffer(node, context, buffer))).resolves.toBe('');
-
-    expect(buffer.parts).toEqual([]);
-    expect(node.evaluated).toBe(false);
-  });
-
-  it('renders no CSS for direct extend render while evaluating without public resolve', async () => {
-    const context = new Context();
-    const node = extend({
-      target: el('.target'),
-      flag: ExtendFlag.Exact
-    });
-    node.resolve = () => {
-      throw new Error('Extend direct render should use evalNode');
-    };
-
-    await expect(Promise.resolve(node.render(context))).resolves.toBe('');
-    expect(node.evaluated).toBe(false);
-  });
-
-  it('writes no CSS for extend-list buffers without public resolve', async () => {
-    const context = new Context();
-    const buffer = createRenderBuffer('flat');
-    const node = extendList([
-      extend({ target: el('.one'), flag: ExtendFlag.Exact }),
-      extend({ target: el('.two'), flag: ExtendFlag.All })
-    ]);
-    node.resolve = () => {
-      throw new Error('ExtendList buffer render should stay invisible');
-    };
-
-    await expect(Promise.resolve(renderNodeToBuffer(node, context, buffer))).resolves.toBe('');
-
-    expect(buffer.parts).toEqual([]);
-    expect(node.evaluated).toBe(false);
-  });
-
-  it('renders no CSS for direct extend-list render without public resolve', () => {
-    const context = new Context();
-    const node = extendList([
-      extend({ target: el('.one'), flag: ExtendFlag.Exact }),
-      extend({ target: el('.two'), flag: ExtendFlag.All })
-    ]);
-    node.resolve = () => {
-      throw new Error('ExtendList direct render should stay invisible');
+    const node = extend({ target: el('.base') });
+    node.evalNode = () => {
+      throw new Error('Extend.render should not materialize public eval output');
     };
 
     expect(node.render(context)).toBe('');
-    expect(node.evaluated).toBe(false);
+  });
+
+  it('writes invisible extend side effects into buffers without public evalNode()', () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    const node = extend({ target: el('.base') });
+    node.evalNode = () => {
+      throw new Error('Extend.render should not materialize public eval output');
+    };
+
+    expect(node.render(context, buffer)).toBe('');
+    expect(buffer.parts).toEqual([]);
+  });
+
+  it('renders extend lists by running child side effects directly', () => {
+    const context = new Context();
+    const node = extendList([extend({ target: el('.base') })]);
+    node.evalNode = () => {
+      throw new Error('ExtendList.render should not materialize public eval output');
+    };
+
+    expect(node.render(context)).toBe('');
+  });
+
+  it('keeps extend behavior when rendered inside a ruleset', async () => {
+    const context = new Context({ collapseNesting: true });
+    const node = rules([
+      ruleset({
+        selector: el('.base'),
+        rules: rules([decl({ name: any('color'), value: any('red') })])
+      }),
+      ruleset({
+        selector: el('.child'),
+        rules: rules([extend({ target: el('.base') })])
+      })
+    ]);
+
+    await expect(Promise.resolve(renderNodeToString(node, context, { context }))).resolves.toContain('.base,\n.child');
+  });
+
+  it('keeps public evalNode output for Extend and ExtendList', async () => {
+    const context = new Context();
+
+    await expect(Promise.resolve(extend({ target: el('.base') }).evalNode(context)))
+      .resolves.toHaveProperty('type', 'Nil');
+    expect(extendList([]).evalNode(context)).toBeInstanceOf(ExtendList);
+    expect(extend({ target: el('.base') })).toBeInstanceOf(Extend);
   });
 });

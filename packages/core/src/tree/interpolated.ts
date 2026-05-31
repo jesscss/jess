@@ -7,9 +7,14 @@ import type { Selector } from './selector.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { OutputWriter, type PrintOptions, getPrintOptions } from './util/print.js';
+import { OutputWriter, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable, pipe } from '@jesscss/awaitable-pipe';
-import type { RenderBuffer } from './util/render-buffer.js';
+import {
+  isRenderBuffer,
+  prepareBufferPrintState,
+  writeRenderText,
+  type RenderBuffer
+} from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 
 // Placeholder that's very unlikely to appear in user strings
@@ -181,9 +186,25 @@ export class Interpolated<
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
-      () => this.resolveValue(context),
-      node => this.renderOutput(context, node, bufferOrOptions, options)
+      () => this.resolveRenderReplacements(context),
+      replacements => this.renderResolvedReplacements(context, replacements, bufferOrOptions, options)
     );
+  }
+
+  private renderResolvedReplacements(
+    context: Context,
+    replacements: Node[],
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const out = this.writeWithReplacements(replacements, prepared);
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
   }
 
   /**
@@ -284,6 +305,24 @@ export class Interpolated<
     }
     const result = (out as Interpolated<Role>).createGeneric();
     return result;
+  }
+
+  private resolveRenderReplacements(context: Context): MaybePromise<Node[]> {
+    const evaluatedReplacements = [...this.value.replacements];
+    let maybe = serialForEach(evaluatedReplacements, (n, idx) => {
+      const out = n.resolve(context);
+      if (isThenable(out)) {
+        return (out as Promise<Node>).then((result) => {
+          evaluatedReplacements[idx] = result;
+        });
+      }
+      evaluatedReplacements[idx] = out as Node;
+      return undefined;
+    });
+    if (isThenable(maybe)) {
+      return maybe.then(() => evaluatedReplacements);
+    }
+    return evaluatedReplacements;
   }
 
   /**

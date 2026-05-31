@@ -110,6 +110,18 @@ describe('Dimension', () => {
       let right = dimension([20, 'px']);
       await expect(renderOperate(left, right, '-')).resolves.toBe('-10px');
     });
+
+    it('keeps inherited source metadata on public arithmetic results', () => {
+      const left = dimension([10, 'px']);
+      const right = dimension([20, 'px']);
+      left._location = [10, 1, 11, 14, 1, 15];
+
+      const result = left.operate(right, '+', context);
+
+      expect(result).not.toBe(left);
+      expect(result.location).toEqual(left.location);
+      expect(result.sourceNode).toBe(result);
+    });
   });
 
   describe('multiplication', () => {
@@ -220,6 +232,19 @@ describe('Dimension', () => {
       expect(output).toContain('calc');
       expect(output).toContain('px');
       expect(output).toContain('rem');
+    });
+
+    it('keeps preserve-mode compound dimension results as public node surfaces', async () => {
+      const left = dimension([10, 'px']);
+      const right = dimension([2, 'rem']);
+      left._location = [20, 2, 1, 24, 2, 5];
+
+      const result = left.operate(right, '+', context);
+
+      expect(result).not.toBe(left);
+      expect(result.location).toEqual(left.location);
+      expect(result.sourceNode).toBe(result);
+      expect(await result.render(context)).toContain('calc');
     });
     it('should create calc() when dividing a number by a unit', async () => {
       let left = num(10);

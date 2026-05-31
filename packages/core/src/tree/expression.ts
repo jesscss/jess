@@ -2,6 +2,8 @@ import type { Context } from '../context.js';
 import { Node, F_NON_STATIC, defineType, type NodeLocation, type NodeOptions, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
+import { List } from './list.js';
+import { Sequence } from './sequence.js';
 import {
   isRenderBuffer,
   type RenderBuffer
@@ -46,6 +48,11 @@ export class Expression extends Node<Node> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (this.value instanceof List || this.value instanceof Sequence) {
+      return isRenderBuffer(bufferOrOptions)
+        ? this.value.render(context, bufferOrOptions, options)
+        : this.value.render(context, bufferOrOptions);
+    }
     return pipe(
       () => this.evalNode(context),
       node => isRenderBuffer(bufferOrOptions)

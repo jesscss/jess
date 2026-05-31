@@ -63,6 +63,25 @@ export class Dimension extends Node<DimensionValue> {
     return this.unitToGroup.has(unit);
   }
 
+  private finalizeOperationResult<T extends Dimension | Color>(result: T): T {
+    result.inherit(this);
+    return result;
+  }
+
+  private operateAsColor(b: Color, op: Operator, context?: Context): Color {
+    const { number, unit } = this.value;
+    const unitMode = context?.opts?.unitMode ?? 'loose';
+    const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
+    if (unit && isStrictLikeMode) {
+      throw new TypeError(`Cannot convert "${this}" to a color`);
+    }
+    const thisColor = this.finalizeOperationResult(new Color(
+      { rgb: [number, number, number] },
+      { format: b.options?.format ?? ColorFormat.RGB }
+    ));
+    return this.finalizeOperationResult(thisColor.operate(b, op, context));
+  }
+
   override valueOf() {
     let { number, unit } = this.value;
     return unit ? `${number}${unit}` : number;
@@ -74,17 +93,7 @@ export class Dimension extends Node<DimensionValue> {
     }
     let unitToGroup = this.unitToGroup;
     if (b instanceof Color) {
-      let { number, unit } = this.value;
-      const unitMode = context?.opts?.unitMode ?? 'loose';
-      const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
-      if (unit && isStrictLikeMode) {
-        throw new TypeError(`Cannot convert "${this}" to a color`);
-      }
-      let thisColor = new Color(
-        { rgb: [number, number, number] },
-        { format: b.options?.format ?? ColorFormat.RGB }
-      ).inherit(this);
-      return thisColor.operate(b, op, context).inherit(this);
+      return this.operateAsColor(b, op, context);
     }
     let { number: aVal, unit: aUnit } = this.value;
     let { number: bVal, unit: bUnit } = b.value;
@@ -100,36 +109,36 @@ export class Dimension extends Node<DimensionValue> {
       /** One or both doesn't have a unit, so just calculate the number */
       if ((isStrictMode || isPreserveMode) && bUnit && op === '/') {
         if (isPreserveMode) {
-          return new Dimension({
+          return this.finalizeOperationResult(new Dimension({
             number: calculate(aVal, op, bVal),
             unit: `1/${bUnit}`
-          }).inherit(this);
+          }));
         }
         throw new TypeError('Cannot divide a number by a unit');
       }
-      return new Dimension({ number: calculate(aVal, op, bVal), unit: outUnit }).inherit(this);
+      return this.finalizeOperationResult(new Dimension({ number: calculate(aVal, op, bVal), unit: outUnit }));
     }
 
     if (aUnit === bUnit) {
       /** Both units match, so the now we have some choices */
       if (op === '+' || op === '-') {
-        return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this);
+        return this.finalizeOperationResult(new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }));
       }
       if (isStrictMode || isPreserveMode) {
         if (op === '*') {
           if (isPreserveMode) {
-            return new Dimension({
+            return this.finalizeOperationResult(new Dimension({
               number: calculate(aVal, op, bVal),
               unit: `${aUnit}*${bUnit}`
-            }).inherit(this);
+            }));
           }
           throw new TypeError('Cannot multiply two units together');
         } else {
           /** Cancel units during division */
-          return new Dimension({ number: calculate(aVal, op, bVal) }).inherit(this);
+          return this.finalizeOperationResult(new Dimension({ number: calculate(aVal, op, bVal) }));
         }
       } else {
-        return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this);
+        return this.finalizeOperationResult(new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }));
       }
     }
     const aGroup = unitToGroup.get(aUnit);
@@ -138,20 +147,20 @@ export class Dimension extends Node<DimensionValue> {
     if (aGroup === undefined || bGroup === undefined || aGroup !== bGroup) {
       if (isStrictMode || isPreserveMode) {
         if (isPreserveMode) {
-          return new Dimension({
+          return this.finalizeOperationResult(new Dimension({
             number: calculate(aVal, op, bVal),
             unit: (
               op === '+' || op === '-'
                 ? `${aUnit}±${bUnit}`
                 : `${aUnit}${op}${bUnit}`
             )
-          }).inherit(this);
+          }));
         }
         /** Units don't match, and can't be converted */
         throw new TypeError('Incompatible units. Change the units or use the unit function');
       }
       /** Just coerce to the left-hand unit */
-      return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this);
+      return this.finalizeOperationResult(new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }));
     }
 
     if (!this.isConversionUnit(aUnit) || !this.isConversionUnit(bUnit)) {
@@ -165,14 +174,14 @@ export class Dimension extends Node<DimensionValue> {
     }
 
     if (isPreserveMode && (op === '*' || op === '/')) {
-      return new Dimension({
+      return this.finalizeOperationResult(new Dimension({
         number: calculate(aVal, op, bVal),
         unit: `${aUnit}${op}${bUnit}`
-      }).inherit(this);
+      }));
     }
 
     bVal = bVal / (atomicUnit / targetUnit);
-    return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this);
+    return this.finalizeOperationResult(new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }));
   }
 
   override compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {

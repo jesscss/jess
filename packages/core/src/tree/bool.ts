@@ -34,4 +34,9 @@ export class Bool extends Node<boolean> {
     return this;
   }
 }
+
+export function createPublicBool(value: boolean): Bool {
+  return new Bool(value);
+}
+
 export const bool = defineType(Bool, 'Bool');

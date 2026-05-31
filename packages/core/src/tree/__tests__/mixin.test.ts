@@ -1186,6 +1186,7 @@ describe('Mixin', () => {
       const entry = { node: output };
 
       expect(output.options.referenceMode).toBe(false);
+      expect(output.options.mixinOutputSlot?.fallbackFrame).toBe(fallbackFrame);
       expect(output.getScopeFrame().fallbackFrame).toBe(fallbackFrame);
       expect(canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: false })).toBe(false);
       expect(canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(true);

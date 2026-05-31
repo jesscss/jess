@@ -41,6 +41,14 @@ function isParseError(error: unknown): boolean {
     || (typeof error.code === 'string' && error.code.startsWith('parse/'));
 }
 
+function throwMissingImportSourceGetter(): never {
+  throw new Error('No source getter found');
+}
+
+function throwInvalidImportedRulesRegistrationPrep(): never {
+  throw new TypeError('Expected imported rules registration prep to return Rules');
+}
+
 function copyImportPlacementValue(value: unknown): unknown {
   if (value instanceof Node) {
     return copyImportPlacementNode(value);
@@ -730,7 +738,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           resolvedPath = resolved.resolvedPath;
           const sourceGetter = context.plugins.find(plugin => plugin.getSource);
           if (!sourceGetter) {
-            throw new Error('No source getter found');
+            throwMissingImportSourceGetter();
           }
           const source = await sourceGetter.getSource!(resolvedPath);
           const sourceNode = this.createInlineSourceNode(source, resolvedPath);
@@ -853,7 +861,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
               // keeps source identity from the import placement.
               const preparedRules = await rules.prepareRegistration(context);
               if (!(preparedRules instanceof Rules)) {
-                throw new TypeError('Expected imported rules registration prep to return Rules');
+                throwInvalidImportedRulesRegistrationPrep();
               }
               rules = preparedRules;
               if (type === 'import') {
