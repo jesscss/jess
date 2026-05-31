@@ -76,4 +76,16 @@ describe('DefaultGuard', () => {
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
+
+  it('returns fresh public Bool nodes because resolved values are mutable', () => {
+    context.isDefault = true;
+    const node = defaultguard('default');
+
+    const first = node.resolve(context);
+    const second = node.resolve(context);
+    first.value = false;
+
+    expect(first).not.toBe(second);
+    expect(second.value).toBe(true);
+  });
 });

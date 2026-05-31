@@ -161,6 +161,14 @@ export class Interpolated<
     }
   }
 
+  writeWithReplacements(replacements: Node[], options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    this.writeInterpolated(replacements, options);
+    return w.getSince(mark);
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;

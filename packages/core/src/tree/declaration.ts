@@ -99,9 +99,15 @@ type DeclarationEvalState = {
   nil: boolean;
 };
 
+type CustomInterpolatedRenderValue = {
+  source: Interpolated;
+  replacements: Node[];
+};
+
 type DeclarationRenderState = {
   name: DeclarationValue['name'];
   value: Node;
+  customInterpolatedValue?: CustomInterpolatedRenderValue;
   listValue?: Node[];
   spaceValue?: Node[];
   important?: Any<'flag'>;
@@ -130,6 +136,14 @@ type DeclarationRegistrationState = {
   };
   bindOutput?: (node: Declaration) => void;
 };
+
+type DeclarationRenderValue = Node | Nil | Node[] | CustomInterpolatedRenderValue;
+
+const isCustomInterpolatedRenderValue = (value: DeclarationRenderValue): value is CustomInterpolatedRenderValue => (
+  !(value instanceof Node)
+  && !Array.isArray(value)
+  && value.source instanceof Interpolated
+);
 
 const shouldResolveCustomPropertyValue = (node: Node): boolean => {
   if (isNode(node, N.Reference)) {
@@ -334,7 +348,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private declValueTrimmedString(
     valueParts: DeclarationValue,
     options?: PrintOptions,
-    renderState?: { listValue?: Node[]; spaceValue?: Node[]; importantText?: string; normalizedFromAssign?: AssignmentType }
+    renderState?: {
+      customInterpolatedValue?: DeclarationRenderState['customInterpolatedValue'];
+      listValue?: Node[];
+      spaceValue?: Node[];
+      importantText?: string;
+      normalizedFromAssign?: AssignmentType;
+    }
   ) {
     options = getPrintOptions(options);
     const w = options.writer!;
@@ -363,7 +383,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       // - if capture ended with a line break before declaration termination,
       //   drop that trailing line break so semicolon insertion stays inline.
       const valueMark = w.mark();
-      value.toString(options);
+      if (renderState?.customInterpolatedValue?.source === value) {
+        renderState.customInterpolatedValue.source.writeWithReplacements(
+          renderState.customInterpolatedValue.replacements,
+          options
+        );
+      } else {
+        value.toString(options);
+      }
       w.replaceSince(valueMark, (valueOut) => {
         const fallbackOut = stringifyCustomFallbackFunctionCall(value, options);
         const customOut = fallbackOut === undefined
@@ -490,6 +517,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }, prepared, {
       listValue: state.listValue,
       spaceValue: state.spaceValue,
+      customInterpolatedValue: state.customInterpolatedValue,
       importantText: state.importantText,
       normalizedFromAssign: state.normalizedFromAssign
     });
@@ -552,7 +580,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       return chain ? chain.then(() => evaluated) : evaluated;
     };
-    const evaluate = (): MaybePromise<Node | Nil | Node[]> => {
+    const evaluate = (): MaybePromise<DeclarationRenderValue> => {
       const isCustomProperty = state.name.valueOf().startsWith('--');
       const previousInCustom = context.inCustom;
       if (isCustomProperty) {
@@ -561,11 +589,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
         context.inCustom = true;
       }
-      let maybeValue: MaybePromise<Node | Nil | Node[]>;
+      let maybeValue: MaybePromise<DeclarationRenderValue>;
       try {
-        maybeValue = state.renderAssignment
-          ? evaluateRenderAssignment()
-          : state.value.eval(context);
+        maybeValue = isCustomProperty && state.value instanceof Interpolated && !state.renderAssignment
+          ? this.evalCustomInterpolatedRenderValue(context, state.value)
+          : state.renderAssignment
+            ? evaluateRenderAssignment()
+            : state.value.eval(context);
       } finally {
         if (!isThenable(maybeValue!)) {
           context.inCustom = previousInCustom;
@@ -578,7 +608,25 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       return maybeValue;
     };
-    const finish = (newValue: Node | Nil | Node[]): DeclarationRenderState => {
+    const finish = (newValue: DeclarationRenderValue): DeclarationRenderState => {
+      if (isCustomInterpolatedRenderValue(newValue)) {
+        let importantText: string | undefined;
+        if (context.hasImportantSource && !state.important) {
+          importantText = '!important';
+        }
+        if (context.hasImportantSource) {
+          context.popImportantSource();
+        }
+        return {
+          name: state.name,
+          value: state.value,
+          customInterpolatedValue: newValue,
+          important: state.important,
+          importantText,
+          normalizedFromAssign: state.normalizedFromAssign,
+          nil: false
+        };
+      }
       if (Array.isArray(newValue)) {
         const value = newValue[0] ?? state.value;
         const isList = state.renderAssignment?.sep === ',';
@@ -634,6 +682,38 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return isThenable(maybeValue)
       ? maybeValue.then(finish)
       : finish(maybeValue);
+  }
+
+  private evalCustomInterpolatedRenderValue(
+    context: Context,
+    node: Interpolated
+  ): MaybePromise<DeclarationRenderState['customInterpolatedValue']> {
+    const replacements = [...node.value.replacements];
+    let chain: Promise<void> | undefined;
+    const evaluateReplacement = (replacement: Node, index: number): MaybePromise<void> => {
+      const out = replacement.eval(context);
+      if (isThenable(out)) {
+        return Promise.resolve(out).then((evaluated) => {
+          replacements[index] = evaluated;
+        });
+      }
+      replacements[index] = out as Node;
+    };
+    for (const [index, replacement] of replacements.entries()) {
+      if (chain) {
+        chain = chain.then(() => evaluateReplacement(replacement, index));
+        continue;
+      }
+      const out = evaluateReplacement(replacement, index);
+      if (isThenable(out)) {
+        chain = Promise.resolve(out);
+      }
+    }
+    const finish = (): DeclarationRenderState['customInterpolatedValue'] => ({
+      source: node,
+      replacements
+    });
+    return chain ? chain.then(finish) : finish();
   }
 
   private normalizeMergedLeadingPlaceholderForRender(

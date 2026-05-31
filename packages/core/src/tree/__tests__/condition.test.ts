@@ -154,6 +154,21 @@ describe('Condition', () => {
       expect(context.printState.writer).toBeUndefined();
     });
 
+    it('returns fresh public Bool nodes because resolved values are mutable', async () => {
+      const node = condition([
+        bool(true),
+        '=',
+        bool(true)
+      ]);
+
+      const first = await node.resolve(context);
+      const second = await node.resolve(context);
+      first.value = false;
+
+      expect(first).not.toBe(second);
+      expect(second.value).toBe(true);
+    });
+
     it('keeps source condition child containers canonical after resolve(context)', async () => {
       const root = rules([
         vardecl({

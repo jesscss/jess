@@ -502,15 +502,19 @@ describe('Declaration', () => {
     context.root = evald;
     context.rulesContext = evald;
 
+    const value = interpolated({
+      source: `prefix-${INTERPOLATION_PLACEHOLDER}`,
+      replacements: [ref({ key: 'tone' }, { type: 'variable' })]
+    });
     const node = decl({
       name: any('--custom'),
-      value: interpolated({
-        source: `prefix-${INTERPOLATION_PLACEHOLDER}`,
-        replacements: [ref({ key: 'tone' }, { type: 'variable' })]
-      })
+      value
     });
 
     expect(node.toTrimmedString()).toBe('--custom:prefix-$tone');
+    value.createGeneric = function createGenericShouldNotRun(): never {
+      throw new Error('Custom property interpolation render should not materialize a generic output node');
+    };
     expect(node.render(context)).toBe('--custom:prefix-red');
   });
 
