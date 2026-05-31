@@ -1304,10 +1304,23 @@ describe('reference', () => {
       }
     });
 
-    it('copies source-backed fallback containers without redundant inherit calls', async () => {
+    it('renders dynamic fallback containers as text without pre-copying the source container', async () => {
       const fallback = list([ref('tone', { type: 'variable' })]);
+      fallback._location = [10, 1, 11, 20, 1, 21];
+      const fallbackParent = fallback.parent;
+      const originalCopy = List.prototype.copy;
       const originalInherit = List.prototype.inherit;
+      let fallbackCopies = 0;
       let fallbackCopyInherits = 0;
+      List.prototype.copy = function copyForCounting(
+        this: List,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this === fallback) {
+          fallbackCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
       List.prototype.inherit = function inheritForCounting(
         this: List,
         ...args: Parameters<typeof originalInherit>
@@ -1333,9 +1346,12 @@ describe('reference', () => {
         );
 
         expect(await Promise.resolve(refNode.render(context))).toBe('red');
+        expect(fallbackCopies).toBe(0);
         expect(fallbackCopyInherits).toBe(1);
+        expect(fallback.parent).toBe(fallbackParent);
         expect(context.referenceStack).toBe(0);
       } finally {
+        List.prototype.copy = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });

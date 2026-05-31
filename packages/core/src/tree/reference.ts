@@ -1385,6 +1385,10 @@ function canRenderReferenceValueTextOnly(node: Node): boolean {
   return canReturnReferenceValue(node) || canRenderReferenceContainerText(node);
 }
 
+function canRenderFallbackContainerDirectly(node: Node): boolean {
+  return isNode(node, N.List | N.Sequence);
+}
+
 function canReuseFallbackValue(node: Node): boolean {
   return node.hasFlag(F_STATIC)
     && canReturnReferenceValueWithoutCopy(node);
@@ -1411,6 +1415,10 @@ function evaluateFallbackValue(
     }
     context.popReference();
     return applyReferenceResultMetadata(referenceNode, fallbackValue, { frozen: true });
+  }
+  if (options.textOnly === true && canRenderFallbackContainerDirectly(fallbackValue)) {
+    context.popReference();
+    return fallbackValue;
   }
   const out = copyReferenceValue(fallbackValue).eval(context);
   if (isThenable(out)) {
