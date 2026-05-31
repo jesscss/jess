@@ -252,6 +252,33 @@ describe('PseudoSelector', () => {
     expect(pseudoNode.toTrimmedString()).toBe(':is($capture-selector-list)');
   });
 
+  it('omits generated :is() wrappers for evaluated selector placement args', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-selector'),
+        value: sel([el('.foo'), co(' '), el('.bar')])
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+
+    const pseudoNode = pseudo({
+      name: ':is',
+      arg: ref({ key: 'capture-selector' }, { type: 'variable' })
+    });
+    pseudoNode.generated = true;
+    const sourceArg = pseudoNode.value.arg;
+    const resolved = await pseudoNode.resolve(context);
+
+    expect(resolved).toBeInstanceOf(PseudoSelector);
+    expect(resolved).not.toBe(pseudoNode);
+    expect(resolved.generated).toBe(true);
+    expect(resolved.render(context)).toBe('.foo .bar');
+    expect(resolved.keySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+    expect(resolved.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(sourceArg?.parent).toBe(pseudoNode);
+    expect(pseudoNode.toTrimmedString()).toBe(':is($capture-selector)');
+  });
+
   it('keeps evaluated generated :is() keysets aligned with selector-list omission', async () => {
     const node = rules([
       vardecl({

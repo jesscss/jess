@@ -33,17 +33,29 @@ type GeneratedPseudoPlacementState = {
   omitWrapperForSingleSelectorList: boolean;
 };
 
-const generatedPseudoOmitWrapper = new WeakMap<PseudoSelector, true>();
+type GeneratedPseudoPlacementOverride = {
+  omitWrapperForSingleSelectorList?: boolean;
+};
+
+const generatedPseudoPlacementOverrides = new WeakMap<PseudoSelector, GeneratedPseudoPlacementOverride>();
+
+function setGeneratedPseudoPlacementOverride(
+  source: PseudoSelector,
+  override: GeneratedPseudoPlacementOverride
+): void {
+  generatedPseudoPlacementOverrides.set(source, override);
+}
 
 function getGeneratedPseudoPlacementState(source: PseudoSelector): GeneratedPseudoPlacementState | undefined {
   const { name, arg } = source.value;
   if (source.generated && name === ':is' && arg && isNode(arg, N.Selector)) {
+    const override = generatedPseudoPlacementOverrides.get(source);
     return {
       source,
       name,
       arg,
       keySetLibrary: source.keySetLibrary,
-      omitWrapperForSingleSelectorList: isNode(arg, N.SelectorList) || generatedPseudoOmitWrapper.has(source)
+      omitWrapperForSingleSelectorList: override?.omitWrapperForSingleSelectorList ?? isNode(arg, N.SelectorList)
     };
   }
   return undefined;
@@ -232,7 +244,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
             || (evaluatedArg !== currentArg && isNode(evaluatedArg, N.Selector))
           )
         ) {
-          generatedPseudoOmitWrapper.set(node, true);
+          setGeneratedPseudoPlacementOverride(node, {
+            omitWrapperForSingleSelectorList: true
+          });
         }
         attachSelectorBitLibrary(node, context.selectorBits);
         return node;

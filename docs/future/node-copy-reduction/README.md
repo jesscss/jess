@@ -236,12 +236,11 @@ These are architectural seams, not a live ordered queue. Use
    them by pattern.
    The current `GeneratedPseudoPlacementState` is intentionally smaller than
    the possible future model: it carries only source/name/arg plus the proven
-   generated `:is(...)` single-selector-list wrapper omission fact. Visibility,
-   extend metadata, and composed-header facts remain AST-owned until focused
-   selector-shape tests prove otherwise. The wrapper-omission fact may be
-   retained as side-state when eval collapses a generated single selector-list
-   arg to its one selector; that is still placement state, not a parallel
-   selector tree.
+   generated `:is(...)` wrapper-omission fact. Visibility, extend metadata, and
+   composed-header facts remain AST-owned until focused selector-shape tests
+   prove otherwise. Wrapper omission now lives as a generated-pseudo placement
+   override when eval collapses a generated selector-list or selector arg; it
+   is still placement state, not a parallel selector tree.
    The likely next model is a small generated-selector state object, not a
    new selector AST. It would sit beside a canonical selector node and carry
    only per-placement facts: evaluated replacement children, visibility
