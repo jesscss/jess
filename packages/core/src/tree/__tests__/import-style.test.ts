@@ -32,6 +32,7 @@ import {
   atrule
 } from '../index.js';
 import { Rules as RulesClass } from '../index.js';
+import { getImportPlacementSourceChild } from '../import-style.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { Context } from '../../context.js';
@@ -1955,6 +1956,7 @@ describe('Style import', () => {
       if (!isNode(placementRuleset, N.Ruleset)) {
         throw new TypeError('Expected placement child to be a ruleset');
       }
+      expect(getImportPlacementSourceChild(placement, placementRuleset)).toBe(sourceRuleset);
       const placementDecl = placementRuleset.value.rules?.value[0];
       expect(placementDecl).not.toBe(sourceDecl);
       expect(isNode(placementDecl, N.Declaration)).toBe(true);

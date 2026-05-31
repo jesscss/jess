@@ -9,6 +9,7 @@ import {
   canEnterRulesEntryForLookup,
   getMixinOutputChildForSource,
   getMixinOutputPlacementChildren,
+  getMixinOutputReferenceMode,
   getMixinOutputRulesVisibility,
   getMixinOutputScopeFrame,
   getMixinOutputSourceChild,
@@ -17,6 +18,7 @@ import {
   getMixinOutputRuleIndex,
   getRulesetMixinPlacementSourceIndex,
   isFromRestrictedMixinOutput,
+  isPublicRulesEntry,
   keepsDuplicateMixinOutputDeclaration
 } from '../util/mixin-output-slot.js';
 
@@ -1196,6 +1198,7 @@ describe('Mixin', () => {
       const entry = { node: output };
 
       expect(output.options.referenceMode).toBe(false);
+      expect(getMixinOutputReferenceMode(output)).toBe(false);
       expect(output.options.mixinOutputSlot?.fallbackFrame).toBe(fallbackFrame);
       expect(getMixinOutputRulesVisibility(output)).toBe(output.options.rulesVisibility);
       expect(getMixinOutputPlacementChildren(output)).toEqual(output.value);
@@ -1210,9 +1213,12 @@ describe('Mixin', () => {
       expect(canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(true);
 
       const slotVisibility = output.options.rulesVisibility;
+      delete output.options.referenceMode;
       delete output.options.rulesVisibility;
       expect(getMixinOutputRulesVisibility(output)).toBe(slotVisibility);
+      expect(getMixinOutputReferenceMode(output)).toBe(false);
       expect(canEnterRulesEntryForLookup(entry, { type: 'Declaration', hasTarget: true })).toBe(true);
+      expect(isPublicRulesEntry(entry, 'Declaration')).toBe(true);
     });
 
     it('detects restricted mixin-output ancestry through the slot helper', () => {

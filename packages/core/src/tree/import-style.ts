@@ -247,8 +247,46 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> 
 type ImportPlacementState = {
   source: Rules;
   children: Node[];
+  sourceByPlacement: ReadonlyMap<Node, Node>;
   preservesDirectCommentChildren: true;
 };
+
+const importPlacementStates = new WeakMap<Rules, ImportPlacementState>();
+
+function findImportPlacementState(placementRules: Rules): ImportPlacementState | undefined {
+  let cursor: Rules | undefined = placementRules;
+  for (let depth = 0; cursor && depth < 4; depth++) {
+    const state = importPlacementStates.get(cursor);
+    if (state) {
+      return state;
+    }
+    cursor = isNode(cursor.sourceNode, N.Rules) ? cursor.sourceNode : undefined;
+  }
+  return undefined;
+}
+
+export function getImportPlacementSourceChild(
+  placementRules: Rules,
+  placementChild: Node
+): Node | undefined {
+  const state = findImportPlacementState(placementRules);
+  if (!state) {
+    return undefined;
+  }
+  const directSource = state.sourceByPlacement.get(placementChild);
+  if (directSource) {
+    return directSource;
+  }
+  if (isNode(placementChild.sourceNode)) {
+    for (const [stateChild, sourceChild] of state.sourceByPlacement) {
+      if (stateChild === placementChild.sourceNode) {
+        return sourceChild;
+      }
+    }
+  }
+  const index = placementRules.value.indexOf(placementChild);
+  return index >= 0 ? state.source.value[index] : undefined;
+}
 
 /**
  * This is a generic class for:
@@ -319,15 +357,21 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 
   private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
+    const children = sourceRules.value.map(node => this.copyImportPlacementChild(node));
     return {
       source: sourceRules,
-      children: sourceRules.value.map(node => this.copyImportPlacementChild(node)),
+      children,
+      sourceByPlacement: new Map(
+        children.map((child, index) => [child, sourceRules.value[index]!] as const)
+      ),
       preservesDirectCommentChildren: true
     };
   }
 
   private materializeImportPlacementState(state: ImportPlacementState): Rules {
-    return this.deriveRulesSurface(state.source, state.children);
+    const placement = this.deriveRulesSurface(state.source, state.children);
+    importPlacementStates.set(placement, state);
+    return placement;
   }
 
   private copyImportPlacementChild(node: Node): Node {
