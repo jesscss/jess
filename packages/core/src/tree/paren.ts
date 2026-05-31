@@ -11,6 +11,7 @@ import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import {
   isRenderBuffer,
   writeRenderText,
+  writeRenderTextResult,
   type RenderBuffer
 } from './util/render-buffer.js';
 import { getDefaultGuardValue } from './util/default-guard.js';
@@ -31,6 +32,10 @@ const getDefaultGuardBool = (node: Node | undefined, context: Context): Bool | u
   return value === undefined ? undefined : new Bool(value);
 };
 
+function normalizeEscapedList(value: List): List {
+  return new List([...value.value], { ...value.options, sep: ',' }).inherit(value);
+}
+
 function emitParenValue(value: Node, options: ReturnType<typeof getPrintOptions>): void {
   if (options.trivia) {
     emitTriviaTokens(
@@ -47,6 +52,11 @@ function emitParenValue(value: Node, options: ReturnType<typeof getPrintOptions>
     options.suppressBoundaryTrivia = saved;
   }
 }
+
+type ParenRenderValue = {
+  node: Node;
+  wrap: boolean;
+};
 
 /**
  * An expression in parenthesis
@@ -102,9 +112,81 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         : out;
     }
     return pipe(
-      () => this.evaluateValue(context, 'resolve'),
-      node => this.renderOutput(context, node, bufferOrOptions, options)
+      () => this.evaluateRenderValue(context),
+      value => this.renderEvaluatedValue(context, value, bufferOrOptions, options)
     );
+  }
+
+  private evaluateRenderValue(context: Context): MaybePromise<ParenRenderValue> {
+    const currentValue = this.value;
+    if (!currentValue) {
+      return { node: this, wrap: false };
+    }
+    const guardBool = getDefaultGuardBool(currentValue, context);
+    if (guardBool) {
+      return { node: guardBool, wrap: false };
+    }
+    const isOp = isOpOrExpression(currentValue);
+    if (isOp) {
+      context.parenFrames.push(true);
+    }
+    const maybeEvald = currentValue.resolve(context);
+    const after = (v: Node): ParenRenderValue => {
+      let value = v;
+      if (isOp) {
+        context.parenFrames.pop();
+      }
+      const evaluatedGuardBool = getDefaultGuardBool(value, context);
+      if (evaluatedGuardBool) {
+        return { node: evaluatedGuardBool, wrap: false };
+      }
+      if (this._options?.escaped) {
+        if (value instanceof List && value.options?.sep === ';') {
+          return { node: normalizeEscapedList(value), wrap: false };
+        }
+        return { node: value, wrap: false };
+      }
+      while (value instanceof Paren && value.value) {
+        value = value.value;
+      }
+      if (value instanceof Bool || value instanceof Dimension) {
+        return { node: value, wrap: false };
+      }
+      if (isOp && !isOpOrExpression(value)) {
+        return { node: value, wrap: false };
+      }
+      if (value === currentValue) {
+        return { node: this, wrap: false };
+      }
+      return { node: value, wrap: true };
+    };
+    if (isThenable(maybeEvald)) {
+      return (maybeEvald as Promise<Node>).then(after);
+    }
+    return after(maybeEvald as Node);
+  }
+
+  private renderEvaluatedValue(
+    context: Context,
+    value: ParenRenderValue,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): MaybePromise<string> {
+    if (value.node === this || !value.wrap) {
+      return this.renderOutput(context, value.node, bufferOrOptions, options);
+    }
+    const rendered = value.node.render(context, isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions);
+    const wrapped = pipe(
+      () => rendered,
+      (out) => {
+        const open = this._options?.delimiter === 'square' ? '[' : '(';
+        const close = this._options?.delimiter === 'square' ? ']' : ')';
+        return `${open}${out}${close}`;
+      }
+    );
+    return isRenderBuffer(bufferOrOptions)
+      ? writeRenderTextResult(bufferOrOptions, wrapped)
+      : wrapped;
   }
 
   private evaluateValue(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Node> {
@@ -130,7 +212,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         }
         if (this._options?.escaped && value instanceof Node) {
           if (value instanceof List && value.options?.sep === ';') {
-            return new List([...value.value], { ...value.options, sep: ',' }).inherit(value);
+            return normalizeEscapedList(value);
           }
           return value;
         }

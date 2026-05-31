@@ -799,7 +799,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       if (state.evaluatedPrelude) {
         runtimeUpdate.evaluatedPrelude = state.evaluatedPrelude;
       }
-      if (state.evaluatedBody) {
+      if (state.evaluatedBody && state.evaluatedBody !== node.value.rules) {
         runtimeUpdate.evaluatedBody = state.evaluatedBody;
       }
       if (state.output) {

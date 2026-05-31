@@ -176,6 +176,45 @@ describe('Call', () => {
     expect(rule.registrationPrepared).toBe(false);
   });
 
+  it('streams dynamic CSS call arguments without materializing a replacement arg list', async () => {
+    const root = rules([
+      vardecl({
+        name: any('red-channel'),
+        value: num(100)
+      })
+    ]);
+    const evald = await root.eval(context);
+    if (!(evald instanceof Rules)) {
+      throw new TypeError('Expected Rules root');
+    }
+    context.root = evald;
+    context.rulesContext = evald;
+    const descriptor = Object.getOwnPropertyDescriptor(List.prototype, 'withResolvedValue');
+    if (!descriptor) {
+      throw new Error('Expected List.withResolvedValue for call arg materialization proof');
+    }
+    const rule = call({
+      name: 'rgb',
+      args: list([
+        ref({ key: 'red-channel' }, { type: 'variable' }),
+        num(100),
+        num(100)
+      ])
+    });
+
+    Object.defineProperty(List.prototype, 'withResolvedValue', {
+      ...descriptor,
+      value: () => {
+        throw new Error('CSS call render should stream arguments without a replacement list');
+      }
+    });
+    try {
+      expect(await Promise.resolve(rule.render(context))).toBe('rgb(100, 100, 100)');
+    } finally {
+      Object.defineProperty(List.prototype, 'withResolvedValue', descriptor);
+    }
+  });
+
   it('writes async CSS call arguments into flat buffers', async () => {
     const buffer = createRenderBuffer('flat');
     const arg = new AsyncAny('20');

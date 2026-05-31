@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
-import { any, Bool, call, list, num, paren, ref, rules, Rules, vardecl } from '../index.js';
+import { any, Bool, call, list, num, Paren, paren, ref, rules, Rules, vardecl } from '../index.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
@@ -101,6 +101,33 @@ describe('Paren', () => {
     expect(parenResolveCalls).toBe(0);
     expect(parenNode.evaluated).toBe(false);
     expect(parenNode.registrationPrepared).toBe(false);
+  });
+
+  it('renders dynamic paren values without materializing a replacement paren', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    await evalRoot(node, context);
+    const descriptor = Object.getOwnPropertyDescriptor(Paren.prototype, 'withValue');
+    if (!descriptor) {
+      throw new Error('Expected Paren.withValue for render materialization proof');
+    }
+    const parenNode = paren(ref({ key: 'value' }, { type: 'variable' }));
+
+    Object.defineProperty(Paren.prototype, 'withValue', {
+      ...descriptor,
+      value: () => {
+        throw new Error('Paren render should wrap resolved values without a replacement paren');
+      }
+    });
+    try {
+      expect(parenNode.render(context)).toBe('(foo)');
+    } finally {
+      Object.defineProperty(Paren.prototype, 'withValue', descriptor);
+    }
   });
 
   it('renders default() values without allocating temporary Bool nodes', async () => {
