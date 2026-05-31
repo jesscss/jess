@@ -1,10 +1,14 @@
 # Node Copy Reduction
 
-This folder is the active handoff for reducing and, where possible,
-eliminating routine node copying during eval. Keep it small enough to read at
-startup. Open [HANDOFF.md](./HANDOFF.md) first for current status, the
-immediate queue, and verification. This README is the architecture contract.
-Older per-file completion logs live in
+This folder is historical background for the older node-copy-specific phase.
+The active eval/render architecture handoff is now
+[`docs/future/core-architecture/HANDOFF.md`](../core-architecture/HANDOFF.md).
+
+The old framing was too narrow. Current work optimizes total hot-path cost:
+AST nodes, state/tracking objects, `WeakMap` side maps, recursive walks,
+function-call overhead, parse/execution size, source parentage, and public API
+boundaries. Use this README for context, not as the active queue or completion
+contract. Older per-file completion logs live in
 `docs/_archive/node-copy-reduction/README-2026-05-12.md`.
 
 ## Direction
@@ -223,7 +227,8 @@ remove the places where eval still creates broad output surfaces merely so a
 later serializer can walk them.
 
 These are architectural seams, not a live ordered queue. Use
-[HANDOFF.md](./HANDOFF.md) for the current order of work.
+[`../core-architecture/HANDOFF.md`](../core-architecture/HANDOFF.md) for the
+current order of work.
 
 1. **Loop eval surfaces**: direct loop-body child copying and source-state /
    function-registry copying on output grouping wrappers are no longer the
@@ -362,4 +367,5 @@ Pick one narrow production seam, prove it with the closest focused test, then
 run the smallest broader verification that covers the affected behavior. Do not
 add architecture or status documents that mostly describe absent machinery.
 
-Use [HANDOFF.md](./HANDOFF.md) for the current execution checklist.
+Use [`../core-architecture/HANDOFF.md`](../core-architecture/HANDOFF.md) for
+the current execution checklist.

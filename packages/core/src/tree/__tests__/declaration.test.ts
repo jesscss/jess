@@ -7,7 +7,7 @@ import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { Nil } from '../nil.js';
-import { finalizeContextualImportantState } from '../declaration.js';
+import { collectDeclarationMergeAdapterItems, finalizeContextualImportantPublicState, finalizeContextualImportantState } from '../declaration.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -887,6 +887,20 @@ describe('Declaration', () => {
       importantText: '!important'
     });
     expect(context.hasImportantSource).toBe(false);
+  });
+
+  it('finalizes public contextual important state as a flag node', () => {
+    context.pushImportantSource();
+
+    const state = finalizeContextualImportantPublicState(context, undefined);
+
+    expect(state.important?.valueOf()).toBe('!important');
+    expect(state.importantText).toBeUndefined();
+    expect(context.hasImportantSource).toBe(false);
+  });
+
+  it('collects declaration merge adapter items without empty placeholders', () => {
+    expect(collectDeclarationMergeAdapterItems(list([new Nil(), any(''), any('1px')])).map(item => item.valueOf())).toEqual(['1px']);
   });
 
   it('keeps root merged declaration output unchanged without recopying scalar leaves', async () => {

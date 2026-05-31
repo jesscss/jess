@@ -11,8 +11,8 @@ as active guidance.
 For active execution, prefer:
 
 1. `AGENTS.md`
-2. `docs/future/node-copy-reduction/HANDOFF.md`
-3. `docs/future/node-copy-reduction/README.md`
+2. `docs/future/core-architecture/HANDOFF.md`
+3. `docs/future/node-copy-reduction/README.md` for historical node-copy context
 4. `docs/future/pre-eval-elimination.md`
 
 Do not recreate the retired task registry, task loop, or auto-loop machinery
@@ -23,7 +23,7 @@ handoffs above.
 
 The old failure buckets were removed because they described past recovery work
 as if it were current state. For the current baseline and exact verification
-commands, run the active handoff checks in `docs/future/node-copy-reduction/`
+commands, run the active handoff checks in `docs/future/core-architecture/`
 and the relevant focused tests for the code being changed.
 
 ## Architecture Direction
@@ -133,7 +133,7 @@ tests. Do not move trivia back onto nodes.
 ### Track 5 — Pre-Eval Elimination / Buffered Render
 
 Open and active. The live checkpoint queue for this track is
-`docs/future/node-copy-reduction/HANDOFF.md`; this section is only the
+`docs/future/core-architecture/HANDOFF.md`; this section is only the
 high-level roadmap.
 
 Target shape:
@@ -172,7 +172,7 @@ Current implementation state:
 ## Reference Roadmap
 
 This list is not the active queue. Use
-`docs/future/node-copy-reduction/HANDOFF.md` for immediate next work and exact
+`docs/future/core-architecture/HANDOFF.md` for immediate next work and exact
 verification. Keep this list as the broader roadmap only.
 
 1. Keep reducing routine `clone()` / defensive copy boundaries where focused

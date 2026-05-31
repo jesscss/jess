@@ -22,6 +22,7 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 import type { PrintOptions } from './util/print.js';
+import { createPlacementChildSegment, type PlacementChildSegment } from './util/placement-state.js';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -247,9 +248,12 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> 
 type ImportPlacementState = {
   source: Rules;
   children: Node[];
+  childSegments: readonly ImportPlacementChildSegment[];
   sourceByPlacement: ReadonlyMap<Node, Node>;
   preservesDirectCommentChildren: true;
 };
+
+export type ImportPlacementChildSegment = PlacementChildSegment;
 
 type ImportPlacementOptionsState = {
   referenceMode: RulesOptions['referenceMode'];
@@ -269,6 +273,12 @@ export type ImportPostludePlacementState = {
   outputRules: Rules;
   postludeNames: readonly string[];
   postludeNodes: readonly Node[];
+};
+
+export type ImportPostludeRenderState = {
+  sourceRules: Rules;
+  outputRules: Rules;
+  order: readonly string[];
 };
 
 const importPostludePlacementStates = new WeakMap<Rules, ImportPostludePlacementState>();
@@ -391,6 +401,16 @@ export function getImportPlacementSourceChild(
   return index >= 0 ? state.source.value[index] : undefined;
 }
 
+export function getImportPlacementChildSegments(placementRules: Rules): readonly ImportPlacementChildSegment[] | undefined {
+  const state = findImportPlacementState(placementRules);
+  if (!state) {
+    return undefined;
+  }
+  return state.childSegments.map(segment => (
+    createPlacementChildSegment(segment.source, placementRules.value[segment.index], segment.index)
+  ));
+}
+
 export function getImportPlacementReferenceMode(placementRules: Rules): RulesOptions['referenceMode'] | undefined {
   return importPlacementOptionsStates.get(placementRules)?.referenceMode
     ?? placementRules.options.referenceMode;
@@ -414,6 +434,18 @@ export function getImportPostludePlacement(outputRules: Rules): ImportPostludePl
 
 export function getImportPostludeRenderOrder(outputRules: Rules): readonly string[] | undefined {
   return getImportPostludePlacement(outputRules)?.postludeNames;
+}
+
+export function getImportPostludeRenderState(outputRules: Rules): ImportPostludeRenderState | undefined {
+  const placement = getImportPostludePlacement(outputRules);
+  if (!placement) {
+    return undefined;
+  }
+  return {
+    sourceRules: placement.sourceRules,
+    outputRules: placement.outputRules,
+    order: placement.postludeNames
+  };
 }
 
 /**
@@ -486,6 +518,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
     const children = sourceRules.value.map(node => this.copyImportPlacementChild(node));
+    const childSegments = sourceRules.value.map((source, index) => (
+      createPlacementChildSegment(source, children[index], index)
+    ));
     const sourceByPlacement = new Map<Node, Node>();
     for (let index = 0; index < children.length; index++) {
       collectImportPlacementSourceMap(sourceRules.value[index], children[index], sourceByPlacement);
@@ -493,6 +528,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return {
       source: sourceRules,
       children,
+      childSegments,
       sourceByPlacement,
       preservesDirectCommentChildren: true
     };

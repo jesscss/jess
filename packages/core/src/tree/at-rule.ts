@@ -59,12 +59,12 @@ type AtRuleBodyFrameState = {
   output?: AtRuleBodyOutputState;
 };
 
-type AtRuleBodyOutputState = {
+export type AtRuleBodyOutputState = {
   hoistToRoot?: boolean;
   frames?: AtRule['frames'];
 };
 
-type AtRuleBodyRuntimeState = {
+export type AtRuleBodyRuntimeState = {
   evaluatedBody?: Rules;
   evaluatedPrelude?: Node;
   output?: AtRuleBodyOutputState;
@@ -111,7 +111,7 @@ type AtRuleBodyEvalPrepState = {
   pushedExtendRoot: boolean;
 };
 
-type AtRuleBodyRenderState = {
+export type AtRuleBodyRenderState = {
   kind: 'body-render';
   source: AtRule;
   evaluatedPrelude?: Node;
@@ -316,6 +316,21 @@ function runAtRuleBodyRuntimeState<T>(
       atRuleBodyRuntimeState.delete(node);
     }
   }
+}
+
+export function createAtRuleBodyRuntimeUpdate(state: AtRuleBodyRenderState): AtRuleBodyRuntimeState {
+  const node = state.source;
+  const runtimeUpdate: AtRuleBodyRuntimeState = {};
+  if (state.evaluatedPrelude) {
+    runtimeUpdate.evaluatedPrelude = state.evaluatedPrelude;
+  }
+  if (state.evaluatedBody && state.evaluatedBody !== node.value.rules) {
+    runtimeUpdate.evaluatedBody = state.evaluatedBody;
+  }
+  if (state.output) {
+    runtimeUpdate.output = state.output;
+  }
+  return runtimeUpdate;
 }
 
 function setAtRuleBodyEvalPrelude(
@@ -797,16 +812,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     };
     const renderBodyState = (state: AtRuleBodyRenderState): string => {
       const node = state.source;
-      const runtimeUpdate: AtRuleBodyRuntimeState = {};
-      if (state.evaluatedPrelude) {
-        runtimeUpdate.evaluatedPrelude = state.evaluatedPrelude;
-      }
-      if (state.evaluatedBody && state.evaluatedBody !== node.value.rules) {
-        runtimeUpdate.evaluatedBody = state.evaluatedBody;
-      }
-      if (state.output) {
-        runtimeUpdate.output = state.output;
-      }
+      const runtimeUpdate = createAtRuleBodyRuntimeUpdate(state);
       return Object.keys(runtimeUpdate).length > 0
         ? runAtRuleBodyRuntimeState(node, runtimeUpdate, () => renderEvaluatedAtRule(node))
         : renderEvaluatedAtRule(node);

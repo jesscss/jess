@@ -5,9 +5,11 @@ or not yet part of the stable architecture notes.
 
 Current topics:
 
-- [Node copy reduction handoff](./node-copy-reduction/HANDOFF.md) — start here
-  for current eval/render/copy status and the immediate next queue
-- [Node copy reduction architecture](./node-copy-reduction/README.md)
+- [Core architecture handoff](./core-architecture/HANDOFF.md) — start here
+  for current eval/render architecture lanes, completion gates, and the
+  immediate next queue
+- [Node copy reduction architecture](./node-copy-reduction/README.md) —
+  historical background for the older node-copy-specific phase
 - [Eliminating `preEval`](./pre-eval-elimination.md)
 - [Registry redesign handoff](./performance/2026-04-13-registry-redesign-handoff.md)
   — high-level roadmap/reference only; not the active queue

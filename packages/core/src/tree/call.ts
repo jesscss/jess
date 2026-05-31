@@ -90,6 +90,12 @@ type CallRawArgsPlacementState = {
   sourceArgs: List<Node>;
 };
 
+export type CallRawArgDiagnosticSource = {
+  source: Call;
+  sourceArg: Node;
+  index: number;
+};
+
 type OptionalFallbackRenderOutput = Node | string;
 
 export function getCallRawArgsPlacement(rawArgs: List<Node>): CallRawArgsPlacementState | undefined {
@@ -106,6 +112,19 @@ export function getCallRawArgsPlacement(rawArgs: List<Node>): CallRawArgsPlaceme
 export function getCallRawArgSourceNode(rawArgs: List<Node>, index: number): Node | undefined {
   const placement = getCallRawArgsPlacement(rawArgs);
   return placement?.sourceArgs.value[index];
+}
+
+export function getCallRawArgDiagnosticSource(rawArgs: List<Node>, index: number): CallRawArgDiagnosticSource | undefined {
+  const placement = getCallRawArgsPlacement(rawArgs);
+  const sourceArg = placement?.sourceArgs.value[index];
+  if (!placement || !sourceArg) {
+    return undefined;
+  }
+  return {
+    source: placement.source,
+    sourceArg,
+    index
+  };
 }
 
 /**

@@ -45,39 +45,47 @@ When information is volatile, point to the canonical source instead of restating
 
 Performance work in this repo is primarily about runtime architecture, not micro-style changes.
 Optimize for fastest real-world Less evaluation/render first and lowest memory
-second. Fewer objects are useful only when they improve speed, memory, or the
-canonical-tree runtime model.
+second. Fewer objects and fewer function calls are useful only when they
+improve speed, memory, parse/execute size, or the canonical-tree runtime model.
 
 When working in the evaluation engine, optimize for:
 
 - one canonical source tree
 - lazy per-placement runtime state
 - sparse shadow or patch state
-- reduced object creation during eval when it improves speed, memory, or
-  source-tree ownership
+- reduced object creation during eval/render, including AST nodes,
+  state/tracking records, `WeakMap` side maps, and helper arrays
+- reduced recursive node walks and repeated source/placement rediscovery
+- smaller hot-path function-call ladders where they show up in real eval/render
+  work
 
 Avoid treating these as acceptable end states:
 
 - cloning as routine eval isolation
 - materialization as a normal internal eval strategy
 - helper or wrapper growth that does not map to the target runtime model
+- trading one deleted node for more expensive state graphs, recursive walks, or
+  function-call overhead
 - local green slices presented as architectural completion
 
 If two approaches both pass tests, prefer the one with better measured or
 well-supported runtime speed. Use memory pressure as the next tiebreaker, and
-use object-count reduction only as a proxy when it supports those goals and
-moves the runtime toward the canonical-tree model.
+use object-count reduction only as a proxy when it covers total runtime objects
+and supports those goals.
 
-## Node Copy Reduction Surfaces
+## Core Architecture Handoff
 
 When working on the active evaluation-model refactor, use these docs as the canonical source:
 
-- `docs/future/node-copy-reduction/README.md` for the current direction and active seams
-- `docs/future/node-copy-reduction/HANDOFF.md` for execution constraints
+- `docs/future/core-architecture/HANDOFF.md` for current architecture lanes,
+  completion gates, the active queue, and verification
+- `docs/future/node-copy-reduction/README.md` only as historical background for
+  the older node-copy-specific phase
 
-Use those docs to understand the direction. Do not add broad status trackers or
-stale architecture documents that mostly describe machinery the repo does not
-currently have.
+Use the handoff to understand the direction. Do not add broad status trackers
+or stale architecture documents that mostly describe machinery the repo does
+not currently have; update the bounded lane gates or node-family tracker
+instead.
 
 ## Testing And Verification
 

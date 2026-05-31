@@ -16,6 +16,7 @@ import {
   getMixinOutputSourceChildren,
   getMixinOutputSourceIndex,
   getMixinOutputChildPlacementState,
+  getMixinOutputPlacementRecord,
   getMixinOutputLookupState,
   getMixinOutputRuleIndex,
   getRulesetMixinPlacementSourceIndex,
@@ -1146,6 +1147,8 @@ describe('Mixin', () => {
         sourceChild: mixinBody.value[0],
         sourceIndex: 0
       });
+      expect(getMixinOutputPlacementRecord(result)?.source).toBe(mixinBody);
+      expect(getMixinOutputPlacementRecord(result)?.output).toBe(result);
       expect(getMixinOutputScopeFrame(result)).toBe(result.getScopeFrame());
       expect(mixinBody.value.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.value);
       expect(result.value.map(child => result.options.mixinOutputSlot?.sourceIndexByOutput.get(child))).toEqual([0, 1, 2]);

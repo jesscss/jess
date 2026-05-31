@@ -1,6 +1,6 @@
 import type { IToken } from 'chevrotain';
 import { Any, Call, F_NON_STATIC, JsFunction, List, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, list, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
-import { getCallRawArgSourceNode, getCallRawArgsPlacement } from '../call.js';
+import { getCallRawArgDiagnosticSource, getCallRawArgSourceNode, getCallRawArgsPlacement } from '../call.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
@@ -1061,6 +1061,11 @@ describe('Call', () => {
       sourceArgs: originalArgs
     });
     expect(getCallRawArgSourceNode(rawArgsDuringCall, 0)).toBe(originalValue);
+    expect(getCallRawArgDiagnosticSource(rawArgsDuringCall, 0)).toEqual({
+      source: rule,
+      sourceArg: originalValue,
+      index: 0
+    });
   });
 
   it('keeps metadata rawArgs owned across dynamic render and resolve', async () => {

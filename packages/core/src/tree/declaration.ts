@@ -130,6 +130,41 @@ export function finalizeContextualImportantState(
   return importantText ? { importantText } : {};
 }
 
+export function finalizeContextualImportantPublicState(
+  context: Context,
+  important: Any<'flag'> | undefined
+): { important?: Any<'flag'>; importantText?: string } {
+  if (!context.hasImportantSource) {
+    return important ? { important } : {};
+  }
+  context.popImportantSource();
+  return important ? { important } : { important: any('!important', { role: 'flag' }) };
+}
+
+export function collectDeclarationMergeAdapterItems(
+  value: Node,
+  options: { includeSequences?: boolean } = { includeSequences: true }
+): Node[] {
+  const mergedItems: Node[] = [];
+  const collect = (child: Node) => {
+    if (isNode(child, N.List) || (options.includeSequences && isNode(child, N.Sequence))) {
+      for (const item of child.value) {
+        collect(item);
+      }
+      return;
+    }
+    const isEmptyPlaceholder = (
+      isNode(child, N.Nil)
+      || String(child.valueOf?.() ?? '') === ''
+    );
+    if (!isEmptyPlaceholder) {
+      mergedItems.push(child);
+    }
+  };
+  collect(value);
+  return mergedItems;
+}
+
 type DeclarationValueState<T extends Declaration = Declaration> = {
   source: T;
   value: Node;
@@ -1023,23 +1058,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           if (!isListMergedAssign || !isNode(state.value, N.List)) {
             return;
           }
-          const mergedItems: Node[] = [];
-          const collect = (child: Node): void => {
-            if (isNode(child, N.List)) {
-              for (const item of child.value) {
-                collect(item);
-              }
-              return;
-            }
-            const isEmptyPlaceholder = (
-              isNode(child, N.Nil)
-              || String(child.valueOf?.() ?? '') === ''
-            );
-            if (!isEmptyPlaceholder) {
-              mergedItems.push(child);
-            }
-          };
-          collect(state.value);
+          const mergedItems = collectDeclarationMergeAdapterItems(state.value, { includeSequences: false });
           if (mergedItems.length === 0) {
             setVal(new Nil());
             return;
@@ -1075,11 +1094,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               }
               setVal(newValue);
               normalizeMergedLeadingPlaceholder();
-              if (context.hasImportantSource && !state.important) {
-                setImportant(any('!important', { role: 'flag' }));
-              }
-              if (context.hasImportantSource) {
-                context.popImportantSource();
+              const importantState = finalizeContextualImportantPublicState(context, state.important);
+              if (importantState.important && importantState.important !== state.important) {
+                setImportant(importantState.important);
               }
               return state;
             });
@@ -1093,11 +1110,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           setVal(maybeNewValue);
           normalizeMergedLeadingPlaceholder();
-          if (context.hasImportantSource && !state.important) {
-            setImportant(any('!important', { role: 'flag' }));
-          }
-          if (context.hasImportantSource) {
-            context.popImportantSource();
+          const importantState = finalizeContextualImportantPublicState(context, state.important);
+          if (importantState.important && importantState.important !== state.important) {
+            setImportant(importantState.important);
           }
         }
         return state;

@@ -6,7 +6,7 @@ import {
 } from '../index.js';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
-import { AtRule } from '../at-rule.js';
+import { AtRule, createAtRuleBodyRuntimeUpdate } from '../at-rule.js';
 import { Rules } from '../rules.js';
 import { Node } from '../node.js';
 import { serializeTypes } from '../util/serialize-types.js';
@@ -870,6 +870,32 @@ describe('AtRule', () => {
       }
     `);
     expect(originalRules.parent).toBe(node);
+  });
+
+  it('builds render runtime updates from body invocation state', () => {
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const evaluatedRules = rules([
+      decl({ name: 'color', value: any('blue') })
+    ]);
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: sourceRules
+    });
+    const prelude = any('screen');
+
+    expect(createAtRuleBodyRuntimeUpdate({
+      kind: 'body-render',
+      source: node,
+      evaluatedPrelude: prelude,
+      evaluatedBody: evaluatedRules,
+      output: { hoistToRoot: true }
+    })).toEqual({
+      evaluatedPrelude: prelude,
+      evaluatedBody: evaluatedRules,
+      output: { hoistToRoot: true }
+    });
   });
 
   it('resolves at-rules without touching render state', async () => {

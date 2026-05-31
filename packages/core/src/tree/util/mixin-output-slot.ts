@@ -1,5 +1,6 @@
 import type { Node } from '../node.js';
 import type { Rules, RulesOptions } from '../rules.js';
+import { createPlacementChildSegment, type PlacementChildSegment, type PlacementRecord } from './placement-state.js';
 
 export type LookupVisibility = keyof NonNullable<RulesOptions['rulesVisibility']>;
 
@@ -44,12 +45,7 @@ export type MixinOutputSlot = {
   rulesetPlacement?: RulesetMixinPlacementRecord;
 };
 
-export type MixinOutputChildSegment = {
-  kind: 'source-child';
-  source: Node;
-  output?: Node;
-  index: number;
-};
+export type MixinOutputChildSegment = PlacementChildSegment;
 
 export type RulesetMixinPlacementRecord = {
   sourceRules: Rules;
@@ -86,12 +82,20 @@ export function getMixinOutputChildSegments(
   sourceRules: Rules,
   outputRules?: Rules
 ): MixinOutputChildSegment[] {
-  return sourceRules.value.map((source, index) => ({
-    kind: 'source-child',
-    source,
-    ...(outputRules?.value[index] && { output: outputRules.value[index] }),
-    index
-  }));
+  return sourceRules.value.map((source, index) => (
+    createPlacementChildSegment(source, outputRules?.value[index], index)
+  ));
+}
+
+export function getMixinOutputPlacementRecord(outputRules: Rules): PlacementRecord<Rules, Rules> | undefined {
+  const slot = outputRules.options.mixinOutputSlot;
+  if (!slot) {
+    return undefined;
+  }
+  return {
+    source: slot.sourceRules,
+    output: slot.outputRules
+  };
 }
 
 export function getMixinOutputSourceChild(

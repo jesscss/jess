@@ -45,7 +45,7 @@ import {
   serializeRulesContainerInline,
   hasPrintableTriviaAt
 } from './util/serialize-helper.js';
-import { canReuseLeaf, copyWithReusableLeaves, hasNodeChild, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
 import { Comment } from './comment.js';
 import { type ScopeFrame, type BindingCell, buildScopeFrame, getBindingCellValue } from './scope-frame.js';
@@ -57,6 +57,7 @@ import {
   writeRenderText
 } from './util/render-buffer.js';
 import { withRulesContext } from './util/context.js';
+import { cloneBoundValue, createArgumentsBindingValue, createRestBindingValue } from './util/callable-binding.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
 import {
@@ -4031,27 +4032,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
      * (Any mixin with a mis-match of
      * arguments fails.)
      */
-    function canReuseBoundValue(value: Node): boolean {
-      return (value.frozen || value.hasFlag(F_STATIC))
-        && value.location.length === 0
-        && !hasNodeChild(value.value);
-    }
-    function cloneBoundValue(value: Node): Node {
-      if (canReuseBoundValue(value)) {
-        return value;
-      }
-      const boundValue = copyWithReusableLeaves(value).detachTrivia(true);
-      boundValue.frozen = true;
-      return boundValue;
-    }
-    function createRestBindingValue(args: Node[]): Sequence {
-      return new Sequence(args.map(restArg => cloneBoundValue(restArg)));
-    }
-    function createArgumentsBindingValue(args: Node[]): Sequence {
-      const value = new Sequence([]);
-      value.value.push(...args);
-      return value;
-    }
     function getNodeSignature(value: Node): string {
       return String(value.valueOf());
     }

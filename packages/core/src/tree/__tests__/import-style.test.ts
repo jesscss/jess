@@ -32,7 +32,7 @@ import {
   atrule
 } from '../index.js';
 import { Rules as RulesClass } from '../index.js';
-import { getImportPlacementReferenceMode, getImportPlacementRenderState, getImportPlacementRulesVisibility, getImportPlacementSourceChild, getImportPostludePlacement, getImportPostludeRenderOrder } from '../import-style.js';
+import { getImportPlacementChildSegments, getImportPlacementReferenceMode, getImportPlacementRenderState, getImportPlacementRulesVisibility, getImportPlacementSourceChild, getImportPostludePlacement, getImportPostludeRenderOrder, getImportPostludeRenderState } from '../import-style.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { Context } from '../../context.js';
@@ -1956,6 +1956,14 @@ describe('Style import', () => {
       if (!isNode(placementRuleset, N.Ruleset)) {
         throw new TypeError('Expected placement child to be a ruleset');
       }
+      expect(getImportPlacementChildSegments(placement)).toEqual([
+        {
+          kind: 'source-child',
+          source: sourceRuleset,
+          output: placementRuleset,
+          index: 0
+        }
+      ]);
       expect(getImportPlacementSourceChild(placement, placementRuleset)).toBe(sourceRuleset);
       const placementDecl = placementRuleset.value.rules?.value[0];
       expect(placementDecl).not.toBe(sourceDecl);
@@ -2054,6 +2062,11 @@ describe('Style import', () => {
       const placement = getImportPostludePlacement(wrapped);
       expect(placement?.postludeNames).toEqual(['@layer', '@media']);
       expect(getImportPostludeRenderOrder(wrapped)).toEqual(['@layer', '@media']);
+      expect(getImportPostludeRenderState(wrapped)).toEqual({
+        order: ['@layer', '@media'],
+        sourceRules: placement?.sourceRules,
+        outputRules: wrapped
+      });
       expect(placement?.outputRules).toBe(wrapped);
       expect(isNode(placement?.sourceRules.value[0], N.Ruleset)).toBe(true);
       expect(isNode(wrapped.value[0], N.AtRule)).toBe(true);
