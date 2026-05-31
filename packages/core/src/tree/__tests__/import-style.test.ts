@@ -32,7 +32,7 @@ import {
   atrule
 } from '../index.js';
 import { Rules as RulesClass } from '../index.js';
-import { getImportPlacementSourceChild } from '../import-style.js';
+import { getImportPlacementReferenceMode, getImportPlacementRulesVisibility, getImportPlacementSourceChild } from '../import-style.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { Context } from '../../context.js';
@@ -1963,6 +1963,7 @@ describe('Style import', () => {
       if (!isNode(placementDecl, N.Declaration)) {
         throw new TypeError('Expected nested placement declaration');
       }
+      expect(getImportPlacementSourceChild(placement, placementDecl)).toBe(sourceDecl);
       expect(placementDecl.value.value).toBe(red);
       expect(red.parent).toBe(sourceDecl);
     });
@@ -2003,9 +2004,16 @@ describe('Style import', () => {
         throw new TypeError('Expected reference import placement');
       }
       expect(referencePlacement.options.referenceMode).toBe(true);
+      expect(getImportPlacementReferenceMode(referencePlacement)).toBe(true);
       expect(referencePlacement.options.rulesVisibility.Ruleset).toBe('optional');
+      expect(getImportPlacementRulesVisibility(referencePlacement)?.Ruleset).toBe('optional');
       expect(importedRules.options.referenceMode).not.toBe(true);
       expect(importedRules.options.rulesVisibility.Ruleset).toBe('public');
+
+      delete referencePlacement.options.referenceMode;
+      delete referencePlacement.options.rulesVisibility;
+      expect(getImportPlacementReferenceMode(referencePlacement)).toBe(true);
+      expect(getImportPlacementRulesVisibility(referencePlacement)?.Ruleset).toBe('optional');
     });
 
     it('import type can be imported multiple times', async () => {

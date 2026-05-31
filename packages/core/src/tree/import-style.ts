@@ -251,7 +251,17 @@ type ImportPlacementState = {
   preservesDirectCommentChildren: true;
 };
 
+type ImportPlacementOptionsState = {
+  referenceMode: RulesOptions['referenceMode'];
+  rulesVisibility: RulesOptions['rulesVisibility'];
+};
+
 const importPlacementStates = new WeakMap<Rules, ImportPlacementState>();
+const importPlacementOptionsStates = new WeakMap<Rules, ImportPlacementOptionsState>();
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
 
 function findImportPlacementState(placementRules: Rules): ImportPlacementState | undefined {
   let cursor: Rules | undefined = placementRules;
@@ -261,6 +271,79 @@ function findImportPlacementState(placementRules: Rules): ImportPlacementState |
       return state;
     }
     cursor = isNode(cursor.sourceNode, N.Rules) ? cursor.sourceNode : undefined;
+  }
+  return undefined;
+}
+
+function collectImportPlacementSourceMap(
+  source: unknown,
+  placement: unknown,
+  sourceByPlacement: Map<Node, Node>,
+  seen = new Set<unknown>()
+): void {
+  if (!(source instanceof Node) || !(placement instanceof Node) || seen.has(placement)) {
+    return;
+  }
+  seen.add(placement);
+  sourceByPlacement.set(placement, source);
+  collectImportPlacementSourceMapForValue(source.value, placement.value, sourceByPlacement, seen);
+}
+
+function collectImportPlacementSourceMapForValue(
+  source: unknown,
+  placement: unknown,
+  sourceByPlacement: Map<Node, Node>,
+  seen: Set<unknown>
+): void {
+  if (source instanceof Node || placement instanceof Node) {
+    collectImportPlacementSourceMap(source, placement, sourceByPlacement, seen);
+    return;
+  }
+  if (Array.isArray(source) && Array.isArray(placement)) {
+    for (let index = 0; index < source.length; index++) {
+      collectImportPlacementSourceMap(source[index], placement[index], sourceByPlacement, seen);
+    }
+    return;
+  }
+  if (isRecord(source) && isRecord(placement)) {
+    for (const key of Object.keys(source)) {
+      collectImportPlacementSourceMap(source[key], placement[key], sourceByPlacement, seen);
+    }
+  }
+}
+
+function findImportPlacementSourceDescendant(
+  source: unknown,
+  placement: unknown,
+  target: Node,
+  seen = new Set<unknown>()
+): Node | undefined {
+  if (placement === target) {
+    return source instanceof Node ? source : undefined;
+  }
+  if (placement instanceof Node) {
+    if (seen.has(placement)) {
+      return undefined;
+    }
+    seen.add(placement);
+    return findImportPlacementSourceDescendant(source instanceof Node ? source.value : undefined, placement.value, target, seen);
+  }
+  if (Array.isArray(source) && Array.isArray(placement)) {
+    for (let index = 0; index < placement.length; index++) {
+      const found = findImportPlacementSourceDescendant(source[index], placement[index], target, seen);
+      if (found) {
+        return found;
+      }
+    }
+    return undefined;
+  }
+  if (isRecord(source) && isRecord(placement)) {
+    for (const key of Object.keys(placement)) {
+      const found = findImportPlacementSourceDescendant(source[key], placement[key], target, seen);
+      if (found) {
+        return found;
+      }
+    }
   }
   return undefined;
 }
@@ -279,13 +362,29 @@ export function getImportPlacementSourceChild(
   }
   if (isNode(placementChild.sourceNode)) {
     for (const [stateChild, sourceChild] of state.sourceByPlacement) {
-      if (stateChild === placementChild.sourceNode) {
+      if (stateChild === placementChild.sourceNode || sourceChild === placementChild.sourceNode) {
         return sourceChild;
       }
     }
   }
+  for (const [stateChild, sourceChild] of state.sourceByPlacement) {
+    const sourceDescendant = findImportPlacementSourceDescendant(sourceChild, stateChild, placementChild);
+    if (sourceDescendant) {
+      return sourceDescendant;
+    }
+  }
   const index = placementRules.value.indexOf(placementChild);
   return index >= 0 ? state.source.value[index] : undefined;
+}
+
+export function getImportPlacementReferenceMode(placementRules: Rules): RulesOptions['referenceMode'] | undefined {
+  return importPlacementOptionsStates.get(placementRules)?.referenceMode
+    ?? placementRules.options.referenceMode;
+}
+
+export function getImportPlacementRulesVisibility(placementRules: Rules): RulesOptions['rulesVisibility'] | undefined {
+  return importPlacementOptionsStates.get(placementRules)?.rulesVisibility
+    ?? placementRules.options.rulesVisibility;
 }
 
 /**
@@ -358,12 +457,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
     const children = sourceRules.value.map(node => this.copyImportPlacementChild(node));
+    const sourceByPlacement = new Map<Node, Node>();
+    for (let index = 0; index < children.length; index++) {
+      collectImportPlacementSourceMap(sourceRules.value[index], children[index], sourceByPlacement);
+    }
     return {
       source: sourceRules,
       children,
-      sourceByPlacement: new Map(
-        children.map((child, index) => [child, sourceRules.value[index]!] as const)
-      ),
+      sourceByPlacement,
       preservesDirectCommentChildren: true
     };
   }
@@ -690,6 +791,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       referenceMode: isReferenceMode,
       readonly
     };
+    importPlacementOptionsStates.set(out, {
+      referenceMode: isReferenceMode,
+      rulesVisibility: out.options.rulesVisibility
+    });
     out._hasReferenceImports = isReferenceMode || evaluatedRules._hasReferenceImports;
     // Forwarded modules should never render output at this scope.
     if (isForward) {

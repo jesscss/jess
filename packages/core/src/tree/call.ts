@@ -3,7 +3,7 @@ import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { cast } from './util/cast.js';
-import { callWithContext } from '../define-function.js';
+import { callWithContext, getRawArgsPlacement, setRawArgsPlacement } from '../define-function.js';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable, pipe, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -85,7 +85,23 @@ type CallContentPlacementState = {
   output?: Node;
 };
 
+type CallRawArgsPlacementState = {
+  source: Call;
+  sourceArgs: List<Node>;
+};
+
 type OptionalFallbackRenderOutput = Node | string;
+
+export function getCallRawArgsPlacement(rawArgs: List<Node>): CallRawArgsPlacementState | undefined {
+  const placement = getRawArgsPlacement(rawArgs);
+  if (!placement || !(placement.source instanceof Call) || !isNode(placement.sourceArgs, N.List)) {
+    return undefined;
+  }
+  return {
+    source: placement.source,
+    sourceArgs: placement.sourceArgs
+  };
+}
 
 /**
  * This is an exported type that allows extra properties
@@ -952,6 +968,12 @@ export class Call extends Node<CallValue, CallOptions> {
         try {
           const shouldPassListArgs = Boolean(callable._internal || callable.options?.params);
           let callArgs = args;
+          if (shouldPassListArgs && callArgs && state.args) {
+            setRawArgsPlacement(callArgs, {
+              source: state.source,
+              sourceArgs: state.args
+            });
+          }
           const result = await (
             callArgs
               ? (

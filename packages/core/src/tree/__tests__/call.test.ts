@@ -1,5 +1,6 @@
 import type { IToken } from 'chevrotain';
 import { Any, Call, F_NON_STATIC, JsFunction, List, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, list, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { getCallRawArgsPlacement } from '../call.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
@@ -1021,6 +1022,44 @@ describe('Call', () => {
     expect(originalArgs.value).toEqual([originalValue]);
     expect(originalValue.parent).toBe(originalArgs);
     expect(originalArgs.parent).toBe(rule);
+  });
+
+  it('records metadata rawArgs placement beside the owned argument surface', async () => {
+    let rawArgsDuringCall: List | undefined;
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'inspect-raw',
+      fn: defineFunction(
+        'inspect-raw',
+        async function(this: { rawArgs: List }) {
+          rawArgsDuringCall = this.rawArgs;
+          return any('ok');
+        },
+        { params: [{ name: 'value', type: Sequence }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+
+    const originalValue = seq([any('red'), dimension(10, 'px')]);
+    const originalArgs = list([originalValue]);
+    const rule = call({
+      name: ref({ key: 'inspect-raw' }, { type: 'function' }),
+      args: originalArgs
+    });
+
+    const result = await rule.eval(context);
+
+    expect(result.toTrimmedString()).toBe('ok');
+    expect(rawArgsDuringCall).toBeDefined();
+    if (!rawArgsDuringCall) {
+      throw new Error('Expected metadata rawArgs');
+    }
+    expect(rawArgsDuringCall).not.toBe(originalArgs);
+    expect(getCallRawArgsPlacement(rawArgsDuringCall)).toEqual({
+      source: rule,
+      sourceArgs: originalArgs
+    });
   });
 
   it('keeps metadata rawArgs owned across dynamic render and resolve', async () => {
