@@ -1385,6 +1385,46 @@ function canRenderReferenceValueTextOnly(node: Node): boolean {
   return canReturnReferenceValue(node) || canRenderReferenceContainerText(node);
 }
 
+function isRulesLikeReferenceValue(node: Node): boolean {
+  return isNode(node, N.Rules | N.Collection | N.Mixin | N.Ruleset);
+}
+
+function freezeRulesLikeReferenceValue(node: Node): void {
+  node.frozen = true;
+  if ('sourceNode' in node && isNode(node.sourceNode)) {
+    node.sourceNode.frozen = true;
+  }
+}
+
+/**
+ * Rules-like references are public/callable surfaces, not text-only render
+ * containers. Keep the source children canonical, but return a shallow owned
+ * surface so callers can carry lookup, parent, and source-node state without
+ * mutating the source tree.
+ */
+function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeValue {
+  freezeRulesLikeReferenceValue(directValue);
+  const options = Object.getOwnPropertyDescriptor(directValue, '_options')?.value;
+  const nodeConstructor = directValue.constructor;
+  if (!isNodeValueConstructor(nodeConstructor)) {
+    throw new TypeError('Preserved rules-like value must have a constructable node type');
+  }
+  const constructed = new nodeConstructor(
+    directValue.value,
+    options && typeof options === 'object' ? { ...options } : undefined,
+    directValue.location.length === 0 ? undefined : directValue.location,
+    directValue.treeContext
+  );
+  if (!(constructed instanceof Node)) {
+    throw new TypeError('Preserved rules-like value must remain a Node');
+  }
+  const preservedValue: PreservedRulesLikeValue = constructed;
+  preservedValue.inherit(directValue);
+  Reflect.set(preservedValue, 'parent', directValue.parent);
+  preservedValue.sourceNode = directValue;
+  return preservedValue;
+}
+
 function canRenderFallbackContainerDirectly(node: Node): boolean {
   return isNode(node, N.List | N.Sequence);
 }
@@ -1482,11 +1522,7 @@ function createDirectCallableReferenceResult(
     }
     const callableItem = item;
     if (referenceNode.options?.type === 'mixin-ruleset') {
-      callableItem.frozen = true;
-      if ('sourceNode' in callableItem && isNode(callableItem.sourceNode)) {
-        callableItem.sourceNode.frozen = true;
-      }
-      const preserved = preserveRulesLikeValue(callableItem);
+      const preserved = createRulesLikeReferenceSurface(callableItem);
       if (isNode(preserved, N.Mixin)) {
         callableItems.push(preserved);
         continue;
@@ -1517,13 +1553,9 @@ function finalizeDirectNodeReferenceResult(
   }
   if (
     referenceNode.options?.type === 'mixin-ruleset'
-    && isNode(result, N.Rules | N.Collection | N.Mixin | N.Ruleset)
+    && isRulesLikeReferenceValue(result)
   ) {
-    result.frozen = true;
-    if ('sourceNode' in result && isNode(result.sourceNode)) {
-      result.sourceNode.frozen = true;
-    }
-    return preserveRulesLikeValue(result);
+    return createRulesLikeReferenceSurface(result);
   }
   return result;
 }
@@ -1538,9 +1570,9 @@ function finalizeRuntimeVarBindingResult(
   const finalizeRuntimeBinding = (evald: Node) => {
     if (
       referenceNode.options?.preserveRulesLike === true
-      && isNode(evald, N.Rules | N.Collection | N.Mixin | N.Ruleset)
+      && isRulesLikeReferenceValue(evald)
     ) {
-      evald.frozen = true;
+      freezeRulesLikeReferenceValue(evald);
       context.popReference();
       return evald;
     }
@@ -1676,7 +1708,7 @@ function finalizeDeclarationReferenceResult(
     referenceNode.options?.preserveRulesLike === true
     && isNode(declarationValue, N.Rules | N.Collection)
   ) {
-    const preservedValue = preserveRulesLikeValue(declarationValue);
+    const preservedValue = createRulesLikeReferenceSurface(declarationValue);
     context.popReference();
     return preservedValue;
   }
@@ -1697,28 +1729,6 @@ function finalizeDeclarationReferenceResult(
       return finalized;
     }
   ));
-}
-
-function preserveRulesLikeValue(directValue: Node): PreservedRulesLikeValue {
-  const options = Object.getOwnPropertyDescriptor(directValue, '_options')?.value;
-  const nodeConstructor = directValue.constructor;
-  if (!isNodeValueConstructor(nodeConstructor)) {
-    throw new TypeError('Preserved rules-like value must have a constructable node type');
-  }
-  const constructed = new nodeConstructor(
-    directValue.value,
-    options && typeof options === 'object' ? { ...options } : undefined,
-    directValue.location.length === 0 ? undefined : directValue.location,
-    directValue.treeContext
-  );
-  if (!(constructed instanceof Node)) {
-    throw new TypeError('Preserved rules-like value must remain a Node');
-  }
-  const preservedValue: PreservedRulesLikeValue = constructed;
-  preservedValue.inherit(directValue);
-  Reflect.set(preservedValue, 'parent', directValue.parent);
-  preservedValue.sourceNode = directValue;
-  return preservedValue;
 }
 
 function evaluateCalcSlashListValue(
@@ -1786,13 +1796,9 @@ function evaluateReferenceValueNode(
 ): MaybePromise<Node> {
   if (
     options.preserveRulesLike === true
-    && isNode(declValue, N.Rules | N.Collection | N.Mixin | N.Ruleset)
+    && isRulesLikeReferenceValue(declValue)
   ) {
-    declValue.frozen = true;
-    if ('sourceNode' in declValue && isNode(declValue.sourceNode)) {
-      declValue.sourceNode.frozen = true;
-    }
-    return preserveRulesLikeValue(declValue);
+    return createRulesLikeReferenceSurface(declValue);
   }
   const calcSlashValue = evaluateCalcSlashListValue(declValue, context);
   if (calcSlashValue !== undefined) {

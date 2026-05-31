@@ -127,6 +127,11 @@ later serializer can walk it.
   and then rendering the referenced node through its native render path,
   including async referenced values. Do not turn references back into "eval
   node, then source-serialize the resolved value" bridges.
+- Rules-like references (`Rules`, `Collection`, `Mixin`, and `Ruleset`) are
+  not text-only reference containers. They carry callable/public lookup
+  surfaces, so render and resolve must preserve them through a shallow owned
+  reference surface until a future placement record can carry those facts
+  explicitly.
 - `SelectorCapture.render(...)` follows the same native resolved-payload rule
   for selector-valued payloads.
 - `AtRule.render(...)` still needs a derived evaluated at-rule surface for

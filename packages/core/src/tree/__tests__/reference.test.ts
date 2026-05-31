@@ -1136,6 +1136,41 @@ describe('reference', () => {
       }
     });
 
+    it('renders rules-like variable references through shallow owned surfaces', async () => {
+      const originalClone = RulesClass.prototype.clone;
+      let clonedRules = 0;
+      RulesClass.prototype.clone = function cloneForCounting(
+        this: RulesClass,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        clonedRules++;
+        return originalClone.apply(this, args);
+      };
+      const sourceDecl = decl({ name: 'color', value: any('blue') });
+      const sourceValue = rules([sourceDecl]);
+      const sourceBinding = vardecl({
+        name: any('block'),
+        value: sourceValue
+      });
+      const node = rules([
+        sourceBinding
+      ]);
+      setRulesContext(await node.eval(context));
+
+      try {
+        const refNode = ref({ key: 'block' }, { type: 'variable', preserveRulesLike: true });
+        const rendered = await Promise.resolve(refNode.render(context));
+
+        expect(rendered).toContain('color: blue');
+        expect(clonedRules).toBe(0);
+        expect(sourceValue.value[0]).toBe(sourceDecl);
+        expect(sourceValue.parent).toBe(sourceBinding);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        RulesClass.prototype.clone = originalClone;
+      }
+    });
+
     it('keeps fallback value containers canonical after resolve(context)', async () => {
       const root = rules([
         vardecl({
