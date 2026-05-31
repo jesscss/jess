@@ -153,9 +153,12 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (this.hasFlag(F_STATIC)) {
+      return this.renderResolvedListValue(context, this.value, bufferOrOptions, options);
+    }
     return pipe(
-      () => this.resolveValue(context),
-      node => this.renderResolvedList(context, node, bufferOrOptions, options)
+      () => this.resolveItems(context),
+      value => this.renderResolvedListValue(context, value, bufferOrOptions, options)
     );
   }
 
@@ -191,9 +194,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return this.resolveValue(context);
   }
 
-  private renderResolvedList(
+  private renderResolvedListValue(
     context: Context,
-    node: List<Node>,
+    value: Node[],
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): string {
@@ -201,7 +204,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const out = node.renderListSyntax(node.value, prepared);
+    const out = this.renderListSyntax(value, prepared);
     return buffer
       ? writeRenderText(buffer, out)
       : out;

@@ -460,7 +460,7 @@ function applyAtRuleBodyPublicResultState(
   if (state.evaluatedPrelude) {
     state.node.value.prelude = state.evaluatedPrelude;
   }
-  if (state.evaluatedBody) {
+  if (state.evaluatedBody && state.evaluatedBody !== state.node.value.rules) {
     updateAtRuleBodyRuntimeState(state.node, { evaluatedBody: state.evaluatedBody });
   }
   if (state.visible === false) {

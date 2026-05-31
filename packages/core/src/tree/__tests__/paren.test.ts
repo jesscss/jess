@@ -180,6 +180,23 @@ describe('Paren', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('returns fresh public Bool nodes for default() paren resolve results', async () => {
+    context.isDefault = true;
+    const parenNode = paren(call({ name: 'default' }));
+
+    const first = await Promise.resolve(parenNode.resolve(context));
+    const second = await Promise.resolve(parenNode.resolve(context));
+    expect(first).toBeInstanceOf(Bool);
+    expect(second).toBeInstanceOf(Bool);
+    if (!(first instanceof Bool) || !(second instanceof Bool)) {
+      throw new Error('Expected Bool results');
+    }
+    first.value = false;
+
+    expect(first).not.toBe(second);
+    expect(second.value).toBe(true);
+  });
+
   it('keeps source paren child containers canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({

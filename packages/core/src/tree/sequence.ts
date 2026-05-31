@@ -175,20 +175,30 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (this.hasFlag(F_STATIC)) {
+      return this.renderResolvedValue(context, this.value, bufferOrOptions, options);
+    }
     return pipe(
-      () => this.resolveValue(context),
-      node => this.renderResolvedNode(context, node, bufferOrOptions, options)
+      () => this.evaluateValues(context, 'resolve'),
+      value => this.renderResolvedValue(context, value, bufferOrOptions, options)
     );
   }
 
-  private renderResolvedNode(
+  private renderResolvedValue(
     context: Context,
-    node: Node,
+    value: Node | Node[],
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): MaybePromise<string> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    if (!(node instanceof Sequence)) {
+    if (value instanceof Node) {
+      return buffer
+        ? writeRenderTextResult(buffer, value.render(context, options))
+        : value.render(context, bufferOrOptions);
+    }
+    const filtered = value.filter(n => n && !(n instanceof Nil));
+    if (filtered.length === 1 && !this._options?.preserveWhitespace) {
+      const node = filtered[0]!;
       return buffer
         ? writeRenderTextResult(buffer, node.render(context, options))
         : node.render(context, bufferOrOptions);
@@ -196,7 +206,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const out = node.renderSequenceSyntax(node.value, prepared);
+    const out = this.renderSequenceSyntax(filtered, prepared);
     return buffer
       ? writeRenderText(buffer, out)
       : out;

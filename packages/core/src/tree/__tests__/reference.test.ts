@@ -1382,7 +1382,7 @@ describe('reference', () => {
 
         expect(await Promise.resolve(refNode.render(context))).toBe('red');
         expect(fallbackCopies).toBe(0);
-        expect(fallbackCopyInherits).toBe(1);
+        expect(fallbackCopyInherits).toBe(0);
         expect(fallback.parent).toBe(fallbackParent);
         expect(context.referenceStack).toBe(0);
       } finally {

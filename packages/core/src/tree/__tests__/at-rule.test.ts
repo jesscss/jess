@@ -533,6 +533,31 @@ describe('AtRule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('keeps dynamic body eval on an owned rules target instead of the canonical source rules', async () => {
+    const sourceRules = rules([
+      decl({
+        name: 'color',
+        value: call({ name: 'rgb', args: list([num(1), num(2), num(3)]) })
+      })
+    ]);
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: any('screen'),
+      rules: sourceRules
+    });
+    sourceRules.eval = () => {
+      throw new Error('Dynamic at-rule render must not eval canonical source rules');
+    };
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+      @media screen {
+        color: rgb(1, 2, 3);
+      }
+    `);
+    expect(sourceRules.parent).toBe(node);
+    expect(sourceRules.evaluated).toBe(false);
+  });
+
   it('renders plain static body rules without an owned body eval target', async () => {
     const root = rules([
       vardecl({
@@ -1000,6 +1025,46 @@ describe('AtRule', () => {
     expect(sourceRules.parent).toBe(node);
     expect(node.evaluated).toBe(false);
     expect(node.visible).toBe(true);
+  });
+
+  it('keeps public body at-rule resolve results mutable and isolated even when output is unchanged', async () => {
+    const root = rules([
+      vardecl({
+        name: any('mode'),
+        value: any('screen')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const sourcePrelude = seq([ref({ key: 'mode' }, { type: 'variable' })]);
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: sourcePrelude,
+      rules: sourceRules
+    });
+
+    const first = await Promise.resolve(node.resolve(context));
+    const second = await Promise.resolve(node.resolve(context));
+
+    expect(first).toBeInstanceOf(AtRule);
+    expect(second).toBeInstanceOf(AtRule);
+    if (!(first instanceof AtRule) || !(second instanceof AtRule)) {
+      throw new Error('Expected public at-rule results');
+    }
+
+    first.value.prelude = any('print');
+
+    expect(first).not.toBe(node);
+    expect(first).not.toBe(second);
+    expect(second.value.prelude?.toTrimmedString()).toBe('screen');
+    expect(node.value.prelude).toBe(sourcePrelude);
+    expect(node.value.rules).toBe(sourceRules);
+    expect(sourcePrelude.parent).toBe(node);
+    expect(sourceRules.parent).toBe(node);
   });
 
   it('resolves static at-rules without deriving or evaluating', () => {

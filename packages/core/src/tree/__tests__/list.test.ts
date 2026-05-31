@@ -190,6 +190,36 @@ describe('List', () => {
     expect(listNode.registrationPrepared).toBe(false);
   });
 
+  it('renders dynamic list values without materializing a replacement list', async () => {
+    const node = rules([
+      vardecl({
+        name: any('item'),
+        value: any('four')
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+    const descriptor = Object.getOwnPropertyDescriptor(List.prototype, 'withResolvedValue');
+    if (!descriptor) {
+      throw new Error('Expected List.withResolvedValue for render materialization proof');
+    }
+    const listNode = list([
+      any('one'),
+      ref({ key: 'item' }, { type: 'variable' })
+    ]);
+
+    Object.defineProperty(List.prototype, 'withResolvedValue', {
+      ...descriptor,
+      value: () => {
+        throw new Error('List render should stream resolved values without a replacement list');
+      }
+    });
+    try {
+      expect(listNode.render(context)).toBe('one, four');
+    } finally {
+      Object.defineProperty(List.prototype, 'withResolvedValue', descriptor);
+    }
+  });
+
   it('resolves list values without touching render state', async () => {
     const node = rules([
       vardecl({
