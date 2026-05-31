@@ -256,6 +256,11 @@ type ImportPlacementOptionsState = {
   rulesVisibility: RulesOptions['rulesVisibility'];
 };
 
+export type ImportPlacementRenderState = {
+  referenceMode: RulesOptions['referenceMode'];
+  rulesVisibility: RulesOptions['rulesVisibility'];
+};
+
 const importPlacementStates = new WeakMap<Rules, ImportPlacementState>();
 const importPlacementOptionsStates = new WeakMap<Rules, ImportPlacementOptionsState>();
 
@@ -396,8 +401,19 @@ export function getImportPlacementRulesVisibility(placementRules: Rules): RulesO
     ?? placementRules.options.rulesVisibility;
 }
 
+export function getImportPlacementRenderState(placementRules: Rules): ImportPlacementRenderState {
+  return {
+    referenceMode: getImportPlacementReferenceMode(placementRules),
+    rulesVisibility: getImportPlacementRulesVisibility(placementRules)
+  };
+}
+
 export function getImportPostludePlacement(outputRules: Rules): ImportPostludePlacementState | undefined {
   return importPostludePlacementStates.get(outputRules);
+}
+
+export function getImportPostludeRenderOrder(outputRules: Rules): readonly string[] | undefined {
+  return getImportPostludePlacement(outputRules)?.postludeNames;
 }
 
 /**

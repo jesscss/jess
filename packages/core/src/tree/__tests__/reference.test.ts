@@ -1,6 +1,6 @@
 import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, List, Sequence, JsArray, JsObject, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
 import { Context } from '../../context.js';
-import { getRulesLikeReferenceSource } from '../reference.js';
+import { getRulesLikeReferenceLookupState, getRulesLikeReferenceSource } from '../reference.js';
 import { JsExpression } from '../js-expr.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -1131,6 +1131,10 @@ describe('reference', () => {
           throw new Error('Expected Rules source');
         }
         expect(getRulesLikeReferenceSource(resolved)).toBe(resolvedSource);
+        expect(getRulesLikeReferenceLookupState(resolved)).toEqual({
+          source: resolvedSource,
+          preservesCallableSurface: true
+        });
         expect(clonedRules).toBe(0);
         expect(resolved.value[0]).toBe(resolvedSource.value[0]);
         expect(context.referenceStack).toBe(0);

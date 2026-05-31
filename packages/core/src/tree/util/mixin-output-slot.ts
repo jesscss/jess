@@ -21,6 +21,13 @@ export type MixinOutputLookupState = {
   visibility?: Rules['options']['rulesVisibility'][string];
 };
 
+export type MixinOutputChildPlacementState = {
+  outputChild: Node;
+  outputRules: Rules;
+  sourceChild: Node;
+  sourceIndex: number;
+};
+
 export type MixinOutputSlot = {
   sourceRules: Rules;
   outputRules: Rules;
@@ -135,6 +142,24 @@ export function getMixinOutputSourceChildren(outputRules: Rules): Node[] | undef
 
 export function getMixinOutputPlacementChildren(outputRules: Rules): readonly Node[] | undefined {
   return outputRules.options.mixinOutputSlot?.placementChildren;
+}
+
+export function getMixinOutputChildPlacementState(
+  outputRules: Rules,
+  outputChild: Node
+): MixinOutputChildPlacementState | undefined {
+  const slot = outputRules.options.mixinOutputSlot;
+  const sourceChild = slot?.sourceByOutput.get(outputChild);
+  const sourceIndex = slot?.sourceIndexByOutput.get(outputChild);
+  if (!slot || !sourceChild || sourceIndex === undefined) {
+    return undefined;
+  }
+  return {
+    outputChild,
+    outputRules,
+    sourceChild,
+    sourceIndex
+  };
 }
 
 export function getMixinOutputScopeFrame(outputRules: Rules): Rules['scopeFrame'] | undefined {

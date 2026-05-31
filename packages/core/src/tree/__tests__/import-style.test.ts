@@ -32,7 +32,7 @@ import {
   atrule
 } from '../index.js';
 import { Rules as RulesClass } from '../index.js';
-import { getImportPlacementReferenceMode, getImportPlacementRulesVisibility, getImportPlacementSourceChild, getImportPostludePlacement } from '../import-style.js';
+import { getImportPlacementReferenceMode, getImportPlacementRenderState, getImportPlacementRulesVisibility, getImportPlacementSourceChild, getImportPostludePlacement, getImportPostludeRenderOrder } from '../import-style.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { Context } from '../../context.js';
@@ -2014,6 +2014,10 @@ describe('Style import', () => {
       delete referencePlacement.options.rulesVisibility;
       expect(getImportPlacementReferenceMode(referencePlacement)).toBe(true);
       expect(getImportPlacementRulesVisibility(referencePlacement)?.Ruleset).toBe('optional');
+      expect(getImportPlacementRenderState(referencePlacement)).toEqual({
+        referenceMode: true,
+        rulesVisibility: getImportPlacementRulesVisibility(referencePlacement)
+      });
     });
 
     it('records postlude wrapper order beside nested import placement output', async () => {
@@ -2049,6 +2053,7 @@ describe('Style import', () => {
       }
       const placement = getImportPostludePlacement(wrapped);
       expect(placement?.postludeNames).toEqual(['@layer', '@media']);
+      expect(getImportPostludeRenderOrder(wrapped)).toEqual(['@layer', '@media']);
       expect(placement?.outputRules).toBe(wrapped);
       expect(isNode(placement?.sourceRules.value[0], N.Ruleset)).toBe(true);
       expect(isNode(wrapped.value[0], N.AtRule)).toBe(true);

@@ -7,6 +7,7 @@ import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { Nil } from '../nil.js';
+import { finalizeContextualImportantState } from '../declaration.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -877,6 +878,15 @@ describe('Declaration', () => {
     expect(node.render(context)).toBe('color: red !important');
     expect(context.hasImportantSource).toBe(false);
     expect(node.value.important).toBeUndefined();
+  });
+
+  it('finalizes contextual important state without creating a flag node', () => {
+    context.pushImportantSource();
+
+    expect(finalizeContextualImportantState(context, undefined)).toEqual({
+      importantText: '!important'
+    });
+    expect(context.hasImportantSource).toBe(false);
   });
 
   it('keeps root merged declaration output unchanged without recopying scalar leaves', async () => {

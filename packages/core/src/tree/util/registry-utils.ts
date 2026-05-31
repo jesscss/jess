@@ -16,6 +16,10 @@ import { comparePosition } from './compare.js';
 import { type BitSet } from './bitset.js';
 import {
   canEnterRulesEntryForLookup,
+  getMixinOutputLookupState,
+  type LookupVisibility,
+  type MixinOutputLookupState,
+  type RulesEntryLike,
   isOptionalRulesEntry,
   isPublicRulesEntry
 } from './mixin-output-slot.js';
@@ -23,6 +27,25 @@ import {
 const { isArray } = Array;
 
 type SelectorKeySet = Set<string> | BitSet<string>;
+
+export type RulesEntryTraversalState = {
+  canEnter: boolean;
+  mixinOutput?: MixinOutputLookupState;
+};
+
+export function getRulesEntryTraversalState(
+  entry: RulesEntryLike,
+  lookup: {
+    type?: LookupVisibility;
+    hasTarget?: boolean;
+  }
+): RulesEntryTraversalState {
+  const mixinOutput = getMixinOutputLookupState(entry, lookup);
+  return {
+    canEnter: mixinOutput?.canEnter ?? canEnterRulesEntryForLookup(entry, lookup),
+    ...(mixinOutput ? { mixinOutput } : {})
+  };
+}
 
 function getSelectorKeyValues(keySet: SelectorKeySet | string[] | undefined): string[] {
   if (!keySet) {
@@ -184,10 +207,10 @@ export abstract class Registry<
        * and before the start position (if relevant)
        */
       rulesSet = rulesSet.filter((n) => {
-        const isVisible = canEnterRulesEntryForLookup(n, {
+        const isVisible = getRulesEntryTraversalState(n, {
           type: filterType,
           hasTarget: options?.hasTarget
-        });
+        }).canEnter;
         /**
          * Sass `@forward`:
          * Forwarded Rules should not be visible to lookups within the current stylesheet scope

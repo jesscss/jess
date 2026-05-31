@@ -117,6 +117,19 @@ type DeclarationRenderState = {
   nil: boolean;
 };
 
+export function finalizeContextualImportantState(
+  context: Context,
+  important: Any<'flag'> | undefined
+): { importantText?: string } {
+  const importantText = context.hasImportantSource && !important
+    ? '!important'
+    : undefined;
+  if (context.hasImportantSource) {
+    context.popImportantSource();
+  }
+  return importantText ? { importantText } : {};
+}
+
 type DeclarationValueState<T extends Declaration = Declaration> = {
   source: T;
   value: Node;
@@ -614,13 +627,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     };
     const finish = (newValue: DeclarationRenderValue): DeclarationRenderState => {
       if (isCustomInterpolatedRenderValue(newValue)) {
-        let importantText: string | undefined;
-        if (context.hasImportantSource && !state.important) {
-          importantText = '!important';
-        }
-        if (context.hasImportantSource) {
-          context.popImportantSource();
-        }
+        const { importantText } = finalizeContextualImportantState(context, state.important);
         return {
           name: state.name,
           value: state.value,
@@ -634,13 +641,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       if (Array.isArray(newValue)) {
         const value = newValue[0] ?? state.value;
         const isList = state.renderAssignment?.sep === ',';
-        let importantText: string | undefined;
-        if (context.hasImportantSource && !state.important) {
-          importantText = '!important';
-        }
-        if (context.hasImportantSource) {
-          context.popImportantSource();
-        }
+        const { importantText } = finalizeContextualImportantState(context, state.important);
         return {
           name: state.name,
           value,
@@ -664,13 +665,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const normalized = this.normalizeMergedLeadingPlaceholderForRender(state, value);
       value = normalized.value;
       let important = state.important;
-      let importantText: string | undefined;
-      if (context.hasImportantSource && !important) {
-        importantText = '!important';
-      }
-      if (context.hasImportantSource) {
-        context.popImportantSource();
-      }
+      const { importantText } = finalizeContextualImportantState(context, important);
       return {
         name: state.name,
         value,

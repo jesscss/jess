@@ -1,7 +1,7 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
-import { MixinRegistry } from '../util/registry-utils.js';
+import { getRulesEntryTraversalState, MixinRegistry } from '../util/registry-utils.js';
 import { renderNodeToString } from '../util/render-buffer.js';
 import {
   attachMixinOutputSlot,
@@ -15,6 +15,7 @@ import {
   getMixinOutputSourceChild,
   getMixinOutputSourceChildren,
   getMixinOutputSourceIndex,
+  getMixinOutputChildPlacementState,
   getMixinOutputLookupState,
   getMixinOutputRuleIndex,
   getRulesetMixinPlacementSourceIndex,
@@ -1139,6 +1140,12 @@ describe('Mixin', () => {
       expect(result.value.map(child => getMixinOutputSourceChild(result, child))).toEqual(mixinBody.value);
       expect(getMixinOutputSourceChildren(result)).toEqual(mixinBody.value);
       expect(getMixinOutputPlacementChildren(result)).toEqual(result.value);
+      expect(getMixinOutputChildPlacementState(result, result.value[0]!)).toEqual({
+        outputChild: result.value[0],
+        outputRules: result,
+        sourceChild: mixinBody.value[0],
+        sourceIndex: 0
+      });
       expect(getMixinOutputScopeFrame(result)).toBe(result.getScopeFrame());
       expect(mixinBody.value.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.value);
       expect(result.value.map(child => result.options.mixinOutputSlot?.sourceIndexByOutput.get(child))).toEqual([0, 1, 2]);
@@ -1208,6 +1215,13 @@ describe('Mixin', () => {
       expect(canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: false })).toBe(false);
       expect(canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(true);
       expect(getMixinOutputLookupState(entry, { type: 'Mixin', hasTarget: true })).toEqual({
+        ambientLookup: false,
+        canEnter: true,
+        hasTarget: true,
+        referenceMode: false,
+        visibility: 'public'
+      });
+      expect(getRulesEntryTraversalState(entry, { type: 'Mixin', hasTarget: true })?.mixinOutput).toEqual({
         ambientLookup: false,
         canEnter: true,
         hasTarget: true,

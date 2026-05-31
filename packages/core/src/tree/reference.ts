@@ -1401,10 +1401,25 @@ type RulesLikeReferencePreservationRecord = {
   source: Node;
 };
 
+export type RulesLikeReferenceLookupState = RulesLikeReferencePreservationRecord & {
+  preservesCallableSurface: true;
+};
+
 const rulesLikeReferencePreservation = new WeakMap<Node, RulesLikeReferencePreservationRecord>();
 
 export function getRulesLikeReferenceSource(node: Node): Node | undefined {
   return rulesLikeReferencePreservation.get(node)?.source;
+}
+
+export function getRulesLikeReferenceLookupState(node: Node): RulesLikeReferenceLookupState | undefined {
+  const record = rulesLikeReferencePreservation.get(node);
+  if (!record) {
+    return undefined;
+  }
+  return {
+    source: record.source,
+    preservesCallableSurface: true
+  };
 }
 
 /**
