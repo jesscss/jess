@@ -640,7 +640,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       sourceRules
       && canRenderStaticRulesDirectly(sourceRules)
       && !context.opts.collapseNesting
-      && !frameState.output
     );
     return {
       source: this,

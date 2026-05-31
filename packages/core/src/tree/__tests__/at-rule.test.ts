@@ -630,6 +630,45 @@ describe('AtRule', () => {
     expect(variable.evaluated).toBe(false);
   });
 
+  it('renders static root-only body rules with hoist side state without an owned body eval target', async () => {
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    context = new Context({ bubbleRootAtRules: true });
+    context.frames = [parentFrame];
+    const sourceRules = rules([
+      decl({ name: 'font-family', value: any('Jess') })
+    ]);
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: sourceRules
+    });
+    const originalEval = Rules.prototype.eval;
+    let rulesEvalCalls = 0;
+    Rules.prototype.eval = function countRulesEval(
+      this: Rules,
+      ...args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      rulesEvalCalls++;
+      return originalEval.apply(this, args);
+    };
+    try {
+      expect(await Promise.resolve(node.render(context))).toBeString(`
+        @font-face {
+          font-family: Jess;
+        }
+      `);
+    } finally {
+      Rules.prototype.eval = originalEval;
+    }
+    expect(rulesEvalCalls).toBe(0);
+    expect(node.hoistToRoot).toBeUndefined();
+    expect(node.frames).toBeUndefined();
+    expect(sourceRules.parent).toBe(node);
+    expect(sourceRules.evaluated).toBe(false);
+  });
+
   it('keeps direct body-render visibility off the source at-rule', async () => {
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),
