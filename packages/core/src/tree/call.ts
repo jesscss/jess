@@ -127,6 +127,14 @@ export function getCallRawArgDiagnosticSource(rawArgs: List<Node>, index: number
   };
 }
 
+export function getCallRawArgDiagnosticMessageSource(rawArgs: List<Node>, index: number): string | undefined {
+  const diagnosticSource = getCallRawArgDiagnosticSource(rawArgs, index);
+  if (!diagnosticSource) {
+    return undefined;
+  }
+  return `argument ${diagnosticSource.index + 1} from ${diagnosticSource.source.valueOf()}`;
+}
+
 /**
  * This is an exported type that allows extra properties
  * and specifies the shape of `this` for a function call.

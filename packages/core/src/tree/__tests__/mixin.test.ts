@@ -24,6 +24,7 @@ import {
   isPublicRulesEntry,
   keepsDuplicateMixinOutputDeclaration
 } from '../util/mixin-output-slot.js';
+import { createMixinOutputRulesWrapper } from '../rules.js';
 
 let context: Context;
 
@@ -129,6 +130,19 @@ describe('Mixin', () => {
     expect(prepared.registrationPrepared).toBe(true);
     expect(body.registrationPrepared).toBe(false);
     expect(bodyDecl.registrationPrepared).toBe(false);
+  });
+
+  it('creates generated mixin output wrappers through a named helper', () => {
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+
+    const output = createMixinOutputRulesWrapper(body, true);
+
+    expect(output).not.toBe(body);
+    expect(output.options.mixinOutputSlot?.sourceRules).toBe(body);
+    expect(output.options.mixinOutputSlot?.ambientLookup).toBe(false);
+    expect(output.value).toEqual([]);
   });
 
   describe('calling', () => {

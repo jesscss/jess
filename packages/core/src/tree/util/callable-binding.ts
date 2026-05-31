@@ -26,3 +26,15 @@ export function createArgumentsBindingValue(args: Node[]): Sequence {
   value.value.push(...args);
   return value;
 }
+
+export function getArgumentsBindingValues(args: Node[]): Node[] {
+  const argumentNodes: Node[] = [];
+  for (const argNode of args) {
+    if (argNode instanceof Sequence) {
+      argumentNodes.push(...argNode.value);
+    } else {
+      argumentNodes.push(argNode);
+    }
+  }
+  return argumentNodes;
+}

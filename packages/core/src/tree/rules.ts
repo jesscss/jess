@@ -57,7 +57,8 @@ import {
   writeRenderText
 } from './util/render-buffer.js';
 import { withRulesContext } from './util/context.js';
-import { cloneBoundValue, createArgumentsBindingValue, createRestBindingValue } from './util/callable-binding.js';
+import { cloneBoundValue, createArgumentsBindingValue, createRestBindingValue, getArgumentsBindingValues } from './util/callable-binding.js';
+import { getCallableNodeSignature, getCallableRestSignature, getCallableSignatureKey } from './util/callable-signature.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
 import {
@@ -442,6 +443,13 @@ function createDerivedRulesSurface(
     attachMixinOutputSlot(output, sourceRules, options.restrictMixinOutputLookup === true);
   }
   return output;
+}
+
+export function createMixinOutputRulesWrapper(sourceRules: Rules, restrictMixinOutputLookup: boolean): Rules {
+  return createDerivedRulesSurface(sourceRules, {
+    markMixinOutput: true,
+    restrictMixinOutputLookup
+  });
 }
 
 function isStyleImportPathResolutionError(error: unknown): boolean {
@@ -4032,28 +4040,8 @@ export class MixinCollection extends Node<MixinEntry[]> {
      * (Any mixin with a mis-match of
      * arguments fails.)
      */
-    function getNodeSignature(value: Node): string {
-      return String(value.valueOf());
-    }
-    function getRestSignature(args: Node[], restName: string): string {
-      if (args.length === 0 && !thisContext.treeContext?.file) {
-        return restName;
-      }
-      return args.map(getNodeSignature).join(' ');
-    }
     function createDerivedOuterRules(sourceRules: Rules, options?: Rules['options']): Rules {
       return createDerivedRulesSurface(sourceRules, { rulesOptions: options });
-    }
-    function createDerivedMixinOutputWrapper(sourceRules: Rules): Rules {
-      // This is the current stand-in for a future output-slot record. It owns
-      // only placement/runtime facts: source body identity, mixin-output lookup
-      // gates, reference-mode clearing, rule indexes, and scope-frame links.
-      // Do not add owned placement children here unless a focused lookup/render
-      // test proves the source body itself must become owned output.
-      return createDerivedRulesSurface(sourceRules, {
-        markMixinOutput: true,
-        restrictMixinOutputLookup
-      });
     }
     function createEmptyDerivedRules(sourceRules: Rules): Rules {
       return createDerivedRulesSurface(sourceRules);
@@ -4149,7 +4137,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
               readonly: param.options.readonly,
               sourceNode: isNode(arg, N.VarDeclaration) ? arg : param
             });
-            signatureParts[paramIndex] = getNodeSignature(argValue);
+            signatureParts[paramIndex] = getCallableNodeSignature(argValue);
           } else if (isNode(param, N.Any) && param.options.role === 'property') {
             bindingRecordsByIndex.set(paramIndex, {
               name: param.valueOf(),
@@ -4157,7 +4145,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
               prepareValue: cloneBoundValue,
               sourceNode: isNode(arg, N.VarDeclaration) ? arg : param
             });
-            signatureParts[paramIndex] = getNodeSignature(argValue);
+            signatureParts[paramIndex] = getCallableNodeSignature(argValue);
           } else if (param.type === 'Rest') {
             /** We assume that the rest args are values */
             const rest = nodeArgs.slice(argPos);
@@ -4166,10 +4154,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
               name: restName,
               prepareValue: () => createRestBindingValue(rest)
             });
-            signatureParts[paramIndex] = getRestSignature(rest, restName);
+            signatureParts[paramIndex] = getCallableRestSignature(rest, restName, Boolean(thisContext.treeContext?.file));
             /** Check a pattern-matching node */
           } else {
-            signatureParts[paramIndex] = getNodeSignature(argValue);
+            signatureParts[paramIndex] = getCallableNodeSignature(argValue);
             if (param.compare(argValue) !== 0) {
               /** This mixin is not a match */
               match = false;
@@ -4208,7 +4196,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
                 readonly: param.options.readonly,
                 sourceNode: param
               });
-              signatureParts[i] = getNodeSignature(param.value.value);
+              signatureParts[i] = getCallableNodeSignature(param.value.value);
             } else if (param.type === 'Rest') {
               const restName = param.value ? `${param.value}` : `rest${i}`;
               bindingRecordsByIndex.set(i, {
@@ -4220,12 +4208,11 @@ export class MixinCollection extends Node<MixinEntry[]> {
               signatureParts[i] = thisContext.treeContext?.file ? '' : restName;
             }
           }
-          const signatureValues = signatureParts.filter((part): part is string => part !== undefined);
           resolvedParamBindings.set(mixin, {
             bindings: [...bindingRecordsByIndex.entries()]
               .sort((a, b) => a[0] - b[0])
               .map(([, binding]) => binding),
-            signatureKey: signatureValues.length > 0 ? signatureValues.join(';') : undefined
+            signatureKey: getCallableSignatureKey(signatureParts)
           });
           mixinCandidates.push(mixin);
         }
@@ -4639,17 +4626,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
                 }
               }
               const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
-              const args: Node[] = [];
-              for (const argNode of argumentNodes) {
-                // If a Rest param collected args into a Sequence, spread its items
-                // so @arguments reflects the actual argument count.
-                if (isNode(argNode, N.Sequence)) {
-                  args.push(...(argNode as { value: Node[] }).value);
-                } else {
-                  args.push(argNode);
-                }
-              }
-              return createArgumentsBindingValue(args);
+              return createArgumentsBindingValue(getArgumentsBindingValues(argumentNodes));
             },
             readonly: true
           });
@@ -4874,7 +4851,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (!emptyOutputSourceRules) {
         throw new ReferenceError('Mixin output source surface was not established.');
       }
-      output = createDerivedMixinOutputWrapper(emptyOutputSourceRules);
+      output = createMixinOutputRulesWrapper(emptyOutputSourceRules, restrictMixinOutputLookup);
       /**
        * Add rules but keep their original parents for further lazy lookups.
        * Ensure each rule has VarDeclaration: 'optional' before pushing (registerNode uses node's own rulesVisibility)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { any } from '../../any.js';
-import { createArgumentsBindingValue, createRestBindingValue } from '../callable-binding.js';
+import { createArgumentsBindingValue, createRestBindingValue, getArgumentsBindingValues } from '../callable-binding.js';
 
 describe('callable binding helpers', () => {
   it('creates rest binding values through a named helper', () => {
@@ -19,5 +19,13 @@ describe('callable binding helpers', () => {
     const args = createArgumentsBindingValue([value]);
 
     expect(args.value).toEqual([value]);
+  });
+
+  it('flattens rest sequences before creating @arguments bindings', () => {
+    const first = any('1px');
+    const second = any('2px');
+    const rest = createRestBindingValue([first, second]);
+
+    expect(getArgumentsBindingValues([rest])).toEqual(rest.value);
   });
 });

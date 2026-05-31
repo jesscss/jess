@@ -380,6 +380,10 @@ export function getImportPlacementSourceChild(
   if (!state) {
     return undefined;
   }
+  const segmentSource = getImportPlacementSegmentSourceChild(placementRules, placementChild);
+  if (segmentSource) {
+    return segmentSource;
+  }
   const directSource = state.sourceByPlacement.get(placementChild);
   if (directSource) {
     return directSource;
@@ -399,6 +403,15 @@ export function getImportPlacementSourceChild(
   }
   const index = placementRules.value.indexOf(placementChild);
   return index >= 0 ? state.source.value[index] : undefined;
+}
+
+export function getImportPlacementSegmentSourceChild(
+  placementRules: Rules,
+  placementChild: Node
+): Node | undefined {
+  return getImportPlacementChildSegments(placementRules)
+    ?.find(segment => segment.output === placementChild)
+    ?.source;
 }
 
 export function getImportPlacementChildSegments(placementRules: Rules): readonly ImportPlacementChildSegment[] | undefined {

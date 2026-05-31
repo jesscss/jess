@@ -32,7 +32,7 @@ import {
   atrule
 } from '../index.js';
 import { Rules as RulesClass } from '../index.js';
-import { getImportPlacementChildSegments, getImportPlacementReferenceMode, getImportPlacementRenderState, getImportPlacementRulesVisibility, getImportPlacementSourceChild, getImportPostludePlacement, getImportPostludeRenderOrder, getImportPostludeRenderState } from '../import-style.js';
+import { getImportPlacementChildSegments, getImportPlacementReferenceMode, getImportPlacementRenderState, getImportPlacementRulesVisibility, getImportPlacementSegmentSourceChild, getImportPlacementSourceChild, getImportPostludePlacement, getImportPostludeRenderOrder, getImportPostludeRenderState } from '../import-style.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { Context } from '../../context.js';
@@ -1965,6 +1965,7 @@ describe('Style import', () => {
         }
       ]);
       expect(getImportPlacementSourceChild(placement, placementRuleset)).toBe(sourceRuleset);
+      expect(getImportPlacementSegmentSourceChild(placement, placementRuleset)).toBe(sourceRuleset);
       const placementDecl = placementRuleset.value.rules?.value[0];
       expect(placementDecl).not.toBe(sourceDecl);
       expect(isNode(placementDecl, N.Declaration)).toBe(true);
@@ -1972,6 +1973,7 @@ describe('Style import', () => {
         throw new TypeError('Expected nested placement declaration');
       }
       expect(getImportPlacementSourceChild(placement, placementDecl)).toBe(sourceDecl);
+      expect(getImportPlacementSegmentSourceChild(placement, placementDecl)).toBeUndefined();
       expect(placementDecl.value.value).toBe(red);
       expect(red.parent).toBe(sourceDecl);
     });

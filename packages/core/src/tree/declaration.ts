@@ -165,6 +165,24 @@ export function collectDeclarationMergeAdapterItems(
   return mergedItems;
 }
 
+export function createDeclarationMergeAdapterState(
+  value: Node,
+  mode: 'list' | 'space'
+): { value: Node; listValue?: Node[]; spaceValue?: Node[] } {
+  const mergedItems = collectDeclarationMergeAdapterItems(value, {
+    includeSequences: mode === 'space'
+  });
+  if (mergedItems.length === 0) {
+    return { value };
+  }
+  if (mergedItems.length === 1) {
+    return { value: mergedItems[0]! };
+  }
+  return mode === 'list'
+    ? { value, listValue: mergedItems }
+    : { value, spaceValue: mergedItems };
+}
+
 type DeclarationValueState<T extends Declaration = Declaration> = {
   source: T;
   value: Node;
@@ -766,7 +784,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (!isMergedContainer) {
       return { value };
     }
-    const mergedItems: Node[] = [];
     let emptyPlaceholder: Node | undefined;
     const collect = (child: Node): void => {
       if (
@@ -782,22 +799,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         isNode(child, N.Nil)
         || String(child.valueOf?.() ?? '') === ''
       );
-      if (!isEmptyPlaceholder) {
-        mergedItems.push(child);
-      } else {
+      if (isEmptyPlaceholder) {
         emptyPlaceholder ??= child;
       }
     };
     collect(value);
+    const adapter = createDeclarationMergeAdapterState(value, isListMergedAssign ? 'list' : 'space');
+    const mergedItems = adapter.listValue ?? adapter.spaceValue ?? (adapter.value !== value ? [adapter.value] : []);
     if (mergedItems.length === 0) {
       return { value: emptyPlaceholder ?? value };
     }
-    if (mergedItems.length === 1) {
-      return { value: mergedItems[0]! };
-    }
-    return isListMergedAssign
-      ? { value, listValue: mergedItems }
-      : { value, spaceValue: mergedItems };
+    return adapter;
   }
 
   private evalPreparedState(context: Context): MaybePromise<DeclarationEvalState> {
