@@ -22,6 +22,7 @@ export type MixinOutputSlot = {
   sourceIndexByOutput: ReadonlyMap<Node, number>;
   placementChildren: readonly Node[];
   scopeFrame: Rules['scopeFrame'];
+  rulesVisibility?: RulesOptions['rulesVisibility'];
   ambientLookup: boolean;
   fallbackFrame?: Rules['scopeFrame'];
   rulesetPlacement?: RulesetMixinPlacementRecord;
@@ -131,6 +132,11 @@ export function getMixinOutputScopeFrame(outputRules: Rules): Rules['scopeFrame'
   return outputRules.options.mixinOutputSlot?.scopeFrame;
 }
 
+export function getMixinOutputRulesVisibility(outputRules: Rules): RulesOptions['rulesVisibility'] | undefined {
+  return outputRules.options.mixinOutputSlot?.rulesVisibility
+    ?? outputRules.options.rulesVisibility;
+}
+
 export function assignMixinOutputRuleIndexes(
   outputRules: Rules,
   isIndexedRuleChild: (node: Node) => boolean
@@ -180,6 +186,7 @@ export function getRulesEntryVisibility(
   type: LookupVisibility
 ): Rules['options']['rulesVisibility'][string] | undefined {
   return entry.rulesVisibility?.[type]
+    ?? getMixinOutputRulesVisibility(entry.node)?.[type]
     ?? entry.node.options.rulesVisibility?.[type];
 }
 
@@ -322,6 +329,7 @@ export function attachMixinOutputSlot(
     sourceIndexByOutput,
     placementChildren: outputRules.value.slice(),
     scopeFrame: outputRules.getScopeFrame(),
+    ...(outputRules.options.rulesVisibility ? { rulesVisibility: outputRules.options.rulesVisibility } : {}),
     ambientLookup: !restrictAmbientLookup,
     ...(options?.fallbackFrame ? { fallbackFrame: options.fallbackFrame } : {}),
     ...(options?.rulesetPlacement

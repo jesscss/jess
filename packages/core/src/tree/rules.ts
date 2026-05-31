@@ -395,6 +395,54 @@ function createOwnedCallableRulesSurface(sourceRules: Rules): Rules {
   );
 }
 
+type DerivedRulesSurfaceOptions = {
+  rulesOptions?: Rules['options'];
+  markMixinOutput?: boolean;
+  restrictMixinOutputLookup?: boolean;
+};
+
+function createDerivedRulesSurface(
+  sourceRules: Rules,
+  options?: DerivedRulesSurfaceOptions
+): Rules {
+  const sourceOptions = sourceRules.options;
+  const sourceLocation = sourceRules.location.length === 0
+    ? undefined
+    : sourceRules.location;
+  const output = new Rules(
+    [],
+    {
+      ...sourceOptions,
+      rulesVisibility: { ...sourceOptions.rulesVisibility }
+    },
+    sourceLocation,
+    sourceRules.treeContext
+  ).inherit(sourceRules);
+  if (sourceRules.functionRegistry) {
+    output.functionRegistry = sourceRules.functionRegistry.cloneForRules(output);
+  }
+  output.scopeFrame = undefined;
+  if (options?.rulesOptions || options?.markMixinOutput) {
+    output.options = {
+      ...output.options,
+      ...options?.rulesOptions
+    };
+  }
+  if (options?.markMixinOutput) {
+    output.options = {
+      ...output.options,
+      rulesVisibility: {
+        Ruleset: 'public',
+        Declaration: 'public',
+        VarDeclaration: 'public',
+        Mixin: 'public'
+      }
+    };
+    attachMixinOutputSlot(output, sourceRules, options.restrictMixinOutputLookup === true);
+  }
+  return output;
+}
+
 function isStyleImportPathResolutionError(error: unknown): boolean {
   return error instanceof Error && Reflect.get(error, '_isPathResolutionError') === true;
 }
@@ -4013,50 +4061,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
       return args.map(getNodeSignature).join(' ');
     }
-    function createDerivedRulesSurface(
-      sourceRules: Rules,
-      options?: {
-        rulesOptions?: Rules['options'];
-        markMixinOutput?: boolean;
-      }
-    ): Rules {
-      const sourceOptions = sourceRules.options;
-      const sourceLocation = sourceRules.location.length === 0
-        ? undefined
-        : sourceRules.location;
-      const output = new Rules(
-        [],
-        {
-          ...sourceOptions,
-          rulesVisibility: { ...sourceOptions.rulesVisibility }
-        },
-        sourceLocation,
-        sourceRules.treeContext
-      ).inherit(sourceRules);
-      if (sourceRules.functionRegistry) {
-        output.functionRegistry = sourceRules.functionRegistry.cloneForRules(output);
-      }
-      output.scopeFrame = undefined;
-      if (options?.rulesOptions || options?.markMixinOutput) {
-        output.options = {
-          ...output.options,
-          ...options?.rulesOptions
-        };
-      }
-      if (options?.markMixinOutput) {
-        output.options = {
-          ...output.options,
-          rulesVisibility: {
-            Ruleset: 'public',
-            Declaration: 'public',
-            VarDeclaration: 'public',
-            Mixin: 'public'
-          }
-        };
-        attachMixinOutputSlot(output, sourceRules, restrictMixinOutputLookup);
-      }
-      return output;
-    }
     function createDerivedOuterRules(sourceRules: Rules, options?: Rules['options']): Rules {
       return createDerivedRulesSurface(sourceRules, { rulesOptions: options });
     }
@@ -4066,7 +4070,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
       // gates, reference-mode clearing, rule indexes, and scope-frame links.
       // Do not add owned placement children here unless a focused lookup/render
       // test proves the source body itself must become owned output.
-      return createDerivedRulesSurface(sourceRules, { markMixinOutput: true });
+      return createDerivedRulesSurface(sourceRules, {
+        markMixinOutput: true,
+        restrictMixinOutputLookup
+      });
     }
     function createEmptyDerivedRules(sourceRules: Rules): Rules {
       return createDerivedRulesSurface(sourceRules);

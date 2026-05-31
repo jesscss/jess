@@ -1924,6 +1924,88 @@ describe('Style import', () => {
       expect(red.parent).toBe(sourceDecl);
     });
 
+    it('keeps nested source-free scalar import placement owned while reusing scalar leaves', async () => {
+      const red = any('red');
+      const sourceDecl = decl({ name: any('color'), value: red });
+      const sourceRuleset = ruleset({
+        selector: sellist([sel([el('.nested-import')])]),
+        rules: rules([sourceDecl])
+      });
+      const importedRules = rules([sourceRuleset]);
+      context.sourceTrees.set('nested-source-free-scalar.jess', importedRules);
+
+      const node = rules([
+        style({
+          path: quoted(any('nested-source-free-scalar.jess'))
+        }, {
+          type: 'import'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const placement = evald.value[0];
+      expect(isNode(placement, N.Rules)).toBe(true);
+      if (!isNode(placement, N.Rules)) {
+        throw new TypeError('Expected import result to be a Rules placement');
+      }
+      const placementRuleset = placement.value[0];
+      expect(placementRuleset).not.toBe(sourceRuleset);
+      expect(sourceRuleset.parent).toBe(importedRules);
+      expect(isNode(placementRuleset, N.Ruleset)).toBe(true);
+      if (!isNode(placementRuleset, N.Ruleset)) {
+        throw new TypeError('Expected placement child to be a ruleset');
+      }
+      const placementDecl = placementRuleset.value.rules?.value[0];
+      expect(placementDecl).not.toBe(sourceDecl);
+      expect(isNode(placementDecl, N.Declaration)).toBe(true);
+      if (!isNode(placementDecl, N.Declaration)) {
+        throw new TypeError('Expected nested placement declaration');
+      }
+      expect(placementDecl.value.value).toBe(red);
+      expect(red.parent).toBe(sourceDecl);
+    });
+
+    it('keeps cache-hit reference visibility isolated from the cached import source', async () => {
+      const importedRules = rules([
+        ruleset({
+          selector: sellist([sel([el('.cached-reference')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]);
+      context.sourceTrees.set('cached-reference.jess', importedRules);
+
+      const firstEval = await rules([
+        style({
+          path: quoted(any('cached-reference.jess'))
+        }, {
+          type: 'import'
+        })
+      ]).eval(context);
+      const secondEval = await rules([
+        style({
+          path: quoted(any('cached-reference.jess'))
+        }, {
+          type: 'import',
+          importOptions: {
+            reference: true
+          }
+        })
+      ]).eval(context);
+
+      expect(firstEval.value[0]).not.toBe(importedRules);
+      const referencePlacement = secondEval.value[0];
+      expect(isNode(referencePlacement, N.Rules)).toBe(true);
+      if (!isNode(referencePlacement, N.Rules)) {
+        throw new TypeError('Expected reference import placement');
+      }
+      expect(referencePlacement.options.referenceMode).toBe(true);
+      expect(referencePlacement.options.rulesVisibility.Ruleset).toBe('optional');
+      expect(importedRules.options.referenceMode).not.toBe(true);
+      expect(importedRules.options.rulesVisibility.Ruleset).toBe('public');
+    });
+
     it('import type can be imported multiple times', async () => {
       context.sourceTrees.set('imported.jess', rules([
         ruleset({
