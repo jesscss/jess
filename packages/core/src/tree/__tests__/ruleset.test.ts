@@ -1,4 +1,4 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, condition, bool } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, condition, bool, comment } from '../index.js';
 import { Context } from '../../context.js';
 import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
@@ -507,6 +507,56 @@ describe('Rule', () => {
       const buffer = createRenderBuffer('flat');
       await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('color: red;\n');
       expect(buffer.parts).toEqual(['color: red;\n']);
+      expect(bodyRenderCalls).toBe(2);
+      expect(prepareCalls).toBe(0);
+      expect(body.parent).toBe(node);
+      expect(node.evaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
+    } finally {
+      RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
+    }
+  });
+
+  it('streams static nil-selector comments and invisible vars directly from source', async () => {
+    const body = rules([
+      comment('/* keep */'),
+      vardecl({ name: any('private'), value: any('red') }),
+      decl({ name: 'color', value: any('red') }),
+      new Nil()
+    ]);
+    const originalRender = body.render;
+    let bodyRenderCalls = 0;
+    body.render = function countBodyRender(
+      this: typeof body,
+      ...args: Parameters<typeof originalRender>
+    ): ReturnType<typeof originalRender> {
+      bodyRenderCalls++;
+      return originalRender.apply(this, args);
+    };
+    const node = ruleset({
+      selector: new Nil(),
+      rules: body
+    });
+    const originalPrepareRegistration = RulesClass.prototype.prepareRegistration;
+    let prepareCalls = 0;
+    RulesClass.prototype.prepareRegistration = function countRulesPrep(
+      this: RulesClass,
+      ...args: Parameters<typeof originalPrepareRegistration>
+    ): ReturnType<typeof originalPrepareRegistration> {
+      prepareCalls++;
+      return originalPrepareRegistration.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+        /* keep */
+        color: red;
+      `);
+      const buffer = createRenderBuffer('flat');
+      await expect(Promise.resolve(node.render(context, buffer))).resolves.toBeString(`
+        /* keep */
+        color: red;
+      `);
       expect(bodyRenderCalls).toBe(2);
       expect(prepareCalls).toBe(0);
       expect(body.parent).toBe(node);

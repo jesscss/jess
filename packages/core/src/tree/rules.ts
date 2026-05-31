@@ -4061,10 +4061,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
     function createEmptyDerivedRules(sourceRules: Rules): Rules {
       return createDerivedRulesSurface(sourceRules);
     }
-    function createCallableRulesSurface(sourceRules: Rules, copyChildren: boolean): Rules {
-      if (!copyChildren) {
-        return sourceRules.derive();
-      }
+    function createUnlockedCallableRulesSurface(sourceRules: Rules): Rules {
+      return sourceRules.derive();
+    }
+    function createOwnedCallableRulesSurface(sourceRules: Rules): Rules {
       return sourceRules.derive(
         getMixinOutputChildSegments(sourceRules).map(copyCallableRulesSegment)
       );
@@ -4494,7 +4494,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const candidateRules = getMixinEntryRules(candidate);
         const sourceRules = getRootSourceRules(candidateRules);
         emptyOutputSourceRules ??= sourceRules;
-        let rules = createCallableRulesSurface(sourceRules, true);
+        let rules = createOwnedCallableRulesSurface(sourceRules);
         const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
         /** Adopt for lookup, then adopt for sorting */
         callParent.adopt(rules);
@@ -4522,7 +4522,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (!isNode(candidate, N.Mixin) && !candidateName && !candidateParams && !candidateGuard) {
         const sourceRules = getRootSourceRules(getMixinEntryRules(candidate));
         emptyOutputSourceRules ??= sourceRules;
-        let unlocked = createCallableRulesSurface(sourceRules, false);
+        let unlocked = createUnlockedCallableRulesSurface(sourceRules);
         const callSiteRules = caller?.rulesParent ?? caller?.sourceRulesParent ?? thisContext.rulesContext;
         const parentFrame = isNode(callSiteRules, N.Rules)
           ? (callSiteRules as Rules).getScopeFrame()
@@ -4550,7 +4550,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
       let rules = candidateRules;
       emptyOutputSourceRules ??= getRootSourceRules(rules);
       /** Create new rules, and add the candidate rules, to add to scope */
-      rules = createCallableRulesSurface(rules, !rules.hasFlag(F_STATIC));
+      rules = rules.hasFlag(F_STATIC)
+        ? createUnlockedCallableRulesSurface(rules)
+        : createOwnedCallableRulesSurface(rules);
       if (isNode(candidate, N.Mixin)) {
         Reflect.set(rules, 'parent', candidateRules.parent);
       }

@@ -1,4 +1,4 @@
-import { dimension, num } from '../index.js';
+import { color, dimension, num } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { type Operator } from '../util/calculate.js';
@@ -119,6 +119,19 @@ describe('Dimension', () => {
       const result = left.operate(right, '+', context);
 
       expect(result).not.toBe(left);
+      expect(result.location).toEqual(left.location);
+      expect(result.sourceNode).toBe(result);
+    });
+
+    it('keeps inherited source metadata on dimension-to-color operation results', () => {
+      const left = dimension(10);
+      const right = color('#010203');
+      left._location = [20, 1, 21, 24, 1, 25];
+
+      const result = left.operate(right, '+', context);
+
+      expect(result).not.toBe(left);
+      expect(result).not.toBe(right);
       expect(result.location).toEqual(left.location);
       expect(result.sourceNode).toBe(result);
     });

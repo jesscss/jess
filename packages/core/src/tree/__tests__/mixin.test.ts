@@ -8,9 +8,11 @@ import {
   canEnterMixinOutputForLookup,
   canEnterRulesEntryForLookup,
   getMixinOutputChildForSource,
+  getMixinOutputPlacementChildren,
   getMixinOutputSourceChild,
   getMixinOutputSourceChildren,
   getMixinOutputSourceIndex,
+  getMixinOutputRuleIndex,
   getRulesetMixinPlacementSourceIndex,
   isFromRestrictedMixinOutput,
   keepsDuplicateMixinOutputDeclaration
@@ -1131,9 +1133,11 @@ describe('Mixin', () => {
       })));
       expect(result.value.map(child => getMixinOutputSourceChild(result, child))).toEqual(mixinBody.value);
       expect(getMixinOutputSourceChildren(result)).toEqual(mixinBody.value);
+      expect(getMixinOutputPlacementChildren(result)).toEqual(result.value);
       expect(mixinBody.value.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.value);
       expect(result.value.map(child => result.options.mixinOutputSlot?.sourceIndexByOutput.get(child))).toEqual([0, 1, 2]);
       expect(result.value.map(child => getMixinOutputSourceIndex(result, child))).toEqual([0, 1, 2]);
+      expect(result.value.map(child => getMixinOutputRuleIndex(result, child, 99))).toEqual([0, 1, 2]);
       expect(result.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
       expect(result.value.map(child => Reflect.get(child, 'index'))).toEqual([0, 1, 2]);
       expect(result.getScopeFrame().fallbackFrame?.rulesNode).toBe(callerRules);
@@ -1156,9 +1160,11 @@ describe('Mixin', () => {
       expect(secondResult.options.mixinOutputSlot?.ambientLookup).toBe(true);
       expect(secondResult.value.map(child => getMixinOutputSourceChild(secondResult, child))).toEqual(mixinBody.value);
       expect(getMixinOutputSourceChildren(secondResult)).toEqual(mixinBody.value);
+      expect(getMixinOutputPlacementChildren(secondResult)).toEqual(secondResult.value);
       expect(mixinBody.value.map(source => getMixinOutputChildForSource(secondResult, source))).toEqual(secondResult.value);
       expect(secondResult.value.map(child => secondResult.options.mixinOutputSlot?.sourceIndexByOutput.get(child))).toEqual([0, 1, 2]);
       expect(secondResult.value.map(child => getMixinOutputSourceIndex(secondResult, child))).toEqual([0, 1, 2]);
+      expect(secondResult.value.map(child => getMixinOutputRuleIndex(secondResult, child, 99))).toEqual([0, 1, 2]);
       expect(secondResult.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
       expect(secondResult.value.map(child => Reflect.get(child, 'index'))).toEqual([0, 1, 2]);
       expect(secondResult.value.map((child, index) => child === result.value[index])).toEqual(
@@ -1187,6 +1193,7 @@ describe('Mixin', () => {
 
       expect(output.options.referenceMode).toBe(false);
       expect(output.options.mixinOutputSlot?.fallbackFrame).toBe(fallbackFrame);
+      expect(getMixinOutputPlacementChildren(output)).toEqual(output.value);
       expect(output.getScopeFrame().fallbackFrame).toBe(fallbackFrame);
       expect(canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: false })).toBe(false);
       expect(canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(true);

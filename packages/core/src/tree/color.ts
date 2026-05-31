@@ -5,6 +5,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import round from 'lodash-es/round.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { finalizeOperationResult } from './util/operation-result.js';
 type ColorValues = [number, number, number, number] | number[];
 type ChannelTuple = [number, string];
 type ChannelValue = number | ChannelTuple;
@@ -597,16 +598,14 @@ export class Color extends Node<ColorData, ColorOptions> {
     }
 
     // Create new color with preserved data
-    const newColor = new Color({
+    return finalizeOperationResult(this, new Color({
       rgb: newColorValues,
       alpha: newAlpha
       // Don't preserve HSL - new RGB values represent a new color
     }, {
       format: this.options.format,
       modernSyntax: this.options.modernSyntax
-    }).inherit(this);
-
-    return newColor;
+    }));
   }
 }
 

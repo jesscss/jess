@@ -20,6 +20,7 @@ export type MixinOutputSlot = {
   sourceByOutput: ReadonlyMap<Node, Node>;
   outputBySource: ReadonlyMap<Node, Node>;
   sourceIndexByOutput: ReadonlyMap<Node, number>;
+  placementChildren: readonly Node[];
   ambientLookup: boolean;
   fallbackFrame?: Rules['scopeFrame'];
   rulesetPlacement?: RulesetMixinPlacementRecord;
@@ -96,6 +97,14 @@ export function getMixinOutputSourceIndex(
   return outputRules.options.mixinOutputSlot?.sourceIndexByOutput.get(outputChild);
 }
 
+export function getMixinOutputRuleIndex(
+  outputRules: Rules,
+  outputChild: Node,
+  fallbackIndex: number
+): number {
+  return getMixinOutputSourceIndex(outputRules, outputChild) ?? fallbackIndex;
+}
+
 export function getRulesetMixinPlacementSourceIndex(
   outputRules: Rules,
   outputChild: Node
@@ -113,6 +122,10 @@ export function getMixinOutputSourceChildren(outputRules: Rules): Node[] | undef
     .filter((source): source is Node => source !== undefined);
 }
 
+export function getMixinOutputPlacementChildren(outputRules: Rules): readonly Node[] | undefined {
+  return outputRules.options.mixinOutputSlot?.placementChildren;
+}
+
 export function assignMixinOutputRuleIndexes(
   outputRules: Rules,
   isIndexedRuleChild: (node: Node) => boolean
@@ -120,12 +133,11 @@ export function assignMixinOutputRuleIndexes(
   let outputRuleIndex = 0;
   for (const outputChild of outputRules.value) {
     const sourceChild = getMixinOutputSourceChild(outputRules, outputChild) ?? outputChild;
-    const sourceIndex = getMixinOutputSourceIndex(outputRules, outputChild);
     Reflect.set(
       outputChild,
       'index',
       isIndexedRuleChild(sourceChild)
-        ? sourceIndex ?? outputRuleIndex++
+        ? getMixinOutputRuleIndex(outputRules, outputChild, outputRuleIndex++)
         : undefined
     );
   }
@@ -303,6 +315,7 @@ export function attachMixinOutputSlot(
         .map(segment => [segment.source, segment.output])
     ),
     sourceIndexByOutput,
+    placementChildren: outputRules.value.slice(),
     ambientLookup: !restrictAmbientLookup,
     ...(options?.fallbackFrame ? { fallbackFrame: options.fallbackFrame } : {}),
     ...(options?.rulesetPlacement
