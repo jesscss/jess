@@ -1783,7 +1783,7 @@ describe('Style import', () => {
   });
 
   describe('multiple imports', () => {
-    it('reuses source-free scalar leaves when creating first-use import-local rules copies', async () => {
+    it('reuses source-free scalar leaves for first-use import-local placement', async () => {
       const originalClone = Any.prototype.clone;
       let clonedRedLeaves = 0;
       Any.prototype.clone = function cloneForCounting(
@@ -1859,6 +1859,36 @@ describe('Style import', () => {
       } finally {
         RulesClass.prototype.clone = originalClone;
       }
+    });
+
+    it('keeps cache-stable first-use plain import source children canonical until eval replaces them', async () => {
+      const importedRules = rules([
+        ruleset({
+          selector: sellist([sel([el('.shared-import-child')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]);
+      const sourceChild = importedRules.value[0];
+      context.sourceTrees.set('shared-import-child.jess', importedRules);
+
+      const node = rules([
+        style({
+          path: quoted(any('shared-import-child.jess'))
+        }, {
+          type: 'import'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const placement = evald.value[0];
+      expect(isNode(placement, N.Rules)).toBe(true);
+      if (!isNode(placement, N.Rules)) {
+        throw new TypeError('Expected import result to be a Rules placement');
+      }
+      expect(placement.value[0]).not.toBe(sourceChild);
+      expect(sourceChild?.parent).toBe(importedRules);
     });
 
     it('import type can be imported multiple times', async () => {
