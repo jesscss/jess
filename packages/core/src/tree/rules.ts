@@ -59,6 +59,13 @@ import { withRulesContext } from './util/context.js';
 import { prepareCallableEvalCandidates } from './util/callable-candidate.js';
 import { evaluateCallableCandidateOutput } from './util/callable-candidate-output.js';
 import {
+  createCallableOutputState,
+  finalizeCallableOutput,
+  pushCallableOutputRule,
+  pushCallableOutputRules,
+  recordCallableOutputSourceRules
+} from './util/callable-output.js';
+import {
   evaluateCallableGuard,
   prepareCallableGuardState
 } from './util/callable-guard.js';
@@ -75,7 +82,6 @@ import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
 import {
   attachMixinOutputSlot,
-  assignMixinOutputRuleIndexes,
   blocksAmbientMixinOutputLookup,
   canEnterRulesEntryForLookup,
   getMixinOutputChildSegments
@@ -4050,11 +4056,8 @@ export class MixinCollection extends Node<MixinEntry[]> {
      * (Any mixin with a mis-match of
      * arguments fails.)
      */
-    function createEmptyDerivedRules(sourceRules: Rules): Rules {
-      return createDerivedRulesSurface(sourceRules);
-    }
     const resolvedParamBindings = new WeakMap<CallableEntry, CallableParamMatch>();
-    let emptyOutputSourceRules: Rules | undefined;
+    const outputState = createCallableOutputState();
     for (let i = 0; i < mixinLength; i++) {
       let mixin = mixinArr[i]!;
       let paramLength = isCallableEntry(mixin) ? getCallableEntryParams(mixin)?.length ?? 0 : 0;
@@ -4107,7 +4110,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
      * but first we need to create a new scope for each mixin,
      * and create variable declarations for each parameter.
      */
-    let outputRules: Rules[] = [];
     const debugDefaultGuard = process.env.DEBUG_DEFAULT_GUARD === '1';
     const debugCaller = (): string => {
       const callerName = caller?.value?.name;
@@ -4127,7 +4129,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         }
         const candidateRules = getMixinEntryRules(candidate);
         const sourceRules = getRootSourceRules(candidateRules);
-        emptyOutputSourceRules ??= sourceRules;
+        recordCallableOutputSourceRules(outputState, sourceRules);
         let rules = createOwnedCallableRulesSurface(sourceRules);
         const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
         /** Adopt for lookup, then adopt for sorting */
@@ -4141,7 +4143,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         attachMixinOutputSlot(rules, sourceRules, restrictMixinOutputLookup, {
           rulesetPlacement: true
         });
-        outputRules.push(rules);
+        pushCallableOutputRule(outputState, rules);
         continue;
       }
       // Less detached rulesets are represented as anonymous mixins (name is undefined).
@@ -4155,7 +4157,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       const candidateGuard = getCallableEntryGuard(candidate);
       if (!isNode(candidate, N.Mixin) && !candidateName && !candidateParams && !candidateGuard) {
         const sourceRules = getRootSourceRules(getMixinEntryRules(candidate));
-        emptyOutputSourceRules ??= sourceRules;
+        recordCallableOutputSourceRules(outputState, sourceRules);
         let unlocked = createUnlockedCallableRulesSurface(sourceRules);
         const callSiteRules = caller?.rulesParent ?? caller?.sourceRulesParent ?? thisContext.rulesContext;
         const parentFrame = isNode(callSiteRules, N.Rules)
@@ -4177,12 +4179,12 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // Call.evalNode's result.eval() path finds no live references to re-resolve.
         const evaledUnlocked = unlocked.eval(context);
         unlocked = (isThenable(evaledUnlocked) ? await evaledUnlocked : evaledUnlocked) as Rules;
-        outputRules.push(unlocked);
+        pushCallableOutputRule(outputState, unlocked);
         continue;
       }
       const candidateRules = getMixinEntryRules(candidate);
       let rules = candidateRules;
-      emptyOutputSourceRules ??= getRootSourceRules(rules);
+      recordCallableOutputSourceRules(outputState, getRootSourceRules(rules));
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.hasFlag(F_STATIC)
         ? createUnlockedCallableRulesSurface(rules)
@@ -4343,7 +4345,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         restrictMixinOutputLookup
       });
       if (newRules) {
-        outputRules.push(newRules);
+        pushCallableOutputRule(outputState, newRules);
       }
     }
 
@@ -4363,51 +4365,21 @@ export class MixinCollection extends Node<MixinEntry[]> {
           defaultResult
         }));
       }
-      outputRules.push(...defaultExecution.outputs);
+      pushCallableOutputRules(outputState, defaultExecution.outputs);
     }
-
-    /**
-     * Now that we have output rules, sort them by
-     * their original order
-     */
-    outputRules.sort(comparePosition);
-    /** Create a rules wrapper - but optimize to avoid unnecessary nesting */
-    let output: Rules;
-    if (outputRules.length === 0) {
-      if (!emptyOutputSourceRules) {
-        throw new ReferenceError('Mixin output source surface was not established.');
-      }
-      return createEmptyDerivedRules(emptyOutputSourceRules);
-    }
-    if (outputRules.length === 1) {
-      output = outputRules[0]!;
-      // Ensure single output rule carries the mixin-output slot.
-      attachMixinOutputSlot(
-        output,
-        getRootSourceRules(output.sourceNode && isNode(output.sourceNode, N.Rules) ? output.sourceNode : output),
-        restrictMixinOutputLookup
-      );
-    } else {
-      /**
-       * Wrap these in rules marked as mixin output. The slot decides whether
-       * ambient lookups may enter it or whether only targeted lookups may.
-       */
-      if (!emptyOutputSourceRules) {
-        throw new ReferenceError('Mixin output source surface was not established.');
-      }
-      output = createMixinOutputRulesWrapper(emptyOutputSourceRules, restrictMixinOutputLookup);
-      /**
-       * Add rules but keep their original parents for further lazy lookups.
-       * Ensure each rule has VarDeclaration: 'optional' before pushing (registerNode uses node's own rulesVisibility)
-       */
-      for (let i = 0; i < outputRules.length; i++) {
-        let rule = outputRules[i]!;
-        rule.frozen = true;
-        output.push(rule);
-      }
-      attachMixinOutputSlot(output, emptyOutputSourceRules, restrictMixinOutputLookup);
-      assignMixinOutputRuleIndexes(output, isIndexedRuleChild);
-    }
+    outputState.outputRules.sort(comparePosition);
+    const output = finalizeCallableOutput({
+      state: outputState,
+      restrictMixinOutputLookup,
+      createEmptyOutput: sourceRules => createDerivedRulesSurface(sourceRules),
+      createWrapperOutput: createMixinOutputRulesWrapper,
+      resolveSingleOutputSourceRules: singleOutput => getRootSourceRules(
+        singleOutput.sourceNode && isNode(singleOutput.sourceNode, N.Rules)
+          ? singleOutput.sourceNode
+          : singleOutput
+      ),
+      isIndexedRuleChild
+    });
 
     /**
      * IMPORTANT: Do NOT force `output` to be evaluated here.

@@ -116,6 +116,10 @@ Peter to pay Paul.
   contribution tracking, pending-default candidate collection, and pending-
   default output flushing are no longer inline state-management blocks inside
   `MixinCollection.evalCall(...)`.
+- Callable output aggregation now also lives in
+  `packages/core/src/tree/util/callable-output.ts`, so callable output source
+  tracking, output-rule collection, and single-vs-wrapper finalization are no
+  longer inline state-management blocks inside `MixinCollection.evalCall(...)`.
 - Callable candidate output execution now lives in
   `packages/core/src/tree/util/callable-candidate-output.ts`, so recursion
   gating, adopt/eval/adopt cleanup, candidate index restoration, and mixin
@@ -984,6 +988,32 @@ to choose the next queue.
    remaining immediate candidate-output routing or another still-inline
    candidate/body orchestration block instead of stale pending-default wording.
 
+### Completed Queue Pass: 2026-06-01 #46
+
+1. Lane B deleted another real `MixinCollection` orchestration block. Callable
+   output aggregation moved out of `packages/core/src/tree/rules.ts` into
+   `packages/core/src/tree/util/callable-output.ts`, taking output source
+   tracking, output-rule collection, and single-vs-wrapper finalization with
+   it.
+2. Lane B kept the runtime contract exact while shrinking the central file to
+   4397 lines. This pass also improved the static hotspot audit to
+   `rules.ts: 61`, `new-node: 288`, and module count `388`. `MixinCollection.evalCall(...)`
+   still owns candidate setup and the special-case ruleset / detached-ruleset
+   entry branches, but it no longer owns the inline output-state machine.
+3. Lane B added focused helper coverage instead of relying only on integration
+   fallout. `packages/core/src/tree/util/__tests__/callable-output.test.ts`
+   now proves source tracking, empty-output handling, single-output placement,
+   and multi-output wrapper finalization directly, while the focused default-
+   guard, mixin, and mixin-recursion suites keep the production callable paths
+   pinned down.
+4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
+   frame seam is still blocked by the focused AtRule suite, the active
+   bubbling matrix, and the `media.less` AST serialization proof.
+5. Lane I refreshed Lane B truth and queue wording so the next pass targets
+   the remaining special-case candidate branches or another still-inline
+   candidate/body orchestration block instead of stale output-aggregation
+   wording.
+
 ### Next Queue
 
 1. **Lane A: collapse cleanup/prep state only if a state record disappears.**
@@ -1021,19 +1051,19 @@ to choose the next queue.
 3. **Lane B: extract the next callable unit only if `evalCall(...)` loses another real guard/body closure.**
 
    Parameter matching, candidate prep, default-probe evaluation, guard
-   execution, pending-default bookkeeping, and candidate-output execution are
-   out, and outer-rules reuse/setup plus scope-frame wiring plus live-slot
-   assembly plus guard preparation are out too. The next callable slice should
-   target immediate candidate-output routing, output-rule collection, or
-   another body-setup block only if one more temporary
+   execution, pending-default bookkeeping, candidate-output execution, and
+   output aggregation are out, and outer-rules reuse/setup plus scope-frame
+   wiring plus live-slot assembly plus guard preparation are out too. The next
+   callable slice should target the remaining special-case candidate branches,
+   immediate candidate setup, or another body-setup block only if one more temporary
    collection, callback, or closure disappears from `MixinCollection`.
 
 4. **Lane B: keep helper extraction honest; do not split candidate execution or scope-frame setup unless local runtime machinery falls.**
 
-   The next cut needs to remove another real local seam such as immediate
-   candidate-output routing, output-rule collection, or another local
-   orchestration closure. Do not add a helper that only rephrases the same
-   body work behind another callback.
+   The next cut needs to remove another real local seam such as the remaining
+   special-case ruleset/detached-ruleset candidate branches, immediate
+   candidate setup, or another local orchestration closure. Do not add a
+   helper that only rephrases the same body work behind another callback.
 
 5. **Lane B/G: keep measuring callable slices, not AtRule-only work.**
 
