@@ -75,6 +75,7 @@ type AtRuleBodyEvalContextState = {
   evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
   output?: AtRuleBodyOutputState;
+  visible?: boolean;
   frameCount: number;
   extendRootStackLength: number;
   writeEvaluatedPrelude: boolean;
@@ -90,7 +91,6 @@ type AtRuleBodyEvalRecord = {
   frameState: AtRuleBodyFrameState;
   preparedBody?: AtRuleBodyEvalPrepState;
   evaluatedBody?: Rules;
-  visible?: boolean;
   layerName?: string;
   registration?: AtRuleBodyRegistrationState;
   contextState: AtRuleBodyEvalContextState;
@@ -393,8 +393,9 @@ function storeAtRuleBodyEvalRecordVisibility(
   record: AtRuleBodyEvalRecord,
   visible: boolean
 ): void {
-  record.visible = visible;
-  if (!visible && record.contextState.writeVisibility) {
+  const state = record.contextState;
+  state.visible = visible;
+  if (!visible && state.writeVisibility) {
     record.evalFrame.removeFlag(F_VISIBLE);
   }
 }
@@ -484,7 +485,7 @@ function readAtRuleBodyEvalRecordResult(
     evaluatedPrelude: record.contextState.evaluatedPrelude,
     evaluatedBody: record.evaluatedBody
       ?? record.contextState.evaluatedBody,
-    visible: record.visible,
+    visible: record.contextState.visible,
     output: record.contextState.output
   };
 }

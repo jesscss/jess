@@ -164,11 +164,18 @@ export function collectDeclarationMergeAdapterItems(
   return mergedItems;
 }
 
-export type DeclarationMergeAdapterState = {
-  kind: 'none' | 'list' | 'space';
+type DeclarationMergeAdapterEmptyState = {
+  kind: 'none';
   value: Node;
-  items?: Node[];
 };
+
+type DeclarationMergeAdapterItemsState = {
+  kind: 'list' | 'space';
+  value: Node;
+  items: Node[];
+};
+
+export type DeclarationMergeAdapterState = DeclarationMergeAdapterEmptyState | DeclarationMergeAdapterItemsState;
 
 export function createDeclarationMergeAdapterState(
   value: Node,
@@ -480,9 +487,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     } else {
       const valueMark = w.mark();
       if (mergeAdapter?.kind === 'list') {
-        renderListValueSyntax(mergeAdapter.items!, options);
+        renderListValueSyntax(mergeAdapter.items, options);
       } else if (mergeAdapter?.kind === 'space') {
-        this.renderSpaceValueSyntax(mergeAdapter.items!, options);
+        this.renderSpaceValueSyntax(mergeAdapter.items, options);
       } else {
         value.toTrimmedString(options);
       }

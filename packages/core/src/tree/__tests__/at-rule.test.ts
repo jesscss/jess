@@ -958,6 +958,24 @@ describe('AtRule', () => {
     });
   });
 
+  it('builds public nil body result state without an eval-frame fallback', () => {
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      rules: rules([])
+    });
+
+    expect(createAtRuleBodyPublicResultState({
+      node,
+      visible: false
+    })).toEqual({
+      node,
+      evaluatedPrelude: undefined,
+      evaluatedBody: undefined,
+      visible: false,
+      output: undefined
+    });
+  });
+
   it('resolves at-rules without touching render state', async () => {
     const root = rules([
       vardecl({

@@ -470,6 +470,9 @@ describe('Call', () => {
     const resolved = await rule.resolve(context);
 
     expect(isNode(resolved, N.Call)).toBe(true);
+    if (!isNode(resolved, N.Call)) {
+      throw new Error('Expected call fallback output');
+    }
     expect(resolved.toTrimmedString()).toBe('missing-fn(red 10px)');
     expect(args.parent).toBe(rule);
     expect(name.parent).toBe(rule);
@@ -1705,6 +1708,9 @@ describe('Call', () => {
       const resolved = await rule.eval(context);
 
       expect(isNode(resolved, N.Call)).toBe(true);
+      if (!isNode(resolved, N.Call)) {
+        throw new Error('Expected call fallback output');
+      }
       expect(resolved.toTrimmedString()).toBe('bad(red 10px)');
       expect(clonedCalls).toBe(0);
       expect(args.parent).toBe(rule);
