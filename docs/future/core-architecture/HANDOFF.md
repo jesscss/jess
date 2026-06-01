@@ -125,6 +125,11 @@ Peter to pay Paul.
   candidate index sync, parent adoption, and optional scope-frame sync are no
   longer owned by an inline `ensureOuterRules(...)` closure inside
   `MixinCollection.evalCall(...)`.
+- Callable scope-frame wiring now lives in
+  `packages/core/src/tree/util/callable-scope-frame.ts`, so lexical/fallback
+  frame assignment, shared-vs-dedicated outer frame selection, and leaky
+  caller fallback wiring are no longer owned by one inline block inside
+  `MixinCollection.evalCall(...)`.
 - Import placement option reads share `getImportPlacementRenderState(...)`, and
   import postlude render order reads through `getImportPostludeRenderState(...)`.
 - Source-free public direct-index container narrowing is explicitly blocked by
@@ -328,14 +333,14 @@ cross-purpose helper closures and less parse cost.
   callable default-group resolution, callable binding value construction,
   callable parameter matching, callable candidate preparation, callable
   default-guard probing, pending default-candidate execution, callable
-  candidate output execution, callable outer-rules setup, and mixin output
-  wrapper construction.
+  candidate output execution, callable outer-rules setup, callable scope-frame
+  wiring, and mixin output wrapper construction.
 - The next extractable unit needs either a Rules-owned adapter input or a
   callable-invocation module that accepts Rules construction callbacks.
   Parameter matching, candidate prep, the default probe loop, pending default
-  execution, candidate output execution, and outer-rules reuse/setup are now
-  out of the closure; the next cut must delete a remaining guard/body
-  orchestration closure instead of just renaming it.
+  execution, candidate output execution, outer-rules reuse/setup, and
+  scope-frame wiring are now out of the closure; the next cut must delete a
+  remaining guard/body orchestration closure instead of just renaming it.
 
 **Completion gates:**
 
@@ -838,6 +843,30 @@ to choose the next queue.
 5. Lane I refreshed Lane B truth and queue wording so the next pass targets
    caller-guard/scope-frame orchestration instead of stale outer-rules wording.
 
+### Completed Queue Pass: 2026-06-01 #41
+
+1. Lane B deleted another real `MixinCollection` orchestration block. Callable
+   scope-frame wiring moved out of `packages/core/src/tree/rules.ts` into
+   `packages/core/src/tree/util/callable-scope-frame.ts`, taking lexical/
+   fallback frame assignment, dedicated outer-frame creation for prebound param
+   guards, shared outer-frame reuse, and leaky caller fallback wiring with it.
+2. Lane B kept the runtime contract exact while shrinking the central file to
+   4542 lines. `MixinCollection.evalCall(...)` still owns live-slot assembly
+   and higher-order caller/guard sequencing, but it no longer owns the inline
+   scope-frame assignment block.
+3. Lane B added focused helper coverage instead of relying only on integration
+   fallout. `packages/core/src/tree/util/__tests__/callable-scope-frame.test.ts`
+   now proves shared outer-frame reuse, dedicated prebound guard frame wiring,
+   and leaky fallback wiring directly, while the focused `mixin.test.ts` and
+   `mixin-recursion.test.ts` suites keep the production mixin/guard paths
+   pinned down.
+4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
+   frame seam is still blocked by the focused AtRule suite, the active
+   bubbling matrix, and the `media.less` AST serialization proof.
+5. Lane I refreshed Lane B truth and queue wording so the next pass targets
+   live-slot assembly or caller-guard sequencing instead of stale
+   scope-frame wording.
+
 ### Next Queue
 
 1. **Lane A: collapse cleanup/prep state only if a state record disappears.**
@@ -875,15 +904,16 @@ to choose the next queue.
 3. **Lane B: extract the next callable unit only if `evalCall(...)` loses another real guard/body closure.**
 
    Parameter matching, candidate prep, default-probe evaluation, and
-   candidate-output execution are out, and outer-rules reuse/setup is out too.
-   The next callable slice should target scope-frame/body setup or
-   caller-guard orchestration only if one more temporary collection, callback,
-   or closure disappears from `MixinCollection`.
+   candidate-output execution are out, and outer-rules reuse/setup plus
+   scope-frame wiring are out too. The next callable slice should target
+   live-slot assembly/body setup or caller-guard orchestration only if one
+   more temporary collection, callback, or closure disappears from
+   `MixinCollection`.
 
 4. **Lane B: keep helper extraction honest; do not split candidate execution or scope-frame setup unless local runtime machinery falls.**
 
    The next cut needs to remove another real local seam such as
-   the caller-guard setup path, the parent/definition/fallback scope-frame
+   the caller-guard setup path, the live-slot assembly / `@arguments`
    preparation block, or another local orchestration closure. Do not add a
    helper that only rephrases the same body work behind another callback.
 

@@ -62,6 +62,7 @@ import { prepareCallableEvalCandidates } from './util/callable-candidate.js';
 import { evaluateCallableCandidateOutput } from './util/callable-candidate-output.js';
 import { ensureCallableOuterRulesSurface } from './util/callable-outer-rules.js';
 import { matchCallableParams, type CallableParamMatch } from './util/callable-param-match.js';
+import { wireCallableScopeFrames } from './util/callable-scope-frame.js';
 import {
   CALLABLE_DEFAULT_FALSE_EITHER,
   CALLABLE_DEFAULT_NONE,
@@ -74,7 +75,6 @@ import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
 import {
   attachMixinOutputSlot,
-  assignMixinOutputFallbackFrame,
   assignMixinOutputRuleIndexes,
   blocksAmbientMixinOutputLookup,
   canEnterRulesEntryForLookup,
@@ -4298,25 +4298,21 @@ export class MixinCollection extends Node<MixinEntry[]> {
         }
         // Wire the ScopeFrame so default-param / lexical resolution stays on the
         // definition side, while unresolved body vars can still fall back to the caller.
-        scopeOwner.scopeFrame = buildScopeFrame(undefined, scopeOwner, lexicalScopeFrame, liveSlots);
-        scopeOwner.scopeFrame.fallbackFrame = fallbackScopeFrame;
-        if (outerRules) {
-          if (usesPreboundParamGuardOuterRules) {
-            outerRules.scopeFrame = buildScopeFrame(
-              undefined,
-              outerRules,
-              lexicalScopeFrame,
-              new Map(liveSlots)
-            );
-            if (parentFrame && parentFrame !== lexicalScopeFrame) {
-              outerRules.scopeFrame.fallbackFrame = parentFrame;
-            }
-          } else {
-            outerRules.scopeFrame = scopeOwner.scopeFrame;
-          }
-        }
+        wireCallableScopeFrames({
+          rules: scopeOwner,
+          outerRules,
+          lexicalScopeFrame,
+          fallbackScopeFrame,
+          parentFrame,
+          liveSlots,
+          usesPreboundParamGuardOuterRules
+        });
       } else if (thisContext.leakyRules === true && parentFrame) {
-        assignMixinOutputFallbackFrame(rules, parentFrame);
+        wireCallableScopeFrames({
+          rules,
+          parentFrame,
+          leakyRules: true
+        });
       }
 
       /** Now we can evaluate our guards, if any */
