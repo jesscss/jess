@@ -191,6 +191,10 @@ Peter to pay Paul.
 - Direct AtRule body render now carries evaluated body and hoist/frame facts
   through the same render-local print-state override surface instead of
   deriving a temporary owned at-rule to host those facts for serialization.
+- The targeted Less bubbling bug matrix in
+  `packages/jess/test/less/at-rule-bubbling-bugs.test.ts` is now active
+  coverage instead of `todo` scaffolding, so the remaining collapse-nesting
+  frame blocker is pinned to real wrapper/media/parent-selector cases.
 - Declaration merge adapter state now returns no object for scalar/no-merge
   paths, and single replacement paths now return the replacement node directly.
   Only real list/space render adapters allocate merge state.
@@ -749,6 +753,36 @@ to choose the next queue.
     runtime-update helper and kept queue completion tied to verification,
     commit, and push.
 
+### Completed Queue Pass: 2026-06-01 #33
+
+1. Lane A turned the remaining collapse-nesting frame blocker into active
+   integration coverage. The old `todo` matrix in
+   `packages/jess/test/less/at-rule-bubbling-bugs.test.ts` now runs and covers
+   mixin bubbling, deep wrapper/media stacks, parent-ref `&` bubbling, sibling
+   `&` plus `.child` media output, nested supports mixin output, and nested
+   at-rule `&` wrapper output.
+2. Lane A used that coverage to sharpen the blocker truth instead of pretending
+   the seam was gone. A minimal ownership experiment deleting
+   `shouldKeepAtRuleEvalRuntimeState(...)` immediately regressed the focused
+   collapse-nesting AtRule suite, the bubbling bug matrix above, and the
+   `media.less` AST serialization proof.
+3. Lane A therefore keeps the remaining runtime compatibility state explicit:
+   raw `frames` on source at-rules are still required for evaluated-node APIs
+   that render from the canonical source after collapse-nesting eval.
+4. Lane B stayed intentionally unchanged. This was blocker-proof work, not a
+   callable helper slice, so rawArgs and Less timings remain regression checks
+   only.
+5. Lane C/D kept optional-fallback and import-descendant state unchanged; the
+   live evidence from this pass is all on AtRule collapse-nesting semantics.
+6. Lane E/H kept rules-like and selector ownership blockers explicit. The
+   active bubbling matrix reinforces that parent-selector and wrapper-stack
+   semantics are still easy to break when ownership is flattened too
+   aggressively.
+7. Lane I updated the architecture truth and next queue so the next Lane A pass
+   either deletes one remaining frame consumer with this bug matrix still green
+   or records a narrower blocker against a specific consumer rather than the
+   whole seam.
+
 ### Next Queue
 
 1. **Lane A: collapse cleanup/prep state only if a state record disappears.**
@@ -770,7 +804,11 @@ to choose the next queue.
    render runtime-update helper is gone. The next deletion must target the
    collapse-nesting frame path itself: either remove the remaining `frames`
    compatibility write/read for one evaluated-node API path, or prove that
-   path still needs explicit frame state.
+   path still needs explicit frame state. Current blocker evidence is concrete:
+   deleting the seam regressed the focused collapse-nesting AtRule tests, the
+   active bubbling bug matrix in
+   `packages/jess/test/less/at-rule-bubbling-bugs.test.ts`, and the
+   `media.less` AST serialization proof.
 
    Failed eval cleanup and incremental eval writes are now covered. The next
    pass should delete a remaining compatibility field or consumer rather than
