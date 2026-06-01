@@ -67,7 +67,6 @@ export type AtRuleBodyOutputState = {
 // Compatibility state for evaluated-node APIs that still need stored frame
 // metadata after eval. Root-only hoist-only eval outputs no longer use this.
 export type AtRuleBodyRuntimeState = {
-  hoistToRoot?: boolean;
   frames?: AtRule['frames'];
 };
 
@@ -390,24 +389,25 @@ function storeAtRuleBodyRecordPrepState(
 }
 
 function shouldKeepAtRuleEvalRuntimeState(
+  node: AtRule,
   state: AtRuleBodyEvalContextState
 ): boolean {
-  return Boolean(state.output?.frames);
+  return Boolean(state.output?.frames && node.isNestable());
 }
 
 function commitAtRuleBodyEvalRuntimeState(
   node: AtRule,
   state: AtRuleBodyEvalContextState
 ): void {
-  if (!shouldKeepAtRuleEvalRuntimeState(state)) {
+  if (!shouldKeepAtRuleEvalRuntimeState(node, state)) {
     atRuleBodyRuntimeState.delete(node);
     return;
   }
   const runtimeUpdate = createAtRuleBodyRuntimeUpdate(node, {
     output: state.output
   });
-  if (runtimeUpdate) {
-    updateAtRuleBodyRuntimeState(node, runtimeUpdate);
+  if (runtimeUpdate?.frames !== undefined) {
+    updateAtRuleBodyRuntimeState(node, { frames: runtimeUpdate.frames });
   } else {
     atRuleBodyRuntimeState.delete(node);
   }
@@ -433,7 +433,10 @@ function applyAtRuleBodyRuntimeState(
 function createAtRuleRuntimeRenderNode(node: AtRule): AtRule {
   const runtimeState = atRuleBodyRuntimeState.get(node);
   return runtimeState
-    ? applyAtRuleBodyRuntimeState(node.deriveAtRule(node.value), runtimeState)
+    ? applyAtRuleBodyRuntimeState(node.deriveAtRule(node.value), {
+        hoistToRoot: runtimeState.frames !== undefined && node.isNestable() ? true : undefined,
+        frames: runtimeState.frames
+      })
     : node;
 }
 
@@ -445,7 +448,7 @@ function createAtRuleEvalResultNode(
     state.evaluatedBody
     && state.evaluatedBody !== source.value.rules
   );
-  const ownsOutput = Boolean(state.output && !shouldKeepAtRuleEvalRuntimeState(state));
+  const ownsOutput = Boolean(state.output && !shouldKeepAtRuleEvalRuntimeState(source, state));
   if (!ownsEvaluatedBody && !ownsOutput) {
     return source;
   }
@@ -657,7 +660,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   isHoisted(opts: { collapseNesting?: boolean }) {
-    return atRuleBodyRuntimeState.get(this)?.hoistToRoot ?? this.hoistToRoot ?? Boolean(opts.collapseNesting && this.isNestable());
+    return atRuleBodyRuntimeState.get(this)?.frames !== undefined && this.isNestable()
+      ? true
+      : (this.hoistToRoot ?? Boolean(opts.collapseNesting && this.isNestable()));
   }
 
   getRenderFrames(): AtRule['frames'] {

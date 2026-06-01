@@ -890,6 +890,30 @@ describe('AtRule', () => {
     `);
   });
 
+  it('keeps evaluated collapse-nesting hoist state in frames without a runtime hoist field', async () => {
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    context.opts.collapseNesting = true;
+    context.frames = [parentFrame];
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    const evaluated = await Promise.resolve(node.eval(context));
+
+    expect(evaluated).toBe(node);
+    expect(node.hoistToRoot).toBeUndefined();
+    expect(node.frames).toBeUndefined();
+    expect(node.isHoisted({ collapseNesting: false })).toBe(true);
+    expect(node.getRenderFrames()).toEqual([parentFrame]);
+  });
+
   it('carries direct body-render prelude evaluation through body state once', async () => {
     const root = rules([
       vardecl({
