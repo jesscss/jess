@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { any, decl, rules } from '../../index.js';
 import { ensureCallableOuterRulesSurface } from '../callable-outer-rules.js';
-import { createCallableOuterRules } from '../../rules.js';
+import { createCallableOuterRules } from '../callable-surface.js';
 
 describe('callable outer rules helper', () => {
   it('creates and reuses an outer rules surface while syncing frame and index', () => {

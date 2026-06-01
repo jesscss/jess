@@ -3,7 +3,7 @@ import { Context } from '../../../context.js';
 import { Bool } from '../../bool.js';
 import { rules } from '../../index.js';
 import { F_STATIC } from '../../node.js';
-import { createCallableOuterRules } from '../../rules.js';
+import { createCallableOuterRules } from '../callable-surface.js';
 import { CALLABLE_DEFAULT_TRUE } from '../callable-default-guard.js';
 import {
   evaluateCallableGuard,

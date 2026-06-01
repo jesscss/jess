@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Context } from '../../../context.js';
 import { Bool } from '../../bool.js';
 import { any, decl, list, mixin, rules, vardecl } from '../../index.js';
-import { createCallableOuterRules } from '../../rules.js';
+import { createCallableOuterRules } from '../callable-surface.js';
 import { createCallableDefaultState } from '../callable-default-guard.js';
 import { createCallableLiveSlots } from '../callable-live-slots.js';
 import { matchCallableParams } from '../callable-param-match.js';

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../../context.js';
 import { any, decl, el, list, mixin, ref, rules, ruleset, vardecl } from '../../index.js';
+import { callableRulesEntry } from '../../rules.js';
 import {
-  callableRulesEntry,
   createCallableOuterRules,
   createOwnedCallableRulesSurface,
   createUnlockedCallableRulesSurface
-} from '../../rules.js';
+} from '../callable-surface.js';
 import { createCallableDefaultState } from '../callable-default-guard.js';
 import { createCallableOutputState } from '../callable-output.js';
 import { getMixinOutputPlacementRecord } from '../mixin-output-slot.js';

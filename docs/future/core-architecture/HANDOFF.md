@@ -157,6 +157,10 @@ Peter to pay Paul.
   policy, callable rules surface creation, wrapper/empty output surface
   creation, root-source lookup, and indexed-child checks no longer live as
   local rules-container helpers.
+- Helper-oriented callable surface tests now import directly from
+  `packages/core/src/tree/util/callable-surface.ts` instead of through
+  `packages/core/src/tree/rules.ts`, so those helper exports no longer widen
+  the central rules-container module surface just to serve test consumers.
 - Callable entry accessors now also live in
   `packages/core/src/tree/util/callable-entry.ts`, so callable-entry type
   checks plus rules/name/params/guard access no longer sit as local helper
@@ -398,6 +402,10 @@ cross-purpose helper closures and less parse cost.
   `packages/core/src/tree/util/callable-eval.ts`; ruleset special-case
   candidate eval owns its own `withRulesContext(...)` boundary instead of
   consuming a Rules-owned evaluation callback from `rules.ts`.
+- `packages/core/src/tree/rules.ts` no longer re-exports callable surface
+  helpers for tests. The remaining callable helper consumers import those
+  symbols from `callable-surface.ts` directly, leaving `rules.ts` focused on
+  real rule-container/runtime exports.
 - Pure helper candidates already outside the closure are callable signatures,
   callable default-group resolution, callable binding value construction,
   callable parameter matching, callable entry access, callable candidate
@@ -418,7 +426,8 @@ cross-purpose helper closures and less parse cost.
   special-case candidate handling, candidate setup state, candidate execution,
   candidate-loop dispatch, eval-output finalization, top-level callable
   sequencing, callable surface construction, and the ruleset special-case
-  eval callback seam are now out of the local `MixinCollection` body.
+  eval callback seam are now out of the local `MixinCollection` body. Test-
+  only callable surface re-exports are gone too.
 
 **Completion gates:**
 
@@ -1341,6 +1350,31 @@ to choose the next queue.
    callable work if another real Rules-owned adapter or exported callable
    surface disappears, instead of stale `evaluateOwnedRules(...)` language.
 
+### Completed Queue Pass: 2026-06-01 #58
+
+1. Lane B deleted another real Rules-owned callable surface from
+   `packages/core/src/tree/rules.ts`. The helper-only callable surface exports
+   (`createCallableOuterRules`, `createMixinOutputRulesWrapper`,
+   `createOwnedCallableRulesSurface`, `createUnlockedCallableRulesSurface`,
+   `getRootSourceRules`) are no longer re-exported through `rules.ts`; helper
+   tests now import them directly from
+   `packages/core/src/tree/util/callable-surface.ts`.
+2. Lane B kept the runtime contract exact while shrinking the central file to
+   3794 lines and holding the static audit at `rules.ts: 48`, `new-node: 280`,
+   `with-surface: 38`, `derive: 29`, and module count `375`. This pass
+   deleted exported surface area from the central module instead of adding new
+   runtime indirection.
+3. Lane B kept focused proof coverage honest. The callable outer-rules,
+   guard, candidate-state, candidate-execution, candidate-loop,
+   callable-special-case, and full mixin suites all stayed green after moving
+   those imports off `rules.ts`, proving the helper surface stands on its own.
+4. Lane B/G has fresh callable measurements on the final tree again: rawArgs
+   measured `0.0003ms` plain and `0.0022ms` metadata median during this pass,
+   and the full changed baseline stayed green.
+5. Lane I refreshed Lane B truth and queue wording so the next pass only cuts
+   callable work if another real runtime or package export surface disappears,
+   instead of lingering test-only re-export cleanup.
+
 ### Next Queue
 
 1. **Lane A: collapse cleanup/prep state only if a state record disappears.**
@@ -1375,7 +1409,7 @@ to choose the next queue.
    pass should delete a remaining compatibility field or consumer rather than
    add more lifecycle plumbing.
 
-3. **Lane B: only keep cutting callable work if another real Rules-owned runtime boundary shrinks.**
+3. **Lane B: only keep cutting callable work if another real Rules-owned runtime boundary or package surface shrinks.**
 
    Parameter matching, candidate prep, callable-entry access, arg evaluation,
    candidate scan/match, empty-candidate rejection, default-probe evaluation,
@@ -1383,9 +1417,10 @@ to choose the next queue.
    output aggregation, special-case candidate handling, candidate setup state,
    candidate execution, candidate-loop dispatch, eval-output finalization,
    top-level callable sequencing, callable surface construction, and the
-   ruleset special-case eval callback seam are out. The next callable slice
-   should only land if another Rules-owned callable adapter or exported helper
-   surface actually gets smaller.
+   ruleset special-case eval callback seam are out, and the test-only
+   callable surface re-exports are gone. The next callable slice should only
+   land if another Rules-owned callable adapter, real package export, or
+   runtime helper surface actually gets smaller.
 
 4. **Lane B: keep helper extraction honest; do not split the new helper modules unless local runtime machinery falls.**
 
@@ -1393,8 +1428,8 @@ to choose the next queue.
    they deleted the last inline `evalCall(...)` choreography and the local
    callable surface helpers at the same time, and `callable-special-case.ts`
    only grew because it deleted the threaded rules-eval callback seam. Do not
-   subdivide them further unless a callback, branch, or temporary runtime
-   surface disappears.
+   subdivide them further unless a callback, branch, temporary runtime
+   surface, or real exported package surface disappears.
 
 5. **Lane B/G: keep measuring callable slices, not AtRule-only work.**
 

@@ -63,13 +63,6 @@ import type { MixinOutputSlot } from './util/mixin-output-slot.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 import { evaluateCallableCollection } from './util/callable-eval.js';
 import { isIndexedRuleChild } from './util/callable-surface.js';
-export {
-  createCallableOuterRules,
-  createMixinOutputRulesWrapper,
-  createOwnedCallableRulesSurface,
-  createUnlockedCallableRulesSurface,
-  getRootSourceRules
-} from './util/callable-surface.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;

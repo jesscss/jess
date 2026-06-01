@@ -24,7 +24,7 @@ import {
   isPublicRulesEntry,
   keepsDuplicateMixinOutputDeclaration
 } from '../util/mixin-output-slot.js';
-import { createCallableOuterRules, createMixinOutputRulesWrapper } from '../rules.js';
+import { createCallableOuterRules, createMixinOutputRulesWrapper } from '../util/callable-surface.js';
 
 let context: Context;
 
