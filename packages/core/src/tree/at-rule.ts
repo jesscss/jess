@@ -361,30 +361,6 @@ export function createAtRuleBodyRuntimeUpdate(node: AtRule, state: AtRuleBodyRun
   return runtimeUpdate;
 }
 
-export function createAtRuleBodyPublicRuntimeUpdate(
-  node: AtRule,
-  state: AtRuleBodyPublicResultState
-): AtRuleBodyRuntimeState | undefined {
-  let runtimeUpdate: AtRuleBodyRuntimeState | undefined;
-  const ensureRuntimeUpdate = (): AtRuleBodyRuntimeState => (runtimeUpdate ??= {});
-  if (state.evaluatedBody && state.evaluatedBody !== node.value.rules) {
-    ensureRuntimeUpdate().evaluatedBody = state.evaluatedBody;
-  }
-  if (state.output) {
-    const nextOutput: AtRuleBodyOutputState = {};
-    if (state.output.hoistToRoot !== undefined && state.output.hoistToRoot !== node.hoistToRoot) {
-      nextOutput.hoistToRoot = state.output.hoistToRoot;
-    }
-    if (state.output.frames !== undefined && state.output.frames !== node.frames) {
-      nextOutput.frames = state.output.frames;
-    }
-    if (nextOutput.hoistToRoot !== undefined || nextOutput.frames !== undefined) {
-      ensureRuntimeUpdate().output = nextOutput;
-    }
-  }
-  return runtimeUpdate;
-}
-
 function setAtRuleBodyEvalPrelude(
   state: AtRuleBodyEvalContextState,
   prelude: Node
@@ -525,12 +501,20 @@ function applyAtRuleBodyPublicResultState(
   if (state.evaluatedPrelude) {
     state.node.value.prelude = state.evaluatedPrelude;
   }
+  if (state.evaluatedBody && state.evaluatedBody !== state.node.value.rules) {
+    state.node.adopt(state.evaluatedBody);
+    state.node.value.rules = state.evaluatedBody;
+  }
   if (state.visible === false) {
     state.node.removeFlag(F_VISIBLE);
   }
-  const runtimeUpdate = createAtRuleBodyPublicRuntimeUpdate(state.node, state);
-  if (runtimeUpdate) {
-    updateAtRuleBodyRuntimeState(state.node, runtimeUpdate);
+  if (state.output) {
+    if (state.output.hoistToRoot !== undefined) {
+      state.node.hoistToRoot = state.output.hoistToRoot;
+    }
+    if (state.output.frames !== undefined) {
+      state.node.frames = state.output.frames;
+    }
   }
   return state.node;
 }

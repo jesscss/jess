@@ -9,7 +9,6 @@ import { Context } from '../../context.js';
 import {
   AtRule,
   createAtRuleBodyPublicResultState,
-  createAtRuleBodyPublicRuntimeUpdate,
   createAtRuleBodyRuntimeUpdate
 } from '../at-rule.js';
 import { Rules } from '../rules.js';
@@ -960,27 +959,6 @@ describe('AtRule', () => {
     });
   });
 
-  it('skips public output runtime updates when hoist facts already live on the result node', () => {
-    const sourceRules = rules([
-      decl({ name: 'color', value: any('red') })
-    ]);
-    const frames = [] as AtRule['frames'];
-    const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: sourceRules
-    });
-    node.hoistToRoot = true;
-    node.frames = frames;
-
-    expect(createAtRuleBodyPublicRuntimeUpdate(node, {
-      node,
-      output: {
-        hoistToRoot: true,
-        frames
-      }
-    })).toBeUndefined();
-  });
-
   it('builds public nil body result state without an eval-frame fallback', () => {
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),
@@ -1192,6 +1170,68 @@ describe('AtRule', () => {
     expect(node.value.rules).toBe(sourceRules);
     expect(sourcePrelude.parent).toBe(node);
     expect(sourceRules.parent).toBe(node);
+  });
+
+  it('stores public body resolve facts directly on the owned result node', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('spin')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    context = new Context({ bubbleRootAtRules: true });
+    context.frames = [parentFrame];
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const sourcePrelude = seq([ref({ key: 'mode' }, { type: 'variable' })]);
+    const sourceRules = rules([
+      ruleset({
+        selector: el('to'),
+        rules: rules([
+          decl({ name: 'opacity', value: dimension([1]) })
+        ])
+      })
+    ]);
+    const node = atrule({
+      name: any('@keyframes', { role: 'atkeyword' }),
+      prelude: sourcePrelude,
+      rules: sourceRules
+    });
+
+    const resolved = await Promise.resolve(node.resolve(context));
+
+    expect(resolved).toBeInstanceOf(AtRule);
+    if (!(resolved instanceof AtRule)) {
+      throw new Error('Expected public at-rule result');
+    }
+
+    expect(resolved).not.toBe(node);
+    expect(resolved.value.rules).not.toBe(sourceRules);
+    expect(resolved.getRenderRules()).toBe(resolved.value.rules);
+    expect(resolved.hoistToRoot).toBe(true);
+    expect(resolved.isHoisted({ collapseNesting: false })).toBe(true);
+    expect(resolved.getRenderFrames()).toBeUndefined();
+    expect(resolved.frames).toBeUndefined();
+    expect(resolved.toTrimmedString()).toBeString(`
+      @keyframes spin {
+        to {
+          opacity: 1;
+        }
+      }
+    `);
+    expect(node.value.prelude).toBe(sourcePrelude);
+    expect(node.value.rules).toBe(sourceRules);
+    expect(sourcePrelude.parent).toBe(node);
+    expect(sourceRules.parent).toBe(node);
+    expect(node.hoistToRoot).toBeUndefined();
+    expect(node.frames).toBeUndefined();
   });
 
   it('resolves static at-rules without deriving or evaluating', () => {
