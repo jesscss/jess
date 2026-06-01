@@ -64,12 +64,6 @@ export type AtRuleBodyOutputState = {
   frames?: AtRule['frames'];
 };
 
-// Compatibility state for evaluated-node APIs that still need stored frame
-// metadata after eval. Root-only hoist-only eval outputs no longer use this.
-export type AtRuleBodyRuntimeState = {
-  frames?: AtRule['frames'];
-};
-
 type AtRuleBodyRenderUpdateState = {
   hoistToRoot?: boolean;
   frames?: AtRule['frames'];
@@ -140,7 +134,7 @@ export type AtRuleBodyPublicResultInput = {
 
 export type AtRuleBodyPublicResultState = AtRuleBodyPublicResultInput;
 
-const atRuleBodyRuntimeState = new WeakMap<AtRule, AtRuleBodyRuntimeState>();
+const atRuleBodyRuntimeFrames = new WeakMap<AtRule, AtRule['frames']>();
 const activeAtRuleBodyEvalRecords = new WeakMap<Context, AtRuleBodyEvalRecord[]>();
 
 function pushAtRuleBodyEvalRecord(
@@ -303,26 +297,14 @@ function setAtRuleBodyEvalOutput(
   };
 }
 
-function updateAtRuleBodyRuntimeState(
-  node: AtRule,
-  state: AtRuleBodyRuntimeState
-): AtRuleBodyRuntimeState {
-  const next = {
-    ...atRuleBodyRuntimeState.get(node),
-    ...state
-  };
-  atRuleBodyRuntimeState.set(node, next);
-  return next;
-}
-
 function restoreAtRuleBodyRuntimeState(
   node: AtRule,
-  priorRuntimeState: AtRuleBodyRuntimeState | undefined
+  priorRuntimeFrames: AtRule['frames'] | undefined
 ): void {
-  if (priorRuntimeState) {
-    atRuleBodyRuntimeState.set(node, priorRuntimeState);
+  if (priorRuntimeFrames) {
+    atRuleBodyRuntimeFrames.set(node, priorRuntimeFrames);
   } else {
-    atRuleBodyRuntimeState.delete(node);
+    atRuleBodyRuntimeFrames.delete(node);
   }
 }
 
@@ -405,16 +387,16 @@ function commitAtRuleBodyEvalRuntimeState(
   state: AtRuleBodyEvalContextState
 ): void {
   if (!shouldKeepAtRuleEvalRuntimeState(node, state)) {
-    atRuleBodyRuntimeState.delete(node);
+    atRuleBodyRuntimeFrames.delete(node);
     return;
   }
   const runtimeUpdate = createAtRuleBodyRuntimeUpdate(node, {
     output: state.output
   });
   if (runtimeUpdate?.frames !== undefined) {
-    updateAtRuleBodyRuntimeState(node, { frames: runtimeUpdate.frames });
+    atRuleBodyRuntimeFrames.set(node, runtimeUpdate.frames);
   } else {
-    atRuleBodyRuntimeState.delete(node);
+    atRuleBodyRuntimeFrames.delete(node);
   }
 }
 
@@ -438,10 +420,10 @@ function applyAtRuleBodyRuntimeState(
 }
 
 function createAtRuleRuntimeRenderNode(node: AtRule): AtRule {
-  const runtimeState = atRuleBodyRuntimeState.get(node);
-  return runtimeState
+  const runtimeFrames = atRuleBodyRuntimeFrames.get(node);
+  return runtimeFrames
     ? applyAtRuleBodyRuntimeState(node.deriveAtRule(node.value), {
-        frames: runtimeState.frames
+        frames: runtimeFrames
       })
     : node;
 }
@@ -666,13 +648,13 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   isHoisted(opts: { collapseNesting?: boolean }) {
-    return atRuleBodyRuntimeState.get(this)?.frames !== undefined && this.isNestable()
+    return atRuleBodyRuntimeFrames.get(this) !== undefined && this.isNestable()
       ? true
       : (this.hoistToRoot ?? Boolean(opts.collapseNesting && this.isNestable()));
   }
 
   getRenderFrames(): AtRule['frames'] {
-    return atRuleBodyRuntimeState.get(this)?.frames ?? this.frames;
+    return atRuleBodyRuntimeFrames.get(this) ?? this.frames;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -1318,7 +1300,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<AtRule | Nil> {
-    const priorRuntimeState = atRuleBodyRuntimeState.get(this);
+    const priorRuntimeFrames = atRuleBodyRuntimeFrames.get(this);
     const record = {
       source: this,
       evalFrame: this,
@@ -1329,7 +1311,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     try {
       out = this.evalBodyNode(context, record);
     } catch (error) {
-      restoreAtRuleBodyRuntimeState(this, priorRuntimeState);
+      restoreAtRuleBodyRuntimeState(this, priorRuntimeFrames);
       throw error;
     }
     if (isThenable(out)) {
@@ -1341,7 +1323,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             : value;
         },
         (error) => {
-          restoreAtRuleBodyRuntimeState(this, priorRuntimeState);
+          restoreAtRuleBodyRuntimeState(this, priorRuntimeFrames);
           throw error;
         }
       );
