@@ -45,7 +45,6 @@ import {
 } from './util/serialize-helper.js';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
-import { Comment } from './comment.js';
 import { type ScopeFrame, buildScopeFrame } from './scope-frame.js';
 import { consumeTriviaText } from './util/trivia.js';
 import {
@@ -55,26 +54,23 @@ import {
   writeRenderText
 } from './util/render-buffer.js';
 import { withRulesContext } from './util/context.js';
-import { evaluateCallableArgs } from './util/callable-args.js';
-import { resolveCallableCandidateMatches } from './util/callable-candidate-match.js';
-import { executeCallableCandidateLoop } from './util/callable-candidate-loop.js';
-import {
-  createCallableOutputState,
-  finalizeCallableEvalOutput
-} from './util/callable-output.js';
-import {
-  createCallableDefaultState
-} from './util/callable-default-guard.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
 import {
-  attachMixinOutputSlot,
   blocksAmbientMixinOutputLookup,
-  canEnterRulesEntryForLookup,
-  getMixinOutputChildSegments
+  canEnterRulesEntryForLookup
 } from './util/mixin-output-slot.js';
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
+import { evaluateCallableCollection } from './util/callable-eval.js';
+import { isIndexedRuleChild } from './util/callable-surface.js';
+export {
+  createCallableOuterRules,
+  createMixinOutputRulesWrapper,
+  createOwnedCallableRulesSurface,
+  createUnlockedCallableRulesSurface,
+  getRootSourceRules
+} from './util/callable-surface.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
@@ -100,10 +96,6 @@ type RulesResolveState = {
   output: Rules;
   kind: 'public-resolve';
 };
-
-function isIndexedRuleChild(node: Node): boolean {
-  return !isNode(node, N.Comment);
-}
 
 function isStyleImportRegistrationNode(node: Node): node is StyleImportRegistrationNode {
   return node.type === 'StyleImport';
@@ -297,180 +289,6 @@ function childRulesOf(node: Node): Rules | undefined {
 
 function sourceRulesOf(rules: Rules): Rules {
   return isNode(rules.sourceNode, N.Rules) ? rules.sourceNode : rules;
-}
-
-function copyGuardForEval(guard: Node): Node {
-  const copied = copyWithReusableLeaves(guard);
-  if (copied.type !== guard.type) {
-    throw new TypeError(`Copied guard must remain ${guard.type}, got ${copied.type}`);
-  }
-  return copied;
-}
-
-export function getRootSourceRules(rules: Rules): Rules {
-  let current = rules;
-  const seen = new Set<Rules>();
-  while (current.sourceNode && isNode(current.sourceNode, N.Rules)) {
-    const next = current.sourceNode;
-    if (next === current || seen.has(next)) {
-      break;
-    }
-    seen.add(current);
-    current = next;
-  }
-  return current;
-}
-
-function isRecordValue(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object';
-}
-
-function copyCallableRulesValue(value: unknown): unknown {
-  if (value instanceof Node) {
-    return copyCallableRulesNode(value);
-  }
-  if (Array.isArray(value)) {
-    return value.map(item => copyCallableRulesValue(item));
-  }
-  if (isRecordValue(value)) {
-    const out: Record<string, unknown> = {};
-    for (const [key, item] of Object.entries(value)) {
-      if (Object.hasOwn(value, key)) {
-        out[key] = copyCallableRulesValue(item);
-      }
-    }
-    return out;
-  }
-  return value;
-}
-
-function copyCallableAmpersand(node: Node): Node | undefined {
-  if (node.type !== 'Ampersand') {
-    return undefined;
-  }
-  const makeCopy: unknown = Reflect.get(node, 'derive');
-  if (typeof makeCopy !== 'function') {
-    return undefined;
-  }
-  const copied = makeCopy.call(node);
-  return copied instanceof Node ? copied : undefined;
-}
-
-function copyCallableCommentNode(node: Comment): Node {
-  return new Comment(
-    node.value,
-    node.options ? { ...node.options } : undefined,
-    node.location.length === 0 ? undefined : node.location,
-    node.treeContext
-  ).inherit(node);
-}
-
-function copyCallableReusableLeaf(node: Node): Node | undefined {
-  return canReuseLeaf(node) ? reuseLeaf(node) : undefined;
-}
-
-function constructCallableRulesNode(node: Node, value: unknown): Node {
-  const copy = Reflect.construct(
-    node.constructor,
-    [
-      value,
-      node.options ? { ...node.options } : undefined,
-      node.location.length === 0 ? undefined : node.location,
-      node.treeContext
-    ]
-  );
-  if (!(copy instanceof Node)) {
-    throw new TypeError('Expected callable rules copy to remain a node');
-  }
-  return copy.inherit(node);
-}
-
-function copyCallableRulesNode(node: Node): Node {
-  if (isNode(node, N.Comment)) {
-    return copyCallableCommentNode(node);
-  }
-  const copiedAmpersand = copyCallableAmpersand(node);
-  if (copiedAmpersand) {
-    return copiedAmpersand;
-  }
-  const reusableLeaf = copyCallableReusableLeaf(node);
-  if (reusableLeaf) {
-    return reusableLeaf;
-  }
-  return constructCallableRulesNode(node, copyCallableRulesValue(node.value));
-}
-
-function copyCallableRulesSegment(segment: { source: Node }): Node {
-  return copyCallableRulesNode(segment.source);
-}
-
-export function createUnlockedCallableRulesSurface(sourceRules: Rules): Rules {
-  return sourceRules.derive();
-}
-
-export function createOwnedCallableRulesSurface(sourceRules: Rules): Rules {
-  return sourceRules.derive(
-    getMixinOutputChildSegments(sourceRules).map(copyCallableRulesSegment)
-  );
-}
-
-type DerivedRulesSurfaceOptions = {
-  rulesOptions?: Rules['options'];
-  markMixinOutput?: boolean;
-  restrictMixinOutputLookup?: boolean;
-};
-
-function createDerivedRulesSurface(
-  sourceRules: Rules,
-  options?: DerivedRulesSurfaceOptions
-): Rules {
-  const sourceOptions = sourceRules.options;
-  const sourceLocation = sourceRules.location.length === 0
-    ? undefined
-    : sourceRules.location;
-  const output = new Rules(
-    [],
-    {
-      ...sourceOptions,
-      rulesVisibility: { ...sourceOptions.rulesVisibility }
-    },
-    sourceLocation,
-    sourceRules.treeContext
-  ).inherit(sourceRules);
-  if (sourceRules.functionRegistry) {
-    output.functionRegistry = sourceRules.functionRegistry.cloneForRules(output);
-  }
-  output.scopeFrame = undefined;
-  if (options?.rulesOptions || options?.markMixinOutput) {
-    output.options = {
-      ...output.options,
-      ...options?.rulesOptions
-    };
-  }
-  if (options?.markMixinOutput) {
-    output.options = {
-      ...output.options,
-      rulesVisibility: {
-        Ruleset: 'public',
-        Declaration: 'public',
-        VarDeclaration: 'public',
-        Mixin: 'public'
-      }
-    };
-    attachMixinOutputSlot(output, sourceRules, options.restrictMixinOutputLookup === true);
-  }
-  return output;
-}
-
-export function createCallableOuterRules(sourceRules: Rules, options?: Rules['options']): Rules {
-  return createDerivedRulesSurface(sourceRules, { rulesOptions: options });
-}
-
-export function createMixinOutputRulesWrapper(sourceRules: Rules, restrictMixinOutputLookup: boolean): Rules {
-  return createDerivedRulesSurface(sourceRules, {
-    markMixinOutput: true,
-    restrictMixinOutputLookup
-  });
 }
 
 function isStyleImportPathResolutionError(error: unknown): boolean {
@@ -3972,94 +3790,13 @@ export class MixinCollection extends Node<MixinEntry[]> {
   }
 
   async evalCall(context: Context, args?: List<Node>): Promise<Rules> {
-    const mixinArr = this.value;
     const thisContext = context;
-    let caller = thisContext.caller;
-    const argEvalRulesContext = caller?.rulesParent ?? caller?.sourceRulesParent ?? thisContext.rulesContext;
-    const nodeArgs = await evaluateCallableArgs({
+    return evaluateCallableCollection({
       context: thisContext,
-      rulesContext: argEvalRulesContext,
-      args: args?.value ?? []
+      mixinEntries: this.value,
+      args: args?.value ?? [],
+      evaluateOwnedRules: async rulesNode => withRulesContext(thisContext, rulesNode, () => rulesNode.eval(thisContext))
     });
-    /**
-     * Check named and positional arguments
-     * against mixins, to see which ones match.
-     * (Any mixin with a mis-match of
-     * arguments fails.)
-     */
-    const outputState = createCallableOutputState();
-    const preparedCandidates = resolveCallableCandidateMatches({
-      mixinEntries: mixinArr,
-      nodeArgs,
-      hasFileContext: Boolean(thisContext.treeContext?.file),
-      rulesEvalStack: thisContext.rulesEvalStack,
-      caller
-    });
-    const resolvedParamBindings = preparedCandidates.resolvedParamBindings;
-    const evalCandidates = preparedCandidates.evalCandidates;
-    const hasDefault = preparedCandidates.hasDefault;
-    /**
-     * Now we have a set of mixins that can return rulesets,
-     * but first we need to create a new scope for each mixin,
-     * and create variable declarations for each parameter.
-     */
-    const debugDefaultGuard = process.env.DEBUG_DEFAULT_GUARD === '1';
-    const debugCaller = (): string => {
-      const callerName = caller?.value?.name;
-      const raw = callerName?.valueOf?.() ?? callerName ?? caller?.type ?? '<unknown>';
-      return String(raw);
-    };
-    const restrictMixinOutputLookup = thisContext.leakyRules !== true;
-    const defaultState = createCallableDefaultState();
-    await executeCallableCandidateLoop({
-      context: thisContext,
-      caller,
-      evalCandidates,
-      hasDefault,
-      nodeArgs,
-      resolvedParamBindings,
-      outputState,
-      defaultState,
-      restrictMixinOutputLookup,
-      debugDefaultGuard,
-      debugCaller,
-      specialCaseCallSiteRules: caller?.rulesParent ?? caller?.sourceRulesParent ?? thisContext.rulesContext,
-      ordinaryCallSiteRules: thisContext.rulesContext,
-      copyGuardForEval,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
-      evaluateOwnedRules: async rulesNode => withRulesContext(thisContext, rulesNode, () => rulesNode.eval(thisContext)),
-      getRootSourceRules,
-      createOuterRules: createCallableOuterRules
-    });
-
-    const output = await finalizeCallableEvalOutput({
-      context: thisContext,
-      state: outputState,
-      defaultState,
-      restrictMixinOutputLookup,
-      debugDefaultGuard,
-      debugCaller: debugCaller(),
-      createEmptyOutput: sourceRules => createDerivedRulesSurface(sourceRules),
-      createWrapperOutput: createMixinOutputRulesWrapper,
-      resolveSingleOutputSourceRules: singleOutput => getRootSourceRules(
-        singleOutput.sourceNode && isNode(singleOutput.sourceNode, N.Rules)
-          ? singleOutput.sourceNode
-          : singleOutput
-      ),
-      isIndexedRuleChild
-    });
-
-    /**
-     * IMPORTANT: Do NOT force `output` to be evaluated here.
-     *
-     * Even though candidate rule bodies are usually evaluated during mixin execution, callers
-     * (e.g. `Call.evalNode`) rely on `.eval(context)` to finish evaluation. Marking these flags
-     * true can skip evaluation and leak unevaluated nodes (like `Call`) into serialization.
-     */
-    /** Now push all rules into the rules value */
-    output.index ??= thisContext.ruleCounter++;
-    return output;
   }
 }
 

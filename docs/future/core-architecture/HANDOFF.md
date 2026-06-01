@@ -59,8 +59,8 @@ Peter to pay Paul.
   behind new helpers; it is deleting or narrowing the remaining eval/render
   carriers and call-path rediscovery.
 - Static audit snapshot from the current branch:
-  `new-node: 287`, `derive: 31`, `with-surface: 40`, `copy-leaves: 29`,
-  module-context count `387`.
+  `new-node: 280`, `derive: 29`, `with-surface: 39`, `copy-leaves: 28`,
+  module-context count `376`.
 - Hotpath measurement remains noisy. Use it to detect clear regressions or
   wins, not to justify a tiny static-count reduction by itself.
 - Shared placement vocabulary now exists in
@@ -148,6 +148,15 @@ Peter to pay Paul.
   `packages/core/src/tree/util/callable-args.ts`, so caller-scoped arg
   evaluation, named-arg preservation, rest expansion, and primitive casting
   are no longer inline at the top of `MixinCollection.evalCall(...)`.
+- Callable top-level evaluation now also lives in
+  `packages/core/src/tree/util/callable-eval.ts`, so caller-scoped arg
+  evaluation, candidate resolution, candidate dispatch, and eval-output
+  finalization no longer sit inline in `MixinCollection.evalCall(...)`.
+- Callable surface construction now also lives in
+  `packages/core/src/tree/util/callable-surface.ts`, so callable guard-copy
+  policy, callable rules surface creation, wrapper/empty output surface
+  creation, root-source lookup, and indexed-child checks no longer live as
+  local rules-container helpers.
 - Callable entry accessors now also live in
   `packages/core/src/tree/util/callable-entry.ts`, so callable-entry type
   checks plus rules/name/params/guard access no longer sit as local helper
@@ -386,8 +395,9 @@ cross-purpose helper closures and less parse cost.
 **Current dependency graph:**
 
 - `MixinCollection.evalCall(...)` still depends directly on the top-level
-  orchestration that threads prepared args and ordered candidates into
-  helperized invocation and output finalization.
+  runtime boundary that supplies `withRulesContext(...)`-owned evaluation for
+  candidate bodies; the top-level arg/candidate/output choreography is now in
+  `packages/core/src/tree/util/callable-eval.ts`.
 - Pure helper candidates already outside the closure are callable signatures,
   callable default-group resolution, callable binding value construction,
   callable parameter matching, callable entry access, callable candidate
@@ -399,17 +409,16 @@ cross-purpose helper closures and less parse cost.
   setup state, callable candidate execution, callable candidate-loop
   dispatch, callable eval output finalization, and mixin output wrapper
   construction.
-- The next extractable unit needs either a Rules-owned adapter input or a
-  callable-invocation module that accepts output-construction callbacks.
-  Parameter matching, candidate prep, callable-entry access, arg evaluation,
-  candidate scan/match, empty-candidate rejection, default-probe evaluation,
-  pending default execution, candidate output execution, outer-rules
-  reuse/setup, scope-frame wiring, live-slot assembly, guard preparation,
-  output aggregation, special-case candidate handling, candidate setup state,
-  candidate execution, candidate-loop dispatch, and eval-output finalization
-  are now out of the closure; the next cut must delete the remaining top-level
-  orchestration seam instead of pretending the callable front-end setup still
-  lives inline.
+- The remaining extractable unit now needs either a smaller
+  `evaluateOwnedRules(...)` runtime boundary or another Rules-owned callable
+  surface to disappear. Parameter matching, candidate prep, callable-entry
+  access, arg evaluation, candidate scan/match, empty-candidate rejection,
+  default-probe evaluation, pending default execution, candidate output
+  execution, outer-rules reuse/setup, scope-frame wiring, live-slot assembly,
+  guard preparation, output aggregation, special-case candidate handling,
+  candidate setup state, candidate execution, candidate-loop dispatch,
+  eval-output finalization, top-level callable sequencing, and callable
+  surface construction are now out of the local `MixinCollection` body.
 
 **Completion gates:**
 
@@ -426,11 +435,10 @@ cross-purpose helper closures and less parse cost.
 
 **Next queue seeds:**
 
-1. Extract the remaining callable candidate-scan/match seam only if a local
-   loop, temporary collection, or branch disappears from
-   `MixinCollection.evalCall(...)`.
-2. Prefer candidate discovery/arity matching next; do not split it unless a
-   local callback, closure, or temporary collection disappears.
+1. Only keep cutting Lane B if a real Rules-owned callable runtime boundary
+   shrinks again.
+2. Do not split `callable-eval.ts` or `callable-surface.ts` further unless an
+   explicit callback, branch, or temporary runtime surface disappears.
 3. Delete stale commented registry scaffolding once adjacent callable
    extraction tests cover the live behavior.
 
@@ -1283,6 +1291,31 @@ to choose the next queue.
    the last top-level helper choreography instead of stale local accessor or
    callback-bundle language.
 
+### Completed Queue Pass: 2026-06-01 #56
+
+1. Lane B deleted the last inline top-level callable choreography from
+   `packages/core/src/tree/rules.ts`. `MixinCollection.evalCall(...)` now
+   delegates to `packages/core/src/tree/util/callable-eval.ts`, and the
+   callable surface/copy helpers it needed moved into
+   `packages/core/src/tree/util/callable-surface.ts` instead of lingering as
+   local rules-container helpers.
+2. Lane B kept the runtime contract exact while shrinking the central file to
+   3804 lines and improving the static audit to `rules.ts: 49`, `new-node:
+   280`, `with-surface: 39`, `derive: 29`, and module count `376`. This pass
+   deleted a real local callable seam rather than just rebundling the same
+   orchestration through another callback bag.
+3. Lane B kept focused proof coverage honest. The new
+   `packages/core/src/tree/util/__tests__/callable-eval.test.ts` covers the
+   extracted top-level helper directly, while the existing callable-candidate-
+   loop and full mixin suites stayed green after the surface/helper move.
+4. Lane B/G has fresh callable measurements on the final tree again: rawArgs
+   measured `0.0005ms` plain and `0.0023ms` metadata median during this pass,
+   the full changed baseline stayed green, and the hotspot audit still shows
+   no render/eval/resolve surface lines.
+5. Lane I refreshed Lane B truth and queue wording so the next pass only cuts
+   callable work if another real Rules-owned runtime boundary shrinks, instead
+   of pretending the top-level `evalCall(...)` choreography still lives inline.
+
 ### Next Queue
 
 1. **Lane A: collapse cleanup/prep state only if a state record disappears.**
@@ -1317,24 +1350,24 @@ to choose the next queue.
    pass should delete a remaining compatibility field or consumer rather than
    add more lifecycle plumbing.
 
-3. **Lane B: extract the next callable unit only if `evalCall(...)` loses the remaining top-level orchestration seam.**
+3. **Lane B: only keep cutting callable work if another real Rules-owned runtime boundary shrinks.**
 
    Parameter matching, candidate prep, callable-entry access, arg evaluation,
    candidate scan/match, empty-candidate rejection, default-probe evaluation,
    guard execution, pending-default bookkeeping, candidate-output execution,
    output aggregation, special-case candidate handling, candidate setup state,
-   candidate execution, candidate-loop dispatch, and eval-output finalization
-   are out. The next callable slice should target top-level helper sequencing
-   only if one more temporary branch, closure, or callback bundle disappears
-   from `MixinCollection`.
+   candidate execution, candidate-loop dispatch, eval-output finalization,
+   top-level callable sequencing, and callable surface construction are out.
+   The next callable slice should only land if the remaining
+   `evaluateOwnedRules(...)` runtime boundary or another Rules-owned callable
+   adapter actually gets smaller.
 
-4. **Lane B: keep helper extraction honest; do not split the remaining top-level flow unless local runtime machinery falls.**
+4. **Lane B: keep helper extraction honest; do not split the new helper modules unless local runtime machinery falls.**
 
-   The next cut needs to remove the real local seam that remains: final helper
-   choreography. Do not add a helper that just forwards the same orchestration
-   through a new bag of callbacks now that callable-entry access, arg
-   evaluation, candidate scan/match, candidate rejection, and candidate
-   dispatch are already out.
+   `callable-eval.ts` and `callable-surface.ts` are only justified because
+   they deleted the last inline `evalCall(...)` choreography and the local
+   callable surface helpers at the same time. Do not subdivide them further
+   unless a callback, branch, or temporary runtime surface disappears.
 
 5. **Lane B/G: keep measuring callable slices, not AtRule-only work.**
 
