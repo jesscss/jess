@@ -64,12 +64,6 @@ export type AtRuleBodyOutputState = {
   frames?: AtRule['frames'];
 };
 
-type AtRuleBodyRenderUpdateState = {
-  hoistToRoot?: boolean;
-  frames?: AtRule['frames'];
-  evaluatedBody?: Rules;
-};
-
 type AtRuleBodyEvalContextState = {
   evalFrame: AtRule;
   evaluatedPrelude?: Node;
@@ -106,11 +100,6 @@ type AtRuleBodyEvalPrepState = {
   bodyToEval: Rules;
   parentExtendRoot?: Rules;
   pushedExtendRoot: boolean;
-};
-
-export type AtRuleBodyRuntimeUpdateInput = {
-  evaluatedBody?: Rules;
-  output?: AtRuleBodyOutputState;
 };
 
 type AtRuleLeafState = {
@@ -306,28 +295,6 @@ function restoreAtRuleBodyRuntimeState(
   } else {
     atRuleBodyRuntimeFrames.delete(node);
   }
-}
-
-export function createAtRuleBodyRuntimeUpdate(node: AtRule, state: AtRuleBodyRuntimeUpdateInput): AtRuleBodyRenderUpdateState | undefined {
-  let runtimeUpdate: AtRuleBodyRenderUpdateState | undefined;
-  const ensureRuntimeUpdate = (): AtRuleBodyRenderUpdateState => (runtimeUpdate ??= {});
-  if (state.evaluatedBody && state.evaluatedBody !== node.value.rules) {
-    ensureRuntimeUpdate().evaluatedBody = state.evaluatedBody;
-  }
-  if (state.output) {
-    const canDeriveHoistFromFrames = Boolean(
-      node.isNestable()
-      && state.output.hoistToRoot === true
-      && state.output.frames !== undefined
-    );
-    if (!canDeriveHoistFromFrames && state.output.hoistToRoot !== undefined && state.output.hoistToRoot !== node.hoistToRoot) {
-      ensureRuntimeUpdate().hoistToRoot = state.output.hoistToRoot;
-    }
-    if (state.output.frames !== undefined && state.output.frames !== node.frames) {
-      ensureRuntimeUpdate().frames = state.output.frames;
-    }
-  }
-  return runtimeUpdate;
 }
 
 function setAtRuleBodyEvalPrelude(

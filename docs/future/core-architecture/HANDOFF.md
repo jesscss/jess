@@ -70,9 +70,9 @@ Peter to pay Paul.
   `packages/core/src/tree/util/callable-binding.ts`, reducing the inline
   `MixinCollection.evalCall(...)` closure set without changing binding
   behavior.
-- At-rule body render runtime updates have a named adapter boundary:
-  `createAtRuleBodyRuntimeUpdate(...)`. This is not Lane A completion; it is
-  the first extracted slice around the current parallel state structures.
+- At-rule body render now carries evaluated body, hoist, and frame facts only
+  through render-local print-state overrides. The old runtime-update adapter
+  boundary is gone.
 - Declaration contextual important handling now has separate render-only and
   public-result finalizers. Merge placeholder cleanup has a named adapter
   helper, and scalar/no-merge paths now skip adapter allocation entirely.
@@ -134,17 +134,10 @@ Peter to pay Paul.
   `AtRuleBodyEvalResult`
   plus a print-state header override instead of routing prelude through a
   dedicated body render adapter.
-- `AtRuleBodyRenderState` is gone. Direct render now computes its runtime-update
-  boundary from `AtRuleBodyEvalResult` directly, so the remaining explicit
-  render boundary is the narrow `createAtRuleBodyRuntimeUpdate(...)` input.
-- Empty AtRule body render runtime updates now return `undefined` instead of
-  allocating an empty compatibility state object. Direct render installs the
-  `WeakMap` runtime state only when evaluated body/output facts differ from the
-  source surface.
-- AtRule body render runtime updates also skip `output` writes when hoist/frame
-  facts already live on the source at-rule. Direct render now installs output
-  compatibility state only when body render needs different hoist or frame
-  facts than the source node already exposes.
+- `AtRuleBodyRenderState` is gone, and the follow-on render runtime-update
+  helper is gone too. Direct render now consumes `AtRuleBodyEvalResult`
+  straight into render-local print-state overrides instead of allocating a
+  separate compatibility adapter object.
 - AtRule body public-result application now writes evaluated body and output
   facts directly onto the owned result node. The public-result runtime-update
   helper is gone; the remaining runtime-frame compatibility storage no longer
@@ -189,8 +182,7 @@ Peter to pay Paul.
   preserving the same collapse-nesting semantics.
 - The remaining AtRule eval-time compatibility commit no longer allocates a
   temporary runtime-update object just to persist frames. Success now writes
-  raw `frames` directly into the compatibility `WeakMap`, leaving
-  `createAtRuleBodyRuntimeUpdate(...)` on the render boundary only.
+  raw `frames` directly into the compatibility `WeakMap`.
 - The remaining AtRule evaluated-render compatibility path no longer allocates
   a temporary `{ frames }` runtime-update object either. When legacy runtime
   frames exist, evaluated render now carries those frame facts through
@@ -604,7 +596,7 @@ not folklore.
 | Family | Current state | Completion gate |
 | --- | --- | --- |
 | `Rules` | Direct root/fragment render state exists; callable binding, signature, default grouping, outer-rules, and generated output-wrapper helpers are extracted, but `MixinCollection` still owns candidate/body orchestration. Debug default counts no longer add filter allocations. | Callable extraction complete or explicitly blocked; direct render context state bounded. |
-| `AtRule` | Leaf render split; body invocation state still large, but render and public-result inputs are narrowed, duplicate prelude storage was removed from the eval record, visibility moved onto invocation context state, body-rules frame cleanup is runner-owned, owned public results now carry body/output facts directly, failed evals restore prior compatibility state instead of leaking `WeakMap` facts, successful eval now installs only remaining frame compatibility state at the boundary instead of writing body/output facts during body evaluation, direct render no longer installs temporary runtime compatibility state on the source node, evaluated `render(context)` no longer reads compatibility body state from the source node itself, body-changing `eval(context)` now returns an owned evaluated at-rule surface, root-only hoist-only eval outputs now return owned results too, the remaining eval-time runtime state no longer stores a separate hoist field, nestable render/runtime updates no longer carry a redundant temporary hoist flag when frames already imply it, the last eval-time compatibility `WeakMap` now stores raw frames instead of a wrapper object, eval-time compatibility commits now write raw frames directly instead of routing through a temporary runtime-update object, the evaluated-render compatibility path now carries those frames through render-local print-state overrides instead of temporary wrapper objects or derived owned at-rules, and direct body render now carries evaluated body/hoist/frame facts through the same print-state override surface instead of deriving a temporary owned at-rule. Runtime `WeakMap` writes are now frame compatibility only, and the hotspot audit no longer reports any render/eval/resolve surface lines. | Lane A gates complete. |
+| `AtRule` | Leaf render split; body invocation state still large, but render and public-result inputs are narrowed, duplicate prelude storage was removed from the eval record, visibility moved onto invocation context state, body-rules frame cleanup is runner-owned, owned public results now carry body/output facts directly, failed evals restore prior compatibility state instead of leaking `WeakMap` facts, successful eval now installs only remaining frame compatibility state at the boundary instead of writing body/output facts during body evaluation, direct render no longer installs temporary runtime compatibility state on the source node, evaluated `render(context)` no longer reads compatibility body state from the source node itself, body-changing `eval(context)` now returns an owned evaluated at-rule surface, root-only hoist-only eval outputs now return owned results too, the remaining eval-time runtime state no longer stores a separate hoist field, nestable render/runtime updates no longer carry a redundant temporary hoist flag when frames already imply it, the last eval-time compatibility `WeakMap` now stores raw frames instead of a wrapper object, eval-time compatibility commits now write raw frames directly, the evaluated-render compatibility path now carries those frames through render-local print-state overrides instead of temporary wrapper objects or derived owned at-rules, direct body render now carries evaluated body/hoist/frame facts through the same print-state override surface instead of deriving a temporary owned at-rule, and the dead render runtime-update helper is deleted. Runtime `WeakMap` writes are now frame compatibility only, and the hotspot audit no longer reports any render/eval/resolve surface lines. | Lane A gates complete. |
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return and no parallel list/space checks. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
 | `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public syntax construction has a named adapter and placement vocabulary (`source`, `output`, `content`, `publicBoundary`), but no production storage after the WeakMap experiment regressed static object counts. | Call overhead measurement complete and fallback render/public split advanced. |
@@ -716,6 +708,47 @@ to choose the next queue.
    direct-eval ownership blocker, and keeps full queue completion gated on
    verification, commit, and push.
 
+### Completed Queue Pass: 2026-06-01 #32
+
+1. Lane A deleted dead production scaffolding in `AtRule`. The old
+   `createAtRuleBodyRuntimeUpdate(...)` helper and its render-update state type
+   were only surviving as test-only implementation detail coverage after the
+   render-local print-state override work.
+2. Lane A kept observable behavior coverage instead of helper-shape coverage.
+   The focused AtRule suite still proves direct dynamic-prelude render,
+   root-only hoist render, and evaluated collapse-nesting render preserve
+   canonical source state without deriving owned render nodes.
+3. Lane A tightened the architecture truth. The handoff now describes render
+   override state as the only live render boundary instead of talking about a
+   deleted runtime-update adapter.
+4. Lane A kept the real blocker unchanged. The only remaining runtime
+   compatibility state is still the collapse-nesting frame path for evaluated
+   node APIs; this pass did not pretend that seam was gone.
+5. Lane B kept callable extraction blocked on actual closure deletion rather
+   than helper churn. The inline parameter-matching block still owns the same
+   hot `Map`/signature/rest work.
+6. Lane B kept default-guard probe extraction blocked for the same reason: the
+   remaining closure still reuses copied guards and would not disappear from a
+   shallow helper move.
+7. Lane B/G again treated rawArgs and Less timing as regression signals only,
+   not as evidence for a callable win when the pass stayed AtRule-local.
+8. Lane C kept optional fallback state storage-free. There is still no
+   production consumer that would justify reviving a placement record for that
+   path.
+9. Lane C/D kept recursive import descendant lookup isolated behind the same
+   top-level segment fast path and fallback-only proof boundary.
+10. Lane D kept import descendant diagnostics out of production. A counter
+    would still be proof-only overhead.
+11. Lane E kept rules-like owned wrapper behavior unchanged. Current callable
+    and parentage expectations still rely on the shallow owned surface.
+12. Lane F kept contextual-important split and operation-result boundaries as
+    the current stable shape; there was no adjacent deletion worth faking here.
+13. Lane G/H kept optional fallback and generated-selector ownership blockers
+    explicit instead of widening the pass with documentation-only churn.
+14. Lane I updated the node-family tracker to reflect the deleted render
+    runtime-update helper and kept queue completion tied to verification,
+    commit, and push.
+
 ### Next Queue
 
 1. **Lane A: collapse cleanup/prep state only if a state record disappears.**
@@ -732,11 +765,12 @@ to choose the next queue.
    hoist-only eval outputs are owned too, the remaining runtime compatibility
    storage is raw frames only, eval-time compatibility commits now write those
    frames directly, evaluated render no longer allocates a temporary wrapper
-   object or derived node for that path, and direct body render now uses the
-   same print-state override seam instead of temporary owned at-rules. The next
-   deletion must target the collapse-nesting frame path itself: either remove
-   the remaining `frames` compatibility write/read for one evaluated-node API
-   path, or prove that path still needs explicit frame state.
+   object or derived node for that path, direct body render now uses the same
+   print-state override seam instead of temporary owned at-rules, and the dead
+   render runtime-update helper is gone. The next deletion must target the
+   collapse-nesting frame path itself: either remove the remaining `frames`
+   compatibility write/read for one evaluated-node API path, or prove that
+   path still needs explicit frame state.
 
    Failed eval cleanup and incremental eval writes are now covered. The next
    pass should delete a remaining compatibility field or consumer rather than

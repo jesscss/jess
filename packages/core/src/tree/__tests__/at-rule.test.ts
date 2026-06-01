@@ -8,8 +8,7 @@ import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import {
   AtRule,
-  createAtRuleBodyPublicResultState,
-  createAtRuleBodyRuntimeUpdate
+  createAtRuleBodyPublicResultState
 } from '../at-rule.js';
 import { Rules } from '../rules.js';
 import { Node } from '../node.js';
@@ -1099,102 +1098,6 @@ describe('AtRule', () => {
         color: red;
       }
     `);
-  });
-
-  it('builds render runtime updates from body invocation state', () => {
-    const sourceRules = rules([
-      decl({ name: 'color', value: any('red') })
-    ]);
-    const evaluatedRules = rules([
-      decl({ name: 'color', value: any('blue') })
-    ]);
-    const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: sourceRules
-    });
-
-    expect(createAtRuleBodyRuntimeUpdate(node, {
-      evaluatedBody: evaluatedRules,
-      output: { hoistToRoot: true }
-    })).toEqual({
-      evaluatedBody: evaluatedRules,
-      hoistToRoot: true
-    });
-  });
-
-  it('skips render runtime update allocation when body state matches source', () => {
-    const sourceRules = rules([
-      decl({ name: 'color', value: any('red') })
-    ]);
-    const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: sourceRules
-    });
-
-    expect(createAtRuleBodyRuntimeUpdate(node, {
-      evaluatedBody: sourceRules
-    })).toBeUndefined();
-  });
-
-  it('skips render output runtime updates when hoist facts already live on the source', () => {
-    const sourceRules = rules([
-      decl({ name: 'color', value: any('red') })
-    ]);
-    const frames = [] as AtRule['frames'];
-    const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: sourceRules
-    });
-    node.hoistToRoot = true;
-    node.frames = frames;
-
-    expect(createAtRuleBodyRuntimeUpdate(node, {
-      output: {
-        hoistToRoot: true,
-        frames
-      }
-    })).toBeUndefined();
-  });
-
-  it('builds flattened runtime updates for hoist frames without an output wrapper', () => {
-    const sourceRules = rules([
-      decl({ name: 'color', value: any('red') })
-    ]);
-    const frames = [] as AtRule['frames'];
-    const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: sourceRules
-    });
-
-    expect(createAtRuleBodyRuntimeUpdate(node, {
-      output: {
-        hoistToRoot: true,
-        frames
-      }
-    })).toEqual({
-      hoistToRoot: true,
-      frames
-    });
-  });
-
-  it('derives nestable hoist from frames in render runtime updates', () => {
-    const sourceRules = rules([
-      decl({ name: 'color', value: any('red') })
-    ]);
-    const frames = [] as AtRule['frames'];
-    const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
-      rules: sourceRules
-    });
-
-    expect(createAtRuleBodyRuntimeUpdate(node, {
-      output: {
-        hoistToRoot: true,
-        frames
-      }
-    })).toEqual({
-      frames
-    });
   });
 
   it('builds public body result state from a narrow public adapter input', () => {
