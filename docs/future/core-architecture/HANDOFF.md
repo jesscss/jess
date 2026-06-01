@@ -783,6 +783,26 @@ to choose the next queue.
    or records a narrower blocker against a specific consumer rather than the
    whole seam.
 
+### Completed Queue Pass: 2026-06-01 #34
+
+1. Lane A tested the next obvious ownership alternative and rejected it with
+   evidence. Moving collapse-nesting frame compatibility from the remaining
+   AtRule `WeakMap` onto the evaluated source at-rule itself kept the focused
+   AtRule proofs green but regressed the active bubbling matrix badly enough
+   to hang the "mixin with at-rule preserves parent selector" case.
+2. Lane A therefore kept the existing `WeakMap` seam in place. The blocker is
+   now sharper than before: the remaining side-map storage is not just legacy
+   inertia; it is still protecting shared source at-rules that flow through
+   mixin bubbling paths.
+3. Lane A kept the active bubbling matrix as the live guardrail for future
+   experiments. Any next deletion on this seam has to stay green for the
+   focused AtRule suite, `packages/jess/test/less/at-rule-bubbling-bugs.test.ts`,
+   and the `media.less` AST serialization proof.
+4. Lane B stayed intentionally unchanged again. This pass was evidence-gathering
+   around the last AtRule frame seam, not a callable extraction slice.
+5. Lane I updated the handoff to name the rejected direct-on-node ownership
+   attempt explicitly so the next pass does not have to rediscover it.
+
 ### Next Queue
 
 1. **Lane A: collapse cleanup/prep state only if a state record disappears.**
@@ -808,7 +828,10 @@ to choose the next queue.
    deleting the seam regressed the focused collapse-nesting AtRule tests, the
    active bubbling bug matrix in
    `packages/jess/test/less/at-rule-bubbling-bugs.test.ts`, and the
-   `media.less` AST serialization proof.
+   `media.less` AST serialization proof. A narrower direct-on-node ownership
+   attempt also regressed the mixin-at-rule bubbling case badly enough to hang,
+   so "move frames from the side map onto the shared source at-rule" is not the
+   next safe deletion.
 
    Failed eval cleanup and incremental eval writes are now covered. The next
    pass should delete a remaining compatibility field or consumer rather than
