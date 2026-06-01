@@ -973,7 +973,7 @@ describe('AtRule', () => {
       output: { hoistToRoot: true }
     })).toEqual({
       evaluatedBody: evaluatedRules,
-      output: { hoistToRoot: true }
+      hoistToRoot: true
     });
   });
 
@@ -1009,6 +1009,27 @@ describe('AtRule', () => {
         frames
       }
     })).toBeUndefined();
+  });
+
+  it('builds flattened runtime updates for hoist frames without an output wrapper', () => {
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const frames = [] as AtRule['frames'];
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: sourceRules
+    });
+
+    expect(createAtRuleBodyRuntimeUpdate(node, {
+      output: {
+        hoistToRoot: true,
+        frames
+      }
+    })).toEqual({
+      hoistToRoot: true,
+      frames
+    });
   });
 
   it('builds public body result state from a narrow public adapter input', () => {

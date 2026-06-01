@@ -68,7 +68,8 @@ export type AtRuleBodyOutputState = {
 // the invocation record directly. Direct render should prefer invocation state.
 export type AtRuleBodyRuntimeState = {
   evaluatedBody?: Rules;
-  output?: AtRuleBodyOutputState;
+  hoistToRoot?: boolean;
+  frames?: AtRule['frames'];
 };
 
 type AtRuleBodyEvalContextState = {
@@ -349,15 +350,11 @@ export function createAtRuleBodyRuntimeUpdate(node: AtRule, state: AtRuleBodyRun
     ensureRuntimeUpdate().evaluatedBody = state.evaluatedBody;
   }
   if (state.output) {
-    const nextOutput: AtRuleBodyOutputState = {};
     if (state.output.hoistToRoot !== undefined && state.output.hoistToRoot !== node.hoistToRoot) {
-      nextOutput.hoistToRoot = state.output.hoistToRoot;
+      ensureRuntimeUpdate().hoistToRoot = state.output.hoistToRoot;
     }
     if (state.output.frames !== undefined && state.output.frames !== node.frames) {
-      nextOutput.frames = state.output.frames;
-    }
-    if (nextOutput.hoistToRoot !== undefined || nextOutput.frames !== undefined) {
-      ensureRuntimeUpdate().output = nextOutput;
+      ensureRuntimeUpdate().frames = state.output.frames;
     }
   }
   return runtimeUpdate;
@@ -620,11 +617,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   isHoisted(opts: { collapseNesting?: boolean }) {
-    return atRuleBodyRuntimeState.get(this)?.output?.hoistToRoot ?? this.hoistToRoot ?? Boolean(opts.collapseNesting && this.isNestable());
+    return atRuleBodyRuntimeState.get(this)?.hoistToRoot ?? this.hoistToRoot ?? Boolean(opts.collapseNesting && this.isNestable());
   }
 
   getRenderFrames(): AtRule['frames'] {
-    return atRuleBodyRuntimeState.get(this)?.output?.frames ?? this.frames;
+    return atRuleBodyRuntimeState.get(this)?.frames ?? this.frames;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
