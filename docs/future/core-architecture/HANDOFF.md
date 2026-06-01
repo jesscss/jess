@@ -129,11 +129,16 @@ Peter to pay Paul.
   adapters still own their compatibility shapes at the boundary.
 - `AtRuleBodyRenderState` no longer stores a source at-rule. Direct render
   closes over the source node at the runtime-update boundary, so the render
-  state now carries only evaluated prelude/body/output facts.
+  state now carries only evaluated body/output facts.
+- Direct AtRule render now carries evaluated prelude as a render-local header
+  override instead of runtime compatibility state. `AtRuleBodyRuntimeState`
+  no longer stores prelude, and direct render consumes `AtRuleBodyEvalResult`
+  plus a print-state header override instead of routing prelude through the
+  body render adapter.
 - Empty AtRule body render runtime updates now return `undefined` instead of
   allocating an empty compatibility state object. Direct render installs the
-  `WeakMap` runtime state only when evaluated prelude/body/output facts differ
-  from the source surface.
+  `WeakMap` runtime state only when evaluated body/output facts differ from the
+  source surface.
 - AtRule body render runtime updates also skip `output` writes when hoist/frame
   facts already live on the source at-rule. Direct render now installs output
   compatibility state only when body render needs different hoist or frame
@@ -587,7 +592,7 @@ Keep this section compact. Detailed proof lives in git history and focused
 tests; this handoff should preserve only the current architectural state needed
 to choose the next queue.
 
-- Passes 1-13 reframed the work from node-copy reduction to total runtime work:
+- Passes 1-14 reframed the work from node-copy reduction to total runtime work:
   AtRule body runtime/render adapters, callable binding/signature/default
   helpers, mixin output wrappers, shared placement vocabulary, import placement
   child/postlude state, declaration merge/contextual-important adapters,
@@ -596,75 +601,71 @@ to choose the next queue.
   cleanup, optional fallback syntax helper rejection, declaration scalar merge
   adapter elision, narrowed AtRule eval-result context ownership, source-free
   AtRule body render state, empty/no-op AtRule runtime-update elision, render
-  output-update elision, and bounded blockers for public direct-index and
-  selector ownership.
+  output-update elision, render-local prelude override, and bounded blockers
+  for public direct-index and selector ownership.
 
-### Completed Queue Pass: 2026-06-01 #14
+### Completed Queue Pass: 2026-06-01 #15
 
-1. Lane A deleted another real AtRule output duplicate. A focused test now
-   proves public result application skips `output` runtime writes when
-   `hoistToRoot` and `frames` already match the owned result node, and
-   `createAtRuleBodyPublicRuntimeUpdate(...)` now mirrors the direct-render
-   diff rule instead of always writing compatibility state.
-2. Lane A kept `AtRuleBodyRenderState.evaluatedPrelude` blocked. Header
-   serialization still reads evaluated prelude through AtRule runtime state,
-   while direct render keeps `writeRuntimeState: false`; deleting the field
-   would still require either source mutation or eval-time compatibility writes.
-3. Lane A kept cleanup/prep state split. `AtRuleBodyFrameState` still owns frame
+1. Lane A deleted `AtRuleBodyRenderState.evaluatedPrelude` and the matching
+   runtime compatibility slot. Direct render now consumes `AtRuleBodyEvalResult`
+   and passes evaluated prelude through a render-local AtRule header override,
+   so `AtRuleBodyRuntimeState` no longer carries prelude and the body render
+   adapter only owns evaluated body/output facts.
+2. Lane A kept cleanup/prep state split. `AtRuleBodyFrameState` still owns frame
    clearing, `AtRuleBodyEvalPrepState` still owns body-to-eval/extend-root prep,
    and `restoreAtRuleBodyEvalRecord(...)` remains the single cleanup exit.
-4. Lane B kept callable parameter matching inline. The remaining block still
+3. Lane B kept callable parameter matching inline. The remaining block still
    owns the binding `Map`, signature array, named-argument scan, and rest
    signature closures, so extracting it would add a hot call without deleting
    those allocations.
-5. Lane B kept default-guard probe extraction blocked. Source scans still show
+4. Lane B kept default-guard probe extraction blocked. Source scans still show
    the remaining `defaultProbeGuard` closure reusing one copied guard per
    candidate, with the helper boundary already handling group resolution.
-6. Lane B/G measured after the public AtRule output slice, not a callable
-   slice: rawArgs stayed in the expected range, Less hotpath stayed in the
-   normal range, and static audit stayed at `new-node: 298` / module context
-   `398`.
-7. Lane C found no production optional-fallback placement consumer. Function
+5. Lane B/G measured after the AtRule prelude slice, not a callable slice:
+   callable rawArgs and Less hotpath still need fresh evidence only after a
+   callable helper change, while the AtRule-focused verification stayed green.
+6. Lane C found no production optional-fallback placement consumer. Function
    fallback syntax remains the only named public adapter, while reference and
    import fallback/render paths already reuse direct text/container routes.
-8. Lane C/D kept recursive import descendant lookup isolated. Import placement
+7. Lane C/D kept recursive import descendant lookup isolated. Import placement
    still uses top-level `PlacementChildSegment`s first, then direct maps, then
    recursive fallback; sparse descendant state still needs a red nested proof
    before it can justify new objects.
-9. Lane D kept import descendant diagnostics debug-only. A counter would still
+8. Lane D kept import descendant diagnostics debug-only. A counter would still
    be proof-only and would not remove production lookup work.
-10. Lane E kept rules-like compatibility reads in place. `reference.ts`,
+9. Lane E kept rules-like compatibility reads in place. `reference.ts`,
     reference tests, and ruleset tests still depend on `sourceNode` parentage
     and the public shallow-owned callable surface shape.
-11. Lane F kept contextual-important duplication intentional. Render-only
+10. Lane F kept contextual-important duplication intentional. Render-only
     `importantText` still avoids allocating `Any('!important')`, while public
     resolve still needs the flag node for compatibility.
-12. Lane F kept operation metadata aliases out. The only operation-result helper
+11. Lane F kept operation metadata aliases out. The only operation-result helper
     exports still remain `finalizeOperationMetadataResult(...)` and
     `finalizePublicOperationResult(...)`.
-13. Lane G kept optional fallback storage-free outside function calls. Call
+12. Lane G kept optional fallback storage-free outside function calls. Call
     rawArgs placement already covers diagnostics/source lookup, and reference
     fallback tests still prove render reuse without a new placement `WeakMap`.
-14. Lane H kept selector-copy removal blocked. Generated `:is(...)` placement
+13. Lane H kept selector-copy removal blocked. Generated `:is(...)` placement
     state continues to carry omission/keyset facts, while extend and selector
     paths still rely on generated flags, selector-bit libraries, parentage, and
     source-node ownership.
-15. Lane I compacted the pass history, updated the architecture truth with the
-    public output-update elision, and refreshed the next queue around the same
+14. Lane I compacted the pass history, updated the architecture truth with the
+    render-local prelude override, and refreshed the next queue around the same
     bounded lanes.
+15. Lane I keeps full queue completion gated on verification, commit, and push.
 
 ### Next Queue
 
-1. **Lane A: decide whether `AtRuleBodyRenderState` can lose `evaluatedPrelude`.**
-
-   Currently blocked by direct render using `writeRuntimeState: false`. Revisit
-   only if header serialization can receive evaluated prelude directly from an
-   invocation record without source mutation or eval-time WeakMap writes.
-
-2. **Lane A: collapse cleanup/prep state only if a state record disappears.**
+1. **Lane A: collapse cleanup/prep state only if a state record disappears.**
 
    Do not reshuffle cleanup ownership unless `AtRuleBodyFrameState`,
    `AtRuleBodyEvalPrepState`, or a helper becomes unnecessary.
+
+2. **Lane A: decide whether the body render adapter still needs a dedicated state type.**
+
+   `AtRuleBodyRenderState` now only carries evaluated body/output facts. Delete
+   it only if direct render can consume the eval result or another smaller
+   boundary without adding new wrapper objects or compatibility writes.
 
 3. **Lane B: extract callable parameter matching only with a closure deletion.**
 

@@ -68,7 +68,6 @@ export type AtRuleBodyOutputState = {
 // the invocation record directly. Direct render should prefer invocation state.
 export type AtRuleBodyRuntimeState = {
   evaluatedBody?: Rules;
-  evaluatedPrelude?: Node;
   output?: AtRuleBodyOutputState;
 };
 
@@ -113,7 +112,6 @@ type AtRuleBodyEvalPrepState = {
 
 export type AtRuleBodyRenderState = {
   kind: 'body-render';
-  evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
   output?: AtRuleBodyOutputState;
 };
@@ -131,7 +129,6 @@ export type AtRuleBodyEvalResult = {
 
 export type AtRuleBodyRenderInput = {
   node: AtRule | Nil;
-  evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
   output?: AtRuleBodyOutputState;
 };
@@ -353,9 +350,6 @@ function runAtRuleBodyRuntimeState<T>(
 export function createAtRuleBodyRuntimeUpdate(node: AtRule, state: AtRuleBodyRenderState): AtRuleBodyRuntimeState | undefined {
   let runtimeUpdate: AtRuleBodyRuntimeState | undefined;
   const ensureRuntimeUpdate = (): AtRuleBodyRuntimeState => (runtimeUpdate ??= {});
-  if (state.evaluatedPrelude) {
-    ensureRuntimeUpdate().evaluatedPrelude = state.evaluatedPrelude;
-  }
   if (state.evaluatedBody && state.evaluatedBody !== node.value.rules) {
     ensureRuntimeUpdate().evaluatedBody = state.evaluatedBody;
   }
@@ -505,6 +499,15 @@ function isAtRuleLeafState(value: unknown): value is AtRuleLeafState {
   return Boolean(value && typeof value === 'object' && Reflect.get(value, 'kind') === 'leaf-render');
 }
 
+function isAtRuleBodyEvalResult(value: unknown): value is AtRuleBodyEvalResult {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && 'contextState' in value
+    && 'node' in value
+  );
+}
+
 function readAtRuleBodyEvalRecordResult(
   record: AtRuleBodyEvalRecord,
   node: AtRule | Nil
@@ -531,13 +534,11 @@ export function createAtRuleBodyRenderState(result: AtRuleBodyRenderInput): AtRu
   if (result.node instanceof Nil) {
     return {
       kind: 'body-render',
-      evaluatedPrelude: result.evaluatedPrelude,
       output: result.output
     };
   }
   return {
     kind: 'body-render',
-    evaluatedPrelude: result.evaluatedPrelude,
     evaluatedBody: result.evaluatedBody ?? result.node.value.rules,
     output: result.output
   };
@@ -662,7 +663,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return atRuleBodyRuntimeState.get(this)?.evaluatedBody ?? this.value.rules;
   }
 
-  private evalForRender(context: Context): MaybePromise<Node | AtRuleLeafState | AtRuleBodyRenderState> {
+  private evalForRender(context: Context): MaybePromise<Node | AtRuleLeafState | AtRuleBodyEvalResult> {
     if (this.evaluated) {
       return this;
     }
@@ -680,7 +681,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
     // Direct render on an unevaluated AtRule is a compatibility/debug API.
     // Public compiler render enters through an evaluated root Rules container.
-    return this.evalBodyState(context);
+    return this.evalBodyResult(context, {
+      writeEvaluatedPrelude: false,
+      writeRuntimeState: false,
+      writeVisibility: false
+    });
   }
 
   private evalBodyResult(
@@ -747,29 +752,16 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     };
   }
 
-  private evalBodyState(context: Context): MaybePromise<AtRuleBodyRenderState> {
-    return pipe(
-      () => this.evalBodyResult(context, {
-        writeEvaluatedPrelude: false,
-        writeRuntimeState: false,
-        writeVisibility: false
-      }),
-      result => this.createBodyRenderState(result)
-    );
-  }
-
   private createBodyRenderState(result: AtRuleBodyEvalResult): AtRuleBodyRenderState {
     const { contextState } = result;
     if (result.node instanceof Nil) {
       return {
         kind: 'body-render',
-        evaluatedPrelude: contextState.evaluatedPrelude,
         output: contextState.output
       };
     }
     return {
       kind: 'body-render',
-      evaluatedPrelude: contextState.evaluatedPrelude,
       evaluatedBody: contextState.evaluatedBody ?? result.node.value.rules,
       output: contextState.output
     };
@@ -877,14 +869,25 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    const renderEvaluatedAtRule = (node: AtRule): string => {
-      if (isRenderBuffer(bufferOrOptions)) {
-        return writeRenderText(
-          bufferOrOptions,
-          serializeRulesContainer(node, prepareBufferPrintState(context, options))
-        );
+    const renderEvaluatedAtRule = (node: AtRule, evaluatedPrelude?: Node): string => {
+      const printState = isRenderBuffer(bufferOrOptions)
+        ? prepareBufferPrintState(context, options)
+        : prepareRenderPrintState(context, bufferOrOptions);
+      const priorHeaderNode = printState.atRuleHeaderNode;
+      const priorHeaderPrelude = printState.atRuleHeaderPrelude;
+      if (evaluatedPrelude) {
+        printState.atRuleHeaderNode = node;
+        printState.atRuleHeaderPrelude = evaluatedPrelude;
       }
-      return serializeRulesContainer(node, prepareRenderPrintState(context, bufferOrOptions));
+      try {
+        const rendered = serializeRulesContainer(node, printState);
+        return isRenderBuffer(bufferOrOptions)
+          ? writeRenderText(bufferOrOptions, rendered)
+          : rendered;
+      } finally {
+        printState.atRuleHeaderNode = priorHeaderNode;
+        printState.atRuleHeaderPrelude = priorHeaderPrelude;
+      }
     };
     const renderBodyState = (state: AtRuleBodyRenderState): string => {
       const node = this;
@@ -892,6 +895,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       return runtimeUpdate
         ? runAtRuleBodyRuntimeState(node, runtimeUpdate, () => renderEvaluatedAtRule(node))
         : renderEvaluatedAtRule(node);
+    };
+    const renderBodyResult = (result: AtRuleBodyEvalResult): string => {
+      const state = this.createBodyRenderState(result);
+      const runtimeUpdate = createAtRuleBodyRuntimeUpdate(this, state);
+      const renderWithPrelude = () => renderEvaluatedAtRule(this, result.contextState.evaluatedPrelude);
+      return runtimeUpdate
+        ? runAtRuleBodyRuntimeState(this, runtimeUpdate, renderWithPrelude)
+        : renderWithPrelude();
     };
     return pipe(
       () => this.evalForRender(context),
@@ -904,6 +915,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         }
         if (isAtRuleBodyRenderState(node)) {
           return renderBodyState(node);
+        }
+        if (isAtRuleBodyEvalResult(node)) {
+          return renderBodyResult(node);
         }
         if (isAtRuleLeafState(node)) {
           return node.source.renderLeafValue(node.value, context, bufferOrOptions, options);
@@ -1109,7 +1123,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     evaluatedPrelude?: Node
   ): string | undefined {
     const atRuleName = node.value.name?.toTrimmedString?.() ?? node.value.name?.toString?.() ?? '';
-    const prelude = evaluatedPrelude ?? atRuleBodyRuntimeState.get(node)?.evaluatedPrelude ?? node.value.prelude;
+    const prelude = evaluatedPrelude ?? node.value.prelude;
     if (atRuleName === '@layer' && prelude) {
       const preludeStr = String(prelude.valueOf?.() ?? prelude.toTrimmedString?.() ?? prelude.toString?.() ?? '');
       if (preludeStr) {
@@ -1211,7 +1225,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   /** Render the opening of this at-rule (name and prelude) */
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     let { name } = this.value;
-    let prelude = atRuleBodyRuntimeState.get(this)?.evaluatedPrelude ?? this.value.prelude;
+    let prelude = options.atRuleHeaderNode === this
+      ? (options.atRuleHeaderPrelude ?? this.value.prelude)
+      : this.value.prelude;
     const rules = this.getRenderRules();
 
     let idt = indent(options.depth);

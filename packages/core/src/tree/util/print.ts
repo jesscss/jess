@@ -2,6 +2,7 @@ import type { Context } from '../../context.js';
 import type { IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
 import type { AtRule } from '../at-rule.js';
+import type { Node } from '../node.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -31,6 +32,9 @@ export type PrintOptions = {
   composedSelectorStack?: Selector[];
   /** Session-local composed selector cache keyed by rendered ruleset. */
   composedSelectorCache?: WeakMap<Ruleset, Selector>;
+  /** Render-local override for one at-rule header prelude during direct render. */
+  atRuleHeaderNode?: AtRule;
+  atRuleHeaderPrelude?: Node;
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
   trivia?: TriviaMap;

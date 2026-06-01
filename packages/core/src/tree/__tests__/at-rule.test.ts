@@ -889,15 +889,12 @@ describe('AtRule', () => {
       name: any('@font-face', { role: 'atkeyword' }),
       rules: sourceRules
     });
-    const prelude = any('screen');
 
     expect(createAtRuleBodyRuntimeUpdate(node, {
       kind: 'body-render',
-      evaluatedPrelude: prelude,
       evaluatedBody: evaluatedRules,
       output: { hoistToRoot: true }
     })).toEqual({
-      evaluatedPrelude: prelude,
       evaluatedBody: evaluatedRules,
       output: { hoistToRoot: true }
     });
@@ -950,16 +947,13 @@ describe('AtRule', () => {
       name: any('@media', { role: 'atkeyword' }),
       rules: sourceRules
     });
-    const prelude = any('screen');
 
     expect(createAtRuleBodyRenderState({
       node,
-      evaluatedPrelude: prelude,
       evaluatedBody: evaluatedRules,
       output: { hoistToRoot: true }
     })).toEqual({
       kind: 'body-render',
-      evaluatedPrelude: prelude,
       evaluatedBody: evaluatedRules,
       output: { hoistToRoot: true }
     });
