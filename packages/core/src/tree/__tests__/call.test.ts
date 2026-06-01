@@ -1,6 +1,12 @@
 import type { IToken } from 'chevrotain';
 import { Any, Call, F_NON_STATIC, JsFunction, List, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, list, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
-import { getCallRawArgDiagnosticMessageSource, getCallRawArgDiagnosticSource, getCallRawArgSourceNode, getCallRawArgsPlacement } from '../call.js';
+import {
+  createOptionalFallbackCallSyntaxState,
+  getCallRawArgDiagnosticMessageSource,
+  getCallRawArgDiagnosticSource,
+  getCallRawArgSourceNode,
+  getCallRawArgsPlacement
+} from '../call.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
@@ -101,6 +107,25 @@ describe('Call', () => {
       args: list([num(100), num(100), num(100)])
     });
     expect(rule.toTrimmedString()).toBe('$rgb?(100, 100, 100)');
+  });
+
+  it('names optional fallback syntax placement facts', () => {
+    const rule = call({
+      name: ref('rgb', { fallbackValue: true }),
+      args: list([num(100), num(100), num(100)])
+    });
+    const content = rules([]);
+    const output = call({ name: 'rgb' });
+
+    expect(createOptionalFallbackCallSyntaxState(rule, {
+      name: 'rgb',
+      contentNode: content
+    }, output)).toEqual({
+      source: rule,
+      output,
+      content,
+      publicBoundary: 'owned-fallback-call-syntax'
+    });
   });
 
   it('renders CSS calls through render(context)', () => {

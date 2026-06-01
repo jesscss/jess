@@ -108,8 +108,7 @@ type DeclarationRenderState = {
   name: DeclarationValue['name'];
   value: Node;
   customInterpolatedValue?: CustomInterpolatedRenderValue;
-  listValue?: Node[];
-  spaceValue?: Node[];
+  mergeAdapter?: DeclarationMergeAdapterState;
   important?: Any<'flag'>;
   importantText?: string;
   normalizedFromAssign?: AssignmentType;
@@ -165,28 +164,32 @@ export function collectDeclarationMergeAdapterItems(
   return mergedItems;
 }
 
+export type DeclarationMergeAdapterState = {
+  kind: 'none' | 'list' | 'space';
+  value: Node;
+  items?: Node[];
+};
+
 export function createDeclarationMergeAdapterState(
   value: Node,
   mode: 'list' | 'space'
-): { value: Node; listValue?: Node[]; spaceValue?: Node[] } {
+): DeclarationMergeAdapterState {
   const canContainMergedItems = mode === 'list'
     ? isNode(value, N.List)
     : isNode(value, N.List | N.Sequence);
   if (!canContainMergedItems) {
-    return { value };
+    return { kind: 'none', value };
   }
   const mergedItems = collectDeclarationMergeAdapterItems(value, {
     includeSequences: mode === 'space'
   });
   if (mergedItems.length === 0) {
-    return { value };
+    return { kind: 'none', value };
   }
   if (mergedItems.length === 1) {
-    return { value: mergedItems[0]! };
+    return { kind: 'none', value: mergedItems[0]! };
   }
-  return mode === 'list'
-    ? { value, listValue: mergedItems }
-    : { value, spaceValue: mergedItems };
+  return { kind: mode, value, items: mergedItems };
 }
 
 type DeclarationValueState<T extends Declaration = Declaration> = {
@@ -426,8 +429,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     options?: PrintOptions,
     renderState?: {
       customInterpolatedValue?: DeclarationRenderState['customInterpolatedValue'];
-      listValue?: Node[];
-      spaceValue?: Node[];
+      mergeAdapter?: DeclarationMergeAdapterState;
       importantText?: string;
       normalizedFromAssign?: AssignmentType;
     }
@@ -435,7 +437,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     options = getPrintOptions(options);
     const w = options.writer!;
     const { name, value, important } = valueParts;
-    const { listValue, spaceValue, importantText } = renderState ?? {};
+    const { mergeAdapter, importantText } = renderState ?? {};
     const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
     const mark = w.mark();
     // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
@@ -477,10 +479,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       restorePrintState(options, saved);
     } else {
       const valueMark = w.mark();
-      if (listValue) {
-        renderListValueSyntax(listValue, options);
-      } else if (spaceValue) {
-        this.renderSpaceValueSyntax(spaceValue, options);
+      if (mergeAdapter?.kind === 'list') {
+        renderListValueSyntax(mergeAdapter.items!, options);
+      } else if (mergeAdapter?.kind === 'space') {
+        this.renderSpaceValueSyntax(mergeAdapter.items!, options);
       } else {
         value.toTrimmedString(options);
       }
@@ -591,8 +593,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       value: state.value,
       important: state.important
     }, prepared, {
-      listValue: state.listValue,
-      spaceValue: state.spaceValue,
+      mergeAdapter: state.mergeAdapter,
       customInterpolatedValue: state.customInterpolatedValue,
       importantText: state.importantText,
       normalizedFromAssign: state.normalizedFromAssign
@@ -704,7 +705,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         return {
           name: state.name,
           value,
-          ...(isList ? { listValue: newValue } : { spaceValue: newValue }),
+          mergeAdapter: {
+            kind: isList ? 'list' : 'space',
+            value,
+            items: newValue
+          },
           important: state.important,
           importantText,
           normalizedFromAssign: state.normalizedFromAssign,
@@ -728,8 +733,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return {
         name: state.name,
         value,
-        listValue: normalized.listValue,
-        spaceValue: normalized.spaceValue,
+        mergeAdapter: normalized.kind === 'none' ? undefined : normalized,
         important,
         importantText,
         normalizedFromAssign: state.normalizedFromAssign,
@@ -777,7 +781,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private normalizeMergedLeadingPlaceholderForRender(
     state: DeclarationRegistrationState,
     value: Node
-  ): { value: Node; listValue?: Node[]; spaceValue?: Node[] } {
+  ): DeclarationMergeAdapterState {
     const normalizedAssign = state.normalizedFromAssign;
     const isListMergedAssign =
       normalizedAssign === AssignmentType.Add
@@ -788,7 +792,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       || (isSpaceMergedAssign && isNode(value, N.Sequence))
     );
     if (!isMergedContainer) {
-      return { value };
+      return { kind: 'none', value };
     }
     let emptyPlaceholder: Node | undefined;
     const collect = (child: Node): void => {
@@ -811,9 +815,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     };
     collect(value);
     const adapter = createDeclarationMergeAdapterState(value, isListMergedAssign ? 'list' : 'space');
-    const mergedItems = adapter.listValue ?? adapter.spaceValue ?? (adapter.value !== value ? [adapter.value] : []);
+    const mergedItems = adapter.items ?? (adapter.value !== value ? [adapter.value] : []);
     if (mergedItems.length === 0) {
-      return { value: emptyPlaceholder ?? value };
+      return { kind: 'none', value: emptyPlaceholder ?? value };
     }
     return adapter;
   }

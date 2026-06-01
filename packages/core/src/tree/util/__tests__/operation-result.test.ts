@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { any } from '../../any.js';
-import { finalizeOperationResult, finalizePublicOperationResult } from '../operation-result.js';
+import { finalizeOperationMetadataResult, finalizePublicOperationResult } from '../operation-result.js';
 
 describe('operation result finalization', () => {
   it('uses one public-result boundary for inherited operation metadata', () => {
@@ -8,7 +8,7 @@ describe('operation result finalization', () => {
     const renderResult = any('2px');
     const publicResult = any('3px');
 
-    expect(finalizeOperationResult(source, renderResult)).toBe(renderResult);
+    expect(finalizeOperationMetadataResult(source, renderResult)).toBe(renderResult);
     expect(finalizePublicOperationResult(source, publicResult)).toBe(publicResult);
     expect(publicResult.location).toEqual(source.location);
     expect(publicResult.treeContext).toBe(source.treeContext);

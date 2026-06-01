@@ -6,7 +6,12 @@ import {
 } from '../index.js';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
-import { AtRule, createAtRuleBodyRenderState, createAtRuleBodyRuntimeUpdate } from '../at-rule.js';
+import {
+  AtRule,
+  createAtRuleBodyPublicResultState,
+  createAtRuleBodyRenderState,
+  createAtRuleBodyRuntimeUpdate
+} from '../at-rule.js';
 import { Rules } from '../rules.js';
 import { Node } from '../node.js';
 import { serializeTypes } from '../util/serialize-types.js';
@@ -921,6 +926,34 @@ describe('AtRule', () => {
       source: node,
       evaluatedPrelude: prelude,
       evaluatedBody: evaluatedRules,
+      output: { hoistToRoot: true }
+    });
+  });
+
+  it('builds public body result state from a narrow public adapter input', () => {
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const evaluatedRules = rules([
+      decl({ name: 'color', value: any('blue') })
+    ]);
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      rules: sourceRules
+    });
+    const prelude = any('screen');
+
+    expect(createAtRuleBodyPublicResultState({
+      node,
+      evaluatedPrelude: prelude,
+      evaluatedBody: evaluatedRules,
+      visible: false,
+      output: { hoistToRoot: true }
+    })).toEqual({
+      node,
+      evaluatedPrelude: prelude,
+      evaluatedBody: evaluatedRules,
+      visible: false,
       output: { hoistToRoot: true }
     });
   });

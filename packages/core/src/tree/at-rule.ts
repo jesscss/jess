@@ -138,13 +138,15 @@ export type AtRuleBodyRenderInput = Pick<
   'node' | 'evaluatedPrelude' | 'evaluatedBody' | 'output'
 >;
 
-type AtRuleBodyPublicResultState = {
+export type AtRuleBodyPublicResultInput = {
   node: AtRule;
   evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
   visible?: boolean;
   output?: AtRuleBodyOutputState;
 };
+
+export type AtRuleBodyPublicResultState = AtRuleBodyPublicResultInput;
 
 const atRuleBodyRuntimeState = new WeakMap<AtRule, AtRuleBodyRuntimeState>();
 const activeAtRuleBodyEvalRecords = new WeakMap<Context, AtRuleBodyEvalRecord[]>();
@@ -487,12 +489,11 @@ function readAtRuleBodyEvalRecordResult(
   };
 }
 
-function createAtRuleBodyPublicResultState(
-  result: AtRuleBodyEvalResult
+export function createAtRuleBodyPublicResultState(
+  result: AtRuleBodyPublicResultInput
 ): AtRuleBodyPublicResultState {
-  const node = result.node instanceof Nil ? result.evalFrame : result.node;
   return {
-    node,
+    node: result.node,
     evaluatedPrelude: result.evaluatedPrelude,
     evaluatedBody: result.evaluatedBody,
     visible: result.visible,
@@ -823,12 +824,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private resolveBodyResult(result: AtRuleBodyEvalResult): AtRule {
-    result = {
-      ...result,
+    const publicResult = {
       node: this.deriveAtRule(this.value)
     };
     return applyAtRuleBodyPublicResultState(
-      createAtRuleBodyPublicResultState(result)
+      createAtRuleBodyPublicResultState({
+        ...result,
+        ...publicResult
+      })
     );
   }
 

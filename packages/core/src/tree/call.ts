@@ -72,10 +72,17 @@ type CallEvalState = {
   preservesRulesLikeVariableTarget: boolean;
 };
 
-type FinalizedCallSyntax = {
+export type FinalizedCallSyntax = {
   name: string | Node;
   args?: List<Node>;
   contentNode?: Node;
+};
+
+export type OptionalFallbackCallSyntaxState = {
+  source: Call;
+  output: Call;
+  content?: Node;
+  publicBoundary: 'owned-fallback-call-syntax';
 };
 
 type CallContentPlacementState = {
@@ -97,6 +104,19 @@ export type CallRawArgDiagnosticSource = {
 };
 
 type OptionalFallbackRenderOutput = Node | string;
+
+export function createOptionalFallbackCallSyntaxState(
+  source: Call,
+  syntax: FinalizedCallSyntax,
+  output: Call
+): OptionalFallbackCallSyntaxState {
+  return {
+    source,
+    output,
+    ...(syntax.contentNode ? { content: syntax.contentNode } : {}),
+    publicBoundary: 'owned-fallback-call-syntax'
+  };
+}
 
 export function getCallRawArgsPlacement(rawArgs: List<Node>): CallRawArgsPlacementState | undefined {
   const placement = getRawArgsPlacement(rawArgs);
@@ -284,11 +304,8 @@ export class Call extends Node<CallValue, CallOptions> {
     name: Node | string | unknown,
     fallbackValue: unknown
   ): Promise<Call> {
-    return this.evalFinalizedCallSyntax(
-      context,
-      state,
-      this.getOptionalFallbackName(name, fallbackValue)
-    );
+    const fallbackName = this.getOptionalFallbackName(name, fallbackValue);
+    return this.evalFinalizedCallSyntax(context, state, fallbackName);
   }
 
   private derivePreserveRulesLikeReference(name: Node): Node {

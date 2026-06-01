@@ -907,8 +907,9 @@ describe('Declaration', () => {
     const value = list([new Nil(), any('1px'), list([any('2px')])]);
 
     expect(createDeclarationMergeAdapterState(value, 'list')).toEqual({
+      kind: 'list',
       value,
-      listValue: [value.value[1], value.value[2].value[0]]
+      items: [value.value[1], value.value[2].value[0]]
     });
   });
 
@@ -916,8 +917,18 @@ describe('Declaration', () => {
     const value = new Sequence([new Nil(), any('1px'), new Sequence([any('2px')])]);
 
     expect(createDeclarationMergeAdapterState(value, 'space')).toEqual({
+      kind: 'space',
       value,
-      spaceValue: [value.value[1], value.value[2].value[0]]
+      items: [value.value[1], value.value[2].value[0]]
+    });
+  });
+
+  it('keeps declaration merge adapter state empty for scalar values', () => {
+    const value = any('1px');
+
+    expect(createDeclarationMergeAdapterState(value, 'space')).toEqual({
+      kind: 'none',
+      value
     });
   });
 
