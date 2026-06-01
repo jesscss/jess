@@ -58,7 +58,7 @@ import {
 import { withRulesContext } from './util/context.js';
 import { prepareCallableEvalCandidates } from './util/callable-candidate.js';
 import { prepareCallableCandidateState } from './util/callable-candidate-state.js';
-import { evaluateCallableCandidateOutput } from './util/callable-candidate-output.js';
+import { executeCallableCandidate } from './util/callable-candidate-execution.js';
 import {
   createCallableOutputState,
   finalizeCallableOutput,
@@ -67,18 +67,10 @@ import {
   recordCallableOutputSourceRules
 } from './util/callable-output.js';
 import { evaluateCallableSpecialCaseCandidate } from './util/callable-special-case.js';
-import {
-  evaluateCallableGuard,
-  prepareCallableGuardState
-} from './util/callable-guard.js';
-import { createCallableLiveSlots } from './util/callable-live-slots.js';
-import { ensureCallableOuterRulesSurface } from './util/callable-outer-rules.js';
 import { matchCallableParams, type CallableParamMatch } from './util/callable-param-match.js';
-import { wireCallableScopeFrames } from './util/callable-scope-frame.js';
 import {
   createCallableDefaultState,
-  flushCallableDefaultOutputs,
-  recordCallableDefaultGuardResult
+  flushCallableDefaultOutputs
 } from './util/callable-default-guard.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
@@ -89,7 +81,6 @@ import {
   getMixinOutputChildSegments
 } from './util/mixin-output-slot.js';
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
-import type { CallSignature } from './util/recursion-helper.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
@@ -4161,146 +4152,33 @@ export class MixinCollection extends Node<MixinEntry[]> {
         createUnlockedRules: createUnlockedCallableRulesSurface,
         getRootSourceRules
       });
-      const candidateRules = getMixinEntryRules(candidate);
-      const {
-        sourceRules,
-        rules,
-        paramBindings,
-        signatureKey,
-        parentFrame,
-        lexicalScopeFrame,
-        fallbackScopeFrame
-      } = candidateState;
+      const { sourceRules } = candidateState;
       recordCallableOutputSourceRules(outputState, sourceRules);
-      // Don't set index before evaluation - let evaluation assign the correct index
-      /**
-       * If we have params or a guard, we need to create a wrapper rules object,
-       * so that the lookups of params and guard do not look at the cloned rules,
-       * but instead look upwards / outwards.
-       */
-      let outerRules: Rules | undefined;
-
-      /** Now we need to add our parameters, if any */
-      const getParamsSignature = (): CallSignature => signatureKey;
-      let usesPreboundParamGuardOuterRules = false;
-      if (candidateParams || paramBindings.length > 0) {
-        const needsOuterRules = Boolean(candidateGuard && !candidateGuard.hasFlag(F_STATIC));
-        if (needsOuterRules) {
-          outerRules = ensureCallableOuterRulesSurface({
-            currentOuterRules: outerRules,
-            rules,
-            parent: candidate.parent!,
-            candidateIndex: candidate.index,
-            createOuterRules: createCallableOuterRules,
-            options: {
-              rulesVisibility: {
-                Ruleset: 'public',
-                Declaration: 'public',
-                VarDeclaration: 'public',
-                Mixin: 'public'
-              }
-            },
-            syncScopeFrame: false
-          });
-          usesPreboundParamGuardOuterRules = true;
-        }
-        const scopeOwner = rules;
-        const liveSlots = createCallableLiveSlots({
-          paramBindings,
-          nodeArgs,
-          defineArguments: Boolean(thisContext.treeContext?.file)
-        });
-        // Wire the ScopeFrame so default-param / lexical resolution stays on the
-        // definition side, while unresolved body vars can still fall back to the caller.
-        wireCallableScopeFrames({
-          rules: scopeOwner,
-          outerRules,
-          lexicalScopeFrame,
-          fallbackScopeFrame,
-          parentFrame,
-          liveSlots,
-          usesPreboundParamGuardOuterRules
-        });
-      } else if (thisContext.leakyRules === true && parentFrame) {
-        wireCallableScopeFrames({
-          rules,
-          parentFrame,
-          leakyRules: true
-        });
-      }
-
-      /** Now we can evaluate our guards, if any */
-      let {
-        guard,
-        outerRules: preparedGuardOuterRules,
-        usesPreboundCallerGuardOuterRules
-      } = prepareCallableGuardState({
-        hasDefault,
-        candidateGuard,
-        copyGuardForEval,
-        candidateParams,
-        paramBindingsLength: paramBindings.length,
-        outerRules,
-        rules,
-        parent: candidate.parent!,
-        rulesContextParent: thisContext.rulesContext,
-        candidateIndex: candidate.index,
-        parentFrame,
-        createOuterRules: createCallableOuterRules
-      });
-      outerRules = preparedGuardOuterRules;
-      const guardResult = await evaluateCallableGuard({
+      const execution = await executeCallableCandidate({
         context: thisContext,
         hasDefault,
-        guard,
+        candidate,
         candidateGuard,
+        candidateParams,
+        candidateState,
+        nodeArgs,
+        defaultState,
+        restrictMixinOutputLookup,
         copyGuardForEval,
-        usesPreboundCallerGuardOuterRules,
-        usesPreboundParamGuardOuterRules,
-        outerRules,
-        rules,
-        parent: candidate.parent!,
-        candidateIndex: candidate.index,
         createOuterRules: createCallableOuterRules
       });
-      outerRules = guardResult.outerRules;
-      if (debugDefaultGuard && guardResult.defaultProbeResult) {
+      if (debugDefaultGuard && execution.debugDefaultProbeResult) {
         console.log('[default-guard:candidate]', JSON.stringify({
           caller: debugCaller(),
           candidate: candidateName?.valueOf?.() ?? '<anon>',
           guard: candidateGuard?.valueOf?.() ?? candidateGuard?.toString?.() ?? '',
           params: candidateParams?.value?.map((param: any) => param?.valueOf?.() ?? String(param)) ?? [],
-          passWhenDefaultFalse: guardResult.defaultProbeResult.passWhenDefaultFalse,
-          passWhenDefaultTrue: guardResult.defaultProbeResult.passWhenDefaultTrue
+          passWhenDefaultFalse: execution.debugDefaultProbeResult.passWhenDefaultFalse,
+          passWhenDefaultTrue: execution.debugDefaultProbeResult.passWhenDefaultTrue
         }));
       }
-      if (!guardResult.passes) {
-        continue;
-      }
-      recordCallableDefaultGuardResult({
-        state: defaultState,
-        guardResult,
-        rules,
-        sourceRules: getRootSourceRules(candidateRules),
-        candidateParent: candidate.parent,
-        candidateIndex: candidate.index,
-        params: getParamsSignature()
-      });
-      if (guardResult.defersCandidateOutput) {
-        continue;
-      }
-      const newRules = await evaluateCallableCandidateOutput({
-        context: thisContext,
-        currentCall: thisContext.callStack.at(-1),
-        getParamsSignature,
-        candidateParent: candidate.parent!,
-        candidateIndex: candidate.index,
-        rules,
-        sourceRules: getRootSourceRules(candidateRules),
-        restrictMixinOutputLookup
-      });
-      if (newRules) {
-        pushCallableOutputRule(outputState, newRules);
+      if (execution.output) {
+        pushCallableOutputRule(outputState, execution.output);
       }
     }
 

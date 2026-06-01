@@ -59,8 +59,8 @@ Peter to pay Paul.
   behind new helpers; it is deleting or narrowing the remaining eval/render
   carriers and call-path rediscovery.
 - Static audit snapshot from the current branch:
-  `new-node: 298`, `derive: 30`, `with-surface: 41`, `copy-leaves: 29`,
-  module-context count `398`.
+  `new-node: 289`, `derive: 31`, `with-surface: 40`, `copy-leaves: 29`,
+  module-context count `389`.
 - Hotpath measurement remains noisy. Use it to detect clear regressions or
   wins, not to justify a tiny static-count reduction by itself.
 - Shared placement vocabulary now exists in
@@ -129,6 +129,11 @@ Peter to pay Paul.
   unlocked rules surface selection, mixin-body var visibility wiring, resolved
   param-binding unpacking, and lexical/fallback frame derivation are no longer
   inline in `MixinCollection.evalCall(...)`.
+- Callable candidate execution now also lives in
+  `packages/core/src/tree/util/callable-candidate-execution.ts`, so live-slot
+  setup, scope-frame wiring, guard preparation/evaluation, pending-default
+  deferral, and immediate candidate output execution are no longer one inline
+  body/guard orchestration block inside `MixinCollection.evalCall(...)`.
 - Callable candidate output execution now lives in
   `packages/core/src/tree/util/callable-candidate-output.ts`, so recursion
   gating, adopt/eval/adopt cleanup, candidate index restoration, and mixin
@@ -358,25 +363,24 @@ cross-purpose helper closures and less parse cost.
 **Current dependency graph:**
 
 - `MixinCollection.evalCall(...)` still depends directly on `Rules` instance
-  construction, scope-frame wiring, mixin output slot attachment, call-stack
-  recursion tracking, guard/default evaluation, candidate execution, and
-  parameter live-slot setup.
+  construction, mixin output slot attachment, call-stack recursion tracking,
+  candidate iteration, and final default/output orchestration.
 - Pure helper candidates already outside the closure are callable signatures,
   callable default-group resolution, callable binding value construction,
   callable parameter matching, callable candidate preparation, callable
   default-guard probing, pending default-candidate execution, callable
   candidate output execution, callable outer-rules setup, callable scope-frame
   wiring, callable live-slot assembly, callable guard preparation, callable
-  special-case candidate handling, callable candidate setup state, and mixin
-  output wrapper construction.
+  special-case candidate handling, callable candidate setup state, callable
+  candidate execution, and mixin output wrapper construction.
 - The next extractable unit needs either a Rules-owned adapter input or a
   callable-invocation module that accepts Rules construction callbacks.
   Parameter matching, candidate prep, the default probe loop, pending default
   execution, candidate output execution, outer-rules reuse/setup,
   scope-frame wiring, live-slot assembly, guard preparation, output
-  aggregation, special-case candidate handling, and candidate setup state are
-  now out of the closure; the next cut must delete a remaining guard/body
-  orchestration closure instead of just renaming it.
+  aggregation, special-case candidate handling, candidate setup state, and
+  candidate execution are now out of the closure; the next cut must delete a
+  remaining top-level iteration/orchestration seam instead of just renaming it.
 
 **Completion gates:**
 
@@ -393,11 +397,12 @@ cross-purpose helper closures and less parse cost.
 
 **Next queue seeds:**
 
-1. Extract one remaining callable guard/body orchestration unit only if a
-   local closure, temporary collection, or callback disappears from
+1. Extract one remaining callable top-level iteration/orchestration unit only
+   if a local loop, temporary collection, or callback disappears from
    `MixinCollection.evalCall(...)`.
-2. Prefer scope-frame setup or caller/outer-rules setup next; do not split
-   them unless a local callback, closure, or temporary collection disappears.
+2. Prefer candidate-loop or final-output/default orchestration next; do not
+   split them unless a local callback, closure, or temporary collection
+   disappears.
 3. Delete stale commented registry scaffolding once adjacent callable
    extraction tests cover the live behavior.
 
@@ -1077,6 +1082,32 @@ to choose the next queue.
    remaining body/guard orchestration block instead of stale candidate-setup
    wording.
 
+### Completed Queue Pass: 2026-06-01 #49
+
+1. Lane B deleted another real `MixinCollection` orchestration block. Callable
+   candidate execution moved out of `packages/core/src/tree/rules.ts` into
+   `packages/core/src/tree/util/callable-candidate-execution.ts`, taking
+   live-slot setup, scope-frame wiring, guard preparation/evaluation,
+   pending-default deferral, and immediate candidate output execution with it.
+2. Lane B kept the runtime contract exact while shrinking the central file to
+   4249 lines. The static audit stayed at `rules.ts: 62`, `new-node: 289`,
+   `with-surface: 40`, `derive: 31`, and module count `389`, so this pass is
+   justified because it deleted a real inline execution seam rather than
+   claiming a cosmetic count win. `MixinCollection.evalCall(...)` still owns
+   top-level candidate iteration plus final default/output orchestration, but
+   it no longer owns per-candidate body/guard execution.
+3. Lane B added focused helper coverage instead of relying only on integration
+   fallout. `packages/core/src/tree/util/__tests__/callable-candidate-execution.test.ts`
+   now proves immediate candidate execution and pending-default deferral
+   directly, while focused callable/mixin suites keep the production paths
+   pinned down.
+4. Lane B/G has fresh callable measurements on the final tree: rawArgs stayed
+   at `0.0003ms` plain / `0.0033ms` metadata median during the queue pass, and
+   the full changed baseline stayed green after the extraction.
+5. Lane I refreshed Lane B truth and queue wording so the next pass targets a
+   remaining top-level callable orchestration seam instead of pretending the
+   per-candidate execution block is still inline.
+
 ### Next Queue
 
 1. **Lane A: collapse cleanup/prep state only if a state record disappears.**
@@ -1111,23 +1142,22 @@ to choose the next queue.
    pass should delete a remaining compatibility field or consumer rather than
    add more lifecycle plumbing.
 
-3. **Lane B: extract the next callable unit only if `evalCall(...)` loses another real guard/body closure.**
+3. **Lane B: extract the next callable unit only if `evalCall(...)` loses another real top-level orchestration seam.**
 
    Parameter matching, candidate prep, default-probe evaluation, guard
-   execution, pending-default bookkeeping, candidate-output execution, and
-   output aggregation are out, and outer-rules reuse/setup plus scope-frame
-   wiring plus live-slot assembly plus guard preparation plus special-case
-   candidate handling plus candidate setup state are out too. The next
-   callable slice should target another body/guard orchestration block only if
-   one more temporary collection, callback, or closure disappears from
+   execution, pending-default bookkeeping, candidate-output execution, output
+   aggregation, special-case candidate handling, candidate setup state, and
+   candidate execution are out. The next callable slice should target the
+   candidate loop or final default/output orchestration only if one more
+   temporary collection, callback, or closure disappears from
    `MixinCollection`.
 
-4. **Lane B: keep helper extraction honest; do not split candidate execution or scope-frame setup unless local runtime machinery falls.**
+4. **Lane B: keep helper extraction honest; do not split the remaining loop/finalizer unless local runtime machinery falls.**
 
-   The next cut needs to remove another real local seam such as remaining
-   body/guard orchestration. Do not add a helper that only rephrases the same
-   body work behind another callback, especially now that the static hotspot
-   audit has ticked upward slightly.
+   The next cut needs to remove another real local seam such as top-level
+   candidate iteration or final default/output routing. Do not add a helper
+   that only rephrases the same loop/finalizer work behind another callback,
+   especially now that the static hotspot audit has not improved on this pass.
 
 5. **Lane B/G: keep measuring callable slices, not AtRule-only work.**
 
