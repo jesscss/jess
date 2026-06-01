@@ -219,7 +219,7 @@ describe('AtRule', () => {
     expect(context.frames).toEqual([savedFrame]);
   });
 
-  it('restores hoist runtime compatibility state when body eval throws', () => {
+  it('keeps source hoist fields canonical when body eval throws', () => {
     const savedFrame = ruleset({
       selector: el('.frame'),
       rules: rules([])
@@ -281,7 +281,7 @@ describe('AtRule', () => {
     expect(context.frames).toEqual([savedFrame]);
   });
 
-  it('restores hoist runtime compatibility state when body eval rejects', async () => {
+  it('keeps source hoist fields canonical when body eval rejects', async () => {
     const savedFrame = ruleset({
       selector: el('.frame'),
       rules: rules([])
@@ -856,7 +856,7 @@ describe('AtRule', () => {
     expect(node.getRenderRules()).toBe(node.value.rules);
   });
 
-  it('keeps body eval output frames in runtime state instead of mutating at-rule fields', async () => {
+  it('returns an owned at-rule when body eval changes hoist output', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
       rules: rules([])
@@ -872,11 +872,18 @@ describe('AtRule', () => {
 
     const evaluated = await Promise.resolve(node.eval(context));
 
-    expect(evaluated).toBe(node);
+    expect(evaluated).toBeInstanceOf(AtRule);
+    expect(evaluated).not.toBe(node);
     expect(node.frames).toBeUndefined();
     expect(node.hoistToRoot).toBeUndefined();
-    expect(node.isHoisted({ collapseNesting: false })).toBe(true);
-    expect(node.toTrimmedString()).toBeString(`
+    expect(node.isHoisted({ collapseNesting: false })).toBe(false);
+    if (!(evaluated instanceof AtRule)) {
+      throw new Error('Expected AtRule eval result');
+    }
+    expect(evaluated.hoistToRoot).toBe(true);
+    expect(evaluated.isHoisted({ collapseNesting: false })).toBe(true);
+    expect(evaluated.getRenderFrames()).toBeUndefined();
+    expect(evaluated.toTrimmedString()).toBeString(`
       @font-face {
         font-family: Jess;
       }
@@ -967,7 +974,7 @@ describe('AtRule', () => {
     expect(originalRules.parent).toBe(node);
   });
 
-  it('restores evaluated body runtime compatibility state when post-eval visibility checks throw', async () => {
+  it('keeps source body state canonical when post-eval visibility checks throw', async () => {
     const originalRules = rules([
       decl({ name: 'color', value: any('red') })
     ]);

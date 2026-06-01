@@ -64,14 +64,16 @@ export type AtRuleBodyOutputState = {
   frames?: AtRule['frames'];
 };
 
-// Compatibility state for evaluated-node render APIs that cannot yet receive
-// the invocation record directly. Direct render should prefer invocation state.
+// Compatibility state for evaluated-node APIs that still need stored frame
+// metadata after eval. Root-only hoist-only eval outputs no longer use this.
 export type AtRuleBodyRuntimeState = {
   hoistToRoot?: boolean;
   frames?: AtRule['frames'];
 };
 
-type AtRuleBodyRenderUpdateState = AtRuleBodyRuntimeState & {
+type AtRuleBodyRenderUpdateState = {
+  hoistToRoot?: boolean;
+  frames?: AtRule['frames'];
   evaluatedBody?: Rules;
 };
 
@@ -85,7 +87,6 @@ type AtRuleBodyEvalContextState = {
   frameCount: number;
   extendRootStackLength: number;
   writeEvaluatedPrelude: boolean;
-  writeRuntimeState: boolean;
   writeVisibility: boolean;
 };
 
@@ -232,7 +233,6 @@ function createAtRuleBodyEvalContextState(
   options: {
     evaluatedPrelude?: Node;
     writeEvaluatedPrelude?: boolean;
-    writeRuntimeState?: boolean;
     writeVisibility?: boolean;
   } = {}
 ): AtRuleBodyEvalContextState {
@@ -242,7 +242,6 @@ function createAtRuleBodyEvalContextState(
     frameCount: context.frames.length,
     extendRootStackLength: context.extendRoots.extendRootStack.length,
     writeEvaluatedPrelude: options.writeEvaluatedPrelude ?? true,
-    writeRuntimeState: options.writeRuntimeState ?? true,
     writeVisibility: options.writeVisibility ?? true
   };
 }
@@ -390,10 +389,20 @@ function storeAtRuleBodyRecordPrepState(
   return preparedBody;
 }
 
+function shouldKeepAtRuleEvalRuntimeState(
+  state: AtRuleBodyEvalContextState
+): boolean {
+  return Boolean(state.output?.frames);
+}
+
 function commitAtRuleBodyEvalRuntimeState(
   node: AtRule,
   state: AtRuleBodyEvalContextState
 ): void {
+  if (!shouldKeepAtRuleEvalRuntimeState(state)) {
+    atRuleBodyRuntimeState.delete(node);
+    return;
+  }
   const runtimeUpdate = createAtRuleBodyRuntimeUpdate(node, {
     output: state.output
   });
@@ -432,14 +441,19 @@ function createAtRuleEvalResultNode(
   source: AtRule,
   state: AtRuleBodyEvalContextState
 ): AtRule {
-  if (!state.evaluatedBody || state.evaluatedBody === source.value.rules) {
+  const ownsEvaluatedBody = Boolean(
+    state.evaluatedBody
+    && state.evaluatedBody !== source.value.rules
+  );
+  const ownsOutput = Boolean(state.output && !shouldKeepAtRuleEvalRuntimeState(state));
+  if (!ownsEvaluatedBody && !ownsOutput) {
     return source;
   }
   return applyAtRuleBodyPublicResultState(
     createAtRuleBodyPublicResultState({
       node: source.deriveAtRule(source.value),
       evaluatedPrelude: state.evaluatedPrelude,
-      evaluatedBody: state.evaluatedBody,
+      evaluatedBody: ownsEvaluatedBody ? state.evaluatedBody : undefined,
       visible: state.visible,
       output: state.output
     })
@@ -679,7 +693,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     // Public compiler render enters through an evaluated root Rules container.
     return this.evalBodyResult(context, {
       writeEvaluatedPrelude: false,
-      writeRuntimeState: false,
       writeVisibility: false
     });
   }
@@ -688,7 +701,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     context: Context,
     options: {
       writeEvaluatedPrelude?: boolean;
-      writeRuntimeState?: boolean;
       writeVisibility?: boolean;
     } = {}
   ): MaybePromise<AtRuleBodyEvalResult> {
@@ -721,7 +733,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     evaluatedPrelude: Node | undefined,
     options: {
       writeEvaluatedPrelude?: boolean;
-      writeRuntimeState?: boolean;
       writeVisibility?: boolean;
     }
   ): AtRuleBodyEvalRecord {
@@ -742,7 +753,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       contextState: createAtRuleBodyEvalContextState(evalFrame, context, {
         evaluatedPrelude,
         writeEvaluatedPrelude: options.writeEvaluatedPrelude,
-        writeRuntimeState: options.writeRuntimeState,
         writeVisibility: options.writeVisibility
       })
     };
@@ -1314,9 +1324,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (isThenable(out)) {
       return (out as Promise<AtRule | Nil>).then(
         (value) => {
-          if (record.contextState.writeRuntimeState) {
-            commitAtRuleBodyEvalRuntimeState(this, record.contextState);
-          }
+          commitAtRuleBodyEvalRuntimeState(this, record.contextState);
           return value instanceof AtRule
             ? createAtRuleEvalResultNode(this, record.contextState)
             : value;
@@ -1327,9 +1335,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         }
       );
     }
-    if (record.contextState.writeRuntimeState) {
-      commitAtRuleBodyEvalRuntimeState(this, record.contextState);
-    }
+    commitAtRuleBodyEvalRuntimeState(this, record.contextState);
     return out instanceof AtRule
       ? createAtRuleEvalResultNode(this, record.contextState)
       : out;
@@ -1501,7 +1507,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return pipe(
       () => this.evalBodyResult(context, {
         writeEvaluatedPrelude: false,
-        writeRuntimeState: false,
         writeVisibility: false
       }),
       result => this.resolveBodyResult(result)
