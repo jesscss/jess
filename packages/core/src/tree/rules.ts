@@ -48,7 +48,7 @@ import {
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
 import { Comment } from './comment.js';
-import { type ScopeFrame, type BindingCell, buildScopeFrame, getBindingCellValue } from './scope-frame.js';
+import { type ScopeFrame, buildScopeFrame } from './scope-frame.js';
 import { consumeTriviaText } from './util/trivia.js';
 import {
   isRenderBuffer,
@@ -57,9 +57,9 @@ import {
   writeRenderText
 } from './util/render-buffer.js';
 import { withRulesContext } from './util/context.js';
-import { createArgumentsBindingValue, getArgumentsBindingValues } from './util/callable-binding.js';
 import { prepareCallableEvalCandidates } from './util/callable-candidate.js';
 import { evaluateCallableCandidateOutput } from './util/callable-candidate-output.js';
+import { createCallableLiveSlots } from './util/callable-live-slots.js';
 import { ensureCallableOuterRulesSurface } from './util/callable-outer-rules.js';
 import { matchCallableParams, type CallableParamMatch } from './util/callable-param-match.js';
 import { wireCallableScopeFrames } from './util/callable-scope-frame.js';
@@ -4260,42 +4260,11 @@ export class MixinCollection extends Node<MixinEntry[]> {
           usesPreboundParamGuardOuterRules = true;
         }
         const scopeOwner = rules;
-        // Mark param source nodes and build the live-slot map for the ScopeFrame.
-        const liveSlots = new Map<string, BindingCell>();
-        for (const binding of paramBindings) {
-          if (isNode(binding.sourceNode, N.VarDeclaration)) {
-            binding.sourceNode.options ??= {};
-            binding.sourceNode.options.paramVar = true;
-            binding.sourceNode.removeFlag(F_VISIBLE);
-          }
-          liveSlots.set(binding.name, {
-            value: binding.value,
-            prepareValue: binding.prepareValue,
-            sourceNode: binding.sourceNode as Node | undefined,
-            readonly: binding.readonly
-          });
-        }
-        // @arguments is prepared lazily so normal mixin calls do not force
-        // every param/rest container to become owned output before lookup.
-        const shouldDefineArguments = Boolean(thisContext.treeContext?.file);
-        if (shouldDefineArguments) {
-          liveSlots.set('arguments', {
-            prepareValue: () => {
-              const paramValues: Node[] = [];
-              for (const binding of paramBindings) {
-                const liveSlot = liveSlots.get(binding.name);
-                if (liveSlot) {
-                  paramValues.push(getBindingCellValue(liveSlot));
-                } else if (binding.value) {
-                  paramValues.push(binding.value);
-                }
-              }
-              const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
-              return createArgumentsBindingValue(getArgumentsBindingValues(argumentNodes));
-            },
-            readonly: true
-          });
-        }
+        const liveSlots = createCallableLiveSlots({
+          paramBindings,
+          nodeArgs,
+          defineArguments: Boolean(thisContext.treeContext?.file)
+        });
         // Wire the ScopeFrame so default-param / lexical resolution stays on the
         // definition side, while unresolved body vars can still fall back to the caller.
         wireCallableScopeFrames({
