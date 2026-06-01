@@ -111,6 +111,11 @@ Peter to pay Paul.
   `packages/core/src/tree/util/callable-default-guard.ts`, so the copied-guard
   cache closure, dual `default()` probe loop, and `isDefault` restoration are
   no longer inline inside `MixinCollection.evalCall(...)`.
+- Callable candidate output execution now lives in
+  `packages/core/src/tree/util/callable-candidate-output.ts`, so recursion
+  gating, adopt/eval/adopt cleanup, candidate index restoration, and mixin
+  output slot attachment are no longer owned by an inline
+  `evaluateCandidateOutput(...)` closure.
 - Import placement option reads share `getImportPlacementRenderState(...)`, and
   import postlude render order reads through `getImportPostludeRenderState(...)`.
 - Source-free public direct-index container narrowing is explicitly blocked by
@@ -313,12 +318,13 @@ cross-purpose helper closures and less parse cost.
 - Pure helper candidates already outside the closure are callable signatures,
   callable default-group resolution, callable binding value construction,
   callable parameter matching, callable candidate preparation, callable
-  default-guard probing, and mixin output wrapper construction.
+  default-guard probing, callable candidate output execution, and mixin output
+  wrapper construction.
 - The next extractable unit needs either a Rules-owned adapter input or a
   callable-invocation module that accepts Rules construction callbacks.
-  Parameter matching, candidate prep, and the default probe loop are now out
-  of the closure; the next cut must delete a remaining guard/body orchestration
-  closure instead of just renaming it.
+  Parameter matching, candidate prep, the default probe loop, and candidate
+  output execution are now out of the closure; the next cut must delete a
+  remaining guard/body orchestration closure instead of just renaming it.
 
 **Completion gates:**
 
@@ -338,7 +344,7 @@ cross-purpose helper closures and less parse cost.
 1. Extract one remaining callable guard/body orchestration unit only if a
    local closure, temporary collection, or callback disappears from
    `MixinCollection.evalCall(...)`.
-2. Prefer candidate body execution or scope-frame setup next; do not split
+2. Prefer scope-frame setup or pending-default execution next; do not split
    them unless a local callback, closure, or temporary collection disappears.
 3. Delete stale commented registry scaffolding once adjacent callable
    extraction tests cover the live behavior.
@@ -752,6 +758,29 @@ to choose the next queue.
    candidate execution or scope-frame/body setup instead of re-queuing default
    probe extraction that is now done.
 
+### Completed Queue Pass: 2026-06-01 #38
+
+1. Lane B deleted another real `MixinCollection` closure block. Callable
+   candidate output execution moved out of `packages/core/src/tree/rules.ts`
+   into `packages/core/src/tree/util/callable-candidate-output.ts`, taking the
+   recursion gate, adopt/eval/adopt cleanup, candidate index restoration, and
+   mixin-output slot attachment with it.
+2. Lane B kept the runtime contract exact while shrinking the central file
+   again. `MixinCollection.evalCall(...)` still owns caller-specific
+   scope-frame setup, default-candidate collection, and default-resolution
+   orchestration, but it no longer owns the candidate body runner inline.
+3. Lane B added focused helper coverage instead of relying only on integration
+   fallout. `packages/core/src/tree/util/__tests__/callable-candidate-output.test.ts`
+   now proves recursion skip behavior and successful mixin-output placement
+   attachment directly, while the focused `mixin.test.ts` and
+   `mixin-recursion.test.ts` suites still cover the production call paths.
+4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
+   frame seam is still blocked by the focused AtRule suite, the active
+   bubbling matrix, and the `media.less` AST serialization proof.
+5. Lane I refreshed Lane B truth and queue wording so the next pass targets
+   scope-frame setup or pending default-candidate execution instead of stale
+   candidate-runner wording.
+
 ### Next Queue
 
 1. **Lane A: collapse cleanup/prep state only if a state record disappears.**
@@ -788,17 +817,18 @@ to choose the next queue.
 
 3. **Lane B: extract the next callable unit only if `evalCall(...)` loses another real guard/body closure.**
 
-   Parameter matching, candidate prep, and default-probe evaluation are out.
-   The next callable slice should target candidate output execution or
-   scope-frame/body setup only if one more temporary collection, callback, or
-   closure disappears from `MixinCollection`.
+   Parameter matching, candidate prep, default-probe evaluation, and
+   candidate-output execution are out. The next callable slice should target
+   scope-frame/body setup or pending-default execution only if one more
+   temporary collection, callback, or closure disappears from
+   `MixinCollection`.
 
 4. **Lane B: keep helper extraction honest; do not split candidate execution or scope-frame setup unless local runtime machinery falls.**
 
    The next cut needs to remove another real local seam such as
-   `evaluateCandidateOutput(...)`, `ensureOuterRules(...)`, the pending default
-   collection, or a scope-frame preparation closure. Do not add a helper that
-   only rephrases the same body work behind another callback.
+   `ensureOuterRules(...)`, the pending default collection/resolution flow, or
+   a scope-frame preparation closure. Do not add a helper that only rephrases
+   the same body work behind another callback.
 
 5. **Lane B/G: keep measuring callable slices, not AtRule-only work.**
 

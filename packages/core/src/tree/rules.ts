@@ -59,6 +59,7 @@ import {
 import { withRulesContext } from './util/context.js';
 import { createArgumentsBindingValue, getArgumentsBindingValues } from './util/callable-binding.js';
 import { prepareCallableEvalCandidates } from './util/callable-candidate.js';
+import { evaluateCallableCandidateOutput } from './util/callable-candidate-output.js';
 import { matchCallableParams, type CallableParamMatch } from './util/callable-param-match.js';
 import {
   CALLABLE_DEFAULT_FALSE_EITHER,
@@ -4131,52 +4132,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
     };
     const pendingDefaultCandidates: DefaultPendingCandidate[] = [];
     let hasDefNoneCandidate = false;
-    const evaluateCandidateOutput = async (
-      candidate: CallableEntry,
-      rules: Rules,
-      getParamsSignature: () => CallSignature
-    ): Promise<void> => {
-      const currentCall = thisContext.callStack.at(-1);
-      // to prevent infinite loops (e.g., .recursion { .recursion(); })
-      if (currentCall && thisContext.callMap.add(currentCall, getParamsSignature())) {
-        // Recursive call detected - skip this candidate (don't add to outputRules)
-        // This allows other candidates to still match
-        return;
-      }
-
-      try {
-        candidate.parent!.adopt(rules);
-        const newRules = await rules.eval(thisContext);
-        candidate.parent!.adopt(newRules);
-        // Rules should have index from eval, but ensure it matches candidate for sorting
-        Reflect.set(newRules, 'index', candidate.index);
-
-        // Visibility should be preserved by Rules.eval - no need to set it explicitly here
-        // The eval'd rules should already have their nodes registered
-        // Ensure the registry is indexed before checking
-        // Mark generated mixin output with lookup policy from leakyRules.
-        attachMixinOutputSlot(
-          newRules,
-          getRootSourceRules(getMixinEntryRules(candidate)),
-          restrictMixinOutputLookup
-        );
-        outputRules.push(newRules);
-      } catch (error) {
-        // If recursion was detected (ReferenceError), skip this candidate
-        // This allows other candidates to still match
-        if (error instanceof ReferenceError && error.message.includes('Recursive mixin call')) {
-          // Skip this candidate - recursion detected
-          return;
-        }
-        // Re-throw other errors
-        throw error;
-      } finally {
-        if (currentCall) {
-          thisContext.callMap.delete(currentCall);
-        }
-      }
-    };
-
     for (let candidate of evalCandidates) {
       if (isNode(candidate, N.Ruleset)) {
         // For Rulesets, guard was already evaluated at definition time in Ruleset.evalNode
@@ -4478,7 +4433,19 @@ export class MixinCollection extends Node<MixinEntry[]> {
         if (guard && hasDefault) {
           continue;
         }
-        await evaluateCandidateOutput(candidate as CallableEntry, rules, getParamsSignature);
+        const newRules = await evaluateCallableCandidateOutput({
+          context: thisContext,
+          currentCall: thisContext.callStack.at(-1),
+          getParamsSignature,
+          candidateParent: candidate.parent!,
+          candidateIndex: candidate.index,
+          rules,
+          sourceRules: getRootSourceRules(getMixinEntryRules(candidate as CallableEntry)),
+          restrictMixinOutputLookup
+        });
+        if (newRules) {
+          outputRules.push(newRules);
+        }
       } finally {
         restoreRulesContext();
       }
@@ -4506,11 +4473,20 @@ export class MixinCollection extends Node<MixinEntry[]> {
           continue;
         }
         await withRulesContext(thisContext, pending.rules, () =>
-          evaluateCandidateOutput(
-            pending.candidate,
-            pending.rules,
-            () => pending.params
-          )
+          evaluateCallableCandidateOutput({
+            context: thisContext,
+            currentCall: thisContext.callStack.at(-1),
+            getParamsSignature: () => pending.params,
+            candidateParent: pending.candidate.parent!,
+            candidateIndex: pending.candidate.index,
+            rules: pending.rules,
+            sourceRules: getRootSourceRules(getMixinEntryRules(pending.candidate)),
+            restrictMixinOutputLookup
+          }).then((newRules) => {
+            if (newRules) {
+              outputRules.push(newRules);
+            }
+          })
         );
       }
     }
