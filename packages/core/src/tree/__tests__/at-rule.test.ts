@@ -475,6 +475,38 @@ describe('AtRule', () => {
     }
   });
 
+  it('renders evaluated at-rules with compatibility body state without reading source runtime render rules', async () => {
+    const originalRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const evaluatedRules = rules([
+      decl({ name: 'color', value: any('blue') })
+    ]);
+    const originalEval = originalRules.eval;
+    originalRules.eval = function evalReplacementBody(
+      this: Rules,
+      ..._args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      evaluatedRules.evaluated = true;
+      return evaluatedRules;
+    };
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([any('screen')]),
+      rules: originalRules
+    });
+    await node.eval(context);
+    node.getRenderRules = () => {
+      throw new Error('evaluated render should not read source runtime render rules');
+    };
+
+    expect(node.render(context)).toBeString(`
+      @media screen {
+        color: blue;
+      }
+    `);
+  });
+
   it('renders static at-rules without deriving or evaluating', () => {
     const node = atrule({
       name: any('@namespace', { role: 'atkeyword' }),

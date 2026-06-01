@@ -419,6 +419,13 @@ function applyAtRuleBodyRuntimeState(
   return node;
 }
 
+function createAtRuleRuntimeRenderNode(node: AtRule): AtRule {
+  const runtimeState = atRuleBodyRuntimeState.get(node);
+  return runtimeState
+    ? applyAtRuleBodyRuntimeState(node.deriveAtRule(node.value), runtimeState)
+    : node;
+}
+
 function createAtRuleBodyRecordRegistration(
   record: AtRuleBodyEvalRecord
 ): AtRuleBodyRegistrationState {
@@ -862,7 +869,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           return '';
         }
         if (node instanceof AtRule) {
-          return renderEvaluatedAtRule(node);
+          return renderEvaluatedAtRule(node === this ? createAtRuleRuntimeRenderNode(node) : node);
         }
         if (isAtRuleBodyEvalResult(node)) {
           return renderBodyResult(node);

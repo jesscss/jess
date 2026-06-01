@@ -162,6 +162,10 @@ Peter to pay Paul.
   on the source node. When evaluated body or hoist/frame facts differ from the
   source surface, render derives a temporary owned at-rule and serializes that
   instead; the remaining `WeakMap` usage is evaluated-node compatibility only.
+- Evaluated AtRule `render(context)` now also renders through a temporary owned
+  at-rule when compatibility state exists, so the render API no longer reads
+  evaluated-body compatibility from the source node itself. Remaining
+  compatibility consumers are now explicit getters / serialization paths.
 - Declaration merge adapter state now returns no object for scalar/no-merge
   paths, and single replacement paths now return the replacement node directly.
   Only real list/space render adapters allocate merge state.
@@ -566,7 +570,7 @@ not folklore.
 | Family | Current state | Completion gate |
 | --- | --- | --- |
 | `Rules` | Direct root/fragment render state exists; callable binding, signature, default grouping, outer-rules, and generated output-wrapper helpers are extracted, but `MixinCollection` still owns candidate/body orchestration. Debug default counts no longer add filter allocations. | Callable extraction complete or explicitly blocked; direct render context state bounded. |
-| `AtRule` | Leaf render split; body invocation state still large, but render and public-result inputs are narrowed, duplicate prelude storage was removed from the eval record, visibility moved onto invocation context state, body-rules frame cleanup is runner-owned, owned public results now carry body/output facts directly, failed evals restore prior compatibility state instead of leaking `WeakMap` facts, successful eval now installs compatibility state once at the boundary instead of during body evaluation, the remaining evaluated-node compatibility state is flattened to `evaluatedBody` plus direct hoist/frame overrides, and direct render no longer installs temporary runtime compatibility state on the source node. Runtime `WeakMap` writes are now evaluated-node compatibility only. | Lane A gates complete. |
+| `AtRule` | Leaf render split; body invocation state still large, but render and public-result inputs are narrowed, duplicate prelude storage was removed from the eval record, visibility moved onto invocation context state, body-rules frame cleanup is runner-owned, owned public results now carry body/output facts directly, failed evals restore prior compatibility state instead of leaking `WeakMap` facts, successful eval now installs compatibility state once at the boundary instead of during body evaluation, the remaining evaluated-node compatibility state is flattened to `evaluatedBody` plus direct hoist/frame overrides, direct render no longer installs temporary runtime compatibility state on the source node, and evaluated `render(context)` no longer reads compatibility body state from the source node itself. Runtime `WeakMap` writes are now evaluated-node compatibility only. | Lane A gates complete. |
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return and no parallel list/space checks. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
 | `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public syntax construction has a named adapter and placement vocabulary (`source`, `output`, `content`, `publicBoundary`), but no production storage after the WeakMap experiment regressed static object counts. | Call overhead measurement complete and fallback render/public split advanced. |
@@ -619,17 +623,17 @@ to choose the next queue.
   adapter deletion, and bounded blockers for public direct-index and selector
   ownership.
 
-### Completed Queue Pass: 2026-06-01 #21
+### Completed Queue Pass: 2026-06-01 #22
 
-1. Lane A deleted temporary direct-render runtime state installation. When body
-   render needs evaluated rules or hoist/frame overrides, direct render now
-   derives a temporary owned at-rule and serializes that instead of writing
-   `WeakMap` compatibility state onto the source node for the duration of
-   render.
-2. Lane A kept the new failed-eval proofs green. Sync throw, async reject, and
-   late post-eval visibility failures still restore the prior compatibility
-   state after the single-commit eval change, the flattened runtime shape, and
-   the direct-render deletion.
+1. Lane A deleted another evaluated-node compatibility consumer. Evaluated
+   `render(context)` now derives a temporary owned at-rule when runtime
+   compatibility state exists, so render no longer reads evaluated-body
+   compatibility directly from the source node.
+2. Lane A kept the failed-eval/runtime-shape proofs green. Sync throw, async
+   reject, and late post-eval visibility failures still restore the prior
+   compatibility state after the single-commit eval change, the flattened
+   runtime shape, the direct-render deletion, and the evaluated-render
+   deletion.
 3. Lane A kept cleanup/prep state split. `AtRuleBodyFrameState` still owns frame
    clearing, `AtRuleBodyEvalPrepState` still owns body-to-eval/extend-root prep,
    and `restoreAtRuleBodyEvalRecord(...)` remains the single cleanup exit.
@@ -640,7 +644,7 @@ to choose the next queue.
 5. Lane B kept default-guard probe extraction blocked. Source scans still show
    the remaining `defaultProbeGuard` closure reusing one copied guard per
    candidate, with the helper boundary already handling group resolution.
-6. Lane B/G measured after the AtRule direct-render compatibility deletion, not a callable
+6. Lane B/G measured after the AtRule evaluated-render compatibility deletion, not a callable
    slice: callable rawArgs and Less hotpath still need fresh evidence only
    after a callable helper change, while the AtRule-focused verification stayed
    green.
@@ -670,8 +674,8 @@ to choose the next queue.
     paths still rely on generated flags, selector-bit libraries, parentage, and
     source-node ownership.
 15. Lane I compacted the pass history, updated the architecture truth with the
-    direct-render runtime-state deletion, and refreshed the next queue around
-    the same bounded lanes.
+    evaluated-render compatibility deletion, and refreshed the next queue
+    around the same bounded lanes.
 16. Lane I keeps full queue completion gated on verification, commit, and push.
 
 ### Next Queue
@@ -684,10 +688,11 @@ to choose the next queue.
 2. **Lane A: decide whether `AtRuleBodyRuntimeState` can shrink again for evaluated-node APIs.**
 
    Public result nodes no longer use runtime compatibility state, the
-   hoist/frame wrapper is gone, and direct render no longer installs temporary
-   compatibility state. The next deletion must remove the remaining
-   `evaluatedBody` compatibility field or the `WeakMap` itself for one
-   evaluated-node API path, not just rename the boundary.
+   hoist/frame wrapper is gone, direct render no longer installs temporary
+   compatibility state, and evaluated render no longer reads source runtime
+   body state. The next deletion must remove the remaining `evaluatedBody`
+   compatibility field or the `WeakMap` itself for one evaluated-node API
+   path, not just rename the boundary.
 
    Failed eval cleanup and incremental eval writes are now covered. The next
    pass should delete a remaining compatibility field or consumer rather than
