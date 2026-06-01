@@ -60,6 +60,7 @@ import { withRulesContext } from './util/context.js';
 import { createArgumentsBindingValue, getArgumentsBindingValues } from './util/callable-binding.js';
 import { prepareCallableEvalCandidates } from './util/callable-candidate.js';
 import { evaluateCallableCandidateOutput } from './util/callable-candidate-output.js';
+import { ensureCallableOuterRulesSurface } from './util/callable-outer-rules.js';
 import { matchCallableParams, type CallableParamMatch } from './util/callable-param-match.js';
 import {
   CALLABLE_DEFAULT_FALSE_EITHER,
@@ -4214,19 +4215,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
        * but instead look upwards / outwards.
        */
       let outerRules: Rules | undefined;
-      const ensureOuterRules = (
-        parent: Node,
-        options?: Rules['options'],
-        syncScopeFrame = true
-      ): Rules => {
-        outerRules ??= createCallableOuterRules(rules, options);
-        if (syncScopeFrame && rules.scopeFrame) {
-          outerRules.scopeFrame = rules.scopeFrame;
-        }
-        Reflect.set(outerRules, 'index', candidate.index);
-        parent.adopt(outerRules);
-        return outerRules;
-      };
 
       /** Now we need to add our parameters, if any */
       const resolvedBindingInfo = !isNode(candidate, N.Ruleset)
@@ -4253,14 +4241,22 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (candidateParams || paramBindings.length > 0) {
         const needsOuterRules = Boolean(candidateGuard && !candidateGuard.hasFlag(F_STATIC));
         if (needsOuterRules) {
-          ensureOuterRules(candidate.parent!, {
-            rulesVisibility: {
-              Ruleset: 'public',
-              Declaration: 'public',
-              VarDeclaration: 'public',
-              Mixin: 'public'
-            }
-          }, false);
+          outerRules = ensureCallableOuterRulesSurface({
+            currentOuterRules: outerRules,
+            rules,
+            parent: candidate.parent!,
+            candidateIndex: candidate.index,
+            createOuterRules: createCallableOuterRules,
+            options: {
+              rulesVisibility: {
+                Ruleset: 'public',
+                Declaration: 'public',
+                VarDeclaration: 'public',
+                Mixin: 'public'
+              }
+            },
+            syncScopeFrame: false
+          });
           usesPreboundParamGuardOuterRules = true;
         }
         const scopeOwner = rules;
@@ -4339,7 +4335,14 @@ export class MixinCollection extends Node<MixinEntry[]> {
         usesPreboundCallerGuardOuterRules
         && !outerRules
       ) {
-        ensureOuterRules(thisContext.rulesContext ?? candidate.parent!, undefined, false);
+        outerRules = ensureCallableOuterRulesSurface({
+          currentOuterRules: outerRules,
+          rules,
+          parent: thisContext.rulesContext ?? candidate.parent!,
+          candidateIndex: candidate.index,
+          createOuterRules: createCallableOuterRules,
+          syncScopeFrame: false
+        });
         if (parentFrame) {
           outerRules!.scopeFrame = parentFrame;
         }
@@ -4355,7 +4358,13 @@ export class MixinCollection extends Node<MixinEntry[]> {
             && !usesPreboundCallerGuardOuterRules
             && !usesPreboundParamGuardOuterRules
           ) {
-            ensureOuterRules(candidate.parent!);
+            outerRules = ensureCallableOuterRulesSurface({
+              currentOuterRules: outerRules,
+              rules,
+              parent: candidate.parent!,
+              candidateIndex: candidate.index,
+              createOuterRules: createCallableOuterRules
+            });
           }
           /** Allow lookup on the inherited rules */
           passes = false;
@@ -4377,7 +4386,13 @@ export class MixinCollection extends Node<MixinEntry[]> {
                   && !usesPreboundCallerGuardOuterRules
                   && !usesPreboundParamGuardOuterRules
                 ) {
-                  ensureOuterRules(candidate.parent!);
+                  outerRules = ensureCallableOuterRulesSurface({
+                    currentOuterRules: outerRules,
+                    rules,
+                    parent: candidate.parent!,
+                    candidateIndex: candidate.index,
+                    createOuterRules: createCallableOuterRules
+                  });
                 }
               }
             });
