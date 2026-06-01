@@ -1111,6 +1111,26 @@ describe('AtRule', () => {
     });
   });
 
+  it('derives nestable hoist from frames in render runtime updates', () => {
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const frames = [] as AtRule['frames'];
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      rules: sourceRules
+    });
+
+    expect(createAtRuleBodyRuntimeUpdate(node, {
+      output: {
+        hoistToRoot: true,
+        frames
+      }
+    })).toEqual({
+      frames
+    });
+  });
+
   it('builds public body result state from a narrow public adapter input', () => {
     const sourceRules = rules([
       decl({ name: 'color', value: any('red') })

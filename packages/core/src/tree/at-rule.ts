@@ -333,7 +333,12 @@ export function createAtRuleBodyRuntimeUpdate(node: AtRule, state: AtRuleBodyRun
     ensureRuntimeUpdate().evaluatedBody = state.evaluatedBody;
   }
   if (state.output) {
-    if (state.output.hoistToRoot !== undefined && state.output.hoistToRoot !== node.hoistToRoot) {
+    const canDeriveHoistFromFrames = Boolean(
+      node.isNestable()
+      && state.output.hoistToRoot === true
+      && state.output.frames !== undefined
+    );
+    if (!canDeriveHoistFromFrames && state.output.hoistToRoot !== undefined && state.output.hoistToRoot !== node.hoistToRoot) {
       ensureRuntimeUpdate().hoistToRoot = state.output.hoistToRoot;
     }
     if (state.output.frames !== undefined && state.output.frames !== node.frames) {
@@ -423,6 +428,8 @@ function applyAtRuleBodyRuntimeState(
   }
   if (state.hoistToRoot !== undefined) {
     node.hoistToRoot = state.hoistToRoot;
+  } else if (state.frames !== undefined && node.isNestable()) {
+    node.hoistToRoot = true;
   }
   if (state.frames !== undefined) {
     node.frames = state.frames;
@@ -434,7 +441,6 @@ function createAtRuleRuntimeRenderNode(node: AtRule): AtRule {
   const runtimeState = atRuleBodyRuntimeState.get(node);
   return runtimeState
     ? applyAtRuleBodyRuntimeState(node.deriveAtRule(node.value), {
-        hoistToRoot: runtimeState.frames !== undefined && node.isNestable() ? true : undefined,
         frames: runtimeState.frames
       })
     : node;
