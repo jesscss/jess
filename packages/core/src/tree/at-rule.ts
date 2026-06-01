@@ -360,7 +360,16 @@ export function createAtRuleBodyRuntimeUpdate(node: AtRule, state: AtRuleBodyRen
     ensureRuntimeUpdate().evaluatedBody = state.evaluatedBody;
   }
   if (state.output) {
-    ensureRuntimeUpdate().output = state.output;
+    const nextOutput: AtRuleBodyOutputState = {};
+    if (state.output.hoistToRoot !== undefined && state.output.hoistToRoot !== node.hoistToRoot) {
+      nextOutput.hoistToRoot = state.output.hoistToRoot;
+    }
+    if (state.output.frames !== undefined && state.output.frames !== node.frames) {
+      nextOutput.frames = state.output.frames;
+    }
+    if (nextOutput.hoistToRoot !== undefined || nextOutput.frames !== undefined) {
+      ensureRuntimeUpdate().output = nextOutput;
+    }
   }
   return runtimeUpdate;
 }

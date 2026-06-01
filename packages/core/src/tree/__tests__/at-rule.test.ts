@@ -917,6 +917,27 @@ describe('AtRule', () => {
     })).toBeUndefined();
   });
 
+  it('skips render output runtime updates when hoist facts already live on the source', () => {
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const frames = [] as AtRule['frames'];
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: sourceRules
+    });
+    node.hoistToRoot = true;
+    node.frames = frames;
+
+    expect(createAtRuleBodyRuntimeUpdate(node, {
+      kind: 'body-render',
+      output: {
+        hoistToRoot: true,
+        frames
+      }
+    })).toBeUndefined();
+  });
+
   it('builds body render state from an invocation result adapter', () => {
     const sourceRules = rules([
       decl({ name: 'color', value: any('red') })
