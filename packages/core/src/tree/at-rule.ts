@@ -89,7 +89,6 @@ type AtRuleBodyEvalRecord = {
   renderSourceBody?: boolean;
   frameState: AtRuleBodyFrameState;
   preparedBody?: AtRuleBodyEvalPrepState;
-  evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
   visible?: boolean;
   layerName?: string;
@@ -133,6 +132,11 @@ export type AtRuleBodyEvalResult = {
   visible?: boolean;
   output?: AtRuleBodyOutputState;
 };
+
+export type AtRuleBodyRenderInput = Pick<
+  AtRuleBodyEvalResult,
+  'node' | 'evaluatedPrelude' | 'evaluatedBody' | 'output'
+>;
 
 type AtRuleBodyPublicResultState = {
   node: AtRule;
@@ -254,6 +258,34 @@ function activateAtRuleBodyEvalRecordFrameState(
   context: Context
 ): () => void {
   return activateAtRuleBodyFrameState(record.frameState, context);
+}
+
+function runAtRuleBodyRulesEval<T>(
+  record: AtRuleBodyEvalRecord,
+  context: Context,
+  work: () => MaybePromise<T>
+): MaybePromise<T> {
+  const restoreRulesetFrames = activateAtRuleBodyEvalRecordFrameState(record, context);
+  try {
+    const out = work();
+    if (isThenable(out)) {
+      return (out as Promise<T>).then(
+        (value) => {
+          restoreRulesetFrames();
+          return value;
+        },
+        (error) => {
+          restoreRulesetFrames();
+          throw error;
+        }
+      );
+    }
+    restoreRulesetFrames();
+    return out;
+  } catch (error) {
+    restoreRulesetFrames();
+    throw error;
+  }
 }
 
 function restoreAtRuleBodyEvalRecord(
@@ -447,8 +479,7 @@ function readAtRuleBodyEvalRecordResult(
   return {
     evalFrame: record.evalFrame,
     node,
-    evaluatedPrelude: record.contextState.evaluatedPrelude
-      ?? record.evaluatedPrelude,
+    evaluatedPrelude: record.contextState.evaluatedPrelude,
     evaluatedBody: record.evaluatedBody
       ?? record.contextState.evaluatedBody,
     visible: record.visible,
@@ -469,7 +500,7 @@ function createAtRuleBodyPublicResultState(
   };
 }
 
-export function createAtRuleBodyRenderState(source: AtRule, result: AtRuleBodyEvalResult): AtRuleBodyRenderState {
+export function createAtRuleBodyRenderState(source: AtRule, result: AtRuleBodyRenderInput): AtRuleBodyRenderState {
   if (result.node instanceof Nil) {
     return {
       kind: 'body-render',
@@ -684,7 +715,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       ...(renderSourceBody ? { renderSourceBody } : undefined),
       ...(sourceRules && !renderSourceBody ? { bodyRules: this.ownRules(sourceRules) } : undefined),
       frameState,
-      evaluatedPrelude,
       contextState: createAtRuleBodyEvalContextState(evalFrame, context, {
         evaluatedPrelude,
         writeEvaluatedPrelude: options.writeEvaluatedPrelude,
@@ -1301,16 +1331,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             const finishPreparedBody = (registration: AtRuleBodyRegistrationState): MaybePromise<AtRule> => {
               const { bodyToEval } = registration;
               const onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
-              const restoreRulesetFrames = activateAtRuleBodyEvalRecordFrameState(bodyEvalRecord, context);
-              let evalOut: MaybePromise<Rules>;
-              try {
-                evalOut = bodyToEval.eval(context);
-              } catch (error) {
-                restoreRulesetFrames();
-                throw error;
-              }
               const finishEval = (r: Rules): AtRule => {
-                restoreRulesetFrames();
                 const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
                 storeAtRuleBodyEvalRecordRules(bodyEvalRecord, finalRules);
                 registration.finalRules = finalRules;
@@ -1319,13 +1340,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                 }
                 return node;
               };
-              if (isThenable(evalOut)) {
-                return (evalOut as Promise<Rules>).then(finishEval, (error) => {
-                  restoreRulesetFrames();
-                  throw error;
-                });
-              }
-              return finishEval(evalOut as Rules);
+              return runAtRuleBodyRulesEval(bodyEvalRecord, context, () => {
+                const evalOut = bodyToEval.eval(context);
+                return isThenable(evalOut)
+                  ? (evalOut as Promise<Rules>).then(finishEval)
+                  : finishEval(evalOut as Rules);
+              });
             };
 
             const registration = source._prepareBodyRegistrationForEval(

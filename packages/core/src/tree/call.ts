@@ -11,7 +11,7 @@ import { callableRulesEntry, MixinCollection, Rules } from './rules.js';
 import { Any } from './any.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 import { List, list } from './list.js';
-import { Reference } from './reference.js';
+import { getRulesLikeReferenceLookupState, Reference } from './reference.js';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
@@ -272,6 +272,25 @@ export class Call extends Node<CallValue, CallOptions> {
     );
   }
 
+  private getOptionalFallbackName(name: Node | string | unknown, fallbackValue: unknown): string {
+    return isNode(name, N.Reference) && name.options.fallbackValue === true
+      ? String(name.value.key)
+      : stringifyValueOf(fallbackValue);
+  }
+
+  private async evalOptionalFallbackCallSyntax(
+    context: Context,
+    state: CallEvalState,
+    name: Node | string | unknown,
+    fallbackValue: unknown
+  ): Promise<Call> {
+    return this.evalFinalizedCallSyntax(
+      context,
+      state,
+      this.getOptionalFallbackName(name, fallbackValue)
+    );
+  }
+
   private derivePreserveRulesLikeReference(name: Node): Node {
     if (!isNode(name, N.Reference)) {
       return name;
@@ -417,13 +436,11 @@ export class Call extends Node<CallValue, CallOptions> {
             if (unitMode === 'strict') {
               throw error;
             }
-            const fallbackName = isNode(this.value.name, N.Reference) && this.value.name.options.fallbackValue === true
-              ? String(this.value.name.value.key)
-              : stringifyValueOf(fn);
+            const fallbackName = this.getOptionalFallbackName(this.value.name, fn);
             if (renderFailureWith) {
               return this.renderFinalizedCallSyntax(fallbackName, state, context, renderFailureWith);
             }
-            return this.markCallOutput(await this.evalFinalizedCallSyntax(context, state, fallbackName));
+            return this.markCallOutput(await this.evalOptionalFallbackCallSyntax(context, state, this.value.name, fn));
           }
         });
       }
@@ -938,7 +955,7 @@ export class Call extends Node<CallValue, CallOptions> {
       // see caller variables; see call.test.ts "does not let detached ruleset
       // calls read caller scope in non-leaky mode".
       if (state.preservesRulesLikeVariableTarget) {
-        const sourceParent = n.sourceNode?.parent;
+        const sourceParent = getRulesLikeReferenceLookupState(n)?.source.parent;
         if (sourceParent) {
           Reflect.set(n, 'parent', sourceParent);
         }
@@ -985,10 +1002,7 @@ export class Call extends Node<CallValue, CallOptions> {
           if (!this._options?.silentFail) {
             throw e;
           }
-          const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
-            ? String(name.value.key)
-            : stringifyValueOf(n);
-          return this.markCallOutput(await this.evalFinalizedCallSyntax(context, state, fallbackName));
+          return this.markCallOutput(await this.evalOptionalFallbackCallSyntax(context, state, name, n));
         }
       });
     }
@@ -1049,10 +1063,7 @@ export class Call extends Node<CallValue, CallOptions> {
           if (!this._options?.silentFail || shouldRethrowForMode) {
             throw e;
           }
-          const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
-            ? String(name.value.key)
-            : stringifyValueOf(n);
-          return this.markCallOutput(await this.evalFinalizedCallSyntax(context, state, fallbackName));
+          return this.markCallOutput(await this.evalOptionalFallbackCallSyntax(context, state, name, n));
         }
       });
     } else {

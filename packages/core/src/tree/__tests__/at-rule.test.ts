@@ -912,7 +912,6 @@ describe('AtRule', () => {
     const prelude = any('screen');
 
     expect(createAtRuleBodyRenderState(node, {
-      evalFrame: node,
       node,
       evaluatedPrelude: prelude,
       evaluatedBody: evaluatedRules,

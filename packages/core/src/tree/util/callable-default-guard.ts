@@ -13,6 +13,8 @@ export type CallableDefaultGroupResolution = {
   hasDefNoneCandidate: boolean;
   defaultResult: typeof CALLABLE_DEFAULT_TRUE | typeof CALLABLE_DEFAULT_FALSE;
   ambiguous: boolean;
+  defTrueCount: number;
+  defFalseCount: number;
 };
 
 type CallableDefaultGroupCandidate = {
@@ -30,7 +32,9 @@ function finalizeCallableDefaultGroupResolution(
   return {
     hasDefNoneCandidate,
     defaultResult,
-    ambiguous: !hasDefNoneCandidate && (defTrueCount + defFalseCount) > 1
+    ambiguous: !hasDefNoneCandidate && (defTrueCount + defFalseCount) > 1,
+    defTrueCount,
+    defFalseCount
   };
 }
 

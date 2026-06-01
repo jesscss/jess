@@ -169,6 +169,12 @@ export function createDeclarationMergeAdapterState(
   value: Node,
   mode: 'list' | 'space'
 ): { value: Node; listValue?: Node[]; spaceValue?: Node[] } {
+  const canContainMergedItems = mode === 'list'
+    ? isNode(value, N.List)
+    : isNode(value, N.List | N.Sequence);
+  if (!canContainMergedItems) {
+    return { value };
+  }
   const mergedItems = collectDeclarationMergeAdapterItems(value, {
     includeSequences: mode === 'space'
   });

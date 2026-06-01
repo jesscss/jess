@@ -4794,8 +4794,8 @@ export class MixinCollection extends Node<MixinEntry[]> {
         console.log('[default-guard:resolution]', JSON.stringify({
           caller: debugCaller(),
           hasDefNoneCandidate,
-          defTrueCount: pendingDefaultCandidates.filter(pending => pending.group === CALLABLE_DEFAULT_TRUE).length,
-          defFalseCount: pendingDefaultCandidates.filter(pending => pending.group === CALLABLE_DEFAULT_FALSE).length,
+          defTrueCount: defaultResolution.defTrueCount,
+          defFalseCount: defaultResolution.defFalseCount,
           defaultResult
         }));
       }

@@ -1158,6 +1158,8 @@ describe('reference', () => {
         expect(getRulesLikeReferenceSource(resolved)).toBe(resolvedSource);
         expect(getRulesLikeReferenceLookupState(resolved)).toEqual({
           source: resolvedSource,
+          output: resolved,
+          publicBoundary: 'shallow-owned-callable-surface',
           preservesCallableSurface: true
         });
         expect(getRulesLikeReferenceCallableSource(resolved)).toBe(resolvedSource);

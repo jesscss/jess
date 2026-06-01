@@ -1399,6 +1399,8 @@ function freezeRulesLikeReferenceValue(node: Node): void {
 
 type RulesLikeReferencePreservationRecord = {
   source: Node;
+  output: Node;
+  publicBoundary: 'shallow-owned-callable-surface';
 };
 
 export type RulesLikeReferenceLookupState = RulesLikeReferencePreservationRecord & {
@@ -1418,6 +1420,8 @@ export function getRulesLikeReferenceLookupState(node: Node): RulesLikeReference
   }
   return {
     source: record.source,
+    output: record.output,
+    publicBoundary: record.publicBoundary,
     preservesCallableSurface: true
   };
 }
@@ -1452,7 +1456,11 @@ function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeV
   preservedValue.inherit(directValue);
   Reflect.set(preservedValue, 'parent', directValue.parent);
   preservedValue.sourceNode = directValue;
-  rulesLikeReferencePreservation.set(preservedValue, { source: directValue });
+  rulesLikeReferencePreservation.set(preservedValue, {
+    source: directValue,
+    output: preservedValue,
+    publicBoundary: 'shallow-owned-callable-surface'
+  });
   return preservedValue;
 }
 

@@ -14,7 +14,9 @@ describe('callable default guard helpers', () => {
     ])).toEqual({
       hasDefNoneCandidate: false,
       defaultResult: CALLABLE_DEFAULT_TRUE,
-      ambiguous: false
+      ambiguous: false,
+      defTrueCount: 1,
+      defFalseCount: 0
     });
     expect(resolveCallableDefaultGroup(true, [
       CALLABLE_DEFAULT_TRUE,
@@ -22,7 +24,9 @@ describe('callable default guard helpers', () => {
     ])).toEqual({
       hasDefNoneCandidate: true,
       defaultResult: CALLABLE_DEFAULT_FALSE,
-      ambiguous: false
+      ambiguous: false,
+      defTrueCount: 1,
+      defFalseCount: 1
     });
     expect(resolveCallableDefaultGroup(false, [
       CALLABLE_DEFAULT_TRUE,
@@ -30,14 +34,18 @@ describe('callable default guard helpers', () => {
     ])).toEqual({
       hasDefNoneCandidate: false,
       defaultResult: CALLABLE_DEFAULT_TRUE,
-      ambiguous: true
+      ambiguous: true,
+      defTrueCount: 1,
+      defFalseCount: 1
     });
     expect(resolveCallableDefaultGroup(false, [
       CALLABLE_DEFAULT_NONE
     ])).toEqual({
       hasDefNoneCandidate: true,
       defaultResult: CALLABLE_DEFAULT_FALSE,
-      ambiguous: false
+      ambiguous: false,
+      defTrueCount: 0,
+      defFalseCount: 0
     });
     expect(resolveCallableDefaultCandidateGroups(false, [
       { group: CALLABLE_DEFAULT_TRUE },
@@ -45,7 +53,9 @@ describe('callable default guard helpers', () => {
     ])).toEqual({
       hasDefNoneCandidate: false,
       defaultResult: CALLABLE_DEFAULT_TRUE,
-      ambiguous: true
+      ambiguous: true,
+      defTrueCount: 1,
+      defFalseCount: 1
     });
   });
 });
