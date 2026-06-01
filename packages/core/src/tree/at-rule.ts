@@ -67,9 +67,12 @@ export type AtRuleBodyOutputState = {
 // Compatibility state for evaluated-node render APIs that cannot yet receive
 // the invocation record directly. Direct render should prefer invocation state.
 export type AtRuleBodyRuntimeState = {
-  evaluatedBody?: Rules;
   hoistToRoot?: boolean;
   frames?: AtRule['frames'];
+};
+
+type AtRuleBodyRenderUpdateState = AtRuleBodyRuntimeState & {
+  evaluatedBody?: Rules;
 };
 
 type AtRuleBodyEvalContextState = {
@@ -325,9 +328,9 @@ function restoreAtRuleBodyRuntimeState(
   }
 }
 
-export function createAtRuleBodyRuntimeUpdate(node: AtRule, state: AtRuleBodyRuntimeUpdateInput): AtRuleBodyRuntimeState | undefined {
-  let runtimeUpdate: AtRuleBodyRuntimeState | undefined;
-  const ensureRuntimeUpdate = (): AtRuleBodyRuntimeState => (runtimeUpdate ??= {});
+export function createAtRuleBodyRuntimeUpdate(node: AtRule, state: AtRuleBodyRuntimeUpdateInput): AtRuleBodyRenderUpdateState | undefined {
+  let runtimeUpdate: AtRuleBodyRenderUpdateState | undefined;
+  const ensureRuntimeUpdate = (): AtRuleBodyRenderUpdateState => (runtimeUpdate ??= {});
   if (state.evaluatedBody && state.evaluatedBody !== node.value.rules) {
     ensureRuntimeUpdate().evaluatedBody = state.evaluatedBody;
   }
@@ -392,7 +395,6 @@ function commitAtRuleBodyEvalRuntimeState(
   state: AtRuleBodyEvalContextState
 ): void {
   const runtimeUpdate = createAtRuleBodyRuntimeUpdate(node, {
-    evaluatedBody: state.evaluatedBody,
     output: state.output
   });
   if (runtimeUpdate) {
@@ -404,7 +406,7 @@ function commitAtRuleBodyEvalRuntimeState(
 
 function applyAtRuleBodyRuntimeState(
   node: AtRule,
-  state: AtRuleBodyRuntimeState
+  state: AtRuleBodyRenderUpdateState
 ): AtRule {
   if (state.evaluatedBody && state.evaluatedBody !== node.value.rules) {
     node.adopt(state.evaluatedBody);
@@ -424,6 +426,24 @@ function createAtRuleRuntimeRenderNode(node: AtRule): AtRule {
   return runtimeState
     ? applyAtRuleBodyRuntimeState(node.deriveAtRule(node.value), runtimeState)
     : node;
+}
+
+function createAtRuleEvalResultNode(
+  source: AtRule,
+  state: AtRuleBodyEvalContextState
+): AtRule {
+  if (!state.evaluatedBody || state.evaluatedBody === source.value.rules) {
+    return source;
+  }
+  return applyAtRuleBodyPublicResultState(
+    createAtRuleBodyPublicResultState({
+      node: source.deriveAtRule(source.value),
+      evaluatedPrelude: state.evaluatedPrelude,
+      evaluatedBody: state.evaluatedBody,
+      visible: state.visible,
+      output: state.output
+    })
+  );
 }
 
 function createAtRuleBodyRecordRegistration(
@@ -636,7 +656,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   getRenderRules(): Rules | undefined {
-    return atRuleBodyRuntimeState.get(this)?.evaluatedBody ?? this.value.rules;
+    return this.value.rules;
   }
 
   private evalForRender(context: Context): MaybePromise<Node | AtRuleLeafState | AtRuleBodyEvalResult> {
@@ -1297,7 +1317,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           if (record.contextState.writeRuntimeState) {
             commitAtRuleBodyEvalRuntimeState(this, record.contextState);
           }
-          return value;
+          return value instanceof AtRule
+            ? createAtRuleEvalResultNode(this, record.contextState)
+            : value;
         },
         (error) => {
           restoreAtRuleBodyRuntimeState(this, priorRuntimeState);
@@ -1308,7 +1330,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (record.contextState.writeRuntimeState) {
       commitAtRuleBodyEvalRuntimeState(this, record.contextState);
     }
-    return out;
+    return out instanceof AtRule
+      ? createAtRuleEvalResultNode(this, record.contextState)
+      : out;
   }
 
   private evalBodyNode(

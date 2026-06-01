@@ -475,7 +475,7 @@ describe('AtRule', () => {
     }
   });
 
-  it('renders evaluated at-rules with compatibility body state without reading source runtime render rules', async () => {
+  it('renders evaluated at-rules with owned body state without reading source runtime render rules', async () => {
     const originalRules = rules([
       decl({ name: 'color', value: any('red') })
     ]);
@@ -495,12 +495,16 @@ describe('AtRule', () => {
       prelude: seq([any('screen')]),
       rules: originalRules
     });
-    await node.eval(context);
+    const evaluated = await node.eval(context);
+    if (!(evaluated instanceof AtRule)) {
+      throw new Error('Expected evaluated AtRule result');
+    }
     node.getRenderRules = () => {
       throw new Error('evaluated render should not read source runtime render rules');
     };
 
-    expect(node.render(context)).toBeString(`
+    expect(evaluated).not.toBe(node);
+    expect(evaluated.render(context)).toBeString(`
       @media screen {
         color: blue;
       }
@@ -919,7 +923,7 @@ describe('AtRule', () => {
     expect(node.evaluated).toBe(false);
   });
 
-  it('stores evaluated at-rule body output outside value.rules', async () => {
+  it('returns owned evaluated at-rule body output without mutating source value.rules', async () => {
     const originalRules = rules([
       decl({ name: 'color', value: any('red') })
     ]);
@@ -941,10 +945,21 @@ describe('AtRule', () => {
 
     const evaluated = await Promise.resolve(node.eval(context));
 
-    expect(evaluated).toBe(node);
+    expect(evaluated).toBeInstanceOf(AtRule);
+    if (!(evaluated instanceof AtRule)) {
+      throw new Error('Expected evaluated AtRule result');
+    }
+    expect(evaluated).not.toBe(node);
     expect(node.value.rules).toBe(originalRules);
-    expect(node.getRenderRules()).toBe(evaluatedRules);
+    expect(node.getRenderRules()).toBe(originalRules);
+    expect(evaluated.value.rules).toBe(evaluatedRules);
+    expect(evaluated.getRenderRules()).toBe(evaluatedRules);
     expect(node.toTrimmedString()).toBeString(`
+      @font-face {
+        color: red;
+      }
+    `);
+    expect(evaluated.toTrimmedString()).toBeString(`
       @font-face {
         color: blue;
       }
