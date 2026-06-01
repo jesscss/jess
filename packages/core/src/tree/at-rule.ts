@@ -374,6 +374,30 @@ export function createAtRuleBodyRuntimeUpdate(node: AtRule, state: AtRuleBodyRen
   return runtimeUpdate;
 }
 
+export function createAtRuleBodyPublicRuntimeUpdate(
+  node: AtRule,
+  state: AtRuleBodyPublicResultState
+): AtRuleBodyRuntimeState | undefined {
+  let runtimeUpdate: AtRuleBodyRuntimeState | undefined;
+  const ensureRuntimeUpdate = (): AtRuleBodyRuntimeState => (runtimeUpdate ??= {});
+  if (state.evaluatedBody && state.evaluatedBody !== node.value.rules) {
+    ensureRuntimeUpdate().evaluatedBody = state.evaluatedBody;
+  }
+  if (state.output) {
+    const nextOutput: AtRuleBodyOutputState = {};
+    if (state.output.hoistToRoot !== undefined && state.output.hoistToRoot !== node.hoistToRoot) {
+      nextOutput.hoistToRoot = state.output.hoistToRoot;
+    }
+    if (state.output.frames !== undefined && state.output.frames !== node.frames) {
+      nextOutput.frames = state.output.frames;
+    }
+    if (nextOutput.hoistToRoot !== undefined || nextOutput.frames !== undefined) {
+      ensureRuntimeUpdate().output = nextOutput;
+    }
+  }
+  return runtimeUpdate;
+}
+
 function setAtRuleBodyEvalPrelude(
   state: AtRuleBodyEvalContextState,
   prelude: Node
@@ -525,14 +549,12 @@ function applyAtRuleBodyPublicResultState(
   if (state.evaluatedPrelude) {
     state.node.value.prelude = state.evaluatedPrelude;
   }
-  if (state.evaluatedBody && state.evaluatedBody !== state.node.value.rules) {
-    updateAtRuleBodyRuntimeState(state.node, { evaluatedBody: state.evaluatedBody });
-  }
   if (state.visible === false) {
     state.node.removeFlag(F_VISIBLE);
   }
-  if (state.output) {
-    updateAtRuleBodyRuntimeState(state.node, { output: state.output });
+  const runtimeUpdate = createAtRuleBodyPublicRuntimeUpdate(state.node, state);
+  if (runtimeUpdate) {
+    updateAtRuleBodyRuntimeState(state.node, runtimeUpdate);
   }
   return state.node;
 }

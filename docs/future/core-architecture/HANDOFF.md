@@ -138,6 +138,10 @@ Peter to pay Paul.
   facts already live on the source at-rule. Direct render now installs output
   compatibility state only when body render needs different hoist or frame
   facts than the source node already exposes.
+- AtRule body public-result application now uses the same output-diff rule:
+  derived result nodes skip `WeakMap` output writes when hoist/frame facts
+  already live on the owned result surface, and only differing output facts
+  remain in compatibility runtime state.
 - Declaration merge adapter state now returns no object for scalar/no-merge
   paths, and single replacement paths now return the replacement node directly.
   Only real list/space render adapters allocate merge state.
@@ -583,7 +587,7 @@ Keep this section compact. Detailed proof lives in git history and focused
 tests; this handoff should preserve only the current architectural state needed
 to choose the next queue.
 
-- Passes 1-12 reframed the work from node-copy reduction to total runtime work:
+- Passes 1-13 reframed the work from node-copy reduction to total runtime work:
   AtRule body runtime/render adapters, callable binding/signature/default
   helpers, mixin output wrappers, shared placement vocabulary, import placement
   child/postlude state, declaration merge/contextual-important adapters,
@@ -591,15 +595,17 @@ to choose the next queue.
   aliases, narrowed AtRule render/public adapters, callable default debug-count
   cleanup, optional fallback syntax helper rejection, declaration scalar merge
   adapter elision, narrowed AtRule eval-result context ownership, source-free
-  AtRule body render state, empty/no-op AtRule runtime-update elision, and
-  bounded blockers for public direct-index and selector ownership.
+  AtRule body render state, empty/no-op AtRule runtime-update elision, render
+  output-update elision, and bounded blockers for public direct-index and
+  selector ownership.
 
-### Completed Queue Pass: 2026-06-01 #13
+### Completed Queue Pass: 2026-06-01 #14
 
-1. Lane A deleted another no-op AtRule runtime update. A red focused test first
-   proved `createAtRuleBodyRuntimeUpdate(...)` still emitted `output` runtime
-   state when `hoistToRoot` and `frames` already matched the source at-rule; it
-   now skips those no-op output writes.
+1. Lane A deleted another real AtRule output duplicate. A focused test now
+   proves public result application skips `output` runtime writes when
+   `hoistToRoot` and `frames` already match the owned result node, and
+   `createAtRuleBodyPublicRuntimeUpdate(...)` now mirrors the direct-render
+   diff rule instead of always writing compatibility state.
 2. Lane A kept `AtRuleBodyRenderState.evaluatedPrelude` blocked. Header
    serialization still reads evaluated prelude through AtRule runtime state,
    while direct render keeps `writeRuntimeState: false`; deleting the field
@@ -614,10 +620,10 @@ to choose the next queue.
 5. Lane B kept default-guard probe extraction blocked. Source scans still show
    the remaining `defaultProbeGuard` closure reusing one copied guard per
    candidate, with the helper boundary already handling group resolution.
-6. Lane B/G measured after the AtRule output slice, not a callable slice:
-   rawArgs stayed in the expected range (`0.0003ms` plain median, `0.0022ms`
-   metadata median), Less hotpath stayed in the normal range, and static audit
-   stayed at `new-node: 298` / module context `398`.
+6. Lane B/G measured after the public AtRule output slice, not a callable
+   slice: rawArgs stayed in the expected range, Less hotpath stayed in the
+   normal range, and static audit stayed at `new-node: 298` / module context
+   `398`.
 7. Lane C found no production optional-fallback placement consumer. Function
    fallback syntax remains the only named public adapter, while reference and
    import fallback/render paths already reuse direct text/container routes.
@@ -644,88 +650,87 @@ to choose the next queue.
     paths still rely on generated flags, selector-bit libraries, parentage, and
     source-node ownership.
 15. Lane I compacted the pass history, updated the architecture truth with the
-    no-op output-update elision, and refreshed the next queue around the same
+    public output-update elision, and refreshed the next queue around the same
     bounded lanes.
 
 ### Next Queue
 
-1. **Lane A: reduce one AtRule `output` adapter duplicate only with a runtime-update deletion.**
-
-   The no-op output-runtime write is now gone. The next slice must delete a real
-   remaining `output` duplicate, not just reshuffle the explicit hoist/frame
-   boundary.
-
-2. **Lane A: decide whether `AtRuleBodyRenderState` can lose `evaluatedPrelude`.**
+1. **Lane A: decide whether `AtRuleBodyRenderState` can lose `evaluatedPrelude`.**
 
    Currently blocked by direct render using `writeRuntimeState: false`. Revisit
    only if header serialization can receive evaluated prelude directly from an
    invocation record without source mutation or eval-time WeakMap writes.
 
-3. **Lane A: collapse cleanup/prep state only if a state record disappears.**
+2. **Lane A: collapse cleanup/prep state only if a state record disappears.**
 
    Do not reshuffle cleanup ownership unless `AtRuleBodyFrameState`,
    `AtRuleBodyEvalPrepState`, or a helper becomes unnecessary.
 
-4. **Lane B: extract callable parameter matching only with a closure deletion.**
+3. **Lane B: extract callable parameter matching only with a closure deletion.**
 
    Candidate: parameter binding/signature construction. Require a red focused
    mixin test and a helper that removes local `Map`/array/rest closures rather
    than moving them behind another call.
 
-5. **Lane B: keep default-guard probe extraction blocked unless calls fall.**
+4. **Lane B: keep default-guard probe extraction blocked unless calls fall.**
 
    The default probe closure currently reuses one copied guard per candidate;
    split only if the new shape reduces probes or allocations.
 
-6. **Lane B/G: compare callable parse/runtime cost after any helper slice.**
+5. **Lane B/G: compare callable parse/runtime cost after any helper slice.**
 
    Use rawArgs and Less hotpath timings only after a callable helper actually
    changes. Do not treat AtRule-only helper changes as callable evidence.
 
-7. **Lane C: find a real optional fallback placement consumer before storing state.**
+6. **Lane C: find a real optional fallback placement consumer before storing state.**
 
    Do not add a WeakMap or side state unless a production diagnostic/source
    path consumes it and the audit remains neutral.
 
-8. **Lane C/D: replace one import recursive descendant lookup only with sparse state.**
+7. **Lane C/D: replace one import recursive descendant lookup only with sparse state.**
 
    Write the red nested import child-segment test first. Keep the change only if
    it removes a recursive lookup without adding broad per-child state.
 
-9. **Lane D: keep import descendant fallback diagnostics debug-only.**
+8. **Lane D: keep import descendant fallback diagnostics debug-only.**
 
    Add a counter only if a focused debug/test path needs proof of fallback use
    and the counter cannot affect import runtime object count.
 
-10. **Lane E: reduce rules-like compatibility only with a public-shape proof.**
+9. **Lane E: reduce rules-like compatibility only with a public-shape proof.**
 
    If public tests still assert `sourceNode`, keep it. Otherwise remove one
    compatibility read and route lookup state through the preservation record.
 
-11. **Lane F: reduce declaration contextual-important duplication only if render stays allocation-free.**
+10. **Lane F: reduce declaration contextual-important duplication only if render stays allocation-free.**
 
    The render/public split is intentional today. Try only if render still avoids
    materializing an important flag and public resolve still returns the flag.
 
-12. **Lane F: decide whether operation metadata finalizer needs a compatibility alias.**
+11. **Lane F: decide whether operation metadata finalizer needs a compatibility alias.**
 
    Keep the alias out if package-export and source scans prove no public
    consumer needs it.
 
-13. **Lane G: find the next optional fallback storage candidate outside function calls.**
+12. **Lane G: find the next optional fallback storage candidate outside function calls.**
 
    Function-call fallback already has no render storage. Check reference/import
    fallback paths before adding any new placement map.
 
-14. **Lane H: choose one selector-copy candidate with red parentage tests.**
+13. **Lane H: choose one selector-copy candidate with red parentage tests.**
 
    Do not remove selector copies until tests prove the current ownership
    requirement and a narrower state can preserve it.
 
-15. **Lane I: keep completed-pass history compact and evidence-linked.**
+14. **Lane I: keep completed-pass history compact and evidence-linked.**
 
    On each queue completion, roll older pass details into the compact summary
    and keep only the newest pass plus active queue detailed.
+
+15. **Lane I: finish every full queue run with verification, commit, and push.**
+
+   A queue pass is not complete until the production/test/handoff diff is
+   verified, committed as one coherent change, and pushed on the active branch.
 
 ## Measurement And Verification
 

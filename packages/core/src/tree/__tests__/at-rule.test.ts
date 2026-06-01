@@ -9,6 +9,7 @@ import { Context } from '../../context.js';
 import {
   AtRule,
   createAtRuleBodyPublicResultState,
+  createAtRuleBodyPublicRuntimeUpdate,
   createAtRuleBodyRenderState,
   createAtRuleBodyRuntimeUpdate
 } from '../at-rule.js';
@@ -990,6 +991,27 @@ describe('AtRule', () => {
       visible: false,
       output: { hoistToRoot: true }
     });
+  });
+
+  it('skips public output runtime updates when hoist facts already live on the result node', () => {
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const frames = [] as AtRule['frames'];
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: sourceRules
+    });
+    node.hoistToRoot = true;
+    node.frames = frames;
+
+    expect(createAtRuleBodyPublicRuntimeUpdate(node, {
+      node,
+      output: {
+        hoistToRoot: true,
+        frames
+      }
+    })).toBeUndefined();
   });
 
   it('builds public nil body result state without an eval-frame fallback', () => {
