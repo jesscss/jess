@@ -93,7 +93,6 @@ type AtRuleBodyEvalRecord = {
   renderSourceBody?: boolean;
   frameState: AtRuleBodyFrameState;
   preparedBody?: AtRuleBodyEvalPrepState;
-  evaluatedBody?: Rules;
   registration?: AtRuleBodyRegistrationState;
   contextState: AtRuleBodyEvalContextState;
 };
@@ -386,7 +385,6 @@ function storeAtRuleBodyEvalRecordRules(
   finalRules: Rules
 ): void {
   const state = record.contextState;
-  record.evaluatedBody = finalRules;
   state.evaluatedBody = finalRules;
   if (state.writeRuntimeState) {
     updateAtRuleBodyRuntimeState(state.evalFrame, { evaluatedBody: finalRules });
@@ -487,8 +485,7 @@ function readAtRuleBodyEvalRecordResult(
     evalFrame: record.evalFrame,
     node,
     evaluatedPrelude: record.contextState.evaluatedPrelude,
-    evaluatedBody: record.evaluatedBody
-      ?? record.contextState.evaluatedBody,
+    evaluatedBody: record.contextState.evaluatedBody,
     visible: record.contextState.visible,
     output: record.contextState.output
   };
@@ -1371,7 +1368,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         return node;
       },
       () => {
-        let rules = bodyEvalRecord.evaluatedBody ?? bodyEvalRecord.bodyRules ?? node.getRenderRules();
+        let rules = bodyEvalRecord.contextState.evaluatedBody ?? bodyEvalRecord.bodyRules ?? node.getRenderRules();
         if (rules && rules.visibleRules().length === 0) {
           storeAtRuleBodyEvalRecordVisibility(bodyEvalRecord, false);
         }

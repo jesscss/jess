@@ -164,23 +164,19 @@ export function collectDeclarationMergeAdapterItems(
   return mergedItems;
 }
 
-type DeclarationMergeAdapterValueState = {
-  kind: 'value';
-  value: Node;
-};
-
 type DeclarationMergeAdapterItemsState = {
   kind: 'list' | 'space';
   value: Node;
   items: Node[];
 };
 
-export type DeclarationMergeAdapterState = DeclarationMergeAdapterValueState | DeclarationMergeAdapterItemsState;
+export type DeclarationMergeAdapterState = DeclarationMergeAdapterItemsState;
+type DeclarationMergeAdapterResult = DeclarationMergeAdapterState | Node | undefined;
 
 export function createDeclarationMergeAdapterState(
   value: Node,
   mode: 'list' | 'space'
-): DeclarationMergeAdapterState | undefined {
+): DeclarationMergeAdapterResult {
   const canContainMergedItems = mode === 'list'
     ? isNode(value, N.List)
     : isNode(value, N.List | N.Sequence);
@@ -194,7 +190,7 @@ export function createDeclarationMergeAdapterState(
     return undefined;
   }
   if (mergedItems.length === 1) {
-    return { kind: 'value', value: mergedItems[0]! };
+    return mergedItems[0]!;
   }
   return { kind: mode, value, items: mergedItems };
 }
@@ -734,13 +730,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       let value = newValue instanceof Node ? newValue : state.value;
       const normalized = this.normalizeMergedLeadingPlaceholderForRender(state, value);
-      value = normalized?.value ?? value;
+      value = normalized instanceof Node ? normalized : normalized?.value ?? value;
       let important = state.important;
       const { importantText } = finalizeContextualImportantState(context, important);
       return {
         name: state.name,
         value,
-        mergeAdapter: normalized?.kind === 'list' || normalized?.kind === 'space' ? normalized : undefined,
+        mergeAdapter: normalized instanceof Node ? undefined : normalized,
         important,
         importantText,
         normalizedFromAssign: state.normalizedFromAssign,
@@ -788,7 +784,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private normalizeMergedLeadingPlaceholderForRender(
     state: DeclarationRegistrationState,
     value: Node
-  ): DeclarationMergeAdapterState | undefined {
+  ): DeclarationMergeAdapterResult {
     const normalizedAssign = state.normalizedFromAssign;
     const isListMergedAssign =
       normalizedAssign === AssignmentType.Add
@@ -823,7 +819,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     collect(value);
     const adapter = createDeclarationMergeAdapterState(value, isListMergedAssign ? 'list' : 'space');
     if (!adapter) {
-      return emptyPlaceholder ? { kind: 'value', value: emptyPlaceholder } : undefined;
+      return emptyPlaceholder;
     }
     return adapter;
   }

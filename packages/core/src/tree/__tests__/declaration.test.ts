@@ -929,6 +929,12 @@ describe('Declaration', () => {
     expect(createDeclarationMergeAdapterState(value, 'space')).toBeUndefined();
   });
 
+  it('returns a single merged declaration replacement without adapter state', () => {
+    const value = list([new Nil(), any('1px')]);
+
+    expect(createDeclarationMergeAdapterState(value, 'list')).toBe(value.value[1]);
+  });
+
   it('keeps root merged declaration output unchanged without recopying scalar leaves', async () => {
     const node = rules([
       decl({
