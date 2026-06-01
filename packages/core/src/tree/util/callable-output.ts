@@ -1,5 +1,8 @@
+import type { Context } from '../../context.js';
 import type { Rules } from '../rules.js';
+import { flushCallableDefaultOutputs, type CallableDefaultState } from './callable-default-guard.js';
 import { attachMixinOutputSlot, assignMixinOutputRuleIndexes } from './mixin-output-slot.js';
+import { comparePosition } from './compare.js';
 
 export type CallableOutputState = {
   sourceRules?: Rules;
@@ -13,6 +16,13 @@ type FinalizeCallableOutputOptions = {
   createWrapperOutput: (sourceRules: Rules, restrictMixinOutputLookup: boolean) => Rules;
   resolveSingleOutputSourceRules: (output: Rules) => Rules;
   isIndexedRuleChild: (node: Rules['value'][number]) => boolean;
+};
+
+type FinalizeCallableEvalOutputOptions = FinalizeCallableOutputOptions & {
+  context: Context;
+  defaultState: CallableDefaultState;
+  debugDefaultGuard?: boolean;
+  debugCaller?: string;
 };
 
 export function createCallableOutputState(): CallableOutputState {
@@ -40,6 +50,46 @@ export function pushCallableOutputRules(
   outputRules: readonly Rules[]
 ): void {
   state.outputRules.push(...outputRules);
+}
+
+export async function finalizeCallableEvalOutput({
+  context,
+  state,
+  defaultState,
+  restrictMixinOutputLookup,
+  debugDefaultGuard = false,
+  debugCaller,
+  createEmptyOutput,
+  createWrapperOutput,
+  resolveSingleOutputSourceRules,
+  isIndexedRuleChild
+}: FinalizeCallableEvalOutputOptions): Promise<Rules> {
+  const defaultExecution = await flushCallableDefaultOutputs({
+    context,
+    state: defaultState,
+    restrictMixinOutputLookup
+  });
+  if (defaultExecution) {
+    if (debugDefaultGuard) {
+      console.log('[default-guard:resolution]', JSON.stringify({
+        caller: debugCaller ?? '<unknown>',
+        hasDefNoneCandidate: defaultState.hasDefNoneCandidate,
+        defTrueCount: defaultExecution.resolution.defTrueCount,
+        defFalseCount: defaultExecution.resolution.defFalseCount,
+        defaultResult: defaultExecution.resolution.defaultResult
+      }));
+    }
+    pushCallableOutputRules(state, defaultExecution.outputs);
+  }
+  state.outputRules.sort(comparePosition);
+  return finalizeCallableOutput({
+    state,
+    restrictMixinOutputLookup,
+    createEmptyOutput,
+    createWrapperOutput,
+    resolveSingleOutputSourceRules,
+    isIndexedRuleChild
+  });
 }
 
 export function finalizeCallableOutput({

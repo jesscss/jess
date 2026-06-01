@@ -61,16 +61,14 @@ import { prepareCallableCandidateState } from './util/callable-candidate-state.j
 import { executeCallableCandidate } from './util/callable-candidate-execution.js';
 import {
   createCallableOutputState,
-  finalizeCallableOutput,
+  finalizeCallableEvalOutput,
   pushCallableOutputRule,
-  pushCallableOutputRules,
   recordCallableOutputSourceRules
 } from './util/callable-output.js';
 import { evaluateCallableSpecialCaseCandidate } from './util/callable-special-case.js';
 import { matchCallableParams, type CallableParamMatch } from './util/callable-param-match.js';
 import {
-  createCallableDefaultState,
-  flushCallableDefaultOutputs
+  createCallableDefaultState
 } from './util/callable-default-guard.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
@@ -4182,28 +4180,13 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
     }
 
-    const defaultExecution = await flushCallableDefaultOutputs({
+    const output = await finalizeCallableEvalOutput({
       context: thisContext,
-      state: defaultState,
-      restrictMixinOutputLookup
-    });
-    if (defaultExecution) {
-      const defaultResult = defaultExecution.resolution.defaultResult;
-      if (debugDefaultGuard) {
-        console.log('[default-guard:resolution]', JSON.stringify({
-          caller: debugCaller(),
-          hasDefNoneCandidate: defaultState.hasDefNoneCandidate,
-          defTrueCount: defaultExecution.resolution.defTrueCount,
-          defFalseCount: defaultExecution.resolution.defFalseCount,
-          defaultResult
-        }));
-      }
-      pushCallableOutputRules(outputState, defaultExecution.outputs);
-    }
-    outputState.outputRules.sort(comparePosition);
-    const output = finalizeCallableOutput({
       state: outputState,
+      defaultState,
       restrictMixinOutputLookup,
+      debugDefaultGuard,
+      debugCaller: debugCaller(),
       createEmptyOutput: sourceRules => createDerivedRulesSurface(sourceRules),
       createWrapperOutput: createMixinOutputRulesWrapper,
       resolveSingleOutputSourceRules: singleOutput => getRootSourceRules(

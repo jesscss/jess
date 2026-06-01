@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { Context } from '../../../context.js';
 import { any, decl, rules } from '../../index.js';
+import { CALLABLE_DEFAULT_TRUE, createCallableDefaultState } from '../callable-default-guard.js';
 import { getMixinOutputPlacementRecord } from '../mixin-output-slot.js';
 import {
   createCallableOutputState,
+  finalizeCallableEvalOutput,
   finalizeCallableOutput,
   pushCallableOutputRule,
   pushCallableOutputRules,
@@ -109,5 +112,54 @@ describe('callable output helpers', () => {
       source: sourceRules,
       output
     });
+  });
+
+  it('flushes pending default outputs before sorting and finalizing', async () => {
+    const context = new Context();
+    const state = createCallableOutputState();
+    const defaultState = createCallableDefaultState();
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const existingOutput = rules([
+      decl({ name: 'background', value: any('blue') })
+    ]);
+    existingOutput.index = 10;
+
+    const pendingRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const pendingParent = rules([]);
+
+    recordCallableOutputSourceRules(state, sourceRules);
+    pushCallableOutputRule(state, existingOutput);
+    defaultState.pendingCandidates.push({
+      group: CALLABLE_DEFAULT_TRUE,
+      rules: pendingRules,
+      sourceRules,
+      candidateParent: pendingParent,
+      candidateIndex: 1
+    });
+
+    const output = await finalizeCallableEvalOutput({
+      context,
+      state,
+      defaultState,
+      restrictMixinOutputLookup: true,
+      createEmptyOutput: () => {
+        throw new Error('should not create empty output');
+      },
+      createWrapperOutput: source => rules([], undefined, undefined, source.treeContext).inherit(source),
+      resolveSingleOutputSourceRules: outputRules => outputRules,
+      isIndexedRuleChild: () => true
+    });
+
+    expect(defaultState.pendingCandidates).toHaveLength(1);
+    expect(output.value).toHaveLength(2);
+    expect(output.value[0]?.index).toBe(0);
+    expect(output.value[1]?.index).toBe(1);
+    const renderedChildren = output.value.map(rule => rule?.toString?.() ?? '');
+    expect(renderedChildren).toContain('color: red;\n');
+    expect(renderedChildren).toContain('background: blue;\n');
   });
 });

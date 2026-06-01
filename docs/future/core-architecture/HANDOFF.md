@@ -120,6 +120,11 @@ Peter to pay Paul.
   `packages/core/src/tree/util/callable-output.ts`, so callable output source
   tracking, output-rule collection, and single-vs-wrapper finalization are no
   longer inline state-management blocks inside `MixinCollection.evalCall(...)`.
+- Callable eval output finalization now also lives in
+  `packages/core/src/tree/util/callable-output.ts`, so pending-default output
+  flushing, debug resolution logging, final output sorting, and wrapper/empty
+  output selection are no longer the tail orchestration block inside
+  `MixinCollection.evalCall(...)`.
 - Callable ruleset-as-mixin and anonymous detached-ruleset candidate handling
   now also live in `packages/core/src/tree/util/callable-special-case.ts`, so
   the ruleset-placement branch and detached-ruleset unlock/eval branch are no
@@ -363,8 +368,9 @@ cross-purpose helper closures and less parse cost.
 **Current dependency graph:**
 
 - `MixinCollection.evalCall(...)` still depends directly on `Rules` instance
-  construction, mixin output slot attachment, call-stack recursion tracking,
-  candidate iteration, and final default/output orchestration.
+  construction, candidate iteration, and the remaining special-case/setup
+  dispatch that chooses between ruleset-placement, unlocked callable-rules,
+  and ordinary callable-entry execution.
 - Pure helper candidates already outside the closure are callable signatures,
   callable default-group resolution, callable binding value construction,
   callable parameter matching, callable candidate preparation, callable
@@ -372,15 +378,17 @@ cross-purpose helper closures and less parse cost.
   candidate output execution, callable outer-rules setup, callable scope-frame
   wiring, callable live-slot assembly, callable guard preparation, callable
   special-case candidate handling, callable candidate setup state, callable
-  candidate execution, and mixin output wrapper construction.
+  candidate execution, callable eval output finalization, and mixin output
+  wrapper construction.
 - The next extractable unit needs either a Rules-owned adapter input or a
   callable-invocation module that accepts Rules construction callbacks.
   Parameter matching, candidate prep, the default probe loop, pending default
   execution, candidate output execution, outer-rules reuse/setup,
   scope-frame wiring, live-slot assembly, guard preparation, output
-  aggregation, special-case candidate handling, candidate setup state, and
-  candidate execution are now out of the closure; the next cut must delete a
-  remaining top-level iteration/orchestration seam instead of just renaming it.
+  aggregation, special-case candidate handling, candidate setup state,
+  candidate execution, and eval-output finalization are now out of the
+  closure; the next cut must delete the remaining candidate-loop orchestration
+  seam instead of just renaming it.
 
 **Completion gates:**
 
@@ -397,12 +405,11 @@ cross-purpose helper closures and less parse cost.
 
 **Next queue seeds:**
 
-1. Extract one remaining callable top-level iteration/orchestration unit only
-   if a local loop, temporary collection, or callback disappears from
+1. Extract the remaining callable candidate-loop orchestration only if a local
+   loop, temporary collection, or dispatch branch disappears from
    `MixinCollection.evalCall(...)`.
-2. Prefer candidate-loop or final-output/default orchestration next; do not
-   split them unless a local callback, closure, or temporary collection
-   disappears.
+2. Prefer candidate-loop dispatch next; do not split it unless a local
+   callback, closure, or temporary collection disappears.
 3. Delete stale commented registry scaffolding once adjacent callable
    extraction tests cover the live behavior.
 
@@ -1108,6 +1115,32 @@ to choose the next queue.
    remaining top-level callable orchestration seam instead of pretending the
    per-candidate execution block is still inline.
 
+### Completed Queue Pass: 2026-06-01 #50
+
+1. Lane B deleted another real `MixinCollection` orchestration block. Callable
+   eval-output finalization moved out of `packages/core/src/tree/rules.ts`
+   into `packages/core/src/tree/util/callable-output.ts`, taking pending-
+   default output flushing, debug resolution logging, final output sorting, and
+   wrapper/empty-output selection with it.
+2. Lane B kept the runtime contract exact while shrinking the central file to
+   4213 lines. The static audit stayed at `rules.ts: 62`, `new-node: 289`,
+   `with-surface: 40`, `derive: 31`, and module count `389`, so this pass is
+   justified because it deleted a real inline finalizer seam rather than
+   claiming a proxy-metric win. `MixinCollection.evalCall(...)` is now down to
+   candidate preparation plus the remaining candidate-loop dispatch, with the
+   final default/output tail no longer inline.
+3. Lane B added focused helper coverage instead of relying only on integration
+   fallout. `packages/core/src/tree/util/__tests__/callable-output.test.ts`
+   now proves pending default outputs flush through the shared finalizer before
+   wrapper finalization, while the full changed baseline kept the mixin and
+   Less behavior pinned down.
+4. Lane B/G has fresh callable measurements on the final tree: rawArgs improved
+   slightly to `0.0003ms` plain / `0.0030ms` metadata median during this pass,
+   and the full changed baseline stayed green after the extraction.
+5. Lane I refreshed Lane B truth and queue wording so the next pass targets
+   the remaining candidate-loop dispatch seam instead of pretending the tail
+   finalizer still lives in `evalCall(...)`.
+
 ### Next Queue
 
 1. **Lane A: collapse cleanup/prep state only if a state record disappears.**
@@ -1142,22 +1175,21 @@ to choose the next queue.
    pass should delete a remaining compatibility field or consumer rather than
    add more lifecycle plumbing.
 
-3. **Lane B: extract the next callable unit only if `evalCall(...)` loses another real top-level orchestration seam.**
+3. **Lane B: extract the next callable unit only if `evalCall(...)` loses the remaining candidate-loop orchestration seam.**
 
    Parameter matching, candidate prep, default-probe evaluation, guard
    execution, pending-default bookkeeping, candidate-output execution, output
    aggregation, special-case candidate handling, candidate setup state, and
-   candidate execution are out. The next callable slice should target the
-   candidate loop or final default/output orchestration only if one more
-   temporary collection, callback, or closure disappears from
-   `MixinCollection`.
+   candidate execution plus eval-output finalization are out. The next
+   callable slice should target the candidate loop only if one more temporary
+   collection, dispatch branch, or closure disappears from `MixinCollection`.
 
-4. **Lane B: keep helper extraction honest; do not split the remaining loop/finalizer unless local runtime machinery falls.**
+4. **Lane B: keep helper extraction honest; do not split the remaining candidate loop unless local runtime machinery falls.**
 
-   The next cut needs to remove another real local seam such as top-level
-   candidate iteration or final default/output routing. Do not add a helper
-   that only rephrases the same loop/finalizer work behind another callback,
-   especially now that the static hotspot audit has not improved on this pass.
+   The next cut needs to remove the real local seam that remains: top-level
+   candidate iteration/dispatch. Do not add a helper that only rephrases the
+   same loop behind another callback, especially now that the static hotspot
+   audit has not improved on this pass.
 
 5. **Lane B/G: keep measuring callable slices, not AtRule-only work.**
 
