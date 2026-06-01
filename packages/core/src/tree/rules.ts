@@ -65,6 +65,7 @@ import {
   pushCallableOutputRules,
   recordCallableOutputSourceRules
 } from './util/callable-output.js';
+import { evaluateCallableSpecialCaseCandidate } from './util/callable-special-case.js';
 import {
   evaluateCallableGuard,
   prepareCallableGuardState
@@ -321,7 +322,7 @@ function copyGuardForEval(guard: Node): Node {
   return copied;
 }
 
-function getRootSourceRules(rules: Rules): Rules {
+export function getRootSourceRules(rules: Rules): Rules {
   let current = rules;
   const seen = new Set<Rules>();
   while (current.sourceNode && isNode(current.sourceNode, N.Rules)) {
@@ -418,11 +419,11 @@ function copyCallableRulesSegment(segment: { source: Node }): Node {
   return copyCallableRulesNode(segment.source);
 }
 
-function createUnlockedCallableRulesSurface(sourceRules: Rules): Rules {
+export function createUnlockedCallableRulesSurface(sourceRules: Rules): Rules {
   return sourceRules.derive();
 }
 
-function createOwnedCallableRulesSurface(sourceRules: Rules): Rules {
+export function createOwnedCallableRulesSurface(sourceRules: Rules): Rules {
   return sourceRules.derive(
     getMixinOutputChildSegments(sourceRules).map(copyCallableRulesSegment)
   );
@@ -3939,10 +3940,6 @@ function getMixinEntryRules(entry: MixinEntry): Rules {
   return entry.value.rules;
 }
 
-function getMixinEntryGuard(entry: MixinEntry): Node | Nil | undefined {
-  return entry.value.guard;
-}
-
 function getCallableEntryName(entry: CallableEntry): unknown {
   return entry.value.name;
 }
@@ -4119,33 +4116,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
     const restrictMixinOutputLookup = thisContext.leakyRules !== true;
     const defaultState = createCallableDefaultState();
     for (let candidate of evalCandidates) {
-      if (isNode(candidate, N.Ruleset)) {
-        // For Rulesets, guard was already evaluated at definition time in Ruleset.evalNode
-        // guard === undefined means passed, guard instanceof Nil means failed
-        const rulesetGuard = getMixinEntryGuard(candidate);
-        if (rulesetGuard instanceof Nil) {
-          // Guard failed at definition time - skip this ruleset
-          continue;
-        }
-        const candidateRules = getMixinEntryRules(candidate);
-        const sourceRules = getRootSourceRules(candidateRules);
-        recordCallableOutputSourceRules(outputState, sourceRules);
-        let rules = createOwnedCallableRulesSurface(sourceRules);
-        const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
-        /** Adopt for lookup, then adopt for sorting */
-        callParent.adopt(rules);
-        rules = await withRulesContext(thisContext, rules, () => rules.eval(thisContext));
-        callParent.adopt(rules);
-        // Rules should have index from eval, but ensure it matches candidate for sorting
-        rules.index = candidate.index;
-        // Skip empty Rules (e.g., containing only invisible nodes like comments)
-        // Mark generated mixin output with lookup policy from leakyRules.
-        attachMixinOutputSlot(rules, sourceRules, restrictMixinOutputLookup, {
-          rulesetPlacement: true
-        });
-        pushCallableOutputRule(outputState, rules);
-        continue;
-      }
       // Less detached rulesets are represented as anonymous mixins (name is undefined).
       // Calling `@rulesetVar();` should *unlock* the rules into scope (including mixin definitions),
       // not eagerly execute/flatten them.
@@ -4155,33 +4125,29 @@ export class MixinCollection extends Node<MixinEntry[]> {
       const candidateName = getCallableEntryName(candidate);
       const candidateParams = getCallableEntryParams(candidate);
       const candidateGuard = getCallableEntryGuard(candidate);
-      if (!isNode(candidate, N.Mixin) && !candidateName && !candidateParams && !candidateGuard) {
-        const sourceRules = getRootSourceRules(getMixinEntryRules(candidate));
-        recordCallableOutputSourceRules(outputState, sourceRules);
-        let unlocked = createUnlockedCallableRulesSurface(sourceRules);
-        const callSiteRules = caller?.rulesParent ?? caller?.sourceRulesParent ?? thisContext.rulesContext;
-        const parentFrame = isNode(callSiteRules, N.Rules)
-          ? (callSiteRules as Rules).getScopeFrame()
-          : undefined;
-        // Detached ruleset calls keep their definition-side parent chain intact.
-        // Caller ancestry is additive and only exposed through fallbackFrame when
-        // leakyRules is enabled.
-        candidate.parent!.adopt(unlocked);
-        // Mark generated mixin output with lookup policy from leakyRules.
-        attachMixinOutputSlot(unlocked, sourceRules, restrictMixinOutputLookup, {
-          fallbackFrame: thisContext.leakyRules === true ? parentFrame : undefined
-        });
-        Reflect.set(unlocked, 'index', candidate.index);
-        // Evaluate immediately while the call-site parent chain is intact.
-        // Variables in the enclosing scope (e.g. @hover-background declared before the
-        // detached-ruleset call) are reachable now via unlocked.parent → cbody.
-        // After evaluation the node is static so subsequent re-processing in
-        // Call.evalNode's result.eval() path finds no live references to re-resolve.
-        const evaledUnlocked = unlocked.eval(context);
-        unlocked = (isThenable(evaledUnlocked) ? await evaledUnlocked : evaledUnlocked) as Rules;
-        pushCallableOutputRule(outputState, unlocked);
+      const specialCaseResult = await evaluateCallableSpecialCaseCandidate({
+        candidate,
+        context: thisContext,
+        caller,
+        callSiteRules: caller?.rulesParent ?? caller?.sourceRulesParent ?? thisContext.rulesContext,
+        restrictMixinOutputLookup,
+        candidateName,
+        candidateParams,
+        candidateGuard,
+        createOwnedRules: createOwnedCallableRulesSurface,
+        createUnlockedRules: createUnlockedCallableRulesSurface,
+        evaluateOwnedRules: async rulesNode => withRulesContext(thisContext, rulesNode, () => rulesNode.eval(thisContext)),
+        getRootSourceRules
+      });
+      if (specialCaseResult.handled) {
+        if (specialCaseResult.output) {
+          const sourceRules = getRootSourceRules(getMixinEntryRules(candidate));
+          recordCallableOutputSourceRules(outputState, sourceRules);
+          pushCallableOutputRule(outputState, specialCaseResult.output);
+        }
         continue;
       }
+
       const candidateRules = getMixinEntryRules(candidate);
       let rules = candidateRules;
       recordCallableOutputSourceRules(outputState, getRootSourceRules(rules));
@@ -4326,7 +4292,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         state: defaultState,
         guardResult,
         rules,
-        sourceRules: getRootSourceRules(getMixinEntryRules(candidate as CallableEntry)),
+        sourceRules: getRootSourceRules(candidateRules),
         candidateParent: candidate.parent,
         candidateIndex: candidate.index,
         params: getParamsSignature()
@@ -4341,7 +4307,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         candidateParent: candidate.parent!,
         candidateIndex: candidate.index,
         rules,
-        sourceRules: getRootSourceRules(getMixinEntryRules(candidate as CallableEntry)),
+        sourceRules: getRootSourceRules(candidateRules),
         restrictMixinOutputLookup
       });
       if (newRules) {
