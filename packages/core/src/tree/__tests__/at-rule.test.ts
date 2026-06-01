@@ -890,9 +890,8 @@ describe('AtRule', () => {
     });
     const prelude = any('screen');
 
-    expect(createAtRuleBodyRuntimeUpdate({
+    expect(createAtRuleBodyRuntimeUpdate(node, {
       kind: 'body-render',
-      source: node,
       evaluatedPrelude: prelude,
       evaluatedBody: evaluatedRules,
       output: { hoistToRoot: true }
@@ -916,14 +915,13 @@ describe('AtRule', () => {
     });
     const prelude = any('screen');
 
-    expect(createAtRuleBodyRenderState(node, {
+    expect(createAtRuleBodyRenderState({
       node,
       evaluatedPrelude: prelude,
       evaluatedBody: evaluatedRules,
       output: { hoistToRoot: true }
     })).toEqual({
       kind: 'body-render',
-      source: node,
       evaluatedPrelude: prelude,
       evaluatedBody: evaluatedRules,
       output: { hoistToRoot: true }

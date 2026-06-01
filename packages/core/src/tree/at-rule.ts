@@ -113,7 +113,6 @@ type AtRuleBodyEvalPrepState = {
 
 export type AtRuleBodyRenderState = {
   kind: 'body-render';
-  source: AtRule;
   evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
   output?: AtRuleBodyOutputState;
@@ -351,8 +350,7 @@ function runAtRuleBodyRuntimeState<T>(
   }
 }
 
-export function createAtRuleBodyRuntimeUpdate(state: AtRuleBodyRenderState): AtRuleBodyRuntimeState {
-  const node = state.source;
+export function createAtRuleBodyRuntimeUpdate(node: AtRule, state: AtRuleBodyRenderState): AtRuleBodyRuntimeState {
   const runtimeUpdate: AtRuleBodyRuntimeState = {};
   if (state.evaluatedPrelude) {
     runtimeUpdate.evaluatedPrelude = state.evaluatedPrelude;
@@ -495,18 +493,16 @@ export function createAtRuleBodyPublicResultState(
   };
 }
 
-export function createAtRuleBodyRenderState(source: AtRule, result: AtRuleBodyRenderInput): AtRuleBodyRenderState {
+export function createAtRuleBodyRenderState(result: AtRuleBodyRenderInput): AtRuleBodyRenderState {
   if (result.node instanceof Nil) {
     return {
       kind: 'body-render',
-      source,
       evaluatedPrelude: result.evaluatedPrelude,
       output: result.output
     };
   }
   return {
     kind: 'body-render',
-    source,
     evaluatedPrelude: result.evaluatedPrelude,
     evaluatedBody: result.evaluatedBody ?? result.node.value.rules,
     output: result.output
@@ -735,14 +731,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (result.node instanceof Nil) {
       return {
         kind: 'body-render',
-        source: this,
         evaluatedPrelude: contextState.evaluatedPrelude,
         output: contextState.output
       };
     }
     return {
       kind: 'body-render',
-      source: this,
       evaluatedPrelude: contextState.evaluatedPrelude,
       evaluatedBody: contextState.evaluatedBody ?? result.node.value.rules,
       output: contextState.output
@@ -861,8 +855,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       return serializeRulesContainer(node, prepareRenderPrintState(context, bufferOrOptions));
     };
     const renderBodyState = (state: AtRuleBodyRenderState): string => {
-      const node = state.source;
-      const runtimeUpdate = createAtRuleBodyRuntimeUpdate(state);
+      const node = this;
+      const runtimeUpdate = createAtRuleBodyRuntimeUpdate(node, state);
       return Object.keys(runtimeUpdate).length > 0
         ? runAtRuleBodyRuntimeState(node, runtimeUpdate, () => renderEvaluatedAtRule(node))
         : renderEvaluatedAtRule(node);
