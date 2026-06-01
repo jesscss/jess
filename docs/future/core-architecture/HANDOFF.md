@@ -191,6 +191,11 @@ Peter to pay Paul.
   temporary runtime-update object just to persist frames. Success now writes
   raw `frames` directly into the compatibility `WeakMap`, leaving
   `createAtRuleBodyRuntimeUpdate(...)` on the render boundary only.
+- The remaining AtRule evaluated-render compatibility path no longer allocates
+  a temporary `{ frames }` runtime-update object either. When legacy runtime
+  frames exist, evaluated render now derives the temporary owned at-rule and
+  installs `frames` directly on that node, preserving source-node canonical
+  state while shrinking the last render-side compatibility wrapper.
 - Declaration merge adapter state now returns no object for scalar/no-merge
   paths, and single replacement paths now return the replacement node directly.
   Only real list/space render adapters allocate merge state.
@@ -596,7 +601,7 @@ not folklore.
 | Family | Current state | Completion gate |
 | --- | --- | --- |
 | `Rules` | Direct root/fragment render state exists; callable binding, signature, default grouping, outer-rules, and generated output-wrapper helpers are extracted, but `MixinCollection` still owns candidate/body orchestration. Debug default counts no longer add filter allocations. | Callable extraction complete or explicitly blocked; direct render context state bounded. |
-| `AtRule` | Leaf render split; body invocation state still large, but render and public-result inputs are narrowed, duplicate prelude storage was removed from the eval record, visibility moved onto invocation context state, body-rules frame cleanup is runner-owned, owned public results now carry body/output facts directly, failed evals restore prior compatibility state instead of leaking `WeakMap` facts, successful eval now installs only remaining frame compatibility state at the boundary instead of writing body/output facts during body evaluation, direct render no longer installs temporary runtime compatibility state on the source node, evaluated `render(context)` no longer reads compatibility body state from the source node itself, body-changing `eval(context)` now returns an owned evaluated at-rule surface, root-only hoist-only eval outputs now return owned results too, the remaining eval-time runtime state no longer stores a separate hoist field, nestable render/runtime updates no longer carry a redundant temporary hoist flag when frames already imply it, the last eval-time compatibility `WeakMap` now stores raw frames instead of a wrapper object, and eval-time compatibility commits now write raw frames directly instead of routing through a temporary runtime-update object. Runtime `WeakMap` writes are now frame compatibility only, and temporary render updates for that path are frames-only too. | Lane A gates complete. |
+| `AtRule` | Leaf render split; body invocation state still large, but render and public-result inputs are narrowed, duplicate prelude storage was removed from the eval record, visibility moved onto invocation context state, body-rules frame cleanup is runner-owned, owned public results now carry body/output facts directly, failed evals restore prior compatibility state instead of leaking `WeakMap` facts, successful eval now installs only remaining frame compatibility state at the boundary instead of writing body/output facts during body evaluation, direct render no longer installs temporary runtime compatibility state on the source node, evaluated `render(context)` no longer reads compatibility body state from the source node itself, body-changing `eval(context)` now returns an owned evaluated at-rule surface, root-only hoist-only eval outputs now return owned results too, the remaining eval-time runtime state no longer stores a separate hoist field, nestable render/runtime updates no longer carry a redundant temporary hoist flag when frames already imply it, the last eval-time compatibility `WeakMap` now stores raw frames instead of a wrapper object, eval-time compatibility commits now write raw frames directly instead of routing through a temporary runtime-update object, and the evaluated-render compatibility path no longer allocates a temporary `{ frames }` wrapper either. Runtime `WeakMap` writes are now frame compatibility only, and temporary render state for that path is raw frames on the owned render node. | Lane A gates complete. |
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return and no parallel list/space checks. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
 | `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public syntax construction has a named adapter and placement vocabulary (`source`, `output`, `content`, `publicBoundary`), but no production storage after the WeakMap experiment regressed static object counts. | Call overhead measurement complete and fallback render/public split advanced. |
@@ -649,23 +654,25 @@ to choose the next queue.
   adapter deletion, and bounded blockers for public direct-index and selector
   ownership.
 
-### Completed Queue Pass: 2026-06-01 #28
+### Completed Queue Pass: 2026-06-01 #29
 
-1. Lane A deleted another real object from the remaining AtRule eval-time
-   compatibility path. Successful frame-only compatibility commits no longer
-   allocate a temporary runtime-update object before persisting frames; they now
-   write raw `frames` directly into the compatibility `WeakMap`.
+1. Lane A deleted another real object from the remaining AtRule evaluated-render
+   compatibility path. `createAtRuleRuntimeRenderNode(...)` no longer allocates
+   a temporary `{ frames }` runtime-update wrapper before applying legacy frame
+   compatibility; it now derives the temporary owned render node and writes the
+   raw frame facts directly onto that node.
 2. Lane A kept the same semantics on that path. Evaluated-node hoist still
-   derives from stored `frames` for nestable rules, and temporary render nodes
-   still consume the same frame facts without source-node mutation.
-3. Lane A reproved the broader blocker and backed it back out. Making direct
-   collapse-nesting `eval(context)` return an owned result instead of using the
-   compatibility frame path regressed nested wrapper/media fixture structure, so
-   that deletion is still blocked until a narrower ownership shape preserves
-   those wrappers.
+   derives from stored `frames` for nestable rules, evaluated render still
+   preserves source-node canonical frame state, and collapse-nesting wrapper
+   output stays green.
+3. Lane A keeps the broader blocker explicit. Making direct collapse-nesting
+   `eval(context)` return an owned result instead of using the compatibility
+   frame path still regresses nested wrapper/media fixture structure, so that
+   deletion remains blocked until a narrower ownership shape preserves those
+   wrappers.
 4. Lane A kept the failed-eval/runtime-shape proofs green. Sync throw, async
    reject, and late post-eval visibility failures still restore the prior frame
-   compatibility state after the direct-write narrowing.
+   compatibility state after the direct render-node narrowing.
 5. Lane A kept cleanup/prep state split. `AtRuleBodyFrameState` still owns
    frame clearing, `AtRuleBodyEvalPrepState` still owns body-to-eval/extend-root
    prep, and `restoreAtRuleBodyEvalRecord(...)` remains the single cleanup exit.
@@ -704,9 +711,9 @@ to choose the next queue.
     generated `:is(...)` placement state still carries omission/keyset facts
     alongside existing extend/parentage constraints.
 16. Lane I compacted the pass history, updated the architecture truth with the
-    direct frame-commit narrowing plus the explicit direct-eval ownership
-    blocker, and keeps full queue completion gated on verification, commit, and
-    push.
+   direct render-node narrowing plus the still-explicit direct-eval ownership
+   blocker, and keeps full queue completion gated on verification, commit, and
+   push.
 
 ### Next Queue
 
@@ -723,8 +730,8 @@ to choose the next queue.
    state, body-changing eval now returns an owned evaluated surface, root-only
    hoist-only eval outputs are owned too, the remaining runtime compatibility
    storage is raw frames only, eval-time compatibility commits now write those
-   frames directly, and temporary render updates for nestable frame paths no
-   longer carry a separate hoist flag. The next deletion must target the
+   frames directly, and evaluated render no longer allocates a temporary
+   `{ frames }` wrapper for that path. The next deletion must target the
    collapse-nesting frame path itself: either remove the remaining `frames`
    compatibility write/read for one evaluated-node API path, or prove that path
    still needs explicit frame state.

@@ -914,6 +914,35 @@ describe('AtRule', () => {
     expect(node.getRenderFrames()).toEqual([parentFrame]);
   });
 
+  it('renders evaluated collapse-nesting at-rules without mutating source frame state', async () => {
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    context.opts.collapseNesting = true;
+    context.frames = [parentFrame];
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    await Promise.resolve(node.eval(context));
+
+    expect(node.render(context)).toBeString(`
+      @media (max-width: 10px) {
+        .parent {
+          color: red;
+        }
+      }
+    `);
+    expect(node.frames).toBeUndefined();
+    expect(node.hoistToRoot).toBeUndefined();
+    expect(node.getRenderFrames()).toEqual([parentFrame]);
+  });
+
   it('carries direct body-render prelude evaluation through body state once', async () => {
     const root = rules([
       vardecl({

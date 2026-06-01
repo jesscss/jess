@@ -418,11 +418,15 @@ function applyAtRuleBodyRuntimeState(
 
 function createAtRuleRuntimeRenderNode(node: AtRule): AtRule {
   const runtimeFrames = atRuleBodyRuntimeFrames.get(node);
-  return runtimeFrames
-    ? applyAtRuleBodyRuntimeState(node.deriveAtRule(node.value), {
-        frames: runtimeFrames
-      })
-    : node;
+  if (!runtimeFrames) {
+    return node;
+  }
+  const renderNode = node.deriveAtRule(node.value);
+  if (renderNode.isNestable()) {
+    renderNode.hoistToRoot = true;
+  }
+  renderNode.frames = runtimeFrames;
+  return renderNode;
 }
 
 function createAtRuleEvalResultNode(
