@@ -35,6 +35,12 @@ export type PrintOptions = {
   /** Render-local override for one at-rule header prelude during direct render. */
   atRuleHeaderNode?: AtRule;
   atRuleHeaderPrelude?: Node;
+  /** Render-local override for one at-rule body during direct render. */
+  atRuleBodyNode?: AtRule;
+  atRuleBodyOverride?: import('../rules.js').Rules;
+  /** Render-local override for one at-rule hoist flag during direct render. */
+  atRuleHoistNode?: AtRule;
+  atRuleHoistOverride?: boolean;
   /** Render-local override for one at-rule frame stack during direct render. */
   atRuleFrameNode?: AtRule;
   atRuleFrameOverride?: (Ruleset | AtRule)[];

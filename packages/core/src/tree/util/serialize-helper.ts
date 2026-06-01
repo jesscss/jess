@@ -82,9 +82,13 @@ function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'c
   return tokens.some(isBlockCommentTriviaToken);
 }
 
-function getContainerRules(node: AtRule | Ruleset): Rules | undefined {
+function getContainerRules(node: AtRule | Ruleset, options?: FinalPrintOptions): Rules | undefined {
   return isNode(node, N.AtRule)
-    ? node.getRenderRules()
+    ? (
+        node === options?.atRuleBodyNode
+          ? options.atRuleBodyOverride
+          : node.getRenderRules()
+      )
     : node.value.rules;
 }
 
@@ -298,9 +302,12 @@ function getHoistedParent(
   const runtimeFrames = options.atRuleFrameNode === atRule
     ? options.atRuleFrameOverride
     : undefined;
+  const runtimeHoist = options.atRuleHoistNode === atRule
+    ? options.atRuleHoistOverride
+    : undefined;
   const hoisted = runtimeFrames !== undefined && atRule.isNestable()
     ? true
-    : atRule.isHoisted(options);
+    : (runtimeHoist ?? atRule.isHoisted(options));
   if (!atRule.isNestable() || atRule.isRootOnly() || !hoisted) {
     return undefined;
   }
@@ -393,7 +400,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
     options.referenceMode = inReferenceMode;
     options.referenceRenderEnabled = renderEnabled;
-    const rules = getContainerRules(node);
+    const rules = getContainerRules(node, options);
     if (!rules) {
       if (inReferenceMode && !renderEnabled) {
         return '';
@@ -493,7 +500,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
     }
 
-    const hoisted = node.isHoisted(options);
+    const hoisted = isNode(node, N.AtRule) && options.atRuleHoistNode === node
+      ? (options.atRuleHoistOverride ?? node.isHoisted(options))
+      : node.isHoisted(options);
     // const isRuleset = isNode(node, 'Ruleset');
     const treeFrames = options.treeFrames!;
     const renderRulesBody = () => {
@@ -604,7 +613,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           continue;
         }
 
-        const isLeafAtRule = isNode(n, N.AtRule) && !(n as AtRule).getRenderRules();
+        const isLeafAtRule = isNode(n, N.AtRule) && !getContainerRules(n as AtRule, options);
         if (isNode(n, N.Ruleset) || (isNode(n, N.AtRule) && !isLeafAtRule)) {
           const leadingSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
           options.depth = options.depth + 1;

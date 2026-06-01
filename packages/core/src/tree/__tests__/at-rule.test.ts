@@ -761,6 +761,9 @@ describe('AtRule', () => {
       rulesEvalCalls++;
       return originalEval.apply(this, args);
     };
+    node.deriveAtRule = function deriveShouldNotRun(): AtRule {
+      throw new Error('static direct root-only body render should not derive a temporary at-rule');
+    };
     try {
       expect(await Promise.resolve(node.render(context))).toBeString(`
         @font-face {
@@ -1000,6 +1003,10 @@ describe('AtRule', () => {
         decl({ name: 'color', value: any('red') })
       ])
     });
+
+    node.deriveAtRule = function deriveShouldNotRun(): AtRule {
+      throw new Error('direct body render with evaluated prelude should not derive a temporary at-rule');
+    };
 
     expect(await Promise.resolve(node.render(context))).toBeString(`
       @media print {
