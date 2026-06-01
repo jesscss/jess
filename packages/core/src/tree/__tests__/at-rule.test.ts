@@ -219,6 +219,28 @@ describe('AtRule', () => {
     expect(context.frames).toEqual([savedFrame]);
   });
 
+  it('restores hoist runtime compatibility state when body eval throws', () => {
+    const savedFrame = ruleset({
+      selector: el('.frame'),
+      rules: rules([])
+    });
+    const body = rules([]);
+    body.eval = () => {
+      throw new Error('body eval failed');
+    };
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: body
+    });
+    context = new Context({ bubbleRootAtRules: true });
+    context.frames = [savedFrame];
+
+    expect(() => node.eval(context)).toThrow('body eval failed');
+    expect(node.isHoisted({ collapseNesting: false })).toBe(false);
+    expect(node.getRenderFrames()).toBeUndefined();
+    expect(node.frames).toBeUndefined();
+  });
+
   it('restores cleared ruleset frames when hoisted body eval throws', () => {
     const savedFrame = ruleset({
       selector: el('.frame'),
@@ -257,6 +279,27 @@ describe('AtRule', () => {
 
     await expect(node.eval(context)).rejects.toThrow('body eval failed');
     expect(context.frames).toEqual([savedFrame]);
+  });
+
+  it('restores hoist runtime compatibility state when body eval rejects', async () => {
+    const savedFrame = ruleset({
+      selector: el('.frame'),
+      rules: rules([])
+    });
+    const body = rules([]);
+    body.eval = () => Promise.reject(new Error('body eval failed'));
+    body.addFlag(F_MAY_ASYNC);
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: body
+    });
+    context = new Context({ bubbleRootAtRules: true });
+    context.frames = [savedFrame];
+
+    await expect(node.eval(context)).rejects.toThrow('body eval failed');
+    expect(node.isHoisted({ collapseNesting: false })).toBe(false);
+    expect(node.getRenderFrames()).toBeUndefined();
+    expect(node.frames).toBeUndefined();
   });
 
   it('renders resolved at-rules through render(context)', async () => {
@@ -874,6 +917,43 @@ describe('AtRule', () => {
       }
     `);
     expect(originalRules.parent).toBe(node);
+  });
+
+  it('restores evaluated body runtime compatibility state when post-eval visibility checks throw', async () => {
+    const originalRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const evaluatedRules = rules([
+      decl({ name: 'color', value: any('blue') })
+    ]);
+    const originalEval = originalRules.eval;
+    const originalVisibleRules = evaluatedRules.visibleRules;
+    originalRules.eval = function evalReplacementBody(
+      this: Rules,
+      ..._args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      evaluatedRules.evaluated = true;
+      return evaluatedRules;
+    };
+    evaluatedRules.visibleRules = function throwAfterEval(
+      this: Rules,
+      ..._args: Parameters<typeof originalVisibleRules>
+    ): ReturnType<typeof originalVisibleRules> {
+      throw new Error('visibleRules failed');
+    };
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: originalRules
+    });
+
+    expect(() => node.eval(context)).toThrow('visibleRules failed');
+    expect(node.value.rules).toBe(originalRules);
+    expect(node.getRenderRules()).toBe(originalRules);
+    expect(node.toTrimmedString()).toBeString(`
+      @font-face {
+        color: red;
+      }
+    `);
   });
 
   it('builds render runtime updates from body invocation state', () => {

@@ -88,6 +88,7 @@ type AtRuleBodyEvalContextState = {
 type AtRuleBodyEvalRecord = {
   source: AtRule;
   evalFrame: AtRule;
+  priorRuntimeState?: AtRuleBodyRuntimeState;
   bodyRules?: Rules;
   renderSourceBody?: boolean;
   frameState: AtRuleBodyFrameState;
@@ -280,7 +281,10 @@ function runAtRuleBodyRulesEval<T>(
 
 function restoreAtRuleBodyEvalRecord(
   record: AtRuleBodyEvalRecord,
-  context: Context
+  context: Context,
+  options: {
+    restoreRuntimeState?: boolean;
+  } = {}
 ): void {
   const state = record.contextState;
   popAtRuleBodyEvalRecord(context, record);
@@ -288,6 +292,13 @@ function restoreAtRuleBodyEvalRecord(
   record.frameState.restoreRulesetFrames();
   while (context.extendRoots.extendRootStack.length > state.extendRootStackLength) {
     context.extendRoots.popExtendRoot();
+  }
+  if (options.restoreRuntimeState) {
+    if (record.priorRuntimeState) {
+      atRuleBodyRuntimeState.set(record.evalFrame, record.priorRuntimeState);
+    } else {
+      atRuleBodyRuntimeState.delete(record.evalFrame);
+    }
   }
 }
 
@@ -320,6 +331,17 @@ function updateAtRuleBodyRuntimeState(
   };
   atRuleBodyRuntimeState.set(node, next);
   return next;
+}
+
+function restoreAtRuleBodyRuntimeState(
+  node: AtRule,
+  priorRuntimeState: AtRuleBodyRuntimeState | undefined
+): void {
+  if (priorRuntimeState) {
+    atRuleBodyRuntimeState.set(node, priorRuntimeState);
+  } else {
+    atRuleBodyRuntimeState.delete(node);
+  }
 }
 
 function runAtRuleBodyRuntimeState<T>(
@@ -699,6 +721,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return {
       source: this,
       evalFrame,
+      priorRuntimeState: atRuleBodyRuntimeState.get(evalFrame),
       ...(renderSourceBody ? { renderSourceBody } : undefined),
       ...(sourceRules && !renderSourceBody ? { bodyRules: this.ownRules(sourceRules) } : undefined),
       frameState,
@@ -1260,12 +1283,26 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<AtRule | Nil> {
-    return this.evalBodyNode(context, {
-      source: this,
-      evalFrame: this,
-      frameState: createAtRuleBodyFrameState(this, context),
-      contextState: createAtRuleBodyEvalContextState(this, context)
-    });
+    const priorRuntimeState = atRuleBodyRuntimeState.get(this);
+    let out: MaybePromise<AtRule | Nil>;
+    try {
+      out = this.evalBodyNode(context, {
+        source: this,
+        evalFrame: this,
+        frameState: createAtRuleBodyFrameState(this, context),
+        contextState: createAtRuleBodyEvalContextState(this, context)
+      });
+    } catch (error) {
+      restoreAtRuleBodyRuntimeState(this, priorRuntimeState);
+      throw error;
+    }
+    if (isThenable(out)) {
+      return (out as Promise<AtRule | Nil>).catch((error) => {
+        restoreAtRuleBodyRuntimeState(this, priorRuntimeState);
+        throw error;
+      });
+    }
+    return out;
   }
 
   private evalBodyNode(
@@ -1376,12 +1413,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   ): MaybePromise<T> {
     const bodyEvalContextState = bodyEvalRecord.contextState;
     let restored = false;
-    const restore = () => {
+    const restore = (options?: { restoreRuntimeState?: boolean }) => {
       if (restored) {
         return;
       }
       restored = true;
-      restoreAtRuleBodyEvalRecord(bodyEvalRecord, context);
+      restoreAtRuleBodyEvalRecord(bodyEvalRecord, context, options);
     };
     pushAtRuleBodyEvalRecord(context, bodyEvalRecord);
     context.frames.push(node);
@@ -1402,7 +1439,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             return value;
           },
           (error) => {
-            restore();
+            restore({ restoreRuntimeState: true });
             throw error;
           }
         );
@@ -1410,7 +1447,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       restore();
       return out;
     } catch (error) {
-      restore();
+      restore({ restoreRuntimeState: true });
       throw error;
     }
   }
