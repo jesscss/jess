@@ -57,6 +57,7 @@ import {
 } from './util/render-buffer.js';
 import { withRulesContext } from './util/context.js';
 import { prepareCallableEvalCandidates } from './util/callable-candidate.js';
+import { prepareCallableCandidateState } from './util/callable-candidate-state.js';
 import { evaluateCallableCandidateOutput } from './util/callable-candidate-output.js';
 import {
   createCallableOutputState,
@@ -3916,7 +3917,7 @@ export type CallableRulesEntry = {
   index?: number;
 };
 
-type CallableEntry = Mixin | CallableRulesEntry;
+export type CallableEntry = Mixin | CallableRulesEntry;
 export type MixinEntry = CallableEntry | Ruleset;
 
 export function callableRulesEntry(
@@ -4148,22 +4149,29 @@ export class MixinCollection extends Node<MixinEntry[]> {
         continue;
       }
 
-      const candidateRules = getMixinEntryRules(candidate);
-      let rules = candidateRules;
-      recordCallableOutputSourceRules(outputState, getRootSourceRules(rules));
-      /** Create new rules, and add the candidate rules, to add to scope */
-      rules = rules.hasFlag(F_STATIC)
-        ? createUnlockedCallableRulesSurface(rules)
-        : createOwnedCallableRulesSurface(rules);
-      if (isNode(candidate, N.Mixin)) {
-        Reflect.set(rules, 'parent', candidateRules.parent);
+      if (!isCallableEntry(candidate)) {
+        throw new TypeError('Callable candidate setup expects a callable entry');
       }
-      // Mixin body vars should follow the same leaky/non-leaky visibility model as
-      // rulesets: visible outside only in Less/leaky mode, while remaining available
-      // as same-scope siblings during body evaluation either way.
-      rules.options.rulesVisibility ??= {};
-      rules.options.rulesVisibility.VarDeclaration = thisContext.leakyRules ? 'public' : 'private';
-      candidate.parent!.adopt(rules);
+      const candidateState = prepareCallableCandidateState({
+        candidate,
+        callSiteRules: thisContext.rulesContext,
+        leakyRules: thisContext.leakyRules === true,
+        resolvedBindingInfo: resolvedParamBindings.get(candidate),
+        createOwnedRules: createOwnedCallableRulesSurface,
+        createUnlockedRules: createUnlockedCallableRulesSurface,
+        getRootSourceRules
+      });
+      const candidateRules = getMixinEntryRules(candidate);
+      const {
+        sourceRules,
+        rules,
+        paramBindings,
+        signatureKey,
+        parentFrame,
+        lexicalScopeFrame,
+        fallbackScopeFrame
+      } = candidateState;
+      recordCallableOutputSourceRules(outputState, sourceRules);
       // Don't set index before evaluation - let evaluation assign the correct index
       /**
        * If we have params or a guard, we need to create a wrapper rules object,
@@ -4173,26 +4181,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       let outerRules: Rules | undefined;
 
       /** Now we need to add our parameters, if any */
-      const resolvedBindingInfo = !isNode(candidate, N.Ruleset)
-        ? resolvedParamBindings.get(candidate as CallableEntry)
-        : undefined;
-      const getParamsSignature = (): CallSignature => resolvedBindingInfo?.signatureKey;
-      const paramBindings = resolvedBindingInfo?.bindings ?? [];
-      const callSiteRules = thisContext.rulesContext;
-      const parentFrame: ScopeFrame | undefined = isNode(callSiteRules, N.Rules)
-        ? (callSiteRules as Rules).getScopeFrame()
-        : undefined;
-      const definitionFrame: ScopeFrame | undefined = isNode(candidate.parent, N.Rules)
-        ? (candidate.parent as Rules).getScopeFrame()
-        : undefined;
-      const lexicalScopeFrame = definitionFrame ?? parentFrame;
-      const fallbackScopeFrame = (
-        thisContext.leakyRules === true
-        && parentFrame
-        && parentFrame !== lexicalScopeFrame
-      )
-        ? parentFrame
-        : undefined;
+      const getParamsSignature = (): CallSignature => signatureKey;
       let usesPreboundParamGuardOuterRules = false;
       if (candidateParams || paramBindings.length > 0) {
         const needsOuterRules = Boolean(candidateGuard && !candidateGuard.hasFlag(F_STATIC));

@@ -124,6 +124,11 @@ Peter to pay Paul.
   now also live in `packages/core/src/tree/util/callable-special-case.ts`, so
   the ruleset-placement branch and detached-ruleset unlock/eval branch are no
   longer inline in `MixinCollection.evalCall(...)`.
+- Callable candidate setup state now also lives in
+  `packages/core/src/tree/util/callable-candidate-state.ts`, so owned-vs-
+  unlocked rules surface selection, mixin-body var visibility wiring, resolved
+  param-binding unpacking, and lexical/fallback frame derivation are no longer
+  inline in `MixinCollection.evalCall(...)`.
 - Callable candidate output execution now lives in
   `packages/core/src/tree/util/callable-candidate-output.ts`, so recursion
   gating, adopt/eval/adopt cleanup, candidate index restoration, and mixin
@@ -362,15 +367,16 @@ cross-purpose helper closures and less parse cost.
   default-guard probing, pending default-candidate execution, callable
   candidate output execution, callable outer-rules setup, callable scope-frame
   wiring, callable live-slot assembly, callable guard preparation, callable
-  special-case candidate handling, and mixin output wrapper construction.
+  special-case candidate handling, callable candidate setup state, and mixin
+  output wrapper construction.
 - The next extractable unit needs either a Rules-owned adapter input or a
   callable-invocation module that accepts Rules construction callbacks.
   Parameter matching, candidate prep, the default probe loop, pending default
   execution, candidate output execution, outer-rules reuse/setup,
   scope-frame wiring, live-slot assembly, guard preparation, output
-  aggregation, and special-case candidate handling are now out of the closure;
-  the next cut must delete a remaining guard/body orchestration closure
-  instead of just renaming it.
+  aggregation, special-case candidate handling, and candidate setup state are
+  now out of the closure; the next cut must delete a remaining guard/body
+  orchestration closure instead of just renaming it.
 
 **Completion gates:**
 
@@ -1045,6 +1051,32 @@ to choose the next queue.
    immediate candidate setup or another still-inline body/guard orchestration
    block instead of stale special-case-branch wording.
 
+### Completed Queue Pass: 2026-06-01 #48
+
+1. Lane B deleted another real `MixinCollection` orchestration block. Callable
+   candidate setup state moved out of `packages/core/src/tree/rules.ts` into
+   `packages/core/src/tree/util/callable-candidate-state.ts`, taking owned-vs-
+   unlocked rules selection, mixin-body var visibility wiring, resolved
+   param-binding unpacking, and lexical/fallback frame derivation with it.
+2. Lane B kept the runtime contract exact while shrinking the central file to
+   4353 lines. This pass slightly increased the static audit to `rules.ts: 62`,
+   `new-node: 289`, and module count `389`, so the new helper is only justified
+   because it deleted a real inline setup seam rather than pretending the
+   architecture got cheaper on every proxy metric. `MixinCollection.evalCall(...)`
+   still owns the main body/guard orchestration, but it no longer owns immediate
+   candidate setup state.
+3. Lane B added focused helper coverage instead of relying only on integration
+   fallout. `packages/core/src/tree/util/__tests__/callable-candidate-state.test.ts`
+   now proves owned-vs-unlocked rules preparation plus lexical/fallback frame
+   derivation directly, while focused `mixin` coverage keeps the production
+   callable setup paths pinned down.
+4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
+   frame seam is still blocked by the focused AtRule suite, the active
+   bubbling matrix, and the `media.less` AST serialization proof.
+5. Lane I refreshed Lane B truth and queue wording so the next pass targets a
+   remaining body/guard orchestration block instead of stale candidate-setup
+   wording.
+
 ### Next Queue
 
 1. **Lane A: collapse cleanup/prep state only if a state record disappears.**
@@ -1085,16 +1117,17 @@ to choose the next queue.
    execution, pending-default bookkeeping, candidate-output execution, and
    output aggregation are out, and outer-rules reuse/setup plus scope-frame
    wiring plus live-slot assembly plus guard preparation plus special-case
-   candidate handling are out too. The next callable slice should target
-   immediate candidate setup or another body-setup block only if one more
-   temporary collection, callback, or closure disappears from
+   candidate handling plus candidate setup state are out too. The next
+   callable slice should target another body/guard orchestration block only if
+   one more temporary collection, callback, or closure disappears from
    `MixinCollection`.
 
 4. **Lane B: keep helper extraction honest; do not split candidate execution or scope-frame setup unless local runtime machinery falls.**
 
-   The next cut needs to remove another real local seam such as immediate
-   candidate setup or another local orchestration closure. Do not add a helper
-   that only rephrases the same body work behind another callback.
+   The next cut needs to remove another real local seam such as remaining
+   body/guard orchestration. Do not add a helper that only rephrases the same
+   body work behind another callback, especially now that the static hotspot
+   audit has ticked upward slightly.
 
 5. **Lane B/G: keep measuring callable slices, not AtRule-only work.**
 
