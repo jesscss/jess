@@ -24,7 +24,7 @@ import {
   isPublicRulesEntry,
   keepsDuplicateMixinOutputDeclaration
 } from '../util/mixin-output-slot.js';
-import { createMixinOutputRulesWrapper } from '../rules.js';
+import { createCallableOuterRules, createMixinOutputRulesWrapper } from '../rules.js';
 
 let context: Context;
 
@@ -143,6 +143,22 @@ describe('Mixin', () => {
     expect(output.options.mixinOutputSlot?.sourceRules).toBe(body);
     expect(output.options.mixinOutputSlot?.ambientLookup).toBe(false);
     expect(output.value).toEqual([]);
+  });
+
+  it('creates callable outer rules wrappers through a named helper', () => {
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const output = createCallableOuterRules(body, {
+      rulesVisibility: {
+        Declaration: 'public'
+      }
+    });
+
+    expect(output).not.toBe(body);
+    expect(output.options.rulesVisibility?.Declaration).toBe('public');
+    expect(output.value).toEqual([]);
+    expect(body.value).toHaveLength(1);
   });
 
   describe('calling', () => {

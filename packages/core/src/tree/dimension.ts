@@ -12,7 +12,7 @@ import { type Operator, calculate } from './util/calculate.js';
 import { logger } from '../logger.js';
 import round from 'lodash-es/round.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { finalizeOperationResult } from './util/operation-result.js';
+import { finalizeOperationResult, finalizePublicOperationResult } from './util/operation-result.js';
 
 // import type { Context } from '../context.js'
 // import type { OutputCollector } from '../output'
@@ -75,7 +75,7 @@ export class Dimension extends Node<DimensionValue> {
       { rgb: [number, number, number] },
       { format: b.options?.format ?? ColorFormat.RGB }
     ));
-    return finalizeOperationResult(this, thisColor.operate(b, op, context));
+    return finalizePublicOperationResult(this, thisColor.operate(b, op, context));
   }
 
   override valueOf() {

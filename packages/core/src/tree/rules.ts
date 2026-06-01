@@ -59,6 +59,14 @@ import {
 import { withRulesContext } from './util/context.js';
 import { cloneBoundValue, createArgumentsBindingValue, createRestBindingValue, getArgumentsBindingValues } from './util/callable-binding.js';
 import { getCallableNodeSignature, getCallableRestSignature, getCallableSignatureKey } from './util/callable-signature.js';
+import {
+  CALLABLE_DEFAULT_FALSE,
+  CALLABLE_DEFAULT_FALSE_EITHER,
+  CALLABLE_DEFAULT_NONE,
+  CALLABLE_DEFAULT_TRUE,
+  type CallableDefaultGroup,
+  resolveCallableDefaultCandidateGroups
+} from './util/callable-default-guard.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
 import {
@@ -443,6 +451,10 @@ function createDerivedRulesSurface(
     attachMixinOutputSlot(output, sourceRules, options.restrictMixinOutputLookup === true);
   }
   return output;
+}
+
+export function createCallableOuterRules(sourceRules: Rules, options?: Rules['options']): Rules {
+  return createDerivedRulesSurface(sourceRules, { rulesOptions: options });
 }
 
 export function createMixinOutputRulesWrapper(sourceRules: Rules, restrictMixinOutputLookup: boolean): Rules {
@@ -4040,9 +4052,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
      * (Any mixin with a mis-match of
      * arguments fails.)
      */
-    function createDerivedOuterRules(sourceRules: Rules, options?: Rules['options']): Rules {
-      return createDerivedRulesSurface(sourceRules, { rulesOptions: options });
-    }
     function createEmptyDerivedRules(sourceRules: Rules): Rules {
       return createDerivedRulesSurface(sourceRules);
     }
@@ -4400,15 +4409,11 @@ export class MixinCollection extends Node<MixinEntry[]> {
       return String(raw);
     };
     const restrictMixinOutputLookup = thisContext.leakyRules !== true;
-    const DEF_FALSE_EITHER = -1;
-    const DEF_NONE = 0;
-    const DEF_TRUE = 1;
-    const DEF_FALSE = 2;
     type DefaultPendingCandidate = {
       candidate: CallableEntry;
       rules: Rules;
       params?: List<Node>;
-      group: number;
+      group: CallableDefaultGroup;
     };
     const pendingDefaultCandidates: DefaultPendingCandidate[] = [];
     let hasDefNoneCandidate = false;
@@ -4550,7 +4555,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         options?: Rules['options'],
         syncScopeFrame = true
       ): Rules => {
-        outerRules ??= createDerivedOuterRules(rules, options);
+        outerRules ??= createCallableOuterRules(rules, options);
         if (syncScopeFrame && rules.scopeFrame) {
           outerRules.scopeFrame = rules.scopeFrame;
         }
@@ -4691,7 +4696,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
           /** Allow lookup on the inherited rules */
           passes = false;
           let guardPasses = false;
-          let defaultGroup = DEF_FALSE_EITHER;
+          let defaultGroup: CallableDefaultGroup = CALLABLE_DEFAULT_FALSE_EITHER;
           if (hasDefault) {
             const originalIsDefault = thisContext.isDefault;
             let defaultProbeGuard: Node | undefined;
@@ -4737,10 +4742,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
             if (passWhenDefaultFalse || passWhenDefaultTrue) {
               passes = true;
               if (passWhenDefaultFalse && passWhenDefaultTrue) {
-                defaultGroup = DEF_NONE;
+                defaultGroup = CALLABLE_DEFAULT_NONE;
                 hasDefNoneCandidate = true;
               } else {
-                defaultGroup = passWhenDefaultTrue ? DEF_TRUE : DEF_FALSE;
+                defaultGroup = passWhenDefaultTrue ? CALLABLE_DEFAULT_TRUE : CALLABLE_DEFAULT_FALSE;
               }
             }
             guardPasses = passes;
@@ -4782,34 +4787,24 @@ export class MixinCollection extends Node<MixinEntry[]> {
     }
 
     if (pendingDefaultCandidates.length > 0) {
-      let defTrueCount = 0;
-      let defFalseCount = 0;
-      for (const pending of pendingDefaultCandidates) {
-        if (pending.group === DEF_TRUE) {
-          defTrueCount++;
-        } else if (pending.group === DEF_FALSE) {
-          defFalseCount++;
-        } else if (pending.group === DEF_NONE) {
-          hasDefNoneCandidate = true;
-        }
-      }
-
-      const defaultResult = hasDefNoneCandidate ? DEF_FALSE : DEF_TRUE;
+      const defaultResolution = resolveCallableDefaultCandidateGroups(hasDefNoneCandidate, pendingDefaultCandidates);
+      hasDefNoneCandidate = defaultResolution.hasDefNoneCandidate;
+      const defaultResult = defaultResolution.defaultResult;
       if (debugDefaultGuard) {
         console.log('[default-guard:resolution]', JSON.stringify({
           caller: debugCaller(),
           hasDefNoneCandidate,
-          defTrueCount,
-          defFalseCount,
+          defTrueCount: pendingDefaultCandidates.filter(pending => pending.group === CALLABLE_DEFAULT_TRUE).length,
+          defFalseCount: pendingDefaultCandidates.filter(pending => pending.group === CALLABLE_DEFAULT_FALSE).length,
           defaultResult
         }));
       }
-      if (!hasDefNoneCandidate && (defTrueCount + defFalseCount) > 1) {
+      if (defaultResolution.ambiguous) {
         throw new ReferenceError('Ambiguous use of default() while matching mixins.');
       }
 
       for (const pending of pendingDefaultCandidates) {
-        if (pending.group !== DEF_NONE && pending.group !== defaultResult) {
+        if (pending.group !== CALLABLE_DEFAULT_NONE && pending.group !== defaultResult) {
           continue;
         }
         await withRulesContext(thisContext, pending.rules, () =>

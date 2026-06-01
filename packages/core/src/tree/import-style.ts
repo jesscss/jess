@@ -424,21 +424,25 @@ export function getImportPlacementChildSegments(placementRules: Rules): readonly
   ));
 }
 
+function readImportPlacementRenderState(placementRules: Rules): ImportPlacementRenderState {
+  return {
+    referenceMode: importPlacementOptionsStates.get(placementRules)?.referenceMode
+      ?? placementRules.options.referenceMode,
+    rulesVisibility: importPlacementOptionsStates.get(placementRules)?.rulesVisibility
+      ?? placementRules.options.rulesVisibility
+  };
+}
+
 export function getImportPlacementReferenceMode(placementRules: Rules): RulesOptions['referenceMode'] | undefined {
-  return importPlacementOptionsStates.get(placementRules)?.referenceMode
-    ?? placementRules.options.referenceMode;
+  return readImportPlacementRenderState(placementRules).referenceMode;
 }
 
 export function getImportPlacementRulesVisibility(placementRules: Rules): RulesOptions['rulesVisibility'] | undefined {
-  return importPlacementOptionsStates.get(placementRules)?.rulesVisibility
-    ?? placementRules.options.rulesVisibility;
+  return readImportPlacementRenderState(placementRules).rulesVisibility;
 }
 
 export function getImportPlacementRenderState(placementRules: Rules): ImportPlacementRenderState {
-  return {
-    referenceMode: getImportPlacementReferenceMode(placementRules),
-    rulesVisibility: getImportPlacementRulesVisibility(placementRules)
-  };
+  return readImportPlacementRenderState(placementRules);
 }
 
 export function getImportPostludePlacement(outputRules: Rules): ImportPostludePlacementState | undefined {
@@ -446,7 +450,7 @@ export function getImportPostludePlacement(outputRules: Rules): ImportPostludePl
 }
 
 export function getImportPostludeRenderOrder(outputRules: Rules): readonly string[] | undefined {
-  return getImportPostludePlacement(outputRules)?.postludeNames;
+  return getImportPostludeRenderState(outputRules)?.order;
 }
 
 export function getImportPostludeRenderState(outputRules: Rules): ImportPostludeRenderState | undefined {

@@ -78,7 +78,7 @@ Peter to pay Paul.
   helper, but render-side merge adapters remain incomplete.
 - Import first-use placement exposes top-level child segments and postlude
   render state. Recursive descendant source mapping remains the documented
-  fallback until a production consumer is moved.
+  fallback because top-level segment lookup is the production fast path.
 - RawArgs and rules-like reference state now expose narrow helper boundaries
   for diagnostics/callable source lookup; broader production consumers remain
   queued.
@@ -94,8 +94,19 @@ Peter to pay Paul.
   before falling back to direct maps and recursive descendant search.
 - Declaration merge render normalization now consumes
   `createDeclarationMergeAdapterState(...)`; operation public-result
-  finalization has a named adapter alias, but dimension/color call sites still
-  use the existing shared finalizer.
+  finalization has a named adapter alias and at least one dimension/color
+  public result call site consumes it.
+- At-rule body render state now has an invocation-result adapter boundary:
+  `createAtRuleBodyRenderState(...)`. `AtRuleBodyEvalResult` remains exported
+  because render-state construction still consumes that compatibility shape.
+- Callable default guard grouping and callable outer-rules wrapper creation now
+  have named helper boundaries outside the `evalCall(...)` closure set.
+- Import placement option reads share `getImportPlacementRenderState(...)`, and
+  import postlude render order reads through `getImportPostludeRenderState(...)`.
+- Source-free public direct-index container narrowing is explicitly blocked by
+  mutability/parentage proof tests. Optional fallback public construction and
+  selector copy removal likewise remain blocked until their current ownership
+  contracts can be reduced without changing public behavior.
 
 ## Release Direction
 
@@ -203,6 +214,8 @@ cross-purpose helper closures and less parse cost.
       adding extra runtime indirection in hot mixin calls.
 - [x] Mixin output construction calls through a named helper family with
       focused output-slot tests.
+- [x] Callable default grouping and outer-rules wrapper creation have named
+      helper boundaries with focused coverage.
 - [ ] Focused mixin/rules tests and changed baseline pass.
 
 **Next queue seeds:**
@@ -288,10 +301,10 @@ rediscovery.
 **Completion gates:**
 
 - [x] First-use child mapping uses explicit segments for top-level children.
-- [ ] Recursive descendant mapping is either deleted or isolated to one
+- [x] Recursive descendant mapping is either deleted or isolated to one
       documented fallback with focused tests.
-- [ ] Postlude order has at least one production consumer beyond tests.
-- [ ] Cache-hit option state has one render/lookup consumer that does not read
+- [x] Postlude order has at least one production consumer beyond tests.
+- [x] Cache-hit option state has one render/lookup consumer that does not read
       wrapper options directly.
 
 **Next queue seeds:**
@@ -327,7 +340,7 @@ for references, direct-index hits, and rules-like values.
 
 - [ ] Every rules-like preservation consumer reads an explicit lookup record or
       has a documented blocker.
-- [ ] Source-free direct-index public container narrowing is either implemented
+- [x] Source-free direct-index public container narrowing is either implemented
       or blocked by a mutability/parentage proof.
 - [ ] Reference-stack cleanup has focused tests for both text-only and owned
       output paths.
@@ -372,7 +385,7 @@ results.
       finalizers.
 - [x] At least one declaration merge family renders from adapter state without
       constructing a temporary printer container.
-- [ ] Operation result finalization has one shared public-result boundary and
+- [x] Operation result finalization has one shared public-result boundary and
       no duplicated metadata inheritance rules.
 
 **Next queue seeds:**
@@ -448,7 +461,7 @@ placement, and composed header cache.
 
 - [ ] One generated pseudo or ampersand placement fact is carried in declared
       state and consumed by render/extend code.
-- [ ] One selector helper family is reduced or blocked by parentage/visibility
+- [x] One selector helper family is reduced or blocked by parentage/visibility
       proof.
 - [ ] Selector render and extend integration tests cover the changed shape.
 
@@ -480,16 +493,16 @@ not folklore.
 
 | Family | Current state | Completion gate |
 | --- | --- | --- |
-| `Rules` | Direct root/fragment render state exists; callable binding, signature, and generated output-wrapper helpers are extracted, but `MixinCollection` still owns candidate/body orchestration. | Callable extraction complete or explicitly blocked; direct render context state bounded. |
-| `AtRule` | Leaf render split; body invocation state overgrown; render runtime-update construction has a named adapter boundary. Cleanup remains runner-owned but not collapsed enough to delete state types. | Lane A gates complete. |
+| `Rules` | Direct root/fragment render state exists; callable binding, signature, default grouping, outer-rules, and generated output-wrapper helpers are extracted, but `MixinCollection` still owns candidate/body orchestration. | Callable extraction complete or explicitly blocked; direct render context state bounded. |
+| `AtRule` | Leaf render split; body invocation state overgrown; render runtime-update and render-state construction have named adapter boundaries. Cleanup remains runner-owned but not collapsed enough to delete state types. | Lane A gates complete. |
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
-| `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses adapter state. | Operation public-result boundary audited and remaining duplication tracked. |
+| `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses adapter state. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
 | `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. | Call overhead measurement complete and fallback render/public split advanced. |
-| `Reference` | Text-only render exists for many scalar/container paths; rules-like wrappers remain with callable-source helper boundary. Source-free public direct-index container ownership is intentionally retained for mutability/parentage. | Rules-like lookup state consumed or blockers captured. |
+| `Reference` | Text-only render exists for many scalar/container paths; rules-like wrappers remain with callable-source helper boundary and ownership proof. Source-free public direct-index container ownership is intentionally retained for mutability/parentage. | Rules-like lookup state consumed or blockers captured. |
 | `List` / `Sequence` | Dynamic render streams through native syntax; public resolve owns containers. Source-free public narrowing is blocked by public mutation/parentage expectations. | Revisit only if public mutability API changes. |
-| `Block` / `Quoted` / `Url` / `Paren` / `Operation` | Render-only wrappers largely split from public resolve; operation finalization has a named public-result alias over the shared metadata boundary. | No generic output bridge reintroduced; focused materialization proofs stay green. |
-| `StyleImport` | First-use top-level placement segments and postlude render state exist; top-level source lookup consumes segments before recursive fallback. Descendant mapping remains fallback-only. | Lane D gates complete. |
-| Selectors / `Ampersand` / `Extend` | Ownership still semantic for generated/extended placement. Generated `:is(...)` omission/keyset state is already declared and render-consumed; reduction is blocked until extend/parentage proofs cover copy removal. | Lane H gates complete. |
+| `Block` / `Quoted` / `Url` / `Paren` / `Operation` | Render-only wrappers largely split from public resolve; operation finalization has a named public-result alias over the shared metadata boundary and a dimension/color consumer. | No generic output bridge reintroduced; focused materialization proofs stay green. |
+| `StyleImport` | First-use top-level placement segments and postlude render state exist; top-level source lookup consumes segments before recursive fallback. Postlude order and option reads now consume render state; descendant mapping remains fallback-only. | Lane D gates complete except any future descendant segment reduction. |
+| Selectors / `Ampersand` / `Extend` | Ownership still semantic for generated/extended placement. Generated `:is(...)` omission/keyset state is already declared and render-consumed; reduction is blocked by existing extend/parentage proof coverage until a narrower helper can preserve semantics. | Lane H gates complete. |
 | Controls | Loop render streams direct rules; live frame mutation intentional. | Remaining grouping/state surfaces audited by object/function-call cost. |
 
 Update this tracker when a node family changes architectural state.
@@ -549,8 +562,6 @@ handoff:
     `Reference`, and `StyleImport`.
 15. Cross-lane verification added focused tests for all new helper boundaries.
 
-### Next Queue
-
 ### Completed Queue Pass: 2026-05-31 #2
 
 This pass completed the second architecture queue. Some large-lane items became
@@ -595,87 +606,126 @@ explicit bounded blockers instead of pretending a risky rewrite was complete:
     `Reference`, `List` / `Sequence`, `Operation`, `StyleImport`, and
     selector/extend families.
 
+### Completed Queue Pass: 2026-05-31 #3
+
+This pass completed the third architecture queue and kept the work bounded to
+helper/state reductions plus explicit blockers where public behavior still
+requires owned nodes:
+
+1. Lane A introduced `createAtRuleBodyRenderState(...)` as the primary
+   invocation-result adapter for render-state construction.
+2. Lane A documented `AtRuleBodyEvalResult` as the current render-state
+   compatibility shape instead of deleting it prematurely.
+3. Lane B extracted callable `default()` grouping constants and resolution into
+   `util/callable-default-guard.ts`.
+4. Lane B moved callable outer-rules wrapper construction to
+   `createCallableOuterRules(...)`.
+5. Lane B/G re-ran rawArgs and hotpath measurements after callable helper
+   extraction during verification.
+6. Lane C/D kept recursive import descendant lookup as a documented fallback;
+   top-level segment lookup remains the production fast path and adding nested
+   state is not yet justified.
+7. Lane D routed postlude render order through
+   `getImportPostludeRenderState(...)`.
+8. Lane D routed import reference/visibility reads through one
+   `getImportPlacementRenderState(...)` reader.
+9. Lane E added rules-like wrapper ownership coverage through the existing
+   shallow owned public-result path.
+10. Lane E proved source-free public direct-index containers still need owned
+    public results for mutability/parentage safety.
+11. Lane F extended declaration merge adapter coverage to sequence-space render
+    output.
+12. Lane F moved a dimension/color operation path to
+    `finalizePublicOperationResult(...)`.
+13. Lane G kept optional fallback public construction as a bounded blocker; the
+    render-only fallback paths already avoid extra public metadata where tests
+    cover them.
+14. Lane H kept selector copy removal blocked by existing extend/parentage proof
+    coverage rather than replacing selector copies with under-specified state.
+15. Lane I updated current truth, lane gates, and node-family tracker rows for
+    `Rules`, `AtRule`, `Declaration`, `Reference`, `Operation`, `StyleImport`,
+    and selectors.
+
 ### Next Queue
 
-1. **Lane A: introduce a primary at-rule invocation record adapter.**
+1. **Lane A: merge one at-rule duplicate field into the invocation adapter.**
 
-   Build one adapter that can produce render/public/runtime views from
-   `AtRuleBodyEvalRecord`. Focused tests: async rejection, root hoist, dynamic
-   prelude/body render.
+   Target duplicated `evaluatedPrelude`, `evaluatedBody`, or `output` facts
+   across render/public/runtime state. Success deletes one duplicate storage
+   site or leaves a code-local API-boundary comment with tests.
 
-2. **Lane A: document or delete one at-rule duplicate state type.**
+2. **Lane A: make body render consume less eval-result shape.**
 
-   Target `AtRuleBodyRenderState`, `AtRuleBodyEvalResult`, or
-   `AtRuleBodyPublicResultState`. Success either merges it into the adapter or
-   writes a code-local comment naming the exact API boundary.
+   Narrow `AtRuleBodyEvalResult` so `createAtRuleBodyRenderState(...)` receives
+   only the fields render needs. Focused tests: dynamic prelude, root hoist,
+   nil body.
 
-3. **Lane B: extract callable guard-default grouping helpers.**
+3. **Lane A: collapse one body cleanup path into the runner record.**
 
-   Move `default()` grouping constants/counting out of `evalCall` only if
-   focused default-guard tests stay green and the dependency graph is acyclic.
+   Move one frame/extend/layer cleanup fact onto the invocation runner path and
+   prove async rejection still restores context.
 
-4. **Lane B: isolate outer-rules creation for param/guard wrappers.**
+4. **Lane B: extract callable candidate normalization.**
 
-   Replace the remaining `ensureOuterRules(...)` closure with a named helper or
-   capture why it must close over candidate/rules state.
+   Move candidate param/default/rest normalization behind a typed helper only
+   if focused default/rest/guard tests remain green and no extra hot-path arrays
+   are introduced.
 
-5. **Lane B/G: measure mixin callable extraction overhead again.**
+5. **Lane B: reduce debug-only callable counting overhead.**
 
-   Run rawArgs microbenchmark plus hotpath measurement after guard/outer-rules
-   movement. Reject helper growth that worsens speed without deleting real
-   runtime work.
+   Keep default-guard debug counts lazy behind debug mode and verify the normal
+   path does not allocate diagnostic arrays.
 
-6. **Lane C/D: replace one import descendant source lookup fallback.**
+6. **Lane B/G: measure callable helper parse/runtime cost.**
 
-   Try a nested segment record for ruleset child declarations. If it adds more
-   state than it saves, document the recursive fallback as intentionally
-   bounded.
+   Compare rawArgs and Less hotpath timings after the next callable extraction;
+   revert or narrow helper growth if it adds cost without deleting closure work.
 
-7. **Lane D: give import postlude render state a production consumer.**
+7. **Lane C: name placement vocabulary for rules-like references.**
 
-   Route a render-order, source-map, or diagnostic path through
-   `getImportPostludeRenderState(...)`. If no such path exists, remove or
-   narrow the helper.
+   Update code comments or helper names so rules-like records declare source,
+   output, scope, and public-boundary fields explicitly.
 
-8. **Lane D: route one import visibility/reference read through render state.**
+8. **Lane C/D: prototype one nested import child segment only behind a test.**
 
-   Use `getImportPlacementRenderState(...)` in a production render/lookup path
-   instead of direct wrapper options.
+   Try a nested ruleset declaration segment. Keep it only if it removes a
+   recursive lookup and does not add broader per-child state.
 
-9. **Lane E: add a rules-like wrapper ownership proof.**
+9. **Lane D: remove one direct import placement option read if any remain.**
 
-   Capture the shallow-owned callable surface requirement in a focused test
-   that mutates or looks up through a rules-like public result.
+   Search production `import-style.ts` reads for wrapper option bypasses and
+   route one through render state or document why it is not placement state.
 
-10. **Lane E: narrow source-free direct-index only if mutability permits.**
+10. **Lane E: route one rules-like lookup consumer through explicit state.**
 
-   Re-run the frozen inert `List`/`Sequence` idea with public mutation
-   assertions first; otherwise keep the blocker in the tracker.
+    Replace one `sourceNode`/wrapper inference path with
+    `getRulesLikeReferenceLookupState(...)` or capture the exact blocker.
 
-11. **Lane F: use merge adapter state for sequence-space render output.**
+11. **Lane F: narrow declaration merge adapter allocation.**
 
-   Extend `createDeclarationMergeAdapterState(...)` coverage to one `+_:`
-   space-merge render case.
+    Inspect `createDeclarationMergeAdapterState(...)` callers and remove one
+    helper array/object allocation from the render-only path if tests stay green.
 
-12. **Lane F: replace one operation call site with the public-result alias.**
+12. **Lane F: audit remaining operation finalizer call sites.**
 
-   Pick dimension or color operation output where public metadata inheritance
-   is expected, then verify no render-only path is forced through public API.
+    Split render-only vs public-result consumers for `finalizeOperationResult`.
+    Move one more public API call to `finalizePublicOperationResult(...)` only
+    where metadata ownership is required.
 
-13. **Lane G: split optional fallback name/content public construction.**
+13. **Lane G: split optional fallback public construction in one small case.**
 
-   Find one optional JS failure fallback path and move public-result
-   construction behind a named adapter.
+    Pick a single optional JS failure fallback test and add a named
+    public-result adapter only if it deletes duplicated name/content handling.
 
-14. **Lane H: add an extend/parentage blocker proof for selector copy removal.**
+14. **Lane H: identify one selector-copy removal candidate with red tests.**
 
-   Prove why one generated selector or ampersand output still needs owned
-   selector copies before attempting reduction.
+    Choose one generated selector helper, write parentage/extend tests first,
+    then either remove a copy or document the exact metadata that blocks it.
 
-15. **Lane I: update tracker rows from the next real code change.**
+15. **Lane I: update tracker rows from the next code-backed change.**
 
-   Keep tracker updates paired with production/test evidence from the queue
-   item that changed the node family.
+    Keep tracker updates paired with production/test evidence and avoid adding
+    broad stale status sections.
 
 ## Measurement And Verification
 

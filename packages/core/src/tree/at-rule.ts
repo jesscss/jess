@@ -125,7 +125,7 @@ type AtRuleLeafState = {
   value: AtRuleValue;
 };
 
-type AtRuleBodyEvalResult = {
+export type AtRuleBodyEvalResult = {
   evalFrame: AtRule;
   node: AtRule | Nil;
   evaluatedPrelude?: Node;
@@ -469,6 +469,24 @@ function createAtRuleBodyPublicResultState(
   };
 }
 
+export function createAtRuleBodyRenderState(source: AtRule, result: AtRuleBodyEvalResult): AtRuleBodyRenderState {
+  if (result.node instanceof Nil) {
+    return {
+      kind: 'body-render',
+      source,
+      evaluatedPrelude: result.evaluatedPrelude,
+      output: result.output
+    };
+  }
+  return {
+    kind: 'body-render',
+    source,
+    evaluatedPrelude: result.evaluatedPrelude,
+    evaluatedBody: result.evaluatedBody ?? result.node.value.rules,
+    output: result.output
+  };
+}
+
 function applyAtRuleBodyPublicResultState(
   state: AtRuleBodyPublicResultState
 ): AtRule {
@@ -688,21 +706,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private createBodyRenderState(result: AtRuleBodyEvalResult): AtRuleBodyRenderState {
-    if (result.node instanceof Nil) {
-      return {
-        kind: 'body-render',
-        source: this,
-        evaluatedPrelude: result.evaluatedPrelude,
-        output: result.output
-      };
-    }
-    return {
-      kind: 'body-render',
-      source: this,
-      evaluatedPrelude: result.evaluatedPrelude,
-      evaluatedBody: result.evaluatedBody ?? result.node.value.rules,
-      output: result.output
-    };
+    return createAtRuleBodyRenderState(this, result);
   }
 
   private evalBodyPreludeState(context: Context): MaybePromise<Node | undefined> {

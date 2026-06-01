@@ -912,6 +912,15 @@ describe('Declaration', () => {
     });
   });
 
+  it('creates declaration merge adapter state for render-side space output', () => {
+    const value = new Sequence([new Nil(), any('1px'), new Sequence([any('2px')])]);
+
+    expect(createDeclarationMergeAdapterState(value, 'space')).toEqual({
+      value,
+      spaceValue: [value.value[1], value.value[2].value[0]]
+    });
+  });
+
   it('keeps root merged declaration output unchanged without recopying scalar leaves', async () => {
     const node = rules([
       decl({

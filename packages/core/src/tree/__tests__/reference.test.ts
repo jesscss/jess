@@ -1068,6 +1068,31 @@ describe('reference', () => {
       expect(context.referenceStack).toBe(0);
     });
 
+    it('keeps source-free public direct index container results owned for mutation safety', async () => {
+      const sourceList = list([any('a'), any('b')]);
+      sourceList.frozen = true;
+      const targetArray = new JsArray([sourceList]);
+      const root = rules([
+        vardecl({ name: 'items', value: targetArray })
+      ]);
+      setRulesContext(await root.eval(context));
+      const refNode = ref({
+        target: ref({ key: 'items' }, { type: 'variable' }),
+        key: 0
+      }, { type: 'index' });
+
+      const result = await refNode.resolve(context);
+
+      expect(result).toBeInstanceOf(List);
+      expect(result).not.toBe(sourceList);
+      if (result instanceof List) {
+        expect(result.parent).not.toBe(refNode);
+        expect(result.value).toHaveLength(sourceList.value.length);
+        expect(sourceList.value).toHaveLength(2);
+        expect(sourceList.frozen).toBe(true);
+      }
+    });
+
     it('keeps referenced source value containers canonical after resolve(context)', async () => {
       const value = list([
         any('one'),
