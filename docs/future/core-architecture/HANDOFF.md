@@ -111,6 +111,11 @@ Peter to pay Paul.
   `packages/core/src/tree/util/callable-default-guard.ts`, so the copied-guard
   cache closure, dual `default()` probe loop, and `isDefault` restoration are
   no longer inline inside `MixinCollection.evalCall(...)`.
+- Callable default-candidate bookkeeping now also lives in
+  `packages/core/src/tree/util/callable-default-guard.ts`, so defNone
+  contribution tracking, pending-default candidate collection, and pending-
+  default output flushing are no longer inline state-management blocks inside
+  `MixinCollection.evalCall(...)`.
 - Callable candidate output execution now lives in
   `packages/core/src/tree/util/callable-candidate-output.ts`, so recursion
   gating, adopt/eval/adopt cleanup, candidate index restoration, and mixin
@@ -955,6 +960,30 @@ to choose the next queue.
    pending-default output collection or another still-inline candidate/body
    orchestration block instead of stale guard-execution wording.
 
+### Completed Queue Pass: 2026-06-01 #45
+
+1. Lane B deleted another real `MixinCollection` orchestration block. Pending
+   callable default bookkeeping moved out of
+   `packages/core/src/tree/rules.ts` into
+   `packages/core/src/tree/util/callable-default-guard.ts`, taking defNone
+   contribution tracking, pending-default candidate collection, and pending-
+   default output flushing with it.
+2. Lane B kept the runtime contract exact while shrinking the central file to
+   4425 lines. `MixinCollection.evalCall(...)` still owns candidate body
+   setup and immediate non-default output execution, but it no longer owns the
+   inline pending-default state machine or post-loop flush block.
+3. Lane B added focused helper coverage instead of relying only on integration
+   fallout. `packages/core/src/tree/util/__tests__/callable-default-guard.test.ts`
+   now proves default-state recording and flush behavior directly, while the
+   focused `callable-guard`, `mixin`, and `mixin-recursion` suites keep the
+   production mixin/default paths pinned down.
+4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
+   frame seam is still blocked by the focused AtRule suite, the active
+   bubbling matrix, and the `media.less` AST serialization proof.
+5. Lane I refreshed Lane B truth and queue wording so the next pass targets
+   remaining immediate candidate-output routing or another still-inline
+   candidate/body orchestration block instead of stale pending-default wording.
+
 ### Next Queue
 
 1. **Lane A: collapse cleanup/prep state only if a state record disappears.**
@@ -992,20 +1021,19 @@ to choose the next queue.
 3. **Lane B: extract the next callable unit only if `evalCall(...)` loses another real guard/body closure.**
 
    Parameter matching, candidate prep, default-probe evaluation, guard
-   execution, and
-   candidate-output execution are out, and outer-rules reuse/setup plus
-   scope-frame wiring plus live-slot assembly plus guard preparation are out
-   too. The next callable slice should target pending-default output
-   collection, candidate output routing, or another body-setup block only if
-   one more temporary
+   execution, pending-default bookkeeping, and candidate-output execution are
+   out, and outer-rules reuse/setup plus scope-frame wiring plus live-slot
+   assembly plus guard preparation are out too. The next callable slice should
+   target immediate candidate-output routing, output-rule collection, or
+   another body-setup block only if one more temporary
    collection, callback, or closure disappears from `MixinCollection`.
 
 4. **Lane B: keep helper extraction honest; do not split candidate execution or scope-frame setup unless local runtime machinery falls.**
 
-   The next cut needs to remove another real local seam such as
-   pending-default output collection, candidate-output queueing, or another
-   local orchestration closure. Do not add a helper that only rephrases the
-   same body work behind another callback.
+   The next cut needs to remove another real local seam such as immediate
+   candidate-output routing, output-rule collection, or another local
+   orchestration closure. Do not add a helper that only rephrases the same
+   body work behind another callback.
 
 5. **Lane B/G: keep measuring callable slices, not AtRule-only work.**
 

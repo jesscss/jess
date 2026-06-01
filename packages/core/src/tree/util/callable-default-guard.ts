@@ -46,6 +46,11 @@ export type PendingCallableDefaultCandidate = {
   params?: List<Node>;
 };
 
+export type CallableDefaultState = {
+  hasDefNoneCandidate: boolean;
+  pendingCandidates: PendingCallableDefaultCandidate[];
+};
+
 type ProbeCallableDefaultGuardOptions = {
   context: Context;
   candidateGuard?: Node;
@@ -64,6 +69,26 @@ type ExecuteCallableDefaultCandidatesOptions<TCandidate extends PendingCallableD
 export type CallableDefaultExecutionResult = {
   resolution: CallableDefaultGroupResolution;
   outputs: Rules[];
+};
+
+type RecordCallableDefaultGuardResultOptions = {
+  state: CallableDefaultState;
+  guardResult: {
+    contributesDefNone: boolean;
+    pendingDefaultGroup?: CallableDefaultGroup;
+  };
+  rules: Rules;
+  sourceRules: Rules;
+  candidateParent?: Node;
+  candidateIndex?: number;
+  params?: List<Node>;
+};
+
+type FlushCallableDefaultOutputsOptions = {
+  context: Context;
+  state: CallableDefaultState;
+  restrictMixinOutputLookup: boolean;
+  runCandidate?: (candidate: PendingCallableDefaultCandidate) => Promise<void>;
 };
 
 function finalizeCallableDefaultGroupResolution(
@@ -221,4 +246,56 @@ export async function executeCallableDefaultCandidates<
     resolution,
     outputs
   };
+}
+
+export function createCallableDefaultState(): CallableDefaultState {
+  return {
+    hasDefNoneCandidate: false,
+    pendingCandidates: []
+  };
+}
+
+export function recordCallableDefaultGuardResult({
+  state,
+  guardResult,
+  rules,
+  sourceRules,
+  candidateParent,
+  candidateIndex,
+  params
+}: RecordCallableDefaultGuardResultOptions): void {
+  if (guardResult.contributesDefNone) {
+    state.hasDefNoneCandidate = true;
+  }
+  if (guardResult.pendingDefaultGroup === undefined) {
+    return;
+  }
+  state.pendingCandidates.push({
+    candidateParent,
+    candidateIndex,
+    rules,
+    sourceRules,
+    params,
+    group: guardResult.pendingDefaultGroup
+  });
+}
+
+export async function flushCallableDefaultOutputs({
+  context,
+  state,
+  restrictMixinOutputLookup,
+  runCandidate
+}: FlushCallableDefaultOutputsOptions): Promise<CallableDefaultExecutionResult | undefined> {
+  if (state.pendingCandidates.length === 0) {
+    return undefined;
+  }
+  const execution = await executeCallableDefaultCandidates({
+    context,
+    hasDefNoneCandidate: state.hasDefNoneCandidate,
+    restrictMixinOutputLookup,
+    candidates: state.pendingCandidates,
+    runCandidate
+  });
+  state.hasDefNoneCandidate = execution.resolution.hasDefNoneCandidate;
+  return execution;
 }

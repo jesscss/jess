@@ -3,8 +3,11 @@ import {
   CALLABLE_DEFAULT_FALSE,
   CALLABLE_DEFAULT_NONE,
   CALLABLE_DEFAULT_TRUE,
+  createCallableDefaultState,
   executeCallableDefaultCandidates,
+  flushCallableDefaultOutputs,
   probeCallableDefaultGuard,
+  recordCallableDefaultGuardResult,
   resolveCallableDefaultCandidateGroups,
   resolveCallableDefaultGroup
 } from '../callable-default-guard.js';
@@ -156,5 +159,58 @@ describe('callable default guard helpers', () => {
       ],
       runCandidate: async () => {}
     })).rejects.toThrow('Ambiguous use of default() while matching mixins.');
+  });
+
+  it('records defNone contributions and pending default candidates in one state object', () => {
+    const state = createCallableDefaultState();
+    const ruleSurface = rules([]);
+    const sourceSurface = rules([]);
+
+    recordCallableDefaultGuardResult({
+      state,
+      guardResult: {
+        contributesDefNone: true
+      },
+      rules: ruleSurface,
+      sourceRules: sourceSurface
+    });
+    recordCallableDefaultGuardResult({
+      state,
+      guardResult: {
+        contributesDefNone: false,
+        pendingDefaultGroup: CALLABLE_DEFAULT_TRUE
+      },
+      rules: ruleSurface,
+      sourceRules: sourceSurface
+    });
+
+    expect(state.hasDefNoneCandidate).toBe(true);
+    expect(state.pendingCandidates).toHaveLength(1);
+    expect(state.pendingCandidates[0]?.group).toBe(CALLABLE_DEFAULT_TRUE);
+  });
+
+  it('flushes pending default candidates through the shared execution helper', async () => {
+    const context = new Context();
+    const state = createCallableDefaultState();
+    const calls: string[] = [];
+    state.pendingCandidates.push({
+      label: 'true',
+      group: CALLABLE_DEFAULT_TRUE,
+      rules: rules([]),
+      sourceRules: rules([])
+    });
+
+    const execution = await flushCallableDefaultOutputs({
+      context,
+      state,
+      restrictMixinOutputLookup: true,
+      runCandidate: async (candidate) => {
+        calls.push(candidate.label);
+      }
+    });
+
+    expect(execution?.resolution.defaultResult).toBe(CALLABLE_DEFAULT_TRUE);
+    expect(state.hasDefNoneCandidate).toBe(false);
+    expect(calls).toEqual(['true']);
   });
 });

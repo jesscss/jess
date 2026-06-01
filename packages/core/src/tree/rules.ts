@@ -67,8 +67,9 @@ import { ensureCallableOuterRulesSurface } from './util/callable-outer-rules.js'
 import { matchCallableParams, type CallableParamMatch } from './util/callable-param-match.js';
 import { wireCallableScopeFrames } from './util/callable-scope-frame.js';
 import {
-  executeCallableDefaultCandidates,
-  type PendingCallableDefaultCandidate
+  createCallableDefaultState,
+  flushCallableDefaultOutputs,
+  recordCallableDefaultGuardResult
 } from './util/callable-default-guard.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
@@ -4114,8 +4115,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       return String(raw);
     };
     const restrictMixinOutputLookup = thisContext.leakyRules !== true;
-    const pendingDefaultCandidates: PendingCallableDefaultCandidate[] = [];
-    let hasDefNoneCandidate = false;
+    const defaultState = createCallableDefaultState();
     for (let candidate of evalCandidates) {
       if (isNode(candidate, N.Ruleset)) {
         // For Rulesets, guard was already evaluated at definition time in Ruleset.evalNode
@@ -4320,19 +4320,15 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (!guardResult.passes) {
         continue;
       }
-      if (guardResult.contributesDefNone) {
-        hasDefNoneCandidate = true;
-      }
-      if (guardResult.pendingDefaultGroup !== undefined) {
-        pendingDefaultCandidates.push({
-          candidateParent: candidate.parent,
-          candidateIndex: candidate.index,
-          rules,
-          sourceRules: getRootSourceRules(getMixinEntryRules(candidate as CallableEntry)),
-          params: getParamsSignature(),
-          group: guardResult.pendingDefaultGroup
-        });
-      }
+      recordCallableDefaultGuardResult({
+        state: defaultState,
+        guardResult,
+        rules,
+        sourceRules: getRootSourceRules(getMixinEntryRules(candidate as CallableEntry)),
+        candidateParent: candidate.parent,
+        candidateIndex: candidate.index,
+        params: getParamsSignature()
+      });
       if (guardResult.defersCandidateOutput) {
         continue;
       }
@@ -4351,28 +4347,23 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
     }
 
-    if (pendingDefaultCandidates.length > 0) {
-      const {
-        resolution: defaultResolution,
-        outputs: defaultOutputs
-      } = await executeCallableDefaultCandidates({
-        context: thisContext,
-        hasDefNoneCandidate,
-        restrictMixinOutputLookup,
-        candidates: pendingDefaultCandidates
-      });
-      hasDefNoneCandidate = defaultResolution.hasDefNoneCandidate;
-      const defaultResult = defaultResolution.defaultResult;
+    const defaultExecution = await flushCallableDefaultOutputs({
+      context: thisContext,
+      state: defaultState,
+      restrictMixinOutputLookup
+    });
+    if (defaultExecution) {
+      const defaultResult = defaultExecution.resolution.defaultResult;
       if (debugDefaultGuard) {
         console.log('[default-guard:resolution]', JSON.stringify({
           caller: debugCaller(),
-          hasDefNoneCandidate,
-          defTrueCount: defaultResolution.defTrueCount,
-          defFalseCount: defaultResolution.defFalseCount,
+          hasDefNoneCandidate: defaultState.hasDefNoneCandidate,
+          defTrueCount: defaultExecution.resolution.defTrueCount,
+          defFalseCount: defaultExecution.resolution.defFalseCount,
           defaultResult
         }));
       }
-      outputRules.push(...defaultOutputs);
+      outputRules.push(...defaultExecution.outputs);
     }
 
     /**
