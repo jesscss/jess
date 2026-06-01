@@ -58,6 +58,7 @@ import {
 } from './util/render-buffer.js';
 import { withRulesContext } from './util/context.js';
 import { createArgumentsBindingValue, getArgumentsBindingValues } from './util/callable-binding.js';
+import { prepareCallableEvalCandidates } from './util/callable-candidate.js';
 import { matchCallableParams, type CallableParamMatch } from './util/callable-param-match.js';
 import {
   CALLABLE_DEFAULT_FALSE,
@@ -310,6 +311,20 @@ function copyGuardForEval(guard: Node): Node {
     throw new TypeError(`Copied guard must remain ${guard.type}, got ${copied.type}`);
   }
   return copied;
+}
+
+function getRootSourceRules(rules: Rules): Rules {
+  let current = rules;
+  const seen = new Set<Rules>();
+  while (current.sourceNode && isNode(current.sourceNode, N.Rules)) {
+    const next = current.sourceNode;
+    if (next === current || seen.has(next)) {
+      break;
+    }
+    seen.add(current);
+    current = next;
+  }
+  return current;
 }
 
 function isRecordValue(value: unknown): value is Record<string, unknown> {
@@ -4085,164 +4100,13 @@ export class MixinCollection extends Node<MixinEntry[]> {
      * First, let's make an evaluation order that evaluates
      * default guards last.
      */
-    let hasDefault = false;
-    const guardContainsDefault = (node: Node | undefined): boolean => {
-      if (!node) {
-        return false;
-      }
-      if (node.type === 'DefaultGuard') {
-        return true;
-      }
-      if (isNode(node, N.Call)) {
-        const name = node.value.name;
-        const callName = String(typeof name === 'string' ? name : name.valueOf());
-        if (callName === 'default') {
-          return true;
-        }
-      }
-      const value = (node as { value?: unknown }).value;
-      if (Array.isArray(value)) {
-        for (const item of value) {
-          if (isNode(item) && guardContainsDefault(item)) {
-            return true;
-          }
-        }
-        return false;
-      }
-      if (value && typeof value === 'object') {
-        for (const item of Object.values(value)) {
-          if (isNode(item) && guardContainsDefault(item)) {
-            return true;
-          }
-          if (Array.isArray(item)) {
-            for (const child of item) {
-              if (isNode(child) && guardContainsDefault(child)) {
-                return true;
-              }
-            }
-          }
-        }
-      }
-      return false;
-    };
-    const hasFailedGuardAncestor = (node: Node): boolean => {
-      let current = node.parent;
-      while (current) {
-        if (isNode(current, N.Ruleset)) {
-          const guardNode = current.value.guard;
-          if (guardNode instanceof Nil) {
-            return true;
-          }
-        }
-        current = current.parent;
-      }
-      return false;
-    };
-    const getRootSourceRules = (rules: Rules): Rules => {
-      let current = rules;
-      const seen = new Set<Rules>();
-      while (current.sourceNode && isNode(current.sourceNode, N.Rules)) {
-        const next = current.sourceNode;
-        if (next === current || seen.has(next)) {
-          break;
-        }
-        seen.add(current);
-        current = next;
-      }
-      return current;
-    };
-    const getCallableCandidateIdentity = (candidate: MixinEntry): object => {
-      if (isNode(candidate, N.Ruleset)) {
-        return getRootSourceRules(getMixinEntryRules(candidate));
-      }
-      if (!isNode(candidate) && candidate.kind === 'callable-rules') {
-        return getRootSourceRules(getMixinEntryRules(candidate));
-      }
-      return candidate;
-    };
-    const stringifyCallableKey = (value: unknown): string => {
-      if (Array.isArray(value)) {
-        return value.map(item => stringifyCallableKey(item)).join('');
-      }
-      if (value instanceof Node) {
-        return String(value.valueOf());
-      }
-      return String(value ?? '');
-    };
-    const getCallKey = (node: Node | undefined): string | undefined => {
-      if (!isNode(node, N.Call)) {
-        return undefined;
-      }
-      const name = node.value.name;
-      if (typeof name === 'string') {
-        return name;
-      }
-      if (isNode(name, N.Reference)) {
-        return stringifyCallableKey(name.value.key);
-      }
-      return String(name.valueOf());
-    };
-    const rulesContainCallKey = (rules: Rules, key: string): boolean => {
-      for (const child of rules.children(true)) {
-        if (getCallKey(child) === key) {
-          return true;
-        }
-      }
-      return false;
-    };
-    const callerKey = getCallKey(caller);
-    const seenCandidateIdentities = new WeakSet<object>();
-    evalCandidates = mixinCandidates
-      .filter((candidate) => {
-        const candidateRules = getMixinEntryRules(candidate);
-        const sourceRules = candidateRules.sourceNode;
-        const inStack = thisContext.rulesEvalStack.some(entry => entry === sourceRules);
-        const blockedByFailedGuardAncestor = isNode(candidate)
-          ? hasFailedGuardAncestor(candidate)
-          : false;
-        const rulesetRecursesToCaller = callerKey !== undefined
-          && isNode(candidate, N.Ruleset)
-          && rulesContainCallKey(candidateRules, callerKey);
-        if (inStack || blockedByFailedGuardAncestor || rulesetRecursesToCaller) {
-          return false;
-        }
-        const identity = getCallableCandidateIdentity(candidate);
-        if (seenCandidateIdentities.has(identity)) {
-          return false;
-        }
-        seenCandidateIdentities.add(identity);
-        return true;
-      })
-      .map<MixinEntry>(
-        (candidate) => {
-          const hasDefaultGuard = Boolean(candidate.options?.hasDefault) || guardContainsDefault(getMixinEntryGuard(candidate));
-          if (hasDefaultGuard) {
-            candidate.options ??= {};
-            candidate.options.hasDefault = true;
-            hasDefault = true;
-          }
-          return candidate;
-        });
-
-    if (hasDefault) {
-      /** There is a default guard, so sort candidates */
-      evalCandidates = evalCandidates.slice(0).sort((a, b) => {
-        let aDefault = a.options?.hasDefault;
-        let bDefault = b.options?.hasDefault;
-        /** No guard (or is just a plain ruleset) */
-        if (!aDefault && !bDefault) {
-          return 0;
-        }
-
-        if (!aDefault) {
-          return -1;
-        }
-        if (!bDefault) {
-          return 1;
-        }
-        return 0;
-      });
-    }
+    const preparedCandidates = prepareCallableEvalCandidates({
+      mixinCandidates,
+      rulesEvalStack: thisContext.rulesEvalStack,
+      caller
+    });
+    evalCandidates = preparedCandidates.evalCandidates;
+    const hasDefault = preparedCandidates.hasDefault;
 
     if (evalCandidates.length === 0) {
       throw new ReferenceError('No matching mixins found.');
