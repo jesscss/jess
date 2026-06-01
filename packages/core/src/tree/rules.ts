@@ -57,15 +57,11 @@ import {
 } from './util/render-buffer.js';
 import { withRulesContext } from './util/context.js';
 import { prepareCallableEvalCandidates } from './util/callable-candidate.js';
-import { prepareCallableCandidateState } from './util/callable-candidate-state.js';
-import { executeCallableCandidate } from './util/callable-candidate-execution.js';
+import { executeCallableCandidateLoop } from './util/callable-candidate-loop.js';
 import {
   createCallableOutputState,
-  finalizeCallableEvalOutput,
-  pushCallableOutputRule,
-  recordCallableOutputSourceRules
+  finalizeCallableEvalOutput
 } from './util/callable-output.js';
-import { evaluateCallableSpecialCaseCandidate } from './util/callable-special-case.js';
 import { matchCallableParams, type CallableParamMatch } from './util/callable-param-match.js';
 import {
   createCallableDefaultState
@@ -4105,80 +4101,32 @@ export class MixinCollection extends Node<MixinEntry[]> {
     };
     const restrictMixinOutputLookup = thisContext.leakyRules !== true;
     const defaultState = createCallableDefaultState();
-    for (let candidate of evalCandidates) {
-      // Less detached rulesets are represented as anonymous mixins (name is undefined).
-      // Calling `@rulesetVar();` should *unlock* the rules into scope (including mixin definitions),
-      // not eagerly execute/flatten them.
-      if (!isNode(candidate) && candidate.kind !== 'callable-rules') {
-        throw new TypeError('Unexpected non-node mixin candidate');
-      }
-      const candidateName = getCallableEntryName(candidate);
-      const candidateParams = getCallableEntryParams(candidate);
-      const candidateGuard = getCallableEntryGuard(candidate);
-      const specialCaseResult = await evaluateCallableSpecialCaseCandidate({
-        candidate,
-        context: thisContext,
-        caller,
-        callSiteRules: caller?.rulesParent ?? caller?.sourceRulesParent ?? thisContext.rulesContext,
-        restrictMixinOutputLookup,
-        candidateName,
-        candidateParams,
-        candidateGuard,
-        createOwnedRules: createOwnedCallableRulesSurface,
-        createUnlockedRules: createUnlockedCallableRulesSurface,
-        evaluateOwnedRules: async rulesNode => withRulesContext(thisContext, rulesNode, () => rulesNode.eval(thisContext)),
-        getRootSourceRules
-      });
-      if (specialCaseResult.handled) {
-        if (specialCaseResult.output) {
-          const sourceRules = getRootSourceRules(getMixinEntryRules(candidate));
-          recordCallableOutputSourceRules(outputState, sourceRules);
-          pushCallableOutputRule(outputState, specialCaseResult.output);
-        }
-        continue;
-      }
-
-      if (!isCallableEntry(candidate)) {
-        throw new TypeError('Callable candidate setup expects a callable entry');
-      }
-      const candidateState = prepareCallableCandidateState({
-        candidate,
-        callSiteRules: thisContext.rulesContext,
-        leakyRules: thisContext.leakyRules === true,
-        resolvedBindingInfo: resolvedParamBindings.get(candidate),
-        createOwnedRules: createOwnedCallableRulesSurface,
-        createUnlockedRules: createUnlockedCallableRulesSurface,
-        getRootSourceRules
-      });
-      const { sourceRules } = candidateState;
-      recordCallableOutputSourceRules(outputState, sourceRules);
-      const execution = await executeCallableCandidate({
-        context: thisContext,
-        hasDefault,
-        candidate,
-        candidateGuard,
-        candidateParams,
-        candidateState,
-        nodeArgs,
-        defaultState,
-        restrictMixinOutputLookup,
-        copyGuardForEval,
-        createOuterRules: createCallableOuterRules
-      });
-      if (debugDefaultGuard && execution.debugDefaultProbeResult) {
-        console.log('[default-guard:candidate]', JSON.stringify({
-          caller: debugCaller(),
-          candidate: candidateName?.valueOf?.() ?? '<anon>',
-          guard: candidateGuard?.valueOf?.() ?? candidateGuard?.toString?.() ?? '',
-          params: candidateParams?.value?.map((param: any) => param?.valueOf?.() ?? String(param)) ?? [],
-          passWhenDefaultFalse: execution.debugDefaultProbeResult.passWhenDefaultFalse,
-          passWhenDefaultTrue: execution.debugDefaultProbeResult.passWhenDefaultTrue
-        }));
-      }
-      if (execution.output) {
-        pushCallableOutputRule(outputState, execution.output);
-      }
-    }
+    await executeCallableCandidateLoop({
+      context: thisContext,
+      caller,
+      evalCandidates,
+      hasDefault,
+      nodeArgs,
+      resolvedParamBindings,
+      outputState,
+      defaultState,
+      restrictMixinOutputLookup,
+      debugDefaultGuard,
+      debugCaller,
+      specialCaseCallSiteRules: caller?.rulesParent ?? caller?.sourceRulesParent ?? thisContext.rulesContext,
+      ordinaryCallSiteRules: thisContext.rulesContext,
+      copyGuardForEval,
+      createOwnedRules: createOwnedCallableRulesSurface,
+      createUnlockedRules: createUnlockedCallableRulesSurface,
+      evaluateOwnedRules: async rulesNode => withRulesContext(thisContext, rulesNode, () => rulesNode.eval(thisContext)),
+      getRootSourceRules,
+      createOuterRules: createCallableOuterRules,
+      isCallableEntry,
+      getMixinEntryRules,
+      getCallableEntryName,
+      getCallableEntryParams,
+      getCallableEntryGuard
+    });
 
     const output = await finalizeCallableEvalOutput({
       context: thisContext,
