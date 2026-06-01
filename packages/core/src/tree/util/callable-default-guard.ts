@@ -1,3 +1,8 @@
+import type { Context } from '../../context.js';
+import { Bool } from '../bool.js';
+import type { Node } from '../node.js';
+import { F_STATIC } from '../node.js';
+
 export const CALLABLE_DEFAULT_FALSE_EITHER = -1;
 export const CALLABLE_DEFAULT_NONE = 0;
 export const CALLABLE_DEFAULT_TRUE = 1;
@@ -17,8 +22,22 @@ export type CallableDefaultGroupResolution = {
   defFalseCount: number;
 };
 
+export type CallableDefaultGuardProbeResult = {
+  passWhenDefaultFalse: boolean;
+  passWhenDefaultTrue: boolean;
+  passes: boolean;
+  group: CallableDefaultGroup;
+};
+
 type CallableDefaultGroupCandidate = {
   group: CallableDefaultGroup;
+};
+
+type ProbeCallableDefaultGuardOptions = {
+  context: Context;
+  candidateGuard?: Node;
+  copyGuardForEval: (guard: Node) => Node;
+  beforeEval?: (guard: Node) => void;
 };
 
 function finalizeCallableDefaultGroupResolution(
@@ -74,4 +93,57 @@ export function resolveCallableDefaultCandidateGroups(
     }
   }
   return finalizeCallableDefaultGroupResolution(nextHasDefNoneCandidate, defTrueCount, defFalseCount);
+}
+
+export async function probeCallableDefaultGuard({
+  context,
+  candidateGuard,
+  copyGuardForEval,
+  beforeEval
+}: ProbeCallableDefaultGuardOptions): Promise<CallableDefaultGuardProbeResult> {
+  let defaultProbeGuard: Node | undefined;
+  const getDefaultProbeGuard = (): Node | undefined => {
+    if (!candidateGuard) {
+      return undefined;
+    }
+    if (candidateGuard.hasFlag(F_STATIC)) {
+      return candidateGuard;
+    }
+    defaultProbeGuard ??= copyGuardForEval(candidateGuard);
+    return defaultProbeGuard;
+  };
+  const evalWithDefault = async (isDefaultValue: boolean): Promise<boolean> => {
+    const probeGuard = getDefaultProbeGuard();
+    if (!probeGuard) {
+      return false;
+    }
+    beforeEval?.(probeGuard);
+    context.isDefault = isDefaultValue;
+    const probeResult = await probeGuard.eval(context);
+    return probeResult instanceof Bool && probeResult.value === true;
+  };
+
+  const originalIsDefault = context.isDefault;
+  try {
+    const passWhenDefaultFalse = await evalWithDefault(false);
+    const passWhenDefaultTrue = await evalWithDefault(true);
+    let passes = false;
+    let group: CallableDefaultGroup = CALLABLE_DEFAULT_FALSE_EITHER;
+    if (passWhenDefaultFalse || passWhenDefaultTrue) {
+      passes = true;
+      if (passWhenDefaultFalse && passWhenDefaultTrue) {
+        group = CALLABLE_DEFAULT_NONE;
+      } else {
+        group = passWhenDefaultTrue ? CALLABLE_DEFAULT_TRUE : CALLABLE_DEFAULT_FALSE;
+      }
+    }
+    return {
+      passWhenDefaultFalse,
+      passWhenDefaultTrue,
+      passes,
+      group
+    };
+  } finally {
+    context.isDefault = originalIsDefault;
+  }
 }

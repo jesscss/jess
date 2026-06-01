@@ -61,11 +61,10 @@ import { createArgumentsBindingValue, getArgumentsBindingValues } from './util/c
 import { prepareCallableEvalCandidates } from './util/callable-candidate.js';
 import { matchCallableParams, type CallableParamMatch } from './util/callable-param-match.js';
 import {
-  CALLABLE_DEFAULT_FALSE,
   CALLABLE_DEFAULT_FALSE_EITHER,
   CALLABLE_DEFAULT_NONE,
-  CALLABLE_DEFAULT_TRUE,
   type CallableDefaultGroup,
+  probeCallableDefaultGuard,
   resolveCallableDefaultCandidateGroups
 } from './util/callable-default-guard.js';
 import type { JsFunction } from './js-function.js';
@@ -4413,37 +4412,25 @@ export class MixinCollection extends Node<MixinEntry[]> {
           let guardPasses = false;
           let defaultGroup: CallableDefaultGroup = CALLABLE_DEFAULT_FALSE_EITHER;
           if (hasDefault) {
-            const originalIsDefault = thisContext.isDefault;
-            let defaultProbeGuard: Node | undefined;
-            const getDefaultProbeGuard = (): Node | undefined => {
-              if (!candidateGuard) {
-                return undefined;
+            const {
+              passWhenDefaultFalse,
+              passWhenDefaultTrue,
+              passes: defaultProbePasses,
+              group
+            } = await probeCallableDefaultGuard({
+              context: thisContext,
+              candidateGuard,
+              copyGuardForEval,
+              beforeEval: (probeGuard) => {
+                if (
+                  !probeGuard.hasFlag(F_STATIC)
+                  && !usesPreboundCallerGuardOuterRules
+                  && !usesPreboundParamGuardOuterRules
+                ) {
+                  ensureOuterRules(candidate.parent!);
+                }
               }
-              if (candidateGuard.hasFlag(F_STATIC)) {
-                return candidateGuard;
-              }
-              defaultProbeGuard ??= copyGuardForEval(candidateGuard);
-              return defaultProbeGuard;
-            };
-            const evalWithDefault = async (isDefaultValue: boolean): Promise<boolean> => {
-              const probeGuard = getDefaultProbeGuard();
-              if (!probeGuard) {
-                return false;
-              }
-              if (
-                !probeGuard.hasFlag(F_STATIC)
-                && !usesPreboundCallerGuardOuterRules
-                && !usesPreboundParamGuardOuterRules
-              ) {
-                ensureOuterRules(candidate.parent!);
-              }
-              thisContext.isDefault = isDefaultValue;
-              const probeResult = await probeGuard.eval(thisContext);
-              return probeResult instanceof Bool && probeResult.value === true;
-            };
-            const passWhenDefaultFalse = await evalWithDefault(false);
-            const passWhenDefaultTrue = await evalWithDefault(true);
-            thisContext.isDefault = originalIsDefault;
+            });
             if (debugDefaultGuard) {
               console.log('[default-guard:candidate]', JSON.stringify({
                 caller: debugCaller(),
@@ -4454,14 +4441,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
                 passWhenDefaultTrue
               }));
             }
-            if (passWhenDefaultFalse || passWhenDefaultTrue) {
-              passes = true;
-              if (passWhenDefaultFalse && passWhenDefaultTrue) {
-                defaultGroup = CALLABLE_DEFAULT_NONE;
-                hasDefNoneCandidate = true;
-              } else {
-                defaultGroup = passWhenDefaultTrue ? CALLABLE_DEFAULT_TRUE : CALLABLE_DEFAULT_FALSE;
-              }
+            passes = defaultProbePasses;
+            defaultGroup = group;
+            if (passes && defaultGroup === CALLABLE_DEFAULT_NONE) {
+              hasDefNoneCandidate = true;
             }
             guardPasses = passes;
             if (passes) {
