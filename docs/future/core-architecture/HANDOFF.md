@@ -59,8 +59,8 @@ Peter to pay Paul.
   behind new helpers; it is deleting or narrowing the remaining eval/render
   carriers and call-path rediscovery.
 - Static audit snapshot from the current branch:
-  `new-node: 280`, `derive: 29`, `with-surface: 39`, `copy-leaves: 28`,
-  module-context count `376`.
+  `new-node: 280`, `derive: 29`, `with-surface: 38`, `copy-leaves: 28`,
+  module-context count `375`.
 - Hotpath measurement remains noisy. Use it to detect clear regressions or
   wins, not to justify a tiny static-count reduction by itself.
 - Shared placement vocabulary now exists in
@@ -394,10 +394,10 @@ cross-purpose helper closures and less parse cost.
 
 **Current dependency graph:**
 
-- `MixinCollection.evalCall(...)` still depends directly on the top-level
-  runtime boundary that supplies `withRulesContext(...)`-owned evaluation for
-  candidate bodies; the top-level arg/candidate/output choreography is now in
-  `packages/core/src/tree/util/callable-eval.ts`.
+- `MixinCollection.evalCall(...)` is now only a thin handoff into
+  `packages/core/src/tree/util/callable-eval.ts`; ruleset special-case
+  candidate eval owns its own `withRulesContext(...)` boundary instead of
+  consuming a Rules-owned evaluation callback from `rules.ts`.
 - Pure helper candidates already outside the closure are callable signatures,
   callable default-group resolution, callable binding value construction,
   callable parameter matching, callable entry access, callable candidate
@@ -409,16 +409,16 @@ cross-purpose helper closures and less parse cost.
   setup state, callable candidate execution, callable candidate-loop
   dispatch, callable eval output finalization, and mixin output wrapper
   construction.
-- The remaining extractable unit now needs either a smaller
-  `evaluateOwnedRules(...)` runtime boundary or another Rules-owned callable
-  surface to disappear. Parameter matching, candidate prep, callable-entry
-  access, arg evaluation, candidate scan/match, empty-candidate rejection,
-  default-probe evaluation, pending default execution, candidate output
-  execution, outer-rules reuse/setup, scope-frame wiring, live-slot assembly,
-  guard preparation, output aggregation, special-case candidate handling,
-  candidate setup state, candidate execution, candidate-loop dispatch,
-  eval-output finalization, top-level callable sequencing, and callable
-  surface construction are now out of the local `MixinCollection` body.
+- The remaining extractable unit now needs another real Rules-owned callable
+  adapter or exported surface to disappear. Parameter matching, candidate
+  prep, callable-entry access, arg evaluation, candidate scan/match,
+  empty-candidate rejection, default-probe evaluation, pending default
+  execution, candidate output execution, outer-rules reuse/setup, scope-frame
+  wiring, live-slot assembly, guard preparation, output aggregation,
+  special-case candidate handling, candidate setup state, candidate execution,
+  candidate-loop dispatch, eval-output finalization, top-level callable
+  sequencing, callable surface construction, and the ruleset special-case
+  eval callback seam are now out of the local `MixinCollection` body.
 
 **Completion gates:**
 
@@ -1316,6 +1316,31 @@ to choose the next queue.
    callable work if another real Rules-owned runtime boundary shrinks, instead
    of pretending the top-level `evalCall(...)` choreography still lives inline.
 
+### Completed Queue Pass: 2026-06-01 #57
+
+1. Lane B deleted another real Rules-owned callable boundary from
+   `packages/core/src/tree/rules.ts`. Ruleset special-case candidate eval no
+   longer receives an `evaluateOwnedRules(...)` callback threaded through
+   `MixinCollection -> callable-eval -> callable-candidate-loop ->
+   callable-special-case`; `packages/core/src/tree/util/callable-special-case.ts`
+   now owns the `withRulesContext(...rules.eval(context))` path directly.
+2. Lane B kept the runtime contract exact while shrinking the central file to
+   3801 lines and improving the static audit to `rules.ts: 48`, `new-node:
+   280`, `with-surface: 38`, `derive: 29`, and module count `375`. This pass
+   deleted one more runtime adapter seam instead of just rebundling helper
+   parameters.
+3. Lane B kept focused proof coverage honest. The callable-eval,
+   callable-special-case, and callable-candidate-loop helper suites all stayed
+   green after the callback deletion, so the ruleset special-case path is
+   directly covered at the helper boundary that changed.
+4. Lane B/G has fresh callable measurements on the final tree again: rawArgs
+   measured `0.0005ms` plain and `0.0026ms` metadata median during this pass,
+   the full changed baseline stayed green, and the hotspot audit still shows
+   no render/eval/resolve surface lines.
+5. Lane I refreshed Lane B truth and queue wording so the next pass only cuts
+   callable work if another real Rules-owned adapter or exported callable
+   surface disappears, instead of stale `evaluateOwnedRules(...)` language.
+
 ### Next Queue
 
 1. **Lane A: collapse cleanup/prep state only if a state record disappears.**
@@ -1357,17 +1382,19 @@ to choose the next queue.
    guard execution, pending-default bookkeeping, candidate-output execution,
    output aggregation, special-case candidate handling, candidate setup state,
    candidate execution, candidate-loop dispatch, eval-output finalization,
-   top-level callable sequencing, and callable surface construction are out.
-   The next callable slice should only land if the remaining
-   `evaluateOwnedRules(...)` runtime boundary or another Rules-owned callable
-   adapter actually gets smaller.
+   top-level callable sequencing, callable surface construction, and the
+   ruleset special-case eval callback seam are out. The next callable slice
+   should only land if another Rules-owned callable adapter or exported helper
+   surface actually gets smaller.
 
 4. **Lane B: keep helper extraction honest; do not split the new helper modules unless local runtime machinery falls.**
 
    `callable-eval.ts` and `callable-surface.ts` are only justified because
    they deleted the last inline `evalCall(...)` choreography and the local
-   callable surface helpers at the same time. Do not subdivide them further
-   unless a callback, branch, or temporary runtime surface disappears.
+   callable surface helpers at the same time, and `callable-special-case.ts`
+   only grew because it deleted the threaded rules-eval callback seam. Do not
+   subdivide them further unless a callback, branch, or temporary runtime
+   surface disappears.
 
 5. **Lane B/G: keep measuring callable slices, not AtRule-only work.**
 

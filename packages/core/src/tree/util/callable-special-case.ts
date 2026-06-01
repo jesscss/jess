@@ -7,6 +7,7 @@ import type { List } from '../list.js';
 import type { MixinEntry, Rules } from '../rules.js';
 import { isNode } from './is-node.js';
 import { attachMixinOutputSlot } from './mixin-output-slot.js';
+import { withRulesContext } from './context.js';
 
 export type CallableSpecialCaseResult = {
   handled: boolean;
@@ -24,7 +25,6 @@ type EvaluateCallableSpecialCaseCandidateOptions = {
   candidateGuard?: Node | Nil;
   createOwnedRules: (sourceRules: Rules) => Rules;
   createUnlockedRules: (sourceRules: Rules) => Rules;
-  evaluateOwnedRules: (rules: Rules) => Promise<Rules>;
   getRootSourceRules: (rules: Rules) => Rules;
 };
 
@@ -39,7 +39,6 @@ export async function evaluateCallableSpecialCaseCandidate({
   candidateGuard,
   createOwnedRules,
   createUnlockedRules,
-  evaluateOwnedRules,
   getRootSourceRules
 }: EvaluateCallableSpecialCaseCandidateOptions): Promise<CallableSpecialCaseResult> {
   if (isNode(candidate, N.Ruleset)) {
@@ -52,7 +51,7 @@ export async function evaluateCallableSpecialCaseCandidate({
     let rules = createOwnedRules(sourceRules);
     const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
     callParent.adopt(rules);
-    rules = await evaluateOwnedRules(rules);
+    rules = await withRulesContext(context, rules, () => rules.eval(context));
     callParent.adopt(rules);
     rules.index = candidate.index;
     attachMixinOutputSlot(rules, sourceRules, restrictMixinOutputLookup, {

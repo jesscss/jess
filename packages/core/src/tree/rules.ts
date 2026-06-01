@@ -53,7 +53,6 @@ import {
   type RenderBuffer,
   writeRenderText
 } from './util/render-buffer.js';
-import { withRulesContext } from './util/context.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
 import {
@@ -3794,8 +3793,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
     return evaluateCallableCollection({
       context: thisContext,
       mixinEntries: this.value,
-      args: args?.value ?? [],
-      evaluateOwnedRules: async rulesNode => withRulesContext(thisContext, rulesNode, () => rulesNode.eval(thisContext))
+      args: args?.value ?? []
     });
   }
 }

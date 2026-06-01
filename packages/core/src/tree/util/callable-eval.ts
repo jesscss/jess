@@ -22,14 +22,12 @@ type EvaluateCallableCollectionOptions = {
   context: Context;
   mixinEntries: readonly MixinEntry[];
   args: readonly Node[];
-  evaluateOwnedRules: (rules: Rules) => Promise<Rules>;
 };
 
 export async function evaluateCallableCollection({
   context,
   mixinEntries,
-  args,
-  evaluateOwnedRules
+  args
 }: EvaluateCallableCollectionOptions): Promise<Rules> {
   const caller = context.caller;
   const argEvalRulesContext = caller?.rulesParent ?? caller?.sourceRulesParent ?? context.rulesContext;
@@ -71,7 +69,6 @@ export async function evaluateCallableCollection({
     copyGuardForEval,
     createOwnedRules: createOwnedCallableRulesSurface,
     createUnlockedRules: createUnlockedCallableRulesSurface,
-    evaluateOwnedRules,
     getRootSourceRules,
     createOuterRules: createCallableOuterRules
   });

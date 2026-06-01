@@ -22,8 +22,7 @@ describe('callable eval helper', () => {
     const output = await evaluateCallableCollection({
       context,
       mixinEntries: [candidate],
-      args: [any('blue')],
-      evaluateOwnedRules: async rulesNode => rulesNode.eval(context)
+      args: [any('blue')]
     });
 
     expect(output.toString()).toContain('color: blue;');
@@ -44,8 +43,7 @@ describe('callable eval helper', () => {
     await expect(evaluateCallableCollection({
       context,
       mixinEntries: [candidate],
-      args: [any('red'), any('blue')],
-      evaluateOwnedRules: async rulesNode => rulesNode.eval(context)
+      args: [any('red'), any('blue')]
     })).rejects.toThrow('No matching mixins found.');
   });
 });

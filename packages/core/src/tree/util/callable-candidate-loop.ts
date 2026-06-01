@@ -36,7 +36,6 @@ type ExecuteCallableCandidateLoopOptions = {
   copyGuardForEval: (guard: Node) => Node;
   createOwnedRules: (sourceRules: Rules) => Rules;
   createUnlockedRules: (sourceRules: Rules) => Rules;
-  evaluateOwnedRules: (rules: Rules) => Promise<Rules>;
   getRootSourceRules: (rules: Rules) => Rules;
   createOuterRules: (rules: Rules, options?: Rules['options']) => Rules;
 };
@@ -58,7 +57,6 @@ export async function executeCallableCandidateLoop({
   copyGuardForEval,
   createOwnedRules,
   createUnlockedRules,
-  evaluateOwnedRules,
   getRootSourceRules,
   createOuterRules
 }: ExecuteCallableCandidateLoopOptions): Promise<void> {
@@ -84,7 +82,6 @@ export async function executeCallableCandidateLoop({
       candidateGuard,
       createOwnedRules,
       createUnlockedRules,
-      evaluateOwnedRules,
       getRootSourceRules
     });
     if (specialCaseResult.handled) {

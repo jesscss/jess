@@ -45,7 +45,6 @@ describe('callable special-case helper', () => {
       candidateGuard: undefined,
       createOwnedRules: createOwnedCallableRulesSurface,
       createUnlockedRules: createUnlockedCallableRulesSurface,
-      evaluateOwnedRules: async rulesNode => rulesNode.eval(context),
       getRootSourceRules
     });
 
@@ -97,7 +96,6 @@ describe('callable special-case helper', () => {
       candidateGuard: undefined,
       createOwnedRules: createOwnedCallableRulesSurface,
       createUnlockedRules: createUnlockedCallableRulesSurface,
-      evaluateOwnedRules: async rulesNode => rulesNode.eval(context),
       getRootSourceRules
     });
 
@@ -128,7 +126,6 @@ describe('callable special-case helper', () => {
       candidateGuard: candidate.value.guard,
       createOwnedRules: createOwnedCallableRulesSurface,
       createUnlockedRules: createUnlockedCallableRulesSurface,
-      evaluateOwnedRules: async rulesNode => rulesNode.eval(context),
       getRootSourceRules
     });
 
