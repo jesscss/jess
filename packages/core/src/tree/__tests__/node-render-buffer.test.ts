@@ -18,7 +18,6 @@ import {
   compound,
   condition,
   coll,
-  callableRulesEntry,
   customdecl,
   decl,
   defaultguard,
@@ -65,6 +64,7 @@ import {
 import { extendList } from '../extend-list.js';
 import { jsexpr } from '../js-expr.js';
 import { F_MAY_ASYNC, F_NON_STATIC, Node } from '../node-base.js';
+import { callableRulesEntry } from '../util/callable-entry.js';
 import { OutputWriter, getPrintOptions, type PrintOptions } from '../util/print.js';
 import {
   createRenderBuffer,

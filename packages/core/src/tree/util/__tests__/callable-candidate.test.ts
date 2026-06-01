@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { call, condition, defaultguard, el, ref, rules, ruleset } from '../../index.js';
-import { callableRulesEntry } from '../../rules.js';
+import { callableRulesEntry } from '../callable-entry.js';
 import { prepareCallableEvalCandidates } from '../callable-candidate.js';
 
 describe('callable candidate helpers', () => {

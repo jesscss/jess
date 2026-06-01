@@ -2,8 +2,9 @@ import type { Node } from '../node.js';
 import { N } from '../node-type.js';
 import { F_STATIC } from '../node.js';
 import type { ScopeFrame } from '../scope-frame.js';
-import type { CallableEntry, Rules } from '../rules.js';
 import type { CallableParamMatch, CallableParamBindingRecord } from './callable-param-match.js';
+import type { Rules } from '../rules.js';
+import type { CallableEntry } from './callable-entry.js';
 import { isNode } from './is-node.js';
 
 export type PreparedCallableCandidateState = {

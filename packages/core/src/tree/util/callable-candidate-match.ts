@@ -1,7 +1,11 @@
 import type { Node } from '../node.js';
-import type { CallableEntry, MixinEntry } from '../rules.js';
 import { prepareCallableEvalCandidates, type CallableEvalCandidatePreparation } from './callable-candidate.js';
-import { getCallableEntryParams, isCallableEntry } from './callable-entry.js';
+import {
+  type CallableEntry,
+  type MixinEntry,
+  getCallableEntryParams,
+  isCallableEntry
+} from './callable-entry.js';
 import { matchCallableParams, type CallableParamMatch } from './callable-param-match.js';
 
 export type CallableCandidateMatchPreparation = CallableEvalCandidatePreparation & {

@@ -2,7 +2,8 @@ import type { Node } from '../node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { isNode } from './is-node.js';
-import type { MixinEntry, Rules } from '../rules.js';
+import type { Rules } from '../rules.js';
+import { type MixinEntry, getCallableEntryGuard, getMixinEntryRules } from './callable-entry.js';
 
 export type CallableEvalCandidatePreparation = {
   evalCandidates: MixinEntry[];
@@ -14,14 +15,6 @@ type CallableEvalCandidatePreparationOptions = {
   rulesEvalStack: readonly Node[];
   caller?: Node;
 };
-
-function getMixinEntryRules(entry: MixinEntry): Rules {
-  return entry.value.rules;
-}
-
-function getMixinEntryGuard(entry: MixinEntry): Node | Nil | undefined {
-  return entry.value.guard;
-}
 
 function guardContainsDefault(node: Node | undefined): boolean {
   if (!node) {
@@ -180,7 +173,7 @@ export function prepareCallableEvalCandidates({
     }
     seenCandidateIdentities.add(identity);
 
-    const hasDefaultGuard = Boolean(candidate.options?.hasDefault) || guardContainsDefault(getMixinEntryGuard(candidate));
+    const hasDefaultGuard = Boolean(candidate.options?.hasDefault) || guardContainsDefault(getCallableEntryGuard(candidate));
     if (hasDefaultGuard) {
       candidate.options ??= {};
       candidate.options.hasDefault = true;

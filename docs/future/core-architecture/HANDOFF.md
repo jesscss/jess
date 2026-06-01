@@ -157,6 +157,11 @@ Peter to pay Paul.
   policy, callable rules surface creation, wrapper/empty output surface
   creation, root-source lookup, and indexed-child checks no longer live as
   local rules-container helpers.
+- Callable entry shape/factory now also lives in
+  `packages/core/src/tree/util/callable-entry.ts`, so the synthetic
+  `callable-rules` entry type and `callableRulesEntry(...)` constructor no
+  longer widen `packages/core/src/tree/rules.ts` just to support helper/test
+  consumers and function/call setup.
 - Helper-oriented callable surface tests now import directly from
   `packages/core/src/tree/util/callable-surface.ts` instead of through
   `packages/core/src/tree/rules.ts`, so those helper exports no longer widen
@@ -406,6 +411,11 @@ cross-purpose helper closures and less parse cost.
   helpers for tests. The remaining callable helper consumers import those
   symbols from `callable-surface.ts` directly, leaving `rules.ts` focused on
   real rule-container/runtime exports.
+- `packages/core/src/tree/rules.ts` no longer owns the synthetic callable
+  entry shape or factory. `CallableRulesEntry`, `CallableEntry`,
+  `MixinEntry`, and `callableRulesEntry(...)` now live in
+  `packages/core/src/tree/util/callable-entry.ts`, and the callable helper
+  stack plus function/call setup import them there directly.
 - Pure helper candidates already outside the closure are callable signatures,
   callable default-group resolution, callable binding value construction,
   callable parameter matching, callable entry access, callable candidate
@@ -425,9 +435,9 @@ cross-purpose helper closures and less parse cost.
   wiring, live-slot assembly, guard preparation, output aggregation,
   special-case candidate handling, candidate setup state, candidate execution,
   candidate-loop dispatch, eval-output finalization, top-level callable
-  sequencing, callable surface construction, and the ruleset special-case
-  eval callback seam are now out of the local `MixinCollection` body. Test-
-  only callable surface re-exports are gone too.
+  sequencing, callable surface construction, callable entry construction, and
+  the ruleset special-case eval callback seam are now out of the local
+  `MixinCollection` body. Test-only callable surface re-exports are gone too.
 
 **Completion gates:**
 
@@ -1350,30 +1360,30 @@ to choose the next queue.
    callable work if another real Rules-owned adapter or exported callable
    surface disappears, instead of stale `evaluateOwnedRules(...)` language.
 
-### Completed Queue Pass: 2026-06-01 #58
+### Completed Queue Pass: 2026-06-01 #59
 
 1. Lane B deleted another real Rules-owned callable surface from
-   `packages/core/src/tree/rules.ts`. The helper-only callable surface exports
-   (`createCallableOuterRules`, `createMixinOutputRulesWrapper`,
-   `createOwnedCallableRulesSurface`, `createUnlockedCallableRulesSurface`,
-   `getRootSourceRules`) are no longer re-exported through `rules.ts`; helper
-   tests now import them directly from
-   `packages/core/src/tree/util/callable-surface.ts`.
+   `packages/core/src/tree/rules.ts`. The synthetic `callable-rules` entry
+   type aliases plus `callableRulesEntry(...)` now live in
+   `packages/core/src/tree/util/callable-entry.ts`, and function/call setup,
+   callable helpers, and focused tests import them there directly instead of
+   widening the central rules container.
 2. Lane B kept the runtime contract exact while shrinking the central file to
-   3794 lines and holding the static audit at `rules.ts: 48`, `new-node: 280`,
+   3764 lines and holding the static audit at `rules.ts: 48`, `new-node: 280`,
    `with-surface: 38`, `derive: 29`, and module count `375`. This pass
-   deleted exported surface area from the central module instead of adding new
-   runtime indirection.
+   deleted another exported/package-facing callable seam from the central
+   module instead of adding new runtime indirection.
 3. Lane B kept focused proof coverage honest. The callable outer-rules,
-   guard, candidate-state, candidate-execution, candidate-loop,
-   callable-special-case, and full mixin suites all stayed green after moving
-   those imports off `rules.ts`, proving the helper surface stands on its own.
+   candidate, candidate-match, candidate-state, candidate-loop,
+   callable-special-case, and node-render-buffer suites all stayed green after
+   moving the callable entry shape/factory off `rules.ts`, proving the helper
+   surface and cross-node consumers stand on their own.
 4. Lane B/G has fresh callable measurements on the final tree again: rawArgs
    measured `0.0003ms` plain and `0.0022ms` metadata median during this pass,
-   and the full changed baseline stayed green.
+   and the hotspot audit still shows no render/eval/resolve surface lines.
 5. Lane I refreshed Lane B truth and queue wording so the next pass only cuts
    callable work if another real runtime or package export surface disappears,
-   instead of lingering test-only re-export cleanup.
+   instead of lingering callable-entry surface cleanup.
 
 ### Next Queue
 
@@ -1416,11 +1426,11 @@ to choose the next queue.
    guard execution, pending-default bookkeeping, candidate-output execution,
    output aggregation, special-case candidate handling, candidate setup state,
    candidate execution, candidate-loop dispatch, eval-output finalization,
-   top-level callable sequencing, callable surface construction, and the
-   ruleset special-case eval callback seam are out, and the test-only
-   callable surface re-exports are gone. The next callable slice should only
-   land if another Rules-owned callable adapter, real package export, or
-   runtime helper surface actually gets smaller.
+   top-level callable sequencing, callable surface construction, callable
+   entry construction, and the ruleset special-case eval callback seam are
+   out, and the test-only callable surface re-exports are gone. The next
+   callable slice should only land if another Rules-owned callable adapter,
+   real package export, or runtime helper surface actually gets smaller.
 
 4. **Lane B: keep helper extraction honest; do not split the new helper modules unless local runtime machinery falls.**
 

@@ -7,7 +7,8 @@ import { callWithContext, getRawArgsPlacement, setRawArgsPlacement } from '../de
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable, pipe, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { callableRulesEntry, MixinCollection, Rules } from './rules.js';
+import { MixinCollection, Rules } from './rules.js';
+import { callableRulesEntry } from './util/callable-entry.js';
 import { Any } from './any.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 import { List, list } from './list.js';

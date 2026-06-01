@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { any, decl, list, mixin, rules, vardecl } from '../../index.js';
 import { F_STATIC } from '../../node.js';
-import { callableRulesEntry } from '../../rules.js';
+import { callableRulesEntry } from '../callable-entry.js';
 import { createOwnedCallableRulesSurface, createUnlockedCallableRulesSurface } from '../callable-surface.js';
 import { matchCallableParams } from '../callable-param-match.js';
 import { prepareCallableCandidateState } from '../callable-candidate-state.js';

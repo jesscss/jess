@@ -62,6 +62,7 @@ import {
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 import { evaluateCallableCollection } from './util/callable-eval.js';
+import type { MixinEntry } from './util/callable-entry.js';
 import { isIndexedRuleChild } from './util/callable-surface.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
@@ -3696,37 +3697,6 @@ interface RulesEntry {
  * Right now, the only nodes that can be registered to the scope for lookups
  */
 // type ScopeNodes = Declaration | VarDeclaration | Mixin | Ruleset | Rules
-type CallableEntryValue = {
-  name?: unknown;
-  params?: List<Node>;
-  rules: Rules;
-  guard?: Node;
-};
-
-export type CallableRulesEntry = {
-  kind: 'callable-rules';
-  value: CallableEntryValue;
-  parent?: Node;
-  options?: { hasDefault?: boolean };
-  index?: number;
-};
-
-export type CallableEntry = Mixin | CallableRulesEntry;
-export type MixinEntry = CallableEntry | Ruleset;
-
-export function callableRulesEntry(
-  value: CallableEntryValue,
-  parent?: Node,
-  index?: number
-): CallableRulesEntry {
-  return {
-    kind: 'callable-rules',
-    value,
-    parent,
-    index
-  };
-}
-
 function mixinHasNoRequiredParams(mixinNode: Mixin): boolean {
   const params = mixinNode.value.params;
   if (!params || params.length === 0) {

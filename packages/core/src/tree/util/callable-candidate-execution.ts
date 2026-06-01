@@ -2,8 +2,9 @@ import type { Context } from '../../context.js';
 import type { Node } from '../node.js';
 import { F_STATIC } from '../node.js';
 import type { List } from '../list.js';
-import type { Rules, CallableEntry } from '../rules.js';
+import type { Rules } from '../rules.js';
 import { evaluateCallableCandidateOutput } from './callable-candidate-output.js';
+import type { CallableEntry } from './callable-entry.js';
 import {
   recordCallableDefaultGuardResult,
   type CallableDefaultState

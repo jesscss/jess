@@ -1,16 +1,18 @@
 import type { Context } from '../../context.js';
 import type { Node } from '../node.js';
-import type { CallableEntry, MixinEntry, Rules } from '../rules.js';
 import type { CallableParamMatch } from './callable-param-match.js';
 import { prepareCallableCandidateState } from './callable-candidate-state.js';
 import { executeCallableCandidate } from './callable-candidate-execution.js';
 import {
+  type CallableEntry,
+  type MixinEntry,
   getCallableEntryGuard,
   getCallableEntryName,
   getCallableEntryParams,
   getMixinEntryRules,
   isCallableEntry
 } from './callable-entry.js';
+import type { Rules } from '../rules.js';
 import type { CallableDefaultState } from './callable-default-guard.js';
 import {
   pushCallableOutputRule,

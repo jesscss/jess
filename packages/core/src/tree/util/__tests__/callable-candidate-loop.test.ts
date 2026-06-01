@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../../context.js';
 import { any, decl, el, list, mixin, ref, rules, ruleset, vardecl } from '../../index.js';
-import { callableRulesEntry } from '../../rules.js';
+import { callableRulesEntry } from '../callable-entry.js';
 import {
   createCallableOuterRules,
   createOwnedCallableRulesSurface,

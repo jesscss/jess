@@ -1,12 +1,13 @@
 import type { Context } from '../../context.js';
 import type { Node } from '../node.js';
-import type { MixinEntry, Rules } from '../rules.js';
+import type { Rules } from '../rules.js';
 import { evaluateCallableArgs } from './callable-args.js';
 import { resolveCallableCandidateMatches } from './callable-candidate-match.js';
 import { executeCallableCandidateLoop } from './callable-candidate-loop.js';
 import { createCallableDefaultState } from './callable-default-guard.js';
 import { createCallableOutputState, finalizeCallableEvalOutput } from './callable-output.js';
 import {
+  type MixinEntry,
   copyGuardForEval,
   createCallableOuterRules,
   createEmptyCallableOutputSurface,

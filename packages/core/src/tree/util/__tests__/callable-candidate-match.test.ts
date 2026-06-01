@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { any, call, condition, defaultguard, el, list, ref, rules, ruleset, vardecl } from '../../index.js';
 import { Nil } from '../../nil.js';
 import { N } from '../../node-type.js';
-import { callableRulesEntry, type CallableEntry, type MixinEntry } from '../../rules.js';
+import { callableRulesEntry, type CallableEntry, type MixinEntry } from '../callable-entry.js';
 import { prepareCallableCandidateMatches, resolveCallableCandidateMatches } from '../callable-candidate-match.js';
 import { isNode } from '../is-node.js';
 
