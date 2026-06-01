@@ -59,6 +59,10 @@ import {
 import { withRulesContext } from './util/context.js';
 import { prepareCallableEvalCandidates } from './util/callable-candidate.js';
 import { evaluateCallableCandidateOutput } from './util/callable-candidate-output.js';
+import {
+  ensureCallableGuardOuterRules,
+  prepareCallableGuardState
+} from './util/callable-guard.js';
 import { createCallableLiveSlots } from './util/callable-live-slots.js';
 import { ensureCallableOuterRulesSurface } from './util/callable-outer-rules.js';
 import { matchCallableParams, type CallableParamMatch } from './util/callable-param-match.js';
@@ -4285,33 +4289,25 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
 
       /** Now we can evaluate our guards, if any */
-      let guard: Node | undefined = hasDefault
-        ? candidateGuard
-        : candidateGuard
-          ? (candidateGuard.hasFlag(F_STATIC) ? candidateGuard : copyGuardForEval(candidateGuard))
-          : undefined;
-      const usesPreboundCallerGuardOuterRules = Boolean(
-        guard
-        && !guard.hasFlag(F_STATIC)
-        && !candidateParams
-        && paramBindings.length === 0
-      );
-      if (
+      let {
+        guard,
+        outerRules: preparedGuardOuterRules,
         usesPreboundCallerGuardOuterRules
-        && !outerRules
-      ) {
-        outerRules = ensureCallableOuterRulesSurface({
-          currentOuterRules: outerRules,
-          rules,
-          parent: thisContext.rulesContext ?? candidate.parent!,
-          candidateIndex: candidate.index,
-          createOuterRules: createCallableOuterRules,
-          syncScopeFrame: false
-        });
-        if (parentFrame) {
-          outerRules!.scopeFrame = parentFrame;
-        }
-      }
+      } = prepareCallableGuardState({
+        hasDefault,
+        candidateGuard,
+        copyGuardForEval,
+        candidateParams,
+        paramBindingsLength: paramBindings.length,
+        outerRules,
+        rules,
+        parent: candidate.parent!,
+        rulesContextParent: thisContext.rulesContext,
+        candidateIndex: candidate.index,
+        parentFrame,
+        createOuterRules: createCallableOuterRules
+      });
+      outerRules = preparedGuardOuterRules;
       let passes = true;
       // Call-time resolution is handled by the current context.rulesContext
       const restoreRulesContext = setMixinCallRulesContext(thisContext, outerRules ?? rules);
@@ -4323,8 +4319,11 @@ export class MixinCollection extends Node<MixinEntry[]> {
             && !usesPreboundCallerGuardOuterRules
             && !usesPreboundParamGuardOuterRules
           ) {
-            outerRules = ensureCallableOuterRulesSurface({
-              currentOuterRules: outerRules,
+            outerRules = ensureCallableGuardOuterRules({
+              guard,
+              usesPreboundCallerGuardOuterRules,
+              usesPreboundParamGuardOuterRules,
+              outerRules,
               rules,
               parent: candidate.parent!,
               candidateIndex: candidate.index,
@@ -4351,8 +4350,11 @@ export class MixinCollection extends Node<MixinEntry[]> {
                   && !usesPreboundCallerGuardOuterRules
                   && !usesPreboundParamGuardOuterRules
                 ) {
-                  outerRules = ensureCallableOuterRulesSurface({
-                    currentOuterRules: outerRules,
+                  outerRules = ensureCallableGuardOuterRules({
+                    guard: probeGuard,
+                    usesPreboundCallerGuardOuterRules,
+                    usesPreboundParamGuardOuterRules,
+                    outerRules,
                     rules,
                     parent: candidate.parent!,
                     candidateIndex: candidate.index,
