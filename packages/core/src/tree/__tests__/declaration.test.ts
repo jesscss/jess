@@ -923,13 +923,10 @@ describe('Declaration', () => {
     });
   });
 
-  it('keeps declaration merge adapter state empty for scalar values', () => {
+  it('skips declaration merge adapter state for scalar values', () => {
     const value = any('1px');
 
-    expect(createDeclarationMergeAdapterState(value, 'space')).toEqual({
-      kind: 'none',
-      value
-    });
+    expect(createDeclarationMergeAdapterState(value, 'space')).toBeUndefined();
   });
 
   it('keeps root merged declaration output unchanged without recopying scalar leaves', async () => {

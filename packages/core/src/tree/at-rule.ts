@@ -64,6 +64,8 @@ export type AtRuleBodyOutputState = {
   frames?: AtRule['frames'];
 };
 
+// Compatibility state for evaluated-node render APIs that cannot yet receive
+// the invocation record directly. Direct render should prefer invocation state.
 export type AtRuleBodyRuntimeState = {
   evaluatedBody?: Rules;
   evaluatedPrelude?: Node;
@@ -76,6 +78,7 @@ type AtRuleBodyEvalContextState = {
   evaluatedBody?: Rules;
   output?: AtRuleBodyOutputState;
   visible?: boolean;
+  layerName?: string;
   frameCount: number;
   extendRootStackLength: number;
   writeEvaluatedPrelude: boolean;
@@ -91,7 +94,6 @@ type AtRuleBodyEvalRecord = {
   frameState: AtRuleBodyFrameState;
   preparedBody?: AtRuleBodyEvalPrepState;
   evaluatedBody?: Rules;
-  layerName?: string;
   registration?: AtRuleBodyRegistrationState;
   contextState: AtRuleBodyEvalContextState;
 };
@@ -133,10 +135,12 @@ export type AtRuleBodyEvalResult = {
   output?: AtRuleBodyOutputState;
 };
 
-export type AtRuleBodyRenderInput = Pick<
-  AtRuleBodyEvalResult,
-  'node' | 'evaluatedPrelude' | 'evaluatedBody' | 'output'
->;
+export type AtRuleBodyRenderInput = {
+  node: AtRule | Nil;
+  evaluatedPrelude?: Node;
+  evaluatedBody?: Rules;
+  output?: AtRuleBodyOutputState;
+};
 
 export type AtRuleBodyPublicResultInput = {
   node: AtRule;
@@ -429,7 +433,7 @@ function createAtRuleBodyRecordRegistration(
     finalRules: bodyToEval,
     pushedExtendRoot,
     ...(parentExtendRoot !== undefined && { parentExtendRoot }),
-    ...(record.layerName !== undefined && { layerName: record.layerName })
+    ...(record.contextState.layerName !== undefined && { layerName: record.contextState.layerName })
   });
 }
 
@@ -445,7 +449,7 @@ function storeAtRuleBodyRecordLayerName(
   record: AtRuleBodyEvalRecord,
   layerName: string | undefined
 ): void {
-  record.layerName = layerName;
+  record.contextState.layerName = layerName;
   if (record.registration && layerName !== undefined) {
     record.registration.layerName = layerName;
   }
@@ -1092,8 +1096,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                 || child.sourceNode === node.sourceNode
               )
             );
-            if (frameContainsNode && record.layerName) {
-              parentLayerName = record.layerName;
+            const recordLayerName = record.contextState.layerName;
+            if (frameContainsNode && recordLayerName) {
+              parentLayerName = recordLayerName;
               break;
             }
           }

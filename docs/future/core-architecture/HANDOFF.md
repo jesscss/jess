@@ -75,7 +75,7 @@ Peter to pay Paul.
   the first extracted slice around the current parallel state structures.
 - Declaration contextual important handling now has separate render-only and
   public-result finalizers. Merge placeholder cleanup has a named adapter
-  helper, but render-side merge adapters remain incomplete.
+  helper, and scalar/no-merge paths now skip adapter allocation entirely.
 - Import first-use placement exposes top-level child segments and postlude
   render state. Recursive descendant source mapping remains the documented
   fallback because top-level segment lookup is the production fast path.
@@ -117,9 +117,14 @@ Peter to pay Paul.
 - Declaration merge adapter state now avoids scalar helper allocation before
   collecting merge items and returns one discriminated item channel instead of
   parallel `listValue` / `spaceValue` properties.
-- At-rule body public result state now consumes a narrow
-  `AtRuleBodyPublicResultInput` instead of the full eval result frame, and
-  visibility is stored on invocation context state instead of the eval record.
+- At-rule body public/render result states now consume narrow explicit adapter
+  inputs instead of piggybacking on the full eval result frame. Visibility and
+  layer names are stored on invocation context state instead of the eval
+  record, and `AtRuleBodyRuntimeState` is documented as evaluated-node API
+  compatibility rather than the direct-render model.
+- Declaration merge adapter state now returns no object for scalar/no-merge
+  paths. Only single replacement and real list/space render adapters allocate
+  state.
 
 ## Release Direction
 
@@ -178,7 +183,7 @@ and cleanup without duplicating facts across many parallel structures.
       state types unless each duplicate has a documented API boundary.
 - [x] Async rejection cleanup, frame restoration, extend-root cleanup, and
       layer-record pop are all tested through one runner path.
-- [ ] `AtRuleBodyRuntimeState` is deleted or documented as evaluated-node API
+- [x] `AtRuleBodyRuntimeState` is deleted or documented as evaluated-node API
       compatibility only, with no direct-render scratch writes.
 - [ ] Dynamic body/root-hoist render tests prove canonical source parentage is
       unchanged.
@@ -398,6 +403,8 @@ results.
       finalizers.
 - [x] At least one declaration merge family renders from adapter state without
       constructing a temporary printer container.
+- [x] Scalar/no-merge declaration paths avoid constructing no-op merge adapter
+      state.
 - [x] Operation result finalization has one shared public-result boundary and
       no duplicated metadata inheritance rules.
 
@@ -547,88 +554,86 @@ Keep this section compact. Detailed proof lives in git history and focused
 tests; this handoff should preserve only the current architectural state needed
 to choose the next queue.
 
-- Passes 1-5 reframed the work from node-copy reduction to total runtime work:
+- Passes 1-6 reframed the work from node-copy reduction to total runtime work:
   AtRule body runtime/render adapters, callable binding/signature/default
   helpers, mixin output wrappers, shared placement vocabulary, import placement
   child/postlude state, declaration merge/contextual-important adapters,
   rawArgs diagnostics, rules-like reference helpers, operation public-result
   aliases, narrowed AtRule render/public adapters, callable default debug-count
-  cleanup, production fallback-output placement state, and bounded blockers for
+  cleanup, optional fallback syntax helper rejection, and bounded blockers for
   public direct-index and selector ownership.
 
-### Completed Queue Pass: 2026-06-01 #6
+### Completed Queue Pass: 2026-06-01 #7
 
-1. Lane A moved AtRule body visibility from `AtRuleBodyEvalRecord` into
-   `AtRuleBodyEvalContextState`, shrinking one parallel eval-record field.
-2. Lane A added a nil-body public adapter proof for
-   `AtRuleBodyPublicResultInput` so public-result ownership no longer relies on
-   an eval-frame fallback.
-3. Lane A kept `AtRuleBodyRuntimeState` as evaluated-node/public API
-   compatibility plus temporary render-state installation; direct body render
-   still enters with `writeRuntimeState: false`.
-4. Lane B kept callable candidate extraction blocked: the next useful move must
-   delete candidate-loop closure work, not just wrap it in another helper.
-5. Lane B kept default-guard probe extraction blocked until there is a
-   no-extra-call proof; the current helper already removed the cheap count
-   allocations.
-6. Lane B/G measured after the pass instead of extracting callable helpers:
-   rawArgs stayed neutral (`0.0003ms` plain median, `0.0023ms` metadata
-   median); Less hotpath medians were noisy and higher on guard/import/extend
-   fixtures, with no static-count regression.
-7. Lane C tried making optional fallback placement production-consumed, then
-   rejected it when the static audit showed the extra WeakMap bumped
-   `new-node`/module counts. The placement helper remains allocation-free
-   unless called.
-8. Lane C/D kept nested import child segments red-test-first; no new import
-   state was added without a deletion target.
-9. Lane D kept import descendant fallback counter out of production; any future
-   counter must be debug/test-only to avoid adding runtime object count.
-10. Lane E documented rules-like `sourceNode` as public-shape compatibility
-    around `PreservedRulesLikeValue`; call paths already consume explicit
-    lookup state.
-11. Lane F removed `items!` assertions from declaration merge rendering by
-    tightening `DeclarationMergeAdapterState` into a discriminated union.
-12. Lane F checked operation finalizer export impact through the package export
-    gate; the renamed util remains internal to core tree code.
-13. Lane G kept render-only optional fallback syntax on the text path with no
-    owned fallback `Call`, and avoided adding public fallback lookup storage
-    until there is a real consumer.
-14. Lane H kept selector-copy reduction blocked pending one narrower red
-    parentage/extend test.
-15. Lane I compacted completed-pass history again and updated current truth,
-    node-family tracker rows, and this queue from the code-backed pass.
+1. Lane A moved AtRule body `layerName` from `AtRuleBodyEvalRecord` into
+   `AtRuleBodyEvalContextState`, deleting another parallel invocation fact.
+2. Lane A split `AtRuleBodyRenderInput` into an explicit render adapter shape
+   instead of a `Pick<AtRuleBodyEvalResult, ...>`, narrowing the type overlap
+   without adding a runtime object.
+3. Lane A documented `AtRuleBodyRuntimeState` as evaluated-node API
+   compatibility so future work does not treat the `WeakMap` bridge as the
+   direct-render target model.
+4. Lane B kept callable candidate extraction blocked: no candidate helper in
+   this pass deleted closure work, so moving code would only add indirection.
+5. Lane B kept default-guard probing in place because the current pass had no
+   no-extra-call proof for another split.
+6. Lane B/G measured after the pass with no callable production changes:
+   rawArgs stayed neutral (`0.0003ms` plain median, `0.0021ms` metadata
+   median), Less hotpath remained noisy, and static audit stayed at
+   `new-node: 298` / module context `398`.
+7. Lane C found no real optional fallback placement consumer and added no
+   `WeakMap` or side state.
+8. Lane C/D kept nested import child-segment state blocked until a red test can
+   prove it removes recursive descendant lookup rather than adding broad
+   per-child state.
+9. Lane D kept an import descendant fallback counter out of production; any
+   future counter must be debug/test-only.
+10. Lane E documented `PreservedRulesLikeValue.sourceNode` as public-shape
+    compatibility beside the rules-like lookup state boundary.
+11. Lane F changed declaration merge adapter creation so scalar/no-merge paths
+    return `undefined` instead of allocating `{ kind: 'none' }`, with focused
+    Declaration tests pinning the contract.
+12. Lane F kept operation metadata finalizer aliases out; this pass did not
+    expose a public/package-export need for another compatibility name.
+13. Lane G kept fallback render text separate from public fallback `Call`
+    output; no owned fallback call or placement state was added without a real
+    consumer.
+14. Lane H kept selector-copy removal blocked pending a red parentage test that
+    proves a narrower state can preserve current ownership behavior.
+15. Lane I compacted completed-pass history and refreshed current truth plus
+    the next queue around remaining architecture gates.
 
 ### Next Queue
 
-1. **Lane A: move one more AtRule body fact into invocation context.**
+1. **Lane A: move or justify one more AtRule body output fact.**
 
-   Target `layerName` or `output`; delete one parallel storage site only if
-   async cleanup and root-hoist/layer tests stay green.
+   Target `output` or `evaluatedBody`; delete a duplicate storage site only if
+   async cleanup, root-hoist, and layer tests stay green.
 
-2. **Lane A: reduce `AtRuleBodyEvalResult` public/render overlap.**
+2. **Lane A: inventory remaining duplicated AtRule body fields.**
 
-   Try narrowing eval result into separate public/render read shapes without
-   adding another object on the hot path.
+   Update the lane with each duplicate field, its API boundary, and whether it
+   should move into invocation context or remain compatibility state.
 
-3. **Lane A: document runtime state as compatibility in type names or comments.**
+3. **Lane A: test direct body render against runtime-state writes.**
 
-   Make it harder to mistake runtime `WeakMap` state for the target direct
-   render model.
+   Add or extend a focused test only if it proves render can consume invocation
+   state directly without writing the evaluated-node `WeakMap` bridge.
 
-4. **Lane B: extract one callable candidate helper only if it deletes closure work.**
+4. **Lane B: draw the `MixinCollection` dependency graph.**
 
-   Revisit parameter/default/rest normalization with a red test and a before
+   Name the smallest callable/mixin helper group that can leave `rules.ts`
+   without circular imports or extra hot-path calls.
+
+5. **Lane B: extract only a callable helper that deletes closure work.**
+
+   Revisit candidate/default/rest normalization with a red test and before
    measurement; reject helper growth that keeps the same loop allocations.
 
-5. **Lane B: split default-guard probe only with a no-extra-call proof.**
+6. **Lane B/G: compare callable parse/runtime cost after the next helper slice.**
 
-   If the next slice cannot delete candidate-loop work, capture the blocker in
-   the lane instead of moving code for shape alone.
-
-6. **Lane B/G: compare callable helper parse/runtime cost after this pass.**
-
-   Use rawArgs and Less hotpath timings to decide whether fallback-output state
-   stays neutral enough for the optional-failure path.
+   Use rawArgs and Less hotpath timings to decide whether a helper split is
+   neutral or actually reduces work.
 
 7. **Lane C: find a real optional fallback placement consumer before storing state.**
 
@@ -645,25 +650,26 @@ to choose the next queue.
    Add a diagnostic only if it can be debug/test-only and cannot affect import
    runtime object count.
 
-10. **Lane E: separate rules-like compatibility `sourceNode` from lookup state.**
+10. **Lane E: remove one ad hoc rules-like `sourceNode` read if possible.**
 
-   If `PreservedRulesLikeValue.sourceNode` is still required for public shape,
-   document that boundary beside `RulesLikeReferenceLookupState`.
+   Use `getRulesLikeReferenceLookupState(...)` where the value is a preserved
+   rules-like surface; keep public compatibility `sourceNode` only at the
+   boundary.
 
-11. **Lane F: reduce declaration merge adapter allocations.**
+11. **Lane F: check whether declaration `value` adapter state can narrow again.**
 
-   Check whether scalar/no-merge paths can avoid constructing `{ kind: 'none' }`
-   adapter objects while keeping the strict type contract.
+   Keep the `value` channel only where single merged-item replacement or empty
+   placeholder preservation requires it.
 
 12. **Lane F: decide whether operation metadata finalizer needs a compatibility alias.**
 
    Keep the alias out if package-export and source scans prove no public
    consumer needs it.
 
-13. **Lane G: split fallback render text from public fallback call output.**
+13. **Lane G: add a render-only optional fallback proof without storage.**
 
-    Target one optional failure case where render can emit syntax without
-    building an owned fallback `Call`.
+   Target one optional failure case where render emits syntax without building
+   an owned fallback `Call` or storing placement state.
 
 14. **Lane H: choose one selector-copy candidate with red parentage tests.**
 
