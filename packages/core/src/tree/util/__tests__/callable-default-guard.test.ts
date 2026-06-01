@@ -3,12 +3,14 @@ import {
   CALLABLE_DEFAULT_FALSE,
   CALLABLE_DEFAULT_NONE,
   CALLABLE_DEFAULT_TRUE,
+  executeCallableDefaultCandidates,
   probeCallableDefaultGuard,
   resolveCallableDefaultCandidateGroups,
   resolveCallableDefaultGroup
 } from '../callable-default-guard.js';
 import { Context } from '../../../context.js';
 import { Bool } from '../../bool.js';
+import { rules } from '../../index.js';
 
 describe('callable default guard helpers', () => {
   it('resolves Less default() grouping without rules closure state', () => {
@@ -93,5 +95,66 @@ describe('callable default guard helpers', () => {
     expect(copyCount).toBe(1);
     expect(seenDefaults).toEqual([false, true]);
     expect(context.isDefault).toBe(true);
+  });
+
+  it('executes only the resolved default groups in original order', async () => {
+    const context = new Context();
+    const calls: string[] = [];
+
+    await executeCallableDefaultCandidates({
+      context,
+      hasDefNoneCandidate: false,
+      restrictMixinOutputLookup: true,
+      candidates: [
+        {
+          label: 'none',
+          group: CALLABLE_DEFAULT_NONE,
+          rules: rules([]),
+          sourceRules: rules([])
+        },
+        {
+          label: 'true',
+          group: CALLABLE_DEFAULT_TRUE,
+          rules: rules([]),
+          sourceRules: rules([])
+        },
+        {
+          label: 'false',
+          group: CALLABLE_DEFAULT_FALSE,
+          rules: rules([]),
+          sourceRules: rules([])
+        }
+      ],
+      runCandidate: async (candidate) => {
+        calls.push(candidate.label);
+      }
+    });
+
+    expect(calls).toEqual(['none', 'false']);
+  });
+
+  it('throws on ambiguous default resolution before running candidates', async () => {
+    const context = new Context();
+
+    await expect(executeCallableDefaultCandidates({
+      context,
+      hasDefNoneCandidate: false,
+      restrictMixinOutputLookup: true,
+      candidates: [
+        {
+          label: 'true',
+          group: CALLABLE_DEFAULT_TRUE,
+          rules: rules([]),
+          sourceRules: rules([])
+        },
+        {
+          label: 'false',
+          group: CALLABLE_DEFAULT_FALSE,
+          rules: rules([]),
+          sourceRules: rules([])
+        }
+      ],
+      runCandidate: async () => {}
+    })).rejects.toThrow('Ambiguous use of default() while matching mixins.');
   });
 });

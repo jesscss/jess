@@ -65,8 +65,9 @@ import {
   CALLABLE_DEFAULT_FALSE_EITHER,
   CALLABLE_DEFAULT_NONE,
   type CallableDefaultGroup,
-  probeCallableDefaultGuard,
-  resolveCallableDefaultCandidateGroups
+  executeCallableDefaultCandidates,
+  type PendingCallableDefaultCandidate,
+  probeCallableDefaultGuard
 } from './util/callable-default-guard.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
@@ -4124,13 +4125,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       return String(raw);
     };
     const restrictMixinOutputLookup = thisContext.leakyRules !== true;
-    type DefaultPendingCandidate = {
-      candidate: CallableEntry;
-      rules: Rules;
-      params?: List<Node>;
-      group: CallableDefaultGroup;
-    };
-    const pendingDefaultCandidates: DefaultPendingCandidate[] = [];
+    const pendingDefaultCandidates: PendingCallableDefaultCandidate[] = [];
     let hasDefNoneCandidate = false;
     for (let candidate of evalCandidates) {
       if (isNode(candidate, N.Ruleset)) {
@@ -4404,8 +4399,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
             guardPasses = passes;
             if (passes) {
               pendingDefaultCandidates.push({
-                candidate: candidate as CallableEntry,
+                candidateParent: candidate.parent,
+                candidateIndex: candidate.index,
                 rules,
+                sourceRules: getRootSourceRules(getMixinEntryRules(candidate as CallableEntry)),
                 params: getParamsSignature(),
                 group: defaultGroup
               });
@@ -4452,7 +4449,15 @@ export class MixinCollection extends Node<MixinEntry[]> {
     }
 
     if (pendingDefaultCandidates.length > 0) {
-      const defaultResolution = resolveCallableDefaultCandidateGroups(hasDefNoneCandidate, pendingDefaultCandidates);
+      const {
+        resolution: defaultResolution,
+        outputs: defaultOutputs
+      } = await executeCallableDefaultCandidates({
+        context: thisContext,
+        hasDefNoneCandidate,
+        restrictMixinOutputLookup,
+        candidates: pendingDefaultCandidates
+      });
       hasDefNoneCandidate = defaultResolution.hasDefNoneCandidate;
       const defaultResult = defaultResolution.defaultResult;
       if (debugDefaultGuard) {
@@ -4464,31 +4469,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
           defaultResult
         }));
       }
-      if (defaultResolution.ambiguous) {
-        throw new ReferenceError('Ambiguous use of default() while matching mixins.');
-      }
-
-      for (const pending of pendingDefaultCandidates) {
-        if (pending.group !== CALLABLE_DEFAULT_NONE && pending.group !== defaultResult) {
-          continue;
-        }
-        await withRulesContext(thisContext, pending.rules, () =>
-          evaluateCallableCandidateOutput({
-            context: thisContext,
-            currentCall: thisContext.callStack.at(-1),
-            getParamsSignature: () => pending.params,
-            candidateParent: pending.candidate.parent!,
-            candidateIndex: pending.candidate.index,
-            rules: pending.rules,
-            sourceRules: getRootSourceRules(getMixinEntryRules(pending.candidate)),
-            restrictMixinOutputLookup
-          }).then((newRules) => {
-            if (newRules) {
-              outputRules.push(newRules);
-            }
-          })
-        );
-      }
+      outputRules.push(...defaultOutputs);
     }
 
     /**

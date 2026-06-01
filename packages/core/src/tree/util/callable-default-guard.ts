@@ -1,7 +1,11 @@
 import type { Context } from '../../context.js';
 import { Bool } from '../bool.js';
+import type { List } from '../list.js';
 import type { Node } from '../node.js';
 import { F_STATIC } from '../node.js';
+import type { Rules } from '../rules.js';
+import { withRulesContext } from './context.js';
+import { evaluateCallableCandidateOutput } from './callable-candidate-output.js';
 
 export const CALLABLE_DEFAULT_FALSE_EITHER = -1;
 export const CALLABLE_DEFAULT_NONE = 0;
@@ -33,11 +37,33 @@ type CallableDefaultGroupCandidate = {
   group: CallableDefaultGroup;
 };
 
+export type PendingCallableDefaultCandidate = {
+  group: CallableDefaultGroup;
+  rules: Rules;
+  sourceRules: Rules;
+  candidateParent?: Node;
+  candidateIndex?: number;
+  params?: List<Node>;
+};
+
 type ProbeCallableDefaultGuardOptions = {
   context: Context;
   candidateGuard?: Node;
   copyGuardForEval: (guard: Node) => Node;
   beforeEval?: (guard: Node) => void;
+};
+
+type ExecuteCallableDefaultCandidatesOptions<TCandidate extends PendingCallableDefaultCandidate> = {
+  context: Context;
+  hasDefNoneCandidate: boolean;
+  restrictMixinOutputLookup: boolean;
+  candidates: readonly TCandidate[];
+  runCandidate?: (candidate: TCandidate) => Promise<void>;
+};
+
+export type CallableDefaultExecutionResult = {
+  resolution: CallableDefaultGroupResolution;
+  outputs: Rules[];
 };
 
 function finalizeCallableDefaultGroupResolution(
@@ -146,4 +172,53 @@ export async function probeCallableDefaultGuard({
   } finally {
     context.isDefault = originalIsDefault;
   }
+}
+
+export async function executeCallableDefaultCandidates<
+  TCandidate extends PendingCallableDefaultCandidate
+>({
+  context,
+  hasDefNoneCandidate,
+  restrictMixinOutputLookup,
+  candidates,
+  runCandidate
+}: ExecuteCallableDefaultCandidatesOptions<TCandidate>): Promise<CallableDefaultExecutionResult> {
+  const resolution = resolveCallableDefaultCandidateGroups(hasDefNoneCandidate, candidates);
+  if (resolution.ambiguous) {
+    throw new ReferenceError('Ambiguous use of default() while matching mixins.');
+  }
+
+  const outputs: Rules[] = [];
+  for (const candidate of candidates) {
+    if (candidate.group !== CALLABLE_DEFAULT_NONE && candidate.group !== resolution.defaultResult) {
+      continue;
+    }
+    if (runCandidate) {
+      await runCandidate(candidate);
+      continue;
+    }
+    if (!candidate.candidateParent) {
+      throw new TypeError('Pending callable default candidate is missing candidateParent');
+    }
+    await withRulesContext(context, candidate.rules, async () => {
+      const newRules = await evaluateCallableCandidateOutput({
+        context,
+        currentCall: context.callStack.at(-1),
+        getParamsSignature: () => candidate.params,
+        candidateParent: candidate.candidateParent,
+        candidateIndex: candidate.candidateIndex,
+        rules: candidate.rules,
+        sourceRules: candidate.sourceRules,
+        restrictMixinOutputLookup
+      });
+      if (newRules) {
+        outputs.push(newRules);
+      }
+    });
+  }
+
+  return {
+    resolution,
+    outputs
+  };
 }
