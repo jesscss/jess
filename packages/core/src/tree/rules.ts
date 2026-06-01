@@ -11,7 +11,6 @@ import { Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { comparePosition } from './util/compare.js';
-import { cast } from './util/cast.js';
 import { type Ruleset } from './ruleset.js';
 import { type Mixin } from './mixin.js';
 import type { Selector } from './selector.js';
@@ -56,6 +55,7 @@ import {
   writeRenderText
 } from './util/render-buffer.js';
 import { withRulesContext } from './util/context.js';
+import { evaluateCallableArgs } from './util/callable-args.js';
 import { prepareCallableCandidateMatches } from './util/callable-candidate-match.js';
 import { executeCallableCandidateLoop } from './util/callable-candidate-loop.js';
 import {
@@ -3997,38 +3997,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
     const thisContext = context;
     let caller = thisContext.caller;
     const argEvalRulesContext = caller?.rulesParent ?? caller?.sourceRulesParent ?? thisContext.rulesContext;
-    const nodeArgs = await withRulesContext(thisContext, argEvalRulesContext, async () => {
-      const evaluatedArgs: Node[] = [];
-      for (let arg of (args?.value ?? [])) {
-        /**
-         * I think they should always be nodes?
-         * But leaving this for future expansion.
-         */
-        if (isNode(arg)) {
-          // IMPORTANT: Do not evaluate VarDeclaration args (named arguments) here.
-          // Evaluating them can register/override variables in the current scope.
-          // They should only be used for parameter binding.
-          if (isNode(arg, N.VarDeclaration)) {
-            evaluatedArgs.push(arg);
-            continue;
-          }
-          const evald = await arg.eval(thisContext);
-          if (evald.type === 'Rest') {
-            const restValue = evald.value;
-            if (isNode(restValue, N.Sequence) || isNode(restValue, N.List)) {
-              for (const restArg of restValue.value) {
-                evaluatedArgs.push(restArg);
-              }
-              continue;
-            }
-          }
-          evald.frozen = true;
-          evaluatedArgs.push(evald);
-        } else {
-          evaluatedArgs.push(cast(arg));
-        }
-      }
-      return evaluatedArgs;
+    const nodeArgs = await evaluateCallableArgs({
+      context: thisContext,
+      rulesContext: argEvalRulesContext,
+      args: args?.value ?? []
     });
     /**
      * Check named and positional arguments

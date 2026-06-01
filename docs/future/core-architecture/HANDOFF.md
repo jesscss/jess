@@ -144,6 +144,10 @@ Peter to pay Paul.
   placement handling, anonymous callable-rules unlock handling, ordinary
   callable-entry setup/dispatch, and per-candidate debug/output wiring are no
   longer the main candidate loop inside `MixinCollection.evalCall(...)`.
+- Callable arg evaluation now also lives in
+  `packages/core/src/tree/util/callable-args.ts`, so caller-scoped arg
+  evaluation, named-arg preservation, rest expansion, and primitive casting
+  are no longer inline at the top of `MixinCollection.evalCall(...)`.
 - Callable candidate scan/match now also lives in
   `packages/core/src/tree/util/callable-candidate-match.ts`, so zero-param
   early exits, callable arity/pattern matching, resolved binding collection,
@@ -377,30 +381,29 @@ cross-purpose helper closures and less parse cost.
 
 **Current dependency graph:**
 
-- `MixinCollection.evalCall(...)` still depends directly on caller-scoped
-  argument evaluation, the empty-candidate guard, and the top-level
-  orchestration that threads ordered candidates into helperized invocation and
-  output finalization.
+- `MixinCollection.evalCall(...)` still depends directly on the empty-candidate
+  guard and the top-level orchestration that threads prepared args and ordered
+  candidates into helperized invocation and output finalization.
 - Pure helper candidates already outside the closure are callable signatures,
   callable default-group resolution, callable binding value construction,
-  callable parameter matching, callable candidate preparation, callable
-  candidate scan/match, callable default-guard probing, pending default-
-  candidate execution, callable candidate output execution, callable outer-
-  rules setup, callable scope-frame wiring, callable live-slot assembly,
-  callable guard preparation, callable special-case candidate handling,
-  callable candidate setup state, callable candidate execution, callable
-  candidate-loop dispatch, callable eval output finalization, and mixin output
-  wrapper construction.
+  callable parameter matching, callable candidate preparation, callable arg
+  evaluation, callable candidate scan/match, callable default-guard probing,
+  pending default-candidate execution, callable candidate output execution,
+  callable outer-rules setup, callable scope-frame wiring, callable live-slot
+  assembly, callable guard preparation, callable special-case candidate
+  handling, callable candidate setup state, callable candidate execution,
+  callable candidate-loop dispatch, callable eval output finalization, and
+  mixin output wrapper construction.
 - The next extractable unit needs either a Rules-owned adapter input or a
-  callable-invocation module that accepts arg-eval and output-construction
-  callbacks. Parameter matching, candidate prep, candidate scan/match,
+  callable-invocation module that accepts output-construction callbacks.
+  Parameter matching, candidate prep, arg evaluation, candidate scan/match,
   default-probe evaluation, pending default execution, candidate output
   execution, outer-rules reuse/setup, scope-frame wiring, live-slot assembly,
   guard preparation, output aggregation, special-case candidate handling,
   candidate setup state, candidate execution, candidate-loop dispatch, and
   eval-output finalization are now out of the closure; the next cut must
   delete the remaining top-level orchestration seam instead of pretending the
-  callable front-end scan still lives inline.
+  callable front-end setup still lives inline.
 
 **Completion gates:**
 
@@ -1206,6 +1209,29 @@ to choose the next queue.
    the remaining top-level callable orchestration seam instead of stale
    candidate-scan language.
 
+### Completed Queue Pass: 2026-06-01 #53
+
+1. Lane B deleted another real `MixinCollection` orchestration block. Callable
+   arg evaluation moved out of `packages/core/src/tree/rules.ts` into
+   `packages/core/src/tree/util/callable-args.ts`, taking caller-scoped arg
+   evaluation, named-arg preservation, rest expansion, and primitive casting
+   with it.
+2. Lane B kept the runtime contract exact while shrinking the central file
+   again. `MixinCollection.evalCall(...)` now mostly owns the empty-candidate
+   guard plus the final handoff between prepared args, prepared candidates,
+   candidate execution, and output finalization instead of the old front-end
+   arg-eval machinery.
+3. Lane B added focused helper coverage instead of relying only on integration
+   fallout. `packages/core/src/tree/util/__tests__/callable-args.test.ts` now
+   proves named-arg preservation, rest expansion, freeze behavior, and
+   primitive casting directly, while the callable mixin suite stayed green.
+4. Lane B/G has fresh callable measurements on the final tree again: rawArgs
+   and Less hotpaths stayed part of the pass contract, so this extraction is
+   still grounded in callable behavior rather than just file motion.
+5. Lane I refreshed Lane B truth and queue wording so the next pass targets
+   the remaining empty-candidate/top-level sequencing seam instead of stale
+   arg-evaluation language.
+
 ### Next Queue
 
 1. **Lane A: collapse cleanup/prep state only if a state record disappears.**
@@ -1242,22 +1268,22 @@ to choose the next queue.
 
 3. **Lane B: extract the next callable unit only if `evalCall(...)` loses the remaining top-level orchestration seam.**
 
-   Parameter matching, candidate prep, candidate scan/match, default-probe
-   evaluation, guard execution, pending-default bookkeeping,
+   Parameter matching, candidate prep, arg evaluation, candidate scan/match,
+   default-probe evaluation, guard execution, pending-default bookkeeping,
    candidate-output execution, output aggregation, special-case candidate
    handling, candidate setup state, candidate execution, candidate-loop
    dispatch, and eval-output finalization are out. The next callable slice
-   should target caller-scoped arg evaluation or top-level helper sequencing
-   only if one more temporary branch, closure, or callback bundle disappears
-   from `MixinCollection`.
+   should target the empty-candidate guard or top-level helper sequencing only
+   if one more temporary branch, closure, or callback bundle disappears from
+   `MixinCollection`.
 
 4. **Lane B: keep helper extraction honest; do not split the remaining top-level flow unless local runtime machinery falls.**
 
-   The next cut needs to remove the real local seam that remains: caller arg
-   evaluation plus final helper choreography around the empty-candidate guard.
-   Do not add a helper that just forwards the same orchestration through a new
-   bag of callbacks now that both candidate scan/match and candidate dispatch
-   are already out.
+   The next cut needs to remove the real local seam that remains: the
+   empty-candidate guard plus final helper choreography. Do not add a helper
+   that just forwards the same orchestration through a new bag of callbacks
+   now that arg evaluation, candidate scan/match, and candidate dispatch are
+   already out.
 
 5. **Lane B/G: keep measuring callable slices, not AtRule-only work.**
 
