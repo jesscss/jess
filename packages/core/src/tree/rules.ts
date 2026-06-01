@@ -56,13 +56,12 @@ import {
   writeRenderText
 } from './util/render-buffer.js';
 import { withRulesContext } from './util/context.js';
-import { prepareCallableEvalCandidates } from './util/callable-candidate.js';
+import { prepareCallableCandidateMatches } from './util/callable-candidate-match.js';
 import { executeCallableCandidateLoop } from './util/callable-candidate-loop.js';
 import {
   createCallableOutputState,
   finalizeCallableEvalOutput
 } from './util/callable-output.js';
-import { matchCallableParams, type CallableParamMatch } from './util/callable-param-match.js';
 import {
   createCallableDefaultState
 } from './util/callable-default-guard.js';
@@ -3994,8 +3993,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
 
   async evalCall(context: Context, args?: List<Node>): Promise<Rules> {
     const mixinArr = this.value;
-    const mixinLength = mixinArr.length;
-    let mixinCandidates: MixinEntry[] = [];
     let evalCandidates: MixinEntry[];
     const thisContext = context;
     let caller = thisContext.caller;
@@ -4039,49 +4036,17 @@ export class MixinCollection extends Node<MixinEntry[]> {
      * (Any mixin with a mis-match of
      * arguments fails.)
      */
-    const resolvedParamBindings = new WeakMap<CallableEntry, CallableParamMatch>();
     const outputState = createCallableOutputState();
-    for (let i = 0; i < mixinLength; i++) {
-      let mixin = mixinArr[i]!;
-      let paramLength = isCallableEntry(mixin) ? getCallableEntryParams(mixin)?.length ?? 0 : 0;
-      if (!paramLength) {
-        /** Exit early if args were passed in, but no args are possible */
-        if (nodeArgs.length) {
-          continue;
-        }
-        mixinCandidates.push(mixin);
-      } else {
-        /** The mixin has parameters, so let's check args to see if there's a match */
-        if (!isCallableEntry(mixin)) {
-          continue;
-        }
-        const originalParams = getCallableEntryParams(mixin);
-        if (!originalParams) {
-          continue;
-        }
-        const matchedParams = matchCallableParams({
-          params: originalParams,
-          args: nodeArgs,
-          hasFileContext: Boolean(thisContext.treeContext?.file)
-        });
-        if (matchedParams) {
-          resolvedParamBindings.set(mixin, matchedParams);
-          mixinCandidates.push(mixin);
-        }
-      }
-    }
-    /**
-     * Alright, we have mixin candidates (mixins that match
-     * by arity, pattern, and/or named arguments), now what?
-     *
-     * First, let's make an evaluation order that evaluates
-     * default guards last.
-     */
-    const preparedCandidates = prepareCallableEvalCandidates({
-      mixinCandidates,
+    const preparedCandidates = prepareCallableCandidateMatches({
+      mixinEntries: mixinArr,
+      nodeArgs,
+      hasFileContext: Boolean(thisContext.treeContext?.file),
       rulesEvalStack: thisContext.rulesEvalStack,
-      caller
+      caller,
+      isCallableEntry,
+      getCallableEntryParams
     });
+    const resolvedParamBindings = preparedCandidates.resolvedParamBindings;
     evalCandidates = preparedCandidates.evalCandidates;
     const hasDefault = preparedCandidates.hasDefault;
 
