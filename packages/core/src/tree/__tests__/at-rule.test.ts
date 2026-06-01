@@ -10,7 +10,6 @@ import {
   AtRule,
   createAtRuleBodyPublicResultState,
   createAtRuleBodyPublicRuntimeUpdate,
-  createAtRuleBodyRenderState,
   createAtRuleBodyRuntimeUpdate
 } from '../at-rule.js';
 import { Rules } from '../rules.js';
@@ -891,7 +890,6 @@ describe('AtRule', () => {
     });
 
     expect(createAtRuleBodyRuntimeUpdate(node, {
-      kind: 'body-render',
       evaluatedBody: evaluatedRules,
       output: { hoistToRoot: true }
     })).toEqual({
@@ -910,7 +908,6 @@ describe('AtRule', () => {
     });
 
     expect(createAtRuleBodyRuntimeUpdate(node, {
-      kind: 'body-render',
       evaluatedBody: sourceRules
     })).toBeUndefined();
   });
@@ -928,35 +925,11 @@ describe('AtRule', () => {
     node.frames = frames;
 
     expect(createAtRuleBodyRuntimeUpdate(node, {
-      kind: 'body-render',
       output: {
         hoistToRoot: true,
         frames
       }
     })).toBeUndefined();
-  });
-
-  it('builds body render state from an invocation result adapter', () => {
-    const sourceRules = rules([
-      decl({ name: 'color', value: any('red') })
-    ]);
-    const evaluatedRules = rules([
-      decl({ name: 'color', value: any('blue') })
-    ]);
-    const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
-      rules: sourceRules
-    });
-
-    expect(createAtRuleBodyRenderState({
-      node,
-      evaluatedBody: evaluatedRules,
-      output: { hoistToRoot: true }
-    })).toEqual({
-      kind: 'body-render',
-      evaluatedBody: evaluatedRules,
-      output: { hoistToRoot: true }
-    });
   });
 
   it('builds public body result state from a narrow public adapter input', () => {

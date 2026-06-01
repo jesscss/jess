@@ -110,8 +110,7 @@ type AtRuleBodyEvalPrepState = {
   pushedExtendRoot: boolean;
 };
 
-export type AtRuleBodyRenderState = {
-  kind: 'body-render';
+export type AtRuleBodyRuntimeUpdateInput = {
   evaluatedBody?: Rules;
   output?: AtRuleBodyOutputState;
 };
@@ -125,12 +124,6 @@ type AtRuleLeafState = {
 export type AtRuleBodyEvalResult = {
   node: AtRule | Nil;
   contextState: AtRuleBodyEvalContextState;
-};
-
-export type AtRuleBodyRenderInput = {
-  node: AtRule | Nil;
-  evaluatedBody?: Rules;
-  output?: AtRuleBodyOutputState;
 };
 
 export type AtRuleBodyPublicResultInput = {
@@ -347,7 +340,7 @@ function runAtRuleBodyRuntimeState<T>(
   }
 }
 
-export function createAtRuleBodyRuntimeUpdate(node: AtRule, state: AtRuleBodyRenderState): AtRuleBodyRuntimeState | undefined {
+export function createAtRuleBodyRuntimeUpdate(node: AtRule, state: AtRuleBodyRuntimeUpdateInput): AtRuleBodyRuntimeState | undefined {
   let runtimeUpdate: AtRuleBodyRuntimeState | undefined;
   const ensureRuntimeUpdate = (): AtRuleBodyRuntimeState => (runtimeUpdate ??= {});
   if (state.evaluatedBody && state.evaluatedBody !== node.value.rules) {
@@ -491,10 +484,6 @@ function hasCommentChild(value: unknown): boolean {
   return false;
 }
 
-function isAtRuleBodyRenderState(value: unknown): value is AtRuleBodyRenderState {
-  return Boolean(value && typeof value === 'object' && Reflect.get(value, 'kind') === 'body-render');
-}
-
 function isAtRuleLeafState(value: unknown): value is AtRuleLeafState {
   return Boolean(value && typeof value === 'object' && Reflect.get(value, 'kind') === 'leaf-render');
 }
@@ -526,20 +515,6 @@ export function createAtRuleBodyPublicResultState(
     evaluatedPrelude: result.evaluatedPrelude,
     evaluatedBody: result.evaluatedBody,
     visible: result.visible,
-    output: result.output
-  };
-}
-
-export function createAtRuleBodyRenderState(result: AtRuleBodyRenderInput): AtRuleBodyRenderState {
-  if (result.node instanceof Nil) {
-    return {
-      kind: 'body-render',
-      output: result.output
-    };
-  }
-  return {
-    kind: 'body-render',
-    evaluatedBody: result.evaluatedBody ?? result.node.value.rules,
     output: result.output
   };
 }
@@ -752,21 +727,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     };
   }
 
-  private createBodyRenderState(result: AtRuleBodyEvalResult): AtRuleBodyRenderState {
-    const { contextState } = result;
-    if (result.node instanceof Nil) {
-      return {
-        kind: 'body-render',
-        output: contextState.output
-      };
-    }
-    return {
-      kind: 'body-render',
-      evaluatedBody: contextState.evaluatedBody ?? result.node.value.rules,
-      output: contextState.output
-    };
-  }
-
   private evalBodyPreludeState(context: Context): MaybePromise<Node | undefined> {
     const { prelude } = this.value;
     if (!prelude) {
@@ -889,16 +849,13 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         printState.atRuleHeaderPrelude = priorHeaderPrelude;
       }
     };
-    const renderBodyState = (state: AtRuleBodyRenderState): string => {
-      const node = this;
-      const runtimeUpdate = createAtRuleBodyRuntimeUpdate(node, state);
-      return runtimeUpdate
-        ? runAtRuleBodyRuntimeState(node, runtimeUpdate, () => renderEvaluatedAtRule(node))
-        : renderEvaluatedAtRule(node);
-    };
     const renderBodyResult = (result: AtRuleBodyEvalResult): string => {
-      const state = this.createBodyRenderState(result);
-      const runtimeUpdate = createAtRuleBodyRuntimeUpdate(this, state);
+      const runtimeUpdate = createAtRuleBodyRuntimeUpdate(this, {
+        evaluatedBody: result.node instanceof Nil
+          ? undefined
+          : (result.contextState.evaluatedBody ?? result.node.value.rules),
+        output: result.contextState.output
+      });
       const renderWithPrelude = () => renderEvaluatedAtRule(this, result.contextState.evaluatedPrelude);
       return runtimeUpdate
         ? runAtRuleBodyRuntimeState(this, runtimeUpdate, renderWithPrelude)
@@ -912,9 +869,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         }
         if (node instanceof AtRule) {
           return renderEvaluatedAtRule(node);
-        }
-        if (isAtRuleBodyRenderState(node)) {
-          return renderBodyState(node);
         }
         if (isAtRuleBodyEvalResult(node)) {
           return renderBodyResult(node);
