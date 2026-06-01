@@ -1,7 +1,7 @@
 import type { Node } from '../node.js';
-import type { List } from '../list.js';
 import type { CallableEntry, MixinEntry } from '../rules.js';
 import { prepareCallableEvalCandidates, type CallableEvalCandidatePreparation } from './callable-candidate.js';
+import { getCallableEntryParams, isCallableEntry } from './callable-entry.js';
 import { matchCallableParams, type CallableParamMatch } from './callable-param-match.js';
 
 export type CallableCandidateMatchPreparation = CallableEvalCandidatePreparation & {
@@ -14,8 +14,6 @@ type PrepareCallableCandidateMatchesOptions = {
   hasFileContext: boolean;
   rulesEvalStack: readonly Node[];
   caller?: Node;
-  isCallableEntry: (entry: MixinEntry) => entry is CallableEntry;
-  getCallableEntryParams: (entry: CallableEntry) => List<Node> | undefined;
 };
 
 export function prepareCallableCandidateMatches({
@@ -23,9 +21,7 @@ export function prepareCallableCandidateMatches({
   nodeArgs,
   hasFileContext,
   rulesEvalStack,
-  caller,
-  isCallableEntry,
-  getCallableEntryParams
+  caller
 }: PrepareCallableCandidateMatchesOptions): CallableCandidateMatchPreparation {
   const mixinCandidates: MixinEntry[] = [];
   const resolvedParamBindings = new WeakMap<CallableEntry, CallableParamMatch>();

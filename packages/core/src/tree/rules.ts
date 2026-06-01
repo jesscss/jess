@@ -3917,26 +3917,6 @@ export function callableRulesEntry(
   };
 }
 
-function isCallableEntry(entry: MixinEntry): entry is CallableEntry {
-  return !isNode(entry, N.Ruleset);
-}
-
-function getMixinEntryRules(entry: MixinEntry): Rules {
-  return entry.value.rules;
-}
-
-function getCallableEntryName(entry: CallableEntry): unknown {
-  return entry.value.name;
-}
-
-function getCallableEntryParams(entry: CallableEntry): List<Node> | undefined {
-  return entry.value.params;
-}
-
-function getCallableEntryGuard(entry: CallableEntry): Node | undefined {
-  return entry.value.guard;
-}
-
 function mixinHasNoRequiredParams(mixinNode: Mixin): boolean {
   const params = mixinNode.value.params;
   if (!params || params.length === 0) {
@@ -4013,9 +3993,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       nodeArgs,
       hasFileContext: Boolean(thisContext.treeContext?.file),
       rulesEvalStack: thisContext.rulesEvalStack,
-      caller,
-      isCallableEntry,
-      getCallableEntryParams
+      caller
     });
     const resolvedParamBindings = preparedCandidates.resolvedParamBindings;
     const evalCandidates = preparedCandidates.evalCandidates;
@@ -4052,12 +4030,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       createUnlockedRules: createUnlockedCallableRulesSurface,
       evaluateOwnedRules: async rulesNode => withRulesContext(thisContext, rulesNode, () => rulesNode.eval(thisContext)),
       getRootSourceRules,
-      createOuterRules: createCallableOuterRules,
-      isCallableEntry,
-      getMixinEntryRules,
-      getCallableEntryName,
-      getCallableEntryParams,
-      getCallableEntryGuard
+      createOuterRules: createCallableOuterRules
     });
 
     const output = await finalizeCallableEvalOutput({

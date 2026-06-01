@@ -1,10 +1,16 @@
 import type { Context } from '../../context.js';
 import type { Node } from '../node.js';
-import type { List } from '../list.js';
 import type { CallableEntry, MixinEntry, Rules } from '../rules.js';
 import type { CallableParamMatch } from './callable-param-match.js';
 import { prepareCallableCandidateState } from './callable-candidate-state.js';
 import { executeCallableCandidate } from './callable-candidate-execution.js';
+import {
+  getCallableEntryGuard,
+  getCallableEntryName,
+  getCallableEntryParams,
+  getMixinEntryRules,
+  isCallableEntry
+} from './callable-entry.js';
 import type { CallableDefaultState } from './callable-default-guard.js';
 import {
   pushCallableOutputRule,
@@ -33,11 +39,6 @@ type ExecuteCallableCandidateLoopOptions = {
   evaluateOwnedRules: (rules: Rules) => Promise<Rules>;
   getRootSourceRules: (rules: Rules) => Rules;
   createOuterRules: (rules: Rules, options?: Rules['options']) => Rules;
-  isCallableEntry: (entry: MixinEntry) => entry is CallableEntry;
-  getMixinEntryRules: (entry: MixinEntry) => Rules;
-  getCallableEntryName: (entry: CallableEntry) => unknown;
-  getCallableEntryParams: (entry: CallableEntry) => List<Node> | undefined;
-  getCallableEntryGuard: (entry: CallableEntry) => Node | undefined;
 };
 
 export async function executeCallableCandidateLoop({
@@ -59,12 +60,7 @@ export async function executeCallableCandidateLoop({
   createUnlockedRules,
   evaluateOwnedRules,
   getRootSourceRules,
-  createOuterRules,
-  isCallableEntry,
-  getMixinEntryRules,
-  getCallableEntryName,
-  getCallableEntryParams,
-  getCallableEntryGuard
+  createOuterRules
 }: ExecuteCallableCandidateLoopOptions): Promise<void> {
   for (const candidate of evalCandidates) {
     const candidateName = isCallableEntry(candidate)
