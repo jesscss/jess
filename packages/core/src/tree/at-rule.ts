@@ -350,16 +350,17 @@ function runAtRuleBodyRuntimeState<T>(
   }
 }
 
-export function createAtRuleBodyRuntimeUpdate(node: AtRule, state: AtRuleBodyRenderState): AtRuleBodyRuntimeState {
-  const runtimeUpdate: AtRuleBodyRuntimeState = {};
+export function createAtRuleBodyRuntimeUpdate(node: AtRule, state: AtRuleBodyRenderState): AtRuleBodyRuntimeState | undefined {
+  let runtimeUpdate: AtRuleBodyRuntimeState | undefined;
+  const ensureRuntimeUpdate = (): AtRuleBodyRuntimeState => (runtimeUpdate ??= {});
   if (state.evaluatedPrelude) {
-    runtimeUpdate.evaluatedPrelude = state.evaluatedPrelude;
+    ensureRuntimeUpdate().evaluatedPrelude = state.evaluatedPrelude;
   }
   if (state.evaluatedBody && state.evaluatedBody !== node.value.rules) {
-    runtimeUpdate.evaluatedBody = state.evaluatedBody;
+    ensureRuntimeUpdate().evaluatedBody = state.evaluatedBody;
   }
   if (state.output) {
-    runtimeUpdate.output = state.output;
+    ensureRuntimeUpdate().output = state.output;
   }
   return runtimeUpdate;
 }
@@ -857,7 +858,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     const renderBodyState = (state: AtRuleBodyRenderState): string => {
       const node = this;
       const runtimeUpdate = createAtRuleBodyRuntimeUpdate(node, state);
-      return Object.keys(runtimeUpdate).length > 0
+      return runtimeUpdate
         ? runAtRuleBodyRuntimeState(node, runtimeUpdate, () => renderEvaluatedAtRule(node))
         : renderEvaluatedAtRule(node);
     };

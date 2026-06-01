@@ -902,6 +902,21 @@ describe('AtRule', () => {
     });
   });
 
+  it('skips render runtime update allocation when body state matches source', () => {
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: sourceRules
+    });
+
+    expect(createAtRuleBodyRuntimeUpdate(node, {
+      kind: 'body-render',
+      evaluatedBody: sourceRules
+    })).toBeUndefined();
+  });
+
   it('builds body render state from an invocation result adapter', () => {
     const sourceRules = rules([
       decl({ name: 'color', value: any('red') })
