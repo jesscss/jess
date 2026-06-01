@@ -416,19 +416,6 @@ function applyAtRuleBodyRuntimeState(
   return node;
 }
 
-function createAtRuleRuntimeRenderNode(node: AtRule): AtRule {
-  const runtimeFrames = atRuleBodyRuntimeFrames.get(node);
-  if (!runtimeFrames) {
-    return node;
-  }
-  const renderNode = node.deriveAtRule(node.value);
-  if (renderNode.isNestable()) {
-    renderNode.hoistToRoot = true;
-  }
-  renderNode.frames = runtimeFrames;
-  return renderNode;
-}
-
 function createAtRuleEvalResultNode(
   source: AtRule,
   state: AtRuleBodyEvalContextState
@@ -854,15 +841,21 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    const renderEvaluatedAtRule = (node: AtRule, evaluatedPrelude?: Node): string => {
+    const renderEvaluatedAtRule = (node: AtRule, evaluatedPrelude?: Node, runtimeFrames?: (Ruleset | AtRule)[]): string => {
       const printState = isRenderBuffer(bufferOrOptions)
         ? prepareBufferPrintState(context, options)
         : prepareRenderPrintState(context, bufferOrOptions);
       const priorHeaderNode = printState.atRuleHeaderNode;
       const priorHeaderPrelude = printState.atRuleHeaderPrelude;
+      const priorFrameNode = printState.atRuleFrameNode;
+      const priorFrameOverride = printState.atRuleFrameOverride;
       if (evaluatedPrelude) {
         printState.atRuleHeaderNode = node;
         printState.atRuleHeaderPrelude = evaluatedPrelude;
+      }
+      if (runtimeFrames !== undefined) {
+        printState.atRuleFrameNode = node;
+        printState.atRuleFrameOverride = runtimeFrames;
       }
       try {
         const rendered = serializeRulesContainer(node, printState);
@@ -872,6 +865,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       } finally {
         printState.atRuleHeaderNode = priorHeaderNode;
         printState.atRuleHeaderPrelude = priorHeaderPrelude;
+        printState.atRuleFrameNode = priorFrameNode;
+        printState.atRuleFrameOverride = priorFrameOverride;
       }
     };
     const renderBodyResult = (result: AtRuleBodyEvalResult): string => {
@@ -893,7 +888,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           return '';
         }
         if (node instanceof AtRule) {
-          return renderEvaluatedAtRule(node === this ? createAtRuleRuntimeRenderNode(node) : node);
+          return renderEvaluatedAtRule(node, undefined, node === this ? atRuleBodyRuntimeFrames.get(node) : undefined);
         }
         if (isAtRuleBodyEvalResult(node)) {
           return renderBodyResult(node);

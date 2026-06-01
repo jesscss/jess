@@ -943,6 +943,36 @@ describe('AtRule', () => {
     expect(node.getRenderFrames()).toEqual([parentFrame]);
   });
 
+  it('renders evaluated collapse-nesting at-rules without deriving a temporary at-rule node', async () => {
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    context.opts.collapseNesting = true;
+    context.frames = [parentFrame];
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    await Promise.resolve(node.eval(context));
+
+    node.deriveAtRule = function deriveShouldNotRun(): AtRule {
+      throw new Error('evaluated collapse-nesting render should not derive a temporary at-rule');
+    };
+
+    expect(node.render(context)).toBeString(`
+      @media (max-width: 10px) {
+        .parent {
+          color: red;
+        }
+      }
+    `);
+  });
+
   it('carries direct body-render prelude evaluation through body state once', async () => {
     const root = rules([
       vardecl({

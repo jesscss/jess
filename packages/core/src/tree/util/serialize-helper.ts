@@ -295,10 +295,17 @@ function getHoistedParent(
     return undefined;
   }
   const atRule = node as AtRule;
-  if (!atRule.isNestable() || atRule.isRootOnly() || !atRule.isHoisted(options)) {
+  const runtimeFrames = options.atRuleFrameNode === atRule
+    ? options.atRuleFrameOverride
+    : undefined;
+  const hoisted = runtimeFrames !== undefined && atRule.isNestable()
+    ? true
+    : atRule.isHoisted(options);
+  if (!atRule.isNestable() || atRule.isRootOnly() || !hoisted) {
     return undefined;
   }
-  const rulesetFrames = (atRule.getRenderFrames() ?? []).filter(frame => isNode(frame, N.Ruleset));
+  const renderFrames = runtimeFrames ?? atRule.getRenderFrames();
+  const rulesetFrames = (renderFrames ?? []).filter(frame => isNode(frame, N.Ruleset));
   if (rulesetFrames.length === 0) {
     return undefined;
   }
