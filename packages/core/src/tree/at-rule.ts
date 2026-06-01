@@ -88,7 +88,6 @@ type AtRuleBodyEvalContextState = {
 type AtRuleBodyEvalRecord = {
   source: AtRule;
   evalFrame: AtRule;
-  priorRuntimeState?: AtRuleBodyRuntimeState;
   bodyRules?: Rules;
   renderSourceBody?: boolean;
   frameState: AtRuleBodyFrameState;
@@ -281,10 +280,7 @@ function runAtRuleBodyRulesEval<T>(
 
 function restoreAtRuleBodyEvalRecord(
   record: AtRuleBodyEvalRecord,
-  context: Context,
-  options: {
-    restoreRuntimeState?: boolean;
-  } = {}
+  context: Context
 ): void {
   const state = record.contextState;
   popAtRuleBodyEvalRecord(context, record);
@@ -292,13 +288,6 @@ function restoreAtRuleBodyEvalRecord(
   record.frameState.restoreRulesetFrames();
   while (context.extendRoots.extendRootStack.length > state.extendRootStackLength) {
     context.extendRoots.popExtendRoot();
-  }
-  if (options.restoreRuntimeState) {
-    if (record.priorRuntimeState) {
-      atRuleBodyRuntimeState.set(record.evalFrame, record.priorRuntimeState);
-    } else {
-      atRuleBodyRuntimeState.delete(record.evalFrame);
-    }
   }
 }
 
@@ -310,15 +299,6 @@ function setAtRuleBodyEvalOutput(
     ...state.output,
     ...output
   };
-  if (!state.writeRuntimeState) {
-    return;
-  }
-  updateAtRuleBodyRuntimeState(state.evalFrame, {
-    output: {
-      ...atRuleBodyRuntimeState.get(state.evalFrame)?.output,
-      ...output
-    }
-  });
 }
 
 function updateAtRuleBodyRuntimeState(
@@ -399,9 +379,6 @@ function storeAtRuleBodyEvalRecordRules(
 ): void {
   const state = record.contextState;
   state.evaluatedBody = finalRules;
-  if (state.writeRuntimeState) {
-    updateAtRuleBodyRuntimeState(state.evalFrame, { evaluatedBody: finalRules });
-  }
 }
 
 function storeAtRuleBodyEvalRecordVisibility(
@@ -429,6 +406,21 @@ function storeAtRuleBodyRecordPrepState(
 ): AtRuleBodyEvalPrepState {
   record.preparedBody = preparedBody;
   return preparedBody;
+}
+
+function commitAtRuleBodyEvalRuntimeState(
+  node: AtRule,
+  state: AtRuleBodyEvalContextState
+): void {
+  const runtimeUpdate = createAtRuleBodyRuntimeUpdate(node, {
+    evaluatedBody: state.evaluatedBody,
+    output: state.output
+  });
+  if (runtimeUpdate) {
+    updateAtRuleBodyRuntimeState(node, runtimeUpdate);
+  } else {
+    atRuleBodyRuntimeState.delete(node);
+  }
 }
 
 function createAtRuleBodyRecordRegistration(
@@ -721,7 +713,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return {
       source: this,
       evalFrame,
-      priorRuntimeState: atRuleBodyRuntimeState.get(evalFrame),
       ...(renderSourceBody ? { renderSourceBody } : undefined),
       ...(sourceRules && !renderSourceBody ? { bodyRules: this.ownRules(sourceRules) } : undefined),
       frameState,
@@ -1284,23 +1275,35 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   override evalNode(context: Context): MaybePromise<AtRule | Nil> {
     const priorRuntimeState = atRuleBodyRuntimeState.get(this);
+    const record = {
+      source: this,
+      evalFrame: this,
+      frameState: createAtRuleBodyFrameState(this, context),
+      contextState: createAtRuleBodyEvalContextState(this, context)
+    };
     let out: MaybePromise<AtRule | Nil>;
     try {
-      out = this.evalBodyNode(context, {
-        source: this,
-        evalFrame: this,
-        frameState: createAtRuleBodyFrameState(this, context),
-        contextState: createAtRuleBodyEvalContextState(this, context)
-      });
+      out = this.evalBodyNode(context, record);
     } catch (error) {
       restoreAtRuleBodyRuntimeState(this, priorRuntimeState);
       throw error;
     }
     if (isThenable(out)) {
-      return (out as Promise<AtRule | Nil>).catch((error) => {
-        restoreAtRuleBodyRuntimeState(this, priorRuntimeState);
-        throw error;
-      });
+      return (out as Promise<AtRule | Nil>).then(
+        (value) => {
+          if (record.contextState.writeRuntimeState) {
+            commitAtRuleBodyEvalRuntimeState(this, record.contextState);
+          }
+          return value;
+        },
+        (error) => {
+          restoreAtRuleBodyRuntimeState(this, priorRuntimeState);
+          throw error;
+        }
+      );
+    }
+    if (record.contextState.writeRuntimeState) {
+      commitAtRuleBodyEvalRuntimeState(this, record.contextState);
     }
     return out;
   }
@@ -1413,12 +1416,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   ): MaybePromise<T> {
     const bodyEvalContextState = bodyEvalRecord.contextState;
     let restored = false;
-    const restore = (options?: { restoreRuntimeState?: boolean }) => {
+    const restore = () => {
       if (restored) {
         return;
       }
       restored = true;
-      restoreAtRuleBodyEvalRecord(bodyEvalRecord, context, options);
+      restoreAtRuleBodyEvalRecord(bodyEvalRecord, context);
     };
     pushAtRuleBodyEvalRecord(context, bodyEvalRecord);
     context.frames.push(node);
@@ -1439,7 +1442,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             return value;
           },
           (error) => {
-            restore({ restoreRuntimeState: true });
+            restore();
             throw error;
           }
         );
@@ -1447,7 +1450,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       restore();
       return out;
     } catch (error) {
-      restore({ restoreRuntimeState: true });
+      restore();
       throw error;
     }
   }
