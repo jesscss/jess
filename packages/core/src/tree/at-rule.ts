@@ -390,11 +390,8 @@ function commitAtRuleBodyEvalRuntimeState(
     atRuleBodyRuntimeFrames.delete(node);
     return;
   }
-  const runtimeUpdate = createAtRuleBodyRuntimeUpdate(node, {
-    output: state.output
-  });
-  if (runtimeUpdate?.frames !== undefined) {
-    atRuleBodyRuntimeFrames.set(node, runtimeUpdate.frames);
+  if (state.output?.frames !== undefined && state.output.frames !== node.frames) {
+    atRuleBodyRuntimeFrames.set(node, state.output.frames);
   } else {
     atRuleBodyRuntimeFrames.delete(node);
   }
