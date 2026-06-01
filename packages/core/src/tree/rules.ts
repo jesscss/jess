@@ -56,7 +56,7 @@ import {
 } from './util/render-buffer.js';
 import { withRulesContext } from './util/context.js';
 import { evaluateCallableArgs } from './util/callable-args.js';
-import { prepareCallableCandidateMatches } from './util/callable-candidate-match.js';
+import { resolveCallableCandidateMatches } from './util/callable-candidate-match.js';
 import { executeCallableCandidateLoop } from './util/callable-candidate-loop.js';
 import {
   createCallableOutputState,
@@ -3993,7 +3993,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
 
   async evalCall(context: Context, args?: List<Node>): Promise<Rules> {
     const mixinArr = this.value;
-    let evalCandidates: MixinEntry[];
     const thisContext = context;
     let caller = thisContext.caller;
     const argEvalRulesContext = caller?.rulesParent ?? caller?.sourceRulesParent ?? thisContext.rulesContext;
@@ -4009,7 +4008,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
      * arguments fails.)
      */
     const outputState = createCallableOutputState();
-    const preparedCandidates = prepareCallableCandidateMatches({
+    const preparedCandidates = resolveCallableCandidateMatches({
       mixinEntries: mixinArr,
       nodeArgs,
       hasFileContext: Boolean(thisContext.treeContext?.file),
@@ -4019,12 +4018,8 @@ export class MixinCollection extends Node<MixinEntry[]> {
       getCallableEntryParams
     });
     const resolvedParamBindings = preparedCandidates.resolvedParamBindings;
-    evalCandidates = preparedCandidates.evalCandidates;
+    const evalCandidates = preparedCandidates.evalCandidates;
     const hasDefault = preparedCandidates.hasDefault;
-
-    if (evalCandidates.length === 0) {
-      throw new ReferenceError('No matching mixins found.');
-    }
     /**
      * Now we have a set of mixins that can return rulesets,
      * but first we need to create a new scope for each mixin,

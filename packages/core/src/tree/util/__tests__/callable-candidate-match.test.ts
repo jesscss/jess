@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { any, call, condition, defaultguard, el, list, ref, rules, ruleset, vardecl } from '../../index.js';
+import { Nil } from '../../nil.js';
 import { N } from '../../node-type.js';
 import { callableRulesEntry, type CallableEntry, type MixinEntry } from '../../rules.js';
-import { prepareCallableCandidateMatches } from '../callable-candidate-match.js';
+import { prepareCallableCandidateMatches, resolveCallableCandidateMatches } from '../callable-candidate-match.js';
 import { isNode } from '../is-node.js';
 
 describe('callable candidate match helper', () => {
@@ -80,5 +81,22 @@ describe('callable candidate match helper', () => {
 
     expect(prepared.evalCandidates).toEqual([]);
     expect(prepared.hasDefault).toBe(false);
+  });
+
+  it('throws once candidate resolution proves there are no callable matches', () => {
+    const requiredCallable = callableRulesEntry({
+      name: '.tone',
+      params: list([vardecl({ name: 'tone', value: new Nil() }, { paramVar: true })]),
+      rules: rules([])
+    });
+
+    expect(() => resolveCallableCandidateMatches({
+      mixinEntries: [requiredCallable],
+      nodeArgs: [],
+      hasFileContext: false,
+      rulesEvalStack: [],
+      isCallableEntry: (entry: MixinEntry): entry is CallableEntry => !isNode(entry, N.Ruleset),
+      getCallableEntryParams: entry => entry.value.params
+    })).toThrowError(new ReferenceError('No matching mixins found.'));
   });
 });
