@@ -1,6 +1,14 @@
+import type { Context } from '../../context.js';
+import { Bool } from '../bool.js';
 import type { Node } from '../node.js';
 import { F_STATIC } from '../node.js';
 import type { Rules } from '../rules.js';
+import {
+  CALLABLE_DEFAULT_NONE,
+  type CallableDefaultGroup,
+  probeCallableDefaultGuard
+} from './callable-default-guard.js';
+import { withRulesContext } from './context.js';
 import { ensureCallableOuterRulesSurface } from './callable-outer-rules.js';
 
 type PrepareCallableGuardStateOptions = {
@@ -33,6 +41,33 @@ type EnsureCallableGuardOuterRulesOptions = {
   parent: Node;
   candidateIndex?: number;
   createOuterRules: (rules: Rules, options?: Rules['options']) => Rules;
+};
+
+type EvaluateCallableGuardOptions = {
+  context: Context;
+  hasDefault: boolean;
+  guard?: Node;
+  candidateGuard?: Node;
+  copyGuardForEval: (guard: Node) => Node;
+  usesPreboundCallerGuardOuterRules: boolean;
+  usesPreboundParamGuardOuterRules: boolean;
+  outerRules?: Rules;
+  rules: Rules;
+  parent: Node;
+  candidateIndex?: number;
+  createOuterRules: (rules: Rules, options?: Rules['options']) => Rules;
+};
+
+type EvaluateCallableGuardResult = {
+  passes: boolean;
+  contributesDefNone: boolean;
+  defersCandidateOutput: boolean;
+  pendingDefaultGroup?: CallableDefaultGroup;
+  outerRules?: Rules;
+  defaultProbeResult?: {
+    passWhenDefaultFalse: boolean;
+    passWhenDefaultTrue: boolean;
+  };
 };
 
 export function prepareCallableGuardState({
@@ -104,5 +139,101 @@ export function ensureCallableGuardOuterRules({
     parent,
     candidateIndex,
     createOuterRules
+  });
+}
+
+export async function evaluateCallableGuard({
+  context,
+  hasDefault,
+  guard,
+  candidateGuard,
+  copyGuardForEval,
+  usesPreboundCallerGuardOuterRules,
+  usesPreboundParamGuardOuterRules,
+  outerRules,
+  rules,
+  parent,
+  candidateIndex,
+  createOuterRules
+}: EvaluateCallableGuardOptions): Promise<EvaluateCallableGuardResult> {
+  return await withRulesContext(context, outerRules ?? rules, async () => {
+    if (!guard) {
+      return {
+        passes: true,
+        contributesDefNone: true,
+        defersCandidateOutput: false,
+        outerRules
+      };
+    }
+
+    if (hasDefault) {
+      const {
+        passWhenDefaultFalse,
+        passWhenDefaultTrue,
+        passes,
+        group
+      } = await probeCallableDefaultGuard({
+        context,
+        candidateGuard,
+        copyGuardForEval,
+        beforeEval: (probeGuard) => {
+          if (
+            !probeGuard.hasFlag(F_STATIC)
+            && !usesPreboundCallerGuardOuterRules
+            && !usesPreboundParamGuardOuterRules
+          ) {
+            outerRules = ensureCallableGuardOuterRules({
+              guard: probeGuard,
+              usesPreboundCallerGuardOuterRules,
+              usesPreboundParamGuardOuterRules,
+              outerRules,
+              rules,
+              parent,
+              candidateIndex,
+              createOuterRules
+            });
+          }
+        }
+      });
+
+      return {
+        passes,
+        contributesDefNone: passes && group === CALLABLE_DEFAULT_NONE,
+        defersCandidateOutput: passes,
+        pendingDefaultGroup: passes ? group : undefined,
+        outerRules,
+        defaultProbeResult: {
+          passWhenDefaultFalse,
+          passWhenDefaultTrue
+        }
+      };
+    }
+
+    if (
+      !guard.hasFlag(F_STATIC)
+      && !usesPreboundCallerGuardOuterRules
+      && !usesPreboundParamGuardOuterRules
+    ) {
+      outerRules = ensureCallableGuardOuterRules({
+        guard,
+        usesPreboundCallerGuardOuterRules,
+        usesPreboundParamGuardOuterRules,
+        outerRules,
+        rules,
+        parent,
+        candidateIndex,
+        createOuterRules
+      });
+    }
+
+    context.isDefault = false;
+    const resolvedGuard = await guard.eval(context);
+    const passes = resolvedGuard instanceof Bool && resolvedGuard.value === true;
+    return {
+      passes,
+      contributesDefNone: passes,
+      defersCandidateOutput: false,
+      outerRules
+    };
   });
 }

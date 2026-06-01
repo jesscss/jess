@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { Context } from '../../../context.js';
 import { Bool } from '../../bool.js';
 import { rules } from '../../index.js';
 import { F_STATIC } from '../../node.js';
 import { createCallableOuterRules } from '../../rules.js';
+import { CALLABLE_DEFAULT_TRUE } from '../callable-default-guard.js';
 import {
+  evaluateCallableGuard,
   ensureCallableGuardOuterRules,
   prepareCallableGuardState
 } from '../callable-guard.js';
@@ -114,5 +117,74 @@ describe('callable guard helpers', () => {
     expect(created?.parent).toBe(parent);
     expect(created?.index).toBe(3);
     expect(skipped).toBeUndefined();
+  });
+
+  it('evaluates default guards through rules-context helper flow and defers output execution', async () => {
+    const context = new Context();
+    const savedRulesContext = rules([]);
+    context.rulesContext = savedRulesContext;
+    const callableRules = rules([]);
+    const parent = rules([]);
+    const dynamicGuard = new Bool(true);
+    dynamicGuard.hasFlag = () => false;
+    dynamicGuard.eval = async (evalContext: Context) => {
+      expect(evalContext.rulesContext).toBe(callableRules);
+      return new Bool(evalContext.isDefault === true);
+    };
+
+    const result = await evaluateCallableGuard({
+      context,
+      hasDefault: true,
+      guard: dynamicGuard,
+      candidateGuard: dynamicGuard,
+      copyGuardForEval: guard => guard,
+      usesPreboundCallerGuardOuterRules: false,
+      usesPreboundParamGuardOuterRules: false,
+      rules: callableRules,
+      parent,
+      candidateIndex: 5,
+      createOuterRules: createCallableOuterRules
+    });
+
+    expect(result.passes).toBe(true);
+    expect(result.contributesDefNone).toBe(false);
+    expect(result.defersCandidateOutput).toBe(true);
+    expect(result.pendingDefaultGroup).toBe(CALLABLE_DEFAULT_TRUE);
+    expect(result.defaultProbeResult).toEqual({
+      passWhenDefaultFalse: false,
+      passWhenDefaultTrue: true
+    });
+    expect(context.rulesContext).toBe(savedRulesContext);
+  });
+
+  it('evaluates non-default guards directly and marks defNone on success', async () => {
+    const context = new Context();
+    const callableRules = rules([]);
+    const parent = rules([]);
+    const dynamicGuard = new Bool(true);
+    dynamicGuard.hasFlag = () => false;
+    dynamicGuard.eval = async (evalContext: Context) => {
+      expect(evalContext.rulesContext).toBe(callableRules);
+      return new Bool(true);
+    };
+
+    const result = await evaluateCallableGuard({
+      context,
+      hasDefault: false,
+      guard: dynamicGuard,
+      candidateGuard: dynamicGuard,
+      copyGuardForEval: guard => guard,
+      usesPreboundCallerGuardOuterRules: false,
+      usesPreboundParamGuardOuterRules: false,
+      rules: callableRules,
+      parent,
+      candidateIndex: 6,
+      createOuterRules: createCallableOuterRules
+    });
+
+    expect(result.passes).toBe(true);
+    expect(result.contributesDefNone).toBe(true);
+    expect(result.defersCandidateOutput).toBe(false);
+    expect(result.pendingDefaultGroup).toBeUndefined();
   });
 });

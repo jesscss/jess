@@ -29,7 +29,6 @@ import {
 } from './util/print.js';
 
 import { atIndex } from './util/collections.js';
-import { Bool } from './bool.js';
 import * as Registries from './util/registry-utils.js';
 import { processExtends } from './util/extend-roots.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
@@ -60,7 +59,7 @@ import { withRulesContext } from './util/context.js';
 import { prepareCallableEvalCandidates } from './util/callable-candidate.js';
 import { evaluateCallableCandidateOutput } from './util/callable-candidate-output.js';
 import {
-  ensureCallableGuardOuterRules,
+  evaluateCallableGuard,
   prepareCallableGuardState
 } from './util/callable-guard.js';
 import { createCallableLiveSlots } from './util/callable-live-slots.js';
@@ -68,12 +67,8 @@ import { ensureCallableOuterRulesSurface } from './util/callable-outer-rules.js'
 import { matchCallableParams, type CallableParamMatch } from './util/callable-param-match.js';
 import { wireCallableScopeFrames } from './util/callable-scope-frame.js';
 import {
-  CALLABLE_DEFAULT_FALSE_EITHER,
-  CALLABLE_DEFAULT_NONE,
-  type CallableDefaultGroup,
   executeCallableDefaultCandidates,
-  type PendingCallableDefaultCandidate,
-  probeCallableDefaultGuard
+  type PendingCallableDefaultCandidate
 } from './util/callable-default-guard.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
@@ -3990,17 +3985,6 @@ function getSimpleCallableRulesetKey(ruleset: Ruleset): string | undefined {
   return getSimpleCallableSelectorKey(ruleset.value.selector);
 }
 
-function setMixinCallRulesContext(
-  context: Context,
-  rulesContext: Context['rulesContext']
-): () => void {
-  const savedRulesContext = context.rulesContext;
-  context.rulesContext = rulesContext;
-  return () => {
-    context.rulesContext = savedRulesContext;
-  };
-}
-
 /**
  * A collection of resolved mixin candidates that can be called directly.
  *
@@ -4308,125 +4292,62 @@ export class MixinCollection extends Node<MixinEntry[]> {
         createOuterRules: createCallableOuterRules
       });
       outerRules = preparedGuardOuterRules;
-      let passes = true;
-      // Call-time resolution is handled by the current context.rulesContext
-      const restoreRulesContext = setMixinCallRulesContext(thisContext, outerRules ?? rules);
-      try {
-        if (guard) {
-          const guardNeedsOuterRules = !guard.hasFlag(F_STATIC);
-          if (
-            guardNeedsOuterRules
-            && !usesPreboundCallerGuardOuterRules
-            && !usesPreboundParamGuardOuterRules
-          ) {
-            outerRules = ensureCallableGuardOuterRules({
-              guard,
-              usesPreboundCallerGuardOuterRules,
-              usesPreboundParamGuardOuterRules,
-              outerRules,
-              rules,
-              parent: candidate.parent!,
-              candidateIndex: candidate.index,
-              createOuterRules: createCallableOuterRules
-            });
-          }
-          /** Allow lookup on the inherited rules */
-          passes = false;
-          let guardPasses = false;
-          let defaultGroup: CallableDefaultGroup = CALLABLE_DEFAULT_FALSE_EITHER;
-          if (hasDefault) {
-            const {
-              passWhenDefaultFalse,
-              passWhenDefaultTrue,
-              passes: defaultProbePasses,
-              group
-            } = await probeCallableDefaultGuard({
-              context: thisContext,
-              candidateGuard,
-              copyGuardForEval,
-              beforeEval: (probeGuard) => {
-                if (
-                  !probeGuard.hasFlag(F_STATIC)
-                  && !usesPreboundCallerGuardOuterRules
-                  && !usesPreboundParamGuardOuterRules
-                ) {
-                  outerRules = ensureCallableGuardOuterRules({
-                    guard: probeGuard,
-                    usesPreboundCallerGuardOuterRules,
-                    usesPreboundParamGuardOuterRules,
-                    outerRules,
-                    rules,
-                    parent: candidate.parent!,
-                    candidateIndex: candidate.index,
-                    createOuterRules: createCallableOuterRules
-                  });
-                }
-              }
-            });
-            if (debugDefaultGuard) {
-              console.log('[default-guard:candidate]', JSON.stringify({
-                caller: debugCaller(),
-                candidate: candidateName?.valueOf?.() ?? '<anon>',
-                guard: candidateGuard?.valueOf?.() ?? candidateGuard?.toString?.() ?? '',
-                params: candidateParams?.value?.map((param: any) => param?.valueOf?.() ?? String(param)) ?? [],
-                passWhenDefaultFalse,
-                passWhenDefaultTrue
-              }));
-            }
-            passes = defaultProbePasses;
-            defaultGroup = group;
-            if (passes && defaultGroup === CALLABLE_DEFAULT_NONE) {
-              hasDefNoneCandidate = true;
-            }
-            guardPasses = passes;
-            if (passes) {
-              pendingDefaultCandidates.push({
-                candidateParent: candidate.parent,
-                candidateIndex: candidate.index,
-                rules,
-                sourceRules: getRootSourceRules(getMixinEntryRules(candidate as CallableEntry)),
-                params: getParamsSignature(),
-                group: defaultGroup
-              });
-            }
-          } else {
-            /** All nodes need context to be evaluated */
-            thisContext.isDefault = false;
-            guard = await guard.eval(thisContext);
-            /** Less guards only pass on explicit Bool(true), never JS truthiness. */
-            guardPasses = guard instanceof Bool && guard.value === true;
-            if (guardPasses) {
-              passes = true;
-              hasDefNoneCandidate = true;
-            }
-          }
-        }
-        if (!passes) {
-          continue;
-        }
-        if (!guard || !hasDefault) {
-          // Non-default candidates are equivalent to Less's defNone group
-          // (match regardless of default() assumption), so they suppress ambiguity.
-          hasDefNoneCandidate = true;
-        }
-        if (guard && hasDefault) {
-          continue;
-        }
-        const newRules = await evaluateCallableCandidateOutput({
-          context: thisContext,
-          currentCall: thisContext.callStack.at(-1),
-          getParamsSignature,
-          candidateParent: candidate.parent!,
+      const guardResult = await evaluateCallableGuard({
+        context: thisContext,
+        hasDefault,
+        guard,
+        candidateGuard,
+        copyGuardForEval,
+        usesPreboundCallerGuardOuterRules,
+        usesPreboundParamGuardOuterRules,
+        outerRules,
+        rules,
+        parent: candidate.parent!,
+        candidateIndex: candidate.index,
+        createOuterRules: createCallableOuterRules
+      });
+      outerRules = guardResult.outerRules;
+      if (debugDefaultGuard && guardResult.defaultProbeResult) {
+        console.log('[default-guard:candidate]', JSON.stringify({
+          caller: debugCaller(),
+          candidate: candidateName?.valueOf?.() ?? '<anon>',
+          guard: candidateGuard?.valueOf?.() ?? candidateGuard?.toString?.() ?? '',
+          params: candidateParams?.value?.map((param: any) => param?.valueOf?.() ?? String(param)) ?? [],
+          passWhenDefaultFalse: guardResult.defaultProbeResult.passWhenDefaultFalse,
+          passWhenDefaultTrue: guardResult.defaultProbeResult.passWhenDefaultTrue
+        }));
+      }
+      if (!guardResult.passes) {
+        continue;
+      }
+      if (guardResult.contributesDefNone) {
+        hasDefNoneCandidate = true;
+      }
+      if (guardResult.pendingDefaultGroup !== undefined) {
+        pendingDefaultCandidates.push({
+          candidateParent: candidate.parent,
           candidateIndex: candidate.index,
           rules,
           sourceRules: getRootSourceRules(getMixinEntryRules(candidate as CallableEntry)),
-          restrictMixinOutputLookup
+          params: getParamsSignature(),
+          group: guardResult.pendingDefaultGroup
         });
-        if (newRules) {
-          outputRules.push(newRules);
-        }
-      } finally {
-        restoreRulesContext();
+      }
+      if (guardResult.defersCandidateOutput) {
+        continue;
+      }
+      const newRules = await evaluateCallableCandidateOutput({
+        context: thisContext,
+        currentCall: thisContext.callStack.at(-1),
+        getParamsSignature,
+        candidateParent: candidate.parent!,
+        candidateIndex: candidate.index,
+        rules,
+        sourceRules: getRootSourceRules(getMixinEntryRules(candidate as CallableEntry)),
+        restrictMixinOutputLookup
+      });
+      if (newRules) {
+        outputRules.push(newRules);
       }
     }
 

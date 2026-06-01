@@ -139,6 +139,11 @@ Peter to pay Paul.
   policy, no-param caller-guard prebinding, and on-demand dynamic guard wrapper
   creation are no longer scattered across repeated inline branches inside
   `MixinCollection.evalCall(...)`.
+- Callable guard execution now also lives in
+  `packages/core/src/tree/util/callable-guard.ts`, so rules-context swapping,
+  default-guard probe execution, defNone contribution tracking, and
+  pending-default deferral decisions are no longer inline inside
+  `MixinCollection.evalCall(...)`.
 - Import placement option reads share `getImportPlacementRenderState(...)`, and
   import postlude render order reads through `getImportPostludeRenderState(...)`.
 - Source-free public direct-index container narrowing is explicitly blocked by
@@ -927,6 +932,29 @@ to choose the next queue.
    remaining guard/default-result sequencing or another still-inline
    orchestration block instead of stale guard-prep wording.
 
+### Completed Queue Pass: 2026-06-01 #44
+
+1. Lane B deleted another real `MixinCollection` orchestration block. Callable
+   guard execution moved out of `packages/core/src/tree/rules.ts` into
+   `packages/core/src/tree/util/callable-guard.ts`, taking rules-context
+   swapping, default-guard probe execution, defNone contribution tracking, and
+   pending-default deferral decisions with it.
+2. Lane B kept the runtime contract exact while shrinking the central file to
+   4436 lines. `MixinCollection.evalCall(...)` still owns candidate body
+   execution and pending-default output collection, but it no longer owns the
+   inline guard pass/fail/default branching itself.
+3. Lane B added focused helper coverage instead of relying only on integration
+   fallout. `packages/core/src/tree/util/__tests__/callable-guard.test.ts`
+   now proves default-guard execution and non-default guard pass handling
+   directly, while the focused `mixin.test.ts` and `mixin-recursion.test.ts`
+   suites keep the production mixin/guard paths pinned down.
+4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
+   frame seam is still blocked by the focused AtRule suite, the active
+   bubbling matrix, and the `media.less` AST serialization proof.
+5. Lane I refreshed Lane B truth and queue wording so the next pass targets
+   pending-default output collection or another still-inline candidate/body
+   orchestration block instead of stale guard-execution wording.
+
 ### Next Queue
 
 1. **Lane A: collapse cleanup/prep state only if a state record disappears.**
@@ -963,19 +991,21 @@ to choose the next queue.
 
 3. **Lane B: extract the next callable unit only if `evalCall(...)` loses another real guard/body closure.**
 
-   Parameter matching, candidate prep, default-probe evaluation, and
+   Parameter matching, candidate prep, default-probe evaluation, guard
+   execution, and
    candidate-output execution are out, and outer-rules reuse/setup plus
    scope-frame wiring plus live-slot assembly plus guard preparation are out
-   too. The next callable slice should target remaining guard/default-result
-   orchestration or another body-setup block only if one more temporary
+   too. The next callable slice should target pending-default output
+   collection, candidate output routing, or another body-setup block only if
+   one more temporary
    collection, callback, or closure disappears from `MixinCollection`.
 
 4. **Lane B: keep helper extraction honest; do not split candidate execution or scope-frame setup unless local runtime machinery falls.**
 
    The next cut needs to remove another real local seam such as
-   the remaining default-result / `passes` orchestration, candidate pending-
-   default collection, or another local orchestration closure. Do not add a
-   helper that only rephrases the same body work behind another callback.
+   pending-default output collection, candidate-output queueing, or another
+   local orchestration closure. Do not add a helper that only rephrases the
+   same body work behind another callback.
 
 5. **Lane B/G: keep measuring callable slices, not AtRule-only work.**
 
