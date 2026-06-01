@@ -817,6 +817,7 @@ describe('AtRule', () => {
     expect(node.hoistToRoot).toBeUndefined();
     expect(node.frames).toBeUndefined();
     expect(node.evaluated).toBe(false);
+    expect(node.getRenderRules()).toBe(node.value.rules);
   });
 
   it('keeps body eval output frames in runtime state instead of mutating at-rule fields', async () => {

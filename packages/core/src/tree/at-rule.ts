@@ -325,24 +325,6 @@ function restoreAtRuleBodyRuntimeState(
   }
 }
 
-function runAtRuleBodyRuntimeState<T>(
-  node: AtRule,
-  state: AtRuleBodyRuntimeState,
-  work: () => T
-): T {
-  const priorRuntime = atRuleBodyRuntimeState.get(node);
-  try {
-    updateAtRuleBodyRuntimeState(node, state);
-    return work();
-  } finally {
-    if (priorRuntime) {
-      atRuleBodyRuntimeState.set(node, priorRuntime);
-    } else {
-      atRuleBodyRuntimeState.delete(node);
-    }
-  }
-}
-
 export function createAtRuleBodyRuntimeUpdate(node: AtRule, state: AtRuleBodyRuntimeUpdateInput): AtRuleBodyRuntimeState | undefined {
   let runtimeUpdate: AtRuleBodyRuntimeState | undefined;
   const ensureRuntimeUpdate = (): AtRuleBodyRuntimeState => (runtimeUpdate ??= {});
@@ -418,6 +400,23 @@ function commitAtRuleBodyEvalRuntimeState(
   } else {
     atRuleBodyRuntimeState.delete(node);
   }
+}
+
+function applyAtRuleBodyRuntimeState(
+  node: AtRule,
+  state: AtRuleBodyRuntimeState
+): AtRule {
+  if (state.evaluatedBody && state.evaluatedBody !== node.value.rules) {
+    node.adopt(state.evaluatedBody);
+    node.value.rules = state.evaluatedBody;
+  }
+  if (state.hoistToRoot !== undefined) {
+    node.hoistToRoot = state.hoistToRoot;
+  }
+  if (state.frames !== undefined) {
+    node.frames = state.frames;
+  }
+  return node;
 }
 
 function createAtRuleBodyRecordRegistration(
@@ -851,10 +850,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           : (result.contextState.evaluatedBody ?? result.node.value.rules),
         output: result.contextState.output
       });
-      const renderWithPrelude = () => renderEvaluatedAtRule(this, result.contextState.evaluatedPrelude);
-      return runtimeUpdate
-        ? runAtRuleBodyRuntimeState(this, runtimeUpdate, renderWithPrelude)
-        : renderWithPrelude();
+      const renderNode = runtimeUpdate
+        ? applyAtRuleBodyRuntimeState(this.deriveAtRule(this.value), runtimeUpdate)
+        : this;
+      return renderEvaluatedAtRule(renderNode, result.contextState.evaluatedPrelude);
     };
     return pipe(
       () => this.evalForRender(context),
