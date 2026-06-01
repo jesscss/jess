@@ -57,8 +57,8 @@ import {
   writeRenderText
 } from './util/render-buffer.js';
 import { withRulesContext } from './util/context.js';
-import { cloneBoundValue, createArgumentsBindingValue, createRestBindingValue, getArgumentsBindingValues } from './util/callable-binding.js';
-import { getCallableNodeSignature, getCallableRestSignature, getCallableSignatureKey } from './util/callable-signature.js';
+import { createArgumentsBindingValue, getArgumentsBindingValues } from './util/callable-binding.js';
+import { matchCallableParams, type CallableParamMatch } from './util/callable-param-match.js';
 import {
   CALLABLE_DEFAULT_FALSE,
   CALLABLE_DEFAULT_FALSE_EITHER,
@@ -520,14 +520,6 @@ export interface RuntimeVarBinding {
   readonly?: boolean;
   sourceNode?: Node;
 }
-
-type RuntimeVarBindingRecord = {
-  name: string;
-  value?: Node;
-  prepareValue?: (value: Node | undefined) => Node;
-  readonly?: boolean;
-  sourceNode?: Node;
-};
 
 export type RulesOptions = {
   /**
@@ -4055,10 +4047,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
     function createEmptyDerivedRules(sourceRules: Rules): Rules {
       return createDerivedRulesSurface(sourceRules);
     }
-    const resolvedParamBindings = new WeakMap<CallableEntry, {
-      bindings: RuntimeVarBindingRecord[];
-      signatureKey: string | undefined;
-    }>();
+    const resolvedParamBindings = new WeakMap<CallableEntry, CallableParamMatch>();
     let emptyOutputSourceRules: Rules | undefined;
     for (let i = 0; i < mixinLength; i++) {
       let mixin = mixinArr[i]!;
@@ -4078,151 +4067,13 @@ export class MixinCollection extends Node<MixinEntry[]> {
         if (!originalParams) {
           continue;
         }
-        const bindingRecordsByIndex = new Map<number, RuntimeVarBindingRecord>();
-        const signatureParts: Array<string | undefined> = new Array(originalParams.length);
-        const hasRestParamOriginal = originalParams.value.some(p => p.type === 'Rest');
-        const maxPositionalArgs = hasRestParamOriginal ? Number.POSITIVE_INFINITY : originalParams.length;
-        let positions = originalParams.length;
-        let requiredPositions = 0;
-        for (let param of originalParams.value) {
-          if (isNode(param, N.VarDeclaration)) {
-            if (param.value.value instanceof Nil) {
-              requiredPositions++;
-            }
-          } else if (isNode(param, N.Any) && param.options.role === 'property') {
-            // Any with role: 'property' is a parameter without default (consistent with variable names)
-            requiredPositions++;
-          } else if (param.type !== 'Rest') {
-            requiredPositions++;
-          }
-        }
-        let argPos = 0;
-        let match = true;
-        for (let i = 0; i < positions; i++) {
-          let arg = nodeArgs[argPos];
-          if (!arg) {
-            continue;
-          }
-          let param: Node | undefined;
-          let paramIndex = -1;
-          let argValue: Node;
-          if (isNode(arg, N.VarDeclaration)) {
-            paramIndex = originalParams.value.findIndex(
-              (p) => {
-                if (isNode(p, N.VarDeclaration)) {
-                  return p.value.name.valueOf() === arg.value.name.valueOf();
-                }
-                if (isNode(p, N.Any) && p.options.role === 'property') {
-                  return p.valueOf() === arg.value.name.valueOf();
-                }
-                return false;
-              }
-            );
-            if (paramIndex >= 0) {
-              param = originalParams.value[paramIndex];
-              argValue = arg.value.value;
-            } else {
-              match = false;
-              break;
-            }
-          } else {
-            paramIndex = i;
-            param = originalParams.value[paramIndex];
-            if (!param) {
-              match = false;
-              break;
-            }
-            argValue = arg;
-          }
-          if (!param) {
-            match = false;
-            break;
-          }
-          if (isNode(param, N.VarDeclaration)) {
-            bindingRecordsByIndex.set(paramIndex, {
-              name: param.value.name.valueOf(),
-              value: argValue,
-              prepareValue: cloneBoundValue,
-              readonly: param.options.readonly,
-              sourceNode: isNode(arg, N.VarDeclaration) ? arg : param
-            });
-            signatureParts[paramIndex] = getCallableNodeSignature(argValue);
-          } else if (isNode(param, N.Any) && param.options.role === 'property') {
-            bindingRecordsByIndex.set(paramIndex, {
-              name: param.valueOf(),
-              value: argValue,
-              prepareValue: cloneBoundValue,
-              sourceNode: isNode(arg, N.VarDeclaration) ? arg : param
-            });
-            signatureParts[paramIndex] = getCallableNodeSignature(argValue);
-          } else if (param.type === 'Rest') {
-            /** We assume that the rest args are values */
-            const rest = nodeArgs.slice(argPos);
-            const restName = param.value ? `${param.value}` : `rest${i}`;
-            bindingRecordsByIndex.set(paramIndex, {
-              name: restName,
-              prepareValue: () => createRestBindingValue(rest)
-            });
-            signatureParts[paramIndex] = getCallableRestSignature(rest, restName, Boolean(thisContext.treeContext?.file));
-            /** Check a pattern-matching node */
-          } else {
-            signatureParts[paramIndex] = getCallableNodeSignature(argValue);
-            if (param.compare(argValue) !== 0) {
-              /** This mixin is not a match */
-              match = false;
-              break;
-            }
-          }
-          argPos++;
-        }
-        const positionalArgCount = nodeArgs.filter(argNode => !isNode(argNode, N.VarDeclaration)).length;
-        if (positionalArgCount > maxPositionalArgs) {
-          continue;
-        }
-        /**
-         * Now we can check remaining positional matches
-         * against the remaining parameters.
-         */
-        if (argPos < requiredPositions) {
-          /** This mixin is not a match */
-          continue;
-        }
-        if (nodeArgs.length > 1 && originalParams.value.length === 1 && requiredPositions === 1) {
-          // Less should not match single required-parameter overloads against extra positional args.
-          continue;
-        }
-        if (match) {
-          for (let i = 0; i < positions; i++) {
-            const param = originalParams.value[i]!;
-            if (signatureParts[i] !== undefined) {
-              continue;
-            }
-            if (isNode(param, N.VarDeclaration)) {
-              bindingRecordsByIndex.set(i, {
-                name: param.value.name.valueOf(),
-                value: param.value.value,
-                prepareValue: cloneBoundValue,
-                readonly: param.options.readonly,
-                sourceNode: param
-              });
-              signatureParts[i] = getCallableNodeSignature(param.value.value);
-            } else if (param.type === 'Rest') {
-              const restName = param.value ? `${param.value}` : `rest${i}`;
-              bindingRecordsByIndex.set(i, {
-                name: restName,
-                prepareValue: thisContext.treeContext?.file
-                  ? () => new Sequence([])
-                  : () => new Any(restName, { role: 'property' })
-              });
-              signatureParts[i] = thisContext.treeContext?.file ? '' : restName;
-            }
-          }
-          resolvedParamBindings.set(mixin, {
-            bindings: [...bindingRecordsByIndex.entries()]
-              .sort((a, b) => a[0] - b[0])
-              .map(([, binding]) => binding),
-            signatureKey: getCallableSignatureKey(signatureParts)
-          });
+        const matchedParams = matchCallableParams({
+          params: originalParams,
+          args: nodeArgs,
+          hasFileContext: Boolean(thisContext.treeContext?.file)
+        });
+        if (matchedParams) {
+          resolvedParamBindings.set(mixin, matchedParams);
           mixinCandidates.push(mixin);
         }
       }

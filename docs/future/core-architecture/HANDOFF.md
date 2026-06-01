@@ -300,14 +300,15 @@ cross-purpose helper closures and less parse cost.
 
 - `MixinCollection.evalCall(...)` still depends directly on `Rules` instance
   construction, scope-frame wiring, mixin output slot attachment, call-stack
-  recursion tracking, guard/default evaluation, and parameter live-slot setup.
+  recursion tracking, guard/default evaluation, candidate execution, and
+  parameter live-slot setup.
 - Pure helper candidates already outside the closure are callable signatures,
-  callable default-group resolution, callable binding value construction, and
-  mixin output wrapper construction.
+  callable default-group resolution, callable binding value construction,
+  callable parameter matching, and mixin output wrapper construction.
 - The next extractable unit needs either a Rules-owned adapter input or a
-  callable-invocation module that accepts Rules construction callbacks. Moving
-  only guard probes or candidate filtering would keep the same closures and add
-  call indirection.
+  callable-invocation module that accepts Rules construction callbacks.
+  Parameter matching is now out of the closure; the next cut must delete a
+  remaining candidate/body orchestration closure instead of just renaming it.
 
 **Completion gates:**
 
@@ -320,16 +321,17 @@ cross-purpose helper closures and less parse cost.
       focused output-slot tests.
 - [x] Callable default grouping and outer-rules wrapper creation have named
       helper boundaries with focused coverage.
-- [ ] Focused mixin/rules tests and changed baseline pass.
+- [x] Focused mixin/rules tests and changed baseline pass.
 
 **Next queue seeds:**
 
-1. Draw the actual dependency graph for `MixinCollection` and extract the
-   smallest pure helper group that does not introduce circular imports.
-2. Move rest/arguments binding construction into a callable invocation helper
-   and measure rawArgs/mixin hot paths.
-3. Delete stale commented registry scaffolding once adjacent extraction tests
-   cover the live behavior.
+1. Extract one remaining callable candidate-orchestration unit only if a local
+   closure, temporary collection, or callback disappears from
+   `MixinCollection.evalCall(...)`.
+2. Keep default-guard probe extraction blocked unless it deletes a copied-guard
+   closure or candidate loop, not just relocates it.
+3. Delete stale commented registry scaffolding once adjacent callable
+   extraction tests cover the live behavior.
 
 ### Lane C: Placement Record Convergence
 
@@ -653,155 +655,41 @@ to choose the next queue.
   adapter deletion, and bounded blockers for public direct-index and selector
   ownership.
 
-### Completed Queue Pass: 2026-06-01 #31
+- Passes 31-34 finished the last big AtRule render/runtime deletions and
+  converted the remaining collapse-nesting frame seam into an explicit,
+  well-covered blocker. Direct render now uses print-state overrides instead of
+  temporary owned at-rules, the dead render runtime-update helper is gone, the
+  bubbling bug matrix is active coverage, and a direct-on-node ownership
+  attempt is now explicitly rejected because it hung the mixin bubbling path.
 
-1. Lane A deleted the remaining direct-render body-result derive in `AtRule`.
-   Direct body render no longer calls `applyAtRuleBodyRuntimeState(...)` on a
-   temporary derived at-rule just to host evaluated body or hoist/frame facts
-   for serialization. Those facts now travel through render-local print-state
-   overrides.
-2. Lane A kept the same semantics on that path. Dynamic prelude direct render,
-   root-only hoist direct render, and evaluated collapse-nesting render still
-   preserve source-node canonical state while serializing the same output.
-3. Lane A keeps the broader blocker explicit. Making direct collapse-nesting
-   `eval(context)` return an owned result instead of using the compatibility
-   frame path still regresses nested wrapper/media fixture structure, so that
-   deletion remains blocked until a narrower ownership shape preserves those
-   wrappers.
-4. Lane A kept the failed-eval/runtime-shape proofs green. Sync throw, async
-   reject, and late post-eval visibility failures still restore the prior frame
-   compatibility state after the direct render-node narrowing.
-5. Lane A kept cleanup/prep state split. `AtRuleBodyFrameState` still owns
-   frame clearing, `AtRuleBodyEvalPrepState` still owns body-to-eval/extend-root
-   prep, and `restoreAtRuleBodyEvalRecord(...)` remains the single cleanup exit.
-6. Lane B kept callable parameter matching inline. The remaining block still
-   owns the binding `Map`, signature array, named-argument scan, and rest
-   signature closures, so extracting it would add a hot call without deleting
-   those allocations.
-7. Lane B kept default-guard probe extraction blocked. Source scans still show
-   the remaining `defaultProbeGuard` closure reusing one copied guard per
-   candidate, with the helper boundary already handling group resolution.
-8. Lane B/G measured after another AtRule compatibility deletion, not a
-   callable slice: callable rawArgs still stays stable, and the hotspot audit
-   now reports no remaining render/eval/resolve surface lines after the
-   direct-render print-state deletion.
-9. Lane C found no production optional-fallback placement consumer. Function
-   fallback syntax remains the only named public adapter, while reference and
-   import fallback/render paths already reuse direct text/container routes.
-10. Lane C/D kept recursive import descendant lookup isolated. Import placement
-    still uses top-level `PlacementChildSegment`s first, then direct maps, then
-    recursive fallback; sparse descendant state still needs a red nested proof
-    before it can justify new objects.
-11. Lane D kept import descendant diagnostics debug-only. A counter would still
-    be proof-only and would not remove production lookup work.
-12. Lane E kept rules-like compatibility reads in place. `reference.ts`,
-    reference tests, and ruleset tests still depend on `sourceNode` parentage
-    and the public shallow-owned callable surface shape.
-13. Lane F kept contextual-important duplication intentional. Render-only
-    `importantText` still avoids allocating `Any('!important')`, while public
-    resolve still needs the flag node for compatibility.
-14. Lane F kept operation metadata aliases out. The only operation-result
-    helper exports still remain `finalizeOperationMetadataResult(...)` and
-    `finalizePublicOperationResult(...)`.
-15. Lane G/H kept optional fallback storage-free and selector-copy removal
-    blocked. Call rawArgs placement still covers diagnostics/source lookup, and
-    generated `:is(...)` placement state still carries omission/keyset facts
-    alongside existing extend/parentage constraints.
-16. Lane I compacted the pass history, updated the architecture truth with the
-   full direct-render print-state override surface plus the still-explicit
-   direct-eval ownership blocker, and keeps full queue completion gated on
-   verification, commit, and push.
+### Completed Queue Pass: 2026-06-01 #35
 
-### Completed Queue Pass: 2026-06-01 #32
-
-1. Lane A deleted dead production scaffolding in `AtRule`. The old
-   `createAtRuleBodyRuntimeUpdate(...)` helper and its render-update state type
-   were only surviving as test-only implementation detail coverage after the
-   render-local print-state override work.
-2. Lane A kept observable behavior coverage instead of helper-shape coverage.
-   The focused AtRule suite still proves direct dynamic-prelude render,
-   root-only hoist render, and evaluated collapse-nesting render preserve
-   canonical source state without deriving owned render nodes.
-3. Lane A tightened the architecture truth. The handoff now describes render
-   override state as the only live render boundary instead of talking about a
-   deleted runtime-update adapter.
-4. Lane A kept the real blocker unchanged. The only remaining runtime
-   compatibility state is still the collapse-nesting frame path for evaluated
-   node APIs; this pass did not pretend that seam was gone.
-5. Lane B kept callable extraction blocked on actual closure deletion rather
-   than helper churn. The inline parameter-matching block still owns the same
-   hot `Map`/signature/rest work.
-6. Lane B kept default-guard probe extraction blocked for the same reason: the
-   remaining closure still reuses copied guards and would not disappear from a
-   shallow helper move.
-7. Lane B/G again treated rawArgs and Less timing as regression signals only,
-   not as evidence for a callable win when the pass stayed AtRule-local.
-8. Lane C kept optional fallback state storage-free. There is still no
-   production consumer that would justify reviving a placement record for that
-   path.
-9. Lane C/D kept recursive import descendant lookup isolated behind the same
-   top-level segment fast path and fallback-only proof boundary.
-10. Lane D kept import descendant diagnostics out of production. A counter
-    would still be proof-only overhead.
-11. Lane E kept rules-like owned wrapper behavior unchanged. Current callable
-    and parentage expectations still rely on the shallow owned surface.
-12. Lane F kept contextual-important split and operation-result boundaries as
-    the current stable shape; there was no adjacent deletion worth faking here.
-13. Lane G/H kept optional fallback and generated-selector ownership blockers
-    explicit instead of widening the pass with documentation-only churn.
-14. Lane I updated the node-family tracker to reflect the deleted render
-    runtime-update helper and kept queue completion tied to verification,
-    commit, and push.
-
-### Completed Queue Pass: 2026-06-01 #33
-
-1. Lane A turned the remaining collapse-nesting frame blocker into active
-   integration coverage. The old `todo` matrix in
-   `packages/jess/test/less/at-rule-bubbling-bugs.test.ts` now runs and covers
-   mixin bubbling, deep wrapper/media stacks, parent-ref `&` bubbling, sibling
-   `&` plus `.child` media output, nested supports mixin output, and nested
-   at-rule `&` wrapper output.
-2. Lane A used that coverage to sharpen the blocker truth instead of pretending
-   the seam was gone. A minimal ownership experiment deleting
-   `shouldKeepAtRuleEvalRuntimeState(...)` immediately regressed the focused
-   collapse-nesting AtRule suite, the bubbling bug matrix above, and the
-   `media.less` AST serialization proof.
-3. Lane A therefore keeps the remaining runtime compatibility state explicit:
-   raw `frames` on source at-rules are still required for evaluated-node APIs
-   that render from the canonical source after collapse-nesting eval.
-4. Lane B stayed intentionally unchanged. This was blocker-proof work, not a
-   callable helper slice, so rawArgs and Less timings remain regression checks
-   only.
-5. Lane C/D kept optional-fallback and import-descendant state unchanged; the
-   live evidence from this pass is all on AtRule collapse-nesting semantics.
-6. Lane E/H kept rules-like and selector ownership blockers explicit. The
-   active bubbling matrix reinforces that parent-selector and wrapper-stack
-   semantics are still easy to break when ownership is flattened too
-   aggressively.
-7. Lane I updated the architecture truth and next queue so the next Lane A pass
-   either deletes one remaining frame consumer with this bug matrix still green
-   or records a narrower blocker against a specific consumer rather than the
-   whole seam.
-
-### Completed Queue Pass: 2026-06-01 #34
-
-1. Lane A tested the next obvious ownership alternative and rejected it with
-   evidence. Moving collapse-nesting frame compatibility from the remaining
-   AtRule `WeakMap` onto the evaluated source at-rule itself kept the focused
-   AtRule proofs green but regressed the active bubbling matrix badly enough
-   to hang the "mixin with at-rule preserves parent selector" case.
-2. Lane A therefore kept the existing `WeakMap` seam in place. The blocker is
-   now sharper than before: the remaining side-map storage is not just legacy
-   inertia; it is still protecting shared source at-rules that flow through
-   mixin bubbling paths.
-3. Lane A kept the active bubbling matrix as the live guardrail for future
-   experiments. Any next deletion on this seam has to stay green for the
-   focused AtRule suite, `packages/jess/test/less/at-rule-bubbling-bugs.test.ts`,
-   and the `media.less` AST serialization proof.
-4. Lane B stayed intentionally unchanged again. This pass was evidence-gathering
-   around the last AtRule frame seam, not a callable extraction slice.
-5. Lane I updated the handoff to name the rejected direct-on-node ownership
-   attempt explicitly so the next pass does not have to rediscover it.
+1. Lane B finally deleted a real `MixinCollection` closure block. Callable
+   parameter matching moved out of `rules.ts` into
+   `packages/core/src/tree/util/callable-param-match.ts`, taking the binding
+   `Map`, signature array, named-argument scan, default-fill pass, and rest
+   signature logic with it.
+2. Lane B kept the runtime contract exact while shrinking the central file.
+   `packages/core/src/tree/rules.ts` dropped from 4876 lines at discovery time
+   to 4735 lines after the extraction, while mixin matching still preserves the
+   same named/default/rest/`@arguments` behavior and the single-required-param
+   overload rejection rule.
+3. Lane B added focused helper coverage instead of relying only on integration
+   fallout. `packages/core/src/tree/util/__tests__/callable-param-match.test.ts`
+   now proves named/default/rest binding shape and the extra-positional
+   rejection case directly, with the focused `mixin.test.ts` suite still green.
+4. Lane B also proved the import edge needed to stay lean. A first draft that
+   reached for higher-level declaration imports destabilized the broad baseline,
+   so the final helper stays on the lower-level node-type surface instead of
+   baking in new circular dependency edges.
+5. Lane B/G now has fresh callable measurements on an actual callable slice:
+   rawArgs medians stayed at 0.0003ms for plain positional calls and 0.0023ms
+   for metadata rawArgs calls, and the full changed baseline stayed green.
+6. Lane A stayed intentionally unchanged this pass. The remaining collapse-
+   nesting frame seam is still blocked by the focused AtRule suite, the active
+   bubbling matrix, and the `media.less` AST serialization proof.
+7. Lane I compacted older pass detail, refreshed Lane B truth/queue wording,
+   and keeps full queue completion tied to verification, commit, and push.
 
 ### Next Queue
 
@@ -837,21 +725,23 @@ to choose the next queue.
    pass should delete a remaining compatibility field or consumer rather than
    add more lifecycle plumbing.
 
-3. **Lane B: extract callable parameter matching only with a closure deletion.**
+3. **Lane B: extract the next callable unit only if `evalCall(...)` loses another real closure.**
 
-   Candidate: parameter binding/signature construction. Require a red focused
-   mixin test and a helper that removes local `Map`/array/rest closures rather
-   than moving them behind another call.
+   Parameter matching is out. The next callable slice should target candidate
+   orchestration or body/setup work only if one more temporary collection,
+   callback, or copied-guard closure disappears from `MixinCollection`.
 
-4. **Lane B: keep default-guard probe extraction blocked unless calls fall.**
+4. **Lane B: keep default-guard probe extraction blocked unless copied-guard work falls.**
 
    The default probe closure currently reuses one copied guard per candidate;
-   split only if the new shape reduces probes or allocations.
+   split only if the new shape reduces copied guards, candidate loops, or hot
+   closure count.
 
-5. **Lane B/G: compare callable parse/runtime cost after any helper slice.**
+5. **Lane B/G: keep measuring callable slices, not AtRule-only work.**
 
-   Use rawArgs and Less hotpath timings only after a callable helper actually
-   changes. Do not treat AtRule-only helper changes as callable evidence.
+   After any callable helper change, rerun rawArgs and Less hotpaths as
+   regression checks. Do not cite those numbers as callable evidence for
+   AtRule-only passes.
 
 6. **Lane C: find a real optional fallback placement consumer before storing state.**
 
