@@ -126,7 +126,6 @@ type AtRuleLeafState = {
 };
 
 export type AtRuleBodyEvalResult = {
-  evalFrame: AtRule;
   node: AtRule | Nil;
   contextState: AtRuleBodyEvalContextState;
 };
@@ -479,7 +478,6 @@ function readAtRuleBodyEvalRecordResult(
   node: AtRule | Nil
 ): AtRuleBodyEvalResult {
   return {
-    evalFrame: record.evalFrame,
     node,
     contextState: record.contextState
   };
