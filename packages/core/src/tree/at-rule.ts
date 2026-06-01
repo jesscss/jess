@@ -128,10 +128,7 @@ type AtRuleLeafState = {
 export type AtRuleBodyEvalResult = {
   evalFrame: AtRule;
   node: AtRule | Nil;
-  evaluatedPrelude?: Node;
-  evaluatedBody?: Rules;
-  visible?: boolean;
-  output?: AtRuleBodyOutputState;
+  contextState: AtRuleBodyEvalContextState;
 };
 
 export type AtRuleBodyRenderInput = {
@@ -484,10 +481,7 @@ function readAtRuleBodyEvalRecordResult(
   return {
     evalFrame: record.evalFrame,
     node,
-    evaluatedPrelude: record.contextState.evaluatedPrelude,
-    evaluatedBody: record.contextState.evaluatedBody,
-    visible: record.contextState.visible,
-    output: record.contextState.output
+    contextState: record.contextState
   };
 }
 
@@ -739,7 +733,22 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private createBodyRenderState(result: AtRuleBodyEvalResult): AtRuleBodyRenderState {
-    return createAtRuleBodyRenderState(this, result);
+    const { contextState } = result;
+    if (result.node instanceof Nil) {
+      return {
+        kind: 'body-render',
+        source: this,
+        evaluatedPrelude: contextState.evaluatedPrelude,
+        output: contextState.output
+      };
+    }
+    return {
+      kind: 'body-render',
+      source: this,
+      evaluatedPrelude: contextState.evaluatedPrelude,
+      evaluatedBody: contextState.evaluatedBody ?? result.node.value.rules,
+      output: contextState.output
+    };
   }
 
   private evalBodyPreludeState(context: Context): MaybePromise<Node | undefined> {
@@ -826,13 +835,17 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private resolveBodyResult(result: AtRuleBodyEvalResult): AtRule {
+    const { contextState } = result;
     const publicResult = {
       node: this.deriveAtRule(this.value)
     };
     return applyAtRuleBodyPublicResultState(
       createAtRuleBodyPublicResultState({
-        ...result,
-        ...publicResult
+        ...publicResult,
+        evaluatedPrelude: contextState.evaluatedPrelude,
+        evaluatedBody: contextState.evaluatedBody,
+        visible: contextState.visible,
+        output: contextState.output
       })
     );
   }
