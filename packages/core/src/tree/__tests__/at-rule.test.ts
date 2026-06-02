@@ -1021,7 +1021,7 @@ describe('AtRule', () => {
     `);
   });
 
-  it('serializes evaluated collapse-nesting at-rules through compatibility frame getters without mutating source state', async () => {
+  it('serializes evaluated collapse-nesting at-rules without consulting compatibility frame getters or mutating source state', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
       rules: rules([])
@@ -1040,6 +1040,9 @@ describe('AtRule', () => {
 
     expect(node.hoistToRoot).toBeUndefined();
     expect(node.frames).toBeUndefined();
+    node.getRenderFrames = function getRenderFramesShouldNotRun(): AtRule['frames'] {
+      throw new Error('evaluated collapse-nesting serialization should not consult compatibility frame getters');
+    };
     expect(node.toTrimmedString()).toBeString(`
       @media (max-width: 10px) {
         .parent {
@@ -1047,7 +1050,6 @@ describe('AtRule', () => {
         }
       }
     `);
-    expect(node.getRenderFrames()).toEqual([parentFrame]);
   });
 
   it('keeps async collapse-nesting frame state on the invocation record without mutating source state', async () => {

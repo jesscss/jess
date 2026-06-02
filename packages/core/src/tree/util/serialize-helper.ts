@@ -500,9 +500,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
     }
 
-    const hoisted = isNode(node, N.AtRule) && options.atRuleHoistNode === node
-      ? (options.atRuleHoistOverride ?? node.isHoisted(options))
-      : node.isHoisted(options);
+    const hoisted = isNode(node, N.AtRule) && options.atRuleFrameNode === node
+      ? true
+      : isNode(node, N.AtRule) && options.atRuleHoistNode === node
+        ? (options.atRuleHoistOverride ?? node.isHoisted(options))
+        : node.isHoisted(options);
     // const isRuleset = isNode(node, 'Ruleset');
     const treeFrames = options.treeFrames!;
     const renderRulesBody = () => {

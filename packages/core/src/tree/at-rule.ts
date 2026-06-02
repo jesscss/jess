@@ -534,6 +534,19 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   override toTrimmedString(options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
+    const runtimeFrames = atRuleBodyRuntimeFrames.get(this);
+    if (runtimeFrames !== undefined) {
+      const priorFrameNode = printOptions.atRuleFrameNode;
+      const priorFrameOverride = printOptions.atRuleFrameOverride;
+      printOptions.atRuleFrameNode = this;
+      printOptions.atRuleFrameOverride = runtimeFrames;
+      try {
+        return serializeRulesContainer(this, printOptions);
+      } finally {
+        printOptions.atRuleFrameNode = priorFrameNode;
+        printOptions.atRuleFrameOverride = priorFrameOverride;
+      }
+    }
     return serializeRulesContainer(this, printOptions);
   }
 
