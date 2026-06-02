@@ -39,7 +39,9 @@ export function cloneWithReusableLeaves<T extends Node>(node: T): T {
     return reuseLeaf(node);
   }
   const cloneChild = (child: Node): Node => cloneWithReusableLeaves(child);
-  return node.clone(true, cloneChild);
+  const clone = node.clone(true, cloneChild);
+  copyRenderMetadata(node, clone);
+  return clone;
 }
 
 export function cloneChildrenWithReusableLeaves<T extends Node>(nodes: readonly T[]): T[] {
@@ -65,12 +67,39 @@ function copyChild(value: unknown): unknown {
   return value;
 }
 
+function copyChildPreservingComments(value: unknown): unknown {
+  if (value instanceof Node) {
+    return copyWithReusableLeavesPreservingComments(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => copyChildPreservingComments(item));
+  }
+  if (isRecord(value)) {
+    const out: Record<string, unknown> = {};
+    for (const key in value) {
+      if (Object.hasOwn(value, key)) {
+        out[key] = copyChildPreservingComments(value[key]);
+      }
+    }
+    return out;
+  }
+  return value;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
 
 function nodeOptions(node: Node): unknown {
   return Object.getOwnPropertyDescriptor(node, '_options')?.value;
+}
+
+function copyRenderMetadata(source: Node, target: Node): void {
+  target.hoistToRoot = source.hoistToRoot;
+  if ('frames' in source) {
+    const frames: unknown = Reflect.get(source, 'frames');
+    Reflect.set(target, 'frames', Array.isArray(frames) ? [...frames] : undefined);
+  }
 }
 
 function constructCopy(node: Node, value: unknown): Node {
@@ -87,7 +116,9 @@ function constructCopy(node: Node, value: unknown): Node {
   if (!(copy instanceof Node)) {
     throw new TypeError('Copied value must construct a Node');
   }
-  return copy.inherit(node);
+  copy.inherit(node);
+  copyRenderMetadata(node, copy);
+  return copy;
 }
 
 function deriveAmpersand(node: Node): Node | undefined {
@@ -121,6 +152,20 @@ export function copyWithReusableLeaves(node: Node): Node {
     return reuseLeaf(node);
   }
   const copy = constructCopy(node, copyChild(node.value));
+  copy.frozen = true;
+  return copy;
+}
+
+export function copyWithReusableLeavesPreservingComments(node: Node): Node {
+  const derivedAmpersand = deriveAmpersand(node);
+  if (derivedAmpersand) {
+    derivedAmpersand.frozen = true;
+    return derivedAmpersand;
+  }
+  if (canReuseLeaf(node)) {
+    return reuseLeaf(node);
+  }
+  const copy = constructCopy(node, copyChildPreservingComments(node.value));
   copy.frozen = true;
   return copy;
 }

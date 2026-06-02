@@ -12,7 +12,7 @@ import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBu
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
 import { createTriviaMap, emitCommentTriviaAfterNode } from './util/trivia.js';
-import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves, copyWithReusableLeavesPreservingComments, reuseLeaf } from './util/cloning.js';
 import { withRulesContext } from './util/context.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 
@@ -107,7 +107,6 @@ type AtRuleBodyPublicResultInput = {
   output?: AtRuleBodyOutputState;
 };
 
-const atRuleBodyRuntimeFrames = new WeakMap<AtRule, AtRule['frames']>();
 const activeAtRuleBodyEvalRecords = new WeakMap<Context, AtRuleBodyEvalRecord[]>();
 
 function pushAtRuleBodyEvalRecord(
@@ -239,17 +238,6 @@ function setAtRuleBodyEvalOutput(
   };
 }
 
-function restoreAtRuleBodyRuntimeState(
-  node: AtRule,
-  priorRuntimeFrames: AtRule['frames'] | undefined
-): void {
-  if (priorRuntimeFrames) {
-    atRuleBodyRuntimeFrames.set(node, priorRuntimeFrames);
-  } else {
-    atRuleBodyRuntimeFrames.delete(node);
-  }
-}
-
 function setAtRuleBodyEvalPrelude(
   record: AtRuleBodyEvalRecord,
   prelude: Node
@@ -288,28 +276,6 @@ function storeAtRuleBodyRecordRegistration(
   return registration;
 }
 
-function shouldKeepAtRuleEvalRuntimeState(
-  node: AtRule,
-  state: AtRuleBodyEvalContextState
-): boolean {
-  return Boolean(state.output?.frames && node.isNestable());
-}
-
-function commitAtRuleBodyEvalRuntimeState(
-  node: AtRule,
-  state: AtRuleBodyEvalContextState
-): void {
-  if (!shouldKeepAtRuleEvalRuntimeState(node, state)) {
-    atRuleBodyRuntimeFrames.delete(node);
-    return;
-  }
-  if (state.output?.frames !== undefined && state.output.frames !== node.frames) {
-    atRuleBodyRuntimeFrames.set(node, state.output.frames);
-  } else {
-    atRuleBodyRuntimeFrames.delete(node);
-  }
-}
-
 function createAtRuleEvalResultNode(
   source: AtRule,
   state: AtRuleBodyEvalContextState
@@ -318,7 +284,10 @@ function createAtRuleEvalResultNode(
     state.evaluatedBody
     && state.evaluatedBody !== source.value.rules
   );
-  const ownsOutput = Boolean(state.output && !shouldKeepAtRuleEvalRuntimeState(source, state));
+  const ownsOutput = Boolean(
+    (state.output?.hoistToRoot !== undefined && state.output.hoistToRoot !== source.hoistToRoot)
+    || (state.output?.frames !== undefined && state.output.frames !== source.frames)
+  );
   if (!ownsEvaluatedBody && !ownsOutput) {
     return source;
   }
@@ -326,7 +295,7 @@ function createAtRuleEvalResultNode(
     {
       node: source.deriveAtRule(source.value),
       evaluatedPrelude: state.evaluatedPrelude,
-      evaluatedBody: ownsEvaluatedBody ? state.evaluatedBody : undefined,
+      evaluatedBody: ownsEvaluatedBody || ownsOutput ? state.evaluatedBody : undefined,
       visible: state.visible,
       output: state.output
     }
@@ -458,7 +427,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private ownRules(rules: Rules): Rules {
-    const owned = canReuseLeaf(rules) ? reuseLeaf(rules) : copyWithReusableLeaves(rules);
+    const owned = canReuseLeaf(rules) ? reuseLeaf(rules) : copyWithReusableLeavesPreservingComments(rules);
     if (!(owned instanceof Rules)) {
       throw new TypeError('Expected at-rule rules copy');
     }
@@ -513,25 +482,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   getRenderFrames(): AtRule['frames'] {
-    return atRuleBodyRuntimeFrames.get(this) ?? this.frames;
+    return this.frames;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    const printOptions = getPrintOptions(options);
-    const runtimeFrames = atRuleBodyRuntimeFrames.get(this);
-    if (runtimeFrames !== undefined) {
-      const priorFrameNode = printOptions.atRuleFrameNode;
-      const priorFrameOverride = printOptions.atRuleFrameOverride;
-      printOptions.atRuleFrameNode = this;
-      printOptions.atRuleFrameOverride = runtimeFrames;
-      try {
-        return serializeRulesContainer(this, printOptions);
-      } finally {
-        printOptions.atRuleFrameNode = priorFrameNode;
-        printOptions.atRuleFrameOverride = priorFrameOverride;
-      }
-    }
-    return serializeRulesContainer(this, printOptions);
+    return serializeRulesContainer(this, getPrintOptions(options));
   }
 
   getRenderRules(): Rules | undefined {
@@ -1214,7 +1169,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<AtRule | Nil> {
-    const priorRuntimeFrames = atRuleBodyRuntimeFrames.get(this);
     const hasHoistedRulesetParent = context.bubbleRootAtRules
       && this.isRootOnly()
       && context.frames.some(f => isNode(f, N.Ruleset));
@@ -1231,24 +1185,20 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     try {
       out = this.evalBodyNode(context, record);
     } catch (error) {
-      restoreAtRuleBodyRuntimeState(this, priorRuntimeFrames);
       throw error;
     }
     if (isThenable(out)) {
       return (out as Promise<AtRule | Nil>).then(
         (value) => {
-          commitAtRuleBodyEvalRuntimeState(this, record.contextState);
           return value instanceof AtRule
             ? createAtRuleEvalResultNode(this, record.contextState)
             : value;
         },
         (error) => {
-          restoreAtRuleBodyRuntimeState(this, priorRuntimeFrames);
           throw error;
         }
       );
     }
-    commitAtRuleBodyEvalRuntimeState(this, record.contextState);
     return out instanceof AtRule
       ? createAtRuleEvalResultNode(this, record.contextState)
       : out;
@@ -1304,9 +1254,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (rules) {
           if (bodyEvalRecord.renderSourceBody) {
             return node;
-          }
-          if (context.opts.collapseNesting && node.isNestable()) {
-            setAtRuleBodyEvalOutput(bodyEvalContextState, { hoistToRoot: true });
           }
           return source.runBodyEvalInvocation(context, bodyEvalRecord, node, (restoreBodyEvalContext) => {
             const finishPreparedBody = (registration: AtRuleBodyRegistrationState): MaybePromise<AtRule> => {

@@ -108,6 +108,12 @@ Peter to pay Paul.
 - `AtRuleBodyFrameState` is gone. The invocation record now owns
   `clearRulesetFrames` / `restoreRulesetFrames`, and initial hoist output
   seeds directly onto `AtRuleBodyEvalContextState.output`.
+- AtRule collapse-nesting eval no longer persists evaluated frame facts in a
+  runtime `WeakMap`. Frame-bearing eval now returns an owned AtRule carrying
+  concrete `frames`; the source AtRule stays `frames`/`hoistToRoot` neutral.
+  Owned frame-bearing results keep the evaluated body that `processExtends()`
+  mutates, so extend parity and nested wrapper serialization share one body
+  root instead of cloning away the registered root.
 - Callable default guard grouping and callable outer-rules wrapper creation now
   have named helper boundaries outside the `evalCall(...)` closure set.
   Default-guard debug counts come from the resolution pass instead of
@@ -242,82 +248,16 @@ Peter to pay Paul.
   collecting merge items, returns raw nodes for single replacements, and uses
   one discriminated list/space channel instead of parallel `listValue` /
   `spaceValue` properties.
-- At-rule body public/render result states now consume narrow explicit adapter
-  inputs instead of piggybacking on the full eval result frame. Visibility,
-  layer names, and evaluated body state are stored on invocation context state
-  instead of the eval record, and the remaining evaluated-node compatibility
-  storage is documented as legacy runtime frames rather than the direct-render
-  model.
-- `AtRuleBodyEvalResult` is gone. The invocation record now carries its own
-  result node, so evaluated body/prelude/output facts no longer pass through a
-  second mini carrier before render/public boundaries consume them. Public
-  adapters still own their explicit boundary shape.
-- Direct AtRule render now carries evaluated prelude as a render-local header
-  override instead of runtime compatibility state. The remaining runtime-frame
-  compatibility storage no longer carries prelude, and direct render consumes
-  the invocation record plus a print-state header override instead of routing
-  prelude through a dedicated body render adapter.
-- `AtRuleBodyRenderState` is gone, and the follow-on render runtime-update
-  helper is gone too. Direct render now consumes the invocation record
-  straight into render-local print-state overrides instead of allocating a
-  separate compatibility adapter object.
-- AtRule body public-result application now writes evaluated body and output
-  facts directly onto the owned result node. The public-result runtime-update
-  helper is gone; the remaining runtime-frame compatibility storage no longer
-  participates in public or direct-render result application.
-- AtRule eval now restores prior compatibility runtime state whenever body eval
-  throws or rejects, including late post-eval visibility failures. Failed evals
-  no longer leak hoist/body `WeakMap` state onto the canonical at-rule.
-- AtRule eval now installs only evaluated-node compatibility state
-  once on success instead of writing `WeakMap` body/output facts incrementally
-  during body evaluation. The body invocation record carries evaluated facts
-  until eval completes, and failed eval cleanup no longer depends on mid-flight
-  writes.
-- AtRule evaluated-node compatibility state no longer nests hoist/frame facts
-  under an `output` wrapper. The remaining `WeakMap` record now stores only
-  direct `hoistToRoot` / `frames` overrides for legacy evaluated-node APIs.
-- Direct AtRule render no longer installs temporary runtime compatibility state
-  on the source node. When evaluated body or hoist/frame facts differ from the
-  source surface, render derives a temporary owned at-rule and serializes that
-  instead; the remaining `WeakMap` usage is evaluated-node compatibility only.
-- Evaluated AtRule `render(context)` now also renders through a temporary owned
-  at-rule when compatibility state exists, so the render API no longer reads
-  evaluated-body compatibility from the source node itself. Remaining
-  compatibility consumers are now explicit getters / serialization paths.
-- Body-changing AtRule `eval(context)` now returns an owned evaluated at-rule
-  surface instead of storing evaluated rules on source-node runtime
-  compatibility state.
-- Root-only AtRule `eval(context)` outputs that differ only by hoist metadata
-  now also return owned evaluated at-rule surfaces instead of writing hoist
-  compatibility onto the source node. The remaining AtRule runtime `WeakMap`
-  state is now the collapse-nesting/evaluated-render frames path only.
-- The remaining AtRule eval-time compatibility state no longer stores a
-  separate runtime `hoistToRoot` field. Evaluated-node hoist for that path is
-  now derived from stored `frames` plus nestable semantics, so the `WeakMap`
-  carries only frame metadata.
-- AtRule render/runtime updates for nestable frame-bearing paths no longer
-  carry a redundant temporary `hoistToRoot` flag. Temporary render nodes now
-  derive hoist from runtime `frames` during application, matching the remaining
-  evaluated-node compatibility semantics.
-- The remaining AtRule eval-time compatibility `WeakMap` no longer stores a
-  `{ frames }` wrapper object. It now stores the frames array directly, so the
-  last evaluated-node compatibility path avoids an extra state object while
-  preserving the same collapse-nesting semantics.
-- The remaining AtRule eval-time compatibility commit no longer allocates a
-  temporary runtime-update object just to persist frames. Success now writes
-  raw `frames` directly into the compatibility `WeakMap`.
-- The remaining AtRule evaluated-render compatibility path no longer allocates
-  a temporary `{ frames }` runtime-update object either. When legacy runtime
-  frames exist, evaluated render now carries those frame facts through
-  render-local print-state overrides, preserving source-node canonical state
-  without deriving a temporary owned at-rule for the compatibility path.
-- Direct AtRule body render now carries evaluated body and hoist/frame facts
-  through the same render-local print-state override surface instead of
-  deriving a temporary owned at-rule to host those facts for serialization.
-- AtRule body registration prep now writes `AtRuleBodyRegistrationState`
-  directly onto the invocation record, and `AtRuleBodyEvalPrepState` is gone.
-  The remaining duplicated lifecycle state is in the registration/result/public
-  shapes, not a separate prep carrier.
+- AtRule body render/public paths now consume narrow adapter inputs and
+  render-local print-state overrides instead of source-node scratch state.
+  Body-changing, root-hoist, and collapse-nesting eval paths return owned
+  results when output facts differ from the source. The evaluated-frame runtime
+  `WeakMap` is gone; frame facts live on the owned result, and source AtRules
+  stay canonical.
+- AtRule body registration prep writes `AtRuleBodyRegistrationState` directly
+  onto the invocation record, and `AtRuleBodyEvalPrepState` is gone. The
+  remaining duplicated lifecycle state is the still-real boundary between
+  `AtRuleBodyEvalResult`, context state, and public-result input.
 - The targeted Less bubbling bug matrix in
   `packages/jess/test/less/at-rule-bubbling-bugs.test.ts` is now active
   coverage instead of `todo` scaffolding, so the remaining collapse-nesting
@@ -354,19 +294,19 @@ and cleanup without duplicating facts across many parallel structures.
 
 - `packages/core/src/tree/at-rule.ts`
 - `AtRuleBodyOutputState`
-- `AtRuleBodyRuntimeFrames`
 - `AtRuleBodyEvalContextState`
 - `AtRuleBodyEvalRecord`
+- `AtRuleBodyEvalResult`
 - `AtRuleBodyRegistrationState`
-- `AtRuleBodyPublicResultState`
+- `AtRuleBodyPublicResultInput`
 
 **Target invariants:**
 
 - One invocation record owns source at-rule, optional owned eval/public frame,
   evaluated prelude, body-to-eval/final-rules pairing, visibility, layer name,
   extend-root marker, hoist/root output, frame cleanup, and async cleanup.
-- Runtime `WeakMap` fallback remains only for evaluated-node render APIs that
-  cannot yet receive an invocation record.
+- Collapse-nesting frame facts must stay on owned evaluated results or
+  render-local print state, not source-node side maps.
 - Direct render must not write prelude/body/visibility/frame facts onto the
   canonical source at-rule.
 - Public resolve may own a result at-rule, but the result adapter must be a
@@ -379,19 +319,20 @@ and cleanup without duplicating facts across many parallel structures.
       state types unless each duplicate has a documented API boundary.
 - [x] Async rejection cleanup, frame restoration, extend-root cleanup, and
       layer-record pop are all tested through one runner path.
-- [x] AtRule runtime compatibility storage is deleted or documented as
-      evaluated-node API compatibility only, with no direct-render scratch
-      writes.
+- [x] AtRule runtime compatibility storage is deleted; no direct/evaluated
+      render path depends on a source-node `WeakMap` frame fallback.
 - [x] Dynamic body/root-hoist render tests prove canonical source parentage is
       unchanged.
-- [x] Focused at-rule tests and `verify:baseline -- --changed` pass.
+- [x] Focused AtRule/extend tests, full `@jesscss/core` tests, and
+      `@jesscss/core` build pass.
 
 **Next queue seeds:**
 
-1. Inventory every duplicated field across the current at-rule state types,
-   then merge one remaining pair into the invocation record with focused async
-   and root-hoist tests. The `contextState.evalFrame` mirror is already gone;
-   the next cut only counts if another real state/helper surface disappears.
+1. Inventory every duplicated field across `AtRuleBodyEvalResult`,
+   `AtRuleBodyEvalContextState`, and `AtRuleBodyPublicResultInput`, then merge
+   one remaining pair into the invocation record with focused async,
+   root-hoist, and collapse-nesting tests. The next cut only counts if another
+   real state/helper surface disappears.
 2. Move cleanup ownership into a single record runner and delete one separate
    cleanup/restore helper.
 3. Prove whether body render can consume the invocation record directly,
@@ -768,7 +709,7 @@ not folklore.
 | Family | Current state | Completion gate |
 | --- | --- | --- |
 | `Rules` | Direct root/fragment render state exists; callable invocation, candidate scan, guard/default handling, output finalization, entry surfaces, helper-only exports, `MixinCollection` residence, and the old `rules.ts` callable re-export are now outside `rules.ts`. The remaining callable-specific `rules.ts` logic is registry/index ownership (`mixinsByName`, `findMixinsFast(...)`, registration), which is the intended rule-container boundary rather than an extraction seam. | Callable extraction complete; direct render context state bounded. |
-| `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct/evaluated render carry compatibility facts through print-state overrides instead of scratch owned nodes, runtime `WeakMap` writes are frame compatibility only, registration prep now writes the invocation record's registration state directly instead of carrying a separate prep state, nested `@layer` registration now reads layer names from invocation context state instead of duplicating them onto registration state, `AtRuleBodyFrameState` is gone because the invocation record now owns ruleset-frame cleanup plus initial hoist output directly, and the duplicated `contextState.evalFrame` mirror is now gone too. The remaining open seam is the evaluated-node collapse-nesting frame path plus the remaining invocation/body lifecycle state that still spans registration/result/public shapes. Focused proof now pins the frame seam to both evaluated-source `render(context)` and evaluated-source `toTrimmedString()` while source `frames`/`hoistToRoot` stay canonical, and explicit frame overrides now satisfy the serializer's hoist/frame reads before any compatibility getter fallback. | Lane A blocked only on the final frame-compatibility seam and the remaining invocation-record collapse across registration/result/public boundaries; no direct-render scratch state regresses. |
+| `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct render carries transient facts through print-state overrides, registration prep writes registration state onto the invocation record, nested `@layer` registration reads layer names from context state, `AtRuleBodyFrameState` is gone, and the duplicated `contextState.evalFrame` mirror is gone. The evaluated-frame `WeakMap` seam is now deleted: collapse-nesting eval returns owned frame-bearing AtRules while the source remains `frames`/`hoistToRoot` neutral, and body ownership keeps the evaluated extend root shared with `processExtends()`. | Lane A is unblocked; next work is remaining lifecycle-state collapse across `AtRuleBodyEvalResult`, context state, and public-result input. |
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return, no parallel list/space checks, and no redundant source `value` field. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
 | `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public syntax construction has a named adapter and placement vocabulary (`source`, `output`, `content`, `publicBoundary`), but render-only optional JS failures with `contentNode` now emit direct fallback syntax without deriving an owned fallback `Call`, and the dead optional-fallback helper export is gone from the tree surface. No production storage was added after the WeakMap experiment regressed static object counts. | Call overhead measurement complete and fallback render/public split advanced. |
@@ -823,38 +764,32 @@ bounded item.
 
 ### Compact Progress
 
-Recent work collapsed another tiny `AtRule` lifecycle mirror, deleted the
-no-op `AtRule` public-result wrapper layer so the adapter now consumes its
-input directly, re-proved the remaining runtime-frame storage seam as an
-honest blocker, deleted the rules-like reference side-map/helper seam plus the
+Recent work deleted the AtRule evaluated-frame `WeakMap`, moved
+collapse-nesting frame facts onto owned eval results, preserved nested
+wrapper/media and extend parity, deleted the rules-like reference side-map and
 legacy nested-`sourceNode` freeze branch, confirmed the remaining fallback
-`Call` ownership boundary is still public resolve only, trimmed one more
-local extend copy helper, and pinned the remaining ampersand-boundary
-selector-copy seam as an explicit blocker: boundary-crossing extend output
-still has to own a hoisted selector list while leaving the source ampersand
-selector tree canonical and un-reparented.
+`Call` ownership boundary is public resolve only, and pinned the remaining
+ampersand-boundary selector-copy seam as an explicit blocker.
 
 ## Lane Backlog
 
 ### Agent A backlog
 
-1. Delete or conclusively block the last evaluated-node collapse-nesting frame
-   compatibility seam in `packages/core/src/tree/at-rule.ts`, with focused
-   `at-rule` tests plus the active bubbling matrix.
-   Current focused blocker: explicit frame overrides now satisfy the evaluated
-   collapse-nesting serializer path, but forcing the last seam onto owned eval
-   results still regresses evaluated-source render/serialize shape: parent
-   wrapper frames fall out of nested wrapper/media output, generated hoisted
-   ampersand-wrapper transparency fails, sibling wrapper-stack merge parity
-   fails, and the `media.less` AST serialization proof loses parent selector
-   wrappers when no override is present.
+1. Done: the evaluated-node collapse-nesting frame compatibility seam in
+   `packages/core/src/tree/at-rule.ts` is deleted. Coverage: focused
+   `at-rule` ownership/render/serialize tests, nested wrapper/media proofs,
+   `media.less` AST serialization, extend collapse parity, full core tests,
+   and core build.
 2. The public-result adapter now consumes its narrow input directly; the old
    `createAtRuleBodyPublicResultState(...)` wrapper/state layer is gone.
    Only keep collapsing `AtRule` lifecycle state if another helper/state
    surface disappears beyond the now-deleted eval-result carrier,
    `contextState.evalFrame` mirror, and public-result wrapper.
-3. Do not move runtime frames onto shared source at-rules and do not add new
-   lifecycle plumbing without deleting an existing state shape.
+3. Next Agent A item: collapse one remaining `AtRuleBodyEvalResult` /
+   `AtRuleBodyEvalContextState` / `AtRuleBodyPublicResultInput` duplication
+   into the invocation record. Do not move runtime frames onto shared source
+   at-rules and do not add new lifecycle plumbing without deleting an existing
+   state shape.
 
 ### Agent B backlog
 
@@ -885,7 +820,8 @@ selector tree canonical and un-reparented.
 ## Pull Queue
 
 The previous five-item pull queue is cleared honestly:
-- item 1 is now an explicit AtRule frame-storage blocker
+- item 1 is done (AtRule frame-storage `WeakMap` deleted; owned eval result
+  carries collapse-nesting frames)
 - item 2 is done (`contextState.evalFrame` mirror removed)
 - item 3 is done (rules-like side-map/helper seam removed)
 - item 4 is now an explicit selector-copy blocker (ampersand-boundary and
@@ -895,7 +831,8 @@ The previous five-item pull queue is cleared honestly:
 
 Pull the next free item from here; restock only when a lane truthfully changes.
 
-1. Agent A: prove or delete the last `AtRule` runtime-frame storage consumer.
+1. Agent A: done. The last `AtRule` runtime-frame storage consumer is deleted;
+   only reopen if a source-node frame side map reappears.
 2. Agent A: done. The public-result wrapper/state layer is deleted; only
    reopen this slot if another real `AtRule` lifecycle carrier disappears.
 3. Agent C: only retry rules-like/public-mutation work if a real owned-result

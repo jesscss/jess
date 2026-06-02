@@ -937,7 +937,7 @@ describe('AtRule', () => {
     `);
   });
 
-  it('keeps evaluated collapse-nesting hoist state in frames without a runtime hoist field', async () => {
+  it('returns owned evaluated collapse-nesting hoist state in frames without a runtime hoist field', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
       rules: rules([])
@@ -954,14 +954,22 @@ describe('AtRule', () => {
 
     const evaluated = await Promise.resolve(node.eval(context));
 
-    expect(evaluated).toBe(node);
+    expect(evaluated).toBeInstanceOf(AtRule);
+    expect(evaluated).not.toBe(node);
     expect(node.hoistToRoot).toBeUndefined();
     expect(node.frames).toBeUndefined();
-    expect(node.isHoisted({ collapseNesting: false })).toBe(true);
-    expect(node.getRenderFrames()).toEqual([parentFrame]);
+    expect(node.isHoisted({ collapseNesting: false })).toBe(false);
+    expect(node.getRenderFrames()).toBeUndefined();
+    if (!(evaluated instanceof AtRule)) {
+      throw new Error('Expected AtRule eval result');
+    }
+    expect(evaluated.hoistToRoot).toBeUndefined();
+    expect(evaluated.frames).toEqual([parentFrame]);
+    expect(evaluated.isHoisted({ collapseNesting: false })).toBe(true);
+    expect(evaluated.getRenderFrames()).toEqual([parentFrame]);
   });
 
-  it('renders evaluated collapse-nesting at-rules without mutating source frame state', async () => {
+  it('renders owned evaluated collapse-nesting at-rules without mutating source frame state', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
       rules: rules([])
@@ -976,9 +984,14 @@ describe('AtRule', () => {
       ])
     });
 
-    await Promise.resolve(node.eval(context));
+    const evaluated = await Promise.resolve(node.eval(context));
 
-    expect(node.render(context)).toBeString(`
+    expect(evaluated).toBeInstanceOf(AtRule);
+    expect(evaluated).not.toBe(node);
+    if (!(evaluated instanceof AtRule)) {
+      throw new Error('Expected AtRule eval result');
+    }
+    expect(evaluated.render(context)).toBeString(`
       @media (max-width: 10px) {
         .parent {
           color: red;
@@ -987,10 +1000,11 @@ describe('AtRule', () => {
     `);
     expect(node.frames).toBeUndefined();
     expect(node.hoistToRoot).toBeUndefined();
-    expect(node.getRenderFrames()).toEqual([parentFrame]);
+    expect(node.getRenderFrames()).toBeUndefined();
+    expect(evaluated.getRenderFrames()).toEqual([parentFrame]);
   });
 
-  it('renders evaluated collapse-nesting at-rules without deriving a temporary at-rule node', async () => {
+  it('renders owned evaluated collapse-nesting at-rules without deriving another temporary at-rule node', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
       rules: rules([])
@@ -1005,13 +1019,17 @@ describe('AtRule', () => {
       ])
     });
 
-    await Promise.resolve(node.eval(context));
+    const evaluated = await Promise.resolve(node.eval(context));
 
-    node.deriveAtRule = function deriveShouldNotRun(): AtRule {
+    expect(evaluated).toBeInstanceOf(AtRule);
+    if (!(evaluated instanceof AtRule)) {
+      throw new Error('Expected AtRule eval result');
+    }
+    evaluated.deriveAtRule = function deriveShouldNotRun(): AtRule {
       throw new Error('evaluated collapse-nesting render should not derive a temporary at-rule');
     };
 
-    expect(node.render(context)).toBeString(`
+    expect(evaluated.render(context)).toBeString(`
       @media (max-width: 10px) {
         .parent {
           color: red;
@@ -1020,7 +1038,7 @@ describe('AtRule', () => {
     `);
   });
 
-  it('serializes evaluated collapse-nesting at-rules without consulting compatibility frame getters or mutating source state', async () => {
+  it('serializes owned evaluated collapse-nesting at-rules without consulting source compatibility frame getters', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
       rules: rules([])
@@ -1035,14 +1053,19 @@ describe('AtRule', () => {
       ])
     });
 
-    await Promise.resolve(node.eval(context));
+    const evaluated = await Promise.resolve(node.eval(context));
 
+    expect(evaluated).toBeInstanceOf(AtRule);
+    expect(evaluated).not.toBe(node);
+    if (!(evaluated instanceof AtRule)) {
+      throw new Error('Expected AtRule eval result');
+    }
     expect(node.hoistToRoot).toBeUndefined();
     expect(node.frames).toBeUndefined();
     node.getRenderFrames = function getRenderFramesShouldNotRun(): AtRule['frames'] {
       throw new Error('evaluated collapse-nesting serialization should not consult compatibility frame getters');
     };
-    expect(node.toTrimmedString()).toBeString(`
+    expect(evaluated.toTrimmedString()).toBeString(`
       @media (max-width: 10px) {
         .parent {
           color: red;
@@ -1051,7 +1074,7 @@ describe('AtRule', () => {
     `);
   });
 
-  it('keeps async collapse-nesting frame state on the invocation record without mutating source state', async () => {
+  it('keeps async collapse-nesting frame state on the owned result without mutating source state', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
       rules: rules([])
@@ -1072,12 +1095,18 @@ describe('AtRule', () => {
       rules: body
     });
 
-    await Promise.resolve(node.eval(context));
+    const evaluated = await Promise.resolve(node.eval(context));
 
+    expect(evaluated).toBeInstanceOf(AtRule);
+    expect(evaluated).not.toBe(node);
+    if (!(evaluated instanceof AtRule)) {
+      throw new Error('Expected AtRule eval result');
+    }
     expect(node.frames).toBeUndefined();
     expect(node.hoistToRoot).toBeUndefined();
-    expect(node.getRenderFrames()).toEqual([parentFrame]);
-    expect(node.render(context)).toBeString(`
+    expect(node.getRenderFrames()).toBeUndefined();
+    expect(evaluated.getRenderFrames()).toEqual([parentFrame]);
+    expect(evaluated.render(context)).toBeString(`
       @media (max-width: 10px) {
         .parent {
           color: red;
