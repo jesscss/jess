@@ -166,7 +166,6 @@ export function collectDeclarationMergeAdapterItems(
 
 type DeclarationMergeAdapterItemsState = {
   kind: 'list' | 'space';
-  value: Node;
   items: Node[];
 };
 
@@ -192,7 +191,7 @@ export function createDeclarationMergeAdapterState(
   if (mergedItems.length === 1) {
     return mergedItems[0]!;
   }
-  return { kind: mode, value, items: mergedItems };
+  return { kind: mode, items: mergedItems };
 }
 
 type DeclarationValueState<T extends Declaration = Declaration> = {

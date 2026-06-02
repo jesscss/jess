@@ -908,7 +908,6 @@ describe('Declaration', () => {
 
     expect(createDeclarationMergeAdapterState(value, 'list')).toEqual({
       kind: 'list',
-      value,
       items: [value.value[1], value.value[2].value[0]]
     });
   });
@@ -918,7 +917,6 @@ describe('Declaration', () => {
 
     expect(createDeclarationMergeAdapterState(value, 'space')).toEqual({
       kind: 'space',
-      value,
       items: [value.value[1], value.value[2].value[0]]
     });
   });
