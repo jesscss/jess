@@ -772,7 +772,7 @@ not folklore.
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return, no parallel list/space checks, and no redundant source `value` field. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
 | `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public syntax construction has a named adapter and placement vocabulary (`source`, `output`, `content`, `publicBoundary`), but render-only optional JS failures with `contentNode` now emit direct fallback syntax without deriving an owned fallback `Call`, and the dead optional-fallback helper export is gone from the tree surface. No production storage was added after the WeakMap experiment regressed static object counts. | Call overhead measurement complete and fallback render/public split advanced. |
-| `Reference` | Text-only render exists for many scalar/container paths; rules-like wrappers remain as shallow owned public surfaces with callable ownership proof, but the separate rules-like preservation side-map is gone. Detached rules-like calls now recover lexical parentage from the owned surface's public `sourceNode` instead of a helper/side-map read, direct callable preservation now pops `referenceStack` on the owned-output path, and focused proof pins preserved rules-like surfaces to frozen canonical sources with balanced `referenceStack` cleanup. Source-free public direct-index container ownership is intentionally retained for mutability/parentage. | Rules-like compatibility reads are narrowed to public-surface facts or captured blockers. |
+| `Reference` | Text-only render exists for many scalar/container paths; rules-like wrappers remain as shallow owned public surfaces with callable ownership proof, but the separate rules-like preservation side-map is gone. Detached rules-like calls now recover lexical parentage from the owned surface's public `sourceNode` instead of a helper/side-map read, direct callable preservation now pops `referenceStack` on the owned-output path, and focused proof pins preserved rules-like surfaces to frozen canonical sources with balanced `referenceStack` cleanup. The legacy nested-`sourceNode` freeze branch is also gone, so rules-like freezing now acts only on the canonical source value that the shallow owned surface captures. Source-free public direct-index container ownership is intentionally retained for mutability/parentage. | Rules-like compatibility reads are narrowed to public-surface facts or captured blockers. |
 | `List` / `Sequence` | Dynamic render streams through native syntax; public resolve owns containers. Source-free public narrowing is blocked by public mutation/parentage expectations. | Revisit only if public mutability API changes. |
 | `Block` / `Quoted` / `Url` / `Paren` / `Operation` | Render-only wrappers largely split from public resolve; operation finalization now distinguishes metadata-result inheritance from public-result inheritance, with dimension/color public consumers. | No generic output bridge reintroduced; focused materialization proofs stay green. |
 | `StyleImport` | First-use top-level placement segments and postlude render state exist; nested descendant source lookup now also replays sparse child-segment paths instead of depending on the old recursive placement map. Postlude order and option reads now consume render state, and the old recursive descendant lookup is off the live production helper path. | Lane D gates complete unless a future change deletes more placement state without reintroducing recursive lookup. |
@@ -826,10 +826,11 @@ bounded item.
 Recent work collapsed another tiny `AtRule` lifecycle mirror, deleted the
 no-op `AtRule` public-result wrapper layer so the adapter now consumes its
 input directly, re-proved the remaining runtime-frame storage seam as an
-honest blocker, deleted the rules-like reference side-map/helper seam,
-confirmed the remaining fallback `Call` ownership boundary is still public
-resolve only, and trimmed one more local extend copy helper. Keep pulling only
-where a real runtime surface disappears or a blocker gets more explicit.
+honest blocker, deleted the rules-like reference side-map/helper seam plus the
+legacy nested-`sourceNode` freeze branch, confirmed the remaining fallback
+`Call` ownership boundary is still public resolve only, and trimmed one more
+local extend copy helper. Keep pulling only where a real runtime surface
+disappears or a blocker gets more explicit.
 
 ## Lane Backlog
 
@@ -867,8 +868,9 @@ where a real runtime surface disappears or a blocker gets more explicit.
 
 1. Lane C: keep placement-state work tied to explicit lifecycle ownership; do
    not add optional-fallback machinery without a production consumer.
-2. Lane E: remove one remaining rules-like compatibility branch only with
-   public mutability/lookup proof. The side-map/helper seam is already gone.
+2. Lane E: remove one remaining rules-like compatibility or public-mutation
+   branch only with focused proof. The side-map/helper seam and the legacy
+   nested-`sourceNode` freeze branch are already gone.
 3. Lane F: shrink one more declaration/operation adapter seam only if render
    stays allocation-free and public mutation stays intact.
 4. Lane H: land one selector-copy/placement-state deletion only if it removes a
@@ -890,8 +892,9 @@ Pull the next free item from here; restock only when a lane truthfully changes.
 1. Agent A: prove or delete the last `AtRule` runtime-frame storage consumer.
 2. Agent A: done. The public-result wrapper/state layer is deleted; only
    reopen this slot if another real `AtRule` lifecycle carrier disappears.
-3. Agent C: retry one remaining rules-like/public-mutation branch only if a
-   real owned-result or compatibility branch disappears.
+3. Agent C: only retry rules-like/public-mutation work if a real owned-result
+   or compatibility branch disappears beyond the side-map/helper seam and the
+   nested-`sourceNode` freeze branch already removed.
 4. Agent C: take one selector-copy family through red parentage tests to a
    real blocker proof or deletion beyond the now-deleted local guard.
 5. Agent B or C: only revisit fallback/public call ownership if an owned

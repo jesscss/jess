@@ -1395,9 +1395,6 @@ function isRulesLikeReferenceValue(node: Node): boolean {
 
 function freezeRulesLikeReferenceValue(node: Node): void {
   node.frozen = true;
-  if ('sourceNode' in node && isNode(node.sourceNode)) {
-    node.sourceNode.frozen = true;
-  }
 }
 
 /**
