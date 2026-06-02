@@ -59,7 +59,6 @@ export type AtRuleBodyOutputState = {
 };
 
 type AtRuleBodyEvalContextState = {
-  evalFrame: AtRule;
   evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
   output?: AtRuleBodyOutputState;
@@ -172,7 +171,6 @@ function clearRulesetFramesForAtRuleBody(
 }
 
 function createAtRuleBodyEvalContextState(
-  node: AtRule,
   context: Context,
   options: {
     evaluatedPrelude?: Node;
@@ -182,7 +180,6 @@ function createAtRuleBodyEvalContextState(
   } = {}
 ): AtRuleBodyEvalContextState {
   return {
-    evalFrame: node,
     evaluatedPrelude: options.evaluatedPrelude,
     output: options.output,
     frameCount: context.frames.length,
@@ -256,12 +253,13 @@ function restoreAtRuleBodyRuntimeState(
 }
 
 function setAtRuleBodyEvalPrelude(
-  state: AtRuleBodyEvalContextState,
+  record: AtRuleBodyEvalRecord,
   prelude: Node
 ): void {
+  const state = record.contextState;
   state.evaluatedPrelude = prelude;
   if (state.writeEvaluatedPrelude) {
-    state.evalFrame.value.prelude = prelude;
+    record.evalFrame.value.prelude = prelude;
   }
 }
 
@@ -634,7 +632,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       ...(sourceRules && !renderSourceBody ? { bodyRules: this.ownRules(sourceRules) } : undefined),
       clearRulesetFrames: hasHoistedRulesetParent,
       restoreRulesetFrames: () => undefined,
-      contextState: createAtRuleBodyEvalContextState(evalFrame, context, {
+      contextState: createAtRuleBodyEvalContextState(context, {
         evaluatedPrelude,
         output: hasHoistedRulesetParent ? { hoistToRoot: true } : undefined,
         writeEvaluatedPrelude: options.writeEvaluatedPrelude,
@@ -1239,7 +1237,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       evalFrame: this,
       clearRulesetFrames: hasHoistedRulesetParent,
       restoreRulesetFrames: () => undefined,
-      contextState: createAtRuleBodyEvalContextState(this, context, {
+      contextState: createAtRuleBodyEvalContextState(context, {
         output: hasHoistedRulesetParent ? { hoistToRoot: true } : undefined
       })
     };
@@ -1307,12 +1305,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           if (isThenable(out)) {
             return Promise.resolve(out).then(
               (n) => {
-                setAtRuleBodyEvalPrelude(bodyEvalContextState, n);
+                setAtRuleBodyEvalPrelude(bodyEvalRecord, n);
                 return undefined;
               }
             );
           }
-          setAtRuleBodyEvalPrelude(bodyEvalContextState, out);
+          setAtRuleBodyEvalPrelude(bodyEvalRecord, out);
         }
       },
       () => {

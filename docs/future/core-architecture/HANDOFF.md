@@ -252,18 +252,17 @@ Peter to pay Paul.
   instead of the eval record, and the remaining evaluated-node compatibility
   storage is documented as legacy runtime frames rather than the direct-render
   model.
-- `AtRuleBodyEvalResult` now carries the invocation context state reference
-  instead of duplicating prelude/body/visibility/output fields onto another
-  result object, and its stale `evalFrame` mirror is gone. Public and render
-  adapters still own their compatibility shapes at the boundary.
+- `AtRuleBodyEvalResult` is gone. The invocation record now carries its own
+  result node, so evaluated body/prelude/output facts no longer pass through a
+  second mini carrier before render/public boundaries consume them. Public
+  adapters still own their explicit boundary shape.
 - Direct AtRule render now carries evaluated prelude as a render-local header
   override instead of runtime compatibility state. The remaining runtime-frame
   compatibility storage no longer carries prelude, and direct render consumes
-  `AtRuleBodyEvalResult`
-  plus a print-state header override instead of routing prelude through a
-  dedicated body render adapter.
+  the invocation record plus a print-state header override instead of routing
+  prelude through a dedicated body render adapter.
 - `AtRuleBodyRenderState` is gone, and the follow-on render runtime-update
-  helper is gone too. Direct render now consumes `AtRuleBodyEvalResult`
+  helper is gone too. Direct render now consumes the invocation record
   straight into render-local print-state overrides instead of allocating a
   separate compatibility adapter object.
 - AtRule body public-result application now writes evaluated body and output
@@ -364,7 +363,6 @@ and cleanup without duplicating facts across many parallel structures.
 - `AtRuleBodyEvalContextState`
 - `AtRuleBodyEvalRecord`
 - `AtRuleBodyRegistrationState`
-- `AtRuleBodyEvalResult`
 - `AtRuleBodyPublicResultState`
 
 **Target invariants:**
@@ -829,12 +827,12 @@ bounded item.
 
 ### Compact Progress
 
-Recent work collapsed more `AtRule` compatibility reads out of the serializer
-path, trimmed declaration merge adapter state again, deleted one duplicate
-rules-like callable-source helper, made the remaining parent-list extend
-ownership constraint explicit with a focused blocker proof, and trimmed one
-more local extend copy helper. Keep pulling only where a real runtime surface
-disappears or a blocker gets more explicit.
+Recent work collapsed the tiny `AtRule` eval-result carrier back into the
+invocation record, re-proved the remaining runtime-frame storage seam as an
+honest blocker, deleted one duplicate rules-like callable-source helper,
+confirmed the remaining fallback `Call` ownership boundary is still public
+resolve only, and trimmed one more local extend copy helper. Keep pulling only
+where a real runtime surface disappears or a blocker gets more explicit.
 
 ## Lane Backlog
 
@@ -847,8 +845,8 @@ disappears or a blocker gets more explicit.
    collapse-nesting serializer path, but nested wrapper/media cases still rely
    on the remaining compatibility runtime-frame storage when no override is
    present.
-2. Collapse one duplicated `AtRule` body lifecycle state pair into the primary
-   invocation record if and only if a real helper/state surface disappears.
+2. Only keep collapsing `AtRule` lifecycle state if another helper/state
+   surface disappears beyond the now-deleted eval-result carrier.
 3. Do not move runtime frames onto shared source at-rules and do not add new
    lifecycle plumbing without deleting an existing state shape.
 
@@ -858,6 +856,9 @@ disappears or a blocker gets more explicit.
    callable runtime or package surface disappears.
 2. Prefer Lane G only when a fallback/public call state surface is deleted or
    a measured end-to-end win justifies the change.
+   Current blocker: render-only optional fallback already avoids owning a
+   fallback `Call`, but public `resolve(...)` still needs one for
+   source-backed fallback content and mutable resolved shape.
 
 ### Agent C backlog
 
@@ -877,14 +878,14 @@ disappears or a blocker gets more explicit.
 Pull the next free item from here; restock only when a lane truthfully changes.
 
 1. Agent A: prove or delete the last `AtRule` runtime-frame storage consumer.
-2. Agent A: merge one duplicated `AtRule` lifecycle state pair into the
-   invocation record without adding a new adapter.
+2. Agent A: collapse another `AtRule` lifecycle helper/state only if it
+   deletes a real carrier beyond the now-removed eval-result object.
 3. Agent C: delete one more rules-like compatibility read with public-shape
    proof.
 4. Agent C: take one selector-copy family through red parentage tests to a
-   real blocker proof or deletion.
-5. Agent B or C: split one more fallback/public call ownership case only if an
-   owned `Call` surface disappears.
+   real blocker proof or deletion beyond the now-deleted local guard.
+5. Agent B or C: only revisit fallback/public call ownership if an owned
+   `Call` surface can actually disappear from public `resolve(...)`.
 
 ## Measurement And Verification
 
