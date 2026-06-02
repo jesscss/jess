@@ -1,11 +1,17 @@
 import { BasicSelector, SelectorList, el, sel, sellist, compound, is, co, comment, amp } from '../../index.js';
 import { Ampersand } from '../../ampersand.js';
+import { N } from '../../node-type.js';
 import { extendSelector } from '../extend.js';
 import { addImplicitAmpersand } from '../selector-utils.js';
+import { isNode } from '../is-node.js';
 
 // Helper to create ampersand with resolved selector (snapshot container for tests)
 function ampWithSelector(selector: any): Ampersand {
-  return Ampersand.create({ selectorContainer: { selector } }) as Ampersand;
+  const created = Ampersand.create({ selectorContainer: { selector } });
+  if (!(created instanceof Ampersand)) {
+    throw new Error(`Expected Ampersand, got ${created.type}`);
+  }
+  return created;
 }
 
 describe('Extend Ampersand Handling Tests', () => {
@@ -98,10 +104,11 @@ describe('Extend Ampersand Handling Tests', () => {
       const selector = compound([ampWithSelector(parentSelector), el('.bar')]);
       const originalCopy = selector.copy.bind(selector);
       let selectorCopies = 0;
-      selector.copy = ((...args) => {
+      const copyForCounting: typeof selector.copy = (...args) => {
         selectorCopies++;
         return originalCopy(...args);
-      }) as typeof selector.copy;
+      };
+      selector.copy = copyForCounting;
 
       try {
         const target = compound([el('.foo'), el('.bar')]);
@@ -149,10 +156,11 @@ describe('Extend Ampersand Handling Tests', () => {
       const selector = compound([ampWithSelector(parentSelector), el('.bar')]);
       const originalCopy = parentSelector.copy.bind(parentSelector);
       let parentSelectorCopies = 0;
-      parentSelector.copy = ((...args) => {
+      const copyForCounting: typeof parentSelector.copy = (...args) => {
         parentSelectorCopies++;
         return originalCopy(...args);
-      }) as typeof parentSelector.copy;
+      };
+      parentSelector.copy = copyForCounting;
 
       try {
         const target = compound([el('.foo'), el('.bar')]);
@@ -166,6 +174,36 @@ describe('Extend Ampersand Handling Tests', () => {
       } finally {
         parentSelector.copy = originalCopy;
       }
+    });
+
+    it('keeps boundary-crossing ampersand extend output owned without reparenting source selectors', () => {
+      const parentSelector = el('.foo');
+      const ampersandWithSelector = ampWithSelector(parentSelector);
+      const trailing = el('.bar');
+      const selector = compound([ampersandWithSelector, trailing]);
+      const sourceSelectorChildren = [...selector.value];
+      const extendWith = el('.a');
+
+      const result = extendSelector(
+        selector,
+        compound([el('.foo'), el('.bar')]),
+        extendWith,
+        true
+      );
+
+      expect(parentSelector.parent).toBeUndefined();
+      expect(sourceSelectorChildren.map(child => child.parent)).toEqual(
+        sourceSelectorChildren.map(() => selector)
+      );
+
+      if (!isNode(result, N.SelectorList)) {
+        throw new Error(`Expected hoisted selector list, got ${result.type}`);
+      }
+
+      expect(result).not.toBe(selector);
+      expect(result.value[0]).not.toBe(parentSelector);
+      expect(result.value[1]).not.toBe(extendWith);
+      expect(result.toTrimmedString()).toBe('.foo.bar,\n.a');
     });
 
     it('should extend .foo &.bar across boundary to create .foo.bar, .extended', () => {
@@ -373,8 +411,14 @@ describe('Extend Ampersand Handling Tests', () => {
 
   it('preserves stored ampersand selector snapshots separately from live selector resolution', () => {
     const parentContainer = { selector: el('.aa') };
-    const original = Ampersand.create({ selectorContainer: parentContainer }) as Ampersand;
-    const cloned = original.clone(false) as Ampersand;
+    const original = Ampersand.create({ selectorContainer: parentContainer });
+    if (!(original instanceof Ampersand)) {
+      throw new Error(`Expected Ampersand, got ${original.type}`);
+    }
+    const cloned = original.clone(false);
+    if (!(cloned instanceof Ampersand)) {
+      throw new Error(`Expected Ampersand clone, got ${cloned.type}`);
+    }
 
     expect(original.getStoredSelector()?.valueOf()).toBe('.aa');
     expect(cloned.getStoredSelector()?.valueOf()).toBe('.aa');

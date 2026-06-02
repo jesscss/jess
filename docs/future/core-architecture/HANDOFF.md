@@ -828,9 +828,11 @@ no-op `AtRule` public-result wrapper layer so the adapter now consumes its
 input directly, re-proved the remaining runtime-frame storage seam as an
 honest blocker, deleted the rules-like reference side-map/helper seam plus the
 legacy nested-`sourceNode` freeze branch, confirmed the remaining fallback
-`Call` ownership boundary is still public resolve only, and trimmed one more
-local extend copy helper. Keep pulling only where a real runtime surface
-disappears or a blocker gets more explicit.
+`Call` ownership boundary is still public resolve only, trimmed one more
+local extend copy helper, and pinned the remaining ampersand-boundary
+selector-copy seam as an explicit blocker: boundary-crossing extend output
+still has to own a hoisted selector list while leaving the source ampersand
+selector tree canonical and un-reparented.
 
 ## Lane Backlog
 
@@ -873,9 +875,11 @@ disappears or a blocker gets more explicit.
    nested-`sourceNode` freeze branch are already gone.
 3. Lane F: shrink one more declaration/operation adapter seam only if render
    stays allocation-free and public mutation stays intact.
-4. Lane H: land one selector-copy/placement-state deletion only if it removes a
-   real helper seam beyond the now-proven parent-list generated-wrapper
-   requirement and the now-deleted local extend selector guard.
+4. Lane H: the remaining selector-copy family is now explicitly blocker-backed.
+   Parent-list extend registration and ampersand-boundary extension still
+   require owned generated output while leaving source selector parentage
+   canonical. Only reopen this lane if a bigger helper/state seam disappears
+   beyond the now-deleted local extend selector guard.
 5. Lane I: keep this handoff compact and aligned with actual lane truth.
 
 ## Pull Queue
@@ -884,7 +888,9 @@ The previous five-item pull queue is cleared honestly:
 - item 1 is now an explicit AtRule frame-storage blocker
 - item 2 is done (`contextState.evalFrame` mirror removed)
 - item 3 is done (rules-like side-map/helper seam removed)
-- item 4 is done (local extend selector guard removed)
+- item 4 is now an explicit selector-copy blocker (ampersand-boundary and
+  parent-list generated output still needs owned wrappers/copies to preserve
+  canonical source parentage)
 - item 5 is now an explicit public `resolve(...)` fallback-`Call` blocker
 
 Pull the next free item from here; restock only when a lane truthfully changes.
@@ -895,8 +901,10 @@ Pull the next free item from here; restock only when a lane truthfully changes.
 3. Agent C: only retry rules-like/public-mutation work if a real owned-result
    or compatibility branch disappears beyond the side-map/helper seam and the
    nested-`sourceNode` freeze branch already removed.
-4. Agent C: take one selector-copy family through red parentage tests to a
-   real blocker proof or deletion beyond the now-deleted local guard.
+4. Agent C: done as blocker proof. Ampersand-boundary extend output still
+   needs owned hoisted selector-list results while leaving the source
+   ampersand selector tree canonical and un-reparented, so there is no
+   truthful remaining selector-copy deletion here today.
 5. Agent B or C: only revisit fallback/public call ownership if an owned
    `Call` surface can actually disappear from public `resolve(...)`.
    Focused proof now pins the blocker on both sides: render derives zero
