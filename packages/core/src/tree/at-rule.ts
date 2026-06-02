@@ -584,7 +584,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   isHoisted(opts: { collapseNesting?: boolean }) {
-    return atRuleBodyRuntimeFrames.get(this) !== undefined && this.isNestable()
+    return this.getRenderFrames() !== undefined && this.isNestable()
       ? true
       : (this.hoistToRoot ?? Boolean(opts.collapseNesting && this.isNestable()));
   }
@@ -869,7 +869,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             undefined,
             undefined,
             undefined,
-            node === this ? atRuleBodyRuntimeFrames.get(node) : undefined
+            node === this ? node.getRenderFrames() : undefined
           );
         }
         if (isAtRuleBodyEvalResult(node)) {
