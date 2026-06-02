@@ -1567,6 +1567,63 @@ describe('Call', () => {
     }
   });
 
+  it('renders source-backed fallback content without deriving a fallback Call but resolve still owns one', async () => {
+    const originalCopy = Sequence.prototype.copy;
+    const deriveCallDescriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
+    const originalDeriveCall = deriveCallDescriptor?.value;
+    if (!deriveCallDescriptor || typeof originalDeriveCall !== 'function') {
+      throw new Error('Expected Call.deriveCall for source-backed fallback ownership proof');
+    }
+    let sequenceCopies = 0;
+    let derivedCalls = 0;
+    Sequence.prototype.copy = function copyForCounting(
+      this: Sequence,
+      ...args: Parameters<typeof originalCopy>
+    ): ReturnType<typeof originalCopy> {
+      sequenceCopies++;
+      return originalCopy.apply(this, args);
+    };
+    Object.defineProperty(Call.prototype, 'deriveCall', {
+      ...deriveCallDescriptor,
+      value: function deriveCallForCounting(this: Call, ...args: unknown[]) {
+        derivedCalls++;
+        return Reflect.apply(originalDeriveCall, this, args);
+      }
+    });
+    const content = new Sequence(
+      [any('raw'), any('content')],
+      undefined,
+      [10, 1, 11, 20, 1, 21]
+    );
+    const rule = call({
+      name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
+      args: list([any('red')]),
+      contentNode: content
+    }, { silentFail: true });
+
+    try {
+      await expect(Promise.resolve(rule.render(context))).resolves.toBe('missing-fn(red): raw content');
+      expect(derivedCalls).toBe(0);
+      expect(sequenceCopies).toBe(0);
+
+      const resolved = await rule.resolve(context);
+
+      expect(isNode(resolved, N.Call)).toBe(true);
+      if (!isNode(resolved, N.Call)) {
+        throw new Error('Expected call fallback output');
+      }
+      expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
+      expect(derivedCalls).toBe(1);
+      expect(sequenceCopies).toBe(0);
+      expect(resolved.value.contentNode).not.toBe(content);
+      expect(content.parent).toBe(rule);
+      expect(rule.evaluated).toBe(false);
+    } finally {
+      Sequence.prototype.copy = originalCopy;
+      Object.defineProperty(Call.prototype, 'deriveCall', deriveCallDescriptor);
+    }
+  });
+
   it('renders optional JS failure fallback content without owning a fallback Call surface', async () => {
     const originalCopy = Sequence.prototype.copy;
     const deriveCallDescriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');

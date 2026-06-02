@@ -899,6 +899,10 @@ Pull the next free item from here; restock only when a lane truthfully changes.
    real blocker proof or deletion beyond the now-deleted local guard.
 5. Agent B or C: only revisit fallback/public call ownership if an owned
    `Call` surface can actually disappear from public `resolve(...)`.
+   Focused proof now pins the blocker on both sides: render derives zero
+   fallback `Call` surfaces for source-backed fallback content, but public
+   `resolve(...)` still derives exactly one owned `Call` to hold mutable
+   output shape plus copied source-backed content.
 
 ## Measurement And Verification
 
