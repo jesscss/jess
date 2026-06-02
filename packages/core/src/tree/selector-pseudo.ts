@@ -49,12 +49,15 @@ function getGeneratedPseudoPlacementState(source: PseudoSelector): GeneratedPseu
   const { name, arg } = source.value;
   if (source.generated && name === ':is' && arg && isNode(arg, N.Selector)) {
     const override = source.value.generatedPseudoPlacementOverride;
+    if (!override) {
+      return undefined;
+    }
     return {
       source,
       name,
       arg,
       keySetLibrary: source.keySetLibrary,
-      omitWrapperForSingleSelectorList: override?.omitWrapperForSingleSelectorList ?? isNode(arg, N.SelectorList)
+      omitWrapperForSingleSelectorList: override.omitWrapperForSingleSelectorList === true
     };
   }
   return undefined;
@@ -295,6 +298,21 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
 // foo.arg
 
 export const pseudo = defineType<PseudoSelectorValue, typeof PseudoSelector>(PseudoSelector, 'PseudoSelector', 'pseudo');
+
+export function createGeneratedIsPseudo(
+  arg: Selector,
+  override?: GeneratedPseudoPlacementOverrideState
+): PseudoSelector {
+  const node = pseudo({
+    name: ':is',
+    arg
+  });
+  node.generated = true;
+  setGeneratedPseudoPlacementOverride(node, {
+    omitWrapperForSingleSelectorList: override?.omitWrapperForSingleSelectorList ?? isNode(arg, N.SelectorList)
+  });
+  return node;
+}
 
 /**
  * Convenience function to create a :is() pseudo-selector

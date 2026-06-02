@@ -17,7 +17,7 @@ import type { Ruleset } from './ruleset.js';
 import { createPublicNil, Nil } from './nil.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import { Combinator } from './combinator.js';
-import { PseudoSelector } from './selector-pseudo.js';
+import { createGeneratedIsPseudo } from './selector-pseudo.js';
 import { SelectorList } from './selector-list.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -225,11 +225,10 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
         && !(parentSel instanceof Nil)
         && isNode(parentSel, N.SelectorList)
       ) {
-        const parentIs = attachSelectorBitLibrary(PseudoSelector.create({
-          name: ':is',
-          arg: copySelectorForExtendRecord(parentSel, selectorBits)
-        }), selectorBits);
-        parentIs.generated = true;
+        const parentIs = attachSelectorBitLibrary(
+          createGeneratedIsPseudo(copySelectorForExtendRecord(parentSel, selectorBits)),
+          selectorBits
+        );
         resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
           parentIs,
           Combinator.create(' '),

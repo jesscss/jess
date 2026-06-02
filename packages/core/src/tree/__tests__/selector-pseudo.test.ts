@@ -8,7 +8,7 @@ import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
-import { PseudoSelector } from '../selector-pseudo.js';
+import { createGeneratedIsPseudo, PseudoSelector } from '../selector-pseudo.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -68,16 +68,12 @@ describe('PseudoSelector', () => {
   });
 
   it('omits generated :is() wrappers only for single-selector-list placement output', () => {
-    const generatedSingle = pseudo({
-      name: ':is',
-      arg: sellist([sel([el('.a'), co(' '), el('.b')])])
-    });
-    generatedSingle.generated = true;
-    const generatedMulti = pseudo({
-      name: ':is',
-      arg: sellist([el('.a'), el('.b')])
-    });
-    generatedMulti.generated = true;
+    const generatedSingle = createGeneratedIsPseudo(
+      sellist([sel([el('.a'), co(' '), el('.b')])])
+    );
+    const generatedMulti = createGeneratedIsPseudo(
+      sellist([el('.a'), el('.b')])
+    );
     const authoredSingle = pseudo({
       name: ':is',
       arg: sellist([sel([el('.a'), co(' '), el('.b')])])
@@ -93,11 +89,9 @@ describe('PseudoSelector', () => {
 
   it('keeps generated :is() placement output aligned between string and buffer render', () => {
     const buffer = createRenderBuffer('segmented');
-    const node = pseudo({
-      name: ':is',
-      arg: sellist([sel([el('.a'), co(' '), el('.b')])])
-    });
-    node.generated = true;
+    const node = createGeneratedIsPseudo(
+      sellist([sel([el('.a'), co(' '), el('.b')])])
+    );
 
     expect(node.render(context)).toBe('.a .b');
     expect(node.render(context, buffer)).toBe('.a .b');

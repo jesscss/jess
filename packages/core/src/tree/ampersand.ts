@@ -2,7 +2,7 @@ import { defineType, type NodeOptions, type LocationInfo, type TreeContext, F_AM
 import { createPublicNil, Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
-import { PseudoSelector } from './selector-pseudo.js';
+import { createGeneratedIsPseudo } from './selector-pseudo.js';
 import { SelectorList } from './selector-list.js';
 import { BasicSelector } from './selector-basic.js';
 import { CompoundSelector } from './selector-compound.js';
@@ -514,9 +514,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       if (!isNode(arg, N.Selector)) {
         throw new TypeError('Expected selector copy');
       }
-      const wrapped = PseudoSelector.create({ name: ':is', arg });
-      wrapped.generated = true;
-      return wrapped;
+      return createGeneratedIsPseudo(arg);
     }
     return selector;
   }

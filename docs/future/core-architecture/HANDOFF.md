@@ -716,7 +716,7 @@ placement, and composed header cache.
 
 **Completion gates:**
 
-- [ ] One generated pseudo or ampersand placement fact is carried in declared
+- [x] One generated pseudo or ampersand placement fact is carried in declared
       state and consumed by render/extend code.
 - [x] One selector helper family is reduced or blocked by parentage/visibility
       proof.
@@ -724,11 +724,11 @@ placement, and composed header cache.
 
 **Next queue seeds:**
 
-1. Move one generated `:is(...)` omission or keyset fact into declared
-   placement state.
-2. Reduce one `withComponents(...)` family only after collapse/parentage tests
+1. Reduce one `withComponents(...)` family only after collapse/parentage tests
    are red first.
-3. Add an extend blocker proof where selector copies remain semantic.
+2. Add an extend blocker proof where selector copies remain semantic.
+3. Move one remaining generated `:is(...)` keyset or parentage fact into
+   declared placement state only if it deletes another helper seam.
 
 ### Lane I: Cross-Node Render Contract Coverage
 
@@ -759,7 +759,7 @@ not folklore.
 | `List` / `Sequence` | Dynamic render streams through native syntax; public resolve owns containers. Source-free public narrowing is blocked by public mutation/parentage expectations. | Revisit only if public mutability API changes. |
 | `Block` / `Quoted` / `Url` / `Paren` / `Operation` | Render-only wrappers largely split from public resolve; operation finalization now distinguishes metadata-result inheritance from public-result inheritance, with dimension/color public consumers. | No generic output bridge reintroduced; focused materialization proofs stay green. |
 | `StyleImport` | First-use top-level placement segments and postlude render state exist; top-level source lookup consumes segments before recursive fallback, and one nested descendant source lookup now replays a sparse child-segment path instead of depending on the old recursive placement map. Postlude order and option reads now consume render state; recursive descendant lookup remains one documented fallback only. | Lane D gates complete except any future descendant fallback reduction. |
-| Selectors / `Ampersand` / `Extend` | Ownership still semantic for generated/extended placement. Generated `:is(...)` omission/keyset state is declared and render-consumed, but the lane still needs one explicit placement-state fact plus render/extend proof before the remaining helper ownership can be called done. | Lane H still open; only close it with a real selector-copy/placement deletion or a focused blocker proof. |
+| Selectors / `Ampersand` / `Extend` | Ownership still semantic for generated/extended placement. Generated `:is(...)` omission state is now declared at construction time and consumed by selector render plus the ampersand/extend parent-list paths, removing the render-time arg-shape fallback read. Remaining open work is render/extend coverage and any additional selector-copy/helper seam that can be honestly deleted. | Lane H still open; only close it with another real selector-copy/placement deletion or a focused blocker proof. |
 | Controls | Loop render streams direct rules; live frame mutation intentional. | Remaining grouping/state surfaces audited by object/function-call cost. |
 
 Update this tracker when a node family changes architectural state.
