@@ -296,6 +296,10 @@ Peter to pay Paul.
 - Direct AtRule body render now carries evaluated body and hoist/frame facts
   through the same render-local print-state override surface instead of
   deriving a temporary owned at-rule to host those facts for serialization.
+- AtRule body registration prep now writes `AtRuleBodyRegistrationState`
+  directly onto the invocation record, and `AtRuleBodyEvalPrepState` is gone.
+  The remaining duplicated lifecycle state is in the registration/result/public
+  shapes, not a separate prep carrier.
 - The targeted Less bubbling bug matrix in
   `packages/jess/test/less/at-rule-bubbling-bugs.test.ts` is now active
   coverage instead of `todo` scaffolding, so the remaining collapse-nesting
@@ -337,7 +341,6 @@ and cleanup without duplicating facts across many parallel structures.
 - `AtRuleBodyEvalContextState`
 - `AtRuleBodyEvalRecord`
 - `AtRuleBodyRegistrationState`
-- `AtRuleBodyEvalPrepState`
 - `AtRuleBodyEvalResult`
 - `AtRuleBodyPublicResultState`
 
@@ -734,7 +737,7 @@ not folklore.
 | Family | Current state | Completion gate |
 | --- | --- | --- |
 | `Rules` | Direct root/fragment render state exists; callable invocation, candidate scan, guard/default handling, output finalization, entry surfaces, helper-only exports, and `MixinCollection` residence are now outside `rules.ts`. Remaining work only counts when another real `Rules`-owned callable runtime or package surface disappears, or when the remaining boundary is explicitly justified. | Callable extraction complete or explicitly blocked; direct render context state bounded. |
-| `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct/evaluated render carry compatibility facts through print-state overrides instead of scratch owned nodes, and runtime `WeakMap` writes are frame compatibility only. The remaining open seam is the evaluated-node collapse-nesting frame path plus the duplicated invocation/body lifecycle state that still spans multiple record/result shapes. | Lane A blocked only on the final frame-compatibility seam and invocation-record collapse; no direct-render scratch state regresses. |
+| `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct/evaluated render carry compatibility facts through print-state overrides instead of scratch owned nodes, runtime `WeakMap` writes are frame compatibility only, and registration prep now writes the invocation record's registration state directly instead of carrying a separate prep state. The remaining open seam is the evaluated-node collapse-nesting frame path plus the duplicated invocation/body lifecycle state that still spans registration/result/public shapes. | Lane A blocked only on the final frame-compatibility seam and the remaining invocation-record collapse across registration/result/public boundaries; no direct-render scratch state regresses. |
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return and no parallel list/space checks. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
 | `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public syntax construction has a named adapter and placement vocabulary (`source`, `output`, `content`, `publicBoundary`), but no production storage after the WeakMap experiment regressed static object counts. | Call overhead measurement complete and fallback render/public split advanced. |

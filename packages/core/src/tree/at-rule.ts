@@ -83,7 +83,6 @@ type AtRuleBodyEvalRecord = {
   bodyRules?: Rules;
   renderSourceBody?: boolean;
   frameState: AtRuleBodyFrameState;
-  preparedBody?: AtRuleBodyEvalPrepState;
   registration?: AtRuleBodyRegistrationState;
   contextState: AtRuleBodyEvalContextState;
 };
@@ -94,12 +93,6 @@ type AtRuleBodyRegistrationState = {
   pushedExtendRoot: boolean;
   parentExtendRoot?: Rules;
   layerName?: string;
-};
-
-type AtRuleBodyEvalPrepState = {
-  bodyToEval: Rules;
-  parentExtendRoot?: Rules;
-  pushedExtendRoot: boolean;
 };
 
 type AtRuleLeafState = {
@@ -334,14 +327,6 @@ function storeAtRuleBodyRecordRegistration(
   return registration;
 }
 
-function storeAtRuleBodyRecordPrepState(
-  record: AtRuleBodyEvalRecord,
-  preparedBody: AtRuleBodyEvalPrepState
-): AtRuleBodyEvalPrepState {
-  record.preparedBody = preparedBody;
-  return preparedBody;
-}
-
 function shouldKeepAtRuleEvalRuntimeState(
   node: AtRule,
   state: AtRuleBodyEvalContextState
@@ -388,13 +373,14 @@ function createAtRuleEvalResultNode(
 }
 
 function createAtRuleBodyRecordRegistration(
-  record: AtRuleBodyEvalRecord
-): AtRuleBodyRegistrationState {
-  const preparedBody = record.preparedBody;
-  if (!preparedBody) {
-    throw new TypeError('Expected prepared at-rule body before registration');
+  record: AtRuleBodyEvalRecord,
+  bodyToEval: Rules,
+  options: {
+    parentExtendRoot?: Rules;
+    pushedExtendRoot: boolean;
   }
-  const { bodyToEval, parentExtendRoot, pushedExtendRoot } = preparedBody;
+): AtRuleBodyRegistrationState {
+  const { parentExtendRoot, pushedExtendRoot } = options;
   return storeAtRuleBodyRecordRegistration(record, {
     bodyToEval,
     finalRules: bodyToEval,
@@ -402,14 +388,6 @@ function createAtRuleBodyRecordRegistration(
     ...(parentExtendRoot !== undefined && { parentExtendRoot }),
     ...(record.contextState.layerName !== undefined && { layerName: record.contextState.layerName })
   });
-}
-
-function createAtRuleBodyRegistrationFromPrep(
-  record: AtRuleBodyEvalRecord,
-  preparedBody: AtRuleBodyEvalPrepState
-): AtRuleBodyRegistrationState {
-  storeAtRuleBodyRecordPrepState(record, preparedBody);
-  return createAtRuleBodyRecordRegistration(record);
 }
 
 function storeAtRuleBodyRecordLayerName(
@@ -1145,8 +1123,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     const node = record.evalFrame;
     const rules = record.bodyRules ?? node.value.rules!;
     if (!node.isNestable()) {
-      return createAtRuleBodyRegistrationFromPrep(record, {
-        bodyToEval: rules,
+      return createAtRuleBodyRecordRegistration(record, rules, {
         pushedExtendRoot: false
       });
     }
@@ -1164,8 +1141,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         throw new TypeError('Expected at-rule body registration prep to return Rules');
       }
       context.extendRoots.pushExtendRoot(resolved);
-      return createAtRuleBodyRegistrationFromPrep(record, {
-        bodyToEval: resolved,
+      return createAtRuleBodyRecordRegistration(record, resolved, {
         parentExtendRoot,
         pushedExtendRoot: true
       });
