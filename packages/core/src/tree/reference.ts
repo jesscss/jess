@@ -1429,10 +1429,6 @@ export function getRulesLikeReferenceLookupState(node: Node): RulesLikeReference
   };
 }
 
-export function getRulesLikeReferenceCallableSource(node: Node): Node | undefined {
-  return rulesLikeReferencePreservation.get(node)?.source;
-}
-
 /**
  * Rules-like references are public/callable surfaces, not text-only render
  * containers. Keep the source children canonical, but return a shallow owned

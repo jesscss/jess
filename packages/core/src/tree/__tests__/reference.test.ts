@@ -1,6 +1,6 @@
 import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, List, Sequence, JsArray, JsObject, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
 import { Context } from '../../context.js';
-import { getRulesLikeReferenceCallableSource, getRulesLikeReferenceLookupState, getRulesLikeReferenceSource } from '../reference.js';
+import { getRulesLikeReferenceLookupState, getRulesLikeReferenceSource } from '../reference.js';
 import { JsExpression } from '../js-expr.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -1162,7 +1162,6 @@ describe('reference', () => {
           publicBoundary: 'shallow-owned-callable-surface',
           preservesCallableSurface: true
         });
-        expect(getRulesLikeReferenceCallableSource(resolved)).toBe(resolvedSource);
         expect(clonedRules).toBe(0);
         expect(resolved.value[0]).toBe(resolvedSource.value[0]);
         expect(context.referenceStack).toBe(0);
