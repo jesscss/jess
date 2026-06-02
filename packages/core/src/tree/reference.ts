@@ -12,7 +12,6 @@ import { atIndex } from './util/collections.js';
 import type { Num } from './number.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
-import { MixinCollection } from './rules.js';
 import type { Rules, RulesOptions, RuntimeVarBinding } from './rules.js';
 import type { Interpolated } from './interpolated.js';
 import { canReuseLeaf, copyWithReusableLeaves } from './util/cloning.js';
@@ -40,6 +39,7 @@ import {
   canEnterMixinOutputForLookup,
   getRulesEntryVisibility
 } from './util/mixin-output-slot.js';
+import { MixinCollection } from './util/callable-collection.js';
 import type { MixinEntry } from './util/callable-entry.js';
 /**
  * The type is determined by syntax

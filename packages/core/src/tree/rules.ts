@@ -62,7 +62,6 @@ import {
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 import type { MixinEntry } from './util/callable-entry.js';
-export { MixinCollection } from './util/callable-collection.js';
 import { isIndexedRuleChild } from './util/callable-surface.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);

@@ -2,11 +2,12 @@ import { type Context } from '../context.js';
 import { defineType, F_VISIBLE, Node, type LocationInfo, type TreeContext } from './node.js';
 import type { Any, AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
-import { MixinCollection, Rules } from './rules.js';
+import { Rules } from './rules.js';
 import { type List, list } from './list.js';
 import type { Declaration } from './declaration.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { callableRulesEntry } from './util/callable-entry.js';
+import { MixinCollection } from './util/callable-collection.js';
 
 /**
  * Stylesheet-defined function with a return value.

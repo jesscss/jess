@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../../context.js';
 import { any, call, decl, list, mixin, ref, rules, ruleset } from '../../index.js';
+import * as rulesModule from '../../rules.js';
 import { MixinCollection } from '../callable-collection.js';
 
 describe('callable collection helper', () => {
+  it('does not stay re-exported through rules.ts once the package seam is deleted', () => {
+    expect('MixinCollection' in rulesModule).toBe(false);
+  });
+
   it('preserves the direct callable handoff outside rules.ts', async () => {
     const context = new Context({ leakyRules: true });
     context.depth = 2;

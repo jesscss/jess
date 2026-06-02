@@ -409,8 +409,9 @@ cross-purpose helper closures and less parse cost.
 - `MixinCollection` now lives in
   `packages/core/src/tree/util/callable-collection.ts`, and its
   `evalCall(...)` body remains only a thin handoff into
-  `packages/core/src/tree/util/callable-eval.ts`; `rules.ts` only re-exports
-  the class for existing call/function/reference consumers.
+  `packages/core/src/tree/util/callable-eval.ts`; `call.ts`,
+  `function.ts`, `reference.ts`, and focused render tests now import the
+  class directly from the util module instead of routing through `rules.ts`.
 - Ruleset special-case candidate eval owns its own `withRulesContext(...)`
   boundary instead of consuming a Rules-owned evaluation callback from
   `rules.ts`.
@@ -441,11 +442,12 @@ cross-purpose helper closures and less parse cost.
   output aggregation, special-case candidate handling, candidate setup state,
   candidate execution, candidate-loop dispatch, eval-output finalization,
   top-level callable sequencing, callable surface construction, callable entry
-  construction, the ruleset special-case eval callback seam, and the
-  `MixinCollection` residence itself are now out of `rules.ts`. The remaining
-  extractable unit now needs another real Rules-owned callable adapter or
-  exported surface to disappear. Test-only callable surface re-exports are
-  gone too.
+  construction, the ruleset special-case eval callback seam, the
+  `MixinCollection` residence itself, and the last `rules.ts`
+  `MixinCollection` package re-export are now out of `rules.ts`. The
+  remaining extractable unit now needs another real Rules-owned callable
+  adapter or exported surface to disappear. Test-only callable surface
+  re-exports are gone too.
 
 **Completion gates:**
 
@@ -736,7 +738,7 @@ not folklore.
 
 | Family | Current state | Completion gate |
 | --- | --- | --- |
-| `Rules` | Direct root/fragment render state exists; callable invocation, candidate scan, guard/default handling, output finalization, entry surfaces, helper-only exports, and `MixinCollection` residence are now outside `rules.ts`. Remaining work only counts when another real `Rules`-owned callable runtime or package surface disappears, or when the remaining boundary is explicitly justified. | Callable extraction complete or explicitly blocked; direct render context state bounded. |
+| `Rules` | Direct root/fragment render state exists; callable invocation, candidate scan, guard/default handling, output finalization, entry surfaces, helper-only exports, `MixinCollection` residence, and the old `rules.ts` callable re-export are now outside `rules.ts`. Remaining work only counts when another real `Rules`-owned callable runtime or package surface disappears, or when the remaining boundary is explicitly justified. | Callable extraction complete or explicitly blocked; direct render context state bounded. |
 | `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct/evaluated render carry compatibility facts through print-state overrides instead of scratch owned nodes, runtime `WeakMap` writes are frame compatibility only, and registration prep now writes the invocation record's registration state directly instead of carrying a separate prep state. The remaining open seam is the evaluated-node collapse-nesting frame path plus the duplicated invocation/body lifecycle state that still spans registration/result/public shapes. | Lane A blocked only on the final frame-compatibility seam and the remaining invocation-record collapse across registration/result/public boundaries; no direct-render scratch state regresses. |
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return and no parallel list/space checks. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
@@ -815,7 +817,7 @@ counts if another real runtime or package boundary disappears.
 1. Only take another callable slice if a real `Rules`-owned callable runtime
    or package surface shrinks again.
 2. If no such slice exists, record why the remaining `rules.ts` callable
-   export/re-export surface stays instead of splitting helpers for style.
+   export surface stays instead of splitting helpers for style.
 3. Only pursue Lane G fallback/call state if there is a real production
    consumer or a measured speed/function-call win.
 

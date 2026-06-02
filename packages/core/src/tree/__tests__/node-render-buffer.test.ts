@@ -3,7 +3,6 @@ import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import {
   Anonymous,
-  MixinCollection,
   Selector,
   amp,
   any,
@@ -64,6 +63,7 @@ import {
 import { extendList } from '../extend-list.js';
 import { jsexpr } from '../js-expr.js';
 import { F_MAY_ASYNC, F_NON_STATIC, Node } from '../node-base.js';
+import { MixinCollection } from '../util/callable-collection.js';
 import { callableRulesEntry } from '../util/callable-entry.js';
 import { OutputWriter, getPrintOptions, type PrintOptions } from '../util/print.js';
 import {
