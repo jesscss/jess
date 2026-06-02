@@ -226,13 +226,9 @@ Peter to pay Paul.
   `WeakMap`/module object for optional fallback diagnostics. Selector copy
   removal remains blocked until its ownership contracts can be reduced without
   changing public behavior.
-- Rules-like reference placement now names `source`, `output`, and
-  `publicBoundary`, and the rules-like call path reads parentage through
-  `getRulesLikeReferenceLookupState(...)` instead of ad hoc `sourceNode` access.
-- Detached rules-like call parentage now reads through
-  `getRulesLikeReferenceCallableSource(...)` instead of the full lookup record,
-  so that production path no longer pulls the whole preservation shape just to
-  recover the lexical parent.
+- Rules-like reference placement now lives on the owned shallow public surface
+  itself: `sourceNode` carries the canonical source, so the old side-map and
+  helper reads are gone from the production call path.
 - Direct callable reference preservation now balances `referenceStack` on the
   owned-output path too, so direct `mixin-ruleset` hits do not leak reference
   depth while preserving canonical source ownership.

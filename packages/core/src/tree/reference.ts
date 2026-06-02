@@ -1400,35 +1400,6 @@ function freezeRulesLikeReferenceValue(node: Node): void {
   }
 }
 
-type RulesLikeReferencePreservationRecord = {
-  source: Node;
-  output: Node;
-  publicBoundary: 'shallow-owned-callable-surface';
-};
-
-export type RulesLikeReferenceLookupState = RulesLikeReferencePreservationRecord & {
-  preservesCallableSurface: true;
-};
-
-const rulesLikeReferencePreservation = new WeakMap<Node, RulesLikeReferencePreservationRecord>();
-
-export function getRulesLikeReferenceSource(node: Node): Node | undefined {
-  return rulesLikeReferencePreservation.get(node)?.source;
-}
-
-export function getRulesLikeReferenceLookupState(node: Node): RulesLikeReferenceLookupState | undefined {
-  const record = rulesLikeReferencePreservation.get(node);
-  if (!record) {
-    return undefined;
-  }
-  return {
-    source: record.source,
-    output: record.output,
-    publicBoundary: record.publicBoundary,
-    preservesCallableSurface: true
-  };
-}
-
 /**
  * Rules-like references are public/callable surfaces, not text-only render
  * containers. Keep the source children canonical, but return a shallow owned
@@ -1455,11 +1426,6 @@ function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeV
   preservedValue.inherit(directValue);
   Reflect.set(preservedValue, 'parent', directValue.parent);
   preservedValue.sourceNode = directValue;
-  rulesLikeReferencePreservation.set(preservedValue, {
-    source: directValue,
-    output: preservedValue,
-    publicBoundary: 'shallow-owned-callable-surface'
-  });
   return preservedValue;
 }
 

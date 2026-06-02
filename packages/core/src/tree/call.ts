@@ -13,7 +13,7 @@ import { MixinCollection } from './util/callable-collection.js';
 import { Any } from './any.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 import { List, list } from './list.js';
-import { getRulesLikeReferenceSource, Reference } from './reference.js';
+import { Reference } from './reference.js';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
@@ -954,7 +954,9 @@ export class Call extends Node<CallValue, CallOptions> {
       // see caller variables; see call.test.ts "does not let detached ruleset
       // calls read caller scope in non-leaky mode".
       if (state.preservesRulesLikeVariableTarget) {
-        const sourceParent = getRulesLikeReferenceSource(n)?.parent;
+        const sourceParent = 'sourceNode' in n && isNode(n.sourceNode)
+          ? n.sourceNode.parent
+          : undefined;
         if (sourceParent) {
           Reflect.set(n, 'parent', sourceParent);
         }
