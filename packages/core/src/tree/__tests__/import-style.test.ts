@@ -1973,7 +1973,7 @@ describe('Style import', () => {
         throw new TypeError('Expected nested placement declaration');
       }
       expect(getImportPlacementSourceChild(placement, placementDecl)).toBe(sourceDecl);
-      expect(getImportPlacementSegmentSourceChild(placement, placementDecl)).toBeUndefined();
+      expect(getImportPlacementSegmentSourceChild(placement, placementDecl)).toBe(sourceDecl);
       expect(placementDecl.value.value).toBe(red);
       expect(red.parent).toBe(sourceDecl);
     });

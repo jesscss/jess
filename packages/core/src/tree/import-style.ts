@@ -299,41 +299,61 @@ function findImportPlacementState(placementRules: Rules): ImportPlacementState |
   return undefined;
 }
 
-function collectImportPlacementSourceMap(
-  source: unknown,
-  placement: unknown,
-  sourceByPlacement: Map<Node, Node>,
+type ImportPlacementValuePath = readonly (string | number)[];
+
+function findImportPlacementValuePath(
+  value: unknown,
+  target: Node,
+  path: (string | number)[] = [],
   seen = new Set<unknown>()
-): void {
-  if (!(source instanceof Node) || !(placement instanceof Node) || seen.has(placement)) {
-    return;
+): ImportPlacementValuePath | undefined {
+  if (value === target) {
+    return path;
   }
-  seen.add(placement);
-  sourceByPlacement.set(placement, source);
-  collectImportPlacementSourceMapForValue(source.value, placement.value, sourceByPlacement, seen);
+  if (value instanceof Node) {
+    if (seen.has(value)) {
+      return undefined;
+    }
+    seen.add(value);
+    return findImportPlacementValuePath(value.value, target, path, seen);
+  }
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index++) {
+      const found = findImportPlacementValuePath(value[index], target, [...path, index], seen);
+      if (found) {
+        return found;
+      }
+    }
+    return undefined;
+  }
+  if (isRecord(value)) {
+    for (const key of Object.keys(value)) {
+      const found = findImportPlacementValuePath(value[key], target, [...path, key], seen);
+      if (found) {
+        return found;
+      }
+    }
+  }
+  return undefined;
 }
 
-function collectImportPlacementSourceMapForValue(
-  source: unknown,
-  placement: unknown,
-  sourceByPlacement: Map<Node, Node>,
-  seen: Set<unknown>
-): void {
-  if (source instanceof Node || placement instanceof Node) {
-    collectImportPlacementSourceMap(source, placement, sourceByPlacement, seen);
-    return;
-  }
-  if (Array.isArray(source) && Array.isArray(placement)) {
-    for (let index = 0; index < source.length; index++) {
-      collectImportPlacementSourceMap(source[index], placement[index], sourceByPlacement, seen);
+function readImportPlacementValuePath(value: unknown, path: ImportPlacementValuePath): unknown {
+  let cursor = value;
+  for (const segment of path) {
+    if (Array.isArray(cursor)) {
+      if (typeof segment !== 'number') {
+        return undefined;
+      }
+      cursor = cursor[segment];
+      continue;
     }
-    return;
-  }
-  if (isRecord(source) && isRecord(placement)) {
-    for (const key of Object.keys(source)) {
-      collectImportPlacementSourceMap(source[key], placement[key], sourceByPlacement, seen);
+    if (isRecord(cursor)) {
+      cursor = cursor[segment];
+      continue;
     }
+    return undefined;
   }
+  return cursor;
 }
 
 function findImportPlacementSourceDescendant(
@@ -388,13 +408,6 @@ export function getImportPlacementSourceChild(
   if (directSource) {
     return directSource;
   }
-  if (isNode(placementChild.sourceNode)) {
-    for (const [stateChild, sourceChild] of state.sourceByPlacement) {
-      if (stateChild === placementChild.sourceNode || sourceChild === placementChild.sourceNode) {
-        return sourceChild;
-      }
-    }
-  }
   for (const [stateChild, sourceChild] of state.sourceByPlacement) {
     const sourceDescendant = findImportPlacementSourceDescendant(sourceChild, stateChild, placementChild);
     if (sourceDescendant) {
@@ -409,9 +422,48 @@ export function getImportPlacementSegmentSourceChild(
   placementRules: Rules,
   placementChild: Node
 ): Node | undefined {
-  return getImportPlacementChildSegments(placementRules)
-    ?.find(segment => segment.output === placementChild)
-    ?.source;
+  const state = findImportPlacementState(placementRules);
+  if (!state) {
+    return undefined;
+  }
+  for (const segment of state.childSegments) {
+    if (placementRules.value[segment.index] === placementChild) {
+      return segment.source;
+    }
+  }
+  let placementSegmentChild: Node | undefined = placementChild;
+  while (placementSegmentChild?.parent && placementSegmentChild.parent !== placementRules) {
+    placementSegmentChild = isNode(placementSegmentChild.parent) ? placementSegmentChild.parent : undefined;
+  }
+  if (!placementSegmentChild || placementSegmentChild.parent !== placementRules) {
+    return undefined;
+  }
+  for (const segment of state.childSegments) {
+    if (placementRules.value[segment.index] === placementSegmentChild) {
+      if (placementSegmentChild === placementChild) {
+        return segment.source;
+      }
+      const lineage: Node[] = [];
+      for (let cursor: Node | undefined = placementChild; cursor && cursor !== placementSegmentChild; cursor = isNode(cursor.parent) ? cursor.parent : undefined) {
+        lineage.unshift(cursor);
+      }
+      let sourceCursor: unknown = segment.source;
+      let placementCursor: Node = placementSegmentChild;
+      for (const descendant of lineage) {
+        const path = findImportPlacementValuePath(placementCursor.value, descendant);
+        if (!path) {
+          return undefined;
+        }
+        sourceCursor = readImportPlacementValuePath(sourceCursor instanceof Node ? sourceCursor.value : sourceCursor, path);
+        if (!(sourceCursor instanceof Node)) {
+          return undefined;
+        }
+        placementCursor = descendant;
+      }
+      return sourceCursor;
+    }
+  }
+  return undefined;
 }
 
 export function getImportPlacementChildSegments(placementRules: Rules): readonly ImportPlacementChildSegment[] | undefined {
@@ -540,7 +592,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     ));
     const sourceByPlacement = new Map<Node, Node>();
     for (let index = 0; index < children.length; index++) {
-      collectImportPlacementSourceMap(sourceRules.value[index], children[index], sourceByPlacement);
+      const placementChild = children[index];
+      const sourceChild = sourceRules.value[index];
+      if (placementChild && sourceChild) {
+        sourceByPlacement.set(placementChild, sourceChild);
+      }
     }
     return {
       source: sourceRules,
