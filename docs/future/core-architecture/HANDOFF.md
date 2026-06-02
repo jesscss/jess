@@ -729,8 +729,8 @@ not folklore.
 
 | Family | Current state | Completion gate |
 | --- | --- | --- |
-| `Rules` | Direct root/fragment render state exists; callable binding, signature, default grouping, outer-rules, and generated output-wrapper helpers are extracted, but `MixinCollection` still owns candidate/body orchestration. Debug default counts no longer add filter allocations. | Callable extraction complete or explicitly blocked; direct render context state bounded. |
-| `AtRule` | Leaf render split; body invocation state still large, but render and public-result inputs are narrowed, duplicate prelude storage was removed from the eval record, visibility moved onto invocation context state, body-rules frame cleanup is runner-owned, owned public results now carry body/output facts directly, failed evals restore prior compatibility state instead of leaking `WeakMap` facts, successful eval now installs only remaining frame compatibility state at the boundary instead of writing body/output facts during body evaluation, direct render no longer installs temporary runtime compatibility state on the source node, evaluated `render(context)` no longer reads compatibility body state from the source node itself, body-changing `eval(context)` now returns an owned evaluated at-rule surface, root-only hoist-only eval outputs now return owned results too, the remaining eval-time runtime state no longer stores a separate hoist field, nestable render/runtime updates no longer carry a redundant temporary hoist flag when frames already imply it, the last eval-time compatibility `WeakMap` now stores raw frames instead of a wrapper object, eval-time compatibility commits now write raw frames directly, the evaluated-render compatibility path now carries those frames through render-local print-state overrides instead of temporary wrapper objects or derived owned at-rules, direct body render now carries evaluated body/hoist/frame facts through the same print-state override surface instead of deriving a temporary owned at-rule, and the dead render runtime-update helper is deleted. Runtime `WeakMap` writes are now frame compatibility only, and the hotspot audit no longer reports any render/eval/resolve surface lines. | Lane A gates complete. |
+| `Rules` | Direct root/fragment render state exists; callable invocation, candidate scan, guard/default handling, output finalization, entry surfaces, and helper-only exports are now outside the big inline `MixinCollection` body. Remaining work only counts when another real `Rules`-owned callable runtime or package surface disappears, or when the remaining boundary is explicitly justified. | Callable extraction complete or explicitly blocked; direct render context state bounded. |
+| `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct/evaluated render carry compatibility facts through print-state overrides instead of scratch owned nodes, and runtime `WeakMap` writes are frame compatibility only. The remaining open seam is the evaluated-node collapse-nesting frame path plus the duplicated invocation/body lifecycle state that still spans multiple record/result shapes. | Lane A blocked only on the final frame-compatibility seam and invocation-record collapse; no direct-render scratch state regresses. |
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return and no parallel list/space checks. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
 | `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public syntax construction has a named adapter and placement vocabulary (`source`, `output`, `content`, `publicBoundary`), but no production storage after the WeakMap experiment regressed static object counts. | Call overhead measurement complete and fallback render/public split advanced. |
@@ -738,764 +738,109 @@ not folklore.
 | `List` / `Sequence` | Dynamic render streams through native syntax; public resolve owns containers. Source-free public narrowing is blocked by public mutation/parentage expectations. | Revisit only if public mutability API changes. |
 | `Block` / `Quoted` / `Url` / `Paren` / `Operation` | Render-only wrappers largely split from public resolve; operation finalization now distinguishes metadata-result inheritance from public-result inheritance, with dimension/color public consumers. | No generic output bridge reintroduced; focused materialization proofs stay green. |
 | `StyleImport` | First-use top-level placement segments and postlude render state exist; top-level source lookup consumes segments before recursive fallback. Postlude order and option reads now consume render state; descendant mapping remains fallback-only. | Lane D gates complete except any future descendant segment reduction. |
-| Selectors / `Ampersand` / `Extend` | Ownership still semantic for generated/extended placement. Generated `:is(...)` omission/keyset state is already declared and render-consumed; reduction is blocked by existing extend/parentage proof coverage until a narrower helper can preserve semantics. | Lane H gates complete. |
+| Selectors / `Ampersand` / `Extend` | Ownership still semantic for generated/extended placement. Generated `:is(...)` omission/keyset state is declared and render-consumed, but the lane still needs one explicit placement-state fact plus render/extend proof before the remaining helper ownership can be called done. | Lane H still open; only close it with a real selector-copy/placement deletion or a focused blocker proof. |
 | Controls | Loop render streams direct rules; live frame mutation intentional. | Remaining grouping/state surfaces audited by object/function-call cost. |
 
 Update this tracker when a node family changes architectural state.
 
-## Immediate Queue
-
-This is a pop queue. Keep at least fifteen concrete items here. A normal
-handoff round should complete all fifteen queued items unless the user asks
-for a smaller slice. When an item is completed, remove it and add or promote
-enough work to leave the queue full for the next round.
-
-A full queue run is not finished until code/docs changes are verified,
-committed, and pushed to the current branch.
-
-Queue items must be architecture-sized, not line-sized. A good queue item:
-
-- names the lane it advances;
-- names the production surface and focused tests;
-- states the intended deletion, narrowing, measured speed win, or blocker
-  proof;
-- updates the lane completion gate or node-family tracker.
-
-Avoid pure "audit and document" items unless they produce a bounded inventory
-that gates a specific lane.
-
-### Completed Queue Rollup
-
-Keep this section compact. Detailed proof lives in git history and focused
-tests; this handoff should preserve only the current architectural state needed
-to choose the next queue.
-
-- Passes 1-15 reframed the work from node-copy reduction to total runtime work:
-  AtRule body runtime/render adapters, callable binding/signature/default
-  helpers, mixin output wrappers, shared placement vocabulary, import placement
-  child/postlude state, declaration merge/contextual-important adapters,
-  rawArgs diagnostics, rules-like reference helpers, operation public-result
-  aliases, narrowed AtRule render/public adapters, callable default debug-count
-  cleanup, optional fallback syntax helper rejection, declaration scalar merge
-  adapter elision, narrowed AtRule eval-result context ownership, source-free
-  AtRule body render state, empty/no-op AtRule runtime-update elision, render
-  output-update elision, render-local prelude override, AtRule body render
-  adapter deletion, and bounded blockers for public direct-index and selector
-  ownership.
-
-- Passes 31-34 finished the last big AtRule render/runtime deletions and
-  converted the remaining collapse-nesting frame seam into an explicit,
-  well-covered blocker. Direct render now uses print-state overrides instead of
-  temporary owned at-rules, the dead render runtime-update helper is gone, the
-  bubbling bug matrix is active coverage, and a direct-on-node ownership
-  attempt is now explicitly rejected because it hung the mixin bubbling path.
-
-### Completed Queue Pass: 2026-06-01 #35
-
-1. Lane B finally deleted a real `MixinCollection` closure block. Callable
-   parameter matching moved out of `rules.ts` into
-   `packages/core/src/tree/util/callable-param-match.ts`, taking the binding
-   `Map`, signature array, named-argument scan, default-fill pass, and rest
-   signature logic with it.
-2. Lane B kept the runtime contract exact while shrinking the central file.
-   `packages/core/src/tree/rules.ts` dropped from 4876 lines at discovery time
-   to 4735 lines after the extraction, while mixin matching still preserves the
-   same named/default/rest/`@arguments` behavior and the single-required-param
-   overload rejection rule.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-param-match.test.ts`
-   now proves named/default/rest binding shape and the extra-positional
-   rejection case directly, with the focused `mixin.test.ts` suite still green.
-4. Lane B also proved the import edge needed to stay lean. A first draft that
-   reached for higher-level declaration imports destabilized the broad baseline,
-   so the final helper stays on the lower-level node-type surface instead of
-   baking in new circular dependency edges.
-5. Lane B/G now has fresh callable measurements on an actual callable slice:
-   rawArgs medians stayed at 0.0003ms for plain positional calls and 0.0023ms
-   for metadata rawArgs calls, and the full changed baseline stayed green.
-6. Lane A stayed intentionally unchanged this pass. The remaining collapse-
-   nesting frame seam is still blocked by the focused AtRule suite, the active
-   bubbling matrix, and the `media.less` AST serialization proof.
-7. Lane I compacted older pass detail, refreshed Lane B truth/queue wording,
-   and keeps full queue completion tied to verification, commit, and push.
-
-### Completed Queue Pass: 2026-06-01 #36
-
-1. Lane B deleted another real `MixinCollection` closure block. Callable
-   candidate filtering, duplicate-source rejection, default-last ordering, and
-   ruleset recursion-to-caller rejection moved out of `rules.ts` into
-   `packages/core/src/tree/util/callable-candidate.ts`.
-2. Lane B kept the runtime contract exact while shrinking the central file
-   again. `packages/core/src/tree/rules.ts` dropped from 4735 lines after pass
-   `#35` to 4591 lines in this pass, and the node-creation audit ticked down
-   from `rules.ts: 68` / `new-node: 294` / module count `395` to
-   `rules.ts: 67` / `new-node: 293` / module count `394`.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-candidate.test.ts`
-   now proves shared-source dedupe plus default-last ordering and the
-   ruleset-recurses-to-caller rejection path directly, with the focused
-   `mixin.test.ts` suite still green.
-4. Lane B/G now has fresh callable measurements on another real callable
-   slice: rawArgs medians stayed flat to slightly better at `0.0003ms` for
-   plain positional calls and `0.0022ms` for metadata rawArgs calls, while the
-   changed baseline stayed green.
-5. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
-   frame seam is still blocked by the focused AtRule suite, the active
-   bubbling matrix, and the `media.less` AST serialization proof.
-6. Lane I refreshed the Lane B dependency graph and next queue so the next
-   pass targets the remaining default-probe/body-eval orchestration honestly
-   instead of pretending candidate prep is still inline.
-
-### Completed Queue Pass: 2026-06-01 #37
-
-1. Lane B deleted another real `MixinCollection` closure block. Callable
-   default-guard probing moved out of `packages/core/src/tree/rules.ts` into
-   `packages/core/src/tree/util/callable-default-guard.ts`, taking the copied-
-   guard cache closure, the two-pass `default()` probe loop, the group
-   classification, and `context.isDefault` restoration with it.
-2. Lane B kept the runtime contract exact while shrinking the central file
-   again. `MixinCollection.evalCall(...)` still owns caller-specific outer-
-   rules setup, pending-candidate collection, and candidate body execution,
-   but the default-probe branch is now a named helper boundary instead of an
-   inline micro-runner.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-default-guard.test.ts`
-   now proves copied-guard reuse, dual probe ordering, result grouping, and
-   `isDefault` restoration directly, while the focused `mixin.test.ts` suite
-   still covers caller-scope default-guard behavior.
-4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
-   frame seam is still blocked by the focused AtRule suite, the active
-   bubbling matrix, and the `media.less` AST serialization proof.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets
-   candidate execution or scope-frame/body setup instead of re-queuing default
-   probe extraction that is now done.
-
-### Completed Queue Pass: 2026-06-01 #38
-
-1. Lane B deleted another real `MixinCollection` closure block. Callable
-   candidate output execution moved out of `packages/core/src/tree/rules.ts`
-   into `packages/core/src/tree/util/callable-candidate-output.ts`, taking the
-   recursion gate, adopt/eval/adopt cleanup, candidate index restoration, and
-   mixin-output slot attachment with it.
-2. Lane B kept the runtime contract exact while shrinking the central file
-   again. `MixinCollection.evalCall(...)` still owns caller-specific
-   scope-frame setup, default-candidate collection, and default-resolution
-   orchestration, but it no longer owns the candidate body runner inline.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-candidate-output.test.ts`
-   now proves recursion skip behavior and successful mixin-output placement
-   attachment directly, while the focused `mixin.test.ts` and
-   `mixin-recursion.test.ts` suites still cover the production call paths.
-4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
-   frame seam is still blocked by the focused AtRule suite, the active
-   bubbling matrix, and the `media.less` AST serialization proof.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets
-   scope-frame setup or pending default-candidate execution instead of stale
-   candidate-runner wording.
-
-### Completed Queue Pass: 2026-06-01 #39
-
-1. Lane B deleted another real `MixinCollection` closure block. Pending
-   callable `default()` resolution and execution moved out of
-   `packages/core/src/tree/rules.ts` into
-   `packages/core/src/tree/util/callable-default-guard.ts`, taking ambiguity
-   detection, selected-group iteration, and default-result execution with it.
-2. Lane B kept the runtime contract exact while shrinking the central file
-   again. `MixinCollection.evalCall(...)` still owns per-candidate scope-frame
-   setup and caller/outer-rules decisions, but it no longer owns the bottom
-   default-resolution/control block inline.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-default-guard.test.ts`
-   now proves selected-group execution order and ambiguity throwing directly,
-   while the focused `mixin.test.ts` and `mixin-recursion.test.ts` suites keep
-   the production default/mixin behavior pinned down.
-4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
-   frame seam is still blocked by the focused AtRule suite, the active
-   bubbling matrix, and the `media.less` AST serialization proof.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets
-   scope-frame setup or caller/outer-rules setup instead of stale pending-
-   default wording.
-
-### Completed Queue Pass: 2026-06-01 #40
-
-1. Lane B deleted another real `MixinCollection` closure block. Callable
-   outer-rules reuse/setup moved out of `packages/core/src/tree/rules.ts` into
-   `packages/core/src/tree/util/callable-outer-rules.ts`, taking wrapper reuse,
-   candidate index sync, parent adoption, and optional scope-frame sync with
-   it.
-2. Lane B kept the runtime contract exact while shrinking the central file to
-   4546 lines. `MixinCollection.evalCall(...)` still owns the higher-order
-   caller/guard sequencing and scope-frame decisions, but it no longer owns the
-   inline `ensureOuterRules(...)` closure.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-outer-rules.test.ts`
-   now proves wrapper reuse, candidate index sync, and opt-out scope-frame
-   preservation directly, while the focused `mixin.test.ts` and
-   `mixin-recursion.test.ts` suites keep the production mixin/guard paths
-   pinned down.
-4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
-   frame seam is still blocked by the focused AtRule suite, the active
-   bubbling matrix, and the `media.less` AST serialization proof.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets
-   caller-guard/scope-frame orchestration instead of stale outer-rules wording.
-
-### Completed Queue Pass: 2026-06-01 #41
-
-1. Lane B deleted another real `MixinCollection` orchestration block. Callable
-   scope-frame wiring moved out of `packages/core/src/tree/rules.ts` into
-   `packages/core/src/tree/util/callable-scope-frame.ts`, taking lexical/
-   fallback frame assignment, dedicated outer-frame creation for prebound param
-   guards, shared outer-frame reuse, and leaky caller fallback wiring with it.
-2. Lane B kept the runtime contract exact while shrinking the central file to
-   4542 lines. `MixinCollection.evalCall(...)` still owns live-slot assembly
-   and higher-order caller/guard sequencing, but it no longer owns the inline
-   scope-frame assignment block.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-scope-frame.test.ts`
-   now proves shared outer-frame reuse, dedicated prebound guard frame wiring,
-   and leaky fallback wiring directly, while the focused `mixin.test.ts` and
-   `mixin-recursion.test.ts` suites keep the production mixin/guard paths
-   pinned down.
-4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
-   frame seam is still blocked by the focused AtRule suite, the active
-   bubbling matrix, and the `media.less` AST serialization proof.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets
-   live-slot assembly or caller-guard sequencing instead of stale
-   scope-frame wording.
-
-### Completed Queue Pass: 2026-06-01 #42
-
-1. Lane B deleted another real `MixinCollection` orchestration block. Callable
-   live-slot assembly moved out of `packages/core/src/tree/rules.ts` into
-   `packages/core/src/tree/util/callable-live-slots.ts`, taking param binding
-   slot creation, param-var marking, and lazy `@arguments` preparation with
-   it.
-2. Lane B kept the runtime contract exact while shrinking the central file to
-   4510 lines. `MixinCollection.evalCall(...)` still owns wrapper/guard
-   sequencing, but it no longer owns the inline live-slot / `@arguments`
-   setup block.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-live-slots.test.ts`
-   now proves param-var marking, lazy `@arguments` flattening from live slots,
-   and node-arg fallback directly, while the focused `mixin.test.ts` and
-   `mixin-recursion.test.ts` suites keep the production mixin/guard paths
-   pinned down.
-4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
-   frame seam is still blocked by the focused AtRule suite, the active
-   bubbling matrix, and the `media.less` AST serialization proof.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets
-   caller-guard sequencing or another remaining guard/body orchestration block
-   instead of stale live-slot wording.
-
-### Completed Queue Pass: 2026-06-01 #43
-
-1. Lane B deleted another real `MixinCollection` orchestration block. Callable
-   guard preparation moved out of `packages/core/src/tree/rules.ts` into
-   `packages/core/src/tree/util/callable-guard.ts`, taking dynamic guard copy
-   policy, no-param caller-guard prebinding, and on-demand dynamic guard
-   wrapper creation with it.
-2. Lane B kept the runtime contract exact while improving the hotspot audit
-   again even though the central file only moved slightly in line count to
-   4513 lines. `MixinCollection.evalCall(...)` still owns the higher-order
-   pass/fail flow and default-result branching, but it no longer owns the
-   repeated inline guard-preparation branches.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-guard.test.ts`
-   now proves dynamic-vs-static/default guard preparation, caller-guard
-   prebinding, and dynamic wrapper creation directly, while the focused
-   `mixin.test.ts` and `mixin-recursion.test.ts` suites keep the production
-   mixin/guard paths pinned down.
-4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
-   frame seam is still blocked by the focused AtRule suite, the active
-   bubbling matrix, and the `media.less` AST serialization proof.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets
-   remaining guard/default-result sequencing or another still-inline
-   orchestration block instead of stale guard-prep wording.
-
-### Completed Queue Pass: 2026-06-01 #44
-
-1. Lane B deleted another real `MixinCollection` orchestration block. Callable
-   guard execution moved out of `packages/core/src/tree/rules.ts` into
-   `packages/core/src/tree/util/callable-guard.ts`, taking rules-context
-   swapping, default-guard probe execution, defNone contribution tracking, and
-   pending-default deferral decisions with it.
-2. Lane B kept the runtime contract exact while shrinking the central file to
-   4436 lines. `MixinCollection.evalCall(...)` still owns candidate body
-   execution and pending-default output collection, but it no longer owns the
-   inline guard pass/fail/default branching itself.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-guard.test.ts`
-   now proves default-guard execution and non-default guard pass handling
-   directly, while the focused `mixin.test.ts` and `mixin-recursion.test.ts`
-   suites keep the production mixin/guard paths pinned down.
-4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
-   frame seam is still blocked by the focused AtRule suite, the active
-   bubbling matrix, and the `media.less` AST serialization proof.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets
-   pending-default output collection or another still-inline candidate/body
-   orchestration block instead of stale guard-execution wording.
-
-### Completed Queue Pass: 2026-06-01 #45
-
-1. Lane B deleted another real `MixinCollection` orchestration block. Pending
-   callable default bookkeeping moved out of
-   `packages/core/src/tree/rules.ts` into
-   `packages/core/src/tree/util/callable-default-guard.ts`, taking defNone
-   contribution tracking, pending-default candidate collection, and pending-
-   default output flushing with it.
-2. Lane B kept the runtime contract exact while shrinking the central file to
-   4425 lines. `MixinCollection.evalCall(...)` still owns candidate body
-   setup and immediate non-default output execution, but it no longer owns the
-   inline pending-default state machine or post-loop flush block.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-default-guard.test.ts`
-   now proves default-state recording and flush behavior directly, while the
-   focused `callable-guard`, `mixin`, and `mixin-recursion` suites keep the
-   production mixin/default paths pinned down.
-4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
-   frame seam is still blocked by the focused AtRule suite, the active
-   bubbling matrix, and the `media.less` AST serialization proof.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets
-   remaining immediate candidate-output routing or another still-inline
-   candidate/body orchestration block instead of stale pending-default wording.
-
-### Completed Queue Pass: 2026-06-01 #46
-
-1. Lane B deleted another real `MixinCollection` orchestration block. Callable
-   output aggregation moved out of `packages/core/src/tree/rules.ts` into
-   `packages/core/src/tree/util/callable-output.ts`, taking output source
-   tracking, output-rule collection, and single-vs-wrapper finalization with
-   it.
-2. Lane B kept the runtime contract exact while shrinking the central file to
-   4397 lines. This pass also improved the static hotspot audit to
-   `rules.ts: 61`, `new-node: 288`, and module count `388`. `MixinCollection.evalCall(...)`
-   still owns candidate setup and the special-case ruleset / detached-ruleset
-   entry branches, but it no longer owns the inline output-state machine.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-output.test.ts`
-   now proves source tracking, empty-output handling, single-output placement,
-   and multi-output wrapper finalization directly, while the focused default-
-   guard, mixin, and mixin-recursion suites keep the production callable paths
-   pinned down.
-4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
-   frame seam is still blocked by the focused AtRule suite, the active
-   bubbling matrix, and the `media.less` AST serialization proof.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets
-   the remaining special-case candidate branches or another still-inline
-   candidate/body orchestration block instead of stale output-aggregation
-   wording.
-
-### Completed Queue Pass: 2026-06-01 #47
-
-1. Lane B deleted another real `MixinCollection` orchestration block. Callable
-   special-case candidate handling moved out of
-   `packages/core/src/tree/rules.ts` into
-   `packages/core/src/tree/util/callable-special-case.ts`, taking the
-   ruleset-as-mixin placement branch and the anonymous detached-ruleset
-   unlock/eval branch with it.
-2. Lane B kept the runtime contract exact while shrinking the central file to
-   4367 lines. The hotspot audit stayed at `rules.ts: 61`, `new-node: 288`,
-   `with-surface: 40`, and module count `388`; `derive` ticked to `31` after
-   making the special-case surface explicit. `MixinCollection.evalCall(...)`
-   still owns immediate candidate setup plus the main body/guard orchestration,
-   but it no longer owns the special-case branch pair.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-special-case.test.ts`
-   now proves ruleset-placement output, detached-ruleset unlock/eval behavior,
-   and the ordinary-mixin fallthrough directly, while focused `mixin` and
-   `call` coverage keeps the production special-case paths pinned down.
-4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
-   frame seam is still blocked by the focused AtRule suite, the active
-   bubbling matrix, and the `media.less` AST serialization proof.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets
-   immediate candidate setup or another still-inline body/guard orchestration
-   block instead of stale special-case-branch wording.
-
-### Completed Queue Pass: 2026-06-01 #48
-
-1. Lane B deleted another real `MixinCollection` orchestration block. Callable
-   candidate setup state moved out of `packages/core/src/tree/rules.ts` into
-   `packages/core/src/tree/util/callable-candidate-state.ts`, taking owned-vs-
-   unlocked rules selection, mixin-body var visibility wiring, resolved
-   param-binding unpacking, and lexical/fallback frame derivation with it.
-2. Lane B kept the runtime contract exact while shrinking the central file to
-   4353 lines. This pass slightly increased the static audit to `rules.ts: 62`,
-   `new-node: 289`, and module count `389`, so the new helper is only justified
-   because it deleted a real inline setup seam rather than pretending the
-   architecture got cheaper on every proxy metric. `MixinCollection.evalCall(...)`
-   still owns the main body/guard orchestration, but it no longer owns immediate
-   candidate setup state.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-candidate-state.test.ts`
-   now proves owned-vs-unlocked rules preparation plus lexical/fallback frame
-   derivation directly, while focused `mixin` coverage keeps the production
-   callable setup paths pinned down.
-4. Lane A stayed intentionally unchanged again. The remaining collapse-nesting
-   frame seam is still blocked by the focused AtRule suite, the active
-   bubbling matrix, and the `media.less` AST serialization proof.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets a
-   remaining body/guard orchestration block instead of stale candidate-setup
-   wording.
-
-### Completed Queue Pass: 2026-06-01 #49
-
-1. Lane B deleted another real `MixinCollection` orchestration block. Callable
-   candidate execution moved out of `packages/core/src/tree/rules.ts` into
-   `packages/core/src/tree/util/callable-candidate-execution.ts`, taking
-   live-slot setup, scope-frame wiring, guard preparation/evaluation,
-   pending-default deferral, and immediate candidate output execution with it.
-2. Lane B kept the runtime contract exact while shrinking the central file to
-   4249 lines. The static audit stayed at `rules.ts: 62`, `new-node: 289`,
-   `with-surface: 40`, `derive: 31`, and module count `389`, so this pass is
-   justified because it deleted a real inline execution seam rather than
-   claiming a cosmetic count win. `MixinCollection.evalCall(...)` still owns
-   top-level candidate iteration plus final default/output orchestration, but
-   it no longer owns per-candidate body/guard execution.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-candidate-execution.test.ts`
-   now proves immediate candidate execution and pending-default deferral
-   directly, while focused callable/mixin suites keep the production paths
-   pinned down.
-4. Lane B/G has fresh callable measurements on the final tree: rawArgs stayed
-   at `0.0003ms` plain / `0.0033ms` metadata median during the queue pass, and
-   the full changed baseline stayed green after the extraction.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets a
-   remaining top-level callable orchestration seam instead of pretending the
-   per-candidate execution block is still inline.
-
-### Completed Queue Pass: 2026-06-01 #50
-
-1. Lane B deleted another real `MixinCollection` orchestration block. Callable
-   eval-output finalization moved out of `packages/core/src/tree/rules.ts`
-   into `packages/core/src/tree/util/callable-output.ts`, taking pending-
-   default output flushing, debug resolution logging, final output sorting, and
-   wrapper/empty-output selection with it.
-2. Lane B kept the runtime contract exact while shrinking the central file to
-   4213 lines. The static audit stayed at `rules.ts: 62`, `new-node: 289`,
-   `with-surface: 40`, `derive: 31`, and module count `389`, so this pass is
-   justified because it deleted a real inline finalizer seam rather than
-   claiming a proxy-metric win. `MixinCollection.evalCall(...)` is now down to
-   candidate preparation plus the remaining candidate-loop dispatch, with the
-   final default/output tail no longer inline.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-output.test.ts`
-   now proves pending default outputs flush through the shared finalizer before
-   wrapper finalization, while the full changed baseline kept the mixin and
-   Less behavior pinned down.
-4. Lane B/G has fresh callable measurements on the final tree: rawArgs improved
-   slightly to `0.0003ms` plain / `0.0030ms` metadata median during this pass,
-   and the full changed baseline stayed green after the extraction.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets
-   the remaining candidate-loop dispatch seam instead of pretending the tail
-   finalizer still lives in `evalCall(...)`.
-
-### Completed Queue Pass: 2026-06-01 #51
-
-1. Lane B deleted another real `MixinCollection` orchestration block. Callable
-   candidate-loop dispatch moved out of `packages/core/src/tree/rules.ts` into
-   `packages/core/src/tree/util/callable-candidate-loop.ts`, taking ruleset-
-   placement handling, anonymous callable-rules unlock handling, ordinary
-   callable-entry setup/dispatch, and per-candidate debug/output wiring with
-   it.
-2. Lane B kept the runtime contract exact while shrinking the central file to
-   4161 lines. This pass also improved the static audit to `rules.ts: 60`,
-   `new-node: 287`, `with-surface: 40`, `derive: 31`, and module count `387`,
-   so it was a real architectural deletion rather than a neutral reshuffle.
-   `MixinCollection.evalCall(...)` now mostly owns candidate scanning/matching
-   and the final handoff into helperized invocation flow.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-candidate-loop.test.ts`
-   now proves the ruleset-placement path, the anonymous callable-rules unlock
-   path, and the ordinary callable-entry execution path directly, while the
-   full changed baseline kept mixin and Less behavior pinned down.
-4. Lane B/G has fresh callable measurements on the final tree: rawArgs landed
-   at `0.0005ms` plain / `0.0030ms` metadata median during this pass, and the
-   full changed baseline stayed green after the extraction.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets
-   the remaining candidate scan/match seam instead of pretending the candidate
-   loop still lives in `evalCall(...)`.
-
-### Completed Queue Pass: 2026-06-01 #52
-
-1. Lane B deleted another real `MixinCollection` orchestration block. Callable
-   candidate scanning/matching moved out of `packages/core/src/tree/rules.ts`
-   into `packages/core/src/tree/util/callable-candidate-match.ts`, taking the
-   zero-param early-exit scan, callable arity/pattern matching, resolved
-   binding collection, and ordered eval-candidate preparation with it.
-2. Lane B kept the runtime contract exact while shrinking the central file to
-   4126 lines. This pass also improved the static audit to `rules.ts: 59`,
-   `new-node: 286`, `with-surface: 40`, `derive: 31`, and module count `386`,
-   so the extraction deleted real local machinery instead of just moving the
-   same cost sideways. `MixinCollection.evalCall(...)` now mostly owns caller-
-   scoped arg evaluation, the empty-candidate guard, and the final handoff
-   between the callable helper stages.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-candidate-match.test.ts`
-   now proves zero-param rejection with present args, default-guard ordering
-   after a successful match, and recursive ruleset candidate rejection through
-   the prepared eval-candidate pass.
-4. Lane B/G has fresh callable measurements on the final tree again: rawArgs
-   landed at `0.0003ms` plain / `0.0032ms` metadata median during this pass,
-   and the full changed baseline stayed green, so this extraction is grounded
-   in callable behavior rather than just file motion.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets
-   the remaining top-level callable orchestration seam instead of stale
-   candidate-scan language.
-
-### Completed Queue Pass: 2026-06-01 #53
-
-1. Lane B deleted another real `MixinCollection` orchestration block. Callable
-   arg evaluation moved out of `packages/core/src/tree/rules.ts` into
-   `packages/core/src/tree/util/callable-args.ts`, taking caller-scoped arg
-   evaluation, named-arg preservation, rest expansion, and primitive casting
-   with it.
-2. Lane B kept the runtime contract exact while shrinking the central file
-   again. `MixinCollection.evalCall(...)` now mostly owns the empty-candidate
-   guard plus the final handoff between prepared args, prepared candidates,
-   candidate execution, and output finalization instead of the old front-end
-   arg-eval machinery.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-args.test.ts` now
-   proves named-arg preservation, rest expansion, freeze behavior, and
-   primitive casting directly, while the callable mixin suite stayed green.
-4. Lane B/G has fresh callable measurements on the final tree again: rawArgs
-   and Less hotpaths stayed part of the pass contract, so this extraction is
-   still grounded in callable behavior rather than just file motion.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets
-   the remaining empty-candidate/top-level sequencing seam instead of stale
-   arg-evaluation language.
-
-### Completed Queue Pass: 2026-06-01 #54
-
-1. Lane B deleted another real `MixinCollection` orchestration branch.
-   Empty-candidate rejection moved out of `packages/core/src/tree/rules.ts`
-   and into `packages/core/src/tree/util/callable-candidate-match.ts`, so
-   `evalCall(...)` now consumes a resolved callable candidate set instead of
-   owning the `No matching mixins found.` branch itself.
-2. Lane B kept the runtime contract exact while shrinking the central file to
-   4093 lines. This pass also improved the static audit to `rules.ts: 57`,
-   `new-node: 285`, `with-surface: 39`, `derive: 31`, and module count `384`,
-   so it deleted a real local branch rather than just moving text around.
-3. Lane B added focused helper coverage instead of relying only on integration
-   fallout. `packages/core/src/tree/util/__tests__/callable-candidate-match.test.ts`
-   now proves that candidate resolution throws once no callable matches remain,
-   alongside the existing match-ordering and recursion-rejection proofs.
-4. Lane B/G has fresh callable measurements on the final tree again: rawArgs
-   stayed at `0.0003ms` plain and improved to `0.0023ms` metadata median
-   during this pass, and the full changed baseline stayed green.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets
-   the remaining top-level helper choreography instead of stale
-   empty-candidate language.
-
-### Completed Queue Pass: 2026-06-01 #55
-
-1. Lane B deleted another real bit of callable-entry wiring from
-   `packages/core/src/tree/rules.ts`. Callable-entry type checks plus
-   rules/name/params/guard access moved into
-   `packages/core/src/tree/util/callable-entry.ts`, and the callable helper
-   stack now depends on those concrete accessors instead of a callback bundle
-   threaded out of `MixinCollection.evalCall(...)`.
-2. Lane B kept the runtime contract exact while shrinking the central file to
-   4093 lines and improving the static audit to `rules.ts: 57`, `new-node:
-   285`, `with-surface: 39`, `derive: 31`, and module count `384`. This was a
-   real local-dependency deletion, not just helper churn.
-3. Lane B kept focused proof coverage honest. The candidate-match and
-   candidate-loop helper suites both stayed green after the accessor move, so
-   the helper stack now proves that the concrete callable-entry seam works
-   without the old callback plumbing.
-4. Lane B/G has fresh callable measurements on the final tree again: rawArgs
-   stayed at `0.0003ms` plain / `0.0023ms` metadata median during this pass,
-   and the full changed baseline stayed green.
-5. Lane I refreshed Lane B truth and queue wording so the next pass targets
-   the last top-level helper choreography instead of stale local accessor or
-   callback-bundle language.
-
-### Completed Queue Pass: 2026-06-01 #56
-
-1. Lane B deleted the last inline top-level callable choreography from
-   `packages/core/src/tree/rules.ts`. `MixinCollection.evalCall(...)` now
-   delegates to `packages/core/src/tree/util/callable-eval.ts`, and the
-   callable surface/copy helpers it needed moved into
-   `packages/core/src/tree/util/callable-surface.ts` instead of lingering as
-   local rules-container helpers.
-2. Lane B kept the runtime contract exact while shrinking the central file to
-   3804 lines and improving the static audit to `rules.ts: 49`, `new-node:
-   280`, `with-surface: 39`, `derive: 29`, and module count `376`. This pass
-   deleted a real local callable seam rather than just rebundling the same
-   orchestration through another callback bag.
-3. Lane B kept focused proof coverage honest. The new
-   `packages/core/src/tree/util/__tests__/callable-eval.test.ts` covers the
-   extracted top-level helper directly, while the existing callable-candidate-
-   loop and full mixin suites stayed green after the surface/helper move.
-4. Lane B/G has fresh callable measurements on the final tree again: rawArgs
-   measured `0.0005ms` plain and `0.0023ms` metadata median during this pass,
-   the full changed baseline stayed green, and the hotspot audit still shows
-   no render/eval/resolve surface lines.
-5. Lane I refreshed Lane B truth and queue wording so the next pass only cuts
-   callable work if another real Rules-owned runtime boundary shrinks, instead
-   of pretending the top-level `evalCall(...)` choreography still lives inline.
-
-### Completed Queue Pass: 2026-06-01 #57
-
-1. Lane B deleted another real Rules-owned callable boundary from
-   `packages/core/src/tree/rules.ts`. Ruleset special-case candidate eval no
-   longer receives an `evaluateOwnedRules(...)` callback threaded through
-   `MixinCollection -> callable-eval -> callable-candidate-loop ->
-   callable-special-case`; `packages/core/src/tree/util/callable-special-case.ts`
-   now owns the `withRulesContext(...rules.eval(context))` path directly.
-2. Lane B kept the runtime contract exact while shrinking the central file to
-   3801 lines and improving the static audit to `rules.ts: 48`, `new-node:
-   280`, `with-surface: 38`, `derive: 29`, and module count `375`. This pass
-   deleted one more runtime adapter seam instead of just rebundling helper
-   parameters.
-3. Lane B kept focused proof coverage honest. The callable-eval,
-   callable-special-case, and callable-candidate-loop helper suites all stayed
-   green after the callback deletion, so the ruleset special-case path is
-   directly covered at the helper boundary that changed.
-4. Lane B/G has fresh callable measurements on the final tree again: rawArgs
-   measured `0.0005ms` plain and `0.0026ms` metadata median during this pass,
-   the full changed baseline stayed green, and the hotspot audit still shows
-   no render/eval/resolve surface lines.
-5. Lane I refreshed Lane B truth and queue wording so the next pass only cuts
-   callable work if another real Rules-owned adapter or exported callable
-   surface disappears, instead of stale `evaluateOwnedRules(...)` language.
-
-### Completed Queue Pass: 2026-06-01 #59
-
-1. Lane B deleted another real Rules-owned callable surface from
-   `packages/core/src/tree/rules.ts`. The synthetic `callable-rules` entry
-   type aliases plus `callableRulesEntry(...)` now live in
-   `packages/core/src/tree/util/callable-entry.ts`, and function/call setup,
-   callable helpers, and focused tests import them there directly instead of
-   widening the central rules container.
-2. Lane B kept the runtime contract exact while shrinking the central file to
-   3764 lines and holding the static audit at `rules.ts: 48`, `new-node: 280`,
-   `with-surface: 38`, `derive: 29`, and module count `375`. This pass
-   deleted another exported/package-facing callable seam from the central
-   module instead of adding new runtime indirection.
-3. Lane B kept focused proof coverage honest. The callable outer-rules,
-   candidate, candidate-match, candidate-state, candidate-loop,
-   callable-special-case, and node-render-buffer suites all stayed green after
-   moving the callable entry shape/factory off `rules.ts`, proving the helper
-   surface and cross-node consumers stand on their own.
-4. Lane B/G has fresh callable measurements on the final tree again: rawArgs
-   measured `0.0003ms` plain and `0.0022ms` metadata median during this pass,
-   and the hotspot audit still shows no render/eval/resolve surface lines.
-5. Lane I refreshed Lane B truth and queue wording so the next pass only cuts
-   callable work if another real runtime or package export surface disappears,
-   instead of lingering callable-entry surface cleanup.
-
-### Next Queue
-
-1. **Lane A: collapse cleanup/prep state only if a state record disappears.**
-
-   Do not reshuffle cleanup ownership unless `AtRuleBodyFrameState`,
-   `AtRuleBodyEvalPrepState`, or a helper becomes unnecessary.
-
-2. **Lane A: decide whether the last evaluated-node frame compatibility path can shrink again.**
-
-   Public result nodes no longer use runtime compatibility state, the
-   hoist/frame wrapper is gone, direct render no longer installs temporary
-   compatibility state, evaluated render no longer reads source runtime body
-   state, body-changing eval now returns an owned evaluated surface, root-only
-   hoist-only eval outputs are owned too, the remaining runtime compatibility
-   storage is raw frames only, eval-time compatibility commits now write those
-   frames directly, evaluated render no longer allocates a temporary wrapper
-   object or derived node for that path, direct body render now uses the same
-   print-state override seam instead of temporary owned at-rules, and the dead
-   render runtime-update helper is gone. The next deletion must target the
-   collapse-nesting frame path itself: either remove the remaining `frames`
-   compatibility write/read for one evaluated-node API path, or prove that
-   path still needs explicit frame state. Current blocker evidence is concrete:
-   deleting the seam regressed the focused collapse-nesting AtRule tests, the
-   active bubbling bug matrix in
-   `packages/jess/test/less/at-rule-bubbling-bugs.test.ts`, and the
-   `media.less` AST serialization proof. A narrower direct-on-node ownership
-   attempt also regressed the mixin-at-rule bubbling case badly enough to hang,
-   so "move frames from the side map onto the shared source at-rule" is not the
-   next safe deletion.
-
-   Failed eval cleanup and incremental eval writes are now covered. The next
-   pass should delete a remaining compatibility field or consumer rather than
-   add more lifecycle plumbing.
-
-3. **Lane B: only keep cutting callable work if another real Rules-owned runtime boundary or package surface shrinks.**
-
-   Parameter matching, candidate prep, callable-entry access, arg evaluation,
-   candidate scan/match, empty-candidate rejection, default-probe evaluation,
-   guard execution, pending-default bookkeeping, candidate-output execution,
-   output aggregation, special-case candidate handling, candidate setup state,
-   candidate execution, candidate-loop dispatch, eval-output finalization,
-   top-level callable sequencing, callable surface construction, callable
-   entry construction, and the ruleset special-case eval callback seam are
-   out, and the test-only callable surface re-exports are gone. The next
-   callable slice should only land if another Rules-owned callable adapter,
-   real package export, or runtime helper surface actually gets smaller.
-
-4. **Lane B: keep helper extraction honest; do not split the new helper modules unless local runtime machinery falls.**
-
-   `callable-eval.ts` and `callable-surface.ts` are only justified because
-   they deleted the last inline `evalCall(...)` choreography and the local
-   callable surface helpers at the same time, and `callable-special-case.ts`
-   only grew because it deleted the threaded rules-eval callback seam. Do not
-   subdivide them further unless a callback, branch, temporary runtime
-   surface, or real exported package surface disappears.
-
-5. **Lane B/G: keep measuring callable slices, not AtRule-only work.**
-
-   After any callable helper change, rerun rawArgs and Less hotpaths as
-   regression checks. Do not cite those numbers as callable evidence for
-   AtRule-only passes.
-
-6. **Lane C: find a real optional fallback placement consumer before storing state.**
-
-   Do not add a WeakMap or side state unless a production diagnostic/source
-   path consumes it and the audit remains neutral.
-
-7. **Lane C/D: replace one import recursive descendant lookup only with sparse state.**
-
-   Write the red nested import child-segment test first. Keep the change only if
-   it removes a recursive lookup without adding broad per-child state.
-
-8. **Lane D: keep import descendant fallback diagnostics debug-only.**
-
-   Add a counter only if a focused debug/test path needs proof of fallback use
-   and the counter cannot affect import runtime object count.
-
-9. **Lane E: reduce rules-like compatibility only with a public-shape proof.**
-
-   If public tests still assert `sourceNode`, keep it. Otherwise remove one
-   compatibility read and route lookup state through the preservation record.
-
-10. **Lane F: reduce declaration contextual-important duplication only if render stays allocation-free.**
-
-   The render/public split is intentional today. Try only if render still avoids
-   materializing an important flag and public resolve still returns the flag.
-
-11. **Lane F: decide whether operation metadata finalizer needs a compatibility alias.**
-
-   Keep the alias out if package-export and source scans prove no public
-   consumer needs it.
-
-12. **Lane G: find the next optional fallback storage candidate outside function calls.**
-
-   Function-call fallback already has no render storage. Check reference/import
-   fallback paths before adding any new placement map.
-
-13. **Lane H: choose one selector-copy candidate with red parentage tests.**
-
-   Do not remove selector copies until tests prove the current ownership
-   requirement and a narrower state can preserve it.
-
-14. **Lane I: keep completed-pass history compact and evidence-linked.**
-
-   On each queue completion, roll older pass details into the compact summary
-   and keep only the newest pass plus active queue detailed.
-
-15. **Lane I: finish every full queue run with verification, commit, and push.**
-
-   A queue pass is not complete until the production/test/handoff diff is
-   verified, committed as one coherent change, and pushed on the active branch.
+## Coordinator Mode
+
+The objective is no longer "finish the next fifteen and restock the queue."
+The objective is to keep pulling bounded lane work until every active lane is
+either complete or explicitly blocked by focused proof. This handoff should
+stay short and operational; detailed pass evidence belongs in git history,
+focused tests, and the verification commands below.
+
+### Agent Worktrees
+
+Use persistent worktrees so each agent can keep a stable branch and refresh
+from `origin/dev` after its previous change lands.
+
+| Agent | Branch | Worktree | Primary lanes |
+| --- | --- | --- | --- |
+| Agent A | `feature/core-arch-agent-a` | `/Users/matthew/git/worktrees/jess/core-arch-agent-a` | Lane A |
+| Agent B | `feature/core-arch-agent-b` | `/Users/matthew/git/worktrees/jess/core-arch-agent-b` | Lane B, Lane G |
+| Agent C | `feature/core-arch-agent-c` | `/Users/matthew/git/worktrees/jess/core-arch-agent-c` | Lanes C, D, E, F, H, I |
+
+Bootstrap or refresh them with:
+
+```sh
+./scripts/setup-core-arch-agent-worktrees.sh
+```
+
+Refresh rule: after an agent branch lands in `origin/dev`, return to that same
+worktree, ensure it is clean, merge `origin/dev`, and reuse it for the next
+bounded item.
+
+### Agent Loop
+
+1. Coordinator assigns one bounded backlog item with a disjoint write set.
+2. Agent works in its dedicated worktree, runs focused proof first, then the
+   nearest broader verification.
+3. Agent commits and pushes its branch when the slice is green.
+4. After the change lands in `origin/dev`, refresh the same worktree and pull
+   the next backlog item.
+5. Do not open a new queue document just to narrate progress; update lane
+   truth, gates, or blockers only when they materially changed.
+
+### Compact Progress
+
+Recent work removed most inline callable orchestration from `rules.ts`,
+reduced `AtRule` render/runtime compatibility to one explicit collapse-nesting
+frame blocker seam, activated the bubbling blocker matrix as live proof, and
+trimmed the central `Rules` surface enough that further callable work only
+counts if another real runtime or package boundary disappears.
+
+## Lane Backlog
+
+### Agent A backlog
+
+1. Delete or conclusively block the last evaluated-node collapse-nesting frame
+   compatibility seam in `packages/core/src/tree/at-rule.ts`, with focused
+   `at-rule` tests plus the active bubbling matrix.
+2. Collapse one duplicated `AtRule` body lifecycle state pair into the primary
+   invocation record if and only if a real helper/state surface disappears.
+3. Do not move runtime frames onto shared source at-rules and do not add new
+   lifecycle plumbing without deleting an existing state shape.
+
+### Agent B backlog
+
+1. Only take another callable slice if a real `Rules`-owned callable runtime
+   or package surface shrinks again.
+2. If no such slice exists, record the remaining `MixinCollection` residence
+   as an explicit justified boundary instead of splitting helpers for style.
+3. Only pursue Lane G fallback/call state if there is a real production
+   consumer or a measured speed/function-call win.
+
+### Agent C backlog
+
+1. Lane C/D: replace one remaining import descendant recursive lookup with a
+   sparse child-segment path, starting from a red focused test.
+2. Lane C: keep placement-state work tied to explicit lifecycle ownership; do
+   not add optional-fallback machinery without a production consumer.
+3. Lane E: remove one remaining rules-like compatibility read only with public
+   mutability/lookup proof.
+4. Lane F: shrink one declaration/operation adapter seam only if render stays
+   allocation-free and public mutation stays intact.
+5. Lane H: land one selector-copy/placement-state deletion or a focused
+   blocker proof with parentage/extend coverage first.
+6. Lane I: keep this handoff compact and aligned with actual lane truth.
+
+## Pull Queue
+
+Pull the next free item from here; restock only when a lane truthfully changes.
+
+1. Agent A: prove or delete the last `AtRule` evaluated-render frame
+   compatibility consumer.
+2. Agent A: merge one duplicated `AtRule` lifecycle state pair into the
+   invocation record without adding a new adapter.
+3. Agent B: find the next real `Rules`-owned callable boundary to delete, or
+   explicitly record why the remaining one stays.
+4. Agent C: replace one import descendant recursive source lookup with a
+   sparse segment lookup.
+5. Agent C: delete one rules-like compatibility read with public-shape proof.
+6. Agent C: take one selector-copy family through red parentage tests to a
+   real blocker proof or deletion.
 
 ## Measurement And Verification
 
