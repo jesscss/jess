@@ -224,6 +224,10 @@ Peter to pay Paul.
 - Rules-like reference placement now names `source`, `output`, and
   `publicBoundary`, and the rules-like call path reads parentage through
   `getRulesLikeReferenceLookupState(...)` instead of ad hoc `sourceNode` access.
+- Detached rules-like call parentage now reads through
+  `getRulesLikeReferenceCallableSource(...)` instead of the full lookup record,
+  so that production path no longer pulls the whole preservation shape just to
+  recover the lexical parent.
 - Declaration merge adapter state now avoids scalar helper allocation before
   collecting merge items, returns raw nodes for single replacements, and uses
   one discriminated list/space channel instead of parallel `listValue` /
@@ -595,8 +599,8 @@ for references, direct-index hits, and rules-like values.
 
 **Next queue seeds:**
 
-1. Move one callable/source lookup consumer to
-   `getRulesLikeReferenceLookupState(...)`.
+1. Move one remaining callable/source consumer to the narrowest rules-like
+   helper it actually needs, instead of reading the full preservation record.
 2. Retry frozen source-free public direct-index `List`/`Sequence` results with
    mutability assertions.
 3. Add a blocker proof for rules-like wrapper ownership if a callable path
@@ -760,7 +764,7 @@ not folklore.
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return and no parallel list/space checks. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
 | `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public syntax construction has a named adapter and placement vocabulary (`source`, `output`, `content`, `publicBoundary`), but no production storage after the WeakMap experiment regressed static object counts. | Call overhead measurement complete and fallback render/public split advanced. |
-| `Reference` | Text-only render exists for many scalar/container paths; rules-like wrappers remain with explicit source/output/public-boundary placement state and callable ownership proof. Source-free public direct-index container ownership is intentionally retained for mutability/parentage. | Rules-like lookup state consumed or blockers captured. |
+| `Reference` | Text-only render exists for many scalar/container paths; rules-like wrappers remain with explicit source/output/public-boundary placement state and callable ownership proof. Detached rules-like calls now recover lexical parentage through the narrow callable-source helper instead of the full lookup record. Source-free public direct-index container ownership is intentionally retained for mutability/parentage. | Rules-like lookup consumers narrowed or blockers captured. |
 | `List` / `Sequence` | Dynamic render streams through native syntax; public resolve owns containers. Source-free public narrowing is blocked by public mutation/parentage expectations. | Revisit only if public mutability API changes. |
 | `Block` / `Quoted` / `Url` / `Paren` / `Operation` | Render-only wrappers largely split from public resolve; operation finalization now distinguishes metadata-result inheritance from public-result inheritance, with dimension/color public consumers. | No generic output bridge reintroduced; focused materialization proofs stay green. |
 | `StyleImport` | First-use top-level placement segments and postlude render state exist; top-level source lookup consumes segments before recursive fallback, and one nested descendant source lookup now replays a sparse child-segment path instead of depending on the old recursive placement map. Postlude order and option reads now consume render state; recursive descendant lookup remains one documented fallback only. | Lane D gates complete except any future descendant fallback reduction. |
