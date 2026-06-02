@@ -80,13 +80,6 @@ export type FinalizedCallSyntax = {
   contentNode?: Node;
 };
 
-export type OptionalFallbackCallSyntaxState = {
-  source: Call;
-  output: Call;
-  content?: Node;
-  publicBoundary: 'owned-fallback-call-syntax';
-};
-
 type CallContentPlacementState = {
   source: Call;
   contentNode: Node;
@@ -106,19 +99,6 @@ export type CallRawArgDiagnosticSource = {
 };
 
 type OptionalFallbackRenderOutput = Node | string;
-
-export function createOptionalFallbackCallSyntaxState(
-  source: Call,
-  syntax: FinalizedCallSyntax,
-  output: Call
-): OptionalFallbackCallSyntaxState {
-  return {
-    source,
-    output,
-    ...(syntax.contentNode ? { content: syntax.contentNode } : {}),
-    publicBoundary: 'owned-fallback-call-syntax'
-  };
-}
 
 export function getCallRawArgsPlacement(rawArgs: List<Node>): CallRawArgsPlacementState | undefined {
   const placement = getRawArgsPlacement(rawArgs);

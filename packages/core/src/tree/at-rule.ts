@@ -53,12 +53,6 @@ type AtRuleBodyRegistrationContext = {
   savedRulesetFrames: Context['rulesetFrames'] | undefined;
 };
 
-type AtRuleBodyFrameState = {
-  clearRulesetFrames: boolean;
-  restoreRulesetFrames: () => void;
-  output?: AtRuleBodyOutputState;
-};
-
 export type AtRuleBodyOutputState = {
   hoistToRoot?: boolean;
   frames?: AtRule['frames'];
@@ -82,7 +76,8 @@ type AtRuleBodyEvalRecord = {
   evalFrame: AtRule;
   bodyRules?: Rules;
   renderSourceBody?: boolean;
-  frameState: AtRuleBodyFrameState;
+  clearRulesetFrames: boolean;
+  restoreRulesetFrames: () => void;
   registration?: AtRuleBodyRegistrationState;
   contextState: AtRuleBodyEvalContextState;
 };
@@ -176,36 +171,12 @@ function clearRulesetFramesForAtRuleBody(
   };
 }
 
-function createAtRuleBodyFrameState(node: AtRule, context: Context): AtRuleBodyFrameState {
-  let clearRulesetFrames = false;
-  let output: AtRuleBodyOutputState | undefined;
-  if (context.bubbleRootAtRules && node.isRootOnly()) {
-    const hasRulesetParent = context.frames.some(f => isNode(f, N.Ruleset));
-    if (hasRulesetParent) {
-      output = { hoistToRoot: true };
-      clearRulesetFrames = true;
-    }
-  }
-  return {
-    clearRulesetFrames,
-    restoreRulesetFrames: () => undefined,
-    output
-  };
-}
-
-function activateAtRuleBodyFrameState(
-  state: AtRuleBodyFrameState,
-  context: Context
-): () => void {
-  state.restoreRulesetFrames = clearRulesetFramesForAtRuleBody(context, state.clearRulesetFrames);
-  return state.restoreRulesetFrames;
-}
-
 function createAtRuleBodyEvalContextState(
   node: AtRule,
   context: Context,
   options: {
     evaluatedPrelude?: Node;
+    output?: AtRuleBodyOutputState;
     writeEvaluatedPrelude?: boolean;
     writeVisibility?: boolean;
   } = {}
@@ -213,6 +184,7 @@ function createAtRuleBodyEvalContextState(
   return {
     evalFrame: node,
     evaluatedPrelude: options.evaluatedPrelude,
+    output: options.output,
     frameCount: context.frames.length,
     extendRootStackLength: context.extendRoots.extendRootStack.length,
     writeEvaluatedPrelude: options.writeEvaluatedPrelude ?? true,
@@ -220,19 +192,13 @@ function createAtRuleBodyEvalContextState(
   };
 }
 
-function activateAtRuleBodyEvalRecordFrameState(
-  record: AtRuleBodyEvalRecord,
-  context: Context
-): () => void {
-  return activateAtRuleBodyFrameState(record.frameState, context);
-}
-
 function runAtRuleBodyRulesEval<T>(
   record: AtRuleBodyEvalRecord,
   context: Context,
   work: () => MaybePromise<T>
 ): MaybePromise<T> {
-  const restoreRulesetFrames = activateAtRuleBodyEvalRecordFrameState(record, context);
+  const restoreRulesetFrames = clearRulesetFramesForAtRuleBody(context, record.clearRulesetFrames);
+  record.restoreRulesetFrames = restoreRulesetFrames;
   try {
     const out = work();
     if (isThenable(out)) {
@@ -262,7 +228,7 @@ function restoreAtRuleBodyEvalRecord(
   const state = record.contextState;
   popAtRuleBodyEvalRecord(context, record);
   context.frames.length = state.frameCount;
-  record.frameState.restoreRulesetFrames();
+  record.restoreRulesetFrames();
   while (context.extendRoots.extendRootStack.length > state.extendRootStackLength) {
     context.extendRoots.popExtendRoot();
   }
@@ -640,7 +606,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   ): AtRuleBodyEvalRecord {
     const evalFrame = this;
     const sourceRules = this.value.rules;
-    const frameState = createAtRuleBodyFrameState(this, context);
+    const hasHoistedRulesetParent = context.bubbleRootAtRules
+      && this.isRootOnly()
+      && context.frames.some(f => isNode(f, N.Ruleset));
     const renderSourceBody = Boolean(
       sourceRules
       && canRenderStaticRulesDirectly(sourceRules)
@@ -651,9 +619,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       evalFrame,
       ...(renderSourceBody ? { renderSourceBody } : undefined),
       ...(sourceRules && !renderSourceBody ? { bodyRules: this.ownRules(sourceRules) } : undefined),
-      frameState,
+      clearRulesetFrames: hasHoistedRulesetParent,
+      restoreRulesetFrames: () => undefined,
       contextState: createAtRuleBodyEvalContextState(evalFrame, context, {
         evaluatedPrelude,
+        output: hasHoistedRulesetParent ? { hoistToRoot: true } : undefined,
         writeEvaluatedPrelude: options.writeEvaluatedPrelude,
         writeVisibility: options.writeVisibility
       })
@@ -1248,11 +1218,17 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   override evalNode(context: Context): MaybePromise<AtRule | Nil> {
     const priorRuntimeFrames = atRuleBodyRuntimeFrames.get(this);
+    const hasHoistedRulesetParent = context.bubbleRootAtRules
+      && this.isRootOnly()
+      && context.frames.some(f => isNode(f, N.Ruleset));
     const record = {
       source: this,
       evalFrame: this,
-      frameState: createAtRuleBodyFrameState(this, context),
-      contextState: createAtRuleBodyEvalContextState(this, context)
+      clearRulesetFrames: hasHoistedRulesetParent,
+      restoreRulesetFrames: () => undefined,
+      contextState: createAtRuleBodyEvalContextState(this, context, {
+        output: hasHoistedRulesetParent ? { hoistToRoot: true } : undefined
+      })
     };
     let out: MaybePromise<AtRule | Nil>;
     try {
@@ -1299,11 +1275,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (context.opts.collapseNesting || node.hoistToRoot) {
       const frames = [...context.frames];
       setAtRuleBodyEvalOutput(bodyEvalContextState, {
-        ...bodyEvalRecord.frameState.output,
+        ...bodyEvalContextState.output,
         frames
       });
-    } else if (bodyEvalRecord.frameState.output) {
-      setAtRuleBodyEvalOutput(bodyEvalContextState, bodyEvalRecord.frameState.output);
     }
 
     return pipe(

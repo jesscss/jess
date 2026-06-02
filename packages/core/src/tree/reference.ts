@@ -1430,7 +1430,7 @@ export function getRulesLikeReferenceLookupState(node: Node): RulesLikeReference
 }
 
 export function getRulesLikeReferenceCallableSource(node: Node): Node | undefined {
-  return getRulesLikeReferenceLookupState(node)?.source;
+  return rulesLikeReferencePreservation.get(node)?.source;
 }
 
 /**
@@ -1556,6 +1556,7 @@ function finalizeDirectReferenceResult(
   options: { textOnly?: boolean } = {}
 ): Node {
   if (isArray(returnVal)) {
+    context.popReference();
     return createDirectCallableReferenceResult(referenceNode, returnVal);
   }
   return finalizeDirectNodeReferenceResult(referenceNode, cast(returnVal), context, options);

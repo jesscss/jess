@@ -1,7 +1,7 @@
 import type { IToken } from 'chevrotain';
+import * as treeIndex from '../index.js';
 import { Any, Call, F_NON_STATIC, JsFunction, List, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, list, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import {
-  createOptionalFallbackCallSyntaxState,
   getCallRawArgDiagnosticMessageSource,
   getCallRawArgDiagnosticSource,
   getCallRawArgSourceNode,
@@ -109,23 +109,8 @@ describe('Call', () => {
     expect(rule.toTrimmedString()).toBe('$rgb?(100, 100, 100)');
   });
 
-  it('names optional fallback syntax placement facts', () => {
-    const rule = call({
-      name: ref('rgb', { fallbackValue: true }),
-      args: list([num(100), num(100), num(100)])
-    });
-    const content = rules([]);
-    const output = call({ name: 'rgb' });
-
-    expect(createOptionalFallbackCallSyntaxState(rule, {
-      name: 'rgb',
-      contentNode: content
-    }, output)).toEqual({
-      source: rule,
-      output,
-      content,
-      publicBoundary: 'owned-fallback-call-syntax'
-    });
+  it('does not re-export optional fallback call syntax helper', () => {
+    expect('createOptionalFallbackCallSyntaxState' in treeIndex).toBe(false);
   });
 
   it('renders CSS calls through render(context)', () => {

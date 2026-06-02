@@ -105,6 +105,9 @@ Peter to pay Paul.
 - At-rule body render state now consumes a narrow `AtRuleBodyRenderInput`.
   `AtRuleBodyEvalRecord` no longer duplicates evaluated prelude, and ruleset
   frame cleanup is owned by the body-rules eval runner helper.
+- `AtRuleBodyFrameState` is gone. The invocation record now owns
+  `clearRulesetFrames` / `restoreRulesetFrames`, and initial hoist output
+  seeds directly onto `AtRuleBodyEvalContextState.output`.
 - Callable default guard grouping and callable outer-rules wrapper creation now
   have named helper boundaries outside the `evalCall(...)` closure set.
   Default-guard debug counts come from the resolution pass instead of
@@ -230,9 +233,15 @@ Peter to pay Paul.
   `getRulesLikeReferenceCallableSource(...)` instead of the full lookup record,
   so that production path no longer pulls the whole preservation shape just to
   recover the lexical parent.
+- Direct callable reference preservation now balances `referenceStack` on the
+  owned-output path too, so direct `mixin-ruleset` hits do not leak reference
+  depth while preserving canonical source ownership.
 - Optional JS fallback render with `contentNode` now emits direct fallback
   syntax in render-only paths instead of deriving an owned fallback `Call`
   surface first.
+- The dead optional-fallback call-syntax helper export is gone from the tree
+  surface; optional fallback state now only counts when it drives live runtime
+  behavior.
 - Declaration merge adapter state now avoids scalar helper allocation before
   collecting merge items, returns raw nodes for single replacements, and uses
   one discriminated list/space channel instead of parallel `listValue` /
@@ -599,7 +608,7 @@ for references, direct-index hits, and rules-like values.
       has a documented blocker.
 - [x] Source-free direct-index public container narrowing is either implemented
       or blocked by a mutability/parentage proof.
-- [ ] Reference-stack cleanup has focused tests for both text-only and owned
+- [x] Reference-stack cleanup has focused tests for both text-only and owned
       output paths, including preserved rules-like surfaces.
 
 **Next queue seeds:**
@@ -765,11 +774,11 @@ not folklore.
 | Family | Current state | Completion gate |
 | --- | --- | --- |
 | `Rules` | Direct root/fragment render state exists; callable invocation, candidate scan, guard/default handling, output finalization, entry surfaces, helper-only exports, `MixinCollection` residence, and the old `rules.ts` callable re-export are now outside `rules.ts`. The remaining callable-specific `rules.ts` logic is registry/index ownership (`mixinsByName`, `findMixinsFast(...)`, registration), which is the intended rule-container boundary rather than an extraction seam. | Callable extraction complete; direct render context state bounded. |
-| `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct/evaluated render carry compatibility facts through print-state overrides instead of scratch owned nodes, runtime `WeakMap` writes are frame compatibility only, registration prep now writes the invocation record's registration state directly instead of carrying a separate prep state, and nested `@layer` registration now reads layer names from invocation context state instead of duplicating them onto registration state. The remaining open seam is the evaluated-node collapse-nesting frame path plus the duplicated invocation/body lifecycle state that still spans registration/result/public shapes. Focused proof now pins the frame seam to both evaluated-source `render(context)` and evaluated-source `toTrimmedString()` while source `frames`/`hoistToRoot` stay canonical, and the production serializer still consumes `isHoisted()` / `getRenderFrames()` outside Agent A's write set. | Lane A blocked only on the final frame-compatibility seam and the remaining invocation-record collapse across registration/result/public boundaries; no direct-render scratch state regresses. |
+| `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct/evaluated render carry compatibility facts through print-state overrides instead of scratch owned nodes, runtime `WeakMap` writes are frame compatibility only, registration prep now writes the invocation record's registration state directly instead of carrying a separate prep state, nested `@layer` registration now reads layer names from invocation context state instead of duplicating them onto registration state, and `AtRuleBodyFrameState` is gone because the invocation record now owns ruleset-frame cleanup plus initial hoist output directly. The remaining open seam is the evaluated-node collapse-nesting frame path plus the duplicated invocation/body lifecycle state that still spans registration/result/public shapes. Focused proof now pins the frame seam to both evaluated-source `render(context)` and evaluated-source `toTrimmedString()` while source `frames`/`hoistToRoot` stay canonical, and async collapse-nesting proof now locks that frame state to the invocation record instead of source mutation. | Lane A blocked only on the final frame-compatibility seam and the remaining invocation-record collapse across registration/result/public boundaries; no direct-render scratch state regresses. |
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return and no parallel list/space checks. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
-| `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public syntax construction has a named adapter and placement vocabulary (`source`, `output`, `content`, `publicBoundary`), but render-only optional JS failures with `contentNode` now emit direct fallback syntax without deriving an owned fallback `Call`. No production storage was added after the WeakMap experiment regressed static object counts. | Call overhead measurement complete and fallback render/public split advanced. |
-| `Reference` | Text-only render exists for many scalar/container paths; rules-like wrappers remain with explicit source/output/public-boundary placement state and callable ownership proof. Detached rules-like calls now recover lexical parentage through the narrow callable-source helper instead of the full lookup record, and focused proof now pins preserved rules-like surfaces to frozen canonical sources with balanced `referenceStack` cleanup. Source-free public direct-index container ownership is intentionally retained for mutability/parentage. | Rules-like lookup consumers narrowed or blockers captured. |
+| `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public syntax construction has a named adapter and placement vocabulary (`source`, `output`, `content`, `publicBoundary`), but render-only optional JS failures with `contentNode` now emit direct fallback syntax without deriving an owned fallback `Call`, and the dead optional-fallback helper export is gone from the tree surface. No production storage was added after the WeakMap experiment regressed static object counts. | Call overhead measurement complete and fallback render/public split advanced. |
+| `Reference` | Text-only render exists for many scalar/container paths; rules-like wrappers remain with explicit source/output/public-boundary placement state and callable ownership proof. Detached rules-like calls now recover lexical parentage through the narrow callable-source helper instead of the full lookup record, direct callable preservation now pops `referenceStack` on the owned-output path, and focused proof pins preserved rules-like surfaces to frozen canonical sources with balanced `referenceStack` cleanup. Source-free public direct-index container ownership is intentionally retained for mutability/parentage. | Rules-like lookup consumers narrowed or blockers captured. |
 | `List` / `Sequence` | Dynamic render streams through native syntax; public resolve owns containers. Source-free public narrowing is blocked by public mutation/parentage expectations. | Revisit only if public mutability API changes. |
 | `Block` / `Quoted` / `Url` / `Paren` / `Operation` | Render-only wrappers largely split from public resolve; operation finalization now distinguishes metadata-result inheritance from public-result inheritance, with dimension/color public consumers. | No generic output bridge reintroduced; focused materialization proofs stay green. |
 | `StyleImport` | First-use top-level placement segments and postlude render state exist; nested descendant source lookup now also replays sparse child-segment paths instead of depending on the old recursive placement map. Postlude order and option reads now consume render state, and the old recursive descendant lookup is off the live production helper path. | Lane D gates complete unless a future change deletes more placement state without reintroducing recursive lookup. |
@@ -821,11 +830,13 @@ bounded item.
 ### Compact Progress
 
 Recent work removed most inline callable orchestration from `rules.ts`,
-trimmed `AtRule` registration state again, took optional JS fallback render
-through a direct no-owned-Call path, moved import descendant source lookup off
-the old recursive helper, and added a tighter rules-like ownership blocker
-proof. Keep pulling only where a real runtime surface disappears or a blocker
-gets more explicit.
+trimmed `AtRule` registration state again, collapsed `AtRuleBodyFrameState`
+into the invocation record, took optional JS fallback render through a direct
+no-owned-Call path, removed the dead optional-fallback helper export, moved
+import descendant source lookup off the old recursive helper, and fixed the
+owned direct rules-like reference path so it no longer leaks
+`referenceStack`. Keep pulling only where a real runtime surface disappears or
+a blocker gets more explicit.
 
 ## Lane Backlog
 

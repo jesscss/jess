@@ -1625,6 +1625,7 @@ describe('reference', () => {
       expect(resolvedAgain).toBe(resolved);
       expect(resolved.evaluated).toBe(false);
       expect(resolved.registrationPrepared).toBe(false);
+      expect(context.referenceStack).toBe(0);
     });
 
     it('should get a variable from scope', async () => {
