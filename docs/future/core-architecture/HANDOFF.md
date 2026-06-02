@@ -162,6 +162,11 @@ Peter to pay Paul.
   `callable-rules` entry type and `callableRulesEntry(...)` constructor no
   longer widen `packages/core/src/tree/rules.ts` just to support helper/test
   consumers and function/call setup.
+- `packages/core/src/tree/rules.ts` still owns callable registry indexing via
+  `mixinsByName` and `findMixinsFast(...)`, but that is now the intended
+  rule-container boundary rather than leftover mixin-eval orchestration. There
+  is no remaining extracted helper seam there that shrinks runtime/package
+  surface without moving core registry work out of `Rules`.
 - Helper-oriented callable surface tests now import directly from
   `packages/core/src/tree/util/callable-surface.ts` instead of through
   `packages/core/src/tree/rules.ts`, so those helper exports no longer widen
@@ -720,7 +725,7 @@ placement, and composed header cache.
       state and consumed by render/extend code.
 - [x] One selector helper family is reduced or blocked by parentage/visibility
       proof.
-- [ ] Selector render and extend integration tests cover the changed shape.
+- [x] Selector render and extend integration tests cover the changed shape.
 
 **Next queue seeds:**
 
@@ -750,7 +755,7 @@ not folklore.
 
 | Family | Current state | Completion gate |
 | --- | --- | --- |
-| `Rules` | Direct root/fragment render state exists; callable invocation, candidate scan, guard/default handling, output finalization, entry surfaces, helper-only exports, `MixinCollection` residence, and the old `rules.ts` callable re-export are now outside `rules.ts`. Remaining work only counts when another real `Rules`-owned callable runtime or package surface disappears, or when the remaining boundary is explicitly justified. | Callable extraction complete or explicitly blocked; direct render context state bounded. |
+| `Rules` | Direct root/fragment render state exists; callable invocation, candidate scan, guard/default handling, output finalization, entry surfaces, helper-only exports, `MixinCollection` residence, and the old `rules.ts` callable re-export are now outside `rules.ts`. The remaining callable-specific `rules.ts` logic is registry/index ownership (`mixinsByName`, `findMixinsFast(...)`, registration), which is the intended rule-container boundary rather than an extraction seam. | Callable extraction complete; direct render context state bounded. |
 | `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct/evaluated render carry compatibility facts through print-state overrides instead of scratch owned nodes, runtime `WeakMap` writes are frame compatibility only, and registration prep now writes the invocation record's registration state directly instead of carrying a separate prep state. The remaining open seam is the evaluated-node collapse-nesting frame path plus the duplicated invocation/body lifecycle state that still spans registration/result/public shapes. Focused proof now pins the frame seam to both evaluated-source `render(context)` and evaluated-source `toTrimmedString()` while source `frames`/`hoistToRoot` stay canonical, and the production serializer still consumes `isHoisted()` / `getRenderFrames()` outside Agent A's write set. | Lane A blocked only on the final frame-compatibility seam and the remaining invocation-record collapse across registration/result/public boundaries; no direct-render scratch state regresses. |
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return and no parallel list/space checks. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
@@ -759,7 +764,7 @@ not folklore.
 | `List` / `Sequence` | Dynamic render streams through native syntax; public resolve owns containers. Source-free public narrowing is blocked by public mutation/parentage expectations. | Revisit only if public mutability API changes. |
 | `Block` / `Quoted` / `Url` / `Paren` / `Operation` | Render-only wrappers largely split from public resolve; operation finalization now distinguishes metadata-result inheritance from public-result inheritance, with dimension/color public consumers. | No generic output bridge reintroduced; focused materialization proofs stay green. |
 | `StyleImport` | First-use top-level placement segments and postlude render state exist; top-level source lookup consumes segments before recursive fallback, and one nested descendant source lookup now replays a sparse child-segment path instead of depending on the old recursive placement map. Postlude order and option reads now consume render state; recursive descendant lookup remains one documented fallback only. | Lane D gates complete except any future descendant fallback reduction. |
-| Selectors / `Ampersand` / `Extend` | Ownership still semantic for generated/extended placement. Generated `:is(...)` omission state is now declared at construction time and consumed by selector render plus the ampersand/extend parent-list paths, removing the render-time arg-shape fallback read. Remaining open work is render/extend coverage and any additional selector-copy/helper seam that can be honestly deleted. | Lane H still open; only close it with another real selector-copy/placement deletion or a focused blocker proof. |
+| Selectors / `Ampersand` / `Extend` | Ownership still semantic for generated/extended placement. Generated `:is(...)` omission state is now declared at construction time and consumed by selector render plus the ampersand/extend parent-list paths, removing the render-time arg-shape fallback read. Integration proof now covers both exact and `all` extend against the generated omission shape. Remaining open work only counts if another selector-copy/helper seam can be honestly deleted or blocked. | Lane H narrowed to the next real selector-copy/placement deletion or blocker proof. |
 | Controls | Loop render streams direct rules; live frame mutation intentional. | Remaining grouping/state surfaces audited by object/function-call cost. |
 
 Update this tracker when a node family changes architectural state.
@@ -832,12 +837,10 @@ counts if another real runtime or package boundary disappears.
 
 ### Agent B backlog
 
-1. Only take another callable slice if a real `Rules`-owned callable runtime
-   or package surface shrinks again.
-2. If no such slice exists, record why the remaining `rules.ts` callable
-   export surface stays instead of splitting helpers for style.
-3. Only pursue Lane G fallback/call state if there is a real production
-   consumer or a measured speed/function-call win.
+1. Lane B is effectively complete. Only reopen it if a real `Rules`-owned
+   callable runtime or package surface disappears.
+2. Prefer Lane G only when a fallback/public call state surface is deleted or
+   a measured end-to-end win justifies the change.
 
 ### Agent C backlog
 
@@ -861,12 +864,10 @@ Pull the next free item from here; restock only when a lane truthfully changes.
    compatibility consumer.
 2. Agent A: merge one duplicated `AtRule` lifecycle state pair into the
    invocation record without adding a new adapter.
-3. Agent B: find the next real `Rules`-owned callable boundary to delete, or
-   explicitly record why the remaining one stays.
-4. Agent C: replace one import descendant recursive source lookup with a
+3. Agent C: replace one import descendant recursive source lookup with a
    sparse segment lookup.
-5. Agent C: delete one rules-like compatibility read with public-shape proof.
-6. Agent C: take one selector-copy family through red parentage tests to a
+4. Agent C: delete one rules-like compatibility read with public-shape proof.
+5. Agent C: take one selector-copy family through red parentage tests to a
    real blocker proof or deletion.
 
 ## Measurement And Verification

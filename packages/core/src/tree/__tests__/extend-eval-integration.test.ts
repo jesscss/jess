@@ -1235,4 +1235,74 @@ describe('extend integration (eval -> toString)', () => {
       }
     `);
   });
+
+  it('keeps generated selector-list omission aligned with exact extend integration', async () => {
+    const root = rules([
+      ruleset({
+        selector: sellist([sel([el('.one')]), sel([el('.two')])]),
+        rules: rules([
+          ruleset({
+            selector: sel([el('.three')]),
+            rules: rules([
+              decl({ name: 'inner', value: any('one two') })
+            ])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.theme'),
+        rules: rules([
+          extend({
+            target: sel([el('.one'), co(' '), el('.three')]),
+            flag: ExtendFlag.Exact
+          })
+        ])
+      })
+    ]);
+
+    const context = new Context({ collapseNesting: true });
+    const css = await renderNodeToString(root, context, { context });
+
+    expect(css).toBeString(`
+      :is(.one, .two) .three,
+      .theme {
+        inner: one two;
+      }
+    `);
+  });
+
+  it('keeps generated selector-list omission aligned with all-extend integration', async () => {
+    const root = rules([
+      ruleset({
+        selector: sellist([sel([el('.one')]), sel([el('.two')])]),
+        rules: rules([
+          ruleset({
+            selector: sel([el('.three')]),
+            rules: rules([
+              decl({ name: 'inner', value: any('one two') })
+            ])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.theme'),
+        rules: rules([
+          extend({
+            target: el('.three'),
+            flag: ExtendFlag.All
+          })
+        ])
+      })
+    ]);
+
+    const context = new Context({ collapseNesting: true });
+    const css = await renderNodeToString(root, context, { context });
+
+    expect(css).toBeString(`
+      :is(.one, .two) .three,
+      :is(.one, .two) .theme {
+        inner: one two;
+      }
+    `);
+  });
 });
