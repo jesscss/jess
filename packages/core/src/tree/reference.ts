@@ -108,8 +108,8 @@ export type ReferenceOptions = {
   preserveRulesLike?: boolean;
 };
 
-// `sourceNode` stays on the public shallow-owned surface for compatibility.
-// Internal rules-like lookup should read `rulesLikeReferencePreservation`.
+// `sourceNode` stays on the public shallow-owned surface for compatibility and
+// now carries the canonical source directly.
 type PreservedRulesLikeValue = Node & { sourceNode?: Node };
 type NodeValueConstructor = new (
   value: unknown,

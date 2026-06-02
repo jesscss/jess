@@ -838,9 +838,12 @@ disappears or a blocker gets more explicit.
    compatibility seam in `packages/core/src/tree/at-rule.ts`, with focused
    `at-rule` tests plus the active bubbling matrix.
    Current focused blocker: explicit frame overrides now satisfy the evaluated
-   collapse-nesting serializer path, but nested wrapper/media cases still rely
-   on the remaining compatibility runtime-frame storage when no override is
-   present.
+   collapse-nesting serializer path, but forcing the last seam onto owned eval
+   results still regresses evaluated-source render/serialize shape: parent
+   wrapper frames fall out of nested wrapper/media output, generated hoisted
+   ampersand-wrapper transparency fails, sibling wrapper-stack merge parity
+   fails, and the `media.less` AST serialization proof loses parent selector
+   wrappers when no override is present.
 2. Only keep collapsing `AtRule` lifecycle state if another helper/state
    surface disappears beyond the now-deleted eval-result carrier and
    `contextState.evalFrame` mirror.
@@ -871,6 +874,13 @@ disappears or a blocker gets more explicit.
 5. Lane I: keep this handoff compact and aligned with actual lane truth.
 
 ## Pull Queue
+
+The previous five-item pull queue is cleared honestly:
+- item 1 is now an explicit AtRule frame-storage blocker
+- item 2 is done (`contextState.evalFrame` mirror removed)
+- item 3 is done (rules-like side-map/helper seam removed)
+- item 4 is done (local extend selector guard removed)
+- item 5 is now an explicit public `resolve(...)` fallback-`Call` blocker
 
 Pull the next free item from here; restock only when a lane truthfully changes.
 
