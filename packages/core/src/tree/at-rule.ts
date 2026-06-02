@@ -99,15 +99,13 @@ export type AtRuleBodyEvalResult = {
   contextState: AtRuleBodyEvalContextState;
 };
 
-export type AtRuleBodyPublicResultInput = {
+type AtRuleBodyPublicResultInput = {
   node: AtRule;
   evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
   visible?: boolean;
   output?: AtRuleBodyOutputState;
 };
-
-export type AtRuleBodyPublicResultState = AtRuleBodyPublicResultInput;
 
 const atRuleBodyRuntimeFrames = new WeakMap<AtRule, AtRule['frames']>();
 const activeAtRuleBodyEvalRecords = new WeakMap<Context, AtRuleBodyEvalRecord[]>();
@@ -325,13 +323,13 @@ function createAtRuleEvalResultNode(
     return source;
   }
   return applyAtRuleBodyPublicResultState(
-    createAtRuleBodyPublicResultState({
+    {
       node: source.deriveAtRule(source.value),
       evaluatedPrelude: state.evaluatedPrelude,
       evaluatedBody: ownsEvaluatedBody ? state.evaluatedBody : undefined,
       visible: state.visible,
       output: state.output
-    })
+    }
   );
 }
 
@@ -398,20 +396,8 @@ function readAtRuleBodyEvalRecordResult(
   };
 }
 
-export function createAtRuleBodyPublicResultState(
-  result: AtRuleBodyPublicResultInput
-): AtRuleBodyPublicResultState {
-  return {
-    node: result.node,
-    evaluatedPrelude: result.evaluatedPrelude,
-    evaluatedBody: result.evaluatedBody,
-    visible: result.visible,
-    output: result.output
-  };
-}
-
 function applyAtRuleBodyPublicResultState(
-  state: AtRuleBodyPublicResultState
+  state: AtRuleBodyPublicResultInput
 ): AtRule {
   if (state.evaluatedPrelude) {
     state.node.value.prelude = state.evaluatedPrelude;
@@ -730,13 +716,13 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       node: this.deriveAtRule(this.value)
     };
     return applyAtRuleBodyPublicResultState(
-      createAtRuleBodyPublicResultState({
+      {
         ...publicResult,
         evaluatedPrelude: contextState.evaluatedPrelude,
         evaluatedBody: contextState.evaluatedBody,
         visible: contextState.visible,
         output: contextState.output
-      })
+      }
     );
   }
 

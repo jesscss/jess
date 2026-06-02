@@ -823,12 +823,13 @@ bounded item.
 
 ### Compact Progress
 
-Recent work collapsed another tiny `AtRule` lifecycle mirror, re-proved the
-remaining runtime-frame storage seam as an honest blocker, deleted the
-rules-like reference side-map/helper seam, confirmed the remaining fallback
-`Call` ownership boundary is still public resolve only, and trimmed one more
-local extend copy helper. Keep pulling only where a real runtime surface
-disappears or a blocker gets more explicit.
+Recent work collapsed another tiny `AtRule` lifecycle mirror, deleted the
+no-op `AtRule` public-result wrapper layer so the adapter now consumes its
+input directly, re-proved the remaining runtime-frame storage seam as an
+honest blocker, deleted the rules-like reference side-map/helper seam,
+confirmed the remaining fallback `Call` ownership boundary is still public
+resolve only, and trimmed one more local extend copy helper. Keep pulling only
+where a real runtime surface disappears or a blocker gets more explicit.
 
 ## Lane Backlog
 
@@ -844,9 +845,11 @@ disappears or a blocker gets more explicit.
    ampersand-wrapper transparency fails, sibling wrapper-stack merge parity
    fails, and the `media.less` AST serialization proof loses parent selector
    wrappers when no override is present.
-2. Only keep collapsing `AtRule` lifecycle state if another helper/state
-   surface disappears beyond the now-deleted eval-result carrier and
-   `contextState.evalFrame` mirror.
+2. The public-result adapter now consumes its narrow input directly; the old
+   `createAtRuleBodyPublicResultState(...)` wrapper/state layer is gone.
+   Only keep collapsing `AtRule` lifecycle state if another helper/state
+   surface disappears beyond the now-deleted eval-result carrier,
+   `contextState.evalFrame` mirror, and public-result wrapper.
 3. Do not move runtime frames onto shared source at-rules and do not add new
    lifecycle plumbing without deleting an existing state shape.
 
@@ -885,8 +888,8 @@ The previous five-item pull queue is cleared honestly:
 Pull the next free item from here; restock only when a lane truthfully changes.
 
 1. Agent A: prove or delete the last `AtRule` runtime-frame storage consumer.
-2. Agent A: collapse another `AtRule` lifecycle helper/state only if it
-   deletes a real carrier beyond the now-removed eval-result object.
+2. Agent A: done. The public-result wrapper/state layer is deleted; only
+   reopen this slot if another real `AtRule` lifecycle carrier disappears.
 3. Agent C: retry one remaining rules-like/public-mutation branch only if a
    real owned-result or compatibility branch disappears.
 4. Agent C: take one selector-copy family through red parentage tests to a
