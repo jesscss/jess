@@ -669,7 +669,7 @@ function-call overhead while preserving user-code mutation APIs.
 **Completion gates:**
 
 - [x] rawArgs placement has one diagnostics or validation consumer.
-- [ ] Metadata and non-metadata call paths stay measured separately.
+- [x] Metadata and non-metadata call paths stay measured separately.
 - [ ] Fallback content/name state has no copied `Call` surface in render-only
       paths.
 
@@ -679,6 +679,18 @@ function-call overhead while preserving user-code mutation APIs.
 2. Measure call-path function overhead before and after any rawArgs changes.
 3. Split fallback name/content public-result construction from render state in
    one focused case.
+
+**Current measurement truth:**
+
+- `node scripts/measure-callwithcontext-rawargs.mjs 5000` on the current
+  branch measured plain positional `callWithContext(...)` at median
+  `0.0002ms` / mean `0.0004ms`, and metadata `rawArgs`
+  `callWithContext(...)` at median `0.0015ms` / mean `0.0019ms`.
+- Recommendation: treat metadata `rawArgs` as the clearly more expensive path,
+  but do not churn `define-function.ts` or add new wrapper/state plumbing just
+  to shave this microbenchmark. The absolute cost is still tiny, so the next
+  Lane G slice should only land if it deletes a real fallback/public state
+  surface or shows an end-to-end win in a production call-heavy path.
 
 ### Lane H: Generated Selector And Extend Placement
 
