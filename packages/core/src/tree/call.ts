@@ -420,7 +420,7 @@ export class Call extends Node<CallValue, CallOptions> {
       typeof this.value.name === 'string'
       || !this.options?.silentFail
       || this.options?.markImportant
-      || this.value.contentNode
+      || (!renderFailureWith && this.value.contentNode)
     ) {
       return undefined;
     }

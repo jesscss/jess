@@ -443,6 +443,52 @@ describe('AtRule', () => {
     expect(nestedLayer.value.rules).toBe(nestedBody);
   });
 
+  it('registers async nested layer names from invocation records without mutating source children', async () => {
+    const nestedPrelude = any('child');
+    nestedPrelude.addFlag(F_MAY_ASYNC);
+    nestedPrelude.eval = async () => {
+      await Promise.resolve();
+      return any('child');
+    };
+    const nestedBody = rules([
+      ruleset({
+        selector: el('.inner'),
+        rules: rules([decl({ name: 'color', value: any('red') })])
+      })
+    ]);
+    const nestedLayer = atrule({
+      name: any('@layer', { role: 'atkeyword' }),
+      prelude: nestedPrelude,
+      rules: nestedBody
+    });
+    const outerBody = rules([nestedLayer]);
+    const outerLayer = atrule({
+      name: any('@layer', { role: 'atkeyword' }),
+      prelude: any('parent'),
+      rules: outerBody
+    });
+    const registeredLayers: Array<string | undefined> = [];
+    const originalRegisterRoot = context.extendRoots.registerRoot.bind(context.extendRoots);
+    context.extendRoots.registerRoot = function registerRootWithLayerCapture(
+      ...args: Parameters<typeof originalRegisterRoot>
+    ): ReturnType<typeof originalRegisterRoot> {
+      registeredLayers.push(args[2]?.layerName);
+      return originalRegisterRoot(...args);
+    };
+
+    const root = rules([outerLayer]);
+
+    await Promise.resolve(root.render(context));
+
+    expect(registeredLayers).toContain('parent');
+    expect(registeredLayers).toContain('parent.child');
+    expect(outerBody.parent).toBe(outerLayer);
+    expect(nestedLayer.parent).toBe(outerBody);
+    expect(nestedBody.parent).toBe(nestedLayer);
+    expect(outerLayer.value.rules).toBe(outerBody);
+    expect(nestedLayer.value.rules).toBe(nestedBody);
+  });
+
   it('renders already evaluated at-rules without deriving another eval surface', async () => {
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),

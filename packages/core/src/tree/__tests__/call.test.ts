@@ -1582,6 +1582,70 @@ describe('Call', () => {
     }
   });
 
+  it('renders optional JS failure fallback content without owning a fallback Call surface', async () => {
+    const originalCopy = Sequence.prototype.copy;
+    const deriveCallDescriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
+    const originalDeriveCall = deriveCallDescriptor?.value;
+    if (!deriveCallDescriptor || typeof originalDeriveCall !== 'function') {
+      throw new Error('Expected Call.deriveCall for JS failure fallback proof');
+    }
+    let sequenceCopies = 0;
+    let derivedCalls = 0;
+    Sequence.prototype.copy = function copyForCounting(
+      this: Sequence,
+      ...args: Parameters<typeof originalCopy>
+    ): ReturnType<typeof originalCopy> {
+      sequenceCopies++;
+      return originalCopy.apply(this, args);
+    };
+    Object.defineProperty(Call.prototype, 'deriveCall', {
+      ...deriveCallDescriptor,
+      value: function deriveCallForCounting(this: Call, ...args: unknown[]) {
+        derivedCalls++;
+        return Reflect.apply(originalDeriveCall, this, args);
+      }
+    });
+    let calls = 0;
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'bad',
+      fn: () => {
+        calls++;
+        throw new Error('bad function');
+      },
+      allowOptional: true
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const content = new Sequence(
+      [any('raw'), any('content')],
+      undefined,
+      [10, 1, 11, 20, 1, 21]
+    );
+    const rule = call({
+      name: ref({ key: 'bad' }, { type: 'function', fallbackValue: true }),
+      args: list([any('red')]),
+      contentNode: content
+    }, { silentFail: true });
+    const buffer = createRenderBuffer('flat');
+
+    try {
+      await expect(Promise.resolve(rule.render(context))).resolves.toBe('bad(red): raw content');
+      expect(await rule.render(context, buffer)).toBe('bad(red): raw content');
+
+      expect(sequenceCopies).toBe(0);
+      expect(derivedCalls).toBe(0);
+      expect(calls).toBe(2);
+      expect(buffer.parts).toEqual(['bad(red): raw content']);
+      expect(content.parent).toBe(rule);
+      expect(rule.evaluated).toBe(false);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      Sequence.prototype.copy = originalCopy;
+      Object.defineProperty(Call.prototype, 'deriveCall', deriveCallDescriptor);
+    }
+  });
+
   it('does not probe optional JS calls with content before rendering them', async () => {
     let calls = 0;
     const root = rules([]);

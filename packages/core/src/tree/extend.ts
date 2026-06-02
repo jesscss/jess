@@ -296,6 +296,9 @@ function materializeImplicitAmpersands(
   selector: Selector,
   includeNonListImplicit: boolean
 ): Selector {
+  if (!hasMaterializableImplicitAmpersand(selector, includeNonListImplicit)) {
+    return selector;
+  }
   const library = selector.keySetLibrary;
   const copySelector = (node: Selector): Selector => copySelectorForExtendRecord(node, library);
   const materialize = (node: Selector): Selector => {
@@ -354,6 +357,39 @@ function materializeImplicitAmpersands(
   };
 
   return attachSelectorBitLibrary(materialize(selector), library);
+}
+
+function hasMaterializableImplicitAmpersand(
+  selector: Selector,
+  includeNonListImplicit: boolean
+): boolean {
+  const isMaterializableResolvedSelector = (value: Selector | Nil | undefined): value is Selector => (
+    !!value
+    && !(value instanceof Nil)
+    && (includeNonListImplicit || isNode(value, N.SelectorList))
+  );
+
+  const visit = (node: Selector): boolean => {
+    if (isNode(node, N.Ampersand)) {
+      return node.hasFlag(F_IMPLICIT_AMPERSAND)
+        && isMaterializableResolvedSelector(node.getResolvedSelector());
+    }
+
+    if (isNode(node, N.ComplexSelector)) {
+      return node.value.some(part => (
+        !isNode(part, N.Combinator)
+        && visit(part)
+      ));
+    }
+
+    if (isNode(node, N.SelectorList)) {
+      return node.value.some(item => visit(item as Selector));
+    }
+
+    return false;
+  };
+
+  return visit(selector);
 }
 
 /** Document order for extend: prefer parse location startOffset (source order), else assigned map, else push order (length). */

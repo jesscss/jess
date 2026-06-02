@@ -1974,6 +1974,8 @@ describe('Style import', () => {
       }
       expect(getImportPlacementSourceChild(placement, placementDecl)).toBe(sourceDecl);
       expect(getImportPlacementSegmentSourceChild(placement, placementDecl)).toBe(sourceDecl);
+      expect(getImportPlacementSourceChild(placement, red)).toBe(red);
+      expect(getImportPlacementSegmentSourceChild(placement, red)).toBe(red);
       expect(placementDecl.value.value).toBe(red);
       expect(red.parent).toBe(sourceDecl);
     });

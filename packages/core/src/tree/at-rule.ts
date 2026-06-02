@@ -92,7 +92,6 @@ type AtRuleBodyRegistrationState = {
   finalRules: Rules;
   pushedExtendRoot: boolean;
   parentExtendRoot?: Rules;
-  layerName?: string;
 };
 
 type AtRuleLeafState = {
@@ -385,8 +384,7 @@ function createAtRuleBodyRecordRegistration(
     bodyToEval,
     finalRules: bodyToEval,
     pushedExtendRoot,
-    ...(parentExtendRoot !== undefined && { parentExtendRoot }),
-    ...(record.contextState.layerName !== undefined && { layerName: record.contextState.layerName })
+    ...(parentExtendRoot !== undefined && { parentExtendRoot })
   });
 }
 
@@ -395,9 +393,6 @@ function storeAtRuleBodyRecordLayerName(
   layerName: string | undefined
 ): void {
   record.contextState.layerName = layerName;
-  if (record.registration && layerName !== undefined) {
-    record.registration.layerName = layerName;
-  }
 }
 
 function hasCommentChild(value: unknown): boolean {
@@ -1093,26 +1088,22 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private _registerEvaluatedNestableBody(
-    node: AtRule,
+    record: AtRuleBodyEvalRecord,
     context: Context,
     state: AtRuleBodyRegistrationState
   ): AtRuleBodyRegistrationState {
     context.extendRoots.popExtendRoot();
-    const layerName = state.layerName;
-    const registration: AtRuleBodyRegistrationState = {
-      ...state,
-      layerName
-    };
-    const parent = registration.parentExtendRoot ?? context.root ?? undefined;
-    context.extendRoots.registerRoot(registration.bodyToEval, parent as Rules | undefined, { layerName });
-    registerInnerExtendRootIfHoisted(registration.bodyToEval, context, layerName);
-    if (registration.finalRules !== registration.bodyToEval) {
-      context.extendRoots.registerRoot(registration.finalRules, registration.bodyToEval, { layerName });
-      registerInnerExtendRootIfHoisted(registration.finalRules, context, layerName);
+    const layerName = record.contextState.layerName;
+    const parent = state.parentExtendRoot ?? context.root ?? undefined;
+    context.extendRoots.registerRoot(state.bodyToEval, parent as Rules | undefined, { layerName });
+    registerInnerExtendRootIfHoisted(state.bodyToEval, context, layerName);
+    if (state.finalRules !== state.bodyToEval) {
+      context.extendRoots.registerRoot(state.finalRules, state.bodyToEval, { layerName });
+      registerInnerExtendRootIfHoisted(state.finalRules, context, layerName);
     }
-    context.extendRoots.pushExtendRoot(registration.bodyToEval);
+    context.extendRoots.pushExtendRoot(state.bodyToEval);
     context.extendRoots.popExtendRoot();
-    return registration;
+    return state;
   }
 
   private _prepareBodyRegistrationForEval(
@@ -1355,7 +1346,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                 storeAtRuleBodyEvalRecordRules(bodyEvalRecord, finalRules);
                 registration.finalRules = finalRules;
                 if (registration.pushedExtendRoot && node.isNestable()) {
-                  source._registerEvaluatedNestableBody(node, context, registration);
+                  source._registerEvaluatedNestableBody(bodyEvalRecord, context, registration);
                 }
                 return node;
               };

@@ -340,6 +340,9 @@ function findImportPlacementValuePath(
 function readImportPlacementValuePath(value: unknown, path: ImportPlacementValuePath): unknown {
   let cursor = value;
   for (const segment of path) {
+    if (cursor instanceof Node) {
+      cursor = cursor.value;
+    }
     if (Array.isArray(cursor)) {
       if (typeof segment !== 'number') {
         return undefined;
@@ -354,42 +357,6 @@ function readImportPlacementValuePath(value: unknown, path: ImportPlacementValue
     return undefined;
   }
   return cursor;
-}
-
-function findImportPlacementSourceDescendant(
-  source: unknown,
-  placement: unknown,
-  target: Node,
-  seen = new Set<unknown>()
-): Node | undefined {
-  if (placement === target) {
-    return source instanceof Node ? source : undefined;
-  }
-  if (placement instanceof Node) {
-    if (seen.has(placement)) {
-      return undefined;
-    }
-    seen.add(placement);
-    return findImportPlacementSourceDescendant(source instanceof Node ? source.value : undefined, placement.value, target, seen);
-  }
-  if (Array.isArray(source) && Array.isArray(placement)) {
-    for (let index = 0; index < placement.length; index++) {
-      const found = findImportPlacementSourceDescendant(source[index], placement[index], target, seen);
-      if (found) {
-        return found;
-      }
-    }
-    return undefined;
-  }
-  if (isRecord(source) && isRecord(placement)) {
-    for (const key of Object.keys(placement)) {
-      const found = findImportPlacementSourceDescendant(source[key], placement[key], target, seen);
-      if (found) {
-        return found;
-      }
-    }
-  }
-  return undefined;
 }
 
 export function getImportPlacementSourceChild(
@@ -408,12 +375,6 @@ export function getImportPlacementSourceChild(
   if (directSource) {
     return directSource;
   }
-  for (const [stateChild, sourceChild] of state.sourceByPlacement) {
-    const sourceDescendant = findImportPlacementSourceDescendant(sourceChild, stateChild, placementChild);
-    if (sourceDescendant) {
-      return sourceDescendant;
-    }
-  }
   const index = placementRules.value.indexOf(placementChild);
   return index >= 0 ? state.source.value[index] : undefined;
 }
@@ -427,41 +388,16 @@ export function getImportPlacementSegmentSourceChild(
     return undefined;
   }
   for (const segment of state.childSegments) {
-    if (placementRules.value[segment.index] === placementChild) {
+    const placementSegment = placementRules.value[segment.index];
+    if (placementSegment === placementChild) {
       return segment.source;
     }
-  }
-  let placementSegmentChild: Node | undefined = placementChild;
-  while (placementSegmentChild?.parent && placementSegmentChild.parent !== placementRules) {
-    placementSegmentChild = isNode(placementSegmentChild.parent) ? placementSegmentChild.parent : undefined;
-  }
-  if (!placementSegmentChild || placementSegmentChild.parent !== placementRules) {
-    return undefined;
-  }
-  for (const segment of state.childSegments) {
-    if (placementRules.value[segment.index] === placementSegmentChild) {
-      if (placementSegmentChild === placementChild) {
-        return segment.source;
-      }
-      const lineage: Node[] = [];
-      for (let cursor: Node | undefined = placementChild; cursor && cursor !== placementSegmentChild; cursor = isNode(cursor.parent) ? cursor.parent : undefined) {
-        lineage.unshift(cursor);
-      }
-      let sourceCursor: unknown = segment.source;
-      let placementCursor: Node = placementSegmentChild;
-      for (const descendant of lineage) {
-        const path = findImportPlacementValuePath(placementCursor.value, descendant);
-        if (!path) {
-          return undefined;
-        }
-        sourceCursor = readImportPlacementValuePath(sourceCursor instanceof Node ? sourceCursor.value : sourceCursor, path);
-        if (!(sourceCursor instanceof Node)) {
-          return undefined;
-        }
-        placementCursor = descendant;
-      }
-      return sourceCursor;
+    const path = findImportPlacementValuePath(placementSegment.value, placementChild);
+    if (!path) {
+      continue;
     }
+    const sourceDescendant = readImportPlacementValuePath(segment.source.value, path);
+    return sourceDescendant instanceof Node ? sourceDescendant : undefined;
   }
   return undefined;
 }

@@ -1206,6 +1206,28 @@ describe('reference', () => {
       }
     });
 
+    it('freezes canonical rules-like sources alongside preserved surfaces', async () => {
+      const sourceValue = rules([
+        decl({ name: 'color', value: any('blue') })
+      ]);
+      const node = rules([
+        vardecl({
+          name: any('block'),
+          value: sourceValue
+        })
+      ]);
+      setRulesContext(await node.eval(context));
+
+      const resolved = await ref({ key: 'block' }, { type: 'variable', preserveRulesLike: true }).eval(context);
+      const resolvedSource = getRulesLikeReferenceSource(resolved);
+
+      expect(resolved).toBeInstanceOf(RulesClass);
+      expect(resolvedSource).toBeInstanceOf(RulesClass);
+      expect(resolvedSource).toBe(resolved.sourceNode);
+      expect(resolvedSource?.frozen).toBe(true);
+      expect(context.referenceStack).toBe(0);
+    });
+
     it('keeps fallback value containers canonical after resolve(context)', async () => {
       const root = rules([
         vardecl({
