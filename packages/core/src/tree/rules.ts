@@ -61,8 +61,8 @@ import {
 } from './util/mixin-output-slot.js';
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
-import { evaluateCallableCollection } from './util/callable-eval.js';
 import type { MixinEntry } from './util/callable-entry.js';
+export { MixinCollection } from './util/callable-collection.js';
 import { isIndexedRuleChild } from './util/callable-surface.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
@@ -3733,32 +3733,3 @@ function getSimpleCallableSelectorKey(selector: Selector | Nil | undefined): str
 function getSimpleCallableRulesetKey(ruleset: Ruleset): string | undefined {
   return getSimpleCallableSelectorKey(ruleset.value.selector);
 }
-
-/**
- * A collection of resolved mixin candidates that can be called directly.
- *
- * Call.evalNode resolves candidates and invokes `evalCall` here without going
- * through the old JS-function wrapper path.
- *
- * Lives in rules.ts to avoid circular dependencies.
- */
-export class MixinCollection extends Node<MixinEntry[]> {
-  override adopt() {
-    return this;
-  }
-
-  override resolve(_context: Context): this {
-    return this;
-  }
-
-  async evalCall(context: Context, args?: List<Node>): Promise<Rules> {
-    const thisContext = context;
-    return evaluateCallableCollection({
-      context: thisContext,
-      mixinEntries: this.value,
-      args: args?.value ?? []
-    });
-  }
-}
-
-defineType(MixinCollection, 'MixinCollection', 'mixincoll');
