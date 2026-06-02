@@ -739,7 +739,7 @@ not folklore.
 | Family | Current state | Completion gate |
 | --- | --- | --- |
 | `Rules` | Direct root/fragment render state exists; callable invocation, candidate scan, guard/default handling, output finalization, entry surfaces, helper-only exports, `MixinCollection` residence, and the old `rules.ts` callable re-export are now outside `rules.ts`. Remaining work only counts when another real `Rules`-owned callable runtime or package surface disappears, or when the remaining boundary is explicitly justified. | Callable extraction complete or explicitly blocked; direct render context state bounded. |
-| `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct/evaluated render carry compatibility facts through print-state overrides instead of scratch owned nodes, runtime `WeakMap` writes are frame compatibility only, and registration prep now writes the invocation record's registration state directly instead of carrying a separate prep state. The remaining open seam is the evaluated-node collapse-nesting frame path plus the duplicated invocation/body lifecycle state that still spans registration/result/public shapes. | Lane A blocked only on the final frame-compatibility seam and the remaining invocation-record collapse across registration/result/public boundaries; no direct-render scratch state regresses. |
+| `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct/evaluated render carry compatibility facts through print-state overrides instead of scratch owned nodes, runtime `WeakMap` writes are frame compatibility only, and registration prep now writes the invocation record's registration state directly instead of carrying a separate prep state. The remaining open seam is the evaluated-node collapse-nesting frame path plus the duplicated invocation/body lifecycle state that still spans registration/result/public shapes. Focused proof now pins the frame seam to both evaluated-source `render(context)` and evaluated-source `toTrimmedString()` while source `frames`/`hoistToRoot` stay canonical, and the production serializer still consumes `isHoisted()` / `getRenderFrames()` outside Agent A's write set. | Lane A blocked only on the final frame-compatibility seam and the remaining invocation-record collapse across registration/result/public boundaries; no direct-render scratch state regresses. |
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return and no parallel list/space checks. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
 | `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public syntax construction has a named adapter and placement vocabulary (`source`, `output`, `content`, `publicBoundary`), but no production storage after the WeakMap experiment regressed static object counts. | Call overhead measurement complete and fallback render/public split advanced. |
@@ -807,6 +807,12 @@ counts if another real runtime or package boundary disappears.
 1. Delete or conclusively block the last evaluated-node collapse-nesting frame
    compatibility seam in `packages/core/src/tree/at-rule.ts`, with focused
    `at-rule` tests plus the active bubbling matrix.
+   Current focused blocker: evaluated-source collapse-nesting serialization
+   still needs the compatibility getter path for both `render(context)` and
+   `toTrimmedString()` while the source node keeps `frames` /
+   `hoistToRoot` undefined, and the serializer consumer lives in
+   `packages/core/src/tree/util/serialize-helper.ts` outside Agent A's
+   narrow write set.
 2. Collapse one duplicated `AtRule` body lifecycle state pair into the primary
    invocation record if and only if a real helper/state surface disappears.
 3. Do not move runtime frames onto shared source at-rules and do not add new
