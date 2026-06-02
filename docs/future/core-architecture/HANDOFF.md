@@ -357,7 +357,6 @@ and cleanup without duplicating facts across many parallel structures.
 **Current surfaces:**
 
 - `packages/core/src/tree/at-rule.ts`
-- `AtRuleBodyFrameState`
 - `AtRuleBodyOutputState`
 - `AtRuleBodyRuntimeFrames`
 - `AtRuleBodyEvalContextState`
@@ -395,7 +394,8 @@ and cleanup without duplicating facts across many parallel structures.
 
 1. Inventory every duplicated field across the current at-rule state types,
    then merge one remaining pair into the invocation record with focused async
-   and root-hoist tests.
+   and root-hoist tests. The `contextState.evalFrame` mirror is already gone;
+   the next cut only counts if another real state/helper surface disappears.
 2. Move cleanup ownership into a single record runner and delete one separate
    cleanup/restore helper.
 3. Prove whether body render can consume the invocation record directly,
@@ -587,7 +587,6 @@ for references, direct-index hits, and rules-like values.
 **Current surfaces:**
 
 - `packages/core/src/tree/reference.ts`
-- `RulesLikeReferencePreservationRecord`
 - dynamic fallback `List`/`Sequence` render
 - public direct-index container resolve
 
@@ -597,13 +596,13 @@ for references, direct-index hits, and rules-like values.
   result is required.
 - Public `resolve(...)` continues to own source-backed containers and
   rules-like callable surfaces until mutability/lookup tests prove otherwise.
-- Rules-like preservation records should be the source of callable facts, not
-  ad hoc `sourceNode` reads.
+- Rules-like callable facts should travel on the owned shallow surface itself;
+  do not keep a side-map when the public surface already carries the source.
 
 **Completion gates:**
 
-- [x] Every rules-like preservation consumer reads an explicit lookup record or
-      has a documented blocker.
+- [x] Every rules-like preservation consumer either uses the owned public
+      surface directly or has a documented blocker.
 - [x] Source-free direct-index public container narrowing is either implemented
       or blocked by a mutability/parentage proof.
 - [x] Reference-stack cleanup has focused tests for both text-only and owned
@@ -611,8 +610,9 @@ for references, direct-index hits, and rules-like values.
 
 **Next queue seeds:**
 
-1. Move one remaining callable/source consumer to the narrowest rules-like
-   helper it actually needs, instead of reading the full preservation record.
+1. Retry one more rules-like/public-mutation deletion only if it removes a real
+   owned result or compatibility branch; the source-helper/side-map seam is
+   already gone.
 2. Retry frozen source-free public direct-index `List`/`Sequence` results with
    mutability assertions.
 3. Keep blocker proofs honest: preserved rules-like surfaces still need to
@@ -772,11 +772,11 @@ not folklore.
 | Family | Current state | Completion gate |
 | --- | --- | --- |
 | `Rules` | Direct root/fragment render state exists; callable invocation, candidate scan, guard/default handling, output finalization, entry surfaces, helper-only exports, `MixinCollection` residence, and the old `rules.ts` callable re-export are now outside `rules.ts`. The remaining callable-specific `rules.ts` logic is registry/index ownership (`mixinsByName`, `findMixinsFast(...)`, registration), which is the intended rule-container boundary rather than an extraction seam. | Callable extraction complete; direct render context state bounded. |
-| `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct/evaluated render carry compatibility facts through print-state overrides instead of scratch owned nodes, runtime `WeakMap` writes are frame compatibility only, registration prep now writes the invocation record's registration state directly instead of carrying a separate prep state, nested `@layer` registration now reads layer names from invocation context state instead of duplicating them onto registration state, and `AtRuleBodyFrameState` is gone because the invocation record now owns ruleset-frame cleanup plus initial hoist output directly. The remaining open seam is the evaluated-node collapse-nesting frame path plus the duplicated invocation/body lifecycle state that still spans registration/result/public shapes. Focused proof now pins the frame seam to both evaluated-source `render(context)` and evaluated-source `toTrimmedString()` while source `frames`/`hoistToRoot` stay canonical, and explicit frame overrides now satisfy the serializer's hoist/frame reads before any compatibility getter fallback. | Lane A blocked only on the final frame-compatibility seam and the remaining invocation-record collapse across registration/result/public boundaries; no direct-render scratch state regresses. |
+| `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct/evaluated render carry compatibility facts through print-state overrides instead of scratch owned nodes, runtime `WeakMap` writes are frame compatibility only, registration prep now writes the invocation record's registration state directly instead of carrying a separate prep state, nested `@layer` registration now reads layer names from invocation context state instead of duplicating them onto registration state, `AtRuleBodyFrameState` is gone because the invocation record now owns ruleset-frame cleanup plus initial hoist output directly, and the duplicated `contextState.evalFrame` mirror is now gone too. The remaining open seam is the evaluated-node collapse-nesting frame path plus the remaining invocation/body lifecycle state that still spans registration/result/public shapes. Focused proof now pins the frame seam to both evaluated-source `render(context)` and evaluated-source `toTrimmedString()` while source `frames`/`hoistToRoot` stay canonical, and explicit frame overrides now satisfy the serializer's hoist/frame reads before any compatibility getter fallback. | Lane A blocked only on the final frame-compatibility seam and the remaining invocation-record collapse across registration/result/public boundaries; no direct-render scratch state regresses. |
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return, no parallel list/space checks, and no redundant source `value` field. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
 | `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public syntax construction has a named adapter and placement vocabulary (`source`, `output`, `content`, `publicBoundary`), but render-only optional JS failures with `contentNode` now emit direct fallback syntax without deriving an owned fallback `Call`, and the dead optional-fallback helper export is gone from the tree surface. No production storage was added after the WeakMap experiment regressed static object counts. | Call overhead measurement complete and fallback render/public split advanced. |
-| `Reference` | Text-only render exists for many scalar/container paths; rules-like wrappers remain with explicit source/output/public-boundary placement state and callable ownership proof. Detached rules-like calls now recover lexical parentage through the narrow source helper instead of either the full lookup record or a duplicate callable-source helper, direct callable preservation now pops `referenceStack` on the owned-output path, and focused proof pins preserved rules-like surfaces to frozen canonical sources with balanced `referenceStack` cleanup. Source-free public direct-index container ownership is intentionally retained for mutability/parentage. | Rules-like lookup consumers narrowed or blockers captured. |
+| `Reference` | Text-only render exists for many scalar/container paths; rules-like wrappers remain as shallow owned public surfaces with callable ownership proof, but the separate rules-like preservation side-map is gone. Detached rules-like calls now recover lexical parentage from the owned surface's public `sourceNode` instead of a helper/side-map read, direct callable preservation now pops `referenceStack` on the owned-output path, and focused proof pins preserved rules-like surfaces to frozen canonical sources with balanced `referenceStack` cleanup. Source-free public direct-index container ownership is intentionally retained for mutability/parentage. | Rules-like compatibility reads are narrowed to public-surface facts or captured blockers. |
 | `List` / `Sequence` | Dynamic render streams through native syntax; public resolve owns containers. Source-free public narrowing is blocked by public mutation/parentage expectations. | Revisit only if public mutability API changes. |
 | `Block` / `Quoted` / `Url` / `Paren` / `Operation` | Render-only wrappers largely split from public resolve; operation finalization now distinguishes metadata-result inheritance from public-result inheritance, with dimension/color public consumers. | No generic output bridge reintroduced; focused materialization proofs stay green. |
 | `StyleImport` | First-use top-level placement segments and postlude render state exist; nested descendant source lookup now also replays sparse child-segment paths instead of depending on the old recursive placement map. Postlude order and option reads now consume render state, and the old recursive descendant lookup is off the live production helper path. | Lane D gates complete unless a future change deletes more placement state without reintroducing recursive lookup. |
@@ -827,12 +827,12 @@ bounded item.
 
 ### Compact Progress
 
-Recent work collapsed the tiny `AtRule` eval-result carrier back into the
-invocation record, re-proved the remaining runtime-frame storage seam as an
-honest blocker, deleted one duplicate rules-like callable-source helper,
-confirmed the remaining fallback `Call` ownership boundary is still public
-resolve only, and trimmed one more local extend copy helper. Keep pulling only
-where a real runtime surface disappears or a blocker gets more explicit.
+Recent work collapsed another tiny `AtRule` lifecycle mirror, re-proved the
+remaining runtime-frame storage seam as an honest blocker, deleted the
+rules-like reference side-map/helper seam, confirmed the remaining fallback
+`Call` ownership boundary is still public resolve only, and trimmed one more
+local extend copy helper. Keep pulling only where a real runtime surface
+disappears or a blocker gets more explicit.
 
 ## Lane Backlog
 
@@ -846,7 +846,8 @@ where a real runtime surface disappears or a blocker gets more explicit.
    on the remaining compatibility runtime-frame storage when no override is
    present.
 2. Only keep collapsing `AtRule` lifecycle state if another helper/state
-   surface disappears beyond the now-deleted eval-result carrier.
+   surface disappears beyond the now-deleted eval-result carrier and
+   `contextState.evalFrame` mirror.
 3. Do not move runtime frames onto shared source at-rules and do not add new
    lifecycle plumbing without deleting an existing state shape.
 
@@ -864,8 +865,8 @@ where a real runtime surface disappears or a blocker gets more explicit.
 
 1. Lane C: keep placement-state work tied to explicit lifecycle ownership; do
    not add optional-fallback machinery without a production consumer.
-2. Lane E: remove one remaining rules-like compatibility read only with public
-   mutability/lookup proof.
+2. Lane E: remove one remaining rules-like compatibility branch only with
+   public mutability/lookup proof. The side-map/helper seam is already gone.
 3. Lane F: shrink one more declaration/operation adapter seam only if render
    stays allocation-free and public mutation stays intact.
 4. Lane H: land one selector-copy/placement-state deletion only if it removes a
@@ -880,8 +881,8 @@ Pull the next free item from here; restock only when a lane truthfully changes.
 1. Agent A: prove or delete the last `AtRule` runtime-frame storage consumer.
 2. Agent A: collapse another `AtRule` lifecycle helper/state only if it
    deletes a real carrier beyond the now-removed eval-result object.
-3. Agent C: delete one more rules-like compatibility read with public-shape
-   proof.
+3. Agent C: retry one remaining rules-like/public-mutation branch only if a
+   real owned-result or compatibility branch disappears.
 4. Agent C: take one selector-copy family through red parentage tests to a
    real blocker proof or deletion beyond the now-deleted local guard.
 5. Agent B or C: only revisit fallback/public call ownership if an owned
