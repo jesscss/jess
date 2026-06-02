@@ -782,7 +782,7 @@ not folklore.
 | `List` / `Sequence` | Dynamic render streams through native syntax; public resolve owns containers. Source-free public narrowing is blocked by public mutation/parentage expectations. | Revisit only if public mutability API changes. |
 | `Block` / `Quoted` / `Url` / `Paren` / `Operation` | Render-only wrappers largely split from public resolve; operation finalization now distinguishes metadata-result inheritance from public-result inheritance, with dimension/color public consumers. | No generic output bridge reintroduced; focused materialization proofs stay green. |
 | `StyleImport` | First-use top-level placement segments and postlude render state exist; nested descendant source lookup now also replays sparse child-segment paths instead of depending on the old recursive placement map. Postlude order and option reads now consume render state, and the old recursive descendant lookup is off the live production helper path. | Lane D gates complete unless a future change deletes more placement state without reintroducing recursive lookup. |
-| Selectors / `Ampersand` / `Extend` | Ownership still semantic for generated/extended placement. Generated `:is(...)` omission state is now declared at construction time and consumed by selector render plus the ampersand/extend parent-list paths, removing the render-time arg-shape fallback read. Integration proof now covers both exact and `all` extend against the generated omission shape, and parent-list extend proof now makes the remaining ownership rule explicit: extend registration still needs a fresh generated `:is(...)` wrapper for parent-list paths while source selector leaves stay canonical and uncloned. Remaining open work only counts if another selector-copy/helper seam can be honestly deleted or blocked. | Lane H narrowed to the next real selector-copy/placement deletion or blocker proof. |
+| Selectors / `Ampersand` / `Extend` | Ownership still semantic for generated/extended placement. Generated `:is(...)` omission state is now declared at construction time and consumed by selector render plus the ampersand/extend parent-list paths, removing the render-time arg-shape fallback read. Integration proof now covers both exact and `all` extend against the generated omission shape, and parent-list extend proof now makes the remaining ownership rule explicit: extend registration still needs a fresh generated `:is(...)` wrapper for parent-list paths while source selector leaves stay canonical and uncloned. The local extend copy helper no longer needs its bespoke selector-like guard; remaining open work only counts if another selector-copy/helper seam can be honestly deleted or blocked. | Lane H narrowed to the next real selector-copy/placement deletion or blocker proof. |
 | Controls | Loop render streams direct rules; live frame mutation intentional. | Remaining grouping/state surfaces audited by object/function-call cost. |
 
 Update this tracker when a node family changes architectural state.
@@ -831,9 +831,10 @@ bounded item.
 
 Recent work collapsed more `AtRule` compatibility reads out of the serializer
 path, trimmed declaration merge adapter state again, deleted one duplicate
-rules-like callable-source helper, and made the remaining parent-list extend
-ownership constraint explicit with a focused blocker proof. Keep pulling only
-where a real runtime surface disappears or a blocker gets more explicit.
+rules-like callable-source helper, made the remaining parent-list extend
+ownership constraint explicit with a focused blocker proof, and trimmed one
+more local extend copy helper. Keep pulling only where a real runtime surface
+disappears or a blocker gets more explicit.
 
 ## Lane Backlog
 
@@ -868,7 +869,7 @@ where a real runtime surface disappears or a blocker gets more explicit.
    stays allocation-free and public mutation stays intact.
 4. Lane H: land one selector-copy/placement-state deletion only if it removes a
    real helper seam beyond the now-proven parent-list generated-wrapper
-   requirement.
+   requirement and the now-deleted local extend selector guard.
 5. Lane I: keep this handoff compact and aligned with actual lane truth.
 
 ## Pull Queue

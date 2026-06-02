@@ -277,19 +277,10 @@ function copySelectorForExtendRecord(
   library: Selector['keySetLibrary']
 ): Selector {
   const copied = copyOwnedWithReusableLeaves(selector);
-  if (!isSelectorLike(copied)) {
+  if (!isNode(copied, N.Selector)) {
     throw new TypeError('Expected selector copy');
   }
   return attachSelectorBitLibrary(copied, library ?? selector.keySetLibrary);
-}
-
-function isSelectorLike(value: unknown): value is Selector {
-  return value instanceof Selector
-    || (
-      !!value
-      && typeof value === 'object'
-      && (value as { isSelector?: unknown }).isSelector === true
-    );
 }
 
 function materializeImplicitAmpersands(
