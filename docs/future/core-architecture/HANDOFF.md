@@ -160,6 +160,22 @@ pnpm run audit:node-creation
 
 Current known evidence from the latest handoff run:
 
+- Latest handoff round kept a small extend-chain optimization. A fresh broad
+  `benchmark.less` baseline measured about `412.00ms avg / 383.02ms median`
+  and `profile-less-benchmark.mjs --file=benchmark.less` measured about
+  `785.76ms` instrumented elapsed. The CPU profile showed `processExtends`
+  back near the top, with copy pressure still fragmented across guard,
+  registration, callable, and render paths. The kept change caches the original
+  selector subtree value set once inside `applyExtendsToSelector` and threads
+  it into chained-extend lookup, avoiding repeated original-selector walks
+  after successful extends. Focused extend tests and the broader mixin test are
+  green. Post-change broad samples were about `380.99ms avg / 367.85ms median`
+  and `396.34ms avg / 383.44ms median`; the instrumented profile moved to
+  about `700.85ms`. Less 4.5 remains about `47ms`, so broad alpha is still
+  roughly `8x` slower. Next target: profile `Reference.evalNode`/`Rules.find`
+  together and look for a real lookup-state reduction; guard copies are hot but
+  currently protect canonical guard eval/prep state and should not be removed
+  without a red-to-green invariant change.
 - Latest handoff round deepened the broad `benchmark.less` evidence without
   keeping a production code change. A 15-run/5-warmup real benchmark baseline
   measured about `389.55ms avg / 383.93ms median`; a V8 CPU profile then showed

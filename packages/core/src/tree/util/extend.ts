@@ -322,6 +322,7 @@ export function applyExtendsToSelector(
   };
   let selector = initialSelector;
   const originalSelector = initialSelector;
+  const originalSelectorValues = collectSelectorSubtreeValues(originalSelector);
   const expandedAllExtends = expandExactSelectorListTargets(allExtends);
   const instructions = expandExactSelectorListTargets(extendsList);
   const allExtendTuples = expandedAllExtends.map(inst => [
@@ -373,7 +374,8 @@ export function applyExtendsToSelector(
               selector,
               allExtendTuples,
               skipKeys,
-              originalSelector
+              originalSelector,
+              originalSelectorValues
             );
             for (const [chainedTarget, chainedExtendWith, chainedPartial] of chained) {
               const chainedKey = `${chainedPartial ? 1 : 0}|${chainedTarget.valueOf()}|${chainedExtendWith.valueOf()}`;
@@ -411,7 +413,8 @@ export function applyExtendsToSelector(
             allExtendTuples,
             target,
             extendWith,
-            originalSelector
+            originalSelector,
+            originalSelectorValues
           );
           for (const [chainedTarget, chainedExtendWith, chainedPartial] of chained) {
             const chainedKey = `${chainedPartial ? 1 : 0}|${chainedTarget.valueOf()}|${chainedExtendWith.valueOf()}`;
@@ -3689,13 +3692,15 @@ export function findChainedExtends(
   allExtends: Array<[Selector, Selector, boolean, any, any]>,
   currentTarget: Selector,
   currentSelectorWithExtend: Selector,
-  originalSelector: Selector
+  originalSelector: Selector,
+  originalValues?: Set<string>
 ): Array<[Selector, Selector, boolean, any, any]> {
   return findChainedExtendsWithSkips(
     extendedSelector,
     allExtends,
     new Set([`${currentTarget.valueOf()}|${currentSelectorWithExtend.valueOf()}`]),
-    originalSelector
+    originalSelector,
+    originalValues
   );
 }
 
@@ -3797,10 +3802,10 @@ function findChainedExtendsWithSkips(
   extendedSelector: Selector,
   allExtends: Array<[Selector, Selector, boolean, any, any]>,
   skipKeys: Set<string>,
-  originalSelector: Selector
+  originalSelector: Selector,
+  originalValues = collectSelectorSubtreeValues(originalSelector)
 ): Array<[Selector, Selector, boolean, any, any]> {
   const chained: Array<[Selector, Selector, boolean, any, any]> = [];
-  const originalValues = collectSelectorSubtreeValues(originalSelector);
   const candidates = collectNewSelectorCandidates(extendedSelector, originalValues);
   const queued = new Set<string>();
 
