@@ -197,7 +197,6 @@ and cleanup without duplicating facts across many parallel structures.
 
 - `packages/core/src/tree/at-rule.ts`
 - `AtRuleBodyOutputState`
-- `AtRuleBodyEvalContextState`
 - `AtRuleBodyEvalRecord`
 - `AtRuleBodyRegistrationState`
 
@@ -215,7 +214,7 @@ and cleanup without duplicating facts across many parallel structures.
 
 **Completion gates:**
 
-- [ ] At-rule body lifecycle has one primary invocation record type and no
+- [x] At-rule body lifecycle has one primary invocation record type and no
       duplicate prelude/body/output carriers beyond documented public-boundary
       writes.
 - [x] Async rejection cleanup, frame restoration, extend-root cleanup, and
@@ -229,15 +228,11 @@ and cleanup without duplicating facts across many parallel structures.
 
 **Next queue seeds:**
 
-1. Inventory every duplicated field between `AtRuleBodyEvalContextState` and
-   the direct public-boundary writes, then merge one remaining pair into the
-   invocation record or a narrower boundary with focused async, root-hoist,
-   and collapse-nesting tests. The next cut only counts if another real
-   state/helper surface disappears.
-2. Prove whether body render can consume the invocation record directly,
-   without building a separate `AtRuleBodyRenderState`.
-3. Keep render/public state honest: do not reintroduce an adapter object just
+1. Keep render/public state honest: do not reintroduce an adapter object just
    to shuttle invocation facts into the final owned `AtRule`.
+2. AtRule follow-up only counts if it deletes another real body/result copy
+   seam or produces a measured hot-path win. The lifecycle-state duplication
+   queue item is complete.
 
 ### Lane B: Rules Container And Callable/Mixin Extraction
 
@@ -611,7 +606,7 @@ not folklore.
 | Family | Current state | Completion gate |
 | --- | --- | --- |
 | `Rules` | Direct root/fragment render state exists; callable invocation, candidate scan, guard/default handling, output finalization, entry surfaces, helper-only exports, `MixinCollection` residence, and the old `rules.ts` callable re-export are now outside `rules.ts`. The remaining callable-specific `rules.ts` logic is registry/index ownership (`mixinsByName`, `findMixinsFast(...)`, registration), which is the intended rule-container boundary rather than an extraction seam. | Callable extraction complete; direct render context state bounded. |
-| `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct render carries transient facts through print-state overrides, registration prep writes registration state onto the invocation record, nested `@layer` registration reads layer names from context state, `AtRuleBodyFrameState` is gone, the duplicated `contextState.evalFrame` mirror is gone, the separate `AtRuleBodyEvalResult` wrapper is gone, the public-result adapter input/state layer is gone, and cleanup ownership now lives directly in the invocation runner. The evaluated-frame `WeakMap` seam is now deleted: collapse-nesting eval returns owned frame-bearing AtRules while the source remains `frames`/`hoistToRoot` neutral, and body ownership keeps the evaluated extend root shared with `processExtends()`. | Lane A is unblocked; next work is remaining lifecycle-state collapse across context state, the invocation record, and direct public-boundary writes. |
+| `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct render carries transient facts through print-state overrides, registration prep writes registration state onto the invocation record, nested `@layer` registration reads layer names from the invocation record, `AtRuleBodyFrameState` is gone, the duplicated `contextState.evalFrame` mirror is gone, the separate `AtRuleBodyEvalResult` wrapper is gone, the public-result adapter input/state layer is gone, the nested `AtRuleBodyEvalContextState` carrier is gone, and cleanup ownership now lives directly in the invocation runner. The evaluated-frame `WeakMap` seam is now deleted: collapse-nesting eval returns owned frame-bearing AtRules while the source remains `frames`/`hoistToRoot` neutral, and body ownership keeps the evaluated extend root shared with `processExtends()`. | Lane A lifecycle-state collapse is complete. Only reopen AtRule for a real body/result copy deletion or measured hot-path win. |
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return, no parallel list/space checks, and no redundant source `value` field. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
 | `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public eval/resolve now returns finalized text output instead of constructing an owned fallback `Call`, and render-only optional JS failures with `contentNode` also emit direct fallback syntax. The dead optional-fallback helper export is gone from the tree surface. No production storage was added after the WeakMap experiment regressed static object counts. | Fallback `Call` ownership deletion complete; only revisit call work for rawArgs diagnostics or measured overhead. |
@@ -673,7 +668,8 @@ legacy nested-`sourceNode` freeze branch, deleted fallback `Call` ownership in
 render and optional fallback public eval/resolve by returning finalized text
 output, deleted the separate AtRule eval-result wrapper by carrying the result
 node on the invocation record, deleted the separate public-result adapter
-input/state layer plus the extra cleanup/restore helper, and reclassified the
+input/state layer plus the extra cleanup/restore helper, flattened AtRule body
+eval context facts into the invocation record, and reclassified the
 selector-copy seam as simplification work instead of a protected blocker.
 
 ## Lane Backlog
@@ -690,10 +686,9 @@ selector-copy seam as simplification work instead of a protected blocker.
    target node.
 3. Done: cleanup ownership is now in the invocation runner; the extra
    cleanup/restore helper is deleted.
-4. Next Agent A item: collapse one remaining `AtRuleBodyEvalContextState`
-   duplication into the invocation record or a narrower direct public
-   boundary. Do not move runtime frames onto shared source at-rules and do
-   not add new lifecycle plumbing without deleting an existing state shape.
+4. Done: the nested `AtRuleBodyEvalContextState` carrier is deleted. Prelude,
+   body, output, visibility, layer, frame-cleanup, and extend-root facts now
+   live directly on `AtRuleBodyEvalRecord`.
 5. AtRule follow-up backlog: only revisit owned body/result copying if we can
    delete another real container-copy seam. Current owned collapse-nesting
    results already share inert leaves and shallow-copy `frames`; do not turn
@@ -748,6 +743,10 @@ Pull the next free item from here; restock only when a lane truthfully changes.
    or compatibility branch disappears beyond the side-map/helper seam and the
    nested-`sourceNode` freeze branch already removed.
 6. Agent C: retry selector-copy simplification with a practical bias.
+7. Agent A: done. The nested AtRule body eval context carrier is deleted; only
+   reopen Lane A for a real body/result copy deletion or measured hot-path win.
+8. Agent C: next free item is Lane H selector/extend simplification, with the
+   practical bias already captured above.
    Generated extend output may stay owned if that is the simpler architecture;
    only preserve source-node identity where it pays for itself in measured
    speed, memory, or clearer runtime model.

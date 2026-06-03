@@ -58,18 +58,6 @@ export type AtRuleBodyOutputState = {
   frames?: AtRule['frames'];
 };
 
-type AtRuleBodyEvalContextState = {
-  evaluatedPrelude?: Node;
-  evaluatedBody?: Rules;
-  output?: AtRuleBodyOutputState;
-  visible?: boolean;
-  layerName?: string;
-  frameCount: number;
-  extendRootStackLength: number;
-  writeEvaluatedPrelude: boolean;
-  writeVisibility: boolean;
-};
-
 type AtRuleBodyEvalRecord = {
   source: AtRule;
   evalFrame: AtRule;
@@ -79,7 +67,15 @@ type AtRuleBodyEvalRecord = {
   clearRulesetFrames: boolean;
   restoreRulesetFrames: () => void;
   registration?: AtRuleBodyRegistrationState;
-  contextState: AtRuleBodyEvalContextState;
+  evaluatedPrelude?: Node;
+  evaluatedBody?: Rules;
+  output?: AtRuleBodyOutputState;
+  visible?: boolean;
+  layerName?: string;
+  frameCount: number;
+  extendRootStackLength: number;
+  writeEvaluatedPrelude: boolean;
+  writeVisibility: boolean;
 };
 
 type AtRuleBodyRegistrationState = {
@@ -155,7 +151,7 @@ function clearRulesetFramesForAtRuleBody(
   };
 }
 
-function createAtRuleBodyEvalContextState(
+function createAtRuleBodyEvalRecordState(
   context: Context,
   options: {
     evaluatedPrelude?: Node;
@@ -163,7 +159,15 @@ function createAtRuleBodyEvalContextState(
     writeEvaluatedPrelude?: boolean;
     writeVisibility?: boolean;
   } = {}
-): AtRuleBodyEvalContextState {
+): Pick<
+  AtRuleBodyEvalRecord,
+  | 'evaluatedPrelude'
+  | 'output'
+  | 'frameCount'
+  | 'extendRootStackLength'
+  | 'writeEvaluatedPrelude'
+  | 'writeVisibility'
+> {
   return {
     evaluatedPrelude: options.evaluatedPrelude,
     output: options.output,
@@ -204,11 +208,11 @@ function runAtRuleBodyRulesEval<T>(
 }
 
 function setAtRuleBodyEvalOutput(
-  state: AtRuleBodyEvalContextState,
+  record: AtRuleBodyEvalRecord,
   output: AtRuleBodyOutputState
 ): void {
-  state.output = {
-    ...state.output,
+  record.output = {
+    ...record.output,
     ...output
   };
 }
@@ -217,9 +221,8 @@ function setAtRuleBodyEvalPrelude(
   record: AtRuleBodyEvalRecord,
   prelude: Node
 ): void {
-  const state = record.contextState;
-  state.evaluatedPrelude = prelude;
-  if (state.writeEvaluatedPrelude) {
+  record.evaluatedPrelude = prelude;
+  if (record.writeEvaluatedPrelude) {
     record.evalFrame.value.prelude = prelude;
   }
 }
@@ -228,17 +231,15 @@ function storeAtRuleBodyEvalRecordRules(
   record: AtRuleBodyEvalRecord,
   finalRules: Rules
 ): void {
-  const state = record.contextState;
-  state.evaluatedBody = finalRules;
+  record.evaluatedBody = finalRules;
 }
 
 function storeAtRuleBodyEvalRecordVisibility(
   record: AtRuleBodyEvalRecord,
   visible: boolean
 ): void {
-  const state = record.contextState;
-  state.visible = visible;
-  if (!visible && state.writeVisibility) {
+  record.visible = visible;
+  if (!visible && record.writeVisibility) {
     record.evalFrame.removeFlag(F_VISIBLE);
   }
 }
@@ -253,23 +254,23 @@ function storeAtRuleBodyRecordRegistration(
 
 function createAtRuleEvalResultNode(
   source: AtRule,
-  state: AtRuleBodyEvalContextState
+  record: AtRuleBodyEvalRecord
 ): AtRule {
   const ownsEvaluatedBody = Boolean(
-    state.evaluatedBody
-    && state.evaluatedBody !== source.value.rules
+    record.evaluatedBody
+    && record.evaluatedBody !== source.value.rules
   );
   const ownsOutput = Boolean(
-    (state.output?.hoistToRoot !== undefined && state.output.hoistToRoot !== source.hoistToRoot)
-    || (state.output?.frames !== undefined && state.output.frames !== source.frames)
+    (record.output?.hoistToRoot !== undefined && record.output.hoistToRoot !== source.hoistToRoot)
+    || (record.output?.frames !== undefined && record.output.frames !== source.frames)
   );
   if (!ownsEvaluatedBody && !ownsOutput) {
     return source;
   }
   return applyAtRuleBodyPublicResultState(
     source.deriveAtRule(source.value),
-    state,
-    ownsEvaluatedBody || ownsOutput ? state.evaluatedBody : undefined
+    record,
+    ownsEvaluatedBody || ownsOutput ? record.evaluatedBody : undefined
   );
 }
 
@@ -294,7 +295,7 @@ function storeAtRuleBodyRecordLayerName(
   record: AtRuleBodyEvalRecord,
   layerName: string | undefined
 ): void {
-  record.contextState.layerName = layerName;
+  record.layerName = layerName;
 }
 
 function hasCommentChild(value: unknown): boolean {
@@ -321,7 +322,8 @@ function isAtRuleBodyEvalRecordResult(value: unknown): value is AtRuleBodyEvalRe
   return Boolean(
     value
     && typeof value === 'object'
-    && 'contextState' in value
+    && 'source' in value
+    && 'evalFrame' in value
     && 'resultNode' in value
   );
 }
@@ -336,25 +338,25 @@ function storeAtRuleBodyEvalRecordResult(
 
 function applyAtRuleBodyPublicResultState(
   node: AtRule,
-  state: AtRuleBodyEvalContextState,
-  evaluatedBody: Rules | undefined = state.evaluatedBody
+  record: AtRuleBodyEvalRecord,
+  evaluatedBody: Rules | undefined = record.evaluatedBody
 ): AtRule {
-  if (state.evaluatedPrelude) {
-    node.value.prelude = state.evaluatedPrelude;
+  if (record.evaluatedPrelude) {
+    node.value.prelude = record.evaluatedPrelude;
   }
   if (evaluatedBody && evaluatedBody !== node.value.rules) {
     node.adopt(evaluatedBody);
     node.value.rules = evaluatedBody;
   }
-  if (state.visible === false) {
+  if (record.visible === false) {
     node.removeFlag(F_VISIBLE);
   }
-  if (state.output) {
-    if (state.output.hoistToRoot !== undefined) {
-      node.hoistToRoot = state.output.hoistToRoot;
+  if (record.output) {
+    if (record.output.hoistToRoot !== undefined) {
+      node.hoistToRoot = record.output.hoistToRoot;
     }
-    if (state.output.frames !== undefined) {
-      node.frames = state.output.frames;
+    if (record.output.frames !== undefined) {
+      node.frames = record.output.frames;
     }
   }
   return node;
@@ -544,7 +546,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       ...(sourceRules && !renderSourceBody ? { bodyRules: this.ownRules(sourceRules) } : undefined),
       clearRulesetFrames: hasHoistedRulesetParent,
       restoreRulesetFrames: () => undefined,
-      contextState: createAtRuleBodyEvalContextState(context, {
+      ...createAtRuleBodyEvalRecordState(context, {
         evaluatedPrelude,
         output: hasHoistedRulesetParent ? { hoistToRoot: true } : undefined,
         writeEvaluatedPrelude: options.writeEvaluatedPrelude,
@@ -637,10 +639,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private resolveBodyResult(record: AtRuleBodyEvalRecord): AtRule {
-    const { contextState } = record;
     return applyAtRuleBodyPublicResultState(
       this.deriveAtRule(this.value),
-      contextState
+      record
     );
   }
 
@@ -704,16 +705,16 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
       const evaluatedBody = resultNode instanceof Nil
         ? undefined
-        : (record.contextState.evaluatedBody ?? resultNode.value.rules);
-      const runtimeHoist = record.contextState.output?.hoistToRoot !== this.hoistToRoot
-        ? record.contextState.output?.hoistToRoot
+        : (record.evaluatedBody ?? resultNode.value.rules);
+      const runtimeHoist = record.output?.hoistToRoot !== this.hoistToRoot
+        ? record.output?.hoistToRoot
         : undefined;
-      const runtimeFrames = record.contextState.output?.frames !== this.frames
-        ? record.contextState.output?.frames
+      const runtimeFrames = record.output?.frames !== this.frames
+        ? record.output?.frames
         : undefined;
       return renderEvaluatedAtRule(
         this,
-        record.contextState.evaluatedPrelude,
+        record.evaluatedPrelude,
         evaluatedBody !== this.value.rules ? evaluatedBody : undefined,
         runtimeHoist,
         runtimeFrames
@@ -962,7 +963,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                 || child.sourceNode === node.sourceNode
               )
             );
-            const recordLayerName = record.contextState.layerName;
+            const recordLayerName = record.layerName;
             if (frameContainsNode && recordLayerName) {
               parentLayerName = recordLayerName;
               break;
@@ -982,7 +983,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     state: AtRuleBodyRegistrationState
   ): AtRuleBodyRegistrationState {
     context.extendRoots.popExtendRoot();
-    const layerName = record.contextState.layerName;
+    const layerName = record.layerName;
     const parent = state.parentExtendRoot ?? context.root ?? undefined;
     context.extendRoots.registerRoot(state.bodyToEval, parent as Rules | undefined, { layerName });
     registerInnerExtendRootIfHoisted(state.bodyToEval, context, layerName);
@@ -1144,7 +1145,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       evalFrame: this,
       clearRulesetFrames: hasHoistedRulesetParent,
       restoreRulesetFrames: () => undefined,
-      contextState: createAtRuleBodyEvalContextState(context, {
+      ...createAtRuleBodyEvalRecordState(context, {
         output: hasHoistedRulesetParent ? { hoistToRoot: true } : undefined
       })
     };
@@ -1158,7 +1159,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       return (out as Promise<AtRule | Nil>).then(
         (value) => {
           return value instanceof AtRule
-            ? createAtRuleEvalResultNode(this, record.contextState)
+            ? createAtRuleEvalResultNode(this, record)
             : value;
         },
         (error) => {
@@ -1167,7 +1168,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       );
     }
     return out instanceof AtRule
-      ? createAtRuleEvalResultNode(this, record.contextState)
+      ? createAtRuleEvalResultNode(this, record)
       : out;
   }
 
@@ -1177,7 +1178,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   ): MaybePromise<AtRule | Nil> {
     const source = bodyEvalRecord.source;
     let node = bodyEvalRecord.evalFrame;
-    const bodyEvalContextState = bodyEvalRecord.contextState;
     // @plugin is handled by the Less compatibility plugin during preparation.
     // If we reach eval and it's still visible, no plugin processed it.
     const atName = String(node.value?.name?.valueOf?.() ?? '');
@@ -1188,8 +1188,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     // Store frames snapshot for hoisting serialization
     if (context.opts.collapseNesting || node.hoistToRoot) {
       const frames = [...context.frames];
-      setAtRuleBodyEvalOutput(bodyEvalContextState, {
-        ...bodyEvalContextState.output,
+      setAtRuleBodyEvalOutput(bodyEvalRecord, {
         frames
       });
     }
@@ -1197,7 +1196,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return pipe(
       () => {
         // Evaluate prelude in the correct scope (mixin params, vars, etc.).
-        if (bodyEvalContextState.evaluatedPrelude) {
+        if (bodyEvalRecord.evaluatedPrelude) {
           return;
         }
         let { prelude } = node.value;
@@ -1257,7 +1256,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         return node;
       },
       () => {
-        let rules = bodyEvalRecord.contextState.evaluatedBody ?? bodyEvalRecord.bodyRules ?? node.getRenderRules();
+        let rules = bodyEvalRecord.evaluatedBody ?? bodyEvalRecord.bodyRules ?? node.getRenderRules();
         if (rules && rules.visibleRules().length === 0) {
           storeAtRuleBodyEvalRecordVisibility(bodyEvalRecord, false);
         }
@@ -1272,18 +1271,16 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     node: AtRule,
     run: (restoreBodyEvalContext: () => void) => MaybePromise<T>
   ): MaybePromise<T> {
-    const bodyEvalContextState = bodyEvalRecord.contextState;
     let restored = false;
     const restore = () => {
       if (restored) {
         return;
       }
       restored = true;
-      const state = bodyEvalRecord.contextState;
       popAtRuleBodyEvalRecord(context, bodyEvalRecord);
-      context.frames.length = state.frameCount;
+      context.frames.length = bodyEvalRecord.frameCount;
       bodyEvalRecord.restoreRulesetFrames();
-      while (context.extendRoots.extendRootStack.length > state.extendRootStackLength) {
+      while (context.extendRoots.extendRootStack.length > bodyEvalRecord.extendRootStackLength) {
         context.extendRoots.popExtendRoot();
       }
     };
@@ -1294,7 +1291,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       bodyEvalRecord.source._extractAndStoreLayerName(
         node,
         context,
-        bodyEvalContextState.evaluatedPrelude
+        bodyEvalRecord.evaluatedPrelude
       )
     );
     try {
