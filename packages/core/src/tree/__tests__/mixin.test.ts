@@ -257,6 +257,56 @@ describe('Mixin', () => {
       `);
     });
 
+    it('keeps static direct mixin output placements owned without moving source children', async () => {
+      const sourceValue = any('red');
+      const sourceDecl = decl({ name: 'color', value: sourceValue });
+      const mixinBody = rules([sourceDecl]);
+      const mixinDef = mixin({
+        name: any('.static-direct'),
+        rules: mixinBody
+      });
+      const callerRules = rules([]);
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.use'),
+          rules: callerRules
+        })
+      ]);
+      context.root = root;
+      context.rulesContext = callerRules;
+
+      const firstCall = call({ name: ref({ key: '.static-direct' }, { type: 'mixin' }) });
+      callerRules.adopt(firstCall);
+      const firstResult = await firstCall.eval(context);
+      const secondCall = call({ name: ref({ key: '.static-direct' }, { type: 'mixin' }) });
+      callerRules.adopt(secondCall);
+      const secondResult = await secondCall.eval(context);
+
+      expect(firstResult).toBeInstanceOf(RulesClass);
+      expect(secondResult).toBeInstanceOf(RulesClass);
+      if (!(firstResult instanceof RulesClass) || !(secondResult instanceof RulesClass)) {
+        throw new Error('Expected Rules results');
+      }
+      const firstDecl = firstResult.value[0];
+      const secondDecl = secondResult.value[0];
+      expect(firstDecl).toBeDefined();
+      expect(secondDecl).toBeDefined();
+      expect(firstDecl).not.toBe(sourceDecl);
+      expect(secondDecl).not.toBe(sourceDecl);
+      expect(secondDecl).not.toBe(firstDecl);
+      expect(getMixinOutputSourceChild(firstResult, firstDecl!)).toBe(sourceDecl);
+      expect(getMixinOutputSourceChild(secondResult, secondDecl!)).toBe(sourceDecl);
+      expect(getMixinOutputChildForSource(firstResult, sourceDecl)).toBe(firstDecl);
+      expect(getMixinOutputChildForSource(secondResult, sourceDecl)).toBe(secondDecl);
+      expect(firstDecl?.parent).toBe(firstResult);
+      expect(secondDecl?.parent).toBe(secondResult);
+      expect(sourceDecl.parent).toBe(mixinBody);
+      expect(sourceValue.parent).toBe(sourceDecl);
+      expect(Reflect.get(firstDecl!, 'value').value).toBe(sourceValue);
+      expect(Reflect.get(secondDecl!, 'value').value).toBe(sourceValue);
+    });
+
     it('derives ordinary mixin output wrappers without cloning the source Rules root', async () => {
       const originalClone = RulesClass.prototype.clone;
       let clonedMixinRoots = 0;

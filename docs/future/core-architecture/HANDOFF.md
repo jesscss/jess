@@ -190,6 +190,25 @@ pnpm run audit:node-creation
 
 Current known evidence from the latest handoff run:
 
+- Latest coordinator loop continued with three workers plus local review.
+  A duplicate-declaration pre-render skip was rejected twice: both the local
+  attempt and render worker found that reducing pre-renders from 4,123 to 860
+  moved work into 3,273 emission preview calls and caused a real
+  `benchmark.less` blow-up (`1630.53ms avg / 1612.62ms median`). A one-pass
+  generated-duplicate classifier also passed focused tests but regressed the
+  real benchmark (`516.18ms avg / 480.67ms median`), so it was reverted. The
+  Less alpha compat fast path proved correctness for an opt-in plugin-free
+  benchmark graph, but real samples were neutral/noisy (`396.11ms avg /
+  383.06ms median`, then `454.78ms avg / 454.31ms median`), so do not count it
+  as a Jess speed win yet. The accepted code change is correctness-only:
+  static callable bodies with children now use owned placement surfaces instead
+  of sharing source children in output `Rules.value`; childless static bodies
+  still use the unlocked path. Focused callable/mixin tests pass, and real
+  broad samples with this correctness fix were `424.59ms avg / 405.97ms median`
+  and `423.45ms avg / 392.62ms median`. Next target: implement the real virtual
+  callable-output placement model so static/direct body children can preserve
+  valid parentage without routine owned child copies. Do not treat the
+  conservative owned-surface fix as the performance destination.
 - Latest coordinator round used six sub-agents across two batches. Batch one
   produced two candidate patches (callable childless owned-surface reuse and
   reference static declaration-list reuse) and one render cache-skip experiment;

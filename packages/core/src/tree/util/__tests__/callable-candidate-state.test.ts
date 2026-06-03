@@ -50,12 +50,11 @@ describe('callable candidate state helper', () => {
     expect(state.fallbackScopeFrame).toBe(callSiteRules.getScopeFrame());
   });
 
-  it('prepares static callable-rules candidates with unlocked rules and no fallback frame in non-leaky mode', () => {
+  it('prepares static callable-rules candidates with owned children and no fallback frame in non-leaky mode', () => {
     const definitionParent = rules([]);
     const callSiteRules = rules([]);
-    const sourceRules = rules([
-      decl({ name: 'color', value: any('red') })
-    ]);
+    const sourceDecl = decl({ name: 'color', value: any('red') });
+    const sourceRules = rules([sourceDecl]);
     sourceRules.addFlag(F_STATIC);
     definitionParent.adopt(sourceRules);
     const candidate = callableRulesEntry({ name: undefined, params: undefined, rules: sourceRules }, definitionParent, 3);
@@ -71,10 +70,38 @@ describe('callable candidate state helper', () => {
 
     expect(state.sourceRules).toBe(sourceRules);
     expect(state.rules).not.toBe(sourceRules);
+    expect(state.rules.value[0]).not.toBe(sourceDecl);
+    expect(state.rules.value[0]?.parent).toBe(state.rules);
+    expect(sourceDecl.parent).toBe(sourceRules);
     expect(state.rules.options.rulesVisibility?.VarDeclaration).toBe('private');
     expect(state.parentFrame).toBe(callSiteRules.getScopeFrame());
     expect(state.fallbackScopeFrame).toBeUndefined();
     expect(state.paramBindings).toEqual([]);
     expect(state.signatureKey).toBeUndefined();
+  });
+
+  it('keeps childless static callable-rules candidates on the unlocked rules path', () => {
+    const definitionParent = rules([]);
+    const sourceRules = rules([]);
+    sourceRules.addFlag(F_STATIC);
+    definitionParent.adopt(sourceRules);
+    const candidate = callableRulesEntry({ name: undefined, params: undefined, rules: sourceRules }, definitionParent, 3);
+
+    const state = prepareCallableCandidateState({
+      candidate,
+      callSiteRules: undefined,
+      leakyRules: false,
+      createOwnedRules: () => {
+        throw new Error('childless static candidates should not need owned rules');
+      },
+      createUnlockedRules: createUnlockedCallableRulesSurface,
+      getRootSourceRules: rulesNode => rulesNode
+    });
+
+    expect(state.sourceRules).toBe(sourceRules);
+    expect(state.rules).not.toBe(sourceRules);
+    expect(state.rules.value).toEqual([]);
+    expect(state.parentFrame).toBeUndefined();
+    expect(state.fallbackScopeFrame).toBeUndefined();
   });
 });

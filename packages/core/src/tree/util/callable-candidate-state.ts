@@ -39,7 +39,8 @@ export function prepareCallableCandidateState({
 }: PrepareCallableCandidateStateOptions): PreparedCallableCandidateState {
   const candidateRules = candidate.value.rules;
   const sourceRules = getRootSourceRules(candidateRules);
-  const rules = candidateRules.hasFlag(F_STATIC)
+  const canUseUnlockedRules = candidateRules.hasFlag(F_STATIC) && candidateRules.value.length === 0;
+  const rules = canUseUnlockedRules
     ? createUnlockedRules(candidateRules)
     : createOwnedRules(candidateRules);
 
