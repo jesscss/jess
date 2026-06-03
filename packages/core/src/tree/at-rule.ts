@@ -95,14 +95,6 @@ type AtRuleLeafState = {
   value: AtRuleValue;
 };
 
-type AtRuleBodyPublicResultInput = {
-  node: AtRule;
-  evaluatedPrelude?: Node;
-  evaluatedBody?: Rules;
-  visible?: boolean;
-  output?: AtRuleBodyOutputState;
-};
-
 const activeAtRuleBodyEvalRecords = new WeakMap<Context, AtRuleBodyEvalRecord[]>();
 
 function pushAtRuleBodyEvalRecord(
@@ -211,19 +203,6 @@ function runAtRuleBodyRulesEval<T>(
   }
 }
 
-function restoreAtRuleBodyEvalRecord(
-  record: AtRuleBodyEvalRecord,
-  context: Context
-): void {
-  const state = record.contextState;
-  popAtRuleBodyEvalRecord(context, record);
-  context.frames.length = state.frameCount;
-  record.restoreRulesetFrames();
-  while (context.extendRoots.extendRootStack.length > state.extendRootStackLength) {
-    context.extendRoots.popExtendRoot();
-  }
-}
-
 function setAtRuleBodyEvalOutput(
   state: AtRuleBodyEvalContextState,
   output: AtRuleBodyOutputState
@@ -288,13 +267,9 @@ function createAtRuleEvalResultNode(
     return source;
   }
   return applyAtRuleBodyPublicResultState(
-    {
-      node: source.deriveAtRule(source.value),
-      evaluatedPrelude: state.evaluatedPrelude,
-      evaluatedBody: ownsEvaluatedBody || ownsOutput ? state.evaluatedBody : undefined,
-      visible: state.visible,
-      output: state.output
-    }
+    source.deriveAtRule(source.value),
+    state,
+    ownsEvaluatedBody || ownsOutput ? state.evaluatedBody : undefined
   );
 }
 
@@ -360,27 +335,29 @@ function storeAtRuleBodyEvalRecordResult(
 }
 
 function applyAtRuleBodyPublicResultState(
-  state: AtRuleBodyPublicResultInput
+  node: AtRule,
+  state: AtRuleBodyEvalContextState,
+  evaluatedBody: Rules | undefined = state.evaluatedBody
 ): AtRule {
   if (state.evaluatedPrelude) {
-    state.node.value.prelude = state.evaluatedPrelude;
+    node.value.prelude = state.evaluatedPrelude;
   }
-  if (state.evaluatedBody && state.evaluatedBody !== state.node.value.rules) {
-    state.node.adopt(state.evaluatedBody);
-    state.node.value.rules = state.evaluatedBody;
+  if (evaluatedBody && evaluatedBody !== node.value.rules) {
+    node.adopt(evaluatedBody);
+    node.value.rules = evaluatedBody;
   }
   if (state.visible === false) {
-    state.node.removeFlag(F_VISIBLE);
+    node.removeFlag(F_VISIBLE);
   }
   if (state.output) {
     if (state.output.hoistToRoot !== undefined) {
-      state.node.hoistToRoot = state.output.hoistToRoot;
+      node.hoistToRoot = state.output.hoistToRoot;
     }
     if (state.output.frames !== undefined) {
-      state.node.frames = state.output.frames;
+      node.frames = state.output.frames;
     }
   }
-  return state.node;
+  return node;
 }
 
 export const NESTABLE_AT_RULES = ['@media', '@supports', '@layer', '@container', '@scope'] as const;
@@ -661,17 +638,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   private resolveBodyResult(record: AtRuleBodyEvalRecord): AtRule {
     const { contextState } = record;
-    const publicResult = {
-      node: this.deriveAtRule(this.value)
-    };
     return applyAtRuleBodyPublicResultState(
-      {
-        ...publicResult,
-        evaluatedPrelude: contextState.evaluatedPrelude,
-        evaluatedBody: contextState.evaluatedBody,
-        visible: contextState.visible,
-        output: contextState.output
-      }
+      this.deriveAtRule(this.value),
+      contextState
     );
   }
 
@@ -1310,7 +1279,13 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         return;
       }
       restored = true;
-      restoreAtRuleBodyEvalRecord(bodyEvalRecord, context);
+      const state = bodyEvalRecord.contextState;
+      popAtRuleBodyEvalRecord(context, bodyEvalRecord);
+      context.frames.length = state.frameCount;
+      bodyEvalRecord.restoreRulesetFrames();
+      while (context.extendRoots.extendRootStack.length > state.extendRootStackLength) {
+        context.extendRoots.popExtendRoot();
+      }
     };
     pushAtRuleBodyEvalRecord(context, bodyEvalRecord);
     context.frames.push(node);
