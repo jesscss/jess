@@ -56,18 +56,8 @@ faster real Less eval/render first, lower memory pressure second.
 
 ## Active Correctness Queue
 
-Fix these before broad benchmark claims.
-
-1. Fix alpha snapshot runner compiler resolution.
-   - Surface: individual Less alpha benchmark runner commands complete for
-     `benchmark-color-stress.less`, `benchmark-v37.less`, `benchmark-v39.less`,
-     `benchmark-v3.less`, and broad `benchmark.less`, but multi-file
-     `packages/less/benchmark/run-and-compare.mjs` can fail later files with
-     `Could not find Less compiler`.
-   - First step: add a focused runner/tooling repro or inspect the runner
-     process cwd/env reuse after the first file.
-   - Completion gate: the alpha snapshot command records all benchmark files in
-     one run without per-file compiler resolution failures.
+No active correctness blockers. The alpha snapshot command currently records
+all queued benchmark files in one run.
 
 If any other `.less` fixture or benchmark fails to parse or evaluate, add it to
 this queue as a focused core repro before changing expected output. If `.less`
@@ -157,6 +147,17 @@ pnpm run audit:node-creation
 
 Current known evidence from the latest handoff run:
 
+- Latest handoff run found the alpha snapshot compiler-resolution note was
+  stale: `BENCH_FILES=benchmark-color-stress.less,benchmark-v37.less,benchmark-v39.less,benchmark-v3.less,benchmark.less`
+  with `BENCH_RUNS=6 BENCH_WARMUP=2 BENCH_TIMEOUT_MS=15000` records all files.
+  The same run measured about 20ms color stress, 18-26ms v37/v39/v3, and
+  390-432ms broad `benchmark.less` against historical Less 4.5 at about 47ms.
+  A focused experiment removing the routine `Set<ScopeFrame>` allocation from
+  simple live-slot reference lookup was rejected: it passed the focused
+  allocation/reference tests but A/B broad runner evidence was worse
+  (`~405ms avg / 392ms median` kept-change sample versus `~360ms avg / 362ms
+  median` after reverting). Do not restock that exact micro-change unless a
+  later profile shows a different implementation shape.
 - Latest correctness pass cleared `benchmark-v3.less` through the Less alpha
   runner. The first failure was a parser context leak: guarded mixin parsing
   left comma-as-or state on the shared parse context, so nested declaration
@@ -201,15 +202,16 @@ module-context: 372
 render-context: 1
 ```
 
-Next target: fix the alpha snapshot runner compiler-resolution failure, then
-rerun the alpha snapshot set and a fresh broad `benchmark.less` profile. The
-current CPU profile shows remaining object-copy pressure in guard evaluation
-(`copyGuardForEval` during callable candidate checks), declaration
-registration/reference value copies, Less compat adapter creation, and the
-still-correct but expensive extend classification fallback. Treat these as
-runtime architecture work: remove routine copies only where canonical source
-remains readable and output semantics stay unchanged, then remeasure the same
-broad benchmark.
+Next target: capture a deeper CPU profile for broad `benchmark.less`, because
+the coarse counters are now too blunt. The current measured costs still point
+at `Reference.evalNode`, parser time, `Rules.find`, `OutputWriter.getSince`,
+and `MixinRegistry.indexPendingItems`, while earlier CPU profiles also showed
+object-copy pressure in guard evaluation (`copyGuardForEval` during callable
+candidate checks), declaration registration/reference value copies, Less compat
+adapter creation, and extend classification fallback. Treat these as runtime
+architecture work: remove routine copies only where canonical source remains
+readable and output semantics stay unchanged, then remeasure the same broad
+benchmark.
 
 ## Verification
 
