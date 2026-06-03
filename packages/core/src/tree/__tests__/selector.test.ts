@@ -86,10 +86,7 @@ describe('Selector', () => {
           [second.location[0], firstRun],
           [third.location[0], secondRun]
         ]),
-        after: new Map([
-          [first.location[3], firstRun],
-          [second.location[3], secondRun]
-        ])
+        after: new Map<number, IToken[]>()
       }) satisfies TriviaMap;
 
       expect(sellist([first, second, third]).toString({ trivia })).toBe('#a,\n/*x*//*y*/\n.b,\n/*z*/.c');

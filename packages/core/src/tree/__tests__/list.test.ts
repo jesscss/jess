@@ -78,9 +78,10 @@ describe('List', () => {
   it('emits trivia before parser-owned list separators', () => {
     const first = new Any('screen', undefined, [0, 1, 1, 5, 1, 6]);
     const second = new Any('print', undefined, [23, 1, 24, 27, 1, 28]);
+    const tokens = [token(' '), token('/* comment */', 'BlockComment')];
     const trivia = createTriviaMap({
-      before: new Map([[21, [token(' '), token('/* comment */', 'BlockComment')]]]),
-      after: new Map<number, IToken[]>()
+      before: new Map([[21, tokens]]),
+      after: new Map([[first.location[3], tokens]])
     }) satisfies TriviaMap;
 
     expect(list([first, second]).toString({ trivia })).toBe('screen /* comment */, print');
@@ -90,9 +91,10 @@ describe('List', () => {
     const writer = new CountingWriter();
     const first = new Any('screen', undefined, [0, 1, 1, 5, 1, 6]);
     const second = new Any('print', undefined, [23, 1, 24, 27, 1, 28]);
+    const tokens = [token(' '), token('/* comment */', 'BlockComment')];
     const trivia = createTriviaMap({
-      before: new Map([[21, [token(' '), token('/* comment */', 'BlockComment')]]]),
-      after: new Map<number, IToken[]>()
+      before: new Map([[21, tokens]]),
+      after: new Map([[first.location[3], tokens]])
     }) satisfies TriviaMap;
 
     expect(list([first, second]).toString({ trivia, writer })).toBe('screen /* comment */, print');
