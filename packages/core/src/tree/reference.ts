@@ -765,7 +765,8 @@ function lookupRuntimeVarBinding(
             kind: 'runtime-var-binding',
             value,
             readonly: live.readonly,
-            sourceNode: src
+            sourceNode: src,
+            rulesContext: isNode(live.rulesContext, N.Rules) ? live.rulesContext : undefined
           } satisfies RuntimeVarBinding;
         }
       }
@@ -1659,7 +1660,7 @@ function finalizeRuntimeVarBindingResult(
   const evaluateInRulesContext = () => shouldUseDefinitionRulesContext
     ? withRulesContext(
         context,
-        bindingSource.rulesParent ?? context.rulesContext,
+        binding.rulesContext ?? bindingSource.rulesParent ?? context.rulesContext,
         evaluateBinding
       )
     : evaluateBinding();

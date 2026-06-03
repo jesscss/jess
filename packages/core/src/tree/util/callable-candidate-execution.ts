@@ -92,7 +92,8 @@ export async function executeCallableCandidate({
     const liveSlots = createCallableLiveSlots({
       paramBindings,
       nodeArgs,
-      defineArguments: Boolean(context.treeContext?.file)
+      defineArguments: Boolean(context.treeContext?.file),
+      rulesContext: rules
     });
     wireCallableScopeFrames({
       rules,

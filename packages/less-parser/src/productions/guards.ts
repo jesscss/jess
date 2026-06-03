@@ -74,13 +74,22 @@ function isGuardComparisonToken(tt: unknown, T: TokenMap) {
 }
 
 function normalizeComparisonOperator(op: string): ConditionOperator {
-  if (op === '=>') {
-    return '>=';
+  switch (op) {
+    case '=>':
+    case '>=':
+      return '>=';
+    case '=<':
+    case '<=':
+      return '<=';
+    case '=':
+      return '=';
+    case '>':
+      return '>';
+    case '<':
+      return '<';
+    default:
+      return '=';
   }
-  if (op === '=<') {
-    return '<=';
-  }
-  return op as ConditionOperator;
 }
 
 export function guard(this: P, T: TokenMap) {
@@ -94,8 +103,7 @@ export function guard(this: P, T: TokenMap) {
       },
       {
         ALT: () => {
-          ctx.allowComma = true;
-          const node = $.SUBRULE($.guardOr, { ARGS: [ctx] });
+          const node = $.SUBRULE($.guardOr, { ARGS: [{ ...ctx, allowComma: true }] });
           return node;
         }
       }

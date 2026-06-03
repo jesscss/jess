@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { getRulesEntryTraversalState, MixinRegistry } from '../util/registry-utils.js';
@@ -541,6 +541,52 @@ describe('Mixin', () => {
         }
         .test2 {
           color: blue;
+        }
+      `);
+    });
+
+    it('evaluates default params against earlier parameter bindings', async () => {
+      const mixinDef = mixin({
+        name: any('.button-variant'),
+        params: list([
+          any('bg', { role: 'property' }),
+          vardecl({
+            name: 'border',
+            value: call({
+              name: ref({ key: 'derive-border' }, { type: 'function' }),
+              args: list([ref({ key: 'bg' }, { type: 'variable' })])
+            })
+          }, { paramVar: true })
+        ]),
+        rules: rules([
+          decl({ name: 'background', value: ref({ key: 'bg' }, { type: 'variable' }) }),
+          decl({ name: 'border-color', value: ref({ key: 'border' }, { type: 'variable' }) })
+        ])
+      });
+
+      const component = ruleset({
+        selector: el('.btn-primary'),
+        rules: rules([
+          call({
+            name: ref({ key: '.button-variant' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+
+      const root = rules([mixinDef, component]);
+      root.register('function', new JsFunction({
+        name: 'derive-border',
+        fn: (value: Node) => value
+      }));
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+
+      expect(css).toBeString(`
+        .btn-primary {
+          background: blue;
+          border-color: blue;
         }
       `);
     });

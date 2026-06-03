@@ -128,6 +128,39 @@ describe('ifFunction', () => {
     expect(errors.length).toBe(0);
   });
 
+  it('should parse if() with a parenthesized comparison condition', () => {
+    const { errors } = parse('color: if((@i > 5), #ff0000, #0000ff)', 'declaration');
+    expect(errors.length).toBe(0);
+  });
+
+  it('should parse if() with a parenthesized function-call comparison condition', () => {
+    const { errors } = parse('font-weight: if((mod(@i, 2) = 0), bold, normal)', 'declaration');
+    expect(errors.length).toBe(0);
+  });
+
+  it('should not leak guarded mixin comma state into nested if() conditions', () => {
+    const conditions = [
+      '@i > 5',
+      'mod(@i, 2) = 0',
+      '10 > @i',
+      '@i + 1 > @n - 1',
+      'lightness(#fff) > 60%'
+    ];
+
+    const declarations = conditions
+      .map((condition, index) => `value-${index}: if((${condition}), yes, no);`)
+      .join('\n');
+
+    const { errors } = parse(`
+      .gen-if-variants(@n, @i: 1) when (@i =< @n) {
+        .variant-@{i} {
+          ${declarations}
+        }
+      }
+    `, 'stylesheet');
+    expect(errors.length).toBe(0);
+  });
+
   it('should parse if() with semicolon-separated args', () => {
     const { errors } = parse('color: if(true; red; blue)', 'declaration');
     expect(errors.length).toBe(0);

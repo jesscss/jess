@@ -58,20 +58,10 @@ faster real Less eval/render first, lower memory pressure second.
 
 Fix these before broad benchmark claims.
 
-1. Add core coverage for `benchmark-v3.less` parse failure.
-   - Surface: Less `if((@i > 5), #ff0000, #0000ff)` inside a recursive mixin
-     body currently fails to parse at
-     `/Users/matthew/git/oss/less.js/packages/less/benchmark/benchmark-v3.less:19`
-     under the historical harness option.
-   - First step: write a focused parser/eval regression that fails red on this
-     construct.
-   - Completion gate: focused core/parser test passes, then `benchmark-v3.less`
-     completes through the Less alpha runner.
-
-2. Fix alpha snapshot runner compiler resolution.
+1. Fix alpha snapshot runner compiler resolution.
    - Surface: individual Less alpha benchmark runner commands complete for
      `benchmark-color-stress.less`, `benchmark-v37.less`, `benchmark-v39.less`,
-     and broad `benchmark.less`, but multi-file
+     `benchmark-v3.less`, and broad `benchmark.less`, but multi-file
      `packages/less/benchmark/run-and-compare.mjs` can fail later files with
      `Could not find Less compiler`.
    - First step: add a focused runner/tooling repro or inspect the runner
@@ -167,6 +157,14 @@ pnpm run audit:node-creation
 
 Current known evidence from the latest handoff run:
 
+- Latest correctness pass cleared `benchmark-v3.less` through the Less alpha
+  runner. The first failure was a parser context leak: guarded mixin parsing
+  left comma-as-or state on the shared parse context, so nested declaration
+  `if((...))` conditions over-consumed branch separators. The next failure was
+  default-param eval scope: `@border: darken(@bg, 10%)` evaluated without the
+  sibling `@bg` live slot. Focused parser/core regressions now cover both, and
+  `benchmark-v3.less --runs=1 --warmup=0 --math=always` completes at about
+  120ms.
 - Recursive color mixin stress exposed an exponential render bug: depth 20 did
   not complete within 60s before the fix. After removing child `Rules`
   preview-then-rerender paths, `benchmark-color-stress.less` depth 20 profiles
@@ -203,14 +201,15 @@ module-context: 372
 render-context: 1
 ```
 
-Next profile target after the `benchmark-v3.less` parser unblock: broad
-`benchmark.less` and the alpha snapshot set. The current CPU profile shows
-remaining object-copy pressure in guard evaluation (`copyGuardForEval` during
-callable candidate checks), declaration registration/reference value copies,
-Less compat adapter creation, and the still-correct but expensive extend
-classification fallback. Treat these as runtime architecture work: remove
-routine copies only where canonical source remains readable and output semantics
-stay unchanged, then remeasure the same broad benchmark.
+Next target: fix the alpha snapshot runner compiler-resolution failure, then
+rerun the alpha snapshot set and a fresh broad `benchmark.less` profile. The
+current CPU profile shows remaining object-copy pressure in guard evaluation
+(`copyGuardForEval` during callable candidate checks), declaration
+registration/reference value copies, Less compat adapter creation, and the
+still-correct but expensive extend classification fallback. Treat these as
+runtime architecture work: remove routine copies only where canonical source
+remains readable and output semantics stay unchanged, then remeasure the same
+broad benchmark.
 
 ## Verification
 

@@ -335,6 +335,7 @@ export interface RuntimeVarBinding {
   value: Node;
   readonly?: boolean;
   sourceNode?: Node;
+  rulesContext?: Rules;
 }
 
 export type RulesOptions = {

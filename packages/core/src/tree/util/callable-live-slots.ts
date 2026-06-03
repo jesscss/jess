@@ -10,12 +10,14 @@ type CreateCallableLiveSlotsOptions = {
   paramBindings: CallableParamBindingRecord[];
   nodeArgs: Node[];
   defineArguments?: boolean;
+  rulesContext?: object;
 };
 
 export function createCallableLiveSlots({
   paramBindings,
   nodeArgs,
-  defineArguments = false
+  defineArguments = false,
+  rulesContext
 }: CreateCallableLiveSlotsOptions): Map<string, BindingCell> {
   const liveSlots = new Map<string, BindingCell>();
   for (const binding of paramBindings) {
@@ -28,6 +30,7 @@ export function createCallableLiveSlots({
       value: binding.value,
       prepareValue: binding.prepareValue,
       sourceNode: binding.sourceNode as Node | undefined,
+      rulesContext,
       readonly: binding.readonly
     });
   }

@@ -28,6 +28,8 @@ export interface BindingCell {
   prepareValue?: (value: Node | undefined) => Node;
   /** Back-pointer to the canonical AST node, used for recursion detection. */
   sourceNode?: Node;
+  /** Runtime rules frame that owns this live binding. */
+  rulesContext?: object;
   readonly?: boolean;
 }
 
