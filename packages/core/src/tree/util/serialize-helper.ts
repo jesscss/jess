@@ -22,6 +22,27 @@ import { consumeTriviaText, getPrintableTriviaTokens, isBlockCommentTriviaToken 
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
 
 type TriviaSide = 'before' | 'after';
+type SerializeProfileCounter =
+  | 'duplicateDeclarationComparisonContainers'
+  | 'duplicateDeclarationPrerenderedDeclarations'
+  | 'duplicateDeclarationCachedOutputReuses'
+  | 'emissionRenderNodeTextPreviewCalls'
+  | 'emissionRenderNodeTextRulesPreviewCalls'
+  | 'emissionRenderNodeTextDeclarationFallbackCalls'
+  | 'emissionRenderNodeTextLeafCalls';
+
+const SERIALIZE_PROFILE_COUNTERS_KEY = '__JESS_SERIALIZE_PROFILE_COUNTERS__';
+
+type SerializeProfileGlobals = typeof globalThis & {
+  [SERIALIZE_PROFILE_COUNTERS_KEY]?: Partial<Record<SerializeProfileCounter, number>>;
+};
+
+const serializeProfileGlobals = globalThis as SerializeProfileGlobals;
+const serializeProfileCounters = serializeProfileGlobals[SERIALIZE_PROFILE_COUNTERS_KEY];
+
+function incrementSerializeProfileCounter(counter: SerializeProfileCounter): void {
+  serializeProfileCounters![counter] = (serializeProfileCounters![counter] ?? 0) + 1;
+}
 
 function boundaryOffset(node: Node, side: TriviaSide): number | undefined {
   return side === 'before' ? node.location[0] : node.location[3];
@@ -64,7 +85,21 @@ function captureNodeTrivia(
   return consumeTriviaText(trivia, boundaryOffset(node, side), side, options);
 }
 
-function renderNodeText(node: Node, options: FinalPrintOptions): string {
+function renderNodeText(
+  node: Node,
+  options: FinalPrintOptions,
+  reason: 'rules-preview' | 'declaration-fallback' | 'leaf' = 'leaf'
+): string {
+  if (serializeProfileCounters) {
+    incrementSerializeProfileCounter('emissionRenderNodeTextPreviewCalls');
+    if (reason === 'rules-preview') {
+      incrementSerializeProfileCounter('emissionRenderNodeTextRulesPreviewCalls');
+    } else if (reason === 'declaration-fallback') {
+      incrementSerializeProfileCounter('emissionRenderNodeTextDeclarationFallbackCalls');
+    } else {
+      incrementSerializeProfileCounter('emissionRenderNodeTextLeafCalls');
+    }
+  }
   return options.writer.preview(() => node.toTrimmedString(options));
 }
 
@@ -456,6 +491,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
     // Less-style duplicate declaration handling:
     // for each property, keep the last exact serialized declaration and skip earlier duplicates.
+    if (serializeProfileCounters) {
+      incrementSerializeProfileCounter('duplicateDeclarationComparisonContainers');
+    }
     for (let i = rulesToRender.length - 1; i >= 0; i--) {
       const node = rulesToRender[i]!.node;
       if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
@@ -468,6 +506,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       options.writer = declWriter;
       options.depth = options.depth + 1;
       options.emittedTrivia = declEmittedTrivia;
+      if (serializeProfileCounters) {
+        incrementSerializeProfileCounter('duplicateDeclarationPrerenderedDeclarations');
+      }
       const declOut = node.toTrimmedString(options);
       options.emittedTrivia = previousEmittedTrivia;
       restorePrintState(options, declSaved);
@@ -673,7 +714,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           options.referenceMode = childReferenceMode;
           options.referenceRenderEnabled = childReferenceRenderEnabled;
           options.emittedTrivia = renderedRulesTrivia;
-          renderedRulesOutput = renderNodeText(nn, getPrintOptions(options));
+          renderedRulesOutput = renderNodeText(nn, getPrintOptions(options), 'rules-preview');
           options.emittedTrivia = previousEmittedTrivia;
           options.inFrames.length = rulesInFramesLength;
           options.treeFrames.length = rulesTreeFramesLength;
@@ -717,14 +758,20 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         options.referenceRenderEnabled = childReferenceRenderEnabled;
         const isHiddenStructuralNode = !nn.visible && !nn.fullRender;
         const leading = captureNodeTrivia(nn, 'before', options);
+        const cachedDeclarationOutput = isNode(nn, N.Declaration)
+          ? declarationOutputCache.get(idx)
+          : undefined;
         const out = isHiddenStructuralNode
           ? ''
           : isNode(nn, N.Declaration)
-            ? (declarationOutputCache.get(idx) ?? renderNodeText(nn, options))
+            ? (cachedDeclarationOutput ?? renderNodeText(nn, options, 'declaration-fallback'))
             : renderedRulesOutput !== undefined
               ? renderedRulesOutput
               : renderNodeText(nn, options);
-        if (isNode(nn, N.Declaration) && declarationOutputCache.has(idx)) {
+        if (isNode(nn, N.Declaration) && cachedDeclarationOutput !== undefined) {
+          if (serializeProfileCounters) {
+            incrementSerializeProfileCounter('duplicateDeclarationCachedOutputReuses');
+          }
           const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
           const cachedTrivia = declarationTriviaCache.get(idx);
           if (cachedTrivia) {

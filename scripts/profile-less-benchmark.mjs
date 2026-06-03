@@ -22,6 +22,7 @@ const benchmarkFile = path.isAbsolute(benchmarkArg)
   ? benchmarkArg
   : path.join(lessPkgRoot, 'benchmark', benchmarkArg);
 const useCompat = cliArgs.get('--compat') !== 'false';
+globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ = {};
 
 const coreLib = pathToFileURL(path.join(repoRoot, 'packages/core/lib/index.js')).href;
 const lessParserLib = pathToFileURL(path.join(repoRoot, 'packages/less-parser/lib/index.js')).href;
@@ -246,6 +247,7 @@ if (useCompat) {
   );
 }
 const elapsedMs = performance.now() - start;
+const serializeProfileCounters = globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ ?? {};
 
 const metricRows = [...stats.entries()]
   .map(([name, metric]) => ({
@@ -260,6 +262,15 @@ const result = {
   benchmarkFile,
   compat: useCompat,
   elapsedMs: Number(elapsedMs.toFixed(2)),
+  serializeStats: {
+    duplicateDeclarationComparisonContainers: serializeProfileCounters.duplicateDeclarationComparisonContainers ?? 0,
+    duplicateDeclarationPrerenderedDeclarations: serializeProfileCounters.duplicateDeclarationPrerenderedDeclarations ?? 0,
+    duplicateDeclarationCachedOutputReuses: serializeProfileCounters.duplicateDeclarationCachedOutputReuses ?? 0,
+    emissionRenderNodeTextPreviewCalls: serializeProfileCounters.emissionRenderNodeTextPreviewCalls ?? 0,
+    emissionRenderNodeTextRulesPreviewCalls: serializeProfileCounters.emissionRenderNodeTextRulesPreviewCalls ?? 0,
+    emissionRenderNodeTextDeclarationFallbackCalls: serializeProfileCounters.emissionRenderNodeTextDeclarationFallbackCalls ?? 0,
+    emissionRenderNodeTextLeafCalls: serializeProfileCounters.emissionRenderNodeTextLeafCalls ?? 0
+  },
   importStats: {
     getTreeCalls: importStats.getTreeCalls,
     getTreeCacheHits: importStats.getTreeCacheHits,

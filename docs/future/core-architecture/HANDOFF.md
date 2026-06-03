@@ -86,6 +86,27 @@ cleanup changes without before/after evidence.
 9. Update the active snapshot below with a one-paragraph result and the next
    profile target.
 
+## Multi-Agent Optimization Loop
+
+When sub-agents are available, run performance work as a coordinator loop:
+
+- Keep `dev`, this handoff, final benchmark truth, commits, and pushes under
+  the coordinator.
+- Dispatch workers only to independent lanes with disjoint write scopes.
+- Good lanes: callable owned-container creation, reference value copy/eval,
+  render serialization/static segments, parser or Less alpha facade overhead,
+  and extend/selector classification.
+- Workers must not edit this handoff, commit, push, or report
+  `profile-less-benchmark.mjs` `elapsedMs`.
+- Workers should make one bounded hypothesis, run focused tests, and report
+  changed files plus evidence.
+- The coordinator accepts a worker patch only after local review, focused tests,
+  package build, and same real benchmark comparison.
+- Reject and revert patches that are neutral, noisy, or slower, even when they
+  reduce a local object allocation.
+- After each round, restock workers from the latest rejected/accepted evidence,
+  not from old completed history.
+
 ### Required User Performance Report
 
 At the end of every handoff run, report performance to the user in plain terms:
@@ -169,6 +190,45 @@ pnpm run audit:node-creation
 
 Current known evidence from the latest handoff run:
 
+- Latest coordinator round used six sub-agents across two batches. Batch one
+  produced two candidate patches (callable childless owned-surface reuse and
+  reference static declaration-list reuse) and one render cache-skip experiment;
+  all were rejected because focused or profiler evidence did not translate into
+  a real broad `benchmark.less` improvement. Batch two was exploratory plus
+  instrumentation. The Less alpha/compat worker found that no configured
+  plugins means no compat visitor traversal, but the facade still constructs
+  compat plugin plumbing and must keep import-time `@plugin` support unless the
+  source graph can prove no plugin imports. The callable worker narrowed the
+  next semantic target to read-only virtual mixin-output placement for
+  static/direct body children; do not reuse shared children directly where tests
+  require distinct generated output placements. The accepted change adds
+  serializer counters to `profile-less-benchmark.mjs` behind an inactive normal
+  runtime guard. **Real benchmark** samples after the guard-tightening were
+  `388.85ms avg / 390.16ms median` and `388.57ms avg / 380.96ms median`, with
+  one noisy intermediate sample at `429.34ms avg / 427.58ms median`; treat this
+  as instrumentation-neutral, not a speed win. **Instrumented profiler
+  counters** for broad `benchmark.less` showed 1,644 duplicate-declaration
+  comparison containers, 4,123 declaration pre-renders, 4,037 cached declaration
+  output reuses, and only 10 emission preview calls. Next target: reduce or
+  template the duplicate-declaration pre-render pass before trying more local
+  copy-loop changes; secondary target is virtual callable output placement.
+- Latest coordinator round dispatched three workers: callable owned-container
+  creation, reference value copy/eval, and render serialization/static segments.
+  The render worker tried skipping duplicate-declaration cache setup when a body
+  had no repeated declaration property; focused tests passed, but profiler
+  counters showed more writer mark/getSince/restore work, so the render change
+  was rejected before benchmark. The callable worker proposed using the unlocked
+  derived surface for childless dynamic callable bodies; the reference worker
+  proposed reusing source-free static declaration lists during public reference
+  resolution. Combined focused tests passed, but **Real benchmark** samples on
+  broad `benchmark.less` were `403.19ms avg / 380.21ms median` and
+  `394.29ms avg / 388.37ms median` against this round's noisy baseline of
+  `397.72ms avg / 380.53ms median`, and profiler counters worsened for
+  `Reference.evalNode`/`Rules.find`. Both candidate patches were rejected and
+  reverted. Next target: restock workers with deeper semantic tasks, especially
+  callable body/output reuse beyond childless bodies, reference eval without
+  extra lookup/finalize work, and render instrumentation that separates
+  duplicate-declaration pre-scan cost from emission-time preview cost.
 - Latest handoff round tightened the reporting rule again: user-facing
   performance summaries must not include `profile-less-benchmark.mjs`
   `elapsedMs`. A narrow callable-copy experiment changed
