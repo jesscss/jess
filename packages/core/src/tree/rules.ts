@@ -22,9 +22,7 @@ import {
   getPrintOptions,
   prepareRenderPrintState,
   savePrintState,
-  restorePrintState,
-  saveSetState,
-  restoreSetState
+  restorePrintState
 } from './util/print.js';
 
 import { atIndex } from './util/collections.js';
@@ -1828,9 +1826,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       lastEmittedType = n.type;
       lastEmittedWasInlineSourceRules = isInlineSourceRules(n);
     };
-    const renderText = (fn: () => MaybePromise<string | void>): MaybePromise<string> => {
-      return w.preview(fn);
-    };
     const emitCaptured = (text: string, n: Node, prefix?: string) => {
       emitBoundaryIfNeeded(n);
       if (prefix) {
@@ -1919,59 +1914,27 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const childReferenceRenderEnabled = childReferenceMode
           ? (enteringReferenceMode ? false : referenceRenderEnabled)
           : true;
-        const previewSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
-        const previewInFramesLength = options.inFrames!.length;
-        const previewTreeFramesLength = options.treeFrames!.length;
-        const previewLastRenderedFramesLength = options.lastRenderedFrames!.length;
-        const previewFrameHeadersLength = options.frameHeaders!.length;
-        const previewComposedSelectorStackLength = options.composedSelectorStack?.length;
-        const previewEmittedTrivia = saveSetState(options.emittedTrivia);
+        closeRenderedFramesToBaseline();
+        const childSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
+        const childEmittedTrivia = options.emittedTrivia;
         options.depth = depth;
         options.referenceMode = childReferenceMode;
         options.referenceRenderEnabled = childReferenceRenderEnabled;
-        const previewOut = renderText(() => (
+        const childRule = w.preview(() => (
           mode === 'render' && context
-            ? n.render(context, getPrintOptions(options))
-            : n.toTrimmedString(getPrintOptions(options))
-        ));
+            ? n.render(context, options)
+            : n.toTrimmedString(options)
+        ), true);
         return pipe(
-          () => previewOut,
-          (resolvedPreviewOut) => {
-            restoreSetState(options.emittedTrivia, previewEmittedTrivia);
-            options.inFrames!.length = previewInFramesLength;
-            options.treeFrames!.length = previewTreeFramesLength;
-            options.lastRenderedFrames!.length = previewLastRenderedFramesLength;
-            options.frameHeaders!.length = previewFrameHeadersLength;
-            if (options.composedSelectorStack && previewComposedSelectorStackLength !== undefined) {
-              options.composedSelectorStack.length = previewComposedSelectorStackLength;
-            }
-            restorePrintState(options, previewSaved);
-            if (!resolvedPreviewOut) {
+          () => childRule,
+          (resolvedChildRule) => {
+            options.emittedTrivia = childEmittedTrivia;
+            restorePrintState(options, childSaved);
+            if (!resolvedChildRule) {
               return;
             }
-            closeRenderedFramesToBaseline();
-            const childSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
-            const childEmittedTrivia = options.emittedTrivia;
-            options.depth = depth;
-            options.referenceMode = childReferenceMode;
-            options.referenceRenderEnabled = childReferenceRenderEnabled;
-            const childRule = w.preview(() => (
-              mode === 'render' && context
-                ? n.render(context, options)
-                : n.toTrimmedString(options)
-            ), true);
-            return pipe(
-              () => childRule,
-              (resolvedChildRule) => {
-                options.emittedTrivia = childEmittedTrivia;
-                restorePrintState(options, childSaved);
-                if (!resolvedChildRule) {
-                  return;
-                }
-                const prefix = !isRulesetOrAtRule && depth !== 0 ? space : undefined;
-                emitCaptured(resolvedChildRule, n, prefix);
-              }
-            );
+            const prefix = !isRulesetOrAtRule && depth !== 0 ? space : undefined;
+            emitCaptured(resolvedChildRule, n, prefix);
           }
         );
       }
@@ -3184,50 +3147,59 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ? reuseLeaf(value)
         : copyWithReusableLeaves(value)
     );
+    const toMergedItems = (value: Node, assign: string): Node[] => {
+      const items: Node[] = [];
+      const collect = (node: Node): void => {
+        if (isNode(node, N.List) || (assign === '&_:' && isNode(node, N.Sequence))) {
+          for (const item of node.value) {
+            collect(item);
+          }
+          return;
+        }
+        let isEmptyString = false;
+        try {
+          isEmptyString = String(node?.valueOf?.() ?? '') === '';
+        } catch {
+          isEmptyString = false;
+        }
+        const isEmptyPlaceholder = (
+          isNode(node, N.Nil)
+          || isEmptyString
+        );
+        if (!isEmptyPlaceholder) {
+          items.push(node);
+        }
+      };
+      collect(value);
+      return items;
+    };
+    const sameMergedItem = (left: Node, right: Node): boolean => {
+      try {
+        return left.compare(right) === 0 || String(left.valueOf()) === String(right.valueOf());
+      } catch {
+        return false;
+      }
+    };
+    const startsWithMergedValue = (value: Node, prefix: Node, assign: string): boolean => {
+      const valueItems = toMergedItems(value, assign);
+      const prefixItems = toMergedItems(prefix, assign);
+      if (prefixItems.length === 0 || valueItems.length < prefixItems.length) {
+        return false;
+      }
+      return prefixItems.every((item, index) => sameMergedItem(item, valueItems[index]!));
+    };
     const mergeDeclarationValues = (priorValue: Node, nextValue: Node, assign: string): Node => {
       const priorCopy = copyMergedValue(priorValue);
       const nextCopy = copyMergedValue(nextValue);
-      const toMergedItems = (value: Node): Node[] => {
-        const items: Node[] = [];
-        const collect = (node: Node): void => {
-          if (isNode(node, N.List)) {
-            for (const item of node.value) {
-              collect(item);
-            }
-            return;
-          }
-          let isEmptyString = false;
-          try {
-            isEmptyString = String(node?.valueOf?.() ?? '') === '';
-          } catch {
-            isEmptyString = false;
-          }
-          const isEmptyPlaceholder = (
-            isNode(node, N.Nil)
-            || isEmptyString
-          );
-          if (!isEmptyPlaceholder) {
-            items.push(node);
-          }
-        };
-        collect(value);
-        return items;
-      };
       if (assign === '&_:') {
         return spaced([priorCopy, nextCopy]);
       }
-      const priorItems = toMergedItems(priorCopy);
-      const nextItems = toMergedItems(nextCopy);
+      const priorItems = toMergedItems(priorCopy, assign);
+      const nextItems = toMergedItems(nextCopy, assign);
       if (priorItems.length > 0 && nextItems.length > 0) {
         const lastPrior = priorItems[priorItems.length - 1]!;
         const firstNext = nextItems[0]!;
-        let sameLeadingValue = false;
-        try {
-          sameLeadingValue = lastPrior.compare(firstNext) === 0 || String(lastPrior.valueOf()) === String(firstNext.valueOf());
-        } catch {
-          sameLeadingValue = false;
-        }
-        if (sameLeadingValue) {
+        if (sameMergedItem(lastPrior, firstNext)) {
           nextItems.shift();
         }
       }
@@ -3250,6 +3222,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ?? getDeclValue(prior)?.value;
       if (!basePriorValue) {
         return undefined;
+      }
+      if (startsWithMergedValue(nextDeclValue.value, basePriorValue, assign)) {
+        return copyMergedValue(nextDeclValue.value);
       }
       const mergedValue = mergeDeclarationValues(basePriorValue, nextDeclValue.value, assign);
       setDeclValue(decl, mergedValue);

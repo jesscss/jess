@@ -1,6 +1,6 @@
 import { isThenable } from '@jesscss/awaitable-pipe';
 import type { Context } from '../../context.js';
-import type { Node } from '../node.js';
+import { F_MAY_ASYNC, type Node } from '../node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import type { List } from '../list.js';
@@ -51,7 +51,13 @@ export async function evaluateCallableSpecialCaseCandidate({
     const sourceRules = getRootSourceRules(candidate.value.rules);
     let rules = createOwnedRules(sourceRules);
     const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
-    callParent.adopt(rules);
+    const needsCallerPlacementDuringEval = sourceRules.value.some(child => isNode(child, N.Ruleset | N.AtRule));
+    if (!needsCallerPlacementDuringEval) {
+      rules.addFlag(F_MAY_ASYNC);
+    }
+    if (needsCallerPlacementDuringEval) {
+      callParent.adopt(rules);
+    }
     rules = await withRulesContext(context, rules, () => rules.eval(context));
     callParent.adopt(rules);
     rules.index = candidate.index;

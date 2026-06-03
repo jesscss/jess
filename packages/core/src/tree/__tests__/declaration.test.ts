@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any } from '../index.js';
+import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any, mixin } from '../index.js';
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
@@ -1070,6 +1070,88 @@ describe('Declaration', () => {
     } finally {
       Node.prototype.copy = originalCopy;
     }
+  });
+
+  it('continues a property merge chain after a mixin emits the first declaration', async () => {
+    const node = rules([
+      mixin({
+        name: any('.shadow-base'),
+        rules: rules([
+          decl({
+            name: any('box-shadow'),
+            value: any('0 1px 3px rgba(0, 0, 0, 0.12)')
+          }, { assign: AssignmentType.Add })
+        ])
+      }),
+      ruleset({
+        selector: el('.shadow-elevated'),
+        rules: rules([
+          call({
+            name: ref({ key: '.shadow-base' }, { type: 'mixin' })
+          }),
+          decl({
+            name: any('box-shadow'),
+            value: any('0 4px 6px rgba(0, 0, 0, 0.1)')
+          }, { assign: AssignmentType.Add })
+        ])
+      })
+    ]);
+
+    expect(await renderNodeToString(node, context)).toBeString(`
+      .shadow-elevated {
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+    `);
+  });
+
+  it('continues a property merge chain after a callable ruleset emits the first declaration', async () => {
+    const node = rules([
+      ruleset({
+        selector: el('.shadow-base'),
+        rules: rules([
+          decl({
+            name: any('box-shadow'),
+            value: any('0 1px 3px rgba(0, 0, 0, 0.12)')
+          }, { assign: AssignmentType.Add })
+        ])
+      }),
+      ruleset({
+        selector: el('.shadow-elevated'),
+        rules: rules([
+          call({
+            name: ref({ key: '.shadow-base' }, { type: 'mixin-ruleset' })
+          }),
+          decl({
+            name: any('box-shadow'),
+            value: any('0 4px 6px rgba(0, 0, 0, 0.1)')
+          }, { assign: AssignmentType.Add })
+        ])
+      }),
+      ruleset({
+        selector: el('.shadow-floating'),
+        rules: rules([
+          call({
+            name: ref({ key: '.shadow-elevated' }, { type: 'mixin-ruleset' })
+          }),
+          decl({
+            name: any('box-shadow'),
+            value: any('0 10px 20px rgba(0, 0, 0, 0.15)')
+          }, { assign: AssignmentType.Add })
+        ])
+      })
+    ]);
+
+    expect(await renderNodeToString(node, context)).toBeString(`
+      .shadow-base {
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+      }
+      .shadow-elevated {
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      .shadow-floating {
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 4px 6px rgba(0, 0, 0, 0.1), 0 10px 20px rgba(0, 0, 0, 0.15);
+      }
+    `);
   });
 
   it('renders source-free assignment list inputs without copying the input container', async () => {

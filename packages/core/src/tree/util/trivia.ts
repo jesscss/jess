@@ -62,6 +62,31 @@ function treeTrivia(node: Node): TriviaMap | undefined {
   return isTriviaMap(trivia) ? trivia : undefined;
 }
 
+const sortedBeforeOffsetCache = new WeakMap<TriviaMap, number[]>();
+
+function getSortedBeforeOffsets(trivia: TriviaMap): number[] {
+  let offsets = sortedBeforeOffsetCache.get(trivia);
+  if (!offsets) {
+    offsets = Array.from(trivia.entries('before'), ([offset]) => offset).sort((a, b) => a - b);
+    sortedBeforeOffsetCache.set(trivia, offsets);
+  }
+  return offsets;
+}
+
+function firstOffsetAfter(offsets: number[], boundary: number): number {
+  let low = 0;
+  let high = offsets.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (offsets[mid]! <= boundary) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low;
+}
+
 export function isLineCommentTriviaToken(token: IToken): boolean {
   return token.tokenType.name === 'LineComment';
 }
@@ -125,12 +150,15 @@ export function emitCommentTriviaBetweenNodes(
   if (!trivia || prevEnd === undefined || nextStart === undefined) {
     return;
   }
-  for (const offset of [...trivia.entries('before')].map(([entryOffset]) => entryOffset).sort((a, b) => a - b)) {
-    if (offset > prevEnd && offset < nextStart) {
-      const tokens = trivia.lookup(offset, 'before');
-      if (tokens?.some(token => token.tokenType.name !== 'WS')) {
-        emitTriviaTokens(consumeTrivia(trivia, offset, 'before', options), options);
-      }
+  const offsets = getSortedBeforeOffsets(trivia);
+  for (let i = firstOffsetAfter(offsets, prevEnd); i < offsets.length; i++) {
+    const offset = offsets[i]!;
+    if (offset >= nextStart) {
+      break;
+    }
+    const tokens = trivia.lookup(offset, 'before');
+    if (tokens?.some(token => token.tokenType.name !== 'WS')) {
+      emitTriviaTokens(consumeTrivia(trivia, offset, 'before', options), options);
     }
   }
 }

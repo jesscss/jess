@@ -12,8 +12,7 @@ import {
   restorePrintState,
   saveArrayState,
   restoreArrayState,
-  saveSetState,
-  restoreSetState
+  withScratchEmittedTrivia
 } from './print.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
@@ -464,22 +463,16 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
       const declWriter = new OutputWriter();
       const declSaved = savePrintState(options, ['writer', 'depth']);
-      const declEmittedTrivia = saveSetState(options.emittedTrivia);
+      const declEmittedTrivia = new Set<IToken[]>();
+      const previousEmittedTrivia = options.emittedTrivia;
       options.writer = declWriter;
       options.depth = options.depth + 1;
+      options.emittedTrivia = declEmittedTrivia;
       const declOut = node.toTrimmedString(options);
-      const emittedDuringCapture = new Set<IToken[]>();
-      if (options.emittedTrivia) {
-        for (const tokens of options.emittedTrivia) {
-          if (!declEmittedTrivia?.has(tokens)) {
-            emittedDuringCapture.add(tokens);
-          }
-        }
-      }
-      restoreSetState(options.emittedTrivia, declEmittedTrivia);
+      options.emittedTrivia = previousEmittedTrivia;
       restorePrintState(options, declSaved);
       declarationOutputCache.set(i, declOut);
-      declarationTriviaCache.set(i, emittedDuringCapture);
+      declarationTriviaCache.set(i, declEmittedTrivia);
       const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
       const declProp = node.value.name.valueOf();
       let seenValues = seenDeclarationsByProp.get(declProp);
@@ -533,18 +526,18 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             break;
           }
           options.depth = i;
-          const headerProbeEmittedTrivia = saveSetState(options.emittedTrivia);
-          const currentHeader = (
-            hoistedParent && i === leafFrames.length - 1 && currentFrame === hoistedParent.frame
-          )
-            ? renderHoistedParentHeader(hoistedParent, options, i)
-            : currentFrame.getHeaderString(options, true);
-          const priorComparableHeader = (
-            hoistedParent && i === leafFrames.length - 1 && priorFrame === hoistedParent.frame
-          )
-            ? renderHoistedParentHeader(hoistedParent, options, i)
-            : priorFrame.getHeaderString(options, true);
-          restoreSetState(options.emittedTrivia, headerProbeEmittedTrivia);
+          const [currentHeader, priorComparableHeader] = withScratchEmittedTrivia(options, () => [
+            (
+              hoistedParent && i === leafFrames.length - 1 && currentFrame === hoistedParent.frame
+            )
+              ? renderHoistedParentHeader(hoistedParent, options, i)
+              : currentFrame.getHeaderString(options, true),
+            (
+              hoistedParent && i === leafFrames.length - 1 && priorFrame === hoistedParent.frame
+            )
+              ? renderHoistedParentHeader(hoistedParent, options, i)
+              : priorFrame.getHeaderString(options, true)
+          ]);
           const sameRenderedRulesetFrame = isNode(currentFrame, N.Ruleset)
             && isNode(priorFrame, N.Ruleset)
             && (
@@ -645,6 +638,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
         /** Re-widen type after accumulated isNode narrowing above */
         const nn = n as Node;
+        let leafFrames = inFrames;
+        if (hoistedParent) {
+          leafFrames = [...inFrames, hoistedParent.frame];
+        }
+        let renderedRulesOutput: string | undefined;
+        let renderedRulesTrivia: Set<IToken[]> | undefined;
         if (isNode(nn, N.Rules)) {
           const hasRenderableChild = nn.value.some(child =>
             child.visible || child.fullRender || hasPrintableTrivia(child, options)
@@ -658,37 +657,35 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           const childReferenceRenderEnabled = childReferenceMode
             ? (enteringReferenceMode ? false : renderEnabled)
             : true;
-          const previewSaved = savePrintState(options, [
+          const rulesSaved = savePrintState(options, [
             'depth',
             'referenceMode',
             'referenceRenderEnabled'
           ]);
-          const previewInFramesLength = options.inFrames.length;
-          const previewTreeFramesLength = options.treeFrames.length;
-          const previewLastRenderedFramesLength = options.lastRenderedFrames.length;
-          const previewFrameHeadersLength = options.frameHeaders.length;
-          const previewComposedSelectorStackLength = options.composedSelectorStack?.length;
-          const previewEmittedTrivia = saveSetState(options.emittedTrivia);
-          options.depth = options.depth + 1;
+          const rulesInFramesLength = options.inFrames.length;
+          const rulesTreeFramesLength = options.treeFrames.length;
+          const rulesLastRenderedFramesLength = options.lastRenderedFrames.length;
+          const rulesFrameHeadersLength = options.frameHeaders.length;
+          const rulesComposedSelectorStackLength = options.composedSelectorStack?.length;
+          renderedRulesTrivia = new Set<IToken[]>();
+          const previousEmittedTrivia = options.emittedTrivia;
+          options.depth = leafFrames.length;
           options.referenceMode = childReferenceMode;
           options.referenceRenderEnabled = childReferenceRenderEnabled;
-          const previewOut = renderNodeText(nn, getPrintOptions(options));
-          restoreSetState(options.emittedTrivia, previewEmittedTrivia);
-          options.inFrames.length = previewInFramesLength;
-          options.treeFrames.length = previewTreeFramesLength;
-          options.lastRenderedFrames.length = previewLastRenderedFramesLength;
-          options.frameHeaders.length = previewFrameHeadersLength;
-          if (options.composedSelectorStack && previewComposedSelectorStackLength !== undefined) {
-            options.composedSelectorStack.length = previewComposedSelectorStackLength;
+          options.emittedTrivia = renderedRulesTrivia;
+          renderedRulesOutput = renderNodeText(nn, getPrintOptions(options));
+          options.emittedTrivia = previousEmittedTrivia;
+          options.inFrames.length = rulesInFramesLength;
+          options.treeFrames.length = rulesTreeFramesLength;
+          options.lastRenderedFrames.length = rulesLastRenderedFramesLength;
+          options.frameHeaders.length = rulesFrameHeadersLength;
+          if (options.composedSelectorStack && rulesComposedSelectorStackLength !== undefined) {
+            options.composedSelectorStack.length = rulesComposedSelectorStackLength;
           }
-          restorePrintState(options, previewSaved);
-          if (!previewOut && !hasPrintableTrivia(nn, options)) {
+          restorePrintState(options, rulesSaved);
+          if (!renderedRulesOutput && !hasPrintableTrivia(nn, options)) {
             continue;
           }
-        }
-        let leafFrames = inFrames;
-        if (hoistedParent) {
-          leafFrames = [...inFrames, hoistedParent.frame];
         }
         ensureRenderedFrames(leafFrames);
 
@@ -724,8 +721,8 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           ? ''
           : isNode(nn, N.Declaration)
             ? (declarationOutputCache.get(idx) ?? renderNodeText(nn, options))
-            : isNode(nn, N.Rules)
-              ? renderNodeText(nn, options)
+            : renderedRulesOutput !== undefined
+              ? renderedRulesOutput
               : renderNodeText(nn, options);
         if (isNode(nn, N.Declaration) && declarationOutputCache.has(idx)) {
           const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
@@ -735,6 +732,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
               emittedTrivia.add(tokens);
             }
           }
+        } else if (renderedRulesTrivia) {
+          const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
+          for (const tokens of renderedRulesTrivia) {
+            emittedTrivia.add(tokens);
+          }
         }
         restorePrintState(options, leafSaved);
         // Suppress pure-void Any nodes from generating blank output lines.
@@ -743,6 +745,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           && !nn.requiredSemi
           && !out.trim()
           && !leading.trim()
+        ) {
+          continue;
+        }
+        if (
+          isNode(nn, N.Rules)
+          && !out
+          && !leading.trim()
+          && !hasPrintableTrivia(nn, options)
         ) {
           continue;
         }

@@ -300,6 +300,16 @@ export function restoreSetState<T>(
   }
 }
 
+export function withScratchEmittedTrivia<T>(options: PrintOptions, fn: () => T): T {
+  const saved = options.emittedTrivia;
+  options.emittedTrivia = new Set();
+  try {
+    return fn();
+  } finally {
+    options.emittedTrivia = saved;
+  }
+}
+
 export function getCachedComposedSelector(
   options: FinalPrintOptions,
   ruleset: Ruleset

@@ -192,6 +192,13 @@ function findVarDeclarationFast(
     if (a.parent && !b.parent) {
       return a;
     }
+    if (
+      a.parent === b.parent
+      && a.index !== undefined
+      && b.index !== undefined
+    ) {
+      return a.index <= b.index ? b : a;
+    }
     let position: ReturnType<typeof comparePosition>;
     try {
       position = comparePosition(a, b);
@@ -1212,9 +1219,24 @@ function resolveInitialReferenceTarget(
     }
     return finalizeRawTarget(rawTarget);
   }
+  const runtimeRulesParent = referenceNode.rulesParent;
+  const runtimeLiveSlotKey = (() => {
+    const key = referenceNode.value.rawKey ?? referenceNode.value.key;
+    if (typeof key === 'string') {
+      return key;
+    }
+    if (typeof key === 'number') {
+      return String(key);
+    }
+    return undefined;
+  })();
+  const runtimeParentHasLiveSlot = runtimeLiveSlotKey !== undefined
+    && runtimeRulesParent?.scopeFrame?.liveSlotsByName.has(runtimeLiveSlotKey);
   const resolvedTarget = target
     ? target.eval(context)
-    : context.rulesContext ?? referenceNode.rulesParent;
+    : runtimeParentHasLiveSlot
+      ? runtimeRulesParent
+      : context.rulesContext ?? runtimeRulesParent;
   if (isThenable(resolvedTarget)) {
     return Promise.resolve(resolvedTarget);
   }

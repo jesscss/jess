@@ -19,6 +19,7 @@ import {
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
+import { copyWithReusableLeaves } from './util/cloning.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -116,8 +117,7 @@ async function runWithRulesContext<T>(
 }
 
 function deriveIterationChild(node: Node): Node {
-  node.frozen = true;
-  return node;
+  return copyWithReusableLeaves(node);
 }
 
 function createIterationEvalSurface(sourceRules: Rules): Rules {
@@ -131,6 +131,25 @@ function createIterationEvalSurface(sourceRules: Rules): Rules {
     ...PUBLIC_RULE_VISIBILITY
   };
   return iterationRules;
+}
+
+function attachIterationFallbackFrame(
+  node: Node,
+  frame: ScopeFrame,
+  seen = new Set<Node>(),
+  includeSelf = false
+): void {
+  if (seen.has(node)) {
+    return;
+  }
+  seen.add(node);
+  if (includeSelf && isNode(node, N.Rules)) {
+    const scopeFrame = node.getScopeFrame();
+    scopeFrame.fallbackFrame ??= frame;
+  }
+  for (const child of node.children()) {
+    attachIterationFallbackFrame(child, frame, seen, true);
+  }
 }
 
 function createWhileStateSurface(sourceRules: Rules, context: Context): Rules {
@@ -368,7 +387,8 @@ async function createForIterationSurface(
     ? context.rulesContext.getScopeFrame()
     : undefined;
   iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, parentFrame, liveSlots);
-  return iterationRules;
+  attachIterationFallbackFrame(iterationRules, iterationRules.scopeFrame);
+  return iterationRules.prepareRegistration(context);
 }
 
 export type IfBranch = {
@@ -518,11 +538,9 @@ export class For extends Node<StructuredLoopValue> {
       let counter = 1;
       const originalRules = this.value.rules;
       const evaluatedIterable = await iterableToNode(iterable).eval(context);
-      let preparedOriginalRules: Rules | undefined;
       for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
-        preparedOriginalRules ??= await originalRules.prepareRegistration(context);
         const iterationRules = await createForIterationSurface(
-          preparedOriginalRules,
+          originalRules,
           context,
           bindingDecls,
           bindingNames,
@@ -532,6 +550,8 @@ export class For extends Node<StructuredLoopValue> {
         );
         counter++;
         const result = await iterationRules.eval(context);
+        const iterationFrame = iterationRules.getScopeFrame();
+        attachIterationFallbackFrame(result, iterationFrame);
 
         if (isNode(result, N.Rules)) {
           result.scopeFrame = undefined;
@@ -616,13 +636,11 @@ export class For extends Node<StructuredLoopValue> {
     const { pattern, iterable, rules: originalRules } = this.value;
     const { bindingDecls, bindingNames } = getForBindingInfo(pattern);
     const evaluatedIterable = await iterableToNode(iterable).eval(context);
-    let preparedOriginalRules: Rules | undefined;
     let counter = 1;
     let output = '';
     for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
-      preparedOriginalRules ??= await originalRules.prepareRegistration(context);
       const iterationRules = await createForIterationSurface(
-        preparedOriginalRules,
+        originalRules,
         context,
         bindingDecls,
         bindingNames,

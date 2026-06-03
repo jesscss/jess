@@ -15,10 +15,12 @@ import {
   any,
   bool,
   call,
+  co,
   condition,
   decl,
   expr,
   interpolated,
+  interpolatedSelector,
   list,
   el,
   mixin,
@@ -949,6 +951,33 @@ describe('Control Nodes', () => {
     expect(css).toContain('key: 2');
   });
 
+  it('keeps $for live bindings visible in nested rulesets with call iterables', async () => {
+    const context = new Context();
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'mkList',
+      fn: () => list([new Any('x'), new Any('y')])
+    }));
+    const iterableCall = new Call({
+      name: ref({ key: 'mkList' }, { type: 'function' }),
+      args: list([])
+    });
+    const loopRules = rules([
+      ruleset({
+        selector: el('.col'),
+        rules: rules([
+          decl({ name: 'width', value: ref({ key: 'value' }, { type: 'variable' }) })
+        ])
+      })
+    ]);
+    root.push(makeLoop(makePattern(['value', 'key', 'index']), iterableCall, loopRules));
+
+    const css = await renderNodeToString(root, context);
+
+    expect(css).toContain('width: x');
+    expect(css).toContain('width: y');
+  });
+
   it('evaluates $for with rules iterable and skips non-declarations', async () => {
     const context = new Context();
     const iterableRules = rules([
@@ -1172,7 +1201,7 @@ describe('Control Nodes', () => {
     const loopRules = rules([
       decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
     ], { local: true });
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+    const root = rules([makeLoop(makePattern(['value', 'key', 'index']), list([new Any('a'), new Any('b')]), loopRules)]);
 
     const evald = await root.eval(context);
     const loopOutput = evald.at(0);
@@ -1325,7 +1354,7 @@ describe('Control Nodes', () => {
     expect(css).toContain('color: red');
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
-    expect(sourcePrepCalls).toBe(1);
+    expect(sourcePrepCalls).toBe(0);
     expect(colorDecl.parent).toBe(loopRules);
   });
 
@@ -1345,8 +1374,50 @@ describe('Control Nodes', () => {
 
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
-    expect(sourcePrepCalls).toBe(1);
+    expect(sourcePrepCalls).toBe(0);
     expect(itemDecl.parent).toBe(loopRules);
+  });
+
+  it('keeps $for live bindings visible while evaluating nested generated rulesets', async () => {
+    const context = new Context();
+    const loopRules = rules([
+      ruleset({
+        selector: interpolatedSelector(interpolated({
+          source: `.col-${INTERPOLATION_PLACEHOLDER}`,
+          replacements: [ref({ key: 'value' }, { type: 'variable' })]
+        })),
+        rules: rules([
+          decl({ name: 'width', value: ref({ key: 'value' }, { type: 'variable' }) })
+        ])
+      }),
+      ruleset({
+        selector: sel([
+          interpolatedSelector(interpolated({
+            source: `.gap-${INTERPOLATION_PLACEHOLDER}`,
+            replacements: [ref({ key: 'value' }, { type: 'variable' })]
+          })),
+          co('>'),
+          el('*'),
+          co('+'),
+          el('*')
+        ]),
+        rules: rules([
+          decl({ name: 'gap', value: ref({ key: 'value' }, { type: 'variable' }) })
+        ])
+      })
+    ]);
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+
+    const css = await renderNodeToString(root, context);
+
+    expect(css).toContain('.col-a');
+    expect(css).toContain('.col-b');
+    expect(css).toContain('width: a');
+    expect(css).toContain('width: b');
+    expect(css).toContain('.gap-a > * + *');
+    expect(css).toContain('.gap-b > * + *');
+    expect(css).toContain('gap: a');
+    expect(css).toContain('gap: b');
   });
 
   it('binds source-free scalar $for values without copying or cloning them first', async () => {
