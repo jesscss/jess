@@ -3,9 +3,26 @@
 ## Open This First
 
 This is the live handoff for the core eval/render architecture work heading
-toward the next alpha release. It replaces the old "node copy reduction"
-framing. Node copies still matter, but they are only one cost inside the real
-target: faster real-world Less evaluation/render with less total runtime work.
+toward the next alpha release.
+
+Read this document as:
+
+1. what state we can honestly claim today;
+2. what remaining work still matters for alpha;
+3. what is no longer important enough to dominate the queue.
+
+It replaces the old "node copy reduction" framing. Node copies still matter,
+but they are only one cost inside the real target: faster real-world Less
+evaluation/render with less total runtime work.
+
+The honest stake in the ground now:
+
+- resolve/render is no longer the main story; it is mostly the substrate;
+- most major eval/render architecture splits are in place and holding;
+- the remaining architecture work is narrower cleanup, simplification, and
+  measured deletion work, not an open-ended rewrite;
+- the project should now bias toward getting back to a credible alpha state,
+  using architecture work to support that goal instead of replacing it.
 
 The active optimization target is total hot-path cost:
 
@@ -20,6 +37,74 @@ Speed is the first-order goal. Memory pressure, object count, and module parse
 size are supporting goals. Never remove one object by adding a more expensive
 state graph, recursive walk, or repeated function-call ladder. Do not rob
 Peter to pay Paul.
+
+## Alpha Stake
+
+If we are honest about where Jess is today:
+
+- the broad resolve/render separation work is mostly done;
+- the repo is no longer waiting on one giant architecture breakthrough;
+- remaining work is about bounded cleanup, measured runtime improvement,
+  correctness confidence, and getting back to a credible alpha state.
+
+What should count as progress now:
+
+- deleting one real remaining state/helper seam;
+- landing measured runtime or allocation wins on hot paths;
+- tightening correctness/confidence around known risky surfaces;
+- clarifying which remaining issues are true release blockers versus optional
+  cleanup.
+
+What should not count as progress now:
+
+- purity churn around source identity or clone avoidance by itself;
+- reopening broad resolve/render philosophy debates without a concrete win;
+- adding machinery just to defend an internal ideal with no alpha payoff.
+
+## Current Remaining Work
+
+This is the short list that should drive queue work:
+
+1. Lane A: collapse one more real AtRule lifecycle-state duplication across
+   invocation/public boundaries.
+2. Lane G: try deleting the remaining owned fallback-`Call` surface from
+   public `resolve(...)`; only keep it if focused proof shows a real
+   regression.
+3. Lane H: simplify generated extend ownership only where it makes the
+   runtime model simpler or faster; do not treat source-node identity as a
+   goal by itself.
+4. Lane E/F: take additional rules-like or declaration/operation cleanup only
+   when the change deletes a real helper/state seam without hurting hot-path
+   behavior.
+5. Alpha confidence: keep verification and measured-runtime truth ahead of
+   theoretical neatness.
+
+## Not Current Blockers
+
+These should not be treated as queue-stopping blockers right now:
+
+- AtRule collapse-nesting frame ownership: the source-node `WeakMap` path is
+  already gone.
+- public `resolve(...)` fallback-`Call` ownership: currently an active
+  deletion candidate, not a protected requirement.
+- extend-generated selector ownership: allowed when it keeps architecture
+  simple; do not contort the runtime to avoid every copy.
+
+## Where We Are
+
+Jess is no longer in the phase where the main question is "can we separate
+render from public resolve/eval without breaking everything?" We largely did
+that. The remaining questions are narrower:
+
+- what small number of architecture seams still buy real speed, memory, or
+  simplicity;
+- what cleanup is still needed to make the runtime model understandable and
+  stable;
+- what has to happen now to call the next alpha honest.
+
+That means queue work should stop acting like every remaining ownership or
+copy seam is existential. If a seam is just an implementation choice with no
+meaningful product, perf, or model payoff, it should not dominate the queue.
 
 ## Operating Rules
 
@@ -39,245 +124,59 @@ Peter to pay Paul.
 
 ## Current Architecture Truth
 
-- Public CSS output APIs use awaited eval/render. `safeCompile(...)` remains
-  the explicit tree-surface compatibility/debug API.
-- Public `preEval()` and the old `preEvaluated` flag are gone. Registration is
-  explicit through `prepareRegistration()` and `registrationPrepared`.
+The section below is reference material, not the primary queue driver. Keep
+it accurate, but do not mistake it for the short list of remaining work.
+
+- Public CSS output uses awaited eval/render; `safeCompile(...)` remains the
+  explicit tree-surface compatibility/debug API.
 - Production CSS render writes through `Rules.render(...)` into a flat render
-  buffer. `renderNodeToBuffer(...)`, `renderNodeToWriter(...)`, and
-  `renderNodeToString(...)` are internal/test bridges only.
-- Base `Node.render(context)` is direct source serialization. Nodes with
-  context-dependent output choose local evaluated output and serialize through
-  native syntax or base render primitives.
-- `$if`, `$for`, and `$while` avoid materializing control-wrapper output
-  before buffer render. Loop mutation is carried through live `ScopeFrame`
-  state.
-- Context shadow state is intentional runtime state:
-  `ScopeFrame.liveSlotsByName`, `ScopeFrame.fallbackFrame`, and
-  `Context.rulesContext` are part of the target model.
-- Deep copy/clone frontiers are clean. The remaining work is not hiding clone
-  behind new helpers; it is deleting or narrowing the remaining eval/render
-  carriers and call-path rediscovery.
-- Static audit snapshot from the current branch:
+  buffer. Public result ownership remains allowed only where API shape or
+  mutability still requires it.
+- The broad render/public-result split is in place across the high-risk node
+  families: controls, declarations, calls, references, imports, and at-rules.
+- The biggest recent deletions are already landed: `preEval()`,
+  `preEvaluated`, the AtRule frame `WeakMap`, the rules-like side-map/helper
+  seam, the legacy nested-`sourceNode` freeze branch, and a long tail of
+  inline callable/mixin orchestration closures moved out of `rules.ts`.
+- AtRule body eval no longer wraps invocation state in a separate
+  `AtRuleBodyEvalResult`; the invocation record now carries the result node
+  directly.
+- Shared runtime state that is still intentional includes
+  `Context.rulesContext`, `ScopeFrame.liveSlotsByName`, and
+  `ScopeFrame.fallbackFrame`.
+- The remaining work is not “find more places to hide copies.” It is:
+  narrowing the remaining invocation/result state carriers, deleting a few
+  still-real helper seams, and proving whether current owned public-result
+  boundaries can disappear without regressions.
+- Static audit snapshot on the current branch:
   `new-node: 280`, `derive: 29`, `with-surface: 38`, `copy-leaves: 28`,
   module-context count `375`.
-- Hotpath measurement remains noisy. Use it to detect clear regressions or
-  wins, not to justify a tiny static-count reduction by itself.
-- Shared placement vocabulary now exists in
-  `packages/core/src/tree/util/placement-state.ts` and is consumed by mixin
-  output slots and import first-use placement child segments.
-- Callable rest and `@arguments` binding helpers now live in
-  `packages/core/src/tree/util/callable-binding.ts`, reducing the inline
-  `MixinCollection.evalCall(...)` closure set without changing binding
-  behavior.
-- At-rule body render now carries evaluated body, hoist, and frame facts only
-  through render-local print-state overrides. The old runtime-update adapter
-  boundary is gone.
-- Declaration contextual important handling now has separate render-only and
-  public-result finalizers. Merge placeholder cleanup has a named adapter
-  helper, and scalar/no-merge paths now skip adapter allocation entirely.
-- Import first-use placement source lookup now replays sparse child-segment
-  paths for nested descendants too, so the old recursive descendant source
-  walk is no longer on the production lookup path. Postlude render state
-  remains explicit.
-- RawArgs and rules-like reference state now expose narrow helper boundaries
-  for diagnostics/callable source lookup; broader production consumers remain
-  queued.
-- Callable candidate signatures now use
-  `packages/core/src/tree/util/callable-signature.ts` instead of inline
-  `MixinCollection.evalCall(...)` closures. `@arguments` rest flattening is a
-  callable-binding helper instead of a local loop.
-- Callable candidate filtering, dedupe, recursion-to-caller rejection, and
-  default-last ordering now live in
-  `packages/core/src/tree/util/callable-candidate.ts` instead of an inline
-  `evalCall(...)` filter/map/sort closure block.
-- Generated mixin output wrapper construction has a named `Rules` helper:
-  `createMixinOutputRulesWrapper(...)`. This removes one closure-owned wrapper
-  constructor, but the larger candidate/body orchestration still lives in
-  `MixinCollection`.
-- Import source-child lookup now prefers direct placement maps and sparse
-  child-segment replay; recursive descendant source search is no longer part
-  of the live production helper path.
-- Declaration merge render normalization now consumes a discriminated
-  `createDeclarationMergeAdapterState(...)`; operation result finalization is
-  named as either metadata inheritance or public-result inheritance, and
-  dimension/color public result call sites consume the public boundary.
-- At-rule body render state now consumes a narrow `AtRuleBodyRenderInput`.
-  `AtRuleBodyEvalRecord` no longer duplicates evaluated prelude, and ruleset
-  frame cleanup is owned by the body-rules eval runner helper.
-- `AtRuleBodyFrameState` is gone. The invocation record now owns
-  `clearRulesetFrames` / `restoreRulesetFrames`, and initial hoist output
-  seeds directly onto `AtRuleBodyEvalContextState.output`.
-- AtRule collapse-nesting eval no longer persists evaluated frame facts in a
-  runtime `WeakMap`. Frame-bearing eval now returns an owned AtRule carrying
-  concrete `frames`; the source AtRule stays `frames`/`hoistToRoot` neutral.
-  Owned frame-bearing results keep the evaluated body that `processExtends()`
-  mutates, so extend parity and nested wrapper serialization share one body
-  root instead of cloning away the registered root.
-- Callable default guard grouping and callable outer-rules wrapper creation now
-  have named helper boundaries outside the `evalCall(...)` closure set.
-  Default-guard debug counts come from the resolution pass instead of
-  caller-side filter allocations.
-- Callable default-guard probing now also lives in
-  `packages/core/src/tree/util/callable-default-guard.ts`, so the copied-guard
-  cache closure, dual `default()` probe loop, and `isDefault` restoration are
-  no longer inline inside `MixinCollection.evalCall(...)`.
-- Callable default-candidate bookkeeping now also lives in
-  `packages/core/src/tree/util/callable-default-guard.ts`, so defNone
-  contribution tracking, pending-default candidate collection, and pending-
-  default output flushing are no longer inline state-management blocks inside
-  `MixinCollection.evalCall(...)`.
-- Callable output aggregation now also lives in
-  `packages/core/src/tree/util/callable-output.ts`, so callable output source
-  tracking, output-rule collection, and single-vs-wrapper finalization are no
-  longer inline state-management blocks inside `MixinCollection.evalCall(...)`.
-- Callable eval output finalization now also lives in
-  `packages/core/src/tree/util/callable-output.ts`, so pending-default output
-  flushing, debug resolution logging, final output sorting, and wrapper/empty
-  output selection are no longer the tail orchestration block inside
-  `MixinCollection.evalCall(...)`.
-- Callable ruleset-as-mixin and anonymous detached-ruleset candidate handling
-  now also live in `packages/core/src/tree/util/callable-special-case.ts`, so
-  the ruleset-placement branch and detached-ruleset unlock/eval branch are no
-  longer inline in `MixinCollection.evalCall(...)`.
-- Callable candidate setup state now also lives in
-  `packages/core/src/tree/util/callable-candidate-state.ts`, so owned-vs-
-  unlocked rules surface selection, mixin-body var visibility wiring, resolved
-  param-binding unpacking, and lexical/fallback frame derivation are no longer
-  inline in `MixinCollection.evalCall(...)`.
-- Callable candidate execution now also lives in
-  `packages/core/src/tree/util/callable-candidate-execution.ts`, so live-slot
-  setup, scope-frame wiring, guard preparation/evaluation, pending-default
-  deferral, and immediate candidate output execution are no longer one inline
-  body/guard orchestration block inside `MixinCollection.evalCall(...)`.
-- Callable candidate-loop dispatch now also lives in
-  `packages/core/src/tree/util/callable-candidate-loop.ts`, so ruleset-
-  placement handling, anonymous callable-rules unlock handling, ordinary
-  callable-entry setup/dispatch, and per-candidate debug/output wiring are no
-  longer the main candidate loop inside `MixinCollection.evalCall(...)`.
-- Callable arg evaluation now also lives in
-  `packages/core/src/tree/util/callable-args.ts`, so caller-scoped arg
-  evaluation, named-arg preservation, rest expansion, and primitive casting
-  are no longer inline at the top of `MixinCollection.evalCall(...)`.
-- Callable top-level evaluation now also lives in
-  `packages/core/src/tree/util/callable-eval.ts`, so caller-scoped arg
-  evaluation, candidate resolution, candidate dispatch, and eval-output
-  finalization no longer sit inline in `MixinCollection.evalCall(...)`.
-- Callable surface construction now also lives in
-  `packages/core/src/tree/util/callable-surface.ts`, so callable guard-copy
-  policy, callable rules surface creation, wrapper/empty output surface
-  creation, root-source lookup, and indexed-child checks no longer live as
-  local rules-container helpers.
-- Callable entry shape/factory now also lives in
-  `packages/core/src/tree/util/callable-entry.ts`, so the synthetic
-  `callable-rules` entry type and `callableRulesEntry(...)` constructor no
-  longer widen `packages/core/src/tree/rules.ts` just to support helper/test
-  consumers and function/call setup.
-- `packages/core/src/tree/rules.ts` still owns callable registry indexing via
-  `mixinsByName` and `findMixinsFast(...)`, but that is now the intended
-  rule-container boundary rather than leftover mixin-eval orchestration. There
-  is no remaining extracted helper seam there that shrinks runtime/package
-  surface without moving core registry work out of `Rules`.
-- Helper-oriented callable surface tests now import directly from
-  `packages/core/src/tree/util/callable-surface.ts` instead of through
-  `packages/core/src/tree/rules.ts`, so those helper exports no longer widen
-  the central rules-container module surface just to serve test consumers.
-- Callable entry accessors now also live in
-  `packages/core/src/tree/util/callable-entry.ts`, so callable-entry type
-  checks plus rules/name/params/guard access no longer sit as local helper
-  closures inside `packages/core/src/tree/rules.ts`.
-- Callable candidate scan/match now also lives in
-  `packages/core/src/tree/util/callable-candidate-match.ts`, so zero-param
-  early exits, callable arity/pattern matching, resolved binding collection,
-  and ordered eval-candidate preparation are no longer inline at the front of
-  `MixinCollection.evalCall(...)`.
-- Callable candidate output execution now lives in
-  `packages/core/src/tree/util/callable-candidate-output.ts`, so recursion
-  gating, adopt/eval/adopt cleanup, candidate index restoration, and mixin
-  output slot attachment are no longer owned by an inline
-  `evaluateCandidateOutput(...)` closure.
-- Pending callable default-candidate resolution and execution now also live in
-  `packages/core/src/tree/util/callable-default-guard.ts`, so ambiguity
-  detection, selected-group iteration, and default-result execution no longer
-  sit as a second inline control block at the bottom of `MixinCollection.evalCall(...)`.
-- Callable outer-rules reuse/setup now lives in
-  `packages/core/src/tree/util/callable-outer-rules.ts`, so wrapper reuse,
-  candidate index sync, parent adoption, and optional scope-frame sync are no
-  longer owned by an inline `ensureOuterRules(...)` closure inside
-  `MixinCollection.evalCall(...)`.
-- Callable scope-frame wiring now lives in
-  `packages/core/src/tree/util/callable-scope-frame.ts`, so lexical/fallback
-  frame assignment, shared-vs-dedicated outer frame selection, and leaky
-  caller fallback wiring are no longer owned by one inline block inside
-  `MixinCollection.evalCall(...)`.
-- Callable live-slot assembly now lives in
-  `packages/core/src/tree/util/callable-live-slots.ts`, so param binding slot
-  creation, param-var marking, and lazy `@arguments` preparation are no longer
-  owned by one inline block inside `MixinCollection.evalCall(...)`.
-- Callable guard preparation now lives in
-  `packages/core/src/tree/util/callable-guard.ts`, so dynamic-guard copy
-  policy, no-param caller-guard prebinding, and on-demand dynamic guard wrapper
-  creation are no longer scattered across repeated inline branches inside
-  `MixinCollection.evalCall(...)`.
-- Callable guard execution now also lives in
-  `packages/core/src/tree/util/callable-guard.ts`, so rules-context swapping,
-  default-guard probe execution, defNone contribution tracking, and
-  pending-default deferral decisions are no longer inline inside
-  `MixinCollection.evalCall(...)`.
-- Import placement option reads share `getImportPlacementRenderState(...)`, and
-  import postlude render order reads through `getImportPostludeRenderState(...)`.
-- Source-free public direct-index container narrowing is explicitly blocked by
-  mutability/parentage proof tests. Optional fallback syntax has a named
-  placement helper, but production storage was rejected because it would add a
-  `WeakMap`/module object for optional fallback diagnostics. Selector copy
-  removal remains blocked until its ownership contracts can be reduced without
-  changing public behavior.
-- Rules-like reference placement now lives on the owned shallow public surface
-  itself: `sourceNode` carries the canonical source, so the old side-map and
-  helper reads are gone from the production call path.
-- Direct callable reference preservation now balances `referenceStack` on the
-  owned-output path too, so direct `mixin-ruleset` hits do not leak reference
-  depth while preserving canonical source ownership.
-- Optional JS fallback render with `contentNode` now emits direct fallback
-  syntax in render-only paths instead of deriving an owned fallback `Call`
-  surface first.
-- The dead optional-fallback call-syntax helper export is gone from the tree
-  surface; optional fallback state now only counts when it drives live runtime
-  behavior.
-- Declaration merge adapter state now avoids scalar helper allocation before
-  collecting merge items, returns raw nodes for single replacements, and uses
-  one discriminated list/space channel instead of parallel `listValue` /
-  `spaceValue` properties.
-- AtRule body render/public paths now consume narrow adapter inputs and
-  render-local print-state overrides instead of source-node scratch state.
-  Body-changing, root-hoist, and collapse-nesting eval paths return owned
-  results when output facts differ from the source. The evaluated-frame runtime
-  `WeakMap` is gone; frame facts live on the owned result, and source AtRules
-  stay canonical.
-- AtRule body registration prep writes `AtRuleBodyRegistrationState` directly
-  onto the invocation record, and `AtRuleBodyEvalPrepState` is gone. The
-  remaining duplicated lifecycle state is the still-real boundary between
-  `AtRuleBodyEvalResult`, context state, and public-result input.
-- The targeted Less bubbling bug matrix in
-  `packages/jess/test/less/at-rule-bubbling-bugs.test.ts` is now active
-  coverage instead of `todo` scaffolding, so the remaining collapse-nesting
-  frame blocker is pinned to real wrapper/media/parent-selector cases.
-- Declaration merge adapter state now returns no object for scalar/no-merge
-  paths, and single replacement paths now return the replacement node directly.
-  Only real list/space render adapters allocate merge state.
+- Hotpath measurement is still noisy. Use it to confirm clear wins/regressions,
+  not to justify tiny static-count changes by themselves.
 
 ## Release Direction
 
 The next alpha should be able to say:
 
-1. Core eval/render has a bounded architecture map with per-lane completion
-   gates.
-2. The largest state/carrier tangles are reduced or explicitly proven
-   necessary.
-3. Full queue passes advance known architecture lanes instead of adding
-   passive audit chores.
-4. Verification covers behavior, frontier regressions, package exports, and
-   measured hot paths.
+1. Core eval/render is stable enough that it is no longer the primary risk
+   center for the release.
+2. The largest remaining state/carrier tangles are either reduced further or
+   clearly bounded in the handoff.
+3. Queue work advances alpha readiness first, with architecture cleanup used
+   where it materially improves speed, confidence, or runtime clarity.
+4. Verification covers behavior, frontier regressions, package exports,
+   measured hot paths, and the specific surfaces we still consider risky.
+
+## How To Use This Handoff Now
+
+Use this document to do three things:
+
+1. Finish the remaining high-signal architecture cleanup that still buys real
+   runtime or model wins.
+2. Refuse low-value churn where "fewer copies" or "fewer wrappers" is no
+   longer translating into meaningful progress.
+3. Keep the queue pointed at alpha-state confidence rather than perpetual
+   internal purity work.
 
 ## Deterministic Architecture Lanes
 
@@ -296,7 +195,6 @@ and cleanup without duplicating facts across many parallel structures.
 - `AtRuleBodyOutputState`
 - `AtRuleBodyEvalContextState`
 - `AtRuleBodyEvalRecord`
-- `AtRuleBodyEvalResult`
 - `AtRuleBodyRegistrationState`
 - `AtRuleBodyPublicResultInput`
 
@@ -328,11 +226,11 @@ and cleanup without duplicating facts across many parallel structures.
 
 **Next queue seeds:**
 
-1. Inventory every duplicated field across `AtRuleBodyEvalResult`,
-   `AtRuleBodyEvalContextState`, and `AtRuleBodyPublicResultInput`, then merge
-   one remaining pair into the invocation record with focused async,
-   root-hoist, and collapse-nesting tests. The next cut only counts if another
-   real state/helper surface disappears.
+1. Inventory every duplicated field across `AtRuleBodyEvalContextState` and
+   `AtRuleBodyPublicResultInput`, then merge one remaining pair into the
+   invocation record or direct public boundary with focused async, root-hoist,
+   and collapse-nesting tests. The next cut only counts if another real
+   state/helper surface disappears.
 2. Move cleanup ownership into a single record runner and delete one separate
    cleanup/restore helper.
 3. Prove whether body render can consume the invocation record directly,
@@ -709,7 +607,7 @@ not folklore.
 | Family | Current state | Completion gate |
 | --- | --- | --- |
 | `Rules` | Direct root/fragment render state exists; callable invocation, candidate scan, guard/default handling, output finalization, entry surfaces, helper-only exports, `MixinCollection` residence, and the old `rules.ts` callable re-export are now outside `rules.ts`. The remaining callable-specific `rules.ts` logic is registry/index ownership (`mixinsByName`, `findMixinsFast(...)`, registration), which is the intended rule-container boundary rather than an extraction seam. | Callable extraction complete; direct render context state bounded. |
-| `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct render carries transient facts through print-state overrides, registration prep writes registration state onto the invocation record, nested `@layer` registration reads layer names from context state, `AtRuleBodyFrameState` is gone, and the duplicated `contextState.evalFrame` mirror is gone. The evaluated-frame `WeakMap` seam is now deleted: collapse-nesting eval returns owned frame-bearing AtRules while the source remains `frames`/`hoistToRoot` neutral, and body ownership keeps the evaluated extend root shared with `processExtends()`. | Lane A is unblocked; next work is remaining lifecycle-state collapse across `AtRuleBodyEvalResult`, context state, and public-result input. |
+| `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct render carries transient facts through print-state overrides, registration prep writes registration state onto the invocation record, nested `@layer` registration reads layer names from context state, `AtRuleBodyFrameState` is gone, the duplicated `contextState.evalFrame` mirror is gone, and the separate `AtRuleBodyEvalResult` wrapper is gone. The evaluated-frame `WeakMap` seam is now deleted: collapse-nesting eval returns owned frame-bearing AtRules while the source remains `frames`/`hoistToRoot` neutral, and body ownership keeps the evaluated extend root shared with `processExtends()`. | Lane A is unblocked; next work is remaining lifecycle-state collapse across context state, the invocation record, and public-result input. |
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return, no parallel list/space checks, and no redundant source `value` field. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
 | `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public syntax construction has a named adapter and placement vocabulary (`source`, `output`, `content`, `publicBoundary`), but render-only optional JS failures with `contentNode` now emit direct fallback syntax without deriving an owned fallback `Call`, and the dead optional-fallback helper export is gone from the tree surface. No production storage was added after the WeakMap experiment regressed static object counts. | Call overhead measurement complete and fallback render/public split advanced. |
@@ -717,7 +615,7 @@ not folklore.
 | `List` / `Sequence` | Dynamic render streams through native syntax; public resolve owns containers. Source-free public narrowing is blocked by public mutation/parentage expectations. | Revisit only if public mutability API changes. |
 | `Block` / `Quoted` / `Url` / `Paren` / `Operation` | Render-only wrappers largely split from public resolve; operation finalization now distinguishes metadata-result inheritance from public-result inheritance, with dimension/color public consumers. | No generic output bridge reintroduced; focused materialization proofs stay green. |
 | `StyleImport` | First-use top-level placement segments and postlude render state exist; nested descendant source lookup now also replays sparse child-segment paths instead of depending on the old recursive placement map. Postlude order and option reads now consume render state, and the old recursive descendant lookup is off the live production helper path. | Lane D gates complete unless a future change deletes more placement state without reintroducing recursive lookup. |
-| Selectors / `Ampersand` / `Extend` | Ownership still semantic for generated/extended placement. Generated `:is(...)` omission state is now declared at construction time and consumed by selector render plus the ampersand/extend parent-list paths, removing the render-time arg-shape fallback read. Integration proof now covers both exact and `all` extend against the generated omission shape, and parent-list extend proof now makes the remaining ownership rule explicit: extend registration still needs a fresh generated `:is(...)` wrapper for parent-list paths while source selector leaves stay canonical and uncloned. The local extend copy helper no longer needs its bespoke selector-like guard; remaining open work only counts if another selector-copy/helper seam can be honestly deleted or blocked. | Lane H narrowed to the next real selector-copy/placement deletion or blocker proof. |
+| Selectors / `Ampersand` / `Extend` | Ownership still semantic for generated/extended placement. Generated `:is(...)` omission state is now declared at construction time and consumed by selector render plus the ampersand/extend parent-list paths, removing the render-time arg-shape fallback read. Integration proof now covers both exact and `all` extend against the generated omission shape. Generated extend output may own wrapper/copy structure when that keeps placement and parentage simple; do not preserve source-node identity at the cost of harder architecture unless a measured regression justifies it. The local extend copy helper no longer needs its bespoke selector-like guard; remaining open work only counts if another selector-copy/helper seam can be honestly deleted or simplified. | Lane H is an active simplification candidate, not a blocker. |
 | Controls | Loop render streams direct rules; live frame mutation intentional. | Remaining grouping/state surfaces audited by object/function-call cost. |
 
 Update this tracker when a node family changes architectural state.
@@ -767,9 +665,11 @@ bounded item.
 Recent work deleted the AtRule evaluated-frame `WeakMap`, moved
 collapse-nesting frame facts onto owned eval results, preserved nested
 wrapper/media and extend parity, deleted the rules-like reference side-map and
-legacy nested-`sourceNode` freeze branch, confirmed the remaining fallback
-`Call` ownership boundary is public resolve only, and pinned the remaining
-ampersand-boundary selector-copy seam as an explicit blocker.
+legacy nested-`sourceNode` freeze branch, narrowed the remaining fallback
+`Call` ownership boundary to public resolve only, deleted the separate
+AtRule eval-result wrapper by carrying the result node on the invocation
+record, and reclassified the selector-copy seam as simplification work
+instead of a protected blocker.
 
 ## Lane Backlog
 
@@ -785,11 +685,16 @@ ampersand-boundary selector-copy seam as an explicit blocker.
    Only keep collapsing `AtRule` lifecycle state if another helper/state
    surface disappears beyond the now-deleted eval-result carrier,
    `contextState.evalFrame` mirror, and public-result wrapper.
-3. Next Agent A item: collapse one remaining `AtRuleBodyEvalResult` /
-   `AtRuleBodyEvalContextState` / `AtRuleBodyPublicResultInput` duplication
-   into the invocation record. Do not move runtime frames onto shared source
+3. Next Agent A item: collapse one remaining `AtRuleBodyEvalContextState` /
+   `AtRuleBodyPublicResultInput` duplication into the invocation record or
+   direct public boundary. Do not move runtime frames onto shared source
    at-rules and do not add new lifecycle plumbing without deleting an existing
    state shape.
+4. AtRule follow-up backlog: only revisit owned body/result copying if we can
+   delete another real container-copy seam. Current owned collapse-nesting
+   results already share inert leaves and shallow-copy `frames`; do not turn
+   this into speculative churn unless a measurable or structural deletion is
+   available.
 
 ### Agent B backlog
 
@@ -797,9 +702,12 @@ ampersand-boundary selector-copy seam as an explicit blocker.
    callable runtime or package surface disappears.
 2. Prefer Lane G only when a fallback/public call state surface is deleted or
    a measured end-to-end win justifies the change.
-   Current blocker: render-only optional fallback already avoids owning a
-   fallback `Call`, but public `resolve(...)` still needs one for
-   source-backed fallback content and mutable resolved shape.
+   Active candidate: render-only optional fallback already avoids owning a
+   fallback `Call`, and current repo evidence does not show a meaningful
+   external consumer depending on public `resolve(...)` returning an owned
+   source-backed fallback `Call`. Treat the remaining owned fallback-`Call`
+   path as removable unless a concrete source-mutation or parentage regression
+   is proven.
 
 ### Agent C backlog
 
@@ -810,11 +718,10 @@ ampersand-boundary selector-copy seam as an explicit blocker.
    nested-`sourceNode` freeze branch are already gone.
 3. Lane F: shrink one more declaration/operation adapter seam only if render
    stays allocation-free and public mutation stays intact.
-4. Lane H: the remaining selector-copy family is now explicitly blocker-backed.
-   Parent-list extend registration and ampersand-boundary extension still
-   require owned generated output while leaving source selector parentage
-   canonical. Only reopen this lane if a bigger helper/state seam disappears
-   beyond the now-deleted local extend selector guard.
+4. Lane H: generated extend output may own wrapper/copy structure when that
+   keeps parentage and placement straightforward. Do not spend architecture
+   complexity defending source-node identity unless a measured regression
+   demands it. Reopen this lane for real simplification, not purity churn.
 5. Lane I: keep this handoff compact and aligned with actual lane truth.
 
 ## Pull Queue
@@ -824,10 +731,9 @@ The previous five-item pull queue is cleared honestly:
   carries collapse-nesting frames)
 - item 2 is done (`contextState.evalFrame` mirror removed)
 - item 3 is done (rules-like side-map/helper seam removed)
-- item 4 is now an explicit selector-copy blocker (ampersand-boundary and
-  parent-list generated output still needs owned wrappers/copies to preserve
-  canonical source parentage)
-- item 5 is now an explicit public `resolve(...)` fallback-`Call` blocker
+- item 4 is reopened as a selector-copy simplification candidate
+- item 5 is reopened as an active public `resolve(...)` fallback-`Call`
+  deletion candidate
 
 Pull the next free item from here; restock only when a lane truthfully changes.
 
@@ -835,19 +741,22 @@ Pull the next free item from here; restock only when a lane truthfully changes.
    only reopen if a source-node frame side map reappears.
 2. Agent A: done. The public-result wrapper/state layer is deleted; only
    reopen this slot if another real `AtRule` lifecycle carrier disappears.
-3. Agent C: only retry rules-like/public-mutation work if a real owned-result
+3. Agent A: done. The separate `AtRuleBodyEvalResult` wrapper is deleted; the
+   invocation record now carries the result node directly.
+4. Agent C: only retry rules-like/public-mutation work if a real owned-result
    or compatibility branch disappears beyond the side-map/helper seam and the
    nested-`sourceNode` freeze branch already removed.
-4. Agent C: done as blocker proof. Ampersand-boundary extend output still
-   needs owned hoisted selector-list results while leaving the source
-   ampersand selector tree canonical and un-reparented, so there is no
-   truthful remaining selector-copy deletion here today.
-5. Agent B or C: only revisit fallback/public call ownership if an owned
-   `Call` surface can actually disappear from public `resolve(...)`.
-   Focused proof now pins the blocker on both sides: render derives zero
-   fallback `Call` surfaces for source-backed fallback content, but public
-   `resolve(...)` still derives exactly one owned `Call` to hold mutable
-   output shape plus copied source-backed content.
+5. Agent C: retry selector-copy simplification with a practical bias.
+   Generated extend output may stay owned if that is the simpler architecture;
+   only preserve source-node identity where it pays for itself in measured
+   speed, memory, or clearer runtime model.
+6. Agent B or C: retry fallback/public call ownership. Focused proof now only
+   establishes implementation truth: render derives zero fallback `Call`
+   surfaces for source-backed fallback content, while public `resolve(...)`
+   currently derives one owned fallback `Call`. Delete that owned surface if
+   source mutation, parentage, and resolved-shape behavior stay honest under
+   focused proof; only restore blocker status if a concrete regression is
+   demonstrated.
 
 ## Measurement And Verification
 
