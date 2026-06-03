@@ -169,6 +169,25 @@ pnpm run audit:node-creation
 
 Current known evidence from the latest handoff run:
 
+- Latest handoff round captured the deeper broad `benchmark.less` CPU profile
+  requested by the previous target. **Real benchmark** baseline was
+  `355.73ms avg / 352.18ms median` for 15 runs / 5 warmup. The
+  **Instrumented profiler** diagnostic was `624.91ms` elapsed with
+  `Reference.evalNode` 3,610 calls / `100.40ms`, `Rules.find` 999 calls /
+  `31.57ms`, `LessParser.parse` 3 calls / `87.28ms`, and stable writer/mixin
+  counts. The **CPU profile** showed `Rules.find` is not the main self-time
+  target: top self samples were `Node` construction, GC, `findVarWithinScopeSurface`,
+  `wouldMatchNode`, `OutputWriter.getSince`, `constructCopy`, `copyChild`, and
+  `copyWithReusableLeaves`; inclusive stacks still concentrate under eval,
+  render serialization, reference evaluation, callable guard/candidate copies,
+  parser setup, and extend classification. A scoped scratch-`Set<Rules>` reuse
+  experiment inside variable lookup passed focused reference tests, but real
+  benchmark samples regressed to `361.98ms avg / 346.69ms median` and then
+  `389.35ms avg / 375.04ms median`; after reverting, the sample was
+  `373.89ms avg / 353.22ms median`. The scratch-set change was rejected. Next
+  target: attack copy/container creation where the CPU profile shows real cost,
+  especially `copyGuardForEval`/callable candidate surfaces or reference value
+  copy paths, and require real benchmark improvement before keeping changes.
 - Latest handoff round first fixed the reporting guidance: every final report
   must label numbers as **Real benchmark**, **Instrumented profiler**, or
   **CPU profile** evidence, and only real benchmark numbers count as
