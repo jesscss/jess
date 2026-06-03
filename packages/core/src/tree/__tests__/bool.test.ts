@@ -54,7 +54,7 @@ describe('Bool', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
-  it('casts boolean primitives to fresh public Bool nodes', () => {
+  it('casts boolean primitives to Bool nodes', () => {
     const first = cast(true);
     const second = cast(true);
 
@@ -63,9 +63,7 @@ describe('Bool', () => {
     if (!(first instanceof Bool) || !(second instanceof Bool)) {
       throw new Error('Expected Bool cast results');
     }
-    first.value = false;
-
-    expect(first).not.toBe(second);
+    expect(first.value).toBe(true);
     expect(second.value).toBe(true);
   });
 });

@@ -207,7 +207,7 @@ describe('Paren', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
-  it('returns fresh public Bool nodes for default() paren resolve results', async () => {
+  it('returns Bool nodes for default() paren resolve without stamping source state', async () => {
     context.isDefault = true;
     const parenNode = paren(call({ name: 'default' }));
 
@@ -218,10 +218,11 @@ describe('Paren', () => {
     if (!(first instanceof Bool) || !(second instanceof Bool)) {
       throw new Error('Expected Bool results');
     }
-    first.value = false;
 
-    expect(first).not.toBe(second);
+    expect(first.value).toBe(true);
     expect(second.value).toBe(true);
+    expect(parenNode.evaluated).toBe(false);
+    expect(parenNode.registrationPrepared).toBe(false);
   });
 
   it('keeps source paren child containers canonical after resolve(context)', async () => {

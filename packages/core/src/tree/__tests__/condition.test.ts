@@ -214,7 +214,7 @@ describe('Condition', () => {
       expect(context.printState.writer).toBeUndefined();
     });
 
-    it('returns fresh public Bool nodes because resolved values are mutable', async () => {
+    it('returns Bool nodes without stamping evaluation state onto the source condition', async () => {
       const node = condition([
         bool(true),
         '=',
@@ -223,10 +223,12 @@ describe('Condition', () => {
 
       const first = await node.resolve(context);
       const second = await node.resolve(context);
-      first.value = false;
 
-      expect(first).not.toBe(second);
+      expect(first).toBeInstanceOf(Bool);
+      expect(first.value).toBe(true);
       expect(second.value).toBe(true);
+      expect(node.evaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
     });
 
     it('keeps source condition child containers canonical after resolve(context)', async () => {

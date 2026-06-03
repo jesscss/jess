@@ -70,16 +70,16 @@ This is the short list that should drive queue work:
 2. Lane C/H/F: the current placement-vocabulary, selector-copy, and
    operation-result helper seams are closed. Reopen only for another real
    helper/state deletion or measured hot-path win.
-3. Lane E: rules-like/direct-index public ownership is not an active queue
-   item under the current mutability and parentage contract; only reopen if
-   that public API changes or a new focused proof deletes a real owned-result
-   branch.
+3. Lane E: rules-like/direct-index ownership should be audited against the
+   real runtime requirement: eval/resolve must not corrupt canonical source
+   readability, serialization, or parentage. Do not preserve owned public
+   results merely for theoretical caller mutation.
 4. Lane G: only continue call-path work when rawArgs diagnostics, function-call
    overhead, or another measured runtime path improves; the fallback `Call`
    ownership item is done.
-5. Queue status: no active pull-queue items remain. Future work should restock
-   from a concrete alpha blocker, measured regression, or real helper/state
-   deletion candidate.
+5. Queue status: one active Lane E pull item remains: audit/delete public
+   direct-index container copies where canonical reuse preserves runtime source
+   invariants.
 6. Alpha confidence: keep verification and measured-runtime truth ahead of
    theoretical neatness.
 
@@ -118,7 +118,8 @@ meaningful product, perf, or model payoff, it should not dominate the queue.
 - Prefer one canonical source tree plus explicit per-invocation or
   per-placement facts over broad output trees.
 - Public `resolve(...)`, `eval(...)`, and compatibility/debug APIs may still
-  own result nodes where mutability or API shape requires it.
+  own result nodes when sharing would corrupt canonical source readability,
+  serialization, parentage, lookup state, or output correctness.
 - Render-only paths should emit through native syntax or direct state when a
   public result node is not required.
 - State records must be smaller than the wrapper/tree they replace. They must
@@ -135,8 +136,9 @@ it accurate, but do not mistake it for the short list of remaining work.
 - Public CSS output uses awaited eval/render; `safeCompile(...)` remains the
   explicit tree-surface compatibility/debug API.
 - Production CSS render writes through `Rules.render(...)` into a flat render
-  buffer. Public result ownership remains allowed only where API shape or
-  mutability still requires it.
+  buffer. Public result ownership remains allowed only where canonical reuse
+  would corrupt source readability, serialization, parentage, lookup state, or
+  output correctness.
 - The broad render/public-result split is in place across the high-risk node
   families: controls, declarations, calls, references, imports, and at-rules.
 - The biggest recent deletions are already landed: `preEval()`,
@@ -354,7 +356,9 @@ of several unrelated mini-patterns.
 - `children`: explicit source/output child segments when children are relevant.
 - `visibility`: reference/public/optional visibility facts.
 - `scope`: scope frame, caller fallback, or lookup frame facts.
-- `publicBoundary`: whether public API mutability still requires an owned node.
+- `publicBoundary`: whether public tree-surface semantics require an owned
+  node to preserve canonical source readability, serialization, parentage,
+  lookup state, or output correctness.
 - `renderFacts`: text/order/cache facts needed only for render.
 
 **Completion gates:**
@@ -424,8 +428,8 @@ rediscovery.
 
 ### Lane E: Rules-Like References And Direct-Index Results
 
-**Goal:** keep public result APIs mutable while reducing render-only ownership
-for references, direct-index hits, and rules-like values.
+**Goal:** preserve canonical source trees while reducing ownership for
+references, direct-index hits, and rules-like values.
 
 **Current surfaces:**
 
@@ -435,10 +439,12 @@ for references, direct-index hits, and rules-like values.
 
 **Target invariants:**
 
-- Render may use text-only or placement-state output when no public mutable
-  result is required.
-- Public `resolve(...)` continues to own source-backed containers and
-  rules-like callable surfaces until mutability/lookup tests prove otherwise.
+- Render may use text-only or placement-state output whenever canonical source
+  nodes remain readable, serializable, and correctly parented.
+- Public `resolve(...)` should reuse canonical containers when that does not
+  corrupt source readability, serialization, parentage, lookup state, or output
+  correctness. Owned public surfaces need focused proof, not theoretical
+  caller-mutation concerns.
 - Rules-like callable facts should travel on the owned shallow surface itself;
   do not keep a side-map when the public surface already carries the source.
 
@@ -446,8 +452,8 @@ for references, direct-index hits, and rules-like values.
 
 - [x] Every rules-like preservation consumer uses the owned public surface
       directly or has a documented compatibility boundary.
-- [x] Source-free direct-index public container narrowing is implemented where
-      safe or intentionally left owned by mutability/parentage proof.
+- [x] Source-free direct-index public container tests protect canonical source
+      preservation without requiring fresh result identity.
 - [x] Reference-stack cleanup has focused tests for both text-only and owned
       output paths, including preserved rules-like surfaces.
 
@@ -456,14 +462,16 @@ for references, direct-index hits, and rules-like values.
 1. Done: rules-like consumers use owned public-surface facts directly; the
    source-helper/side-map seam and legacy nested-`sourceNode` freeze branch
    are gone.
-2. Not queued: source-free public direct-index `List`/`Sequence` ownership
-   stays until public mutability/parentage expectations change.
+2. Active seed: audit source-free public direct-index `List`/`Sequence`
+   ownership now that tests no longer require fresh result identity. Delete
+   copies when canonical reuse preserves source readability, serialization,
+   parentage, lookup state, and output correctness.
 3. Preserved rules-like surfaces already have focused proof for canonical
    frozen sources plus balanced `referenceStack` cleanup.
 
 ### Lane F: Declaration, Operation, And Public Result Adapters
 
-**Goal:** split render-only text/facts from public mutable result nodes across
+**Goal:** split render-only text/facts from necessary public result nodes across
 declarations, assignment/merge output, contextual important, and operation
 results.
 
@@ -483,8 +491,8 @@ results.
   surfaces.
 - Assignment/merge render can use adapter state for separator, source order,
   placeholder cleanup, and important text.
-- Public resolve/eval owns result nodes where flags, parentage, or mutation
-  require nodes.
+- Public resolve/eval owns result nodes only where sharing would corrupt flags,
+  parentage, canonical source state, lookup state, or output correctness.
 
 **Completion gates:**
 
@@ -609,7 +617,9 @@ not folklore.
   output locally, and render through native syntax or base output primitives.
 - Render-only paths should not call public `resolve(...)` just to get a
   printable node.
-- Public `resolve(...)` may own mutable result nodes.
+- Public `resolve(...)` may own result nodes only when canonical reuse would
+  corrupt source readability, serialization, parentage, lookup state, or output
+  correctness.
 - New wrapper/state carriers need focused parentage and output tests.
 
 **Node-family tracker:**
@@ -621,8 +631,8 @@ not folklore.
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return, no parallel list/space checks, and no redundant source `value` field. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
 | `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public eval/resolve now returns finalized text output instead of constructing an owned fallback `Call`, and render-only optional JS failures with `contentNode` also emit direct fallback syntax. The dead optional-fallback helper export is gone from the tree surface. No production storage was added after the WeakMap experiment regressed static object counts. | Fallback `Call` ownership deletion complete; only revisit call work for rawArgs diagnostics or measured overhead. |
-| `Reference` | Text-only render exists for many scalar/container paths; rules-like wrappers remain as shallow owned public surfaces with callable ownership proof, but the separate rules-like preservation side-map is gone. Detached rules-like calls now recover lexical parentage from the owned surface's public `sourceNode` instead of a helper/side-map read, direct callable preservation now pops `referenceStack` on the owned-output path, and focused proof pins preserved rules-like surfaces to frozen canonical sources with balanced `referenceStack` cleanup. The legacy nested-`sourceNode` freeze branch is also gone, so rules-like freezing now acts only on the canonical source value that the shallow owned surface captures. Source-free public direct-index container ownership is intentionally retained for mutability/parentage. | Lane E queue cleared; reopen only for a public API change or a real owned-result branch deletion. |
-| `List` / `Sequence` | Dynamic render streams through native syntax; public resolve owns containers. Source-free public narrowing is intentionally not queued while public mutation/parentage expectations require owned output. | Revisit only if public mutability API changes. |
+| `Reference` | Text-only render exists for many scalar/container paths; rules-like wrappers remain as shallow owned public surfaces with callable ownership proof, but the separate rules-like preservation side-map is gone. Detached rules-like calls now recover lexical parentage from the owned surface's public `sourceNode` instead of a helper/side-map read, direct callable preservation now pops `referenceStack` on the owned-output path, and focused proof pins preserved rules-like surfaces to frozen canonical sources with balanced `referenceStack` cleanup. The legacy nested-`sourceNode` freeze branch is also gone, so rules-like freezing now acts only on the canonical source value that the shallow owned surface captures. Public direct-index tests now protect canonical source preservation without requiring fresh result identity. | Lane E should continue with real ownership deletion where canonical reuse is safe. |
+| `List` / `Sequence` | Dynamic render streams through native syntax; some public resolve paths still allocate containers today. Source-free public narrowing is eligible for cleanup where canonical reuse preserves source readability, serialization, parentage, lookup state, and output correctness. | Revisit source-free public direct-index ownership with focused canonical-preservation proof. |
 | `Block` / `Quoted` / `Url` / `Paren` / `Operation` | Render-only wrappers largely split from public resolve; operation finalization now keeps the public export name as an alias of the shared metadata finalizer, deleting the prior delegating wrapper while preserving dimension/color public consumers. | Lane F queue cleared; no generic output bridge reintroduced; focused materialization proofs stay green. |
 | `StyleImport` | First-use top-level placement segments and postlude render state exist; nested descendant source lookup now also replays sparse child-segment paths instead of depending on the old recursive placement map. Postlude order and option reads now consume render state, and the old recursive descendant lookup is off the live production helper path. | Lane D gates complete unless a future change deletes more placement state without reintroducing recursive lookup. |
 | Selectors / `Ampersand` / `Extend` | Ownership still semantic for generated/extended placement. Generated `:is(...)` omission state is now declared at construction time and consumed by selector render plus the ampersand/extend parent-list paths, removing the render-time arg-shape fallback read. Integration proof now covers both exact and `all` extend against the generated omission shape. Generated extend output may own wrapper/copy structure when that keeps placement and parentage simple; do not preserve source-node identity at the cost of harder architecture unless a measured regression justifies it. Selector placement copying now uses one shared boundary across implicit selector placement, extend application, extend-root processing, walk-and-consume extension, and extend-record materialization; the duplicate local clone/assert helpers are gone. | Lane H simplification slice complete. Only reopen for another real helper/state deletion or measured selector/extend hot-path win. |
@@ -722,9 +732,9 @@ materialization.
 
 1. Done: Lane C placement-state vocabulary is in `placement-state.ts` and used
    by import/mixin placement consumers with focused proof.
-2. Done/not queued: Lane E rules-like compatibility seams are narrowed to
-   owned public-surface facts; source-free public direct-index ownership stays
-   owned under current mutability/parentage expectations.
+2. Active seed: Lane E rules-like compatibility seams are narrowed to owned
+   public-surface facts; source-free public direct-index ownership can now be
+   reduced where canonical reuse preserves runtime source invariants.
 3. Done: Lane F operation result finalization now has one shared finalizer
    export and no public wrapper hop.
 4. Done: Lane H selector-copy simplification centralized the owned selector
@@ -748,7 +758,7 @@ The previous five-item pull queue is cleared honestly:
 - item 5 is done (public optional fallback eval/resolve returns finalized text
   output instead of an owned fallback `Call`)
 
-No active pull items remain. Restock only when a lane truthfully changes.
+One active pull item remains. Restock only when a lane truthfully changes.
 
 1. Agent A: done. The last `AtRule` runtime-frame storage consumer is deleted;
    only reopen if a source-node frame side map reappears.
@@ -758,17 +768,17 @@ No active pull items remain. Restock only when a lane truthfully changes.
    invocation record now carries the result node directly.
 4. Agent A: done. Cleanup ownership now lives in the invocation runner; the
    extra cleanup/restore helper is deleted.
-5. Agent C: only retry rules-like/public-mutation work if a real owned-result
-   or compatibility branch disappears beyond the side-map/helper seam and the
-   nested-`sourceNode` freeze branch already removed.
+5. Agent C: retry rules-like/direct-index ownership when the change deletes a
+   real owned-result or compatibility branch while preserving canonical source
+   readability, serialization, parentage, lookup state, and output correctness.
 6. Agent C: done. Selector-copy simplification centralized the owned selector
    placement copy boundary and deleted duplicate local clone/assert helper
    bodies from the extend modules.
 7. Agent A: done. The nested AtRule body eval context carrier is deleted; only
    reopen Lane A for a real body/result copy deletion or measured hot-path win.
-8. Agent C: done/cleared. Lane E/F was audited: Lane F deleted the operation
-   public wrapper hop; Lane E has no active item unless mutability/parentage
-   expectations change or a focused proof exposes another real branch deletion.
+8. Agent C: done/cleared for Lane F. Lane E is restocked as real work: public
+   direct-index container copies should be audited and deleted where canonical
+   reuse preserves runtime source invariants.
 9. Agent B: done. Optional fallback public eval/resolve now returns finalized
    text output instead of an owned fallback `Call`; focused proof covers
    source-backed content, dynamic source-free content, JS optional failures,
@@ -778,8 +788,10 @@ No active pull items remain. Restock only when a lane truthfully changes.
     export to the shared metadata finalizer, deleting the delegating wrapper
     while preserving dimension/color public result semantics.
 
-Current pull queue is clear. Restock only from a concrete alpha blocker,
-measured regression, or a new proof-backed helper/state deletion candidate.
+Current pull queue has one active Lane E item: audit/delete public direct-index
+container copies where canonical reuse preserves runtime source invariants.
+Restock further only from a concrete alpha blocker, measured regression, or a
+new proof-backed helper/state deletion candidate.
 
 ## Measurement And Verification
 
@@ -817,11 +829,11 @@ shared verifier scripts, or broad render/eval contracts:
 pnpm run verify:baseline
 ```
 
-Latest checkpoint: Lane F operation finalization now aliases the public export
-to the shared metadata finalizer; the pull queue is clear. Verified with
-focused operation/dimension/color/declaration tests, full core tests, Less
-fixture data, node-creation audit, diff check, and baseline verification during
-push.
+Latest checkpoint: public-result identity tests and docs no longer require
+fresh owned nodes for theoretical caller mutation; Lane E is restocked around
+canonical-reuse proof for direct-index containers. Verified with focused
+Bool/default/paren/reference tests, node-creation audit, diff check, and
+baseline verification during push.
 
 ## Checkpoint Rule
 

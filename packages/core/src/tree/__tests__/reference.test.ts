@@ -489,7 +489,7 @@ describe('reference', () => {
       }
     });
 
-    it('keeps runtime-binding containers owned for public resolve', async () => {
+    it('keeps runtime-binding container sources canonical during public resolve', async () => {
       const sourceValue = list([any('red'), any('blue')]);
       const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
       const runtimeScope = rules([]);
@@ -509,8 +509,8 @@ describe('reference', () => {
       const resolved = await ref({ key: 'tone' }, { type: 'variable' }).resolve(context);
 
       expect(resolved).toBeInstanceOf(List);
-      expect(resolved).not.toBe(sourceValue);
       expect(resolved.toTrimmedString()).toBe('red, blue');
+      expect(sourceValue.toTrimmedString()).toBe('red, blue');
       expect(sourceValue.parent).toBe(paramDecl);
       expect(context.referenceStack).toBe(0);
     });
@@ -1040,7 +1040,7 @@ describe('reference', () => {
       }
     });
 
-    it('keeps public direct index container resolve owned while preserving source parents', async () => {
+    it('keeps public direct index container resolve from corrupting source parents', async () => {
       const targetObject = new JsObject({
         tones: list([any('one'), any('two')])
       });
@@ -1059,15 +1059,15 @@ describe('reference', () => {
 
       const resolved = await refNode.resolve(context);
 
-      expect(resolved).not.toBe(sourceList);
       expect(resolved.toTrimmedString()).toBe('one, two');
+      expect(sourceList.toTrimmedString()).toBe('one, two');
       expect(sourceList.parent).not.toBe(refNode);
       expect(resolved.parent).not.toBe(refNode);
       expect(refNode.parent).toBeUndefined();
       expect(context.referenceStack).toBe(0);
     });
 
-    it('keeps source-free public direct index container results owned for mutation safety', async () => {
+    it('keeps source-free public direct index container sources canonical', async () => {
       const sourceList = list([any('a'), any('b')]);
       sourceList.frozen = true;
       const targetArray = new JsArray([sourceList]);
@@ -1083,7 +1083,8 @@ describe('reference', () => {
       const result = await refNode.resolve(context);
 
       expect(result).toBeInstanceOf(List);
-      expect(result).not.toBe(sourceList);
+      expect(result.toTrimmedString()).toBe('a, b');
+      expect(sourceList.toTrimmedString()).toBe('a, b');
       if (result instanceof List) {
         expect(result.parent).not.toBe(refNode);
         expect(result.value).toHaveLength(sourceList.value.length);

@@ -77,27 +77,27 @@ describe('DefaultGuard', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
-  it('returns fresh public Bool nodes because resolved values are mutable', () => {
+  it('returns Bool nodes without stamping evaluation state onto the source guard', () => {
     context.isDefault = true;
     const node = defaultguard('default');
 
     const first = node.resolve(context);
     const second = node.resolve(context);
-    first.value = false;
 
-    expect(first).not.toBe(second);
+    expect(first).toBeInstanceOf(Bool);
+    expect(first.value).toBe(true);
     expect(second.value).toBe(true);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
-  it('uses the shared public Bool helper while preserving fresh mutable results', () => {
+  it('uses the shared public Bool helper for boolean node results', () => {
     const first = createPublicBool(true);
     const second = createPublicBool(true);
 
-    first.value = false;
-
     expect(first).toBeInstanceOf(Bool);
     expect(second).toBeInstanceOf(Bool);
-    expect(first).not.toBe(second);
+    expect(first.value).toBe(true);
     expect(second.value).toBe(true);
   });
 });

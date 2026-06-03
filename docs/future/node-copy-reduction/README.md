@@ -132,10 +132,11 @@ later serializer can walk it.
   including async referenced values. Do not turn references back into "eval
   node, then source-serialize the resolved value" bridges.
 - Rules-like references (`Rules`, `Collection`, `Mixin`, and `Ruleset`) are
-  not text-only reference containers. They carry callable/public lookup
-  surfaces, so render and resolve must preserve them through a shallow owned
-  reference surface until a future placement record can carry those facts
-  explicitly.
+  not text-only reference containers. They carry callable/lookup surfaces, so
+  render and resolve must preserve canonical source readability,
+  serialization, parentage, lookup state, and output correctness. Use a shallow
+  owned reference surface only when canonical reuse cannot preserve those
+  runtime invariants.
 - `SelectorCapture.render(...)` follows the same native resolved-payload rule
   for selector-valued payloads.
 - `AtRule.render(...)` still needs a derived evaluated at-rule surface for
@@ -184,10 +185,11 @@ later serializer can walk it.
 - Condition/default-guard render is a direct boolean text path. Keep
   `eval()` / `resolve()` returning `Bool` nodes, but do not allocate a `Bool`
   during render just to print `true` or `false`. Default-guard normalization
-  should use primitive booleans until a public node-result API requires a fresh
-  `Bool`; do not introduce shared singleton `Bool` nodes because node parent
-  and runtime flags are mutable. `Paren.render(...)` follows the same render
-  rule for direct `default()` values while preserving `Bool` node results for
+  should use primitive booleans until a tree-result API actually requires a
+  node. Do not require fresh `Bool` identity for theoretical caller mutation;
+  object ownership must protect runtime source invariants. `Paren.render(...)`
+  follows the same render rule for direct `default()` values while preserving
+  `Bool` node results for
   eval/resolve.
 - Plain CSS calls render their arguments/content natively. Direct and buffer
   `calc(...)` render share the same evaluated argument normalization, including
@@ -269,7 +271,7 @@ current order of work.
    one copied raw-argument ownership surface for `this.rawArgs`,
    `this.args()`, preprocessing, lazy params, validation, and
    `@arguments`-style behavior. That retained surface protects the canonical
-   call argument list from user-code mutation through `this.rawArgs`. Plain
+   call argument list from runtime/user-code writes through `this.rawArgs`. Plain
    functions should keep receiving positional args directly. Dynamic metadata
    render/resolve already routes through the owned `callWithContext(...)`
    rawArgs list instead of a copied source `Call`; the remaining call work is
