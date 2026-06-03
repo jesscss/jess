@@ -96,8 +96,9 @@ At the end of every handoff run, report performance to the user in plain terms:
 - historical Less 4.x real benchmark comparison and rough slowdown ratio where
   available;
 - **Instrumented profiler** results only as diagnostic support. Label them
-  explicitly as profiler/counter runs, and do not present profiler elapsed time
-  as product performance;
+  explicitly as profiler/counter runs. Report call counts and per-method totals
+  only; do not report `profile-less-benchmark.mjs` `elapsedMs` in user-facing
+  summaries unless the task is specifically profiler-overhead debugging;
 - **CPU profile** evidence only as sampled hotspot/call-stack evidence. Label
   CPU sample counts separately from benchmark timings;
 - whether the run improved, regressed, or only clarified the next target;
@@ -105,8 +106,7 @@ At the end of every handoff run, report performance to the user in plain terms:
 - the next profile target.
 
 Do not hide behind proxy metrics. If a code change was rejected because the real
-benchmark slowed down, say that. If profiler elapsed moves but the real
-benchmark does not, call that a diagnostic clue, not a runtime improvement.
+benchmark slowed down, say that.
 
 ### Required Profile Inputs
 
@@ -169,13 +169,26 @@ pnpm run audit:node-creation
 
 Current known evidence from the latest handoff run:
 
+- Latest handoff round tightened the reporting rule again: user-facing
+  performance summaries must not include `profile-less-benchmark.mjs`
+  `elapsedMs`. A narrow callable-copy experiment changed
+  `copyCallableRulesValue` record copying from `Object.entries(...)` to a
+  `for...in` loop to avoid an entries-array allocation on a CPU-profiled copy
+  path. Focused callable/mixin tests passed, but **Real benchmark** samples on
+  broad `benchmark.less` regressed versus the run baseline
+  (`380.90ms avg / 374.47ms median` and `378.21ms avg / 355.68ms median`
+  versus `355.73ms avg / 352.18ms median`), and profiler counters did not show
+  a compensating per-method win. The change was rejected and reverted. Next
+  target: stop trying local copy-loop reshapes; inspect `createOwnedCallableRulesSurface`
+  and callable output/body evaluation for a semantic reduction in owned
+  container creation or reusable static render segments.
 - Latest handoff round captured the deeper broad `benchmark.less` CPU profile
   requested by the previous target. **Real benchmark** baseline was
-  `355.73ms avg / 352.18ms median` for 15 runs / 5 warmup. The
-  **Instrumented profiler** diagnostic was `624.91ms` elapsed with
-  `Reference.evalNode` 3,610 calls / `100.40ms`, `Rules.find` 999 calls /
-  `31.57ms`, `LessParser.parse` 3 calls / `87.28ms`, and stable writer/mixin
-  counts. The **CPU profile** showed `Rules.find` is not the main self-time
+  `355.73ms avg / 352.18ms median` for 15 runs / 5 warmup.
+  **Instrumented profiler counters** showed `Reference.evalNode` 3,610 calls /
+  `100.40ms`, `Rules.find` 999 calls / `31.57ms`, `LessParser.parse` 3 calls /
+  `87.28ms`, and stable writer/mixin counts. The **CPU profile** showed
+  `Rules.find` is not the main self-time
   target: top self samples were `Node` construction, GC, `findVarWithinScopeSurface`,
   `wouldMatchNode`, `OutputWriter.getSince`, `constructCopy`, `copyChild`, and
   `copyWithReusableLeaves`; inclusive stacks still concentrate under eval,
@@ -206,17 +219,15 @@ Current known evidence from the latest handoff run:
   stack breakdown specifically for `Reference.evalNode` and `Rules.find`
   before changing lookup semantics or allocation shape again.
 - Latest handoff round kept a small extend-chain optimization. A fresh broad
-  `benchmark.less` baseline measured about `412.00ms avg / 383.02ms median`
-  and `profile-less-benchmark.mjs --file=benchmark.less` measured about
-  `785.76ms` instrumented elapsed. The CPU profile showed `processExtends`
+  `benchmark.less` baseline measured about `412.00ms avg / 383.02ms median`.
+  The CPU profile showed `processExtends`
   back near the top, with copy pressure still fragmented across guard,
   registration, callable, and render paths. The kept change caches the original
   selector subtree value set once inside `applyExtendsToSelector` and threads
   it into chained-extend lookup, avoiding repeated original-selector walks
   after successful extends. Focused extend tests and the broader mixin test are
   green. Post-change broad samples were about `380.99ms avg / 367.85ms median`
-  and `396.34ms avg / 383.44ms median`; the instrumented profile moved to
-  about `700.85ms`. Less 4.5 remains about `47ms`, so broad alpha is still
+  and `396.34ms avg / 383.44ms median`. Less 4.5 remains about `47ms`, so broad alpha is still
   roughly `8x` slower. Next target: profile `Reference.evalNode`/`Rules.find`
   together and look for a real lookup-state reduction; guard copies are hot but
   currently protect canonical guard eval/prep state and should not be removed
@@ -267,8 +278,8 @@ Current known evidence from the latest handoff run:
   A non-profiled 15-run/5-warmup sample after the change was noisy but improved
   at about 509ms avg / 427ms median. Less 4.x remains about 41-47ms, so this is
   still an alpha-blocking broad benchmark regression.
-- The current `profile-less-benchmark.mjs --file=benchmark.less` sample after
-  the extend error-record change is about 644ms elapsed. Counters are stable:
+- The `profile-less-benchmark.mjs --file=benchmark.less` counters after
+  the extend error-record change were stable:
   `Reference.evalNode` 3,610 calls / about 103ms, `LessParser.parse` 3 calls /
   about 90ms, `Rules.find` 999 calls / about 33ms,
   `OutputWriter.getSince` 127,537 calls / about 10ms, and
