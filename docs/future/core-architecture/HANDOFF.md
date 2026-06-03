@@ -70,9 +70,10 @@ This is the short list that should drive queue work:
 2. Lane C/H/F: the current placement-vocabulary, selector-copy, and
    operation-result helper seams are closed. Reopen only for another real
    helper/state deletion or measured hot-path win.
-3. Lane E: rules-like/direct-index public ownership is blocked by the current
-   mutability and parentage contract; only reopen if that public API changes
-   or a new focused proof deletes a real owned-result branch.
+3. Lane E: rules-like/direct-index public ownership is not an active queue
+   item under the current mutability and parentage contract; only reopen if
+   that public API changes or a new focused proof deletes a real owned-result
+   branch.
 4. Lane G: only continue call-path work when rawArgs diagnostics, function-call
    overhead, or another measured runtime path improves; the fallback `Call`
    ownership item is done.
@@ -443,10 +444,10 @@ for references, direct-index hits, and rules-like values.
 
 **Completion gates:**
 
-- [x] Every rules-like preservation consumer either uses the owned public
-      surface directly or has a documented blocker.
-- [x] Source-free direct-index public container narrowing is either implemented
-      or blocked by a mutability/parentage proof.
+- [x] Every rules-like preservation consumer uses the owned public surface
+      directly or has a documented compatibility boundary.
+- [x] Source-free direct-index public container narrowing is implemented where
+      safe or intentionally left owned by mutability/parentage proof.
 - [x] Reference-stack cleanup has focused tests for both text-only and owned
       output paths, including preserved rules-like surfaces.
 
@@ -455,8 +456,8 @@ for references, direct-index hits, and rules-like values.
 1. Done: rules-like consumers use owned public-surface facts directly; the
    source-helper/side-map seam and legacy nested-`sourceNode` freeze branch
    are gone.
-2. Blocked: source-free public direct-index `List`/`Sequence` ownership stays
-   until public mutability/parentage expectations change.
+2. Not queued: source-free public direct-index `List`/`Sequence` ownership
+   stays until public mutability/parentage expectations change.
 3. Preserved rules-like surfaces already have focused proof for canonical
    frozen sources plus balanced `referenceStack` cleanup.
 
@@ -621,7 +622,7 @@ not folklore.
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return, no parallel list/space checks, and no redundant source `value` field. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
 | `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public eval/resolve now returns finalized text output instead of constructing an owned fallback `Call`, and render-only optional JS failures with `contentNode` also emit direct fallback syntax. The dead optional-fallback helper export is gone from the tree surface. No production storage was added after the WeakMap experiment regressed static object counts. | Fallback `Call` ownership deletion complete; only revisit call work for rawArgs diagnostics or measured overhead. |
 | `Reference` | Text-only render exists for many scalar/container paths; rules-like wrappers remain as shallow owned public surfaces with callable ownership proof, but the separate rules-like preservation side-map is gone. Detached rules-like calls now recover lexical parentage from the owned surface's public `sourceNode` instead of a helper/side-map read, direct callable preservation now pops `referenceStack` on the owned-output path, and focused proof pins preserved rules-like surfaces to frozen canonical sources with balanced `referenceStack` cleanup. The legacy nested-`sourceNode` freeze branch is also gone, so rules-like freezing now acts only on the canonical source value that the shallow owned surface captures. Source-free public direct-index container ownership is intentionally retained for mutability/parentage. | Lane E queue cleared; reopen only for a public API change or a real owned-result branch deletion. |
-| `List` / `Sequence` | Dynamic render streams through native syntax; public resolve owns containers. Source-free public narrowing is blocked by public mutation/parentage expectations. | Revisit only if public mutability API changes. |
+| `List` / `Sequence` | Dynamic render streams through native syntax; public resolve owns containers. Source-free public narrowing is intentionally not queued while public mutation/parentage expectations require owned output. | Revisit only if public mutability API changes. |
 | `Block` / `Quoted` / `Url` / `Paren` / `Operation` | Render-only wrappers largely split from public resolve; operation finalization now keeps the public export name as an alias of the shared metadata finalizer, deleting the prior delegating wrapper while preserving dimension/color public consumers. | Lane F queue cleared; no generic output bridge reintroduced; focused materialization proofs stay green. |
 | `StyleImport` | First-use top-level placement segments and postlude render state exist; nested descendant source lookup now also replays sparse child-segment paths instead of depending on the old recursive placement map. Postlude order and option reads now consume render state, and the old recursive descendant lookup is off the live production helper path. | Lane D gates complete unless a future change deletes more placement state without reintroducing recursive lookup. |
 | Selectors / `Ampersand` / `Extend` | Ownership still semantic for generated/extended placement. Generated `:is(...)` omission state is now declared at construction time and consumed by selector render plus the ampersand/extend parent-list paths, removing the render-time arg-shape fallback read. Integration proof now covers both exact and `all` extend against the generated omission shape. Generated extend output may own wrapper/copy structure when that keeps placement and parentage simple; do not preserve source-node identity at the cost of harder architecture unless a measured regression justifies it. Selector placement copying now uses one shared boundary across implicit selector placement, extend application, extend-root processing, walk-and-consume extension, and extend-record materialization; the duplicate local clone/assert helpers are gone. | Lane H simplification slice complete. Only reopen for another real helper/state deletion or measured selector/extend hot-path win. |
@@ -721,9 +722,9 @@ materialization.
 
 1. Done: Lane C placement-state vocabulary is in `placement-state.ts` and used
    by import/mixin placement consumers with focused proof.
-2. Done/blocked: Lane E rules-like compatibility seams are narrowed to owned
-   public-surface facts; source-free public direct-index ownership stays
-   blocked by mutability/parentage expectations.
+2. Done/not queued: Lane E rules-like compatibility seams are narrowed to
+   owned public-surface facts; source-free public direct-index ownership stays
+   owned under current mutability/parentage expectations.
 3. Done: Lane F operation result finalization now has one shared finalizer
    export and no public wrapper hop.
 4. Done: Lane H selector-copy simplification centralized the owned selector
@@ -766,8 +767,8 @@ No active pull items remain. Restock only when a lane truthfully changes.
 7. Agent A: done. The nested AtRule body eval context carrier is deleted; only
    reopen Lane A for a real body/result copy deletion or measured hot-path win.
 8. Agent C: done/cleared. Lane E/F was audited: Lane F deleted the operation
-   public wrapper hop; Lane E remains blocked by public mutability/parentage
-   expectations rather than an active queue item.
+   public wrapper hop; Lane E has no active item unless mutability/parentage
+   expectations change or a focused proof exposes another real branch deletion.
 9. Agent B: done. Optional fallback public eval/resolve now returns finalized
    text output instead of an owned fallback `Call`; focused proof covers
    source-backed content, dynamic source-free content, JS optional failures,
