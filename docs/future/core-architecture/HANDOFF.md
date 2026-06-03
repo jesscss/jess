@@ -90,14 +90,23 @@ cleanup changes without before/after evidence.
 
 At the end of every handoff run, report performance to the user in plain terms:
 
-- latest Jess alpha benchmark numbers for the files touched or measured;
-- historical Less 4.x comparison and rough slowdown ratio where available;
+- **Real benchmark** numbers for the files touched or measured. These are the
+  only numbers that count as "Jess got faster/slower" and the only numbers to
+  compare against Less 4.x;
+- historical Less 4.x real benchmark comparison and rough slowdown ratio where
+  available;
+- **Instrumented profiler** results only as diagnostic support. Label them
+  explicitly as profiler/counter runs, and do not present profiler elapsed time
+  as product performance;
+- **CPU profile** evidence only as sampled hotspot/call-stack evidence. Label
+  CPU sample counts separately from benchmark timings;
 - whether the run improved, regressed, or only clarified the next target;
 - which optimization was kept, rejected, or deferred and why;
 - the next profile target.
 
 Do not hide behind proxy metrics. If a code change was rejected because the real
-benchmark slowed down, say that.
+benchmark slowed down, say that. If profiler elapsed moves but the real
+benchmark does not, call that a diagnostic clue, not a runtime improvement.
 
 ### Required Profile Inputs
 
@@ -160,6 +169,23 @@ pnpm run audit:node-creation
 
 Current known evidence from the latest handoff run:
 
+- Latest handoff round first fixed the reporting guidance: every final report
+  must label numbers as **Real benchmark**, **Instrumented profiler**, or
+  **CPU profile** evidence, and only real benchmark numbers count as
+  "Jess got faster/slower" or compare to Less 4.x. The performance experiment
+  targeted `Reference.evalNode`/`Rules.find`. **Real benchmark** baseline for
+  the run was noisy at about `499.28ms avg / 434.86ms median`, while the
+  **Instrumented profiler** diagnostic still showed `Reference.evalNode`
+  3,610 calls and `Rules.find` 999 calls. A narrow registry experiment skipped
+  child-search setup when a `Rules` node had no child-rule registry entries;
+  focused lookup/mixin tests passed, but **Real benchmark** post-change samples
+  were only about `407.11ms avg / 386.36ms median` and
+  `404.84ms avg / 382.50ms median`, which is not better than the established
+  post-extend band, and the instrumented profiler diagnostic worsened. The
+  registry change was rejected and reverted. Less 4.5 remains about `47ms`, so
+  broad alpha is still roughly `8-9x` slower. Next target: get a CPU-profile
+  stack breakdown specifically for `Reference.evalNode` and `Rules.find`
+  before changing lookup semantics or allocation shape again.
 - Latest handoff round kept a small extend-chain optimization. A fresh broad
   `benchmark.less` baseline measured about `412.00ms avg / 383.02ms median`
   and `profile-less-benchmark.mjs --file=benchmark.less` measured about
