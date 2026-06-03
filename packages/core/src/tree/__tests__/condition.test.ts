@@ -119,6 +119,21 @@ describe('Condition', () => {
       }
     });
 
+    it('treats optional fallback default() text as a default guard in comparisons', async () => {
+      context.isDefault = false;
+      const node = condition([
+        bool(false),
+        '=',
+        call({
+          name: ref({ key: 'default' }, { type: 'function', fallbackValue: true })
+        }, { silentFail: true })
+      ]);
+
+      const resolved = await node.eval(context);
+
+      expect(resolved.value).toBe(true);
+    });
+
     it('renders async comparisons without allocating temporary Bool nodes', async () => {
       const originalToTrimmedString = Bool.prototype.toTrimmedString;
       let boolStringCalls = 0;

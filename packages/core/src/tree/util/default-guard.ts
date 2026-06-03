@@ -28,6 +28,9 @@ export function getDefaultGuardValue(node: Node | undefined, context: Context): 
     const value = Reflect.get(node, 'value');
     return getDefaultGuardValue(value instanceof Node ? value : undefined, context);
   }
+  if (node.type === 'Any' && String(node.valueOf?.() ?? '') === 'default()') {
+    return Boolean(context.isDefault);
+  }
   if (node.type !== 'Call') {
     return;
   }

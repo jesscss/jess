@@ -67,15 +67,15 @@ This is the short list that should drive queue work:
 
 1. Lane A: collapse one more real AtRule lifecycle-state duplication across
    invocation/public boundaries.
-2. Lane G: try deleting the remaining owned fallback-`Call` surface from
-   public `resolve(...)`; only keep it if focused proof shows a real
-   regression.
-3. Lane H: simplify generated extend ownership only where it makes the
+2. Lane H: simplify generated extend ownership only where it makes the
    runtime model simpler or faster; do not treat source-node identity as a
    goal by itself.
-4. Lane E/F: take additional rules-like or declaration/operation cleanup only
+3. Lane E/F: take additional rules-like or declaration/operation cleanup only
    when the change deletes a real helper/state seam without hurting hot-path
    behavior.
+4. Lane G: only continue call-path work when rawArgs diagnostics, function-call
+   overhead, or another measured runtime path improves; the fallback `Call`
+   ownership item is done.
 5. Alpha confidence: keep verification and measured-runtime truth ahead of
    theoretical neatness.
 
@@ -85,8 +85,9 @@ These should not be treated as queue-stopping blockers right now:
 
 - AtRule collapse-nesting frame ownership: the source-node `WeakMap` path is
   already gone.
-- public `resolve(...)` fallback-`Call` ownership: currently an active
-  deletion candidate, not a protected requirement.
+- public `resolve(...)` fallback-`Call` ownership: optional fallback public
+  results now resolve to finalized text output instead of an owned fallback
+  `Call`.
 - extend-generated selector ownership: allowed when it keeps architecture
   simple; do not contort the runtime to avoid every copy.
 
@@ -144,13 +145,16 @@ it accurate, but do not mistake it for the short list of remaining work.
 - Shared runtime state that is still intentional includes
   `Context.rulesContext`, `ScopeFrame.liveSlotsByName`, and
   `ScopeFrame.fallbackFrame`.
+- Public optional fallback calls no longer create owned fallback `Call`
+  surfaces for public eval/resolve. They resolve to finalized text output
+  while render still emits finalized syntax directly.
 - The remaining work is not “find more places to hide copies.” It is:
   narrowing the remaining invocation/result state carriers, deleting a few
   still-real helper seams, and proving whether current owned public-result
   boundaries can disappear without regressions.
 - Static audit snapshot on the current branch:
-  `new-node: 280`, `derive: 29`, `with-surface: 38`, `copy-leaves: 28`,
-  module-context count `375`.
+  `new-node: 278`, `derive: 29`, `with-surface: 38`, `copy-leaves: 27`,
+  module-context count `371`.
 - Hotpath measurement is still noisy. Use it to confirm clear wins/regressions,
   not to justify tiny static-count changes by themselves.
 
@@ -516,8 +520,8 @@ function-call overhead while preserving user-code mutation APIs.
 - Plain JS calls pass positional args directly.
 - Metadata calls keep exactly the mutable `rawArgs` surface required by public
   user-code API.
-- Optional fallback CSS calls render finalized syntax without re-entering name
-  evaluation or owning a fallback `Call` unless public resolve requires it.
+- Optional fallback CSS calls render and public-resolve finalized syntax
+  without re-entering name evaluation or owning a fallback `Call`.
 - RawArgs placement should support diagnostics/source lookup without walking
   the owned rawArgs tree by default.
 
@@ -525,15 +529,16 @@ function-call overhead while preserving user-code mutation APIs.
 
 - [x] rawArgs placement has one diagnostics or validation consumer.
 - [x] Metadata and non-metadata call paths stay measured separately.
-- [ ] Fallback content/name state has no copied `Call` surface in render-only
-      paths.
+- [x] Fallback content/name state has no copied `Call` surface in render-only
+      paths or optional fallback public eval/resolve.
 
 **Next queue seeds:**
 
 1. Route one metadata diagnostic/source helper through rawArgs placement.
 2. Measure call-path function overhead before and after any rawArgs changes.
-3. Split another fallback name/content public-result construction case from
-   render state only if it deletes a real owned `Call` surface.
+3. Do not reopen fallback public-result ownership unless a concrete regression
+   appears; optional fallback eval/resolve now returns finalized text output
+   instead of an owned fallback `Call`.
 
 **Current measurement truth:**
 
@@ -609,7 +614,7 @@ not folklore.
 | `AtRule` | Leaf render split; body invocation state is much narrower, render/public adapters are reduced, direct render carries transient facts through print-state overrides, registration prep writes registration state onto the invocation record, nested `@layer` registration reads layer names from context state, `AtRuleBodyFrameState` is gone, the duplicated `contextState.evalFrame` mirror is gone, the separate `AtRuleBodyEvalResult` wrapper is gone, the public-result adapter input/state layer is gone, and cleanup ownership now lives directly in the invocation runner. The evaluated-frame `WeakMap` seam is now deleted: collapse-nesting eval returns owned frame-bearing AtRules while the source remains `frames`/`hoistToRoot` neutral, and body ownership keeps the evaluated extend root shared with `processExtends()`. | Lane A is unblocked; next work is remaining lifecycle-state collapse across context state, the invocation record, and direct public-boundary writes. |
 | `Ruleset` | Static body direct render exists; dynamic/nil bodies still own body surfaces. | Dynamic body side-state either implemented for one scalar family or blocked. |
 | `Declaration` | Render state avoids prepared declaration materialization; contextual important public/render finalizers are split and merge render normalization uses a strict discriminated adapter state with scalar early return, no parallel list/space checks, and no redundant source `value` field. Sequence-space merge output is covered by adapter-state proof. | Remaining declaration-state duplication tracked. |
-| `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public syntax construction has a named adapter and placement vocabulary (`source`, `output`, `content`, `publicBoundary`), but render-only optional JS failures with `contentNode` now emit direct fallback syntax without deriving an owned fallback `Call`, and the dead optional-fallback helper export is gone from the tree surface. No production storage was added after the WeakMap experiment regressed static object counts. | Call overhead measurement complete and fallback render/public split advanced. |
+| `Call` | Fallback render state exists; rawArgs remains owned API boundary with diagnostic-source and diagnostic-message helpers. Optional fallback public eval/resolve now returns finalized text output instead of constructing an owned fallback `Call`, and render-only optional JS failures with `contentNode` also emit direct fallback syntax. The dead optional-fallback helper export is gone from the tree surface. No production storage was added after the WeakMap experiment regressed static object counts. | Fallback `Call` ownership deletion complete; only revisit call work for rawArgs diagnostics or measured overhead. |
 | `Reference` | Text-only render exists for many scalar/container paths; rules-like wrappers remain as shallow owned public surfaces with callable ownership proof, but the separate rules-like preservation side-map is gone. Detached rules-like calls now recover lexical parentage from the owned surface's public `sourceNode` instead of a helper/side-map read, direct callable preservation now pops `referenceStack` on the owned-output path, and focused proof pins preserved rules-like surfaces to frozen canonical sources with balanced `referenceStack` cleanup. The legacy nested-`sourceNode` freeze branch is also gone, so rules-like freezing now acts only on the canonical source value that the shallow owned surface captures. Source-free public direct-index container ownership is intentionally retained for mutability/parentage. | Rules-like compatibility reads are narrowed to public-surface facts or captured blockers. |
 | `List` / `Sequence` | Dynamic render streams through native syntax; public resolve owns containers. Source-free public narrowing is blocked by public mutation/parentage expectations. | Revisit only if public mutability API changes. |
 | `Block` / `Quoted` / `Url` / `Paren` / `Operation` | Render-only wrappers largely split from public resolve; operation finalization now distinguishes metadata-result inheritance from public-result inheritance, with dimension/color public consumers. | No generic output bridge reintroduced; focused materialization proofs stay green. |
@@ -664,12 +669,12 @@ bounded item.
 Recent work deleted the AtRule evaluated-frame `WeakMap`, moved
 collapse-nesting frame facts onto owned eval results, preserved nested
 wrapper/media and extend parity, deleted the rules-like reference side-map and
-legacy nested-`sourceNode` freeze branch, narrowed the remaining fallback
-`Call` ownership boundary to public resolve only, deleted the separate
-AtRule eval-result wrapper by carrying the result node on the invocation
-record, deleted the separate public-result adapter input/state layer plus the
-extra cleanup/restore helper, and reclassified the selector-copy seam as
-simplification work instead of a protected blocker.
+legacy nested-`sourceNode` freeze branch, deleted fallback `Call` ownership in
+render and optional fallback public eval/resolve by returning finalized text
+output, deleted the separate AtRule eval-result wrapper by carrying the result
+node on the invocation record, deleted the separate public-result adapter
+input/state layer plus the extra cleanup/restore helper, and reclassified the
+selector-copy seam as simplification work instead of a protected blocker.
 
 ## Lane Backlog
 
@@ -699,14 +704,9 @@ simplification work instead of a protected blocker.
 
 1. Lane B is effectively complete. Only reopen it if a real `Rules`-owned
    callable runtime or package surface disappears.
-2. Prefer Lane G only when a fallback/public call state surface is deleted or
-   a measured end-to-end win justifies the change.
-   Active candidate: render-only optional fallback already avoids owning a
-   fallback `Call`, and current repo evidence does not show a meaningful
-   external consumer depending on public `resolve(...)` returning an owned
-   source-backed fallback `Call`. Treat the remaining owned fallback-`Call`
-   path as removable unless a concrete source-mutation or parentage regression
-   is proven.
+2. Done: optional fallback public eval/resolve no longer owns fallback `Call`
+   output. Reopen Lane G only for rawArgs diagnostics, measured function-call
+   overhead, or a concrete fallback text regression.
 
 ### Agent C backlog
 
@@ -731,8 +731,8 @@ The previous five-item pull queue is cleared honestly:
 - item 2 is done (`contextState.evalFrame` mirror removed)
 - item 3 is done (rules-like side-map/helper seam removed)
 - item 4 is reopened as a selector-copy simplification candidate
-- item 5 is reopened as an active public `resolve(...)` fallback-`Call`
-  deletion candidate
+- item 5 is done (public optional fallback eval/resolve returns finalized text
+  output instead of an owned fallback `Call`)
 
 Pull the next free item from here; restock only when a lane truthfully changes.
 
@@ -751,13 +751,11 @@ Pull the next free item from here; restock only when a lane truthfully changes.
    Generated extend output may stay owned if that is the simpler architecture;
    only preserve source-node identity where it pays for itself in measured
    speed, memory, or clearer runtime model.
-7. Agent B or C: retry fallback/public call ownership. Focused proof now only
-   establishes implementation truth: render derives zero fallback `Call`
-   surfaces for source-backed fallback content, while public `resolve(...)`
-   currently derives one owned fallback `Call`. Delete that owned surface if
-   source mutation, parentage, and resolved-shape behavior stay honest under
-   focused proof; only restore blocker status if a concrete regression is
-   demonstrated.
+7. Agent B: done. Optional fallback public eval/resolve now returns finalized
+   text output instead of an owned fallback `Call`; focused proof covers
+   source-backed content, dynamic source-free content, JS optional failures,
+   source parentage, zero `deriveCall` fallback construction, Less fixture
+   comment trivia, and `default()` guard comparisons.
 
 ## Measurement And Verification
 

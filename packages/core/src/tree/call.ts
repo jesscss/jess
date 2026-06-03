@@ -228,6 +228,15 @@ export class Call extends Node<CallValue, CallOptions> {
     );
   }
 
+  private async createFinalizedCallTextOutput(
+    context: Context,
+    state: CallEvalState,
+    syntax: FinalizedCallSyntax
+  ): Promise<Any<'any'>> {
+    const rendered = await state.source.renderFinalizedCallPublicText(context, state, syntax);
+    return state.source.markCallOutput(new Any(rendered, { role: 'any' }));
+  }
+
   private createFinalizedCallContentState(state: CallEvalState): CallContentPlacementState | undefined {
     const { contentNode } = state;
     if (!contentNode) {
@@ -285,9 +294,18 @@ export class Call extends Node<CallValue, CallOptions> {
     state: CallEvalState,
     name: Node | string | unknown,
     fallbackValue: unknown
-  ): Promise<Call> {
+  ): Promise<Node> {
     const fallbackName = this.getOptionalFallbackName(name, fallbackValue);
-    return this.evalFinalizedCallSyntax(context, state, fallbackName);
+    const evaluatedArgs = await state.source.evalArgNodes(
+      context,
+      state.args,
+      { preserveSourceParents: true }
+    );
+    return this.createFinalizedCallTextOutput(context, state, {
+      name: fallbackName,
+      args: evaluatedArgs,
+      ...(state.contentNode && { contentNode: state.contentNode })
+    });
   }
 
   private derivePreserveRulesLikeReference(name: Node): Node {
@@ -439,9 +457,12 @@ export class Call extends Node<CallValue, CallOptions> {
             if (renderFailureWith) {
               return this.renderFinalizedCallSyntax(fallbackName, state, context, renderFailureWith);
             }
-            return this.markCallOutput(await this.evalOptionalFallbackCallSyntax(context, state, this.value.name, fn));
+            return this.evalOptionalFallbackCallSyntax(context, state, this.value.name, fn);
           }
         });
+      }
+      if (isExtendedFn(fn)) {
+        return undefined;
       }
       if (
         isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
@@ -450,7 +471,18 @@ export class Call extends Node<CallValue, CallOptions> {
       ) {
         return undefined;
       }
-      return this.markCallOutput(await this.evalFinalizedCallSyntax(context, state, evaluatedName));
+      const evaluatedArgs = await state.source.evalArgNodes(
+        context,
+        state.args,
+        { preserveSourceParents: true }
+      );
+      return this.createFinalizedCallTextOutput(context, state, {
+        name: typeof evaluatedName === 'string' || evaluatedName instanceof Node
+          ? evaluatedName
+          : stringifyValueOf(evaluatedName),
+        args: evaluatedArgs,
+        ...(state.contentNode && { contentNode: state.contentNode })
+      });
     });
   }
 
@@ -666,10 +698,13 @@ export class Call extends Node<CallValue, CallOptions> {
     name: string | Node | unknown,
     state: CallEvalState,
     context: Context,
-    prepared: PrintOptions
+    prepared: PrintOptions,
+    syntax?: Pick<FinalizedCallSyntax, 'args' | 'contentNode'>
   ): MaybePromise<string> {
     const w = getPrintOptions(prepared).writer!;
     const mark = w.mark();
+    const args = syntax && 'args' in syntax ? syntax.args : state.args;
+    const contentNode = syntax && 'contentNode' in syntax ? syntax.contentNode : state.contentNode;
     if (typeof name === 'string') {
       w.add(name, state.source);
     } else if (name instanceof Node) {
@@ -683,19 +718,53 @@ export class Call extends Node<CallValue, CallOptions> {
       if (state.markImportant) {
         w.add(' !important');
       }
-      if (state.contentNode) {
+      if (contentNode) {
         w.add(': ');
-        const renderedContent = this.renderChildToActiveWriter(state.contentNode, context, prepared);
+        const renderedContent = this.renderChildToActiveWriter(contentNode, context, prepared);
         return isThenable(renderedContent)
           ? renderedContent.then(() => w.getSince(mark))
           : w.getSince(mark);
       }
       return w.getSince(mark);
     };
-    const renderedArgs = this.serializeRenderedArgs(state.args, context, prepared);
+    const renderedArgs = this.serializeRenderedArgs(args, context, prepared);
     return isThenable(renderedArgs)
       ? renderedArgs.then(finishCall)
       : finishCall();
+  }
+
+  private renderFinalizedCallPublicText(
+    context: Context,
+    state: CallEvalState,
+    syntax: FinalizedCallSyntax
+  ): MaybePromise<string> {
+    const prepared = prepareRenderPrintState(context);
+    const w = getPrintOptions(prepared).writer!;
+    const mark = w.mark();
+    if (typeof syntax.name === 'string') {
+      w.add(syntax.name, state.source);
+    } else {
+      syntax.name.toTrimmedString(prepared);
+    }
+    w.add('(');
+    if (syntax.args) {
+      const argsMark = w.mark();
+      syntax.args.toTrimmedString(prepared);
+      w.trimHorizontalStartSince(argsMark);
+      w.trimHorizontalEndSince(argsMark);
+    }
+    w.add(')');
+    if (state.markImportant) {
+      w.add(' !important');
+    }
+    if (syntax.contentNode) {
+      w.add(': ');
+      const renderedContent = this.renderChildToActiveWriter(syntax.contentNode, context, prepared);
+      return isThenable(renderedContent)
+        ? renderedContent.then(() => w.getSince(mark))
+        : w.getSince(mark);
+    }
+    return w.getSince(mark);
   }
 
   private async renderOptionalFallbackCallSyntax(
@@ -1003,7 +1072,7 @@ export class Call extends Node<CallValue, CallOptions> {
           if (!this._options?.silentFail) {
             throw e;
           }
-          return this.markCallOutput(await this.evalOptionalFallbackCallSyntax(context, state, name, n));
+          return this.evalOptionalFallbackCallSyntax(context, state, name, n);
         }
       });
     }
@@ -1064,7 +1133,7 @@ export class Call extends Node<CallValue, CallOptions> {
           if (!this._options?.silentFail || shouldRethrowForMode) {
             throw e;
           }
-          return this.markCallOutput(await this.evalOptionalFallbackCallSyntax(context, state, name, n));
+          return this.evalOptionalFallbackCallSyntax(context, state, name, n);
         }
       });
     } else {
@@ -1086,10 +1155,22 @@ export class Call extends Node<CallValue, CallOptions> {
           return new Paren(evaluatedArgs.value[0]!);
         }
       }
+      const finalizedName = typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n);
+      if (this._options?.silentFail && typeof this.value.name !== 'string') {
+        return this.createFinalizedCallTextOutput(
+          context,
+          state,
+          {
+            name: finalizedName,
+            args: evaluatedArgs,
+            ...(state.contentNode && { contentNode: state.contentNode })
+          }
+        );
+      }
       const node = this.createFinalizedCallOutput(
         state,
         {
-          name: typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n),
+          name: finalizedName,
           args: evaluatedArgs,
           contentNode: this.createFinalizedCallContentNode(state)
         }

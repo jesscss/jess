@@ -454,10 +454,7 @@ describe('Call', () => {
 
     const resolved = await rule.resolve(context);
 
-    expect(isNode(resolved, N.Call)).toBe(true);
-    if (!isNode(resolved, N.Call)) {
-      throw new Error('Expected call fallback output');
-    }
+    expect(isNode(resolved, N.Call)).toBe(false);
     expect(resolved.toTrimmedString()).toBe('missing-fn(red 10px)');
     expect(args.parent).toBe(rule);
     expect(name.parent).toBe(rule);
@@ -1416,7 +1413,7 @@ describe('Call', () => {
     try {
       const resolved = await rule.eval(context);
 
-      expect(isNode(resolved, N.Call)).toBe(true);
+      expect(isNode(resolved, N.Call)).toBe(false);
       expect(resolved.toTrimmedString()).toBe('missing-fn(red 10px)');
       expect(clonedCalls).toBe(0);
       expect(args.parent).toBe(rule);
@@ -1447,7 +1444,7 @@ describe('Call', () => {
     try {
       const resolved = await rule.eval(context);
 
-      expect(isNode(resolved, N.Call)).toBe(true);
+      expect(isNode(resolved, N.Call)).toBe(false);
       expect(resolved.toTrimmedString()).toBe('missing-fn(red 10px)');
       expect(sequenceCopies).toBe(0);
       expect(args.parent).toBe(rule);
@@ -1479,21 +1476,16 @@ describe('Call', () => {
       const resolved = await rule.resolve(context);
 
       expect(rendered).toBe('missing-fn(red): raw content');
-      expect(isNode(resolved, N.Call)).toBe(true);
-      if (!isNode(resolved, N.Call)) {
-        throw new Error('Expected call fallback output');
-      }
+      expect(isNode(resolved, N.Call)).toBe(false);
       expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
-      expect(resolved.value.contentNode).toBe(content);
       expect(sequenceCopies).toBe(0);
-      expect(content.frozen).toBe(true);
       expect(content.parent).toBe(rule);
     } finally {
       Sequence.prototype.copy = originalCopy;
     }
   });
 
-  it('owns source-backed fallback call content when optional function evaluation falls back', async () => {
+  it('resolves source-backed fallback call content without owning a fallback Call', async () => {
     const content = new Sequence(
       [any('raw'), any('content')],
       undefined,
@@ -1507,12 +1499,8 @@ describe('Call', () => {
 
     const resolved = await rule.resolve(context);
 
-    expect(isNode(resolved, N.Call)).toBe(true);
-    if (!isNode(resolved, N.Call)) {
-      throw new Error('Expected call fallback output');
-    }
+    expect(isNode(resolved, N.Call)).toBe(false);
     expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
-    expect(resolved.value.contentNode).not.toBe(content);
     expect(content.parent).toBe(rule);
   });
 
@@ -1567,7 +1555,7 @@ describe('Call', () => {
     }
   });
 
-  it('renders source-backed fallback content without deriving a fallback Call but resolve still owns one', async () => {
+  it('renders and resolves source-backed fallback content without deriving a fallback Call', async () => {
     const originalCopy = Sequence.prototype.copy;
     const deriveCallDescriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
     const originalDeriveCall = deriveCallDescriptor?.value;
@@ -1608,14 +1596,10 @@ describe('Call', () => {
 
       const resolved = await rule.resolve(context);
 
-      expect(isNode(resolved, N.Call)).toBe(true);
-      if (!isNode(resolved, N.Call)) {
-        throw new Error('Expected call fallback output');
-      }
+      expect(isNode(resolved, N.Call)).toBe(false);
       expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
-      expect(derivedCalls).toBe(1);
+      expect(derivedCalls).toBe(0);
       expect(sequenceCopies).toBe(0);
-      expect(resolved.value.contentNode).not.toBe(content);
       expect(content.parent).toBe(rule);
       expect(rule.evaluated).toBe(false);
     } finally {
@@ -1760,7 +1744,7 @@ describe('Call', () => {
     }
   });
 
-  it('owns dynamic source-free fallback call content before output serialization', async () => {
+  it('resolves dynamic source-free fallback call content without owning a fallback Call', async () => {
     const content = seq([any('raw'), any('content')]);
     content.addFlag(F_NON_STATIC);
     const rule = call({
@@ -1771,19 +1755,12 @@ describe('Call', () => {
 
     const resolved = await rule.resolve(context);
 
-    expect(isNode(resolved, N.Call)).toBe(true);
-    if (!isNode(resolved, N.Call)) {
-      throw new Error('Expected call fallback output');
-    }
-    const outputContent = resolved.value.contentNode;
+    expect(isNode(resolved, N.Call)).toBe(false);
     expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
-    expect(outputContent).toBeInstanceOf(Sequence);
-    expect(outputContent).not.toBe(content);
-    expect(outputContent?.frozen).toBe(true);
     expect(content.parent).toBe(rule);
   });
 
-  it('derives optional JS failure call output without shallow-cloning the source call', async () => {
+  it('resolves optional JS failure fallback without shallow-cloning the source call', async () => {
     const root = rules([]);
     root.register('function', new JsFunction({
       name: 'bad',
@@ -1813,10 +1790,7 @@ describe('Call', () => {
       }, { silentFail: true });
       const resolved = await rule.eval(context);
 
-      expect(isNode(resolved, N.Call)).toBe(true);
-      if (!isNode(resolved, N.Call)) {
-        throw new Error('Expected call fallback output');
-      }
+      expect(isNode(resolved, N.Call)).toBe(false);
       expect(resolved.toTrimmedString()).toBe('bad(red 10px)');
       expect(clonedCalls).toBe(0);
       expect(args.parent).toBe(rule);
@@ -1865,9 +1839,9 @@ describe('Call', () => {
       const resolved = await rule.resolve(context);
 
       expect(buffer.parts).toEqual(['bad(red 10px)']);
-      expect(isNode(resolved, N.Call)).toBe(true);
+      expect(isNode(resolved, N.Call)).toBe(false);
       expect(resolved.toTrimmedString()).toBe('bad(red 10px)');
-      expect(derivedCalls).toBe(1);
+      expect(derivedCalls).toBe(0);
       expect(calls).toBe(3);
       expect(args.parent).toBe(rule);
       expect(name.parent).toBe(rule);
