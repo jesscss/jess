@@ -33,7 +33,6 @@ import { processExtends } from './util/extend-roots.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
-import type { Declaration } from './declaration.js';
 import { Any } from './any.js';
 import { List } from './list.js';
 import {
@@ -2623,14 +2622,25 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this._addPendingPrep(prepState, node);
       return;
     }
+    if (node.registrationPrepared) {
+      this._storePreparedRegistrationNode(rules, node, index, nodeIndex, prepState);
+      return;
+    }
     // Prepare static identities before registration. Rulesets still need selector/keySet prep.
-    const prepared = node.prepareRegistration(context);
+    const canReuseCanonicalDeclaration = (
+      isNode(node, N.Declaration | N.VarDeclaration)
+      && !node.options?.assign
+      && !node.options?.normalizedFromAssign
+    );
+    const prepared = canReuseCanonicalDeclaration
+      ? node.prepareRegistration(context, { reuseCanonical: true })
+      : node.prepareRegistration(context);
     if (isThenable(prepared)) {
-      return (prepared as Promise<Node>).then((preparedNode) => {
+      return Promise.resolve(prepared).then((preparedNode) => {
         this._storePreparedRegistrationNode(rules, preparedNode, index, nodeIndex, prepState);
       });
     }
-    this._storePreparedRegistrationNode(rules, prepared as Node, index, nodeIndex, prepState);
+    this._storePreparedRegistrationNode(rules, prepared, index, nodeIndex, prepState);
   }
 
   /**

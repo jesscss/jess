@@ -553,6 +553,7 @@ type PreparedReferenceLookup = {
 };
 
 type ReferenceLookupResultKind = 'fallback' | 'runtime-binding' | 'declaration' | 'direct';
+const RAW_REFERENCE_TARGET_NOT_FOUND = Symbol('RAW_REFERENCE_TARGET_NOT_FOUND');
 
 function getLookupKeyString(valueKey: NormalizedLookupKey): string {
   return Array.isArray(valueKey) ? (valueKey[0] ?? '') : `${valueKey}`;
@@ -1189,6 +1190,28 @@ function resolveInitialReferenceTarget(
   context: Context
 ): MaybePromise<unknown> {
   const { target } = referenceNode.value;
+  if (
+    target
+    && referenceNode.options.type === 'index'
+    && isNode(target, N.Reference)
+    && target.options.type !== 'mixin'
+    && target.options.type !== 'mixin-ruleset'
+  ) {
+    const rawTarget = resolveRawReferenceLookupTarget(target, context);
+    const finalizeRawTarget = (resolvedRawTarget: unknown): MaybePromise<unknown> => {
+      if (
+        resolvedRawTarget !== RAW_REFERENCE_TARGET_NOT_FOUND
+        && isDirectIndexContainerTarget(referenceNode, resolvedRawTarget)
+      ) {
+        return resolvedRawTarget;
+      }
+      return target.eval(context);
+    };
+    if (isThenable(rawTarget)) {
+      return Promise.resolve(rawTarget).then(finalizeRawTarget);
+    }
+    return finalizeRawTarget(rawTarget);
+  }
   const resolvedTarget = target
     ? target.eval(context)
     : context.rulesContext ?? referenceNode.rulesParent;
@@ -1925,6 +1948,63 @@ function finalizeReferenceLookupResult(args: {
     return finalizeDeclarationReferenceResult(referenceNode, returnVal, context, { textOnly });
   }
   return finalizeDirectReferenceResult(referenceNode, returnVal, context, { textOnly });
+}
+
+function finalizeRawReferenceLookupTarget(
+  returnVal: RulesLookupResult | unknown
+): unknown {
+  const resultKind = classifyReferenceLookupResult(returnVal);
+  if (resultKind === 'fallback') {
+    return RAW_REFERENCE_TARGET_NOT_FOUND;
+  }
+  if (isRuntimeVarBinding(returnVal)) {
+    return returnVal.value;
+  }
+  if (isNode(returnVal, N.Declaration) || isNode(returnVal, N.VarDeclaration)) {
+    return returnVal.value.value;
+  }
+  return returnVal;
+}
+
+function resolveRawReferenceLookupTarget(
+  referenceNode: Reference,
+  context: Context
+): MaybePromise<unknown> {
+  const { target, key } = referenceNode.value;
+  const lookupType = referenceNode.options.type;
+  context.pushReference();
+
+  const rawResult = pipe(
+    () => resolveInitialReferenceTarget(referenceNode, context),
+    resolved => evaluateReferenceKey(key, resolved, context),
+    ([resolvedTarget, valueKey]) => resolveReferenceTargetValue({
+      referenceNode,
+      resolvedTarget,
+      valueKey,
+      context
+    }),
+    ([resolvedTarget, valueKey]) => lookupResolvedReference({
+      referenceNode,
+      resolvedTarget,
+      lookupType,
+      valueKey: valueKey as NormalizedLookupKey,
+      target,
+      originalFilter: referenceNode.options.filter,
+      context
+    }),
+    ({ returnVal }) => {
+      context.popReference();
+      return finalizeRawReferenceLookupTarget(returnVal);
+    }
+  );
+
+  if (isThenable(rawResult)) {
+    return Promise.resolve(rawResult).catch((error) => {
+      context.popReference();
+      throw error;
+    });
+  }
+  return rawResult;
 }
 
 function evaluateReferenceNode(args: {

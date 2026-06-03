@@ -214,6 +214,10 @@ type DeclarationRegistrationState = {
   bindOutput?: (node: Declaration) => void;
 };
 
+type DeclarationRegistrationOptions = {
+  reuseCanonical?: boolean;
+};
+
 type DeclarationRenderValue = Node | Nil | Node[] | CustomInterpolatedRenderValue;
 
 const isCustomInterpolatedRenderValue = (value: DeclarationRenderValue): value is CustomInterpolatedRenderValue => (
@@ -846,14 +850,26 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     );
   }
 
-  override prepareRegistration(context: Context): MaybePromise<this> {
+  override prepareRegistration(
+    context: Context,
+    options: DeclarationRegistrationOptions = {}
+  ): MaybePromise<this> {
     return pipe(
-      () => this._prepareDeclarationRegistrationState(context),
-      state => this.materializeRegistrationState(state)
+      () => this._prepareDeclarationRegistrationState(context, options),
+      state => this.materializeRegistrationState(state, options)
     );
   }
 
-  private createRegistrationState(): DeclarationRegistrationState {
+  private createRegistrationState(
+    options: DeclarationRegistrationOptions = {}
+  ): DeclarationRegistrationState {
+    if (options.reuseCanonical === true) {
+      return {
+        name: this.value.name,
+        value: this.value.value,
+        important: this.value.important
+      };
+    }
     return {
       name: this.copyNameForDerived(this.value.name),
       value: this.copyValueForDerived(this.value.value),
@@ -872,11 +888,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   private _prepareDeclarationRegistrationState(
     context: Context,
-    options: { ownParts?: boolean } = {}
+    options: { ownParts?: boolean; reuseCanonical?: boolean } = {}
   ): MaybePromise<DeclarationRegistrationState> {
     const state = options.ownParts === false
       ? this.createRenderRegistrationState()
-      : this.createRegistrationState();
+      : this.createRegistrationState(options);
     const preparedName = this._prepareDeclarationNameIdentity(state, context);
     if (isThenable(preparedName)) {
       return preparedName.then(key => this._finishDeclarationRegistrationPrep(state, key));
@@ -1028,11 +1044,27 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
   }
 
-  private materializeRegistrationState(state: DeclarationRegistrationState): this {
+  private materializeRegistrationState(
+    state: DeclarationRegistrationState,
+    options: DeclarationRegistrationOptions = {}
+  ): this {
+    const changed = (
+      state.name !== this.value.name
+      || state.value !== this.value.value
+      || state.important !== this.value.important
+      || state.normalizedFromAssign !== undefined
+      || state.bindOutput !== undefined
+    );
+    if (options.reuseCanonical === true && !changed) {
+      this.registrationPrepared = true;
+      return this;
+    }
     const node = this.withParts({
-      name: state.name,
-      value: state.value,
-      important: state.important
+      name: state.name === this.value.name ? this.copyNameForDerived(state.name) : state.name,
+      value: state.value === this.value.value ? this.copyValueForDerived(state.value) : state.value,
+      important: state.important === this.value.important
+        ? this.copyImportantForDerived(state.important)
+        : state.important
     });
     if (state.normalizedFromAssign) {
       node.options.normalizedFromAssign = state.normalizedFromAssign;

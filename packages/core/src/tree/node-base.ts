@@ -56,6 +56,9 @@ export const REMOVE: unique symbol = Symbol('REMOVE');
 export const IS_PROXY: unique symbol = Symbol('IS_PROXY');
 export type NodeVisitReturn = void | Node | symbol;
 export type NodeOptions = Record<string, any> & AllNodeOptions;
+export type RegistrationOptions = {
+  reuseCanonical?: boolean;
+};
 export const DEFAULT_DATA = 'value';
 
 type BasicNodeTypes = PrimitiveOrFunc | Node;
@@ -937,7 +940,7 @@ export abstract class Node<
    * The default recursively prepares children for registration. Nodes with
    * narrower identity or mark-only behavior override this method directly.
    */
-  prepareRegistration(context: Context): MaybePromise<Node> {
+  prepareRegistration(context: Context, _options?: RegistrationOptions): MaybePromise<Node> {
     if (!this.registrationPrepared) {
       const node = this;
       node.registrationPrepared = true;

@@ -25,34 +25,11 @@ not a goal.
 
 ## Active Queue
 
-### 1. Lane E: Direct-Index Container Reuse
+No active queue items are currently defined.
 
-Audit public direct-index `List` / `Sequence` resolve paths in
-`packages/core/src/tree/reference.ts`.
+### Alpha Confidence
 
-The focused tests no longer require fresh result identity. They now require the
-actual runtime contract: canonical source containers remain readable,
-serializable, correctly parented, and semantically intact.
-
-Work item:
-
-1. Find the source-free public direct-index container path that still allocates
-   an owned container.
-2. Try canonical reuse or a narrower result path.
-3. Keep or add tests that prove source readability, serialization, parentage,
-   lookup state, reference stack cleanup, and output correctness.
-4. Delete copies only where the proof holds. If sharing corrupts a real runtime
-   invariant, document that specific invariant in the test name.
-
-Focused starting point:
-
-```sh
-pnpm --filter @jesscss/core test -- --run src/tree/__tests__/reference.test.ts
-```
-
-### 2. Alpha Confidence
-
-After the direct-index work, restock only from evidence:
+Restock only from evidence:
 
 - a failing or missing alpha gate;
 - a measured Less eval/render regression or clear hot-path win;
@@ -60,6 +37,12 @@ After the direct-index work, restock only from evidence:
 - a real canonical-tree preservation bug.
 
 Do not restock from broad lane history or from completed-work summaries.
+
+Most recent run cleared the direct-index container reuse item: explicit
+direct-index reference targets now reuse raw canonical lookup containers when
+they are already safe index containers, and plain declaration registration can
+skip no-op owned materialization during Rules registration without changing
+direct declaration resolve/render semantics.
 
 ## Closed Work Policy
 

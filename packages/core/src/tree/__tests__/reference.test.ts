@@ -1083,6 +1083,7 @@ describe('reference', () => {
       const result = await refNode.resolve(context);
 
       expect(result).toBeInstanceOf(List);
+      expect(result).toBe(sourceList);
       expect(result.toTrimmedString()).toBe('a, b');
       expect(sourceList.toTrimmedString()).toBe('a, b');
       if (result instanceof List) {
