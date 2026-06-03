@@ -1,4 +1,4 @@
-import { Selector } from '../selector.js';
+import { attachSelectorBitLibrary, Selector } from '../selector.js';
 import { Ampersand } from '../ampersand.js';
 import type { AmpersandValue } from '../ampersand.js';
 import type { Ruleset } from '../ruleset.js';
@@ -11,6 +11,7 @@ import { Nil } from '../nil.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { copyOwnedWithReusableLeaves } from './cloning.js';
+import type { BitSetLibrary } from './bitset.js';
 
 /** Container object whose .selector is read by the ampersand (e.g. ruleset value for live connection). */
 export type SelectorContainer = AmpersandValue['selectorContainer'];
@@ -18,12 +19,15 @@ export type SelectorContainer = AmpersandValue['selectorContainer'];
 /** Parent ruleset (live container) or a snapshot { value: SelectorContainer } when no ruleset is available. */
 export type ParentSource = Ruleset | { value: SelectorContainer };
 
-function copySelectorForImplicit(selector: Selector): Selector {
+export function copySelectorForPlacement(
+  selector: Selector,
+  keySetLibrary?: BitSetLibrary<string>
+): Selector {
   const copied = copyOwnedWithReusableLeaves(selector);
-  if (!isNode(copied, N.Selector)) {
+  if (!copied || typeof copied !== 'object' || Reflect.get(copied, 'isSelector') !== true) {
     throw new TypeError('Expected selector copy');
   }
-  return copied;
+  return attachSelectorBitLibrary(copied, keySetLibrary ?? selector.keySetLibrary);
 }
 
 /**
@@ -60,7 +64,7 @@ export function addImplicitAmpersand(
   }
   if (isNode(selector, N.ComplexSelector)) {
     const complex = selector;
-    const complexCopy = copySelectorForImplicit(complex);
+    const complexCopy = copySelectorForPlacement(complex);
     if (!isNode(complexCopy, N.ComplexSelector)) {
       throw new TypeError('Expected complex selector copy');
     }
@@ -69,14 +73,14 @@ export function addImplicitAmpersand(
     }
     return ComplexSelector.create([amp, comb, ...complexCopy.value]).inherit(selector);
   }
-  return ComplexSelector.create([amp, comb, copySelectorForImplicit(selector)]).inherit(selector);
+  return ComplexSelector.create([amp, comb, copySelectorForPlacement(selector)]).inherit(selector);
 }
 
 /**
  * Builds a snapshot parent source from a selector when no parent ruleset is available (e.g. tests or Ruleset.getImplicitSelector(selector)).
  */
 function snapshotParentSource(parentSelector: Selector, collapseNesting: boolean): ParentSource {
-  const parentCopy = copySelectorForImplicit(parentSelector);
+  const parentCopy = copySelectorForPlacement(parentSelector);
   const sel: Selector | Nil | undefined = !collapseNesting && isNode(parentCopy, N.SelectorList)
     ? PseudoSelector.create({ name: ':is', arg: parentCopy })
     : parentCopy;
@@ -123,7 +127,7 @@ export function getImplicitSelector(
       }
     }
     if (mutated) {
-      selector = SelectorList.create(nextValue).inherit(selector) as Selector;
+      selector = SelectorList.create(nextValue).inherit(selector);
     }
   } else {
     selector = addImplicitAmpersand(selector, collapseNesting, parentSource);

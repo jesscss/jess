@@ -65,11 +65,11 @@ What should not count as progress now:
 
 This is the short list that should drive queue work:
 
-1. Lane A: collapse one more real AtRule lifecycle-state duplication across
-   invocation/public boundaries.
-2. Lane H: simplify generated extend ownership only where it makes the
-   runtime model simpler or faster; do not treat source-node identity as a
-   goal by itself.
+1. Lane A: complete unless a future slice deletes another real AtRule
+   body/result copy seam or shows a measured hot-path win.
+2. Lane H: generated extend ownership is now reduced to practical cleanup
+   only; one duplicate selector-copy helper seam has been centralized, and
+   remaining work should require another real helper deletion or measured win.
 3. Lane E/F: take additional rules-like or declaration/operation cleanup only
    when the change deletes a real helper/state seam without hurting hot-path
    behavior.
@@ -148,13 +148,16 @@ it accurate, but do not mistake it for the short list of remaining work.
 - Public optional fallback calls no longer create owned fallback `Call`
   surfaces for public eval/resolve. They resolve to finalized text output
   while render still emits finalized syntax directly.
+- Selector/extend placement now shares one selector-copy boundary for
+  implicit selector placement, extend application, extend-root processing,
+  walk-and-consume extension, and public extend-record materialization.
 - The remaining work is not “find more places to hide copies.” It is:
   narrowing the remaining invocation/result state carriers, deleting a few
   still-real helper seams, and proving whether current owned public-result
   boundaries can disappear without regressions.
 - Static audit snapshot on the current branch:
-  `new-node: 278`, `derive: 29`, `with-surface: 38`, `copy-leaves: 27`,
-  module-context count `371`.
+  `new-node: 277`, `derive: 29`, `with-surface: 38`, `copy-leaves: 27`,
+  module-context count `370`.
 - Hotpath measurement is still noisy. Use it to confirm clear wins/regressions,
   not to justify tiny static-count changes by themselves.
 
@@ -614,7 +617,7 @@ not folklore.
 | `List` / `Sequence` | Dynamic render streams through native syntax; public resolve owns containers. Source-free public narrowing is blocked by public mutation/parentage expectations. | Revisit only if public mutability API changes. |
 | `Block` / `Quoted` / `Url` / `Paren` / `Operation` | Render-only wrappers largely split from public resolve; operation finalization now distinguishes metadata-result inheritance from public-result inheritance, with dimension/color public consumers. | No generic output bridge reintroduced; focused materialization proofs stay green. |
 | `StyleImport` | First-use top-level placement segments and postlude render state exist; nested descendant source lookup now also replays sparse child-segment paths instead of depending on the old recursive placement map. Postlude order and option reads now consume render state, and the old recursive descendant lookup is off the live production helper path. | Lane D gates complete unless a future change deletes more placement state without reintroducing recursive lookup. |
-| Selectors / `Ampersand` / `Extend` | Ownership still semantic for generated/extended placement. Generated `:is(...)` omission state is now declared at construction time and consumed by selector render plus the ampersand/extend parent-list paths, removing the render-time arg-shape fallback read. Integration proof now covers both exact and `all` extend against the generated omission shape. Generated extend output may own wrapper/copy structure when that keeps placement and parentage simple; do not preserve source-node identity at the cost of harder architecture unless a measured regression justifies it. The local extend copy helper no longer needs its bespoke selector-like guard; remaining open work only counts if another selector-copy/helper seam can be honestly deleted or simplified. | Lane H is an active simplification candidate, not a blocker. |
+| Selectors / `Ampersand` / `Extend` | Ownership still semantic for generated/extended placement. Generated `:is(...)` omission state is now declared at construction time and consumed by selector render plus the ampersand/extend parent-list paths, removing the render-time arg-shape fallback read. Integration proof now covers both exact and `all` extend against the generated omission shape. Generated extend output may own wrapper/copy structure when that keeps placement and parentage simple; do not preserve source-node identity at the cost of harder architecture unless a measured regression justifies it. Selector placement copying now uses one shared boundary across implicit selector placement, extend application, extend-root processing, walk-and-consume extension, and extend-record materialization; the duplicate local clone/assert helpers are gone. | Lane H simplification slice complete. Only reopen for another real helper/state deletion or measured selector/extend hot-path win. |
 | Controls | Loop render streams direct rules; live frame mutation intentional. | Remaining grouping/state surfaces audited by object/function-call cost. |
 
 Update this tracker when a node family changes architectural state.
@@ -671,6 +674,10 @@ node on the invocation record, deleted the separate public-result adapter
 input/state layer plus the extra cleanup/restore helper, flattened AtRule body
 eval context facts into the invocation record, and reclassified the
 selector-copy seam as simplification work instead of a protected blocker.
+The latest selector/extend pass centralized the owned selector-copy boundary
+and deleted duplicate local clone/assert helpers from extend application,
+extend-root processing, walk-and-consume extension, and extend-record
+materialization.
 
 ## Lane Backlog
 
@@ -712,11 +719,15 @@ selector-copy seam as simplification work instead of a protected blocker.
    nested-`sourceNode` freeze branch are already gone.
 3. Lane F: shrink one more declaration/operation adapter seam only if render
    stays allocation-free and public mutation stays intact.
-4. Lane H: generated extend output may own wrapper/copy structure when that
+4. Done: Lane H selector-copy simplification centralized the owned selector
+   copy boundary in `selector-utils` and removed duplicate clone/assert helper
+   bodies from extend application, extend-root processing, walk-and-consume
+   extension, and public extend-record materialization.
+5. Lane H follow-up: generated extend output may own wrapper/copy structure when that
    keeps parentage and placement straightforward. Do not spend architecture
    complexity defending source-node identity unless a measured regression
    demands it. Reopen this lane for real simplification, not purity churn.
-5. Lane I: keep this handoff compact and aligned with actual lane truth.
+6. Lane I: keep this handoff compact and aligned with actual lane truth.
 
 ## Pull Queue
 
@@ -742,15 +753,15 @@ Pull the next free item from here; restock only when a lane truthfully changes.
 5. Agent C: only retry rules-like/public-mutation work if a real owned-result
    or compatibility branch disappears beyond the side-map/helper seam and the
    nested-`sourceNode` freeze branch already removed.
-6. Agent C: retry selector-copy simplification with a practical bias.
+6. Agent C: done. Selector-copy simplification centralized the owned selector
+   placement copy boundary and deleted duplicate local clone/assert helper
+   bodies from the extend modules.
 7. Agent A: done. The nested AtRule body eval context carrier is deleted; only
    reopen Lane A for a real body/result copy deletion or measured hot-path win.
-8. Agent C: next free item is Lane H selector/extend simplification, with the
-   practical bias already captured above.
-   Generated extend output may stay owned if that is the simpler architecture;
-   only preserve source-node identity where it pays for itself in measured
-   speed, memory, or clearer runtime model.
-7. Agent B: done. Optional fallback public eval/resolve now returns finalized
+8. Agent C: next free item is Lane E/F cleanup, but only if a real
+   rules-like, declaration, or operation helper/state seam disappears without
+   hurting hot-path render behavior.
+9. Agent B: done. Optional fallback public eval/resolve now returns finalized
    text output instead of an owned fallback `Call`; focused proof covers
    source-backed content, dynamic source-free content, JS optional failures,
    source parentage, zero `deriveCall` fallback construction, Less fixture

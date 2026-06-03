@@ -23,7 +23,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { copyOwnedWithReusableLeaves } from './util/cloning.js';
+import { copySelectorForPlacement } from './util/selector-utils.js';
 import {
   renderInvisibleEffect,
   type RenderBuffer
@@ -276,11 +276,7 @@ function copySelectorForExtendRecord(
   selector: Selector,
   library: Selector['keySetLibrary']
 ): Selector {
-  const copied = copyOwnedWithReusableLeaves(selector);
-  if (!isNode(copied, N.Selector)) {
-    throw new TypeError('Expected selector copy');
-  }
-  return attachSelectorBitLibrary(copied, library ?? selector.keySetLibrary);
+  return copySelectorForPlacement(selector, library ?? selector.keySetLibrary);
 }
 
 function materializeImplicitAmpersands(

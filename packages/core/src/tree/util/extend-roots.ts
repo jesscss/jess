@@ -14,7 +14,7 @@ import { wouldExtendChange, canUseWalkAndConsume, classifyExtendMatch } from './
 import type { MatchResult } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE, type Node } from '../node.js';
-import { copyOwnedWithReusableLeaves } from './cloning.js';
+import { copySelectorForPlacement as copySelectorForExtend } from './selector-utils.js';
 
 type RootExtendInstruction = ExtendInstruction & {
   extendingRuleset?: Ruleset;
@@ -26,14 +26,6 @@ function isSelectorValue(value: unknown): value is Selector {
     && typeof value === 'object'
     && 'isSelector' in value
     && value.isSelector === true;
-}
-
-function copySelectorForExtend(selector: Selector): Selector {
-  const copied = copyOwnedWithReusableLeaves(selector);
-  if (!isSelectorValue(copied)) {
-    throw new TypeError('Expected selector copy');
-  }
-  return copied;
 }
 
 function isRulesValue(value: unknown): value is Rules {

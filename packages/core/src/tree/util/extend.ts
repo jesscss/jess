@@ -136,6 +136,7 @@ import {
   wouldExtendChange
 } from './extend-walk.js';
 import { copyOwnedWithReusableLeaves } from './cloning.js';
+import { copySelectorForPlacement as copySelectorForExtend } from './selector-utils.js';
 
 const { isArray } = Array;
 let extendOrderMap: WeakMap<Selector, number> | null = null;
@@ -548,14 +549,6 @@ function deduplicateSelectors(selectors: Selector[]): Selector[] {
   }
 
   return result;
-}
-
-function copySelectorForExtend(selector: Selector): Selector {
-  const copied = copyOwnedWithReusableLeaves(selector);
-  if (!isSelectorNode(copied)) {
-    throw new TypeError('Expected selector copy');
-  }
-  return copied;
 }
 
 /**

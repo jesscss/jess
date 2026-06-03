@@ -59,17 +59,9 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET } from '../node.js';
 import { createProcessedSelector } from './extend.js';
-import { copyOwnedWithReusableLeaves } from './cloning.js';
+import { copySelectorForPlacement as copySelectorForExtend } from './selector-utils.js';
 
 const { isArray } = Array;
-
-function copySelectorForExtend(selector: Selector): Selector {
-  const copied = copyOwnedWithReusableLeaves(selector);
-  if (!isSelectorNode(copied)) {
-    throw new TypeError('Expected selector copy');
-  }
-  return copied;
-}
 
 function copySelectorsForPlacement(selectors: Selector[]): Selector[] {
   return selectors.map(selector => copySelectorForExtend(selector));
