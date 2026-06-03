@@ -160,6 +160,21 @@ pnpm run audit:node-creation
 
 Current known evidence from the latest handoff run:
 
+- Latest handoff round deepened the broad `benchmark.less` evidence without
+  keeping a production code change. A 15-run/5-warmup real benchmark baseline
+  measured about `389.55ms avg / 383.93ms median`; a V8 CPU profile then showed
+  the hottest leaves in copy/object surfaces (`copyChild`, `Node`,
+  `copyCallableRulesValue`, `copyWithReusableLeaves`) plus `Rules` iteration,
+  variable lookup, extend processing, and render body serialization. A narrow
+  experiment that skipped transient callable child-segment objects and built
+  mixin-output maps in one loop passed focused callable/mixin tests but slowed
+  the same broad benchmark to about `410.77ms avg / 396.99ms median` and then
+  `448.40ms avg / 436.18ms median`, so it was rejected and reverted. The
+  post-revert broad sample returned to about `398.62ms avg / 384.52ms median`.
+  Less 4.5 remains about `47ms`, so broad alpha is still roughly `8-9x` slower.
+  Next target: do not shave placement metadata loops blindly; profile the
+  actual callable body copy path and look for a semantic reduction in owned
+  container creation or static render reuse.
 - Latest handoff run found the alpha snapshot compiler-resolution note was
   stale: `BENCH_FILES=benchmark-color-stress.less,benchmark-v37.less,benchmark-v39.less,benchmark-v3.less,benchmark.less`
   with `BENCH_RUNS=6 BENCH_WARMUP=2 BENCH_TIMEOUT_MS=15000` records all files.
