@@ -86,6 +86,19 @@ cleanup changes without before/after evidence.
 9. Update the active snapshot below with a one-paragraph result and the next
    profile target.
 
+### Required User Performance Report
+
+At the end of every handoff run, report performance to the user in plain terms:
+
+- latest Jess alpha benchmark numbers for the files touched or measured;
+- historical Less 4.x comparison and rough slowdown ratio where available;
+- whether the run improved, regressed, or only clarified the next target;
+- which optimization was kept, rejected, or deferred and why;
+- the next profile target.
+
+Do not hide behind proxy metrics. If a code change was rejected because the real
+benchmark slowed down, say that.
+
 ### Required Profile Inputs
 
 Use the existing instrumentation before choosing a performance edit:
