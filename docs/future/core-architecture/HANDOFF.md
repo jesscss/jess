@@ -49,6 +49,10 @@ faster real Less eval/render first, lower memory pressure second.
   render the same node again. Preview output must either be the emitted output,
   populate a cache reused by emission, or be replaced with a cheaper structural
   predicate.
+- Do not use `Error` objects for routine control flow. Expected misses, failed
+  candidate checks, branch classification, and diagnostic-only result states
+  must use typed result objects, booleans, sentinels, or lightweight records.
+  Real `Error` instances belong only on exceptional throw paths.
 
 ## Active Correctness Queue
 
@@ -92,11 +96,14 @@ cleanup changes without before/after evidence.
    function-call ladder.
 3. State the hypothesis in one sentence in this handoff before editing.
 4. Make the smallest behavior-preserving change that removes that cost.
-5. Run focused tests and the same profile/benchmark again.
-6. Keep the change only if it improves real runtime cost, removes measurable
+5. If the change touches expected misses or candidate classification, add or
+   update tests proving the hot path does not allocate or return real `Error`
+   objects for control-flow results.
+6. Run focused tests and the same profile/benchmark again.
+7. Keep the change only if it improves real runtime cost, removes measurable
    memory/object pressure without slowing runtime, or fixes correctness.
-7. Revert or reshape the change if it only moves cost elsewhere.
-8. Update the active snapshot below with a one-paragraph result and the next
+8. Revert or reshape the change if it only moves cost elsewhere.
+9. Update the active snapshot below with a one-paragraph result and the next
    profile target.
 
 ### Required Profile Inputs

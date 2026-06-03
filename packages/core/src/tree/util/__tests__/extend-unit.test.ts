@@ -28,7 +28,7 @@ describe('applyExtendsToSelector', () => {
   });
 
   it('applies a single non-partial extend to a SelectorList', () => {
-    const target = sellist([el('.base')]) as unknown as Selector;
+    const target = sellist([el('.base')]);
     const instructions: ExtendInstruction[] = [{
       target: el('.base'),
       extendWith: el('.child'),
@@ -41,7 +41,7 @@ describe('applyExtendsToSelector', () => {
   });
 
   it('applies multiple same-target instructions in one batch', () => {
-    const target = sellist([el('.base')]) as unknown as Selector;
+    const target = sellist([el('.base')]);
     const instructions: ExtendInstruction[] = [
       { target: el('.base'), extendWith: el('.c1'), partial: false },
       { target: el('.base'), extendWith: el('.c2'), partial: false },
@@ -56,7 +56,7 @@ describe('applyExtendsToSelector', () => {
   });
 
   it('applies instructions targeting different selectors', () => {
-    const target = sellist([el('.a'), el('.b')]) as unknown as Selector;
+    const target = sellist([el('.a'), el('.b')]);
     const instructions: ExtendInstruction[] = [
       { target: el('.a'), extendWith: el('.x'), partial: false },
       { target: el('.b'), extendWith: el('.y'), partial: false }
@@ -71,7 +71,7 @@ describe('applyExtendsToSelector', () => {
     // Selector: [.a]
     // Instruction A: .a → .b (produces [.a, .b])
     // Instruction B: .b → .c (produces [.a, .b, .c])
-    const target = sellist([el('.a')]) as unknown as Selector;
+    const target = sellist([el('.a')]);
     const instructions: ExtendInstruction[] = [
       { target: el('.a'), extendWith: el('.b'), partial: false },
       { target: el('.b'), extendWith: el('.c'), partial: false }
@@ -84,7 +84,7 @@ describe('applyExtendsToSelector', () => {
   });
 
   it('does not change selector when no instruction matches', () => {
-    const target = sellist([el('.a')]) as unknown as Selector;
+    const target = sellist([el('.a')]);
     const instructions: ExtendInstruction[] = [
       { target: el('.z'), extendWith: el('.x'), partial: false }
     ];
@@ -108,6 +108,8 @@ describe('tryExtendSelector', () => {
     const target = el('.a');
     const result = tryExtendSelector(target, el('.z'), el('.b'), false);
     expect(result.error).toBeDefined();
+    expect(result.error?.type).toBe('NOT_FOUND');
+    expect(result.error).not.toBeInstanceOf(Error);
     expect(result.value).toBe(target); // unchanged
   });
 
@@ -176,7 +178,7 @@ describe('findChainedExtends', () => {
     // Original: .base
     // After extending .base with .middle → SelectorList([.base, .middle])
     // Another extend targets .middle → should chain
-    const extended = sellist([el('.base'), el('.middle')]) as unknown as Selector;
+    const extended = sellist([el('.base'), el('.middle')]);
     const allExtends: Array<[Selector, Selector, boolean, any, any]> = [
       [el('.base'), el('.src1'), false, null, null],
       [el('.middle'), el('.src2'), false, null, null]
@@ -191,8 +193,8 @@ describe('findChainedExtends', () => {
     // Original: SelectorList([.base, .existing])
     // After extending .base with .child → SelectorList([.base, .existing, .child])
     // Another extend targets .existing → should NOT chain (it was original)
-    const extended = sellist([el('.base'), el('.existing'), el('.child')]) as unknown as Selector;
-    const original = sellist([el('.base'), el('.existing')]) as unknown as Selector;
+    const extended = sellist([el('.base'), el('.existing'), el('.child')]);
+    const original = sellist([el('.base'), el('.existing')]);
     const allExtends: Array<[Selector, Selector, boolean, any, any]> = [
       [el('.base'), el('.src1'), false, null, null],
       [el('.existing'), el('.src2'), false, null, null]
@@ -204,15 +206,15 @@ describe('findChainedExtends', () => {
 
   it('finds chained extends from newly introduced nested selector subtrees', () => {
     const extended = compound([
-      is(sellist([el('.g'), compound([el('.i'), el('.j')])])) as unknown as Selector,
+      is(sellist([el('.g'), compound([el('.i'), el('.j')])])),
       el('.h')
-    ]) as unknown as Selector;
+    ]);
     const allExtends: Array<[Selector, Selector, boolean, any, any]> = [
-      [el('.g'), compound([el('.i'), el('.j')]) as unknown as Selector, true, null, null],
+      [el('.g'), compound([el('.i'), el('.j')]), true, null, null],
       [el('.i'), el('.k'), true, null, null]
     ];
 
-    const result = findChainedExtends(extended, allExtends, el('.g'), compound([el('.i'), el('.j')]) as unknown as Selector, compound([el('.g'), el('.h')]) as unknown as Selector);
+    const result = findChainedExtends(extended, allExtends, el('.g'), compound([el('.i'), el('.j')]), compound([el('.g'), el('.h')]));
     expect(result).toHaveLength(1);
     expect(result[0]![0].valueOf()).toBe('.i');
     expect(result[0]![1].valueOf()).toBe('.k');
@@ -231,7 +233,7 @@ describe('extendSelector integration pins', () => {
   });
 
   it('non-partial: SelectorList(.a, .b) extending .a with .c → SelectorList(.a, .b, .c)', () => {
-    const target = sellist([el('.a'), el('.b')]) as unknown as Selector;
+    const target = sellist([el('.a'), el('.b')]);
     const result = extendSelector(target, el('.a'), el('.c'), false);
     const val = result.valueOf();
     expect(val).toContain('.a');

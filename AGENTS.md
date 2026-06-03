@@ -59,6 +59,13 @@ When working in the evaluation engine, optimize for:
 - smaller hot-path function-call ladders where they show up in real eval/render
   work
 
+Errors are for exceptional failure, not routine control flow. Do not throw,
+catch, allocate, or return `Error` instances to represent expected misses,
+ordinary branch results, negative lookup results, failed candidate matches, or
+other hot-path control states. Use typed result objects, booleans, sentinels, or
+diagnostic records instead; only create real `Error` objects when the caller is
+actually expected to handle an exceptional failure.
+
 Avoid treating these as acceptable end states:
 
 - cloning as routine eval isolation
