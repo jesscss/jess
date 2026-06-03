@@ -164,23 +164,27 @@ Current known evidence from the latest handoff run:
   not complete within 60s before the fix. After removing child `Rules`
   preview-then-rerender paths, `benchmark-color-stress.less` depth 20 profiles
   at about 120ms with bounded writer mark/getSince counts.
-- Broad `benchmark.less` now passes and has moved from the first measured
-  post-refactor sample of about 2,215ms avg / 2,211ms median to a latest
-  8-run/3-warmup sample of about 473ms avg / 459ms median. The local Less 4.x
-  worktree is still about 41ms and the saved Less 4.5.1 historical snapshot is
-  about 47ms, so this remains an alpha-blocking broad benchmark regression.
-- The latest kept performance reductions were: replace render `emittedTrivia`
-  Set clone/restore with scratch sets where output is only probed or cached;
-  cache sorted trivia offsets for between-node comment scans; and prefer sibling
-  index comparison before `comparePosition` in the variable lookup fast path.
-  An attempted shortcut that replaced the extend-classification fallback with
-  `wouldExtendChange` was reverted because it missed exact OR-branch
-  `:is(...)` extension semantics.
-- Latest `profile-less-benchmark.mjs --file=benchmark.less` sample:
-  elapsed about 667ms, `Reference.evalNode` 3,610 calls / about 104ms,
-  `LessParser.parse` 3 calls / about 98ms, `Rules.find` 999 calls / about 32ms,
-  `OutputWriter.getSince` 127,537 calls / about 9ms, and
-  `MixinRegistry.indexPendingItems` 36,239 calls / about 6ms.
+- Latest V8 round on broad `benchmark.less` found ordinary extend non-matches
+  spending about 36% self time constructing `ExtendError` objects. Replacing
+  those hot-path result errors with lightweight `{ name, type, message }`
+  records kept extend semantics and moved the profiled 8-run/3-warmup broad
+  runner from about 674ms avg / 666ms median to about 456ms avg / 453ms median.
+  A non-profiled 15-run/5-warmup sample after the change was noisy but improved
+  at about 509ms avg / 427ms median. Less 4.x remains about 41-47ms, so this is
+  still an alpha-blocking broad benchmark regression.
+- The current `profile-less-benchmark.mjs --file=benchmark.less` sample after
+  the extend error-record change is about 644ms elapsed. Counters are stable:
+  `Reference.evalNode` 3,610 calls / about 103ms, `LessParser.parse` 3 calls /
+  about 90ms, `Rules.find` 999 calls / about 33ms,
+  `OutputWriter.getSince` 127,537 calls / about 10ms, and
+  `MixinRegistry.indexPendingItems` 36,239 calls / about 8ms.
+- The next V8 hotspots after removing `ExtendError` construction are object
+  creation/copy surfaces: `copyChild`, `Node` construction,
+  `constructCopy`/`copyWithReusableLeaves`, plus variable lookup
+  (`findVarWithinScopeSurface`) and render serialization
+  (`serializeRulesContainerInternal` / `renderRulesBody`). The next round should
+  profile one of those surfaces, change only the measured hot path, then rerun
+  the same broad benchmark/profile.
 - Latest static node-creation audit:
 
 ```text

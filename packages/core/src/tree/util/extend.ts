@@ -268,12 +268,24 @@ export class ExtendError extends Error {
   }
 }
 
+export interface ExtendErrorInfo {
+  name: 'ExtendError';
+  type: ExtendErrorType;
+  message: string;
+  context?: {
+    target?: Selector;
+    find?: Selector;
+    extendWith?: Selector;
+    conflictingSelectors?: Selector[];
+  };
+}
+
 /**
  * Result structure for extend operations
  */
 export interface ExtendResult {
   value: Selector;
-  error?: ExtendError;
+  error?: ExtendError | ExtendErrorInfo;
 }
 
 export interface ExtendInstruction {
@@ -523,12 +535,16 @@ function createSuccessResult(selector: Selector): ExtendResult {
 /**
  * Helper to create error extend results
  */
-function createErrorResult(selector: Selector, error: ExtendError): ExtendResult {
+function createErrorResult(selector: Selector, error: ExtendError | ExtendErrorInfo): ExtendResult {
   return { value: selector, error };
 }
 
-function createExtendError(type: ExtendErrorType): ExtendError {
-  return new ExtendError(type, type);
+function createExtendErrorInfo(type: ExtendErrorType): ExtendErrorInfo {
+  return {
+    name: 'ExtendError',
+    type,
+    message: type
+  };
 }
 
 /**
@@ -1327,7 +1343,7 @@ export function tryExtendSelector(
   try {
     const result = extendSelector(target, find, extendWith, partial, skipAmpersandCheck, false);
     if (typeof result === 'string') {
-      return { value: target, error: createExtendError(result) };
+      return { value: target, error: createExtendErrorInfo(result) };
     }
     return createSuccessResult(result);
   } catch (error) {

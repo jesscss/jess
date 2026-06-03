@@ -71,6 +71,7 @@ packages/scss-parser/.cache/
 *.heapsnapshot
 # CPU profiling output
 profiling/
+.profiles/
 *.cpuprofile
 
 # Local task loop state
