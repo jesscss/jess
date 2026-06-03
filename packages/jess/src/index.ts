@@ -737,7 +737,9 @@ export class Compiler {
             // ignore
           }
         }
-        const pre = plugin.beforeEvalVisitor;
+        const pre = plugin.beforeEvalVisitorForTree
+          ? plugin.beforeEvalVisitorForTree(current, currentFilePath)
+          : plugin.beforeEvalVisitor;
         if (!pre) {
           continue;
         }

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { AbstractPlugin, Any, Declaration, Dimension, type PluginInterface, type PluginVisitor, type Node, F_VISIBLE, REMOVE } from '@jesscss/core';
+import { AbstractPlugin, Any, Declaration, Dimension, type PluginInterface, type PluginVisitor, type Node, type Rules, F_VISIBLE, REMOVE } from '@jesscss/core';
 import { toLessNode, fromLessNode, fromLessPluginReturnValue } from './transform/index.js';
 import { LessAdapterBase } from './transform/less-adapter.js';
 import type { LessVisitor } from './types.js';
@@ -167,6 +167,22 @@ export class LessCompatPlugin extends AbstractPlugin {
     } catch {
       // ignore
     }
+  }
+
+  private hasConfiguredBeforeEvalWork(): boolean {
+    return !!this.opts.plugins?.length || !!this.opts.visitors?.length;
+  }
+
+  private sourceMayContainPluginDirective(tree?: Rules): boolean {
+    const source = tree?.treeContextIfSet?.file?.source;
+    return typeof source === 'string' && source.includes('@plugin');
+  }
+
+  beforeEvalVisitorForTree(tree: Rules): PluginInterface['beforeEvalVisitor'] {
+    if (!this.hasConfiguredBeforeEvalWork() && !this.sourceMayContainPluginDirective(tree)) {
+      return undefined;
+    }
+    return this.beforeEvalVisitor;
   }
 
   /**
