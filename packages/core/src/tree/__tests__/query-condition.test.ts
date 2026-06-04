@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { any, query, ref, rules, Sequence, Rules as RulesClass, vardecl } from '../index.js';
+import { any, F_MAY_ASYNC, F_STATIC, num, op, query, ref, rules, Sequence, Rules as RulesClass, vardecl } from '../index.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -42,6 +42,30 @@ describe('QueryCondition', () => {
 
     expect(node.toTrimmedString({ writer })).toBe('screen and (color)');
     expect(writer.captures).toBe(0);
+  });
+
+  it('renders static query conditions without resolving children', () => {
+    const first = any('screen');
+    const second = any('(color)');
+    first.resolve = () => {
+      throw new Error('static query-condition render should not resolve children');
+    };
+    second.resolve = () => {
+      throw new Error('static query-condition render should not resolve children');
+    };
+    const node = query([first, any('and'), second]);
+
+    expect(node.render(context)).toBe('screen and (color)');
+  });
+
+  it('renders dynamic sync query conditions directly without materialized values', () => {
+    const dynamicItem = op([num(1), '+', num(2)]);
+    dynamicItem.resolve = () => {
+      throw new Error('dynamic sync query-condition render should not resolve container children');
+    };
+    const node = query([dynamicItem, any('and'), any('(color)')]);
+
+    expect(node.render(context)).toBe('3 and (color)');
   });
 
   it('renders resolved query-condition values through render(context)', async () => {
@@ -100,6 +124,38 @@ describe('QueryCondition', () => {
       expect(queryNode.registrationPrepared).toBe(false);
     } finally {
       Sequence.prototype.render = sequenceRender;
+    }
+  });
+
+  it('renders async query conditions directly without resolving into materialized values', async () => {
+    const asyncItem = any('screen');
+    asyncItem.render = async () => 'print';
+    asyncItem.resolve = () => {
+      throw new Error('async query-condition render should not resolve children');
+    };
+    const queryNode = query([
+      asyncItem,
+      any('and'),
+      any('(color)')
+    ]);
+    queryNode.addFlag(F_MAY_ASYNC);
+    queryNode.removeFlag(F_STATIC);
+    const originalMap = queryNode.value.map;
+    Object.defineProperty(queryNode.value, 'map', {
+      configurable: true,
+      value: () => {
+        throw new Error('async query-condition render should not allocate mapped tuple entries');
+      }
+    });
+
+    try {
+      await expect(Promise.resolve(queryNode.render(context))).resolves.toBe('print and (color)');
+    } finally {
+      Object.defineProperty(queryNode.value, 'map', {
+        configurable: true,
+        writable: true,
+        value: originalMap
+      });
     }
   });
 

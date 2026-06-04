@@ -1,4 +1,4 @@
-import { Node, Sequence, any, list, num, ref, rules, seq, type Rules as RulesClass, vardecl } from '../index.js';
+import { Node, Sequence, any, list, num, op, ref, rules, seq, F_MAY_ASYNC, F_STATIC, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createToken, type IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
@@ -102,6 +102,92 @@ describe('Sequence', () => {
     expect(sequenceNode.registrationPrepared).toBe(false);
   });
 
+  it('renders dynamic sync sequence values without per-call serial iteration scaffolding', () => {
+    const sequenceNode = seq([
+      op([num(1), '+', num(2)]),
+      any('solid')
+    ]);
+    const originalMap = sequenceNode.value.map;
+    Object.defineProperty(sequenceNode.value, 'map', {
+      configurable: true,
+      value: () => {
+        throw new Error('sync sequence render should not allocate mapped serial iteration entries');
+      }
+    });
+
+    try {
+      expect(sequenceNode.render(context)).toBe('3 solid');
+    } finally {
+      Object.defineProperty(sequenceNode.value, 'map', {
+        configurable: true,
+        writable: true,
+        value: originalMap
+      });
+    }
+  });
+
+  it('renders async sequence values without tuple-array serial iteration scaffolding', async () => {
+    const asyncItem = any('one');
+    asyncItem.resolve = async () => any('resolved');
+    asyncItem.render = async () => {
+      throw new Error('async sequence render should render the resolved item, not the source item');
+    };
+    asyncItem.addFlag(F_MAY_ASYNC);
+    asyncItem.removeFlag(F_STATIC);
+    const sequenceNode = seq([
+      asyncItem,
+      any('solid')
+    ]);
+    sequenceNode.addFlag(F_MAY_ASYNC);
+    sequenceNode.removeFlag(F_STATIC);
+    const originalMap = sequenceNode.value.map;
+    Object.defineProperty(sequenceNode.value, 'map', {
+      configurable: true,
+      value: () => {
+        throw new Error('async sequence render should not allocate mapped tuple entries');
+      }
+    });
+
+    try {
+      await expect(Promise.resolve(sequenceNode.render(context))).resolves.toBe('resolved solid');
+    } finally {
+      Object.defineProperty(sequenceNode.value, 'map', {
+        configurable: true,
+        writable: true,
+        value: originalMap
+      });
+    }
+  });
+
+  it('renders dynamic sync sequence items directly without resolving them first', () => {
+    const dynamicItem = op([num(1), '+', num(2)]);
+    const originalResolve = dynamicItem.resolve;
+    dynamicItem.resolve = function throwOnResolve(): never {
+      throw new Error('sync sequence render should not resolve items before rendering');
+    };
+    const sequenceNode = seq([
+      dynamicItem,
+      any('solid')
+    ]);
+
+    try {
+      expect(sequenceNode.render(context)).toBe('3 solid');
+    } finally {
+      dynamicItem.resolve = originalResolve;
+    }
+  });
+
+  it('writes dynamic sync direct sequence render output into flat buffers once', () => {
+    const buffer = createRenderBuffer('flat');
+    const sequenceNode = seq([
+      op([num(1), '+', num(2)]),
+      any('solid')
+    ]);
+
+    expect(sequenceNode.render(context, buffer)).toBe('3 solid');
+    expect(buffer.parts).toEqual(['3 solid']);
+  });
+
   it('writes resolved sequence render output into flat buffers', async () => {
     const node = rules([
       vardecl({
@@ -134,6 +220,23 @@ describe('Sequence', () => {
     expect(sequenceNode.registrationPrepared).toBe(false);
   });
 
+  it('writes async single-item sequence output into flat buffers directly', async () => {
+    const asyncItem = any('source');
+    asyncItem.resolve = async () => any('resolved');
+    asyncItem.render = async () => {
+      throw new Error('async sequence buffer render should render the resolved item, not the source item');
+    };
+    asyncItem.addFlag(F_MAY_ASYNC);
+    asyncItem.removeFlag(F_STATIC);
+    const sequenceNode = seq([asyncItem]);
+    sequenceNode.addFlag(F_MAY_ASYNC);
+    sequenceNode.removeFlag(F_STATIC);
+    const buffer = createRenderBuffer('flat');
+
+    await expect(Promise.resolve(sequenceNode.render(context, buffer))).resolves.toBe('resolved');
+    expect(buffer.parts).toEqual(['resolved']);
+  });
+
   it('resolves sequence values without touching render state', async () => {
     const node = rules([
       vardecl({
@@ -154,6 +257,52 @@ describe('Sequence', () => {
     expect(sequenceNode.evaluated).toBe(false);
     expect(sequenceNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('resolves sequence values without filter-array finalization scaffolding', async () => {
+    const sequenceNode = seq([
+      op([num(1), '+', num(2)]),
+      any('solid')
+    ]);
+    const originalFilter = Array.prototype.filter;
+    let resolved: Node | undefined;
+    Array.prototype.filter = function filterForSequenceFinalizationProof(): never {
+      throw new Error('sequence resolve should not filter evaluated values');
+    };
+    try {
+      resolved = await Promise.resolve(sequenceNode.resolve(context));
+    } finally {
+      Array.prototype.filter = originalFilter;
+    }
+
+    expect(resolved?.toTrimmedString()).toBe('3 solid');
+  });
+
+  it('renders static sequence values without filter-array render scaffolding', () => {
+    const sequenceNode = seq([
+      any('left'),
+      any('right')
+    ]);
+    const originalFilter = sequenceNode.value.filter;
+    let rendered = '';
+    Object.defineProperty(sequenceNode.value, 'filter', {
+      configurable: true,
+      value: () => {
+        throw new Error('sequence render should not filter rendered values');
+      }
+    });
+
+    try {
+      rendered = sequenceNode.render(context);
+    } finally {
+      Object.defineProperty(sequenceNode.value, 'filter', {
+        configurable: true,
+        writable: true,
+        value: originalFilter
+      });
+    }
+
+    expect(rendered).toBe('left right');
   });
 
   it('keeps source sequence child containers canonical after resolve(context)', async () => {
@@ -195,6 +344,42 @@ describe('Sequence', () => {
     expect(rightChild.parent).toBe(right);
   });
 
+  it('adds sequence values without mapped copy-array scaffolding', () => {
+    const left = seq([any('left')]);
+    const right = seq([any('right')]);
+    const originalLeftMap = left.value.map;
+    const originalRightMap = right.value.map;
+    Object.defineProperty(left.value, 'map', {
+      configurable: true,
+      value: () => {
+        throw new Error('sequence addition should not map left child copies');
+      }
+    });
+    Object.defineProperty(right.value, 'map', {
+      configurable: true,
+      value: () => {
+        throw new Error('sequence addition should not map right child copies');
+      }
+    });
+
+    try {
+      const result = left.operate(right, '+', context);
+
+      expect(result.toTrimmedString()).toBe('left right');
+    } finally {
+      Object.defineProperty(left.value, 'map', {
+        configurable: true,
+        writable: true,
+        value: originalLeftMap
+      });
+      Object.defineProperty(right.value, 'map', {
+        configurable: true,
+        writable: true,
+        value: originalRightMap
+      });
+    }
+  });
+
   it('keeps source list children canonical after sequence plus list', () => {
     const leftChild = any('left');
     const rightChild = any('right');
@@ -206,6 +391,42 @@ describe('Sequence', () => {
     expect(result.toTrimmedString()).toBe('left, right');
     expect(leftChild.parent).toBe(left);
     expect(rightChild.parent).toBe(right);
+  });
+
+  it('adds list values to sequences without mapped copy-array scaffolding', () => {
+    const left = seq([any('left')]);
+    const right = list([any('right')]);
+    const originalLeftMap = left.value.map;
+    const originalRightMap = right.value.map;
+    Object.defineProperty(left.value, 'map', {
+      configurable: true,
+      value: () => {
+        throw new Error('sequence plus list should not map left child copies');
+      }
+    });
+    Object.defineProperty(right.value, 'map', {
+      configurable: true,
+      value: () => {
+        throw new Error('sequence plus list should not map right child copies');
+      }
+    });
+
+    try {
+      const result = left.operate(right, '+', context);
+
+      expect(result.toTrimmedString()).toBe('left, right');
+    } finally {
+      Object.defineProperty(left.value, 'map', {
+        configurable: true,
+        writable: true,
+        value: originalLeftMap
+      });
+      Object.defineProperty(right.value, 'map', {
+        configurable: true,
+        writable: true,
+        value: originalRightMap
+      });
+    }
   });
 
   it('derives sequence addition output without reconstructing the source sequence', () => {

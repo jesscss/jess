@@ -1,19 +1,28 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, condition, bool, comment, ref } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, Condition, condition, bool, comment, ref } from '../index.js';
 import { Context } from '../../context.js';
 import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { serializeRulesContainer } from '../util/serialize-helper.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 let context: Context;
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  previews = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override preview(fn: () => string | void, preserveSegments?: boolean): string;
+  override preview(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
+  override preview(fn: () => MaybePromise<string | void>, preserveSegments?: boolean): MaybePromise<string> {
+    this.previews++;
+    return super.preview(fn, preserveSegments);
   }
 }
 
@@ -641,7 +650,7 @@ describe('Rule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
-  it('renders guarded nil-selector rulesets through owned guard and body output', async () => {
+  it('renders guarded nil-selector rulesets without preparing source guard or body output', async () => {
     const guard = condition([bool(true)]);
     const body = rules([
       decl({ name: 'color', value: any('red') })
@@ -672,6 +681,26 @@ describe('Rule', () => {
       expect(node.registrationPrepared).toBe(false);
     } finally {
       RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
+    }
+  });
+
+  it('renders guarded nil-selector rulesets without calling the public Bool-result condition eval wrapper', async () => {
+    const originalConditionEval = Condition.prototype.eval;
+    Condition.prototype.eval = function evalForCounting(): never {
+      throw new Error('nil-selector guard should evaluate condition booleans directly');
+    };
+    const node = ruleset({
+      selector: new Nil(),
+      guard: condition([bool(true)]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;\n');
+    } finally {
+      Condition.prototype.eval = originalConditionEval;
     }
   });
 
@@ -1015,15 +1044,31 @@ describe('Rule', () => {
 
   it('streams header selectors without capture scaffolding', () => {
     const writer = new CountingWriter();
+    const selector = sellist([sel([el('.foo')])]);
     const node = ruleset({
-      selector: sellist([sel([el('.foo')])]),
+      selector,
       rules: rules([])
     });
     const options = getPrintOptions({ writer });
+    const originalSelectorToString = selector.toString;
+    let selectorUsedActiveWriter = false;
+    selector.toString = function toStringWithWriterCheck(
+      this: typeof selector,
+      nextOptions?: Parameters<typeof originalSelectorToString>[0]
+    ): string {
+      selectorUsedActiveWriter = nextOptions?.writer === writer;
+      return originalSelectorToString.call(this, nextOptions);
+    };
 
-    expect(node.getHeaderString(options)).toBe('.foo {\n');
-    expect(writer.toString()).toBe('');
-    expect(writer.captures).toBe(0);
+    try {
+      expect(node.getHeaderString(options)).toBe('.foo {\n');
+      expect(writer.toString()).toBe('');
+      expect(writer.captures).toBe(0);
+      expect(writer.previews).toBe(0);
+      expect(selectorUsedActiveWriter).toBe(true);
+    } finally {
+      selector.toString = originalSelectorToString;
+    }
   });
 
   it('getHeaderString keeps selector visibility forcing render-local', () => {

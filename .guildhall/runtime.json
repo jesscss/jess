@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "writtenByGuildhall": "0.9.1",
+  "minGuildhallVersion": "0.9.1",
+  "stateSchema": "project-state.v1",
+  "requiredFeatures": [
+    "attention-records.v1"
+  ],
+  "updatedAt": "2026-06-04T18:37:23.880Z"
+}

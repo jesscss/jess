@@ -1,8 +1,8 @@
 import type { Context } from '../../context.js';
 import { Bool } from '../bool.js';
+import { Condition } from '../condition.js';
 import type { List } from '../list.js';
 import type { Node } from '../node.js';
-import { F_STATIC } from '../node.js';
 import type { Rules } from '../rules.js';
 import { withRulesContext } from './context.js';
 import { evaluateCallableCandidateOutput } from './callable-candidate-output.js';
@@ -54,7 +54,6 @@ export type CallableDefaultState = {
 type ProbeCallableDefaultGuardOptions = {
   context: Context;
   candidateGuard?: Node;
-  copyGuardForEval: (guard: Node) => Node;
   beforeEval?: (guard: Node) => void;
 };
 
@@ -149,28 +148,18 @@ export function resolveCallableDefaultCandidateGroups(
 export async function probeCallableDefaultGuard({
   context,
   candidateGuard,
-  copyGuardForEval,
   beforeEval
 }: ProbeCallableDefaultGuardOptions): Promise<CallableDefaultGuardProbeResult> {
-  let defaultProbeGuard: Node | undefined;
-  const getDefaultProbeGuard = (): Node | undefined => {
-    if (!candidateGuard) {
-      return undefined;
-    }
-    if (candidateGuard.hasFlag(F_STATIC)) {
-      return candidateGuard;
-    }
-    defaultProbeGuard ??= copyGuardForEval(candidateGuard);
-    return defaultProbeGuard;
-  };
   const evalWithDefault = async (isDefaultValue: boolean): Promise<boolean> => {
-    const probeGuard = getDefaultProbeGuard();
-    if (!probeGuard) {
+    if (!candidateGuard) {
       return false;
     }
-    beforeEval?.(probeGuard);
+    beforeEval?.(candidateGuard);
     context.isDefault = isDefaultValue;
-    const probeResult = await probeGuard.eval(context);
+    if (candidateGuard instanceof Condition) {
+      return await candidateGuard.evaluateBoolean(context);
+    }
+    const probeResult = await candidateGuard.eval(context);
     return probeResult instanceof Bool && probeResult.value === true;
   };
 

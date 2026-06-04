@@ -1,0 +1,2 @@
+{"machineId":"structural-map-review","machineVersion":1,"entityId":"structural-map-mpyrvqjg","from":"draft","event":"submit_for_review","to":"owner_review","actor":"meta-intake-synthesis","evidenceRefs":["owner-review:requested"],"createdAt":"2026-06-04T00:44:08.860Z"}
+{"machineId":"structural-map-review","machineVersion":1,"entityId":"structural-map-mpyrvqjg","from":"owner_review","event":"accept","to":"accepted","actor":"meta-intake-synthesis","evidenceRefs":["owner-review:accepted"],"createdAt":"2026-06-04T00:44:08.860Z"}

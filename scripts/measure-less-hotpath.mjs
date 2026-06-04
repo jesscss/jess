@@ -23,6 +23,10 @@ const DEFAULT_FIXTURES = [
 
 const DEFAULT_HISTORY_FILE = 'docs/future/node-copy-reduction/less-hotpath-history.jsonl';
 const DEFAULT_THRESHOLD = 0.08;
+const DEFAULT_STABLE_ITERATIONS = 100;
+const DEFAULT_STABLE_REPEAT = 5;
+const DEFAULT_STABLE_TRIM = 0.1;
+const DEFAULT_STABLE_WARMUP = 20;
 
 function parseArgs(argv) {
   const options = {
@@ -34,8 +38,10 @@ function parseArgs(argv) {
     json: false,
     jsonl: false,
     note: '',
+    repeat: 1,
     save: false,
     threshold: DEFAULT_THRESHOLD,
+    trim: 0,
     warmup: 3
   };
 
@@ -68,11 +74,23 @@ function parseArgs(argv) {
       case '--note':
         options.note = readValue(argv, ++i, arg);
         break;
+      case '--repeat':
+        options.repeat = readNumber(readValue(argv, ++i, arg), arg);
+        break;
       case '--save':
         options.save = true;
         break;
+      case '--stable':
+        options.iterations = DEFAULT_STABLE_ITERATIONS;
+        options.repeat = DEFAULT_STABLE_REPEAT;
+        options.trim = DEFAULT_STABLE_TRIM;
+        options.warmup = DEFAULT_STABLE_WARMUP;
+        break;
       case '--threshold':
         options.threshold = readFloat(readValue(argv, ++i, arg), arg);
+        break;
+      case '--trim':
+        options.trim = readFloat(readValue(argv, ++i, arg), arg);
         break;
       case '--warmup':
         options.warmup = readNumber(readValue(argv, ++i, arg), arg);
@@ -87,6 +105,12 @@ function parseArgs(argv) {
   }
   if (options.iterations < 1) {
     throw new TypeError('--iterations must be greater than zero');
+  }
+  if (options.repeat < 1) {
+    throw new TypeError('--repeat must be greater than zero');
+  }
+  if (options.trim < 0 || options.trim >= 0.5) {
+    throw new TypeError('--trim must be greater than or equal to 0 and less than 0.5');
   }
   return options;
 }
@@ -115,19 +139,101 @@ function readFloat(value, name) {
   return number;
 }
 
-function summarize(times) {
+function summarize(times, trimRatio = 0) {
   const sorted = [...times].sort((a, b) => a - b);
   const mean = sorted.reduce((sum, value) => sum + value, 0) / sorted.length;
   const median = percentile(sorted, 0.5);
+  const p25 = percentile(sorted, 0.25);
+  const p75 = percentile(sorted, 0.75);
+  const iqr = p75 - p25;
+  const trimmed = trimValues(sorted, trimRatio);
+  const trimmedMean = trimmed.reduce((sum, value) => sum + value, 0) / trimmed.length;
+  const trimmedMedian = percentile(trimmed, 0.5);
+  const trimmedRelativeStdDev = relativeStdDev(trimmed, trimmedMean);
+  const deviations = sorted.map(value => Math.abs(value - median)).sort((a, b) => a - b);
   return {
+    samples: sorted.length,
     median,
     mean,
     min: sorted[0],
     max: sorted.at(-1),
-    p75: percentile(sorted, 0.75),
+    p25,
+    p75,
     p90: percentile(sorted, 0.9),
-    relativeStdDev: relativeStdDev(sorted, mean)
+    relativeStdDev: relativeStdDev(sorted, mean),
+    mad: percentile(deviations, 0.5),
+    iqr,
+    outliers: countOutliers(sorted, p25, p75),
+    trimRatio,
+    trimmedMean,
+    trimmedMedian,
+    trimmedRelativeStdDev,
+    trimDroppedEachSide: Math.floor(sorted.length * trimRatio)
   };
+}
+
+function summarizeRounds(rounds, trimRatio) {
+  const allTimes = [];
+  const roundMedians = [];
+  for (const round of rounds) {
+    for (const time of round.times) {
+      allTimes.push(time);
+    }
+    roundMedians.push(round.summary.trimmedMedian);
+  }
+  const sampleSummary = summarize(allTimes, trimRatio);
+  const sortedRoundMedians = [...roundMedians].sort((a, b) => a - b);
+  const roundMedian = percentile(sortedRoundMedians, 0.5);
+  const roundMean = sortedRoundMedians.reduce((sum, value) => sum + value, 0) / sortedRoundMedians.length;
+  const roundRelativeStdDev = relativeStdDev(sortedRoundMedians, roundMean);
+  const signalQuality = classifySignal(sampleSummary, roundRelativeStdDev);
+  return {
+    ...sampleSummary,
+    median: roundMedian,
+    mean: roundMean,
+    sampleMedian: sampleSummary.median,
+    sampleMean: sampleSummary.mean,
+    roundMedian,
+    roundMean,
+    roundRelativeStdDev,
+    rounds: rounds.length,
+    signalQuality
+  };
+}
+
+function trimValues(sorted, trimRatio) {
+  const trim = Math.floor(sorted.length * trimRatio);
+  if (trim === 0) {
+    return sorted;
+  }
+  return sorted.slice(trim, sorted.length - trim);
+}
+
+function countOutliers(sorted, p25, p75) {
+  const iqr = p75 - p25;
+  if (iqr === 0) {
+    return 0;
+  }
+  const low = p25 - iqr * 1.5;
+  const high = p75 + iqr * 1.5;
+  let count = 0;
+  for (const value of sorted) {
+    if (value < low || value > high) {
+      count++;
+    }
+  }
+  return count;
+}
+
+function classifySignal(summary, roundRelativeStdDev) {
+  const outlierRate = summary.samples === 0 ? 0 : summary.outliers / summary.samples;
+  if (summary.trimmedRelativeStdDev <= 0.15 && outlierRate <= 0.1 && roundRelativeStdDev <= 0.08) {
+    return 'usable';
+  }
+  if (summary.trimmedRelativeStdDev <= 0.25 && outlierRate <= 0.2 && roundRelativeStdDev <= 0.15) {
+    return 'unstable';
+  }
+  return 'noisy';
 }
 
 function percentile(sorted, p) {
@@ -183,12 +289,14 @@ function makeRunMeta(options) {
     arch: process.arch,
     cpus: os.cpus().length,
     iterations: options.iterations,
+    repeat: options.repeat,
+    trim: options.trim,
     warmup: options.warmup,
     note: options.note || undefined
   };
 }
 
-function toRecord(run, fixture, result, times) {
+function toRecord(run, fixture, result, times, rounds) {
   return {
     type: 'less-hotpath-fixture',
     timestamp: run.timestamp,
@@ -198,10 +306,13 @@ function toRecord(run, fixture, result, times) {
     arch: run.arch,
     fixture,
     iterations: run.iterations,
+    repeat: run.repeat,
+    trim: run.trim,
     warmup: run.warmup,
     note: run.note,
     summary: result,
-    times
+    times,
+    rounds
   };
 }
 
@@ -235,11 +346,9 @@ function compareRecords(currentRecords, baselineRecords, threshold) {
     const currentMedian = record.summary.median;
     const delta = currentMedian - baselineMedian;
     const ratio = baselineMedian === 0 ? 0 : delta / baselineMedian;
-    const status = Math.abs(ratio) < threshold
-      ? 'noise'
-      : ratio < 0
-        ? 'faster'
-        : 'slower';
+    const baselineSignalQuality = baseline.summary.signalQuality;
+    const currentSignalQuality = record.summary.signalQuality;
+    const status = compareStatus(ratio, threshold, baselineSignalQuality, currentSignalQuality);
     return {
       fixture: record.fixture,
       baselineCommit: baseline.commit,
@@ -250,6 +359,22 @@ function compareRecords(currentRecords, baselineRecords, threshold) {
       status
     };
   });
+}
+
+function compareStatus(ratio, threshold, baselineSignalQuality, currentSignalQuality) {
+  if (baselineSignalQuality === 'noisy') {
+    return 'noisy-baseline';
+  }
+  if (currentSignalQuality === 'noisy') {
+    return 'noisy-signal';
+  }
+  if (currentSignalQuality === 'unstable') {
+    return 'unstable-signal';
+  }
+  if (Math.abs(ratio) < threshold) {
+    return 'noise';
+  }
+  return ratio < 0 ? 'faster' : 'slower';
 }
 
 function writeHistory(file, records) {
@@ -277,17 +402,26 @@ const compiler = new Compiler({
 const records = [];
 for (const rel of fixtures) {
   const file = path.join(testDataRoot, rel);
-  for (let i = 0; i < options.warmup; i++) {
-    await compiler.render(file);
+  const rounds = [];
+  for (let round = 0; round < options.repeat; round++) {
+    for (let i = 0; i < options.warmup; i++) {
+      await compiler.render(file);
+    }
+    const times = [];
+    for (let i = 0; i < options.iterations; i++) {
+      const start = performance.now();
+      await compiler.render(file);
+      times.push(performance.now() - start);
+    }
+    rounds.push({
+      index: round + 1,
+      summary: summarize(times, options.trim),
+      times
+    });
   }
-  const times = [];
-  for (let i = 0; i < options.iterations; i++) {
-    const start = performance.now();
-    await compiler.render(file);
-    times.push(performance.now() - start);
-  }
-  const result = summarize(times);
-  records.push(toRecord(run, rel, result, times));
+  const result = summarizeRounds(rounds, options.trim);
+  const times = rounds.flatMap(round => round.times);
+  records.push(toRecord(run, rel, result, times, rounds));
 }
 
 let comparison = [];
@@ -307,13 +441,16 @@ if (options.json) {
     console.log(JSON.stringify(record));
   }
 } else {
-  console.log(`Less hot-path measurement (${options.iterations} iterations, ${options.warmup} warmup)`);
+  console.log(`Less hot-path measurement (${options.iterations} iterations, ${options.warmup} warmup, ${options.repeat} repeat, ${formatPercent(options.trim)} trim)`);
   console.log(`commit=${run.commit ?? 'unknown'} node=${run.node} platform=${run.platform}/${run.arch}`);
   for (const record of records) {
     const result = record.summary;
     console.log(`${record.fixture}`);
     console.log(
-      `  median=${formatMs(result.median)} mean=${formatMs(result.mean)} p75=${formatMs(result.p75)} p90=${formatMs(result.p90)} min=${formatMs(result.min)} max=${formatMs(result.max)} rsd=${formatPercent(result.relativeStdDev)}`
+      `  signal=${result.signalQuality} median=${formatMs(result.median)} mean=${formatMs(result.mean)} sampleMedian=${formatMs(result.sampleMedian)} trimmedMedian=${formatMs(result.trimmedMedian)} p75=${formatMs(result.p75)} p90=${formatMs(result.p90)} min=${formatMs(result.min)} max=${formatMs(result.max)} rsd=${formatPercent(result.relativeStdDev)} roundRsd=${formatPercent(result.roundRelativeStdDev)} outliers=${result.outliers}/${result.samples}`
+    );
+    console.log(
+      `  trimmedMean=${formatMs(result.trimmedMean)} trimmedRsd=${formatPercent(result.trimmedRelativeStdDev)} mad=${formatMs(result.mad)} iqr=${formatMs(result.iqr)}`
     );
     const compared = comparison.find(item => item.fixture === record.fixture);
     if (compared && compared.status !== 'missing-baseline') {

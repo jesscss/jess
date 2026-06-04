@@ -110,6 +110,24 @@ describe('Expression', () => {
     expect(renderedNode.registrationPrepared).toBe(false);
   });
 
+  it('renders sync scalar children without may-async continuation scaffolding', () => {
+    const expressionChild = any('foo');
+    const originalEval = expressionChild.eval;
+    expressionChild.eval = function evalSyncOnly(
+      this: typeof expressionChild,
+      renderContext: Context
+    ) {
+      const out = originalEval.call(this, renderContext);
+      if (out instanceof Promise) {
+        throw new Error('Expression.render should keep sync values on the sync path');
+      }
+      return out;
+    };
+    const renderedNode = expr(expressionChild);
+
+    expect(renderedNode.render(context)).toBe('foo');
+  });
+
   it('resolves expression values without touching render state', async () => {
     const node = rules([
       vardecl({

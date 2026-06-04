@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, List, Sequence, JsArray, JsObject, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
 import { Context } from '../../context.js';
 import { JsExpression } from '../js-expr.js';
 import * as Registries from '../util/registry-utils.js';
@@ -486,6 +486,67 @@ describe('reference', () => {
       } finally {
         List.prototype.copy = originalCopy;
         List.prototype.inherit = originalInherit;
+      }
+    });
+
+    it('renders source-backed variable sequences with source-backed children without copies or frozen state', async () => {
+      const first = dimension([1, 'px']);
+      const second = dimension([2, 'px']);
+      first._location = [10, 1, 11, 13, 1, 14];
+      second._location = [14, 1, 15, 16, 1, 17];
+      const sourceValue = spaced([first, second]);
+      sourceValue._location = [10, 1, 11, 16, 1, 17];
+      const node = rules([
+        vardecl({
+          name: any('space'),
+          value: sourceValue
+        })
+      ]);
+      const sourceParent = sourceValue.parent;
+      const firstParent = first.parent;
+      const secondParent = second.parent;
+      setRulesContext(await node.eval(context));
+      const refNode = ref({ key: 'space' }, { type: 'variable' });
+      const buffer = createRenderBuffer('segmented');
+      const originalSequenceInherit = Sequence.prototype.inherit;
+      const originalDimensionInherit = Dimension.prototype.inherit;
+      let sequenceInherits = 0;
+      let dimensionInherits = 0;
+      Sequence.prototype.inherit = function inheritForCounting(
+        this: Sequence,
+        ...args: Parameters<typeof originalSequenceInherit>
+      ): ReturnType<typeof originalSequenceInherit> {
+        if (args[0] === sourceValue) {
+          sequenceInherits++;
+        }
+        return originalSequenceInherit.apply(this, args);
+      };
+      Dimension.prototype.inherit = function inheritForCounting(
+        this: Dimension,
+        ...args: Parameters<typeof originalDimensionInherit>
+      ): ReturnType<typeof originalDimensionInherit> {
+        if (args[0] === first || args[0] === second) {
+          dimensionInherits++;
+        }
+        return originalDimensionInherit.apply(this, args);
+      };
+
+      try {
+        expect(await Promise.resolve(refNode.render(context))).toBe('1px 2px');
+        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('1px 2px');
+        expect(buffer.segments).toEqual(['1px 2px']);
+        expect(sequenceInherits).toBe(0);
+        expect(dimensionInherits).toBe(0);
+        expect(sourceValue.frozen).toBe(false);
+        expect(first.frozen).toBe(false);
+        expect(second.frozen).toBe(false);
+        expect(sourceValue.parent).toBe(sourceParent);
+        expect(first.parent).toBe(firstParent);
+        expect(second.parent).toBe(secondParent);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        Sequence.prototype.inherit = originalSequenceInherit;
+        Dimension.prototype.inherit = originalDimensionInherit;
       }
     });
 

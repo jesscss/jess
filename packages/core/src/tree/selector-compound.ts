@@ -6,7 +6,7 @@ import type { Context } from '../context.js';
 import { createPublicNil, Nil } from './nil.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
-import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import { canReuseLeaf, copyWithReusableLeaves, ownCollapsedSourceChild, reuseLeaf } from './util/cloning.js';
@@ -51,20 +51,38 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   }
 
   private withComponents(value: Selector[], sourceValue: readonly Selector[] = this.value): this {
+    const ownedValue = new Array<Selector>(value.length);
+    let hoistToRoot = false;
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i]!;
+      ownedValue[i] = this.isSourceSelector(item, sourceValue) ? this.ownSelector(item) : item;
+      if (item.hoistToRoot) {
+        hoistToRoot = true;
+      }
+    }
     const node: this = Reflect.construct(
       this.constructor,
       [
         // Own unchanged source children; evaluated clones may carry runtime state.
-        value.map(item => sourceValue.includes(item) ? this.ownSelector(item) : item),
+        ownedValue,
         this._options ? { ...this._options } : undefined,
         this.location,
         this.treeContext
       ]
     );
-    if (value.some(item => item.hoistToRoot)) {
+    if (hoistToRoot) {
       node.hoistToRoot = true;
     }
     return node.inherit(this);
+  }
+
+  private isSourceSelector(item: Selector, sourceValue: readonly Selector[]): boolean {
+    for (let i = 0; i < sourceValue.length; i++) {
+      if (sourceValue[i] === item) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private createEvaluatedComponentSurface(value: Selector[], sourceValue: readonly Selector[]): this {
@@ -116,14 +134,11 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   override valueOf() {
     let value = this._valueOf;
     if (!value) {
-      // Convert selectors to strings
-      const components = this.value.map(n => n.valueOf());
-
       // Find element selectors (those that don't start with .#:[)
       const elementSelectors: string[] = [];
       const nonElementSelectors: string[] = [];
-
-      for (const component of components) {
+      for (let i = 0; i < this.value.length; i++) {
+        const component = String(this.value[i]!.valueOf());
         if (!nonElementRegex.test(component)) {
           elementSelectors.push(component);
         } else {
@@ -133,7 +148,13 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
 
       // Element selectors must come first for valid CSS
       // Non-element selectors maintain their original order (no sorting)
-      value = [...elementSelectors, ...nonElementSelectors].join('');
+      value = '';
+      for (let i = 0; i < elementSelectors.length; i++) {
+        value += elementSelectors[i]!;
+      }
+      for (let i = 0; i < nonElementSelectors.length; i++) {
+        value += nonElementSelectors[i]!;
+      }
       this._valueOf = value;
     }
     return value;
@@ -145,108 +166,102 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
 
   override evalNode(context: Context): MaybePromise<CompoundSelector | Selector | Nil> {
     attachSelectorBitLibrary(this, context.selectorBits);
-    return pipe(
-      () => {
-        const sel = this;
-        const currentValue = sel.value;
-        const evaluatedValue: Array<Selector | Nil> = [...currentValue];
-        const maybe = serialForEach(evaluatedValue, (item, i) => {
-          const out = item.eval(context);
-          if (isThenable(out)) {
-            return out.then((res) => {
-              evaluatedValue[i] = res;
-              return undefined;
-            });
-          }
-          evaluatedValue[i] = out;
-          return undefined;
-        });
-        if (isThenable(maybe)) {
-          return (maybe as Promise<void>).then(() => [sel, currentValue, evaluatedValue] as const);
-        }
-        return [sel, currentValue, evaluatedValue] as const;
-      },
-      ([sel, currentValue, evaluatedValue]) => {
-        let value = evaluatedValue.filter((n): n is Selector => n && !(n instanceof Nil));
-        value = value.sort((a, b) => {
-          let aIsElement = !nonElementRegex.test(a.valueOf());
-          let bIsElement = !nonElementRegex.test(b.valueOf());
-          if (aIsElement && bIsElement) {
-            return a.valueOf() < b.valueOf() ? -1 : 1;
-          }
-          return aIsElement ? -1 : bIsElement ? 1 : 0;
-        });
-        if (value.length === 0) {
-          return createPublicNil().inherit(this);
-        }
-        if (value.length === 1) {
-          return this.collapsedSelector(value[0]!, currentValue);
-        }
-        const changed = (
-          value.length !== currentValue.length
-          || value.some((part, idx) => part !== currentValue[idx])
-        );
-        if (!changed) {
-          return sel;
-        }
-        return sel.createEvaluatedComponentSurface(value, currentValue);
-      }
-    );
+    const evaluatedValue = this.evaluateComponents(context, false);
+    return isThenable(evaluatedValue)
+      ? (evaluatedValue as Promise<Array<Selector | Nil>>).then(value => this.finalizeComponents(value, true))
+      : this.finalizeComponents(evaluatedValue as Array<Selector | Nil>, true);
   }
 
   protected override resolveForRender(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
-    return pipe(
-      () => {
-        const sel = this;
-        const currentValue = sel.value;
-        const resolvedValue: Array<Selector | Nil> = [...currentValue];
-        const maybe = serialForEach(resolvedValue, (item, i) => {
-          const out = item.resolve(context);
-          if (isThenable(out)) {
-            return out.then((res) => {
-              if (res instanceof Selector || res instanceof Nil) {
-                resolvedValue[i] = res;
-              }
-              return undefined;
-            });
-          }
-          if (out instanceof Selector || out instanceof Nil) {
-            resolvedValue[i] = out;
-          }
-          return undefined;
+    const resolvedValue = this.evaluateComponents(context, true);
+    return isThenable(resolvedValue)
+      ? (resolvedValue as Promise<Array<Selector | Nil>>).then(value => this.finalizeComponents(value, false))
+      : this.finalizeComponents(resolvedValue as Array<Selector | Nil>, false);
+  }
+
+  private evaluateComponents(context: Context, resolve: boolean): MaybePromise<Array<Selector | Nil>> {
+    const currentValue = this.value;
+    const evaluatedValue = new Array<Selector | Nil>(currentValue.length);
+    for (let i = 0; i < currentValue.length; i++) {
+      const item = currentValue[i]!;
+      const out = resolve ? item.resolve(context) : item.eval(context);
+      if (isThenable(out)) {
+        return out.then((res) => {
+          evaluatedValue[i] = res instanceof Selector || res instanceof Nil ? res : item;
+          return this.evaluateComponentsRest(context, resolve, evaluatedValue, i + 1);
         });
-        if (isThenable(maybe)) {
-          return (maybe as Promise<void>).then(() => [sel, currentValue, resolvedValue] as const);
-        }
-        return [sel, currentValue, resolvedValue] as const;
-      },
-      ([sel, currentValue, resolvedValue]) => {
-        let value = resolvedValue.filter((n): n is Selector => n && !(n instanceof Nil));
-        value = value.sort((a, b) => {
-          let aIsElement = !nonElementRegex.test(a.valueOf());
-          let bIsElement = !nonElementRegex.test(b.valueOf());
-          if (aIsElement && bIsElement) {
-            return a.valueOf() < b.valueOf() ? -1 : 1;
-          }
-          return aIsElement ? -1 : bIsElement ? 1 : 0;
-        });
-        if (value.length === 0) {
-          return createPublicNil().inherit(this);
-        }
-        if (value.length === 1) {
-          return this.collapsedSelector(value[0]!, currentValue);
-        }
-        const changed = (
-          value.length !== currentValue.length
-          || value.some((part, idx) => part !== currentValue[idx])
-        );
-        if (!changed) {
-          return sel;
-        }
-        return sel.withComponents(value, currentValue);
       }
-    );
+      evaluatedValue[i] = out instanceof Selector || out instanceof Nil ? out : item;
+    }
+    return evaluatedValue;
+  }
+
+  private evaluateComponentsRest(
+    context: Context,
+    resolve: boolean,
+    evaluatedValue: Array<Selector | Nil>,
+    start: number
+  ): MaybePromise<Array<Selector | Nil>> {
+    const currentValue = this.value;
+    for (let i = start; i < currentValue.length; i++) {
+      const item = currentValue[i]!;
+      const out = resolve ? item.resolve(context) : item.eval(context);
+      if (isThenable(out)) {
+        return out.then((res) => {
+          evaluatedValue[i] = res instanceof Selector || res instanceof Nil ? res : item;
+          return this.evaluateComponentsRest(context, resolve, evaluatedValue, i + 1);
+        });
+      }
+      evaluatedValue[i] = out instanceof Selector || out instanceof Nil ? out : item;
+    }
+    return evaluatedValue;
+  }
+
+  private finalizeComponents(evaluatedValue: Array<Selector | Nil>, evaluated: boolean): Node {
+    const currentValue = this.value;
+    const value: Selector[] = [];
+    for (let i = 0; i < evaluatedValue.length; i++) {
+      const item = evaluatedValue[i]!;
+      if (!(item instanceof Nil)) {
+        value.push(item);
+      }
+    }
+    this.sortComponents(value);
+    if (value.length === 0) {
+      return createPublicNil().inherit(this);
+    }
+    if (value.length === 1) {
+      return this.collapsedSelector(value[0]!, currentValue);
+    }
+    let changed = value.length !== currentValue.length;
+    if (!changed) {
+      for (let i = 0; i < value.length; i++) {
+        if (value[i] !== currentValue[i]) {
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (!changed) {
+      return this;
+    }
+    return evaluated
+      ? this.createEvaluatedComponentSurface(value, currentValue)
+      : this.withComponents(value, currentValue);
+  }
+
+  private sortComponents(value: Selector[]): void {
+    value.sort((a, b) => {
+      const aValue = String(a.valueOf());
+      const bValue = String(b.valueOf());
+      const aIsElement = !nonElementRegex.test(aValue);
+      const bIsElement = !nonElementRegex.test(bValue);
+      if (aIsElement && bIsElement) {
+        return aValue < bValue ? -1 : 1;
+      }
+      return aIsElement ? -1 : bIsElement ? 1 : 0;
+    });
   }
 
   override resolve(context: Context): MaybePromise<Node> {

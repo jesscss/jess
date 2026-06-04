@@ -29,7 +29,6 @@ type ExecuteCallableCandidateOptions = {
   nodeArgs: Node[];
   defaultState: CallableDefaultState;
   restrictMixinOutputLookup: boolean;
-  copyGuardForEval: (guard: Node) => Node;
   createOuterRules: (rules: Rules, options?: Rules['options']) => Rules;
 };
 
@@ -51,7 +50,6 @@ export async function executeCallableCandidate({
   nodeArgs,
   defaultState,
   restrictMixinOutputLookup,
-  copyGuardForEval,
   createOuterRules
 }: ExecuteCallableCandidateOptions): Promise<ExecuteCallableCandidateResult> {
   const {
@@ -119,7 +117,6 @@ export async function executeCallableCandidate({
   } = prepareCallableGuardState({
     hasDefault,
     candidateGuard,
-    copyGuardForEval,
     candidateParams,
     paramBindingsLength: paramBindings.length,
     outerRules,
@@ -137,7 +134,6 @@ export async function executeCallableCandidate({
     hasDefault,
     guard,
     candidateGuard,
-    copyGuardForEval,
     usesPreboundCallerGuardOuterRules,
     usesPreboundParamGuardOuterRules,
     outerRules,

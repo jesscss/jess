@@ -50,6 +50,29 @@ function throwInvalidImportedRulesRegistrationPrep(): never {
   throw new TypeError('Expected imported rules registration prep to return Rules');
 }
 
+function visitDescendantRulesets(value: unknown, cb: (ruleset: Ruleset) => void): void {
+  if (isNode(value, N.Ruleset)) {
+    cb(value as Ruleset);
+  }
+  if (value instanceof Node) {
+    visitDescendantRulesets(value.value, cb);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      visitDescendantRulesets(value[i], cb);
+    }
+    return;
+  }
+  if (isObject(value)) {
+    for (const key in value) {
+      if (Object.hasOwn(value, key)) {
+        visitDescendantRulesets(value[key], cb);
+      }
+    }
+  }
+}
+
 function copyImportPlacementValue(value: unknown): unknown {
   if (value instanceof Node) {
     return copyImportPlacementNode(value);
@@ -768,12 +791,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const topImports = (context.topImports ??= []);
     const nodeLoc = importRule.location?.join(':') ?? '';
     const nodeSig = `${importRule.value.name.valueOf?.() ?? importRule.value.name}:${importRule.value.prelude?.valueOf?.() ?? ''}`;
-    const alreadyQueued = topImports.some((queuedNode) => {
+    let alreadyQueued = false;
+    for (let i = 0; i < topImports.length; i++) {
+      const queuedNode = topImports[i]!;
       if (!isNode(queuedNode, N.AtRule)) {
-        return false;
+        continue;
       }
       const queued = queuedNode as AtRule;
-      return (
+      if (
         queued === importRule
         || queued.sourceNode === importRule.sourceNode
         || queued.sourceNode === importRule
@@ -781,8 +806,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           (queued.location?.join(':') ?? '') === nodeLoc
           && `${queued.value.name.valueOf?.() ?? queued.value.name}:${queued.value.prelude?.valueOf?.() ?? ''}` === nodeSig
         )
-      );
-    });
+      ) {
+        alreadyQueued = true;
+        break;
+      }
+    }
     if (!alreadyQueued) {
       topImports.push(importRule);
     }
@@ -1158,11 +1186,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // getFinalRules can derive a placement wrapper; re-register all descendant rulesets
           // under finalRules' extend root set.
           if (shouldReRegisterLocalRootRulesets) {
-            for (const maybeRuleset of finalRules.nodes()) {
-              if (isNode(maybeRuleset, N.Ruleset)) {
-                registerRulesetWithRoot(finalRules, maybeRuleset as Ruleset);
-              }
-            }
+            visitDescendantRulesets(finalRules.value, ruleset => registerRulesetWithRoot(finalRules, ruleset));
           }
         // Don't push to stack - import type uses parent's root for extends inside the import
         // But we register it so extends from parent can find rulesets in the imported Rules

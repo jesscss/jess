@@ -3,7 +3,7 @@ import { Any } from './any.js';
 import { Node, F_STATIC, F_NON_STATIC, defineType, type NodeLocation, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
-import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
@@ -75,10 +75,10 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return pipe(
-      () => this.resolveRenderValue(context),
-      value => this.renderResolvedQuotedValue(context, value, bufferOrOptions, options)
-    );
+    const value = this.evaluateRenderValue(context);
+    return isThenable(value)
+      ? (value as Promise<string | Any | Interpolated | Node>).then(resolved => this.renderResolvedQuotedValue(context, resolved, bufferOrOptions, options))
+      : this.renderResolvedQuotedValue(context, value as string | Any | Interpolated | Node, bufferOrOptions, options);
   }
 
   private renderResolvedQuotedValue(
@@ -121,7 +121,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return typeof other.toString === 'function' && this.toString() === other.toString() ? 0 : undefined;
   }
 
-  private evaluateValue(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Quoted | Node> {
+  private evaluateValue(context: Context): MaybePromise<Quoted | Node> {
     const cont = (value: string | Any | Interpolated | Node): Quoted | Node => {
       if (this._options?.escaped) {
         if (value instanceof Node) {
@@ -139,7 +139,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     };
     const { value } = this;
     if (value instanceof Node) {
-      const out = mode === 'eval' ? value.eval(context) : value.resolve(context);
+      const out = value.eval(context);
       if (isThenable(out)) {
         return (out as Promise<Node | Any | Interpolated>).then(cont);
       }
@@ -148,20 +148,20 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return cont(value);
   }
 
-  private resolveRenderValue(context: Context): MaybePromise<string | Any | Interpolated | Node> {
+  private evaluateRenderValue(context: Context): MaybePromise<string | Any | Interpolated | Node> {
     const { value } = this;
     if (!(value instanceof Node)) {
       return value;
     }
-    return value.resolve(context);
+    return value.eval(context);
   }
 
   override evalNode(context: Context): MaybePromise<Quoted | Node> {
-    return this.evaluateValue(context, 'eval');
+    return this.evaluateValue(context);
   }
 
   override resolve(context: Context): MaybePromise<Quoted | Node> {
-    return this.evaluateValue(context, 'resolve');
+    return this.evaluateValue(context);
   }
 }
 export const quoted = defineType(Quoted, 'Quoted');

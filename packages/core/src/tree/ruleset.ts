@@ -3,7 +3,7 @@ import { Rules } from './rules.js';
 import type { Context } from '../context.js';
 import { createPublicNil, Nil } from './nil.js';
 import { Bool } from './bool.js';
-import type { Condition } from './condition.js';
+import { Condition } from './condition.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -14,7 +14,6 @@ import { SimpleSelector } from './selector-simple.js';
 import { SelectorList } from './selector-list.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import {
-  OutputWriter,
   type PrintOptions,
   type FinalPrintOptions,
   getPrintOptions,
@@ -24,7 +23,7 @@ import {
   getCachedComposedSelector,
   setCachedComposedSelector
 } from './util/print.js';
-import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, indent } from './util/serialize-helper.js';
 import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
@@ -152,8 +151,10 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       return;
     }
     if (value !== null && typeof value === 'object') {
-      for (const item of Object.values(value)) {
-        this.attachSelectorBitsToValue(item, selectorBits);
+      for (const key in value) {
+        if (Object.hasOwn(value, key)) {
+          this.attachSelectorBitsToValue(Reflect.get(value, key), selectorBits);
+        }
       }
     }
   }
@@ -645,17 +646,24 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     if (guard instanceof Nil) {
       return guard;
     }
+    if (guard instanceof Condition) {
+      const guardPasses = guard.evaluateBoolean(context);
+      return isThenable(guardPasses)
+        ? (guardPasses as Promise<boolean>).then(passes => passes ? this.evalNilSelectorBodyForRender(context) : new Nil())
+        : guardPasses ? this.evalNilSelectorBodyForRender(context) : new Nil();
+    }
     const ownedGuard = copyOwnedWithReusableLeaves(guard);
     if (!(ownedGuard instanceof Node)) {
       throw new TypeError('Expected nil-selector render guard copy to remain a Node');
     }
-    return pipe(
-      () => ownedGuard.eval(context),
-      (guardResult) => {
-        const guardPasses = Boolean(guardResult instanceof Bool && guardResult.value === true);
-        return guardPasses ? this.evalNilSelectorBodyForRender(context) : new Nil();
-      }
-    );
+    const finishGuard = (guardResult: Node): MaybePromise<Rules | Nil> => {
+      const guardPasses = Boolean(guardResult instanceof Bool && guardResult.value === true);
+      return guardPasses ? this.evalNilSelectorBodyForRender(context) : new Nil();
+    };
+    const guardResult = ownedGuard.eval(context);
+    return isThenable(guardResult)
+      ? guardResult.then(finishGuard)
+      : finishGuard(guardResult);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -721,10 +729,10 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
         ? this.eval(context)
         : this.evalPrepared(context, { ownRules: true });
     };
-    return pipe(
-      evalForRender,
-      renderEvaluated
-    );
+    const node = evalForRender();
+    return isThenable(node)
+      ? node.then(renderEvaluated)
+      : renderEvaluated(node);
   }
 
   override resolve(context: Context): MaybePromise<Node> {
@@ -738,12 +746,12 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   }
 
   private evalPrepared(context: Context, options: { ownRules?: boolean } = {}): MaybePromise<Node> {
-    return pipe(
-      () => this.registrationPrepared
-        ? this
-        : this._prepareRulesetRegistration(context, options),
-      node => node.evalNode(context)
-    );
+    const node = this.registrationPrepared
+      ? this
+      : this._prepareRulesetRegistration(context, options);
+    return isThenable(node)
+      ? node.then(prepared => prepared.evalNode(context))
+      : node.evalNode(context);
   }
 
   /**
@@ -791,13 +799,36 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       return true;
     }
     if (isNode(sel, N.SelectorList)) {
-      return Array.isArray(sel.value) && sel.value.some(item => Ruleset.needsVisibleSelectorClone(item));
+      if (!Array.isArray(sel.value)) {
+        return false;
+      }
+      for (let i = 0; i < sel.value.length; i++) {
+        if (Ruleset.needsVisibleSelectorClone(sel.value[i]!)) {
+          return true;
+        }
+      }
+      return false;
     }
     if (isNode(sel, N.ComplexSelector)) {
-      return Array.isArray(sel.value) && sel.value.some(c => Ruleset.needsVisibleSelectorClone(c));
+      if (!Array.isArray(sel.value)) {
+        return false;
+      }
+      for (let i = 0; i < sel.value.length; i++) {
+        if (Ruleset.needsVisibleSelectorClone(sel.value[i]!)) {
+          return true;
+        }
+      }
+      return false;
     }
-    return isNode(sel, N.CompoundSelector)
-      && sel.value.some(c => Ruleset.needsVisibleSelectorClone(c));
+    if (!isNode(sel, N.CompoundSelector)) {
+      return false;
+    }
+    for (let i = 0; i < sel.value.length; i++) {
+      if (Ruleset.needsVisibleSelectorClone(sel.value[i]!)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   static isBareAmpersandSelector(sel: Selector | Nil): boolean {
@@ -825,7 +856,12 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       return false;
     }
     if (isNode(sel, N.SelectorList)) {
-      return sel.value.some(item => item.hasFlag(F_EXTENDED));
+      for (let i = 0; i < sel.value.length; i++) {
+        if (sel.value[i]!.hasFlag(F_EXTENDED)) {
+          return true;
+        }
+      }
+      return false;
     }
     return sel.hasFlag(F_EXTENDED);
   }
@@ -894,9 +930,14 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     if (!isNode(parent, N.SelectorList)) {
       return undefined;
     }
-    const hasAnyAdded = parent.value.some(
-      item => item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)
-    );
+    let hasAnyAdded = false;
+    for (let i = 0; i < parent.value.length; i++) {
+      const item = parent.value[i]!;
+      if (item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
+        hasAnyAdded = true;
+        break;
+      }
+    }
     if (!hasAnyAdded) {
       return undefined;
     }
@@ -1162,15 +1203,13 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       options.trivia = createTriviaMap();
     }
     let selOut: string;
-    const selectorWriter = new OutputWriter();
-    const selectorPrintOptions = {
-      ...options,
-      writer: selectorWriter
-    };
+    const writer = options.writer;
+    const mark = writer.mark();
     try {
-      renderSelector.toString(selectorPrintOptions);
-      selOut = selectorWriter.toString();
+      renderSelector.toString(options);
+      selOut = writer.getSince(mark);
     } finally {
+      writer.restore(mark);
       options.trivia = savedTrivia;
     }
     restorePrintState(options, saved);
@@ -1206,10 +1245,10 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
      */
     // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins
     // Just evaluate the selector
-    return pipe(
-      () => this._prepareRulesetSelectorIdentity(selector, context),
-      sel => this._finishRulesetSelectorPrep(node, sel, context)
-    );
+    const sel = this._prepareRulesetSelectorIdentity(selector, context);
+    return isThenable(sel)
+      ? sel.then(resolved => this._finishRulesetSelectorPrep(node, resolved, context))
+      : this._finishRulesetSelectorPrep(node, sel, context);
   }
 
   private _prepareRulesetSelectorIdentity(selector: Selector | Nil, context: Context): MaybePromise<Selector | Nil> {
@@ -1377,100 +1416,99 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       this.frames = [...context.frames];
     }
 
-    return pipe(
-      () => {
-        let { guard } = this.value;
-        // Guard was already set to Nil (failed in a previous eval)
-        if (guard instanceof Nil) {
-          return guard;
-        }
-        // Evaluate guard at definition time (not call time like mixins)
-        // This is different from mixins because rulesets can't use caller scope for guards
-        if (guard) {
-          return pipe(
-            () => guard.eval(context),
-            (guardResult) => {
-              const guardPasses = Boolean(guardResult instanceof Bool && guardResult.value === true);
-              if (!guardPasses) {
-                this._setGuard(createPublicNil());
-                return createPublicNil();
-              }
-              this._setGuard(undefined);
-              return undefined;
-            }
-          );
-        }
-        return undefined;
-      },
-      (guardResult) => {
-        // If guard failed, return Nil (ruleset produces no output)
-        if (guardResult instanceof Nil) {
-          return guardResult;
-        }
-        let { selector } = this.value;
+    const finishEvaluatedRules = (evaluatedRules: Rules | Nil): Ruleset | Rules | Nil => {
+      restorePushedEvalFrames();
+      if (evaluatedRules instanceof Nil) {
+        return evaluatedRules;
+      }
 
-        if (selector instanceof Nil) {
-          // If selector evaluates to Nil, return the rules body directly instead of the ruleset
-          // This allows rules to be output even when there's no selector context
-          // We don't push frames because there's no selector context
-          // Store Nil in selector so next step can detect this case
-          this._setSelector(selector);
-          const evaluatedRules = this.value.rules.eval(context);
-          if (isThenable(evaluatedRules)) {
-            return (evaluatedRules as Promise<Rules>).then((rules) => {
-              this._setRules(rules);
-              return rules;
-            });
-          }
-          this._setRules(evaluatedRules as Rules);
-          return evaluatedRules;
-        }
+      // If selector was Nil, evaluatedRules is already Rules (not wrapped in Ruleset)
+      // In that case, return it directly without wrapping back in Ruleset
+      if (this.value.selector instanceof Nil) {
+        return evaluatedRules;
+      }
+
+      this._setRules(evaluatedRules);
+      const rules = this.value.rules;
+
+      if (!rules.hasVisibleRules()) {
+        this.removeFlag(F_VISIBLE);
+      }
+      return this;
+    };
+    const evalBodyAfterGuard = (guardResult: Nil | undefined): MaybePromise<Ruleset | Rules | Nil> => {
+      // If guard failed, return Nil (ruleset produces no output)
+      if (guardResult instanceof Nil) {
+        return finishEvaluatedRules(guardResult);
+      }
+      let { selector } = this.value;
+
+      if (selector instanceof Nil) {
+        // If selector evaluates to Nil, return the rules body directly instead of the ruleset.
         this._setSelector(selector);
-        if (context.opts.collapseNesting) {
-          this.hoistToRoot = true;
-        }
-        pushedRulesetFrameCount = context.rulesetFrames.length;
-        pushedFrameCount = context.frames.length;
-        context.rulesetFrames.push(this);
-        context.frames.push(this);
-        pushedFrames = true;
-        let evaluatedRules: MaybePromise<Rules>;
-        try {
-          evaluatedRules = this.value.rules.eval(context);
-        } catch (error) {
-          restorePushedEvalFrames();
-          throw error;
-        }
+        const evaluatedRules = this.value.rules.eval(context);
         if (isThenable(evaluatedRules)) {
-          return (evaluatedRules as Promise<Rules>).catch((error) => {
-            restorePushedEvalFrames();
-            throw error;
+          return (evaluatedRules as Promise<Rules>).then((rules) => {
+            this._setRules(rules);
+            return finishEvaluatedRules(rules);
           });
         }
-        return evaluatedRules;
-      },
-      (evaluatedRules: Rules | Nil) => {
-        restorePushedEvalFrames();
-        if (evaluatedRules instanceof Nil) {
-          return evaluatedRules;
-        }
-
-        // If selector was Nil, evaluatedRules is already Rules (not wrapped in Ruleset)
-        // In that case, return it directly without wrapping back in Ruleset
-        if (this.value.selector instanceof Nil) {
-          // Selector was Nil, so we already returned Rules directly - just return it
-          return evaluatedRules;
-        }
-
-        this._setRules(evaluatedRules);
-        const rules = this.value.rules;
-
-        if (rules.visibleRules().length === 0) {
-          this.removeFlag(F_VISIBLE);
-        }
-        return this;
+        this._setRules(evaluatedRules as Rules);
+        return finishEvaluatedRules(evaluatedRules);
       }
-    );
+      this._setSelector(selector);
+      if (context.opts.collapseNesting) {
+        this.hoistToRoot = true;
+      }
+      pushedRulesetFrameCount = context.rulesetFrames.length;
+      pushedFrameCount = context.frames.length;
+      context.rulesetFrames.push(this);
+      context.frames.push(this);
+      pushedFrames = true;
+      let evaluatedRules: MaybePromise<Rules>;
+      try {
+        evaluatedRules = this.value.rules.eval(context);
+      } catch (error) {
+        restorePushedEvalFrames();
+        throw error;
+      }
+      return isThenable(evaluatedRules)
+        ? (evaluatedRules as Promise<Rules>).then(
+            finishEvaluatedRules,
+            (error) => {
+              restorePushedEvalFrames();
+              throw error;
+            }
+          )
+        : finishEvaluatedRules(evaluatedRules);
+    };
+    let { guard } = this.value;
+    // Guard was already set to Nil (failed in a previous eval)
+    if (guard instanceof Nil) {
+      return finishEvaluatedRules(guard);
+    }
+    // Evaluate guard at definition time (not call time like mixins)
+    // This is different from mixins because rulesets can't use caller scope for guards
+    if (guard) {
+      const guardResult = guard instanceof Condition
+        ? guard.evaluateBoolean(context)
+        : guard.eval(context);
+      const finishGuard = (result: boolean | Node): Nil | undefined => {
+        const guardPasses = typeof result === 'boolean'
+          ? result
+          : Boolean(result instanceof Bool && result.value === true);
+        if (!guardPasses) {
+          this._setGuard(createPublicNil());
+          return createPublicNil();
+        }
+        this._setGuard(undefined);
+        return undefined;
+      };
+      return isThenable(guardResult)
+        ? guardResult.then(result => evalBodyAfterGuard(finishGuard(result)))
+        : evalBodyAfterGuard(finishGuard(guardResult));
+    }
+    return evalBodyAfterGuard(undefined);
   }
 }
 

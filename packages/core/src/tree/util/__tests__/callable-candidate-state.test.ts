@@ -50,7 +50,7 @@ describe('callable candidate state helper', () => {
     expect(state.fallbackScopeFrame).toBe(callSiteRules.getScopeFrame());
   });
 
-  it('prepares static callable-rules candidates with owned children and no fallback frame in non-leaky mode', () => {
+  it('prepares static callable-rules candidates with source children and no fallback frame in non-leaky mode', () => {
     const definitionParent = rules([]);
     const callSiteRules = rules([]);
     const sourceDecl = decl({ name: 'color', value: any('red') });
@@ -70,8 +70,7 @@ describe('callable candidate state helper', () => {
 
     expect(state.sourceRules).toBe(sourceRules);
     expect(state.rules).not.toBe(sourceRules);
-    expect(state.rules.value[0]).not.toBe(sourceDecl);
-    expect(state.rules.value[0]?.parent).toBe(state.rules);
+    expect(state.rules.value[0]).toBe(sourceDecl);
     expect(sourceDecl.parent).toBe(sourceRules);
     expect(state.rules.options.rulesVisibility?.VarDeclaration).toBe('private');
     expect(state.parentFrame).toBe(callSiteRules.getScopeFrame());

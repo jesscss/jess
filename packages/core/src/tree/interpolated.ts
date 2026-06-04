@@ -8,7 +8,7 @@ import { PseudoSelector } from './selector-pseudo.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { OutputWriter, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
-import { type MaybePromise, serialForEach, isThenable, pipe } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
@@ -156,14 +156,13 @@ export class Interpolated<
 
   private writeInterpolated(replacements: Node[], options: PrintOptions): void {
     const w = getPrintOptions(options).writer!;
-    const segments = this.value.source.split(INTERPOLATION_PLACEHOLDER);
+    const { source } = this.value;
+    let sourceOffset = 0;
     for (let i = 0; i < replacements.length; i++) {
-      w.add(segments[i] ?? '', this);
+      sourceOffset = this.writeNextSourceSegment(w, source, sourceOffset);
       this.writeReplacement(replacements[i]!, options);
     }
-    if (segments.length > replacements.length) {
-      w.add(segments.slice(replacements.length).join(INTERPOLATION_PLACEHOLDER), this);
-    }
+    w.add(source.slice(sourceOffset), this);
   }
 
   writeWithReplacements(replacements: Node[], options?: PrintOptions): string {
@@ -185,26 +184,15 @@ export class Interpolated<
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return pipe(
-      () => this.resolveRenderReplacements(context),
-      replacements => this.renderResolvedReplacements(context, replacements, bufferOrOptions, options)
-    );
-  }
-
-  private renderResolvedReplacements(
-    context: Context,
-    replacements: Node[],
-    bufferOrOptions?: RenderBuffer | PrintOptions,
-    options?: PrintOptions
-  ): string {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const out = this.writeWithReplacements(replacements, prepared);
-    return buffer
-      ? writeRenderText(buffer, out)
-      : out;
+    const out = this.renderEvaluatedReplacementText(context, prepared);
+    const finish = (rendered: string): string => buffer ? writeRenderText(buffer, rendered) : rendered;
+    return isThenable(out)
+      ? (out as Promise<string>).then(finish)
+      : finish(out as string);
   }
 
   /**
@@ -213,12 +201,16 @@ export class Interpolated<
    */
   createSelector(mode: 'eval' | 'resolve' = 'eval') {
     let { source, replacements } = this.value;
-    const segments = source.split(INTERPOLATION_PLACEHOLDER);
+    const firstPlaceholder = source.indexOf(INTERPOLATION_PLACEHOLDER);
+    const secondPlaceholder = firstPlaceholder < 0
+      ? -1
+      : source.indexOf(INTERPOLATION_PLACEHOLDER, firstPlaceholder + INTERPOLATION_PLACEHOLDER.length);
     const isWholeSelectorInterpolation = (
       replacements.length === 1
-      && segments.length === 2
-      && segments[0]!.trim() === ''
-      && segments[1]!.trim() === ''
+      && firstPlaceholder >= 0
+      && secondPlaceholder < 0
+      && source.slice(0, firstPlaceholder).trim() === ''
+      && source.slice(firstPlaceholder + INTERPOLATION_PLACEHOLDER.length).trim() === ''
     );
     // For full-selector interpolation, collapse directly to the resolved selector/text.
     // Generated :is wrappers are only needed for embedded interpolation fragments.
@@ -237,7 +229,10 @@ export class Interpolated<
       return new BasicSelector(replacement.toTrimmedString().trim()).inherit(this);
     }
     let output = '';
-    for (let [i, replacement] of replacements.entries()) {
+    let sourceOffset = 0;
+    for (let i = 0; i < replacements.length; i++) {
+      const replacement = replacements[i]!;
+      const nextPlaceholder = source.indexOf(INTERPOLATION_PLACEHOLDER, sourceOffset);
       if (mode === 'eval' && !replacement.evaluated) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
@@ -245,11 +240,17 @@ export class Interpolated<
       if (shouldWrapSelectorInIs(replacement)) {
         part = serializeGeneratedIsWrapper(replacement);
       }
-      output += (segments[i] ?? '') + part;
+      if (nextPlaceholder < 0) {
+        output += source.slice(sourceOffset) + part;
+        sourceOffset = source.length;
+      } else {
+        output += source.slice(sourceOffset, nextPlaceholder) + part;
+        sourceOffset = nextPlaceholder + INTERPOLATION_PLACEHOLDER.length;
+      }
     }
     // Preserve any trailing literal segment after the last interpolation placeholder.
-    if (segments.length > replacements.length) {
-      output += segments.slice(replacements.length).join(INTERPOLATION_PLACEHOLDER);
+    if (sourceOffset < source.length) {
+      output += source.slice(sourceOffset);
     }
     // Interpolated selector output can produce compound selectors (e.g. ".a#b").
     // Preserve token boundaries so keySet/registry lookup can match correctly.
@@ -260,7 +261,11 @@ export class Interpolated<
       && !output.includes('[')
       && !output.includes('&')
     ) {
-      return new CompoundSelector(simpleTokens.map(token => new BasicSelector(token))).inherit(this);
+      const selectors = new Array<BasicSelector>(simpleTokens.length);
+      for (let i = 0; i < simpleTokens.length; i++) {
+        selectors[i] = new BasicSelector(simpleTokens[i]!);
+      }
+      return new CompoundSelector(selectors).inherit(this);
     }
     return new BasicSelector(output).inherit(this);
   }
@@ -307,22 +312,59 @@ export class Interpolated<
     return result;
   }
 
-  private resolveRenderReplacements(context: Context): MaybePromise<Node[]> {
-    const evaluatedReplacements = [...this.value.replacements];
-    let maybe = serialForEach(evaluatedReplacements, (n, idx) => {
-      const out = n.resolve(context);
+  private renderEvaluatedReplacementText(context: Context, options: PrintOptions): MaybePromise<string> {
+    const w = getPrintOptions(options).writer!;
+    const mark = w.mark();
+    const { source, replacements } = this.value;
+    let sourceOffset = 0;
+    for (let i = 0; i < replacements.length; i++) {
+      sourceOffset = this.writeNextSourceSegment(w, source, sourceOffset);
+      const out = replacements[i]!.resolve(context);
       if (isThenable(out)) {
-        return (out as Promise<Node>).then((result) => {
-          evaluatedReplacements[idx] = result;
+        return (out as Promise<Node>).then((replacement) => {
+          this.writeReplacement(replacement, options);
+          return this.renderEvaluatedReplacementTextRest(context, options, mark, sourceOffset, i + 1);
         });
       }
-      evaluatedReplacements[idx] = out as Node;
-      return undefined;
-    });
-    if (isThenable(maybe)) {
-      return maybe.then(() => evaluatedReplacements);
+      this.writeReplacement(out as Node, options);
     }
-    return evaluatedReplacements;
+    w.add(source.slice(sourceOffset), this);
+    return w.getSince(mark);
+  }
+
+  private renderEvaluatedReplacementTextRest(
+    context: Context,
+    options: PrintOptions,
+    mark: number,
+    sourceOffset: number,
+    start: number
+  ): MaybePromise<string> {
+    const w = getPrintOptions(options).writer!;
+    const { source } = this.value;
+    const replacements = this.value.replacements;
+    for (let i = start; i < replacements.length; i++) {
+      sourceOffset = this.writeNextSourceSegment(w, source, sourceOffset);
+      const out = replacements[i]!.resolve(context);
+      if (isThenable(out)) {
+        return (out as Promise<Node>).then((replacement) => {
+          this.writeReplacement(replacement, options);
+          return this.renderEvaluatedReplacementTextRest(context, options, mark, sourceOffset, i + 1);
+        });
+      }
+      this.writeReplacement(out as Node, options);
+    }
+    w.add(source.slice(sourceOffset), this);
+    return w.getSince(mark);
+  }
+
+  private writeNextSourceSegment(w: OutputWriter, source: string, sourceOffset: number): number {
+    const next = source.indexOf(INTERPOLATION_PLACEHOLDER, sourceOffset);
+    if (next < 0) {
+      w.add(source.slice(sourceOffset), this);
+      return source.length;
+    }
+    w.add(source.slice(sourceOffset, next), this);
+    return next + INTERPOLATION_PLACEHOLDER.length;
   }
 
   /**
@@ -333,37 +375,66 @@ export class Interpolated<
   _evalToInterpolated(context: Context, mode: 'eval' | 'resolve' = 'eval'): MaybePromise<Interpolated<Role>> {
     const node = this;
     const currentReplacements = node.value.replacements;
-    const evaluatedReplacements = [...currentReplacements];
-    const finalize = () => {
-      const changed = evaluatedReplacements.some((replacement, idx) => replacement !== currentReplacements[idx]);
-      if (!changed) {
-        return node;
-      }
-      return new Interpolated<Role>(
-        {
-          source: node.value.source,
-          replacements: evaluatedReplacements
-        },
-        node._options ? { ...node._options } : undefined,
-        node.location,
-        node.treeContext
-      ).inherit(node);
-    };
-
-    let maybe = serialForEach(evaluatedReplacements, (n, idx) => {
-      const out = mode === 'eval' ? n.eval(context) : n.resolve(context);
+    const evaluatedReplacements = new Array<Node>(currentReplacements.length);
+    let changed = false;
+    for (let idx = 0; idx < currentReplacements.length; idx++) {
+      const n = currentReplacements[idx]!;
+      const out = this.evaluateReplacement(context, n, mode);
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
           evaluatedReplacements[idx] = result;
+          changed ||= result !== n;
+          return this.evaluateInterpolatedRest(context, mode, evaluatedReplacements, idx + 1, changed);
         });
       }
-      evaluatedReplacements[idx] = out as Node;
-      return undefined;
-    });
-    if (isThenable(maybe)) {
-      return maybe.then(() => finalize());
+      const result = out as Node;
+      evaluatedReplacements[idx] = result;
+      changed ||= result !== n;
     }
-    return finalize();
+    return this.finalizeEvaluatedInterpolated(evaluatedReplacements, changed);
+  }
+
+  private evaluateInterpolatedRest(
+    context: Context,
+    mode: 'eval' | 'resolve',
+    evaluatedReplacements: Node[],
+    start: number,
+    changed: boolean
+  ): MaybePromise<Interpolated<Role>> {
+    const currentReplacements = this.value.replacements;
+    for (let idx = start; idx < currentReplacements.length; idx++) {
+      const n = currentReplacements[idx]!;
+      const out = this.evaluateReplacement(context, n, mode);
+      if (isThenable(out)) {
+        return (out as Promise<Node>).then((result) => {
+          evaluatedReplacements[idx] = result;
+          return this.evaluateInterpolatedRest(context, mode, evaluatedReplacements, idx + 1, changed || result !== n);
+        });
+      }
+      const result = out as Node;
+      evaluatedReplacements[idx] = result;
+      changed ||= result !== n;
+    }
+    return this.finalizeEvaluatedInterpolated(evaluatedReplacements, changed);
+  }
+
+  private evaluateReplacement(context: Context, node: Node, mode: 'eval' | 'resolve'): MaybePromise<Node> {
+    return mode === 'eval' ? node.eval(context) : node.resolve(context);
+  }
+
+  private finalizeEvaluatedInterpolated(evaluatedReplacements: Node[], changed: boolean): Interpolated<Role> {
+    if (!changed) {
+      return this;
+    }
+    return new Interpolated<Role>(
+      {
+        source: this.value.source,
+        replacements: evaluatedReplacements
+      },
+      this._options ? { ...this._options } : undefined,
+      this.location,
+      this.treeContext
+    ).inherit(this);
   }
 }
 

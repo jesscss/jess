@@ -139,8 +139,8 @@ describe('Condition', () => {
       let boolStringCalls = 0;
       const asyncLeft = bool(true);
       const asyncRight = bool(true);
-      asyncLeft.resolve = () => Promise.resolve(bool(true));
-      asyncRight.resolve = () => Promise.resolve(bool(true));
+      asyncLeft.eval = () => Promise.resolve(bool(true));
+      asyncRight.eval = () => Promise.resolve(bool(true));
       Bool.prototype.toTrimmedString = function toTrimmedStringForCounting(
         this: Bool,
         ...args: Parameters<Bool['toTrimmedString']>

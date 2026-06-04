@@ -1,0 +1,31 @@
+{
+  "id": "oir-94e9e7ebb19b5634",
+  "projectId": "jess",
+  "source": {
+    "kind": "structural_map",
+    "mapId": "structural-map-mpyrvqjg",
+    "questionId": "confirm-domain-routing"
+  },
+  "sourceKey": "structural_map:structural-map-mpyrvqjg:confirm-domain-routing",
+  "target": {
+    "kind": "project_structure",
+    "href": "/settings/structure"
+  },
+  "prompt": "Review the proposed domains, package graph, executable units, and Git authority before Guildhall uses this map for routing.",
+  "objective": {
+    "kind": "structural_review",
+    "label": "Review structural map structural-map-mpyrvqjg",
+    "successCriteria": [
+      "Owner resolves the linked structural-map review request."
+    ]
+  },
+  "status": "waiting_for_owner",
+  "boundedChatSessionId": "bc-jess-structural_review-8c11fc652d-2026-06-04T00-44-08-860Z",
+  "commandIds": [
+    "structural-map:structural-map-mpyrvqjg:confirm-domain-routing"
+  ],
+  "receipts": [],
+  "createdAt": "2026-06-04T00:44:08.860Z",
+  "updatedAt": "2026-06-04T00:44:08.860Z",
+  "createdBy": "structural-map"
+}

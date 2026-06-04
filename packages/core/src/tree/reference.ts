@@ -2030,6 +2030,34 @@ function resolveRawReferenceLookupTarget(
   return rawResult;
 }
 
+function canRenderRawVariableReferenceDirectly(referenceNode: Reference): boolean {
+  return (referenceNode.options.type ?? 'variable') === 'variable'
+    && referenceNode.value.target === undefined
+    && referenceNode.options.filter === undefined
+    && referenceNode.options.preserveRulesLike !== true;
+}
+
+function finalizeDirectRawRenderValue(
+  referenceNode: Reference,
+  returnVal: RulesLookupResult | unknown,
+  context: Context
+): Node | undefined {
+  if (!canRenderRawVariableReferenceDirectly(referenceNode)) {
+    return undefined;
+  }
+  const target = finalizeRawReferenceLookupTarget(returnVal);
+  if (
+    target === RAW_REFERENCE_TARGET_NOT_FOUND
+    || !isNode(target)
+    || !target.hasFlag(F_STATIC)
+    || isRulesLikeReferenceValue(target)
+  ) {
+    return undefined;
+  }
+  context.popReference();
+  return target;
+}
+
 function evaluateReferenceNode(args: {
   referenceNode: Reference;
   target: ReferenceValue['target'];
@@ -2039,6 +2067,7 @@ function evaluateReferenceNode(args: {
   originalFilter: ReferenceOptions['filter'] | undefined;
   context: Context;
   textOnly?: boolean;
+  directStaticRender?: boolean;
 }): MaybePromise<Node> {
   const {
     referenceNode,
@@ -2048,7 +2077,8 @@ function evaluateReferenceNode(args: {
     fallbackValue,
     originalFilter,
     context,
-    textOnly
+    textOnly,
+    directStaticRender
   } = args;
   context.pushReference();
   return pipe(
@@ -2069,15 +2099,23 @@ function evaluateReferenceNode(args: {
       originalFilter,
       context
     }),
-    ({ returnVal, valueKey }) => finalizeReferenceLookupResult({
-      referenceNode,
-      returnVal,
-      valueKey: valueKey as NormalizedLookupKey,
-      lookupType,
-      fallbackValue,
-      context,
-      textOnly
-    })
+    ({ returnVal, valueKey }) => {
+      const directRenderValue = directStaticRender === true
+        ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
+        : undefined;
+      if (directRenderValue) {
+        return directRenderValue;
+      }
+      return finalizeReferenceLookupResult({
+        referenceNode,
+        returnVal,
+        valueKey: valueKey as NormalizedLookupKey,
+        lookupType,
+        fallbackValue,
+        context,
+        textOnly
+      });
+    }
   );
 }
 
@@ -2188,7 +2226,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         fallbackValue: this.options.fallbackValue,
         originalFilter: this.options.filter,
         context,
-        textOnly: true
+        textOnly: true,
+        directStaticRender: true
       }),
       renderResolved
     );

@@ -12,7 +12,7 @@ import {
   prepareRenderPrintState
 } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
-import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
 import { nodeTypeBits } from './node-type.js';
@@ -357,10 +357,6 @@ export abstract class Node<
    */
   declare readonly parent: Node | undefined;
 
-  getParent() {
-    return this.parent;
-  }
-
   /** Patched at runtime in node.ts to return Nil instance */
   declare nil: () => Nil;
 
@@ -514,10 +510,6 @@ export abstract class Node<
     return this._treeContext;
   }
 
-  getValue() {
-    return this.value;
-  }
-
   set<K extends NodeSetKey<Data>>(key: K, value: NodeSetValue<Data, K>): void;
   set(key: null | string | number, value: any) {
     if (key == null) {
@@ -588,19 +580,49 @@ export abstract class Node<
       });
       return;
     }
-    const entries: [Node, string | number, any][] = [];
-    this._visitEntries((node, key, coll) => {
-      entries.push([node, key, coll]);
-    });
-    return serialForEach(entries, ([value, key, collection]: [Node, string | number, any], idx: number) => {
-      const out = func(value, idx);
-      if (isThenable(out)) {
-        return out.then((result) => {
-          collection[key] = mustBeNode(result);
-        });
+
+    let pending: Promise<void> | undefined;
+    let resumeIndex = 0;
+    let nodes: Node[] | undefined;
+    let keys: Array<string | number> | undefined;
+    let collections: any[] | undefined;
+
+    this._visitEntries((node, key, coll, idx) => {
+      if (pending) {
+        (nodes ??= []).push(node);
+        (keys ??= []).push(key);
+        (collections ??= []).push(coll);
+        return;
       }
-      const result = mustBeNode(out);
-      collection[key] = result;
+
+      const out = func(node, idx);
+      if (isThenable(out)) {
+        resumeIndex = idx + 1;
+        pending = out.then((result) => {
+          coll[key] = mustBeNode(result);
+        });
+        return;
+      }
+
+      coll[key] = mustBeNode(out);
+    });
+
+    if (!pending) {
+      return;
+    }
+
+    return pending.then(async () => {
+      const resumeNodes = nodes;
+      if (!resumeNodes) {
+        return;
+      }
+      const resumeKeys = keys!;
+      const resumeCollections = collections!;
+      for (let i = 0; i < resumeNodes.length; i++) {
+        const out = func(resumeNodes[i]!, resumeIndex + i);
+        const result = isThenable(out) ? await out : out;
+        resumeCollections[i]![resumeKeys[i]!] = mustBeNode(result);
+      }
     });
   }
 
@@ -625,9 +647,12 @@ export abstract class Node<
         }
       }
     } else if (isPlainObject(data)) {
-      const values = Object.values(data as Record<string, unknown>);
-      for (let i = 0; i < values.length; i++) {
-        const v = values[i];
+      const obj = data as Record<string, unknown>;
+      for (const k in obj) {
+        if (!Object.hasOwn(obj, k)) {
+          continue;
+        }
+        const v = obj[k];
         if (isArray(v)) {
           if (reverse) {
             for (let j = v.length - 1; j >= 0; j--) {
@@ -695,20 +720,77 @@ export abstract class Node<
   }
 
   /**
-   * An iterator for all node children
-   * @todo - Replace `walkNodes` with this?
-   */
+  * An iterator for all node children
+  * @todo - Replace `walkNodes` with this?
+  */
   * children(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
-    const nodes: Node[] = [];
-    this._visitValues((v) => {
-      if (v instanceof Node) {
-        nodes.push(v);
+    const value = this.value;
+    if (isArray(value)) {
+      if (reverse) {
+        for (let i = value.length - 1; i >= 0; i--) {
+          const nodeVal = value[i];
+          if (nodeVal instanceof Node) {
+            yield nodeVal;
+            if (deep) {
+              yield* nodeVal.children(deep, reverse);
+            }
+          }
+        }
+      } else {
+        for (let i = 0; i < value.length; i++) {
+          const nodeVal = value[i];
+          if (nodeVal instanceof Node) {
+            yield nodeVal;
+            if (deep) {
+              yield* nodeVal.children(deep, reverse);
+            }
+          }
+        }
       }
-    }, reverse);
-    for (const nodeVal of nodes) {
-      yield nodeVal;
+      return;
+    }
+    if (isPlainObject(value)) {
+      const obj = value as Record<string, unknown>;
+      for (const k in obj) {
+        if (!Object.hasOwn(obj, k)) {
+          continue;
+        }
+        const childValue = obj[k];
+        if (isArray(childValue)) {
+          if (reverse) {
+            for (let i = childValue.length - 1; i >= 0; i--) {
+              const nodeVal = childValue[i];
+              if (nodeVal instanceof Node) {
+                yield nodeVal;
+                if (deep) {
+                  yield* nodeVal.children(deep, reverse);
+                }
+              }
+            }
+          } else {
+            for (let i = 0; i < childValue.length; i++) {
+              const nodeVal = childValue[i];
+              if (nodeVal instanceof Node) {
+                yield nodeVal;
+                if (deep) {
+                  yield* nodeVal.children(deep, reverse);
+                }
+              }
+            }
+          }
+        } else if (childValue instanceof Node) {
+          yield childValue;
+          if (deep) {
+            yield* childValue.children(deep, reverse);
+          }
+        }
+      }
+      return;
+    }
+    if (value instanceof Node) {
+      yield value;
       if (deep) {
-        yield* nodeVal.children(deep, reverse);
+        yield* value.children(deep, reverse);
       }
     }
   }

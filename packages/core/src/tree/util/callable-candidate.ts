@@ -40,7 +40,11 @@ function guardContainsDefault(node: Node | undefined): boolean {
     return false;
   }
   if (value && typeof value === 'object') {
-    for (const item of Object.values(value)) {
+    for (const key in value) {
+      if (!Object.hasOwn(value, key)) {
+        continue;
+      }
+      const item = Reflect.get(value, key);
       if (isNode(item) && guardContainsDefault(item)) {
         return true;
       }
@@ -118,9 +122,40 @@ function getCallKey(node: Node | undefined): string | undefined {
   return String(name.valueOf());
 }
 
+function valueContainsCallKey(value: unknown, key: string): boolean {
+  if (isNode(value)) {
+    return nodeContainsCallKey(value, key);
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      if (valueContainsCallKey(value[i], key)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  if (value && typeof value === 'object') {
+    for (const property in value) {
+      if (
+        Object.hasOwn(value, property)
+        && valueContainsCallKey(Reflect.get(value, property), key)
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function nodeContainsCallKey(node: Node, key: string): boolean {
+  return getCallKey(node) === key
+    || valueContainsCallKey((node as { value?: unknown }).value, key);
+}
+
 function rulesContainCallKey(rules: Rules, key: string): boolean {
-  for (const child of rules.children(true)) {
-    if (getCallKey(child) === key) {
+  const value = rules.value;
+  for (let i = 0; i < value.length; i++) {
+    if (nodeContainsCallKey(value[i]!, key)) {
       return true;
     }
   }

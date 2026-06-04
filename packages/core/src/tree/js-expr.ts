@@ -2,11 +2,11 @@ import { type Context } from '../context.js';
 import { Node, defineType } from './node.js';
 import { cast } from './util/cast.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeRenderTextResult
+  writeRenderText
 } from './util/render-buffer.js';
 import { Nil } from './nil.js';
 
@@ -45,10 +45,7 @@ export class JsExpression extends Node<string> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return pipe(
-      () => this.evaluateJavaScript(),
-      result => this.renderJavaScriptResult(context, result, bufferOrOptions, options)
-    );
+    return this.evaluateJavaScript().then(result => this.renderJavaScriptResult(context, result, bufferOrOptions, options));
   }
 
   private async evaluateJavaScript(): Promise<unknown> {
@@ -70,13 +67,13 @@ export class JsExpression extends Node<string> {
     ) {
       const out = result === null || result === undefined ? '' : String(result);
       return isRenderBuffer(bufferOrOptions)
-        ? writeRenderTextResult(bufferOrOptions, out)
+        ? writeRenderText(bufferOrOptions, out)
         : out;
     }
     const node = cast(result);
     if (node instanceof Nil) {
       return isRenderBuffer(bufferOrOptions)
-        ? writeRenderTextResult(bufferOrOptions, '')
+        ? writeRenderText(bufferOrOptions, '')
         : '';
     }
     return isRenderBuffer(bufferOrOptions)

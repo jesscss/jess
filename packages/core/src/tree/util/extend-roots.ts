@@ -63,11 +63,11 @@ function hasExplicitExtendSelector(node: Node | undefined): boolean {
  * Returns undefined if there's no parent Ruleset (root level).
  */
 function getParentRuleset(ruleset: Ruleset): Ruleset | undefined {
-  const parentRules = ruleset.getParent();
+  const parentRules = ruleset.parent;
   if (!isRulesValue(parentRules)) {
     return undefined;
   }
-  const parentRuleset = parentRules.getParent();
+  const parentRuleset = parentRules.parent;
   if (!isRulesetValue(parentRuleset)) {
     return undefined;
   }

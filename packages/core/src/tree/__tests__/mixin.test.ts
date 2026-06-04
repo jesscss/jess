@@ -257,7 +257,7 @@ describe('Mixin', () => {
       `);
     });
 
-    it('keeps static direct mixin output placements owned without moving source children', async () => {
+    it('keeps static direct mixin output placements source-backed without moving source children', async () => {
       const sourceValue = any('red');
       const sourceDecl = decl({ name: 'color', value: sourceValue });
       const mixinBody = rules([sourceDecl]);
@@ -292,15 +292,14 @@ describe('Mixin', () => {
       const secondDecl = secondResult.value[0];
       expect(firstDecl).toBeDefined();
       expect(secondDecl).toBeDefined();
-      expect(firstDecl).not.toBe(sourceDecl);
-      expect(secondDecl).not.toBe(sourceDecl);
-      expect(secondDecl).not.toBe(firstDecl);
+      expect(firstDecl).toBe(sourceDecl);
+      expect(secondDecl).toBe(sourceDecl);
       expect(getMixinOutputSourceChild(firstResult, firstDecl!)).toBe(sourceDecl);
       expect(getMixinOutputSourceChild(secondResult, secondDecl!)).toBe(sourceDecl);
       expect(getMixinOutputChildForSource(firstResult, sourceDecl)).toBe(firstDecl);
       expect(getMixinOutputChildForSource(secondResult, sourceDecl)).toBe(secondDecl);
-      expect(firstDecl?.parent).toBe(firstResult);
-      expect(secondDecl?.parent).toBe(secondResult);
+      expect(firstDecl?.parent).toBe(mixinBody);
+      expect(secondDecl?.parent).toBe(mixinBody);
       expect(sourceDecl.parent).toBe(mixinBody);
       expect(sourceValue.parent).toBe(sourceDecl);
       expect(Reflect.get(firstDecl!, 'value').value).toBe(sourceValue);
@@ -454,12 +453,12 @@ describe('Mixin', () => {
         throw new Error('Expected Rules result');
       }
       const outputDecl = result.value[0];
-      expect(outputDecl).not.toBe(sourceDecl);
+      expect(outputDecl).toBe(sourceDecl);
       expect(getMixinOutputSourceChild(result, outputDecl!)).toBe(sourceDecl);
       expect(getMixinOutputChildForSource(result, sourceDecl)).toBe(outputDecl);
       expect(result.options.mixinOutputSlot?.rulesetPlacement?.sourceRules).toBe(sourceBody);
       expect(result.options.mixinOutputSlot?.rulesetPlacement?.outputRules).toBe(result);
-      expect(outputDecl?.parent).toBe(result);
+      expect(outputDecl?.parent).toBe(sourceBody);
       expect(sourceDecl.parent).toBe(sourceBody);
       expect(sourceValue.parent).toBe(sourceDecl);
     });
@@ -1281,7 +1280,6 @@ describe('Mixin', () => {
       expect(result.value.map(child => getMixinOutputSourceIndex(result, child))).toEqual([0, 1, 2]);
       expect(result.value.map(child => getMixinOutputRuleIndex(result, child, 99))).toEqual([0, 1, 2]);
       expect(result.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
-      expect(result.value.map(child => Reflect.get(child, 'index'))).toEqual([0, 1, 2]);
       expect(result.getScopeFrame().fallbackFrame?.rulesNode).toBe(callerRules);
       expect(mixinBody.parent).toBe(mixinNoParam);
       const css = await result.render(context);
@@ -1309,10 +1307,7 @@ describe('Mixin', () => {
       expect(secondResult.value.map(child => getMixinOutputSourceIndex(secondResult, child))).toEqual([0, 1, 2]);
       expect(secondResult.value.map(child => getMixinOutputRuleIndex(secondResult, child, 99))).toEqual([0, 1, 2]);
       expect(secondResult.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
-      expect(secondResult.value.map(child => Reflect.get(child, 'index'))).toEqual([0, 1, 2]);
-      expect(secondResult.value.map((child, index) => child === result.value[index])).toEqual(
-        mixinBody.value.map(() => false)
-      );
+      expect(secondResult.value).toEqual(result.value);
     });
 
     it('keeps mixin-output entry traversal lookup-owned and type-specific', () => {
@@ -3155,7 +3150,7 @@ describe('Mixin', () => {
       expect(context.rulesContext).toBe(savedRulesContext);
     });
 
-    it('keeps dynamic guards on a copied eval surface', async () => {
+    it('evaluates dynamic guards from source without stamping guard state', async () => {
       context = new Context({ leakyRules: false });
       const guard = condition([
         expr(ref({ key: 'mode' }, { type: 'variable' })),
@@ -3185,9 +3180,10 @@ describe('Mixin', () => {
       expect(css).toContain('color: red;');
       expect(guard.evaluated).toBe(false);
       expect(guard.registrationPrepared).toBe(false);
+      expect(guard.frozen).toBe(false);
     });
 
-    it('does not clone source-free scalar leaves inside copied dynamic guards', async () => {
+    it('does not clone source-free scalar leaves while evaluating dynamic guards', async () => {
       const originalClone = Any.prototype.clone;
       let scalarClones = 0;
       Any.prototype.clone = function cloneForCounting(
@@ -3485,7 +3481,7 @@ describe('Mixin', () => {
       expect(css).not.toContain('value: blue;');
     });
 
-    it('does not clone source-free scalar leaves inside copied default guard probes', async () => {
+    it('does not clone source-free scalar leaves while probing default guards', async () => {
       const originalClone = Any.prototype.clone;
       let scalarClones = 0;
       Any.prototype.clone = function cloneForCounting(

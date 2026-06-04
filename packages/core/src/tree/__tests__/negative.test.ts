@@ -106,6 +106,23 @@ describe('Negative', () => {
     }
   });
 
+  it('renders sync negative values without may-async continuation scaffolding', () => {
+    const negativeNode = negative(num(20));
+    const originalEval = negativeNode.value.eval;
+    negativeNode.value.eval = function evalSyncOnly(
+      this: typeof negativeNode.value,
+      renderContext: Context
+    ) {
+      const out = originalEval.call(this, renderContext);
+      if (out instanceof Promise) {
+        throw new Error('Negative.render should keep sync values on the sync path');
+      }
+      return out;
+    };
+
+    expect(negativeNode.render(context)).toBe('-20');
+  });
+
   it('keeps compound dimension negatives on the public operation boundary', async () => {
     context.opts.unitMode = 'preserve';
     const value = dimension({ number: 10, unit: 'px*em' });

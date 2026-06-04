@@ -13,7 +13,7 @@ import {
 } from '../callable-default-guard.js';
 import { Context } from '../../../context.js';
 import { Bool } from '../../bool.js';
-import { rules } from '../../index.js';
+import { condition, rules } from '../../index.js';
 
 describe('callable default guard helpers', () => {
   it('resolves Less default() grouping without rules closure state', () => {
@@ -67,12 +67,11 @@ describe('callable default guard helpers', () => {
     });
   });
 
-  it('probes default guards twice while caching one copied dynamic guard and restoring context state', async () => {
+  it('probes default guards twice against the source guard and restores context state', async () => {
     const context = new Context();
     context.isDefault = true;
 
     const seenDefaults: boolean[] = [];
-    let copyCount = 0;
     const dynamicGuard = new Bool(false);
     dynamicGuard.hasFlag = () => false;
     dynamicGuard.eval = async (evalContext: Context) => {
@@ -82,11 +81,7 @@ describe('callable default guard helpers', () => {
 
     const result = await probeCallableDefaultGuard({
       context,
-      candidateGuard: dynamicGuard,
-      copyGuardForEval: (guard) => {
-        copyCount++;
-        return guard;
-      }
+      candidateGuard: dynamicGuard
     });
 
     expect(result).toEqual({
@@ -95,9 +90,28 @@ describe('callable default guard helpers', () => {
       passes: true,
       group: CALLABLE_DEFAULT_TRUE
     });
-    expect(copyCount).toBe(1);
     expect(seenDefaults).toEqual([false, true]);
     expect(context.isDefault).toBe(true);
+  });
+
+  it('probes condition guards as booleans without calling the public Bool-result eval wrapper', async () => {
+    const context = new Context();
+    const guard = condition([new Bool(true)]);
+    guard.eval = () => {
+      throw new Error('should not allocate a public Bool default-probe result');
+    };
+
+    const result = await probeCallableDefaultGuard({
+      context,
+      candidateGuard: guard
+    });
+
+    expect(result).toEqual({
+      passWhenDefaultFalse: true,
+      passWhenDefaultTrue: true,
+      passes: true,
+      group: CALLABLE_DEFAULT_NONE
+    });
   });
 
   it('executes only the resolved default groups in original order', async () => {

@@ -6,7 +6,7 @@ import { cast } from './util/cast.js';
 import { callWithContext, getRawArgsPlacement, setRawArgsPlacement } from '../define-function.js';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
-import { isThenable, pipe, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Rules } from './rules.js';
 import { callableRulesEntry } from './util/callable-entry.js';
 import { MixinCollection } from './util/callable-collection.js';
@@ -587,7 +587,13 @@ export class Call extends Node<CallValue, CallOptions> {
     if (!args) {
       return '';
     }
-    const normalizedArgs = args.value.filter(Boolean);
+    const normalizedArgs: Node[] = [];
+    for (let i = 0; i < args.value.length; i++) {
+      const arg = args.value[i];
+      if (arg) {
+        normalizedArgs.push(arg);
+      }
+    }
     const last = normalizedArgs.length - 1;
     const serializeArgAt = (i: number): MaybePromise<string> => {
       if (i > last) {
@@ -803,6 +809,52 @@ export class Call extends Node<CallValue, CallOptions> {
     });
   }
 
+  private async renderDynamicFunctionOutput(
+    context: Context,
+    prepared: PrintOptions,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): Promise<string> {
+    const node = await this.evalPlainDynamicFunction(context);
+    if (node) {
+      return this.renderOutput(context, node, bufferOrOptions, options);
+    }
+    const fallbackText = await this.renderOptionalFallbackCallSyntax(context, prepared);
+    if (fallbackText) {
+      return isRenderBuffer(bufferOrOptions)
+        ? writeRenderTextResult(bufferOrOptions, fallbackText)
+        : fallbackText;
+    }
+    const fallback = await this.evalOptionalFallbackOutput(context, prepared);
+    if (fallback) {
+      if (typeof fallback === 'string') {
+        return isRenderBuffer(bufferOrOptions)
+          ? writeRenderTextResult(bufferOrOptions, fallback)
+          : fallback;
+      }
+      return this.renderOutput(context, fallback, bufferOrOptions, options);
+    }
+    const metadataOutput = await this.evalMetadataDynamicFunction(context);
+    if (metadataOutput) {
+      return this.renderOutput(context, metadataOutput, bufferOrOptions, options);
+    }
+    const output = await this.evalState(context);
+    return this.renderOutput(context, output, bufferOrOptions, options);
+  }
+
+  private async resolveDynamicFunctionOutput(context: Context): Promise<Node> {
+    const node = await this.evalPlainDynamicFunction(context);
+    if (node) {
+      return node;
+    }
+    const fallback = await this.evalOptionalFallbackOutput(context);
+    if (fallback) {
+      return fallback;
+    }
+    const metadataOutput = await this.evalMetadataDynamicFunction(context);
+    return metadataOutput ?? this.evalState(context);
+  }
+
   constructor(value: CallValue, options?: CallOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     // Function calls are always non-static and may be async
@@ -855,34 +907,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       if (typeof this.value.name !== 'string') {
         const prepared = prepareBufferPrintState(context, options);
-        return pipe(
-          () => this.evalPlainDynamicFunction(context),
-          node => node
-            ? this.renderOutput(context, node, bufferOrOptions, options)
-            : pipe(
-                () => this.renderOptionalFallbackCallSyntax(context, prepared),
-                fallbackText => fallbackText
-                  ? writeRenderTextResult(bufferOrOptions, fallbackText)
-                  : pipe(
-                      () => this.evalOptionalFallbackOutput(context, prepared),
-                      fallback => fallback
-                        ? (
-                            typeof fallback === 'string'
-                              ? writeRenderTextResult(bufferOrOptions, fallback)
-                              : this.renderOutput(context, fallback, bufferOrOptions, options)
-                          )
-                        : pipe(
-                            () => this.evalMetadataDynamicFunction(context),
-                            metadataOutput => metadataOutput
-                              ? this.renderOutput(context, metadataOutput, bufferOrOptions, options)
-                              : pipe(
-                                  () => this.evalState(context),
-                                  output => this.renderOutput(context, output, bufferOrOptions, options)
-                                )
-                          )
-                    )
-              )
-        );
+        return this.renderDynamicFunctionOutput(context, prepared, bufferOrOptions, options);
       }
       // Plain CSS calls render args/content explicitly so async child failures
       // keep calc-frame cleanup instead of falling back to source text.
@@ -899,34 +924,7 @@ export class Call extends Node<CallValue, CallOptions> {
     if (typeof this.value.name === 'string') {
       return this.renderPlainFunctionCall(this, context, prepared);
     }
-    return pipe(
-      () => this.evalPlainDynamicFunction(context),
-      node => node
-        ? this.renderOutput(context, node, bufferOrOptions, options)
-        : pipe(
-            () => this.renderOptionalFallbackCallSyntax(context, prepared),
-            fallbackText => fallbackText
-              ? fallbackText
-              : pipe(
-                  () => this.evalOptionalFallbackOutput(context, prepared),
-                  fallback => fallback
-                    ? (
-                        typeof fallback === 'string'
-                          ? fallback
-                          : this.renderOutput(context, fallback, bufferOrOptions, options)
-                      )
-                    : pipe(
-                        () => this.evalMetadataDynamicFunction(context),
-                        metadataOutput => metadataOutput
-                          ? this.renderOutput(context, metadataOutput, bufferOrOptions, options)
-                          : pipe(
-                              () => this.evalState(context),
-                              output => this.renderOutput(context, output, bufferOrOptions, options)
-                            )
-                      )
-                )
-          )
-    );
+    return this.renderDynamicFunctionOutput(context, prepared, bufferOrOptions, options);
   }
 
   override resolve(context: Context): MaybePromise<Node> {
@@ -939,16 +937,7 @@ export class Call extends Node<CallValue, CallOptions> {
     ) {
       return this.evalNode(context);
     }
-    return pipe(
-      () => this.evalPlainDynamicFunction(context),
-      node => node ?? pipe(
-        () => this.evalOptionalFallbackOutput(context),
-        fallback => fallback ?? pipe(
-          () => this.evalMetadataDynamicFunction(context),
-          metadataOutput => metadataOutput ?? this.evalState(context)
-        )
-      )
-    );
+    return this.resolveDynamicFunctionOutput(context);
   }
 
   /** Recursively makes declarations important */

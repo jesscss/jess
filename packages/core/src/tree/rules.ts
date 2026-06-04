@@ -25,10 +25,9 @@ import {
   restorePrintState
 } from './util/print.js';
 
-import { atIndex } from './util/collections.js';
 import * as Registries from './util/registry-utils.js';
 import { processExtends } from './util/extend-roots.js';
-import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
 import { Any } from './any.js';
@@ -97,6 +96,38 @@ function isCharsetNode(node: Node): node is Any<'charset'> {
 function isImportAtRule(node: Node): node is AtRule {
   return isNode(node, N.AtRule)
     && String(node.value.name.valueOf?.() ?? node.value.name ?? '').trim() === '@import';
+}
+
+function queueTopImport(context: Context, importRule: AtRule): void {
+  if (context.inReferenceImportScope) {
+    return;
+  }
+  const topImports = (context.topImports ??= []);
+  const nodeLoc = importRule.location?.join(':') ?? '';
+  const nodeSig = `${importRule.value.name.valueOf?.() ?? importRule.value.name}:${importRule.value.prelude?.valueOf?.() ?? ''}`;
+  let alreadyQueued = false;
+  for (let i = 0; i < topImports.length; i++) {
+    const queuedNode = topImports[i]!;
+    if (!isNode(queuedNode, N.AtRule)) {
+      continue;
+    }
+    const queued = queuedNode as AtRule;
+    if (
+      queued === importRule
+      || queued.sourceNode === importRule.sourceNode
+      || queued.sourceNode === importRule
+      || (
+        (queued.location?.join(':') ?? '') === nodeLoc
+        && `${queued.value.name.valueOf?.() ?? queued.value.name}:${queued.value.prelude?.valueOf?.() ?? ''}` === nodeSig
+      )
+    ) {
+      alreadyQueued = true;
+      break;
+    }
+  }
+  if (!alreadyQueued) {
+    topImports.push(importRule);
+  }
 }
 
 function renderRulesToString(
@@ -592,9 +623,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           cursor = cursor.parent;
         }
       }
-      const pendingDeclarationNames = this.value.filter((node): node is VarDeclaration => {
-        return isNode(node, N.VarDeclaration) && !this._hasStaticName(node);
-      });
+      const pendingDeclarationNames: VarDeclaration[] = [];
+      for (let i = 0; i < this.value.length; i++) {
+        const node = this.value[i]!;
+        if (isNode(node, N.VarDeclaration) && !this._hasStaticName(node)) {
+          pendingDeclarationNames.push(node);
+        }
+      }
       this.scopeFrame = buildScopeFrame(this.varsByName, this, resolvedParent, undefined, pendingDeclarationNames);
     }
     return this.scopeFrame;
@@ -1778,10 +1813,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const referenceMode = Boolean(options.referenceMode);
     const referenceRenderEnabled = referenceMode ? Boolean(options.referenceRenderEnabled) : true;
 
-    // No spacing flags; writer.capture is used where needed
-    const items = value.filter(n => n.visible);
-
-    if (items.length === 0) {
+    if (!this.hasVisibleRules()) {
       return;
     }
 
@@ -1896,12 +1928,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // For child Rules nodes, pass the same depth (don't increment depth)
       // Rules nodes inside Rules nodes are at the same level
       if (isChildRules) {
-        const hasRenderableChild = n.value.some(child =>
-          child.visible
-          || child.fullRender
-          || hasPrintableTriviaAt(child, 'before', options)
-          || hasPrintableTriviaAt(child, 'after', options)
-        );
+        let hasRenderableChild = false;
+        for (let i = 0; i < n.value.length; i++) {
+          const child = n.value[i]!;
+          if (
+            child.visible
+            || child.fullRender
+            || hasPrintableTriviaAt(child, 'before', options)
+            || hasPrintableTriviaAt(child, 'after', options)
+          ) {
+            hasRenderableChild = true;
+            break;
+          }
+        }
         if (
           !hasRenderableChild
           && !hasPrintableTriviaAt(n, 'before', options)
@@ -1926,18 +1965,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             ? n.render(context, options)
             : n.toTrimmedString(options)
         ), true);
-        return pipe(
-          () => childRule,
-          (resolvedChildRule) => {
-            options.emittedTrivia = childEmittedTrivia;
-            restorePrintState(options, childSaved);
-            if (!resolvedChildRule) {
-              return;
-            }
-            const prefix = !isRulesetOrAtRule && depth !== 0 ? space : undefined;
-            emitCaptured(resolvedChildRule, n, prefix);
+        const finishChildRule = (resolvedChildRule: string): void => {
+          options.emittedTrivia = childEmittedTrivia;
+          restorePrintState(options, childSaved);
+          if (!resolvedChildRule) {
+            return;
           }
-        );
+          const prefix = !isRulesetOrAtRule && depth !== 0 ? space : undefined;
+          emitCaptured(resolvedChildRule, n, prefix);
+        };
+        return isThenable(childRule)
+          ? childRule.then(finishChildRule)
+          : finishChildRule(childRule);
       }
       if (isRulesetOrAtRule) {
         emitLeadingBlockCommentForNode(n);
@@ -1950,19 +1989,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const rule = mode === 'render' && context
           ? n.render(context, getPrintOptions(options))
           : serializeRulesContainerInline(n, getPrintOptions(options));
-        return pipe(
-          () => rule,
-          (resolvedRule) => {
-            if (!w.hasContentSince(mark) && resolvedRule) {
-              w.add(resolvedRule, n);
-            }
-            restorePrintState(options, containerSaved);
-            if (!w.hasContentSince(mark)) {
-              return;
-            }
-            markEmitted(n);
+        const finishRule = (resolvedRule: string): void => {
+          if (!w.hasContentSince(mark) && resolvedRule) {
+            w.add(resolvedRule, n);
           }
-        );
+          restorePrintState(options, containerSaved);
+          if (!w.hasContentSince(mark)) {
+            return;
+          }
+          markEmitted(n);
+        };
+        return isThenable(rule)
+          ? rule.then(finishRule)
+          : finishRule(rule);
       }
       closeRenderedFramesToBaseline();
       const leafSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
@@ -1979,23 +2018,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const output = mode === 'render' && context
         ? n.render(context, options)
         : n.toTrimmedString(options);
-      return pipe(
-        () => output,
-        (resolvedOutput) => {
-          restorePrintState(options, leafSaved);
-          if (!w.hasContentSince(leafMark)) {
-            w.restore(leafMark);
-            if (resolvedOutput) {
-              emitCaptured(resolvedOutput, n, prefix);
-            }
-            return;
+      const finishOutput = (resolvedOutput: string): void => {
+        restorePrintState(options, leafSaved);
+        if (!w.hasContentSince(leafMark)) {
+          w.restore(leafMark);
+          if (resolvedOutput) {
+            emitCaptured(resolvedOutput, n, prefix);
           }
-          if (n.requiredSemi && n.options.semi !== false) {
-            w.add(';', n);
-          }
-          markEmitted(n);
+          return;
         }
-      );
+        if (n.requiredSemi && n.options.semi !== false) {
+          w.add(';', n);
+        }
+        markEmitted(n);
+      };
+      return isThenable(output)
+        ? output.then(finishOutput)
+        : finishOutput(output);
     };
     const finish = (): void => {
       while (lastRenderedFrames.length > renderedFrameBaseline) {
@@ -2007,10 +2046,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       restorePrintState(options, saved);
     };
     if (mode === 'render') {
-      const result = serialForEach(value, emitNode);
-      return isThenable(result)
-        ? result.then(finish)
-        : finish();
+      const emitRest = (start: number): MaybePromise<void> => {
+        for (let i = start; i < value.length; i++) {
+          const result = emitNode(value[i]!);
+          if (isThenable(result)) {
+            return result.then(() => emitRest(i + 1));
+          }
+        }
+        return finish();
+      };
+      return emitRest(0);
     }
     for (const n of value) {
       void emitNode(n);
@@ -2111,7 +2156,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   visibleRules() {
-    return this.value.filter(n => n.visible);
+    const out: Node[] = [];
+    for (let i = 0; i < this.value.length; i++) {
+      const node = this.value[i]!;
+      if (node.visible) {
+        out.push(node);
+      }
+    }
+    return out;
+  }
+
+  hasVisibleRules(): boolean {
+    for (let i = 0; i < this.value.length; i++) {
+      if (this.value[i]!.visible) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -2267,13 +2328,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (this._hasStaticName(node)) {
           if (this.scopeFrame && !this._indexing) {
             const sourceIdentity = node.sourceNode ?? node;
-            this.scopeFrame.pendingDeclarationNames = this.scopeFrame.pendingDeclarationNames.filter((entry) => {
+            const pending = this.scopeFrame.pendingDeclarationNames;
+            let write = 0;
+            for (let i = 0; i < pending.length; i++) {
+              const entry = pending[i]!;
               const entryIdentity = entry.sourceNode ?? entry;
-              return entry !== node
+              if (
+                entry !== node
                 && entry !== sourceIdentity
                 && entryIdentity !== sourceIdentity
-                && entry.index !== node.index;
-            });
+                && entry.index !== node.index
+              ) {
+                pending[write++] = entry;
+              }
+            }
+            pending.length = write;
           }
           const name = (node as VarDeclaration).value.name.valueOf();
           const map = (this.varsByName ??= new Map());
@@ -2287,7 +2356,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             if (!bucket) {
               this.scopeFrame.declarationBucketsByName.set(name, bucket = []);
             }
-            if (!bucket.some(entry => entry.sourceNode === node)) {
+            let hasBucketEntry = false;
+            for (let i = 0; i < bucket.length; i++) {
+              if (bucket[i]!.sourceNode === node) {
+                hasBucketEntry = true;
+                break;
+              }
+            }
+            if (!hasBucketEntry) {
               bucket.push({
                 cell: {
                   value: (node as VarDeclaration).value.value,
@@ -2350,7 +2426,31 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   at(index: number) {
-    return atIndex(this.value.filter(isIndexedRuleChild), index);
+    let target = index;
+    if (target < 0) {
+      let indexedCount = 0;
+      for (let i = 0; i < this.value.length; i++) {
+        if (isIndexedRuleChild(this.value[i]!)) {
+          indexedCount++;
+        }
+      }
+      target = indexedCount + target;
+      if (target < 0) {
+        return undefined;
+      }
+    }
+    let current = 0;
+    for (let i = 0; i < this.value.length; i++) {
+      const node = this.value[i]!;
+      if (!isIndexedRuleChild(node)) {
+        continue;
+      }
+      if (current === target) {
+        return node;
+      }
+      current++;
+    }
+    return undefined;
   }
 
   override prepareRegistration(context: Context): MaybePromise<this> {
@@ -2467,7 +2567,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Process each node with a registerable identity, handling both sync and async prep.
     // Comment nodes do not participate in numeric rule indexing.
     let indexedRuleCount = 0;
-    const processResult = serialForEach(rules.value, (node, index) => {
+    const processNode = (node: Node, index: number): MaybePromise<void> => {
       const nodeIndex = isIndexedRuleChild(node) ? indexedRuleCount++ : undefined;
       if (this._prepareCharsetNode(rules, node, index, nodeIndex, context)) {
         return;
@@ -2488,12 +2588,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       Reflect.set(node, 'index', nodeIndex);
       return this._prepareRegisterableNode(rules, node, index, nodeIndex, prepState, context);
-    });
-
-    if (isThenable(processResult)) {
-      return (processResult as Promise<void>).then(() => prepState);
-    }
-    return prepState;
+    };
+    const processRest = (start: number): MaybePromise<RegistrationPrepState> => {
+      for (let i = start; i < rules.value.length; i++) {
+        const result = processNode(rules.value[i]!, i);
+        if (isThenable(result)) {
+          return result.then(() => processRest(i + 1));
+        }
+      }
+      return prepState;
+    };
+    return processRest(0);
   }
 
   private _finishRegistrationPrep(
@@ -2562,14 +2667,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return false;
     }
     // CSS @import hoisting is output-order bookkeeping, not name registration.
-    const prepared = node.prepareRegistration(context);
-    if (isThenable(prepared)) {
-      return (prepared as Promise<Node>).then((preparedNode) => {
-        rules.value[index] = preparedNode;
-        Reflect.set(preparedNode, 'index', nodeIndex);
-      });
-    }
-    rules.value[index] = prepared as Node;
+    // Preserve the prelude as authored; evaluating here can strip comment tokens.
+    queueTopImport(context, node);
+    node.registrationPrepared = true;
+    rules.value[index] = new Nil().inherit(node);
     Reflect.set(rules.value[index]!, 'index', nodeIndex);
     return true;
   }
@@ -3066,37 +3167,60 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       applyResult(idx, rule, result as Node | undefined);
     };
 
-    const entries = Array.from(rules);
     // These are the two eval-owned side-effect lanes left after removing the
     // broad priority table. Imports can provide symbols to the whole file, and
     // calls can produce declarations that Less property accessors read.
-    const importEntries = entries.filter(([, rule]) => isStyleImportRegistrationNode(rule));
-    const callEntries = entries.filter(([, rule]) => isNode(rule, N.Call));
+    const evaluateLane = (
+      shouldEvaluate: (rule: Node) => boolean,
+      allowImportRetry: boolean
+    ): MaybePromise<void> => {
+      const evaluateRest = (start: number): MaybePromise<void> => {
+        for (let idx = start; idx < rules.value.length; idx++) {
+          const rule = rules.value[idx]!;
+          if (!shouldEvaluate(rule)) {
+            continue;
+          }
+          const result = evaluateEntry(idx, rule, allowImportRetry);
+          if (isThenable(result)) {
+            return result.then(() => evaluateRest(idx + 1));
+          }
+        }
+      };
+      return evaluateRest(0);
+    };
     const drainPendingImports = (allowRetry: boolean): MaybePromise<void> => {
       if (pendingImports.length === 0) {
         return;
       }
       const imports = pendingImports.splice(0);
-      const drained = serialForEach(imports, ([idx, rule]) => evaluateEntry(idx, rule, allowRetry));
+      const drainRest = (start: number): MaybePromise<void> => {
+        for (let i = start; i < imports.length; i++) {
+          const [idx, rule] = imports[i]!;
+          const drained = evaluateEntry(idx, rule, allowRetry);
+          if (isThenable(drained)) {
+            return drained.then(() => drainRest(i + 1));
+          }
+        }
+      };
+      const drained = drainRest(0);
       if (isThenable(drained) && allowRetry) {
         return (drained as Promise<void>).then(() => drainPendingImports(false));
       }
       return drained;
     };
 
-    const evaluateImports = serialForEach(importEntries, ([idx, rule]) => evaluateEntry(idx, rule, true));
+    const evaluateImports = evaluateLane(isStyleImportRegistrationNode, true);
     const evaluateBody = (): MaybePromise<boolean> => {
       const importDrain = drainPendingImports(false);
       const afterImports = () => {
-        const calls = serialForEach(callEntries, ([idx, rule]) => evaluateEntry(idx, rule, false));
+        const calls = evaluateLane(rule => isNode(rule, N.Call), false);
         const afterCalls = () => {
-          const normal = serialForEach(entries, ([idx, rule]) => {
+          const normal = evaluateLane((rule) => {
             if (isNode(rule, N.VarDeclaration) || isStyleImportRegistrationNode(rule) || isNode(rule, N.Call)) {
-              return;
+              return false;
             }
-            const currentRule = rules.value[idx] ?? rule;
-            return evaluateEntry(idx, currentRule, false);
-          });
+            return true;
+          }, false);
           if (isThenable(normal)) {
             return (normal as Promise<void>).then(() => rulesToHoist);
           }
@@ -3374,29 +3498,56 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * mid-eval.
    */
   private _normalizeCallDeclarationRulesOrder(rules: Rules): void {
-    const firstNestedIdx = rules.value.findIndex(n => isNode(n, N.Ruleset | N.AtRule));
+    let firstNestedIdx = -1;
+    for (let i = 0; i < rules.value.length; i++) {
+      if (isNode(rules.value[i]!, N.Ruleset | N.AtRule)) {
+        firstNestedIdx = i;
+        break;
+      }
+    }
     if (firstNestedIdx < 0) {
       return;
     }
-    const beforeNested = rules.value.slice(0, firstNestedIdx);
-    const afterNested = rules.value.slice(firstNestedIdx);
     const shouldMove = (n: Node) => {
       if (
         !isNode(n, N.Rules)
         || n.options?.callDeclarationOutput !== true
         || n.value.length === 0
-        || !n.value.every(child => isNode(child, N.Declaration | N.Comment))
       ) {
         return false;
       }
+      for (let i = 0; i < n.value.length; i++) {
+        if (!isNode(n.value[i]!, N.Declaration | N.Comment)) {
+          return false;
+        }
+      }
       return true;
     };
-    const moved = afterNested.filter(shouldMove);
+    const moved: Node[] = [];
+    const remainder: Node[] = [];
+    for (let i = firstNestedIdx; i < rules.value.length; i++) {
+      const node = rules.value[i]!;
+      if (shouldMove(node)) {
+        moved.push(node);
+      } else {
+        remainder.push(node);
+      }
+    }
     if (moved.length === 0) {
       return;
     }
-    const remainder = afterNested.filter(n => !shouldMove(n));
-    rules.value = [...beforeNested, ...moved, ...remainder];
+    const reordered: Node[] = new Array(rules.value.length);
+    let write = 0;
+    for (let i = 0; i < firstNestedIdx; i++) {
+      reordered[write++] = rules.value[i]!;
+    }
+    for (let i = 0; i < moved.length; i++) {
+      reordered[write++] = moved[i]!;
+    }
+    for (let i = 0; i < remainder.length; i++) {
+      reordered[write++] = remainder[i]!;
+    }
+    rules.value = reordered;
   }
 
   /**
@@ -3584,23 +3735,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override evalNode(context: Context): MaybePromise<Rules> {
     const saved = this._snapshotContext(context);
     context.rulesEvalStack.push(sourceRulesOf(this));
-    let pipeResult: MaybePromise<Rules>;
+    let result: MaybePromise<{ rules: Rules; rulesToHoist: boolean }>;
     try {
-      pipeResult = pipe(
-        () => this._prepareForEval(context),
-        ({ rules }: { rules: Rules; rulesToHoist: boolean }) => this._finishEval(rules, context, saved)
-      );
+      result = this._prepareForEval(context);
     } catch (error) {
       this._restoreEvalAfterError(context, saved);
       throw error;
     }
-    if (isThenable(pipeResult)) {
-      return pipeResult.catch((error) => {
-        this._restoreEvalAfterError(context, saved);
-        throw error;
-      });
+    const finish = ({ rules }: { rules: Rules; rulesToHoist: boolean }): Rules => this._finishEval(rules, context, saved);
+    if (isThenable(result)) {
+      return result.then(
+        finish,
+        (error) => {
+          this._restoreEvalAfterError(context, saved);
+          throw error;
+        }
+      );
     }
-    return pipeResult;
+    return finish(result);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

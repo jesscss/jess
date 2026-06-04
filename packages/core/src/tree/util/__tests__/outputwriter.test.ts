@@ -8,21 +8,40 @@ type WriterPosition = {
   length: number;
 };
 
-function isWriterPosition(value: unknown): value is WriterPosition {
-  return typeof value === 'object'
-    && value !== null
-    && typeof Reflect.get(value, 'line') === 'number'
-    && typeof Reflect.get(value, 'column') === 'number'
-    && typeof Reflect.get(value, 'segments') === 'number'
-    && typeof Reflect.get(value, 'length') === 'number';
+type WriterPositionArrays = {
+  line: number[];
+  column: number[];
+  segments: number[];
+  length: number[];
+};
+
+function isNumberArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every(item => typeof item === 'number');
+}
+
+function positionArraysFor(writer: OutputWriter): WriterPositionArrays {
+  const oldPositions: unknown = Reflect.get(writer, '_positions');
+  if (oldPositions !== undefined) {
+    throw new TypeError('OutputWriter should not keep object position records');
+  }
+  const line: unknown = Reflect.get(writer, '_posLine');
+  const column: unknown = Reflect.get(writer, '_posColumn');
+  const segments: unknown = Reflect.get(writer, '_posSegments');
+  const length: unknown = Reflect.get(writer, '_posLength');
+  if (!isNumberArray(line) || !isNumberArray(column) || !isNumberArray(segments) || !isNumberArray(length)) {
+    throw new TypeError('Expected OutputWriter parallel position arrays');
+  }
+  return { line, column, segments, length };
 }
 
 function positionsFor(writer: OutputWriter): WriterPosition[] {
-  const positions: unknown = Reflect.get(writer, '_positions');
-  if (!Array.isArray(positions) || !positions.every(isWriterPosition)) {
-    throw new TypeError('Expected OutputWriter positions');
-  }
-  return positions;
+  const positions = positionArraysFor(writer);
+  return positions.line.map((line, index) => ({
+    line,
+    column: positions.column[index]!,
+    segments: positions.segments[index]!,
+    length: positions.length[index]!
+  }));
 }
 
 describe('OutputWriter', () => {
@@ -204,6 +223,29 @@ describe('OutputWriter', () => {
       expect(w.getSince(mark1)).toBe('chunk2chunk3');
     });
 
+    it('gets content since mark without slicing the chunk array', () => {
+      const w = new OutputWriter();
+
+      w.add('chunk1');
+      const mark = w.mark();
+      w.add('chunk2');
+      w.add('chunk3');
+      const chunks = Reflect.get(w, 'chunks');
+      if (!Array.isArray(chunks)) {
+        throw new Error('Expected OutputWriter chunks array');
+      }
+      const originalSlice = chunks.slice;
+      chunks.slice = function throwOnSlice(): never {
+        throw new Error('getSince should not allocate a sliced chunk array');
+      };
+
+      try {
+        expect(w.getSince(mark)).toBe('chunk2chunk3');
+      } finally {
+        chunks.slice = originalSlice;
+      }
+    });
+
     it('checks whether content was emitted since a mark without materializing it', () => {
       const w = new OutputWriter();
 
@@ -262,9 +304,13 @@ describe('OutputWriter', () => {
 
       w.add('one');
       w.queueSpacer(' ');
+      expect(Reflect.get(w, '_queuedSpacer')).toBeUndefined();
+      expect(Reflect.get(w, '_queuedSpacerText')).toBe(' ');
       w.add('two');
 
       expect(w.toString()).toBe('one two');
+      expect(Reflect.get(w, '_queuedSpacerText')).toBe('');
+      expect(Reflect.get(w, '_queuedSpacerShouldAdd')).toBeUndefined();
     });
 
     it('drops a queued spacer when the next chunk already starts with whitespace', () => {
@@ -287,6 +333,21 @@ describe('OutputWriter', () => {
       w.add('three');
 
       expect(w.toString()).toBe('one.two three');
+    });
+
+    it('restore clears queued spacer scalar fields', () => {
+      const w = new OutputWriter();
+
+      w.add('one');
+      const mark = w.mark();
+      w.queueSpacer(' ');
+      w.restore(mark);
+      w.add('two');
+
+      expect(w.toString()).toBe('onetwo');
+      expect(Reflect.get(w, '_queuedSpacer')).toBeUndefined();
+      expect(Reflect.get(w, '_queuedSpacerText')).toBe('');
+      expect(Reflect.get(w, '_queuedSpacerShouldAdd')).toBeUndefined();
     });
 
     it('restore reverts to mark position', () => {
@@ -389,7 +450,7 @@ describe('OutputWriter', () => {
     });
   });
 
-  describe('_positions array behavior', () => {
+  describe('parallel position array behavior', () => {
     it('tracks positions for each chunk', () => {
       const w = new OutputWriter();
 
@@ -397,7 +458,6 @@ describe('OutputWriter', () => {
       w.add(' world');
       w.add('\nnew line');
 
-      // Access private _positions array for testing
       const positions = positionsFor(w);
       expect(positions).toHaveLength(3);
       expect(positions[0]).toEqual({ line: 0, column: 5, segments: 0, length: 5 });
@@ -405,7 +465,7 @@ describe('OutputWriter', () => {
       expect(positions[2]).toEqual({ line: 1, column: 8, segments: 0, length: 20 });
     });
 
-    it('capture does not affect _positions array', () => {
+    it('capture does not affect position arrays', () => {
       const w = new OutputWriter();
 
       w.add('before');
@@ -415,12 +475,11 @@ describe('OutputWriter', () => {
         w.add('captured\ncontent');
       });
 
-      // _positions should be unchanged after capture
       expect(positionsFor(w)).toEqual(beforePositions);
       expect(captured).toBe('captured\ncontent');
     });
 
-    it('restore properly resets _positions array', () => {
+    it('restore properly resets position arrays', () => {
       const w = new OutputWriter();
 
       w.add('line1\n');
@@ -434,7 +493,7 @@ describe('OutputWriter', () => {
       expect(positionsFor(w)).toEqual(positionsAtMark);
     });
 
-    it('_positions tracks segments count', () => {
+    it('position arrays track segments count', () => {
       const w = new OutputWriter();
 
       // Add content with origin that has location info

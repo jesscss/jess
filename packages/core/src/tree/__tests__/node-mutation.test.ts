@@ -6,13 +6,13 @@ describe('Node mutation', () => {
   it('updates a node value canonically', () => {
     const node = paren(any('10px'));
     node.set(null, any('20px'));
-    expect(String(node.getValue())).toBe('20px');
+    expect(String(node.value)).toBe('20px');
   });
 
   it('avoids extra state when the value is unchanged', () => {
     const node = paren(any('10px'));
     node.set(null, any('10px'));
-    expect(String(node.getValue())).toBe('10px');
+    expect(String(node.value)).toBe('10px');
     expect('_childForks' in node).toBe(false);
   });
 
@@ -22,7 +22,7 @@ describe('Node mutation', () => {
     const parent2 = paren();
     parent2.set(null, child);
 
-    expect(child.getParent()).toBe(parent2);
+    expect(child.parent).toBe(parent2);
     expect(parent1.value).toBe(child);
   });
 

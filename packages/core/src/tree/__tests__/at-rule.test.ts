@@ -15,6 +15,7 @@ import { serializeTypes } from '../util/serialize-types.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import * as path from 'path';
 import * as fs from 'fs';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
@@ -34,10 +35,18 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  previews = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override preview(fn: () => string | void, preserveSegments?: boolean): string;
+  override preview(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
+  override preview(fn: () => MaybePromise<string | void>, preserveSegments?: boolean): MaybePromise<string> {
+    this.previews++;
+    return super.preview(fn, preserveSegments);
   }
 }
 
@@ -1211,7 +1220,7 @@ describe('AtRule', () => {
       decl({ name: 'color', value: any('blue') })
     ]);
     const originalEval = originalRules.eval;
-    const originalVisibleRules = evaluatedRules.visibleRules;
+    const originalHasVisibleRules = evaluatedRules.hasVisibleRules;
     originalRules.eval = function evalReplacementBody(
       this: Rules,
       ..._args: Parameters<typeof originalEval>
@@ -1219,18 +1228,18 @@ describe('AtRule', () => {
       evaluatedRules.evaluated = true;
       return evaluatedRules;
     };
-    evaluatedRules.visibleRules = function throwAfterEval(
+    evaluatedRules.hasVisibleRules = function throwAfterEval(
       this: Rules,
-      ..._args: Parameters<typeof originalVisibleRules>
-    ): ReturnType<typeof originalVisibleRules> {
-      throw new Error('visibleRules failed');
+      ..._args: Parameters<typeof originalHasVisibleRules>
+    ): ReturnType<typeof originalHasVisibleRules> {
+      throw new Error('hasVisibleRules failed');
     };
     const node = atrule({
       name: any('@font-face', { role: 'atkeyword' }),
       rules: originalRules
     });
 
-    expect(() => node.eval(context)).toThrow('visibleRules failed');
+    expect(() => node.eval(context)).toThrow('hasVisibleRules failed');
     expect(node.value.rules).toBe(originalRules);
     expect(node.getRenderRules()).toBe(originalRules);
     expect(node.toTrimmedString()).toBeString(`
@@ -1565,10 +1574,53 @@ describe('AtRule', () => {
       rules: rules([])
     });
     const options = getPrintOptions({ writer });
+    const name = node.value.name;
+    const prelude = node.value.prelude!;
+    const originalNameToString = name.toString;
+    const originalPreludeToString = prelude.toString;
+    let nameUsedActiveWriter = false;
+    let preludeUsedActiveWriter = false;
+    name.toString = function toStringWithWriterCheck(
+      this: typeof name,
+      nextOptions?: Parameters<typeof originalNameToString>[0]
+    ): string {
+      nameUsedActiveWriter = nextOptions?.writer === writer;
+      return originalNameToString.call(this, nextOptions);
+    };
+    prelude.toString = function toStringWithWriterCheck(
+      this: typeof prelude,
+      nextOptions?: Parameters<typeof originalPreludeToString>[0]
+    ): string {
+      preludeUsedActiveWriter = nextOptions?.writer === writer;
+      return originalPreludeToString.call(this, nextOptions);
+    };
 
-    expect(node.getHeaderString(options)).toBe('@media screen {\n');
-    expect(writer.toString()).toBe('');
+    try {
+      expect(node.getHeaderString(options)).toBe('@media screen {\n');
+      expect(writer.toString()).toBe('');
+      expect(writer.captures).toBe(0);
+      expect(writer.previews).toBe(0);
+      expect(nameUsedActiveWriter).toBe(true);
+      expect(preludeUsedActiveWriter).toBe(true);
+    } finally {
+      name.toString = originalNameToString;
+      prelude.toString = originalPreludeToString;
+    }
+  });
+
+  it('renders leaf at-rules without preview scaffolding', () => {
+    const writer = new CountingWriter();
+    const node = atrule({
+      name: any('@custom-media', { role: 'atkeyword' }),
+      prelude: spaced([any('--narrow'), any('(max-width: 30em)')])
+    });
+    const options = getPrintOptions({ writer });
+
+    const rendered = '@custom-media --narrow (max-width: 30em);';
+    expect(node.render(context, options)).toBe(rendered);
+    expect(writer.toString()).toBe(rendered);
     expect(writer.captures).toBe(0);
+    expect(writer.previews).toBe(0);
   });
 
   it('renders comment-free at-rule headers without cloning source-free prelude leaves', () => {

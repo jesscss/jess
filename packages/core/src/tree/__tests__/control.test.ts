@@ -2,6 +2,7 @@ import {
   Any,
   Block,
   Call,
+  Condition,
   For,
   If,
   INTERPOLATION_PLACEHOLDER,
@@ -150,6 +151,31 @@ describe('Control Nodes', () => {
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
     expect(context.printState.writer?.toString()).toBe('color: red;');
+  });
+
+  it('renders $if condition branches without calling the public Bool-result condition eval wrapper', async () => {
+    const context = new Context();
+    const originalConditionEval = Condition.prototype.eval;
+    Condition.prototype.eval = function evalForCounting(): never {
+      throw new Error('$if should evaluate condition booleans directly');
+    };
+    const node = new If({
+      branches: [
+        {
+          condition: condition([bool(true)]),
+          rules: rules([decl({ name: 'color', value: any('red') })])
+        },
+        {
+          rules: rules([decl({ name: 'color', value: any('blue') })])
+        }
+      ]
+    });
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
+    } finally {
+      Condition.prototype.eval = originalConditionEval;
+    }
   });
 
   it('keeps direct $if resolve(context) on source syntax without eval stamping', () => {

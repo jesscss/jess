@@ -1,0 +1,80 @@
+{
+  "id": "bc-jess-task_shaping-43a9369dc0-2026-06-04T00-39-12-617Z",
+  "projectId": "jess",
+  "source": "orchestrator:fallback-question:task-meta-intake:q-fallback-task-meta-intake-mpyrpdyh-0",
+  "objective": {
+    "kind": "task_shaping",
+    "label": "Clarify Inspect the repo and draft starter tasks",
+    "successCriteria": [
+      "Owner answers the linked bounded-chat session."
+    ],
+    "startedAt": "2026-06-04T00:39:12.617Z"
+  },
+  "status": "coordinator_review",
+  "activeSubObjectiveId": "q-fallback-task-meta-intake-mpyrpdyh-0",
+  "subObjectives": [
+    {
+      "id": "q-fallback-task-meta-intake-mpyrpdyh-0",
+      "objective": "Clarify Inspect the repo and draft starter tasks",
+      "prompt": "This is a meta-intake task — I need to:",
+      "choices": [
+        "Infer the project's internal routing slices (coordinator domains)",
+        "Infer lever positions from project evidence",
+        "Bootstrap verification (try install + gates)",
+        "Draft starter tasks"
+      ],
+      "followUpDepth": 0,
+      "localTurns": [
+        {
+          "role": "user",
+          "content": "Infer the project's internal routing slices (coordinator domains), Infer lever positions from project evidence, Bootstrap verification (try install + gates)",
+          "selectedChoiceIds": []
+        }
+      ],
+      "status": "answered"
+    }
+  ],
+  "acceptedState": {
+    "facts": [],
+    "decisions": [],
+    "leverUpdates": [],
+    "settingUpdates": [],
+    "taskDrafts": [],
+    "unresolvedForks": [],
+    "discardedResponses": []
+  },
+  "pendingActions": [],
+  "appliedActionIds": [],
+  "transitionReceipts": [
+    {
+      "machineId": "bounded-chat",
+      "machineVersion": 1,
+      "commandId": "create:bc-jess-task_shaping-43a9369dc0-2026-06-04T00-39-12-617Z:wait-for-owner",
+      "entityId": "bc-jess-task_shaping-43a9369dc0-2026-06-04T00-39-12-617Z",
+      "from": "active",
+      "event": "wait_for_owner",
+      "to": "waiting_for_owner",
+      "actor": "system:bounded-chat",
+      "evidenceRefs": [
+        "source:orchestrator:fallback-question:task-meta-intake:q-fallback-task-meta-intake-mpyrpdyh-0"
+      ],
+      "createdAt": "2026-06-04T00:39:12.617Z"
+    },
+    {
+      "machineId": "bounded-chat",
+      "machineVersion": 1,
+      "commandId": "owner-response:q-fallback-task-meta-intake-mpyrpdyh-0:1:3d98892396",
+      "entityId": "bc-jess-task_shaping-43a9369dc0-2026-06-04T00-39-12-617Z",
+      "from": "waiting_for_owner",
+      "event": "submit_owner_response",
+      "to": "coordinator_review",
+      "actor": "owner",
+      "evidenceRefs": [
+        "bounded-chat:bc-jess-task_shaping-43a9369dc0-2026-06-04T00-39-12-617Z:sub-objective:q-fallback-task-meta-intake-mpyrpdyh-0"
+      ],
+      "createdAt": "2026-06-04T02:14:35.574Z"
+    }
+  ],
+  "createdAt": "2026-06-04T00:39:12.617Z",
+  "updatedAt": "2026-06-04T02:14:35.574Z"
+}

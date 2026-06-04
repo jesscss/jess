@@ -35,7 +35,6 @@ type ExecuteCallableCandidateLoopOptions = {
   debugCaller: () => string;
   specialCaseCallSiteRules?: Node;
   ordinaryCallSiteRules: Rules;
-  copyGuardForEval: (guard: Node) => Node;
   createOwnedRules: (sourceRules: Rules) => Rules;
   createUnlockedRules: (sourceRules: Rules) => Rules;
   getRootSourceRules: (rules: Rules) => Rules;
@@ -56,7 +55,6 @@ export async function executeCallableCandidateLoop({
   debugCaller,
   specialCaseCallSiteRules,
   ordinaryCallSiteRules,
-  copyGuardForEval,
   createOwnedRules,
   createUnlockedRules,
   getRootSourceRules,
@@ -121,7 +119,6 @@ export async function executeCallableCandidateLoop({
       nodeArgs,
       defaultState,
       restrictMixinOutputLookup,
-      copyGuardForEval,
       createOuterRules
     });
     if (debugDefaultGuard && execution.debugDefaultProbeResult) {

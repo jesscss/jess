@@ -29,7 +29,7 @@ import {
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
-import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { emitCommentTriviaAfterNode } from './util/trivia.js';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
@@ -233,9 +233,29 @@ const shouldResolveCustomPropertyValue = (node: Node): boolean => {
   if (node.type === 'Interpolated') {
     return true;
   }
-  for (const child of node.children(true)) {
-    if (isNode(child) && shouldResolveCustomPropertyValue(child)) {
-      return true;
+  return valueShouldResolveCustomProperty((node as { value?: unknown }).value);
+};
+
+const valueShouldResolveCustomProperty = (value: unknown): boolean => {
+  if (isNode(value)) {
+    return shouldResolveCustomPropertyValue(value);
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      if (valueShouldResolveCustomProperty(value[i])) {
+        return true;
+      }
+    }
+    return false;
+  }
+  if (value && typeof value === 'object') {
+    for (const key in value) {
+      if (
+        Object.hasOwn(value, key)
+        && valueShouldResolveCustomProperty(Reflect.get(value, key))
+      ) {
+        return true;
+      }
     }
   }
   return false;
@@ -517,12 +537,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
     const mark = w.mark();
-    value.forEach((item, index) => {
-      if (index > 0) {
+    for (let index = 0; index < value.length; index++) {
+      if (index !== 0) {
         w.queueSpacer(' ');
       }
+      const item = value[index]!;
       item.toString(printOptions);
-    });
+    }
     return w.getSince(mark);
   }
 
@@ -534,15 +555,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (this.type !== 'Declaration') {
-      return pipe(
-        () => this.evalPreparedState(context),
-        state => this.renderEvaluatedDeclaration(context, state, bufferOrOptions, options)
-      );
+      const state = this.evalPreparedState(context);
+      return isThenable(state)
+        ? (state as Promise<DeclarationEvalState>).then(resolved => this.renderEvaluatedDeclaration(context, resolved, bufferOrOptions, options))
+        : this.renderEvaluatedDeclaration(context, state as DeclarationEvalState, bufferOrOptions, options);
     }
-    return pipe(
-      () => this.evalRenderState(context),
-      state => this.renderDeclarationRenderState(context, state, bufferOrOptions, options)
-    );
+    const state = this.evalRenderState(context);
+    return isThenable(state)
+      ? (state as Promise<DeclarationRenderState>).then(resolved => this.renderDeclarationRenderState(context, resolved, bufferOrOptions, options))
+      : this.renderDeclarationRenderState(context, state as DeclarationRenderState, bufferOrOptions, options);
   }
 
   private renderEvaluatedDeclaration(
@@ -610,17 +631,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return pipe(
-      () => this.evalPreparedState(context),
-      state => state.output
-    );
+    const state = this.evalPreparedState(context);
+    return isThenable(state)
+      ? (state as Promise<DeclarationEvalState>).then(resolved => resolved.output)
+      : (state as DeclarationEvalState).output;
   }
 
   private evalRenderState(context: Context): MaybePromise<DeclarationRenderState> {
-    return pipe(
-      () => this._prepareDeclarationRegistrationState(context, { ownParts: false }),
-      state => this.evalRegistrationRenderState(context, state)
-    );
+    const state = this._prepareDeclarationRegistrationState(context, { ownParts: false });
+    return isThenable(state)
+      ? (state as Promise<DeclarationRegistrationState>).then(resolved => this.evalRegistrationRenderState(context, resolved))
+      : this.evalRegistrationRenderState(context, state as DeclarationRegistrationState);
   }
 
   private evalRegistrationRenderState(
@@ -828,36 +849,39 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private evalPreparedState(context: Context): MaybePromise<DeclarationEvalState> {
-    return pipe(
-      () => this.evalPreparedValueState(context),
-      valueState => valueState instanceof Nil
-        ? valueState
-        : this.materializeValueState(valueState),
-      output => ({
+    const valueState = this.evalPreparedValueState(context);
+    const finish = (resolved: DeclarationValueState<this> | Nil): DeclarationEvalState => {
+      const output = resolved instanceof Nil
+        ? resolved
+        : this.materializeValueState(resolved);
+      return {
         output,
         name: output instanceof Declaration ? output.value.name : undefined,
         value: output instanceof Declaration ? output.value.value : undefined,
         important: output instanceof Declaration ? output.value.important : undefined,
         nil: output instanceof Nil
-      })
-    );
+      };
+    };
+    return isThenable(valueState)
+      ? (valueState as Promise<DeclarationValueState<this> | Nil>).then(finish)
+      : finish(valueState as DeclarationValueState<this> | Nil);
   }
 
   private evalPreparedValueState(context: Context): MaybePromise<DeclarationValueState<this> | Nil> {
-    return pipe(
-      () => this.prepareRegistration(context),
-      node => node.evalValueState(context)
-    );
+    const node = this.prepareRegistration(context);
+    return isThenable(node)
+      ? (node as Promise<this>).then(prepared => prepared.evalValueState(context))
+      : (node as this).evalValueState(context);
   }
 
   override prepareRegistration(
     context: Context,
     options: DeclarationRegistrationOptions = {}
   ): MaybePromise<this> {
-    return pipe(
-      () => this._prepareDeclarationRegistrationState(context, options),
-      state => this.materializeRegistrationState(state, options)
-    );
+    const state = this._prepareDeclarationRegistrationState(context, options);
+    return isThenable(state)
+      ? (state as Promise<DeclarationRegistrationState>).then(resolved => this.materializeRegistrationState(resolved, options))
+      : this.materializeRegistrationState(state as DeclarationRegistrationState, options);
   }
 
   private createRegistrationState(
@@ -1084,95 +1108,95 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         changed: false
       };
     }
-    return pipe(
-      () => {
-        let node = this;
-        const state: DeclarationValueState = {
-          source: node,
-          value: node.value.value,
-          important: node.value.important,
-          changed: false
-        };
-        const setVal = (newValue: Node) => {
-          if (state.value !== newValue) {
-            state.value = newValue;
-            state.changed = true;
-          }
-        };
-        const setImportant = (important: Any<'flag'>) => {
-          if (state.important !== important) {
-            state.important = important;
-            state.changed = true;
-          }
-        };
-        const normalizeMergedLeadingPlaceholder = () => {
-          const normalizedAssign = node.options.normalizedFromAssign;
-          const isListMergedAssign =
+    {
+      let node = this;
+      const state: DeclarationValueState = {
+        source: node,
+        value: node.value.value,
+        important: node.value.important,
+        changed: false
+      };
+      const setVal = (newValue: Node) => {
+        if (state.value !== newValue) {
+          state.value = newValue;
+          state.changed = true;
+        }
+      };
+      const setImportant = (important: Any<'flag'>) => {
+        if (state.important !== important) {
+          state.important = important;
+          state.changed = true;
+        }
+      };
+      const normalizeMergedLeadingPlaceholder = () => {
+        const normalizedAssign = node.options.normalizedFromAssign;
+        const isListMergedAssign =
             normalizedAssign === AssignmentType.Add
             || normalizedAssign === AssignmentType.MergeList;
-          if (!isListMergedAssign || !isNode(state.value, N.List)) {
-            return;
-          }
-          const mergedItems = collectDeclarationMergeAdapterItems(state.value, { includeSequences: false });
-          if (mergedItems.length === 0) {
-            setVal(new Nil());
-            return;
-          }
-          if (mergedItems.length === 1) {
-            const item = mergedItems[0]!;
-            setVal(this.ownMergedAssignmentOutputItem(item));
-            return;
-          }
-          setVal(new List(mergedItems.map(item => (
-            this.ownMergedAssignmentOutputItem(item)
-          ))));
-        };
+        if (!isListMergedAssign || !isNode(state.value, N.List)) {
+          return;
+        }
+        const mergedItems = collectDeclarationMergeAdapterItems(state.value, { includeSequences: false });
+        if (mergedItems.length === 0) {
+          setVal(new Nil());
+          return;
+        }
+        if (mergedItems.length === 1) {
+          const item = mergedItems[0]!;
+          setVal(this.ownMergedAssignmentOutputItem(item));
+          return;
+        }
+        const outputItems = new Array<Node>(mergedItems.length);
+        for (let i = 0; i < mergedItems.length; i++) {
+          outputItems[i] = this.ownMergedAssignmentOutputItem(mergedItems[i]!);
+        }
+        setVal(new List(outputItems));
+      };
         /** Registration prep already stabilized the name; eval handles the value. */
-        if (node.type === 'VarDeclaration') {
-          return state;
-        }
-        const { name, value } = node.value;
-        if (value instanceof Node) {
-          const isCustomProperty = name.valueOf().startsWith('--');
-          if (isCustomProperty) {
-            if (!shouldResolveCustomPropertyValue(value)) {
-              return state;
-            }
-            context.inCustom = true;
-          }
-          const maybeNewValue = value.eval(context);
-          if (isThenable(maybeNewValue)) {
-            return maybeNewValue.then((newValue: Node | Nil) => {
-              context.inCustom = false;
-              if (newValue instanceof Nil) {
-                return newValue.inherit(node);
-              }
-              setVal(newValue);
-              normalizeMergedLeadingPlaceholder();
-              const importantState = finalizeContextualImportantPublicState(context, state.important);
-              if (importantState.important && importantState.important !== state.important) {
-                setImportant(importantState.important);
-              }
-              return state;
-            });
-          }
-          context.inCustom = false;
-          if (maybeNewValue instanceof Nil) {
-            return maybeNewValue.inherit(node);
-          }
-          if (!(maybeNewValue instanceof Node)) {
-            return node;
-          }
-          setVal(maybeNewValue);
-          normalizeMergedLeadingPlaceholder();
-          const importantState = finalizeContextualImportantPublicState(context, state.important);
-          if (importantState.important && importantState.important !== state.important) {
-            setImportant(importantState.important);
-          }
-        }
+      if (node.type === 'VarDeclaration') {
         return state;
       }
-    );
+      const { name, value } = node.value;
+      if (value instanceof Node) {
+        const isCustomProperty = name.valueOf().startsWith('--');
+        if (isCustomProperty) {
+          if (!shouldResolveCustomPropertyValue(value)) {
+            return state;
+          }
+          context.inCustom = true;
+        }
+        const maybeNewValue = value.eval(context);
+        if (isThenable(maybeNewValue)) {
+          return maybeNewValue.then((newValue: Node | Nil) => {
+            context.inCustom = false;
+            if (newValue instanceof Nil) {
+              return newValue.inherit(node);
+            }
+            setVal(newValue);
+            normalizeMergedLeadingPlaceholder();
+            const importantState = finalizeContextualImportantPublicState(context, state.important);
+            if (importantState.important && importantState.important !== state.important) {
+              setImportant(importantState.important);
+            }
+            return state;
+          });
+        }
+        context.inCustom = false;
+        if (maybeNewValue instanceof Nil) {
+          return maybeNewValue.inherit(node);
+        }
+        if (!(maybeNewValue instanceof Node)) {
+          return node;
+        }
+        setVal(maybeNewValue);
+        normalizeMergedLeadingPlaceholder();
+        const importantState = finalizeContextualImportantPublicState(context, state.important);
+        if (importantState.important && importantState.important !== state.important) {
+          setImportant(importantState.important);
+        }
+      }
+      return state;
+    }
   }
 
   private materializeValueState(state: DeclarationValueState<this>): this {
@@ -1194,10 +1218,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override evalNode(context: Context): MaybePromise<this | Nil> {
-    return pipe(
-      () => this.evalValueState(context),
-      state => state instanceof Nil ? state : this.materializeValueState(state)
-    ) as MaybePromise<this | Nil>;
+    const state = this.evalValueState(context);
+    return isThenable(state)
+      ? (state as Promise<DeclarationValueState<this> | Nil>).then(resolved => resolved instanceof Nil ? resolved : this.materializeValueState(resolved))
+      : state instanceof Nil ? state : this.materializeValueState(state as DeclarationValueState<this>);
   }
 
   /** @todo - move to visitors */

@@ -1,0 +1,517 @@
+"name": "Jess"
+"id": "jess"
+"kind": "project"
+"projects": []
+"coordinators":
+  - "id": "shared"
+    "domain": "shared"
+    "path": "packages/_shared"
+    "mandate": "Protect the @jesscss/shared package so future tasks preserve its
+      public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/shared keeps its package boundary, exports, and
+          internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of @jesscss/shared?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/shared changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "awaitable-pipe"
+    "domain": "awaitable-pipe"
+    "path": "packages/awaitable-pipe"
+    "mandate": "Protect the @jesscss/awaitable-pipe package so future tasks preserve
+      its public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/awaitable-pipe keeps its package boundary, exports, and
+          internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of
+            @jesscss/awaitable-pipe?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/awaitable-pipe changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "styles-config"
+    "domain": "styles-config"
+    "path": "packages/config"
+    "mandate": "Protect the styles-config package so future tasks preserve its
+      public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "styles-config keeps its package boundary, exports, and internal
+          responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of styles-config?"
+          - "Are package-local tests or downstream consumers updated when
+            styles-config changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "core"
+    "domain": "core"
+    "path": "packages/core"
+    "mandate": "Protect the @jesscss/core package so future tasks preserve its
+      public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/core keeps its package boundary, exports, and internal
+          responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of @jesscss/core?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/core changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "css-parser"
+    "domain": "css-parser"
+    "path": "packages/css-parser"
+    "mandate": "Protect the @jesscss/css-parser package so future tasks preserve its
+      public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/css-parser keeps its package boundary, exports, and
+          internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of @jesscss/css-parser?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/css-parser changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "jess-docs"
+    "domain": "jess-docs"
+    "path": "packages/docs"
+    "mandate": "Protect the jess-docs package so future tasks preserve its public
+      contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "jess-docs keeps its package boundary, exports, and internal
+          responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of jess-docs?"
+          - "Are package-local tests or downstream consumers updated when
+            jess-docs changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "docs-content"
+    "domain": "docs-content"
+    "path": "packages/docs-content"
+    "mandate": "Protect the @jesscss/docs-content package so future tasks preserve
+      its public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/docs-content keeps its package boundary, exports, and
+          internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of @jesscss/docs-content?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/docs-content changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "docs-less"
+    "domain": "docs-less"
+    "path": "packages/docs-less"
+    "mandate": "Protect the @jesscss/docs-less package so future tasks preserve its
+      public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/docs-less keeps its package boundary, exports, and
+          internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of @jesscss/docs-less?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/docs-less changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "extension"
+    "domain": "extension"
+    "path": "packages/extension"
+    "mandate": "Protect the @jesscss/extension package so future tasks preserve its
+      public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/extension keeps its package boundary, exports, and
+          internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of @jesscss/extension?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/extension changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "fns"
+    "domain": "fns"
+    "path": "packages/fns"
+    "mandate": "Protect the @jesscss/fns package so future tasks preserve its public
+      contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/fns keeps its package boundary, exports, and internal
+          responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of @jesscss/fns?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/fns changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "jess"
+    "domain": "jess"
+    "path": "packages/jess"
+    "mandate": "Protect the jess package so future tasks preserve its public
+      contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "jess keeps its package boundary, exports, and internal
+          responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of jess?"
+          - "Are package-local tests or downstream consumers updated when jess
+            changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "jess-parser"
+    "domain": "jess-parser"
+    "path": "packages/jess-parser"
+    "mandate": "Protect the @jesscss/jess-parser package so future tasks preserve
+      its public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/jess-parser keeps its package boundary, exports, and
+          internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of @jesscss/jess-parser?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/jess-parser changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "jess-plugin"
+    "domain": "jess-plugin"
+    "path": "packages/jess-plugin"
+    "mandate": "Protect the jess-plugin package so future tasks preserve its public
+      contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "jess-plugin keeps its package boundary, exports, and internal
+          responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of jess-plugin?"
+          - "Are package-local tests or downstream consumers updated when
+            jess-plugin changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "plugin-js"
+    "domain": "plugin-js"
+    "path": "packages/jess-plugin-js"
+    "mandate": "Protect the @jesscss/plugin-js package so future tasks preserve its
+      public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/plugin-js keeps its package boundary, exports, and
+          internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of @jesscss/plugin-js?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/plugin-js changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "plugin-less"
+    "domain": "plugin-less"
+    "path": "packages/jess-plugin-less"
+    "mandate": "Protect the @jesscss/plugin-less package so future tasks preserve
+      its public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/plugin-less keeps its package boundary, exports, and
+          internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of @jesscss/plugin-less?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/plugin-less changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "plugin-less-compat"
+    "domain": "plugin-less-compat"
+    "path": "packages/jess-plugin-less-compat"
+    "mandate": "Protect the @jesscss/plugin-less-compat package so future tasks
+      preserve its public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/plugin-less-compat keeps its package boundary, exports,
+          and internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of
+            @jesscss/plugin-less-compat?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/plugin-less-compat changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "plugin-node-modules"
+    "domain": "plugin-node-modules"
+    "path": "packages/jess-plugin-node-modules"
+    "mandate": "Protect the @jesscss/plugin-node-modules package so future tasks
+      preserve its public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/plugin-node-modules keeps its package boundary,
+          exports, and internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of
+            @jesscss/plugin-node-modules?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/plugin-node-modules changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "plugin-scss"
+    "domain": "plugin-scss"
+    "path": "packages/jess-plugin-scss"
+    "mandate": "Protect the @jesscss/plugin-scss package so future tasks preserve
+      its public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/plugin-scss keeps its package boundary, exports, and
+          internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of @jesscss/plugin-scss?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/plugin-scss changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "language-service"
+    "domain": "language-service"
+    "path": "packages/language-service"
+    "mandate": "Protect the @jesscss/language-service package so future tasks
+      preserve its public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/language-service keeps its package boundary, exports,
+          and internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of
+            @jesscss/language-service?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/language-service changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "less-parser"
+    "domain": "less-parser"
+    "path": "packages/less-parser"
+    "mandate": "Protect the @jesscss/less-parser package so future tasks preserve
+      its public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/less-parser keeps its package boundary, exports, and
+          internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of @jesscss/less-parser?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/less-parser changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "parser"
+    "domain": "parser"
+    "path": "packages/parser"
+    "mandate": "Protect the @jesscss/parser package so future tasks preserve its
+      public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/parser keeps its package boundary, exports, and
+          internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of @jesscss/parser?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/parser changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "patch-css"
+    "domain": "patch-css"
+    "path": "packages/patch-css"
+    "mandate": "Protect the @jesscss/patch-css package so future tasks preserve its
+      public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/patch-css keeps its package boundary, exports, and
+          internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of @jesscss/patch-css?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/patch-css changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "rollup-plugin-jess"
+    "domain": "rollup-plugin-jess"
+    "path": "packages/rollup-plugin-jess"
+    "mandate": "Protect the rollup-plugin-jess package so future tasks preserve its
+      public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "rollup-plugin-jess keeps its package boundary, exports, and
+          internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of rollup-plugin-jess?"
+          - "Are package-local tests or downstream consumers updated when
+            rollup-plugin-jess changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "scss-parser"
+    "domain": "scss-parser"
+    "path": "packages/scss-parser"
+    "mandate": "Protect the @jesscss/scss-parser package so future tasks preserve
+      its public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/scss-parser keeps its package boundary, exports, and
+          internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of @jesscss/scss-parser?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/scss-parser changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "style-resolver"
+    "domain": "style-resolver"
+    "path": "packages/style-resolver"
+    "mandate": "Protect the @jesscss/style-resolver package so future tasks preserve
+      its public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/style-resolver keeps its package boundary, exports, and
+          internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of
+            @jesscss/style-resolver?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/style-resolver changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+  - "id": "vscode-extension"
+    "domain": "vscode-extension"
+    "path": "packages/vscode"
+    "mandate": "Protect the @jesscss/vscode-extension package so future tasks
+      preserve its public contracts, tests, and role in this monorepo."
+    "concerns":
+      - "id": "package-contract"
+        "description": "@jesscss/vscode-extension keeps its package boundary, exports,
+          and internal responsibilities understandable."
+        "reviewQuestions":
+          - "Does this preserve the intended contract of
+            @jesscss/vscode-extension?"
+          - "Are package-local tests or downstream consumers updated when
+            @jesscss/vscode-extension changes?"
+    "autonomousDecisions":
+      - "Approve small, tested fixes that stay inside this package boundary."
+    "escalationTriggers":
+      - "The change crosses package boundaries, changes public exports, or
+        weakens package-level tests without a clear spec."
+"maxRevisions": 3
+"heartbeatInterval": 5
+"ignore":
+  - "node_modules"
+  - "dist"
+  - ".git"
+  - "coverage"
+"tags": []
+"bootstrap":
+  "commands":
+    - "pnpm install"
+  "successGates":
+    - "pnpm run test"
+    - "pnpm run lint"
+  "timeoutMs": 300000
+  "provenance":
+    "establishedBy": "spec-agent-intake"
+    "establishedAt": "2026-06-04T00:44:21.082Z"
+    "tried": []
+  "verifiedAt": "2026-06-04T00:44:22.388Z"
+  "packageManager": "pnpm"
+  "install":
+    "command": "pnpm install"
+    "status": "ok"
+  "gates":
+    "lint":
+      "command": "pnpm lint"
+      "available": true
+    "typecheck":
+      "command": "pnpm tsc --noEmit"
+      "available": true
+    "build":
+      "command": ""
+      "available": false
+      "unavailableReason": "no `build` script in package.json"
+    "test":
+      "command": "pnpm test"
+      "available": true

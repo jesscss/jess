@@ -1,0 +1,55 @@
+{
+  "id": "bc-jess-structural_review-8c11fc652d-2026-06-04T00-44-08-860Z",
+  "projectId": "jess",
+  "source": "structural-map:structural-map-mpyrvqjg:confirm-domain-routing",
+  "objective": {
+    "kind": "structural_review",
+    "label": "Review structural map structural-map-mpyrvqjg",
+    "successCriteria": [
+      "Owner resolves the linked structural-map review request."
+    ],
+    "startedAt": "2026-06-04T00:44:08.860Z"
+  },
+  "status": "waiting_for_owner",
+  "activeSubObjectiveId": "owner-input-4500b37a5ccb933e",
+  "subObjectives": [
+    {
+      "id": "owner-input-4500b37a5ccb933e",
+      "objective": "Review structural map structural-map-mpyrvqjg",
+      "prompt": "Review the proposed domains, package graph, executable units, and Git authority before Guildhall uses this map for routing.",
+      "helperText": "Reason: owner_review_required_before_routing_truth\nTargets: cross-cutting:accessibility, cross-cutting:node-copy-reduction, cross-cutting:parser-parity, domain:compat, domain:config, domain:content, domain:core, domain:css, domain:docs, domain:extension, domain:fns, domain:jess, domain:js, domain:less, domain:modules, domain:parser, domain:pipe, domain:plugin, domain:resolver, domain:scss, domain:service, domain:shared",
+      "followUpDepth": 0,
+      "localTurns": [],
+      "status": "active"
+    }
+  ],
+  "acceptedState": {
+    "facts": [],
+    "decisions": [],
+    "leverUpdates": [],
+    "settingUpdates": [],
+    "taskDrafts": [],
+    "unresolvedForks": [],
+    "discardedResponses": []
+  },
+  "pendingActions": [],
+  "appliedActionIds": [],
+  "transitionReceipts": [
+    {
+      "machineId": "bounded-chat",
+      "machineVersion": 1,
+      "commandId": "create:bc-jess-structural_review-8c11fc652d-2026-06-04T00-44-08-860Z:wait-for-owner",
+      "entityId": "bc-jess-structural_review-8c11fc652d-2026-06-04T00-44-08-860Z",
+      "from": "active",
+      "event": "wait_for_owner",
+      "to": "waiting_for_owner",
+      "actor": "system:bounded-chat",
+      "evidenceRefs": [
+        "source:structural-map:structural-map-mpyrvqjg:confirm-domain-routing"
+      ],
+      "createdAt": "2026-06-04T00:44:08.860Z"
+    }
+  ],
+  "createdAt": "2026-06-04T00:44:08.860Z",
+  "updatedAt": "2026-06-04T00:44:08.860Z"
+}

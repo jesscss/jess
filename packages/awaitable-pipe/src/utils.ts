@@ -1,6 +1,8 @@
 export type MaybePromise<T> = T | Promise<T>;
 
-export function isThenable(x: unknown): x is Promise<unknown> {
+export function isThenable<T = unknown>(x: T | Promise<T>): x is Promise<T>;
+export function isThenable<T = unknown>(x: unknown): x is Promise<T>;
+export function isThenable<T = unknown>(x: unknown): x is Promise<T> {
   return !!x && (typeof x === 'object' || typeof x === 'function') && 'then' in x && typeof x.then === 'function';
 }
 

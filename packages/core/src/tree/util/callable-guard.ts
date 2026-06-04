@@ -1,5 +1,6 @@
 import type { Context } from '../../context.js';
 import { Bool } from '../bool.js';
+import { Condition } from '../condition.js';
 import type { Node } from '../node.js';
 import { F_STATIC } from '../node.js';
 import type { Rules } from '../rules.js';
@@ -14,7 +15,6 @@ import { ensureCallableOuterRulesSurface } from './callable-outer-rules.js';
 type PrepareCallableGuardStateOptions = {
   hasDefault: boolean;
   candidateGuard?: Node;
-  copyGuardForEval: (guard: Node) => Node;
   candidateParams?: Node;
   paramBindingsLength: number;
   outerRules?: Rules;
@@ -48,7 +48,6 @@ type EvaluateCallableGuardOptions = {
   hasDefault: boolean;
   guard?: Node;
   candidateGuard?: Node;
-  copyGuardForEval: (guard: Node) => Node;
   usesPreboundCallerGuardOuterRules: boolean;
   usesPreboundParamGuardOuterRules: boolean;
   outerRules?: Rules;
@@ -71,9 +70,8 @@ type EvaluateCallableGuardResult = {
 };
 
 export function prepareCallableGuardState({
-  hasDefault,
+  hasDefault: _hasDefault,
   candidateGuard,
-  copyGuardForEval,
   candidateParams,
   paramBindingsLength,
   outerRules,
@@ -84,11 +82,7 @@ export function prepareCallableGuardState({
   createOuterRules,
   rulesContextParent
 }: PrepareCallableGuardStateOptions): PrepareCallableGuardStateResult {
-  const guard: Node | undefined = hasDefault
-    ? candidateGuard
-    : candidateGuard
-      ? (candidateGuard.hasFlag(F_STATIC) ? candidateGuard : copyGuardForEval(candidateGuard))
-      : undefined;
+  const guard: Node | undefined = candidateGuard;
   const usesPreboundCallerGuardOuterRules = Boolean(
     guard
     && !guard.hasFlag(F_STATIC)
@@ -147,7 +141,6 @@ export async function evaluateCallableGuard({
   hasDefault,
   guard,
   candidateGuard,
-  copyGuardForEval,
   usesPreboundCallerGuardOuterRules,
   usesPreboundParamGuardOuterRules,
   outerRules,
@@ -175,7 +168,6 @@ export async function evaluateCallableGuard({
       } = await probeCallableDefaultGuard({
         context,
         candidateGuard,
-        copyGuardForEval,
         beforeEval: (probeGuard) => {
           if (
             !probeGuard.hasFlag(F_STATIC)
@@ -227,8 +219,13 @@ export async function evaluateCallableGuard({
     }
 
     context.isDefault = false;
-    const resolvedGuard = await guard.eval(context);
-    const passes = resolvedGuard instanceof Bool && resolvedGuard.value === true;
+    let passes: boolean;
+    if (guard instanceof Condition) {
+      passes = await guard.evaluateBoolean(context);
+    } else {
+      const resolvedGuard = await guard.eval(context);
+      passes = resolvedGuard instanceof Bool && resolvedGuard.value === true;
+    }
     return {
       passes,
       contributesDefNone: passes,

@@ -4,6 +4,7 @@ import { Rules } from './rules.js';
 import { Any } from './any.js';
 import { Num } from './number.js';
 import { Bool } from './bool.js';
+import { Condition } from './condition.js';
 
 import { VarDeclaration } from './declaration-var.js';
 import { isNode } from './util/is-node.js';
@@ -457,8 +458,14 @@ export class If extends Node<IfValue> {
         if (!branch.condition) {
           return branch.rules.eval(context);
         }
-        const condition = await branch.condition.eval(context);
-        if (condition instanceof Bool && condition.value === true) {
+        let conditionPasses: boolean;
+        if (branch.condition instanceof Condition) {
+          conditionPasses = await branch.condition.evaluateBoolean(context);
+        } else {
+          const condition = await branch.condition.eval(context);
+          conditionPasses = condition instanceof Bool && condition.value === true;
+        }
+        if (conditionPasses) {
           return branch.rules.eval(context);
         }
       }
@@ -476,8 +483,14 @@ export class If extends Node<IfValue> {
       if (!branch.condition) {
         return renderControlRules(branch.rules, context, buffer, options);
       }
-      const condition = await branch.condition.eval(context);
-      if (condition instanceof Bool && condition.value === true) {
+      let conditionPasses: boolean;
+      if (branch.condition instanceof Condition) {
+        conditionPasses = await branch.condition.evaluateBoolean(context);
+      } else {
+        const condition = await branch.condition.eval(context);
+        conditionPasses = condition instanceof Bool && condition.value === true;
+      }
+      if (conditionPasses) {
         return renderControlRules(branch.rules, context, buffer, options);
       }
     }
@@ -703,8 +716,14 @@ export class While extends Node<WhileValue> {
       let iterations = 0;
       await runWithRulesContext(context, stateRules, async () => {
         while (true) {
-          const condition = await this.value.condition.eval(context);
-          if (!(condition instanceof Bool && condition.value === true)) {
+          let conditionPasses: boolean;
+          if (this.value.condition instanceof Condition) {
+            conditionPasses = await this.value.condition.evaluateBoolean(context);
+          } else {
+            const condition = await this.value.condition.eval(context);
+            conditionPasses = condition instanceof Bool && condition.value === true;
+          }
+          if (!conditionPasses) {
             break;
           }
           iterations++;
@@ -746,8 +765,14 @@ export class While extends Node<WhileValue> {
     let output = '';
     await runWithRulesContext(context, stateRules, async () => {
       while (true) {
-        const condition = await this.value.condition.eval(context);
-        if (!(condition instanceof Bool && condition.value === true)) {
+        let conditionPasses: boolean;
+        if (this.value.condition instanceof Condition) {
+          conditionPasses = await this.value.condition.evaluateBoolean(context);
+        } else {
+          const condition = await this.value.condition.eval(context);
+          conditionPasses = condition instanceof Bool && condition.value === true;
+        }
+        if (!conditionPasses) {
           break;
         }
         iterations++;

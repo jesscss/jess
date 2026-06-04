@@ -1,8 +1,8 @@
 import type { Context } from '../context.js';
 import { getPrintOptions, prepareRenderPrintState, type PrintOptions } from './util/print.js';
-import { defineType, type Node } from './node.js';
+import { defineType, F_STATIC, type Node } from './node.js';
 import { Sequence } from './sequence.js';
-import { isThenable, serialForEach, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
@@ -19,24 +19,7 @@ import {
  * @todo - add more structure?
  */
 export class QueryCondition extends Sequence {
-  private resolveItems(context: Context): MaybePromise<Node[]> {
-    const values: Node[] = [];
-    const maybe = serialForEach(this.value.map((item, index) => [item, index] as const), ([item, index]) => {
-      const out = item.resolve(context);
-      if (isThenable(out)) {
-        return (out as Promise<Node>).then((resolved) => {
-          values[index] = resolved;
-        });
-      }
-      values[index] = out as Node;
-    });
-    if (isThenable(maybe)) {
-      return (maybe as Promise<void>).then(() => values);
-    }
-    return values;
-  }
-
-  private renderQueryConditionSyntax(value: Node[], options?: PrintOptions): string {
+  private renderQueryConditionSyntax(value: Node[], options?: PrintOptions, context?: Context): string | MaybePromise<string> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
@@ -46,25 +29,64 @@ export class QueryCondition extends Sequence {
       return '';
     }
 
-    const emitTrimmed = (node: Node) => {
+    const emitTrimmed = (node: Node): MaybePromise<string | void> => {
       const saved = options.suppressBoundaryTrivia;
       options.suppressBoundaryTrivia = 'pre';
+      const before = w.mark();
+      let asyncOut = false;
       try {
-        node.toString(options);
-      } finally {
+        const out = context
+          ? node.render(context, options)
+          : node.toString(options);
+        if (isThenable(out)) {
+          asyncOut = true;
+          return out.then(
+            (rendered) => {
+              if (w.mark() === before) {
+                w.add(rendered);
+              }
+              options.suppressBoundaryTrivia = saved;
+              return rendered;
+            },
+            (error) => {
+              options.suppressBoundaryTrivia = saved;
+              throw error;
+            }
+          );
+        }
+        if (typeof out === 'string' && w.mark() === before) {
+          w.add(out);
+        }
         options.suppressBoundaryTrivia = saved;
+        return out;
+      } finally {
+        if (!asyncOut) {
+          options.suppressBoundaryTrivia = saved;
+        }
       }
     };
 
-    emitTrimmed(value[0]!);
-
-    // Space out sub-nodes
-    for (let i = 1; i < length; i++) {
-      const node = value[i]!;
-      w.add(' ');
-      emitTrimmed(node);
+    for (let i = 0; i < length; i++) {
+      if (i > 0) {
+        w.add(' ');
+      }
+      const rendered = emitTrimmed(value[i]!);
+      if (isThenable(rendered)) {
+        return (rendered as Promise<string | void>).then(() => renderRest(i + 1));
+      }
     }
+
     return w.getSince(mark);
+
+    async function renderRest(start: number): Promise<string> {
+      for (let i = start; i < length; i++) {
+        if (i > 0) {
+          w.add(' ');
+        }
+        await emitTrimmed(value[i]!);
+      }
+      return w.getSince(mark);
+    }
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -76,20 +98,20 @@ export class QueryCondition extends Sequence {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const printOptions = buffer ? options : bufferOrOptions;
-    const resolved = this.resolveItems(context);
-    const write = (value: Node[]): string => {
-      const prepared = buffer
-        ? prepareBufferPrintState(context, options)
-        : prepareRenderPrintState(context, printOptions);
-      const out = this.renderQueryConditionSyntax(value, prepared);
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, printOptions);
+    const rendered = this.hasFlag(F_STATIC)
+      ? this.renderQueryConditionSyntax(this.value, prepared)
+      : this.renderQueryConditionSyntax(this.value, prepared, context);
+    if (isThenable(rendered)) {
       return buffer
-        ? writeRenderText(buffer, out)
-        : out;
-    };
-    if (isThenable(resolved)) {
-      return (resolved as Promise<Node[]>).then(write);
+        ? (rendered as Promise<string>).then(out => writeRenderText(buffer, out))
+        : rendered;
     }
-    return write(resolved as Node[]);
+    return buffer
+      ? writeRenderText(buffer, rendered as string)
+      : rendered as string;
   }
 }
 export const query = defineType(QueryCondition, 'QueryCondition', 'query');

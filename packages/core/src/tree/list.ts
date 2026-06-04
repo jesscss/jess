@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { defineType, F_STATIC, Node } from './node.js';
+import { defineType, F_MAY_ASYNC, F_STATIC, Node } from './node.js';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
@@ -8,7 +8,7 @@ import {
   emitCommentTriviaBetweenNodes,
   emitTriviaTokens
 } from './util/trivia.js';
-import { isThenable, pipe, type MaybePromise, serialForEach } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
@@ -16,6 +16,7 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
+import { evaluateNodeArrayMaybe, evaluateNodeArraySync } from './util/evaluate-node-array.js';
 
 function emitListItem<T extends Node>(
   item: T,
@@ -29,6 +30,63 @@ function emitListItem<T extends Node>(
   } finally {
     options.suppressBoundaryTrivia = saved;
   }
+}
+
+function emitRenderedListItem<T extends Node>(
+  item: T,
+  context: Context,
+  options: ReturnType<typeof getPrintOptions>,
+  suppressPre = false
+): void {
+  const saved = options.suppressBoundaryTrivia;
+  options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
+  try {
+    item.render(context, options);
+  } finally {
+    options.suppressBoundaryTrivia = saved;
+  }
+}
+
+function emitRenderedListItemMaybe<T extends Node>(
+  item: T,
+  context: Context,
+  options: ReturnType<typeof getPrintOptions>,
+  suppressPre = false
+): MaybePromise<void> {
+  const saved = options.suppressBoundaryTrivia;
+  options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
+  const renderNode = (node: Node): MaybePromise<void> => {
+    const rendered = node.render(context, options);
+    if (isThenable(rendered)) {
+      return rendered.then(() => undefined);
+    }
+  };
+  let rendered: MaybePromise<void>;
+  try {
+    if (item.hasFlag(F_MAY_ASYNC)) {
+      const resolved = item.resolve(context);
+      rendered = isThenable(resolved)
+        ? resolved.then(renderNode)
+        : renderNode(resolved);
+    } else {
+      rendered = renderNode(item);
+    }
+  } catch (error: unknown) {
+    options.suppressBoundaryTrivia = saved;
+    throw error;
+  }
+  if (isThenable(rendered)) {
+    return (rendered as Promise<void>).then(
+      () => {
+        options.suppressBoundaryTrivia = saved;
+      },
+      (error: unknown) => {
+        options.suppressBoundaryTrivia = saved;
+        throw error;
+      }
+    );
+  }
+  options.suppressBoundaryTrivia = saved;
 }
 
 export function renderListValueSyntax<T extends Node>(
@@ -73,6 +131,98 @@ export function renderListValueSyntax<T extends Node>(
   return w.getSince(mark);
 }
 
+function emitListSeparator(
+  prev: Node,
+  item: Node,
+  options: ReturnType<typeof getPrintOptions>,
+  sep: ListOptions['sep']
+): void {
+  emitCommentTriviaBetweenNodes(prev, item, options);
+  const leadingTrivia = options.trivia
+    ? consumeTrivia(options.trivia, item.location[0], 'before', options)
+    : undefined;
+  const leadingWhitespace = leadingTrivia?.[0]?.tokenType.name === 'WS'
+    ? leadingTrivia[0].image
+    : '';
+  const preserveLeadingWhitespace = /[\r\n]/.test(leadingWhitespace);
+  if (sep === '/') {
+    options.writer.add(preserveLeadingWhitespace ? ' /' : ' / ');
+  } else {
+    options.writer.add(preserveLeadingWhitespace ? sep : `${sep} `);
+  }
+  if (leadingTrivia) {
+    emitTriviaTokens(
+      leadingTrivia,
+      options,
+      { skipLeadingWhitespace: !preserveLeadingWhitespace }
+    );
+  }
+}
+
+function renderListValueDirect<T extends Node>(
+  context: Context,
+  value: T[],
+  options: PrintOptions,
+  sep: ListOptions['sep'] = ','
+): string {
+  const printOptions = getPrintOptions(options);
+  const w = printOptions.writer;
+  const mark = w.mark();
+  if (value.length === 0) {
+    return '';
+  }
+  let item = value[0]!;
+  emitRenderedListItem(item, context, printOptions);
+  for (let i = 1; i < value.length; i++) {
+    const prev = item;
+    item = value[i]!;
+    emitListSeparator(prev, item, printOptions, sep);
+    emitRenderedListItem(item, context, printOptions, true);
+  }
+  return w.getSince(mark);
+}
+
+function renderListValueDirectMaybe<T extends Node>(
+  context: Context,
+  value: T[],
+  options: PrintOptions,
+  sep: ListOptions['sep'] = ','
+): MaybePromise<string> {
+  const printOptions = getPrintOptions(options);
+  const w = printOptions.writer;
+  const mark = w.mark();
+  if (value.length === 0) {
+    return '';
+  }
+
+  const renderRest = async (start: number, previous: T): Promise<string> => {
+    let item = previous;
+    for (let i = start; i < value.length; i++) {
+      const prev = item;
+      item = value[i]!;
+      emitListSeparator(prev, item, printOptions, sep);
+      await emitRenderedListItemMaybe(item, context, printOptions, true);
+    }
+    return w.getSince(mark);
+  };
+
+  let item = value[0]!;
+  const first = emitRenderedListItemMaybe(item, context, printOptions);
+  if (isThenable(first)) {
+    return (first as Promise<void>).then(() => renderRest(1, item));
+  }
+  for (let i = 1; i < value.length; i++) {
+    const prev = item;
+    item = value[i]!;
+    emitListSeparator(prev, item, printOptions, sep);
+    const rendered = emitRenderedListItemMaybe(item, context, printOptions, true);
+    if (isThenable(rendered)) {
+      return (rendered as Promise<void>).then(() => renderRest(i + 1, item));
+    }
+  }
+  return w.getSince(mark);
+}
+
 export type ListOptions = {
   /**
    * Lists can be separated by comma, semi-colon,
@@ -103,8 +253,12 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   private deriveAdditionList(): List<Node> {
+    const values = new Array<Node>(this.value.length);
+    for (let i = 0; i < this.value.length; i++) {
+      values[i] = copyWithReusableLeaves(this.value[i]!);
+    }
     return new List<Node>(
-      this.value.map(value => copyWithReusableLeaves(value)),
+      values,
       this._options ? { ...this._options } : undefined,
       this.location.length ? this.location : undefined,
       this.treeContext
@@ -115,21 +269,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return renderListValueSyntax(value, getPrintOptions(options), this._options?.sep ?? ',');
   }
 
-  private resolveItems(context: Context): MaybePromise<Node[]> {
-    const values = new Array<Node>(this.value.length);
-    const maybe = serialForEach(this.value.map((item, index) => [item, index] as const), ([item, index]) => {
-      const out = item.resolve(context);
-      if (isThenable(out)) {
-        return (out as Promise<Node>).then((resolved) => {
-          values[index] = resolved;
-        });
-      }
-      values[index] = out as Node;
-    });
-    if (isThenable(maybe)) {
-      return (maybe as Promise<void>).then(() => values);
-    }
-    return values;
+  private evaluateItems(context: Context): MaybePromise<Node[]> {
+    return this.hasFlag(F_MAY_ASYNC)
+      ? evaluateNodeArrayMaybe(context, this.value)
+      : evaluateNodeArraySync(context, this.value);
   }
 
   get length() {
@@ -156,10 +299,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     if (this.hasFlag(F_STATIC)) {
       return this.renderResolvedListValue(context, this.value, bufferOrOptions, options);
     }
-    return pipe(
-      () => this.resolveItems(context),
-      value => this.renderResolvedListValue(context, value, bufferOrOptions, options)
-    );
+    if (!this.hasFlag(F_MAY_ASYNC)) {
+      return this.renderDirectListValue(context, bufferOrOptions, options);
+    }
+    return this.renderDirectListValueMaybe(context, bufferOrOptions, options);
   }
 
   override compare(other: Node) {
@@ -183,7 +326,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     }
     const newList = this.deriveAdditionList();
     if (b instanceof List) {
-      newList.value.push(...b.value.map(value => copyWithReusableLeaves(value)));
+      for (let i = 0; i < b.value.length; i++) {
+        newList.value.push(copyWithReusableLeaves(b.value[i]!));
+      }
     } else {
       newList.value.push(copyWithReusableLeaves(b));
     }
@@ -191,7 +336,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return this.resolveValue(context);
+    return this.evalNode(context);
   }
 
   private renderResolvedListValue(
@@ -210,11 +355,44 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       : out;
   }
 
-  private resolveValue(context: Context): MaybePromise<List<Node>> {
+  private renderDirectListValue(
+    context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const out = renderListValueDirect(context, this.value, prepared, this._options?.sep ?? ',');
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
+  }
+
+  private renderDirectListValueMaybe(
+    context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): MaybePromise<string> {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const out = renderListValueDirectMaybe(context, this.value, prepared, this._options?.sep ?? ',');
+    if (isThenable(out)) {
+      return (out as Promise<string>).then(rendered => buffer ? writeRenderText(buffer, rendered) : rendered);
+    }
+    return buffer
+      ? writeRenderText(buffer, out as string)
+      : out;
+  }
+
+  protected override evalNode(context: Context): MaybePromise<List<Node>> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
-    const values = this.resolveItems(context);
+    const values = this.evaluateItems(context);
     if (isThenable(values)) {
       return (values as Promise<Node[]>).then((resolvedValues) => {
         const unchanged = resolvedValues.every((node, index) => node === this.value[index]);
@@ -224,9 +402,6 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     const unchanged = values.every((node, index) => node === this.value[index]);
     return unchanged ? this : this.withResolvedValue(values);
   }
-
-  /** @todo? Lists should collapse nested lists? */
-  // override async evalNode(context: Context): Promise<List<T>>
 
   /** @todo move to ToCssVisitor */
   // toCSS(context: Context, out: OutputCollector) {

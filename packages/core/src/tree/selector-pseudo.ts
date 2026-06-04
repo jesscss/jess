@@ -9,7 +9,7 @@ import { N } from './node-type.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import type { BitSetLibrary } from './util/bitset.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 function normalizeSelectorArg(text: string): string {
   return text.replace(/\n\s*/g, ' ').trim();
@@ -235,33 +235,48 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     if (!currentArg) {
       return this;
     }
-    return pipe(
-      () => {
-        context.parenFrames.push(false);
-        return currentArg.eval(context);
-      },
-      (evaluatedArg) => {
-        context.parenFrames.pop();
-        if (evaluatedArg === currentArg) {
-          return this;
-        }
-        const node = createEvaluatedPseudoSelector(this, evaluatedArg);
-        if (
-          this.generated
-          && (
-            isNode(currentArg, N.SelectorList)
-            || isNode(evaluatedArg, N.SelectorList)
-            || (evaluatedArg !== currentArg && isNode(evaluatedArg, N.Selector))
-          )
-        ) {
-          setGeneratedPseudoPlacementOverride(node, {
-            omitWrapperForSingleSelectorList: true
-          });
-        }
-        attachSelectorBitLibrary(node, context.selectorBits);
-        return node;
+    context.parenFrames.push(false);
+    try {
+      const evaluatedArg = currentArg.eval(context);
+      if (isThenable(evaluatedArg)) {
+        return (evaluatedArg as Promise<Node>).then(
+          (arg) => {
+            context.parenFrames.pop();
+            return this.finalizeEvaluatedArg(context, currentArg, arg);
+          },
+          (error) => {
+            context.parenFrames.pop();
+            throw error;
+          }
+        );
       }
-    );
+      context.parenFrames.pop();
+      return this.finalizeEvaluatedArg(context, currentArg, evaluatedArg as Node);
+    } catch (error) {
+      context.parenFrames.pop();
+      throw error;
+    }
+  }
+
+  private finalizeEvaluatedArg(context: Context, currentArg: Node, evaluatedArg: Node): PseudoSelector {
+    if (evaluatedArg === currentArg) {
+      return this;
+    }
+    const node = createEvaluatedPseudoSelector(this, evaluatedArg);
+    if (
+      this.generated
+      && (
+        isNode(currentArg, N.SelectorList)
+        || isNode(evaluatedArg, N.SelectorList)
+        || (evaluatedArg !== currentArg && isNode(evaluatedArg, N.Selector))
+      )
+    ) {
+      setGeneratedPseudoPlacementOverride(node, {
+        omitWrapperForSingleSelectorList: true
+      });
+    }
+    attachSelectorBitLibrary(node, context.selectorBits);
+    return node;
   }
 
   override resolve(context: Context): MaybePromise<PseudoSelector> {

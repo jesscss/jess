@@ -1,20 +1,23 @@
-import { Node, F_STATIC, defineType } from './node.js';
+import { Node, F_MAY_ASYNC, F_STATIC, defineType } from './node.js';
 import { Nil } from './nil.js';
 import { List } from './list.js';
 import type { Context } from '../context.js';
 import { compareNodeArray } from './util/compare.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
   type RenderBuffer,
-  writeRenderText,
-  writeRenderTextResult
+  writeRenderText
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
+import {
+  evaluateNodeArrayMaybe,
+  evaluateNodeArraySync
+} from './util/evaluate-node-array.js';
 
 export type SequenceOptions = {
   /**
@@ -34,6 +37,43 @@ function hasNonWhitespaceTrivia(tokens: ReturnType<NonNullable<PrintOptions['tri
   return Boolean(tokens?.some(token => token.tokenType.name !== 'WS'));
 }
 
+function emitRenderedSequenceNode(
+  node: Node,
+  context: Context,
+  options: ReturnType<typeof getPrintOptions>
+): void {
+  node.render(context, options);
+}
+
+function emitRenderedSequenceNodeMaybe(
+  node: Node,
+  context: Context,
+  options: ReturnType<typeof getPrintOptions>
+): MaybePromise<void> {
+  const renderNode = (renderedNode: Node): MaybePromise<void> => {
+    const rendered = renderedNode.render(context, options);
+    if (isThenable(rendered)) {
+      return rendered.then(() => undefined);
+    }
+  };
+  if (node.hasFlag(F_MAY_ASYNC)) {
+    const resolved = node.resolve(context);
+    return isThenable(resolved)
+      ? resolved.then(renderNode)
+      : renderNode(resolved);
+  }
+  return renderNode(node);
+}
+
+function writeRenderedSequenceNode(
+  buffer: RenderBuffer,
+  rendered: MaybePromise<string>
+): MaybePromise<string> {
+  return isThenable(rendered)
+    ? (rendered as Promise<string>).then(out => writeRenderText(buffer, out))
+    : writeRenderText(buffer, rendered as string);
+}
+
 /**
  * A continuous collection of nodes. Historically in Less,
  * these were termed "expressions", but in computer science,
@@ -51,41 +91,60 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   }
 
   private deriveAdditionSequence(): Sequence {
+    const values = new Array<Node>(this.value.length);
+    for (let i = 0; i < this.value.length; i++) {
+      values[i] = copyWithReusableLeaves(this.value[i]!);
+    }
     return new Sequence(
-      this.value.map(value => copyWithReusableLeaves(value)),
+      values,
       this._options ? { ...this._options } : undefined,
       this.location.length ? this.location : undefined,
       this.treeContext
     ).inherit(this);
   }
 
-  private evaluateValues(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Node[]> {
-    const values = new Array<Node>(this.value.length);
-    const maybe = serialForEach(this.value.map((n, i) => [n, i] as const), ([n, i]) => {
-      const out = mode === 'eval' ? n.eval(context) : n.resolve(context);
-      if (isThenable(out)) {
-        return (out as Promise<Node>).then((res) => {
-          values[i] = res;
-        });
-      }
-      values[i] = out as Node;
-    });
-    if (isThenable(maybe)) {
-      return (maybe as Promise<void>).then(() => values);
-    }
-    return values;
+  private evaluateValues(context: Context): MaybePromise<Node[]> {
+    return this.hasFlag(F_MAY_ASYNC)
+      ? evaluateNodeArrayMaybe(context, this.value)
+      : evaluateNodeArraySync(context, this.value);
   }
 
   private finalizeValues(values: Node[]): Node {
-    const filtered = values.filter(n => n && !(n instanceof Nil));
-    if (filtered.length === 1 && !this._options?.preserveWhitespace) {
-      return filtered[0]!;
+    let count = 0;
+    let only: Node | undefined;
+    let hasNil = false;
+    let unchanged = values.length === this.value.length;
+    for (let i = 0; i < values.length; i++) {
+      const node = values[i]!;
+      if (!node || node instanceof Nil) {
+        hasNil = true;
+        unchanged = false;
+        continue;
+      }
+      count++;
+      only = node;
+      if (unchanged && node !== this.value[i]) {
+        unchanged = false;
+      }
     }
-    const unchanged = (
-      filtered.length === this.value.length
-      && filtered.every((node, index) => node === this.value[index])
-    );
-    return unchanged ? this : this.withValue(filtered);
+    if (count === 1 && !this._options?.preserveWhitespace) {
+      return only!;
+    }
+    if (unchanged) {
+      return this;
+    }
+    if (!hasNil) {
+      return this.withValue(values);
+    }
+    const filtered = new Array<Node>(count);
+    let outIndex = 0;
+    for (let i = 0; i < values.length; i++) {
+      const node = values[i]!;
+      if (node && !(node instanceof Nil)) {
+        filtered[outIndex++] = node;
+      }
+    }
+    return this.withValue(filtered);
   }
 
   override compare(other: Node) {
@@ -168,6 +227,178 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return w.getSince(mark);
   }
 
+  private renderSequenceDirect(context: Context, options?: PrintOptions): string {
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer;
+    const mark = w.mark();
+    let prev: Node | undefined;
+
+    if (printOptions.inCustom) {
+      for (let i = 0; i < this.value.length; i++) {
+        const node = this.value[i]!;
+        if (node instanceof Nil) {
+          continue;
+        }
+        emitRenderedSequenceNode(node, context, printOptions);
+      }
+      return w.getSince(mark);
+    }
+
+    for (let i = 0; i < this.value.length; i++) {
+      const node = this.value[i]!;
+      if (node instanceof Nil) {
+        continue;
+      }
+      if (prev) {
+        const prevLastChar = w.lastChar();
+        const prevEndsWithSpace = prevLastChar === ' ';
+        const sourceTrivia = (
+          printOptions.trivia
+          && prev.treeContext?.opts?.trivia === printOptions.trivia
+          && node.treeContext?.opts?.trivia === printOptions.trivia
+        );
+        const trivia = sourceTrivia ? printOptions.trivia : undefined;
+        const hasTrivia = Boolean(
+          trivia
+          && (
+            hasNonWhitespaceTrivia(trivia.lookup(prev.location[3], 'after'))
+            || hasNonWhitespaceTrivia(trivia.lookup(node.location[0], 'before'))
+          )
+        );
+        const prevEnd = prev.location[3];
+        const nodeStart = node.location[0];
+        const noSep = Boolean(
+          sourceTrivia
+          && prevEnd !== undefined
+          && nodeStart !== undefined
+          && (prevEnd === nodeStart || prevEnd + 1 === nodeStart)
+        );
+        const needsMergeGuard = noSep && isIdentifierChar(prevLastChar);
+
+        if (
+          !prevEndsWithSpace
+          && !hasTrivia
+          && (!noSep || needsMergeGuard)
+        ) {
+          w.queueSpacer(' ', needsMergeGuard
+            ? nextText => /^[A-Za-z0-9_-]/u.test(nextText)
+            : undefined);
+        }
+      }
+      emitRenderedSequenceNode(node, context, printOptions);
+      prev = node;
+    }
+
+    return w.getSince(mark);
+  }
+
+  private renderSequenceDirectMaybe(context: Context, options?: PrintOptions): MaybePromise<string> {
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer;
+    const mark = w.mark();
+
+    const renderCustomRest = async (start: number): Promise<string> => {
+      for (let i = start; i < this.value.length; i++) {
+        const node = this.value[i]!;
+        if (node instanceof Nil) {
+          continue;
+        }
+        await emitRenderedSequenceNodeMaybe(node, context, printOptions);
+      }
+      return w.getSince(mark);
+    };
+
+    if (printOptions.inCustom) {
+      for (let i = 0; i < this.value.length; i++) {
+        const node = this.value[i]!;
+        if (node instanceof Nil) {
+          continue;
+        }
+        const rendered = emitRenderedSequenceNodeMaybe(node, context, printOptions);
+        if (isThenable(rendered)) {
+          return (rendered as Promise<void>).then(() => renderCustomRest(i + 1));
+        }
+      }
+      return w.getSince(mark);
+    }
+
+    const renderRest = async (start: number, previous: Node | undefined): Promise<string> => {
+      let prev = previous;
+      for (let i = start; i < this.value.length; i++) {
+        const node = this.value[i]!;
+        if (node instanceof Nil) {
+          continue;
+        }
+        if (prev) {
+          this.emitDirectSeparator(prev, node, printOptions);
+        }
+        await emitRenderedSequenceNodeMaybe(node, context, printOptions);
+        prev = node;
+      }
+      return w.getSince(mark);
+    };
+
+    let prev: Node | undefined;
+    for (let i = 0; i < this.value.length; i++) {
+      const node = this.value[i]!;
+      if (node instanceof Nil) {
+        continue;
+      }
+      if (prev) {
+        this.emitDirectSeparator(prev, node, printOptions);
+      }
+      const rendered = emitRenderedSequenceNodeMaybe(node, context, printOptions);
+      if (isThenable(rendered)) {
+        return (rendered as Promise<void>).then(() => renderRest(i + 1, node));
+      }
+      prev = node;
+    }
+
+    return w.getSince(mark);
+  }
+
+  private emitDirectSeparator(
+    prev: Node,
+    node: Node,
+    printOptions: ReturnType<typeof getPrintOptions>
+  ): void {
+    const w = printOptions.writer;
+    const prevLastChar = w.lastChar();
+    const prevEndsWithSpace = prevLastChar === ' ';
+    const sourceTrivia = (
+      printOptions.trivia
+      && prev.treeContext?.opts?.trivia === printOptions.trivia
+      && node.treeContext?.opts?.trivia === printOptions.trivia
+    );
+    const trivia = sourceTrivia ? printOptions.trivia : undefined;
+    const hasTrivia = Boolean(
+      trivia
+      && (
+        hasNonWhitespaceTrivia(trivia.lookup(prev.location[3], 'after'))
+        || hasNonWhitespaceTrivia(trivia.lookup(node.location[0], 'before'))
+      )
+    );
+    const prevEnd = prev.location[3];
+    const nodeStart = node.location[0];
+    const noSep = Boolean(
+      sourceTrivia
+      && prevEnd !== undefined
+      && nodeStart !== undefined
+      && (prevEnd === nodeStart || prevEnd + 1 === nodeStart)
+    );
+    const needsMergeGuard = noSep && isIdentifierChar(prevLastChar);
+
+    if (
+      !prevEndsWithSpace
+      && !hasTrivia
+      && (!noSep || needsMergeGuard)
+    ) {
+      w.queueSpacer(' ', needsMergeGuard
+        ? nextText => /^[A-Za-z0-9_-]/u.test(nextText)
+        : undefined);
+    }
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     return this.renderSequenceSyntax(this.value, options);
   }
@@ -178,10 +409,10 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     if (this.hasFlag(F_STATIC)) {
       return this.renderResolvedValue(context, this.value, bufferOrOptions, options);
     }
-    return pipe(
-      () => this.evaluateValues(context, 'resolve'),
-      value => this.renderResolvedValue(context, value, bufferOrOptions, options)
-    );
+    if (!this.hasFlag(F_MAY_ASYNC)) {
+      return this.renderDirectValue(context, bufferOrOptions, options);
+    }
+    return this.renderDirectValueMaybe(context, bufferOrOptions, options);
   }
 
   private renderResolvedValue(
@@ -193,22 +424,77 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     if (value instanceof Node) {
       return buffer
-        ? writeRenderTextResult(buffer, value.render(context, options))
+        ? writeRenderedSequenceNode(buffer, value.render(context, options))
         : value.render(context, bufferOrOptions);
     }
-    const filtered = value.filter(n => n && !(n instanceof Nil));
-    if (filtered.length === 1 && !this._options?.preserveWhitespace) {
-      const node = filtered[0]!;
+    let count = 0;
+    let only: Node | undefined;
+    let hasNil = false;
+    for (let i = 0; i < value.length; i++) {
+      const node = value[i]!;
+      if (!node || node instanceof Nil) {
+        hasNil = true;
+        continue;
+      }
+      count++;
+      only = node;
+    }
+    if (count === 1 && !this._options?.preserveWhitespace) {
+      const node = only!;
       return buffer
-        ? writeRenderTextResult(buffer, node.render(context, options))
+        ? writeRenderedSequenceNode(buffer, node.render(context, options))
         : node.render(context, bufferOrOptions);
+    }
+    let renderValue = value;
+    if (hasNil) {
+      renderValue = new Array<Node>(count);
+      let outIndex = 0;
+      for (let i = 0; i < value.length; i++) {
+        const node = value[i]!;
+        if (node && !(node instanceof Nil)) {
+          renderValue[outIndex++] = node;
+        }
+      }
     }
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const out = this.renderSequenceSyntax(filtered, prepared);
+    const out = this.renderSequenceSyntax(renderValue, prepared);
     return buffer
       ? writeRenderText(buffer, out)
+      : out;
+  }
+
+  private renderDirectValue(
+    context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const out = this.renderSequenceDirect(context, prepared);
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
+  }
+
+  private renderDirectValueMaybe(
+    context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): MaybePromise<string> {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const out = this.renderSequenceDirectMaybe(context, prepared);
+    if (isThenable(out)) {
+      return (out as Promise<string>).then(rendered => buffer ? writeRenderText(buffer, rendered) : rendered);
+    }
+    return buffer
+      ? writeRenderText(buffer, out as string)
       : out;
   }
 
@@ -218,13 +504,16 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     const newSequence = this.deriveAdditionSequence();
     if (b instanceof List) {
-      return new List([
-        newSequence,
-        ...b.value.map(value => copyWithReusableLeaves(value))
-      ]).inherit(this);
+      const values = new Array<Node>(b.value.length + 1);
+      values[0] = newSequence;
+      for (let i = 0; i < b.value.length; i++) {
+        values[i + 1] = copyWithReusableLeaves(b.value[i]!);
+      }
+      return new List(values).inherit(this);
     } else if (isNode(b, N.Sequence)) {
-      const values = b.value.map(v => copyWithReusableLeaves(v));
-      newSequence.value.push(...values);
+      for (let i = 0; i < b.value.length; i++) {
+        newSequence.value.push(copyWithReusableLeaves(b.value[i]!));
+      }
     } else {
       b = copyWithReusableLeaves(b);
       newSequence.value.push(b);
@@ -249,24 +538,17 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
-    return pipe(
-      () => this.evaluateValues(context, 'eval'),
-      values => this.finalizeValues(values)
-    );
+    if (!this.hasFlag(F_MAY_ASYNC)) {
+      return this.finalizeValues(evaluateNodeArraySync(context, this.value));
+    }
+    const values = this.evaluateValues(context);
+    return isThenable(values)
+      ? (values as Promise<Node[]>).then(resolved => this.finalizeValues(resolved))
+      : this.finalizeValues(values as Node[]);
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return this.resolveValue(context);
-  }
-
-  private resolveValue(context: Context): MaybePromise<Node> {
-    if (this.hasFlag(F_STATIC)) {
-      return this;
-    }
-    return pipe(
-      () => this.evaluateValues(context, 'resolve'),
-      values => this.finalizeValues(values)
-    );
+    return this.evalNode(context);
   }
 
   /** @todo move to visitors */

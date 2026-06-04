@@ -2,7 +2,7 @@ import { type Context } from '../context.js';
 import { F_NON_STATIC, F_VISIBLE, Node, defineType, type NodeLocation, type TreeContext } from './node.js';
 import { Bool, createPublicBool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   writeRenderText,
@@ -67,15 +67,19 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
-    return pipe(
-      () => this.evaluateConditionBoolean(context, 'resolve'),
-      (value) => {
-        const out = String(value);
+    const value = this.evaluateBoolean(context);
+    if (isThenable(value)) {
+      return (value as Promise<boolean>).then((resolved) => {
+        const out = String(resolved);
         return isRenderBuffer(bufferOrOptions)
           ? writeRenderText(bufferOrOptions, out)
           : out;
-      }
-    );
+      });
+    }
+    const out = String(value as boolean);
+    return isRenderBuffer(bufferOrOptions)
+      ? writeRenderText(bufferOrOptions, out)
+      : out;
   }
 
   static getBoolValue(node: ConditionResultValue, negated: boolean): boolean {
@@ -106,56 +110,59 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     }
   }
 
-  private evaluateConditionBoolean(context: Context, mode: 'eval' | 'resolve'): MaybePromise<boolean> {
-    let [left, op, right] = this.value;
-    let negated = this._options?.negate === true;
-    const normalizeDefaultCall = (node: Node): ConditionResultValue => getDefaultGuardValue(node, context) ?? node;
-
-    return pipe(
-      () => mode === 'eval' ? left.eval(context) : left.resolve(context),
-      (a) => {
-        a = normalizeDefaultCall(a);
+  evaluateBoolean(context: Context): MaybePromise<boolean> {
+    const [left, op, right] = this.value;
+    const negated = this._options?.negate === true;
+    const leftResult = left.eval(context);
+    if (isThenable(leftResult)) {
+      return (leftResult as Promise<Node>).then((resolvedLeft) => {
+        const a = getDefaultGuardValue(resolvedLeft, context) ?? resolvedLeft;
         if (!right) {
-          // Defer unary coercion to the final stage to avoid double-negation.
-          return a;
-        }
-        return a;
-      },
-      (a: Node | ConditionResultValue) => {
-        if (!right) {
-          return [a];
-        }
-        let b = mode === 'eval' ? right.eval(context) : right.resolve(context);
-        if (isThenable(b)) {
-          return (b as Promise<Node>).then(bb => [a, bb] as const);
-        }
-        return [a, b];
-      },
-      ([a, b]: readonly [ConditionResultValue, Node?]) => {
-        if (!b) {
           return Condition.getBoolValue(a, negated);
         }
-        const leftValue = a instanceof Node ? normalizeDefaultCall(a) : a;
-        const rightValue = normalizeDefaultCall(b);
-        let result = Condition.getResult(leftValue, rightValue, op!);
+        const rightResult = right.eval(context);
+        if (isThenable(rightResult)) {
+          return (rightResult as Promise<Node>).then((resolvedRight) => {
+            const b = getDefaultGuardValue(resolvedRight, context) ?? resolvedRight;
+            const result = Condition.getResult(a, b, op!);
+            return negated ? !result : result;
+          });
+        }
+        const b = getDefaultGuardValue(rightResult, context) ?? rightResult;
+        const result = Condition.getResult(a, b, op!);
         return negated ? !result : result;
-      }
-    );
+      });
+    }
+    const a = getDefaultGuardValue(leftResult, context) ?? leftResult;
+    if (!right) {
+      return Condition.getBoolValue(a, negated);
+    }
+    const rightResult = right.eval(context);
+    if (isThenable(rightResult)) {
+      return (rightResult as Promise<Node>).then((resolvedRight) => {
+        const b = getDefaultGuardValue(resolvedRight, context) ?? resolvedRight;
+        const result = Condition.getResult(a, b, op!);
+        return negated ? !result : result;
+      });
+    }
+    const b = getDefaultGuardValue(rightResult, context) ?? rightResult;
+    const result = Condition.getResult(a, b, op!);
+    return negated ? !result : result;
   }
 
-  private evaluateCondition(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Bool> {
-    return pipe(
-      () => this.evaluateConditionBoolean(context, mode),
-      value => createPublicBool(value)
-    );
+  private evaluateCondition(context: Context): MaybePromise<Bool> {
+    const value = this.evaluateBoolean(context);
+    return isThenable(value)
+      ? (value as Promise<boolean>).then(resolved => createPublicBool(resolved))
+      : createPublicBool(value as boolean);
   }
 
   override evalNode(context: Context): MaybePromise<Bool> {
-    return this.evaluateCondition(context, 'eval');
+    return this.evaluateCondition(context);
   }
 
   override resolve(context: Context): MaybePromise<Bool> {
-    return this.evaluateCondition(context, 'resolve');
+    return this.evaluateCondition(context);
   }
 }
 export const condition = defineType(Condition, 'Condition');

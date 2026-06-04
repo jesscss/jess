@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
-import { any, Bool, call, list, num, Paren, paren, ref, rules, Rules, vardecl } from '../index.js';
+import { any, Bool, call, list, Node, num, Paren, paren, ref, rules, Rules, vardecl } from '../index.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
@@ -130,6 +130,24 @@ describe('Paren', () => {
     }
   });
 
+  it('renders sync paren values without may-async continuation scaffolding', () => {
+    const value = any('foo');
+    const originalResolve = value.resolve;
+    value.resolve = function resolveSyncOnly(
+      this: typeof value,
+      renderContext: Context
+    ) {
+      const out = originalResolve.call(this, renderContext);
+      if (out instanceof Promise) {
+        throw new Error('Paren.render should keep sync values on the sync path');
+      }
+      return out;
+    };
+    const parenNode = paren(value);
+
+    expect(parenNode.render(context)).toBe('(foo)');
+  });
+
   it('renders default() values without allocating temporary Bool nodes', async () => {
     const originalToTrimmedString = Bool.prototype.toTrimmedString;
     let boolStringCalls = 0;
@@ -254,5 +272,27 @@ describe('Paren', () => {
 
     expect(resolved.toTrimmedString()).toBe('7, 8, 9');
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('renders escaped semicolon lists as commas without replacement list inheritance', () => {
+    const node = paren(
+      list([num(7), num(8), num(9)], { sep: ';' }),
+      { escaped: true }
+    );
+    const descriptor = Object.getOwnPropertyDescriptor(Node.prototype, 'inherit');
+    if (!descriptor) {
+      throw new Error('Expected Node.inherit for render materialization proof');
+    }
+    Object.defineProperty(Node.prototype, 'inherit', {
+      ...descriptor,
+      value: () => {
+        throw new Error('escaped list render should not materialize a replacement List');
+      }
+    });
+    try {
+      expect(node.render(context)).toBe('7, 8, 9');
+    } finally {
+      Object.defineProperty(Node.prototype, 'inherit', descriptor);
+    }
   });
 });

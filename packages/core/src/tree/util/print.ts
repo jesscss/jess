@@ -74,6 +74,8 @@ type RestorablePrintStateKey =
   | 'suppressBoundaryTrivia'
   | 'writer';
 
+const DEFAULT_SPACER_SHOULD_ADD = (nextText: string): boolean => !/^[ \t\r\n\f]/u.test(nextText);
+
 function isTriviaMap(value: unknown): value is TriviaMap {
   return Boolean(
     value
@@ -331,12 +333,16 @@ export class OutputWriter implements OutputWriter {
   private _line = 0;
   private _column = 0;
   private _segments: SourceSegment[] = [];
-  private _positions: Array<{ line: number; column: number; segments: number; length: number }> = [];
+  private _posLine: number[] = [];
+  private _posColumn: number[] = [];
+  private _posSegments: number[] = [];
+  private _posLength: number[] = [];
   /** Diagnostic: remember the origin that last wrote a trailing newline */
   private _lastNewlineOrigin: unknown = undefined;
   /** Store segments from the most recent capture for merging when content is added back */
   private _capturedSegments: SourceSegment[] | null = null;
-  private _queuedSpacer: { text: string; shouldAdd: (nextText: string) => boolean } | null = null;
+  private _queuedSpacerText = '';
+  private _queuedSpacerShouldAdd: ((nextText: string) => boolean) | undefined;
 
   get line() {
     return this._line;
@@ -357,13 +363,15 @@ export class OutputWriter implements OutputWriter {
     if (!text) {
       return;
     }
-    const queuedSpacer = this._queuedSpacer;
-    if (queuedSpacer) {
-      this._queuedSpacer = null;
-      if (queuedSpacer.shouldAdd(text)) {
-        this.addSpacer(queuedSpacer.text);
+    const queuedSpacerText = this._queuedSpacerText;
+    if (queuedSpacerText) {
+      const shouldAdd = this._queuedSpacerShouldAdd ?? DEFAULT_SPACER_SHOULD_ADD;
+      this.clearQueuedSpacer();
+      if (shouldAdd(text)) {
+        this.addSpacer(queuedSpacerText);
       }
     }
+    const chunkIndex = this.chunks.length;
     this.chunks.push(text);
     this._length += text.length;
 
@@ -401,7 +409,7 @@ export class OutputWriter implements OutputWriter {
     let i = text.indexOf('\n');
     if (i === -1) {
       this._column += text.length;
-      this._positions.push({ line: this._line, column: this._column, segments: this._segments.length, length: this._length });
+      this.recordPosition(chunkIndex);
       // Clear captured segments if we added content without origin (normal add, not merging captured content)
       if (!originParam) {
         this._capturedSegments = null;
@@ -420,7 +428,7 @@ export class OutputWriter implements OutputWriter {
       i = next;
     }
     this._column = text.length - (i + 1);
-    this._positions.push({ line: this._line, column: this._column, segments: this._segments.length, length: this._length });
+    this.recordPosition(chunkIndex);
     // Clear captured segments if we added content without origin
     if (!originParam) {
       this._capturedSegments = null;
@@ -436,11 +444,12 @@ export class OutputWriter implements OutputWriter {
     this._capturedSegments = pendingSegments;
   }
 
-  queueSpacer(text: string, shouldAdd: (nextText: string) => boolean = nextText => !/^[ \t\r\n\f]/u.test(nextText)): void {
+  queueSpacer(text: string, shouldAdd: (nextText: string) => boolean = DEFAULT_SPACER_SHOULD_ADD): void {
     if (!text) {
       return;
     }
-    this._queuedSpacer = { text, shouldAdd };
+    this._queuedSpacerText = text;
+    this._queuedSpacerShouldAdd = shouldAdd;
   }
 
   mark(): number {
@@ -451,7 +460,18 @@ export class OutputWriter implements OutputWriter {
     if (mark < 0 || mark > this.chunks.length) {
       return '';
     }
-    return this.chunks.slice(mark).join('');
+    const length = this.chunks.length;
+    if (mark === length) {
+      return '';
+    }
+    if (mark === length - 1) {
+      return this.chunks[mark] ?? '';
+    }
+    let out = '';
+    for (let i = mark; i < length; i++) {
+      out += this.chunks[i] ?? '';
+    }
+    return out;
   }
 
   hasContentSince(mark: number): boolean {
@@ -521,7 +541,7 @@ export class OutputWriter implements OutputWriter {
     if (mark < 0 || mark > this.chunks.length) {
       return;
     }
-    const segmentMark = mark > 0 ? (this._positions[mark - 1]?.segments ?? 0) : 0;
+    const segmentMark = mark > 0 ? (this._posSegments[mark - 1] ?? 0) : 0;
     const segmentsCreated = this._segments.slice(segmentMark);
     const replacement = replacer(this.getSince(mark));
     this.restore(mark);
@@ -621,47 +641,75 @@ export class OutputWriter implements OutputWriter {
       return;
     }
     this.chunks.length = mark;
-    const pos = this._positions[mark - 1];
-    if (pos) {
-      this._line = pos.line;
-      this._column = pos.column;
-      this._segments.length = pos.segments;
-      this._length = pos.length;
+    const posIndex = mark - 1;
+    if (posIndex >= 0 && posIndex < this._posLine.length) {
+      this._line = this._posLine[posIndex] ?? 0;
+      this._column = this._posColumn[posIndex] ?? 0;
+      this._segments.length = this._posSegments[posIndex] ?? 0;
+      this._length = this._posLength[posIndex] ?? 0;
     } else {
       this._line = 0;
       this._column = 0;
       this._segments.length = 0;
       this._length = 0;
     }
-    this._positions.length = mark;
-    this._queuedSpacer = null;
+    this.truncatePositions(mark);
+    this.clearQueuedSpacer();
   }
 
   private refreshPositions(): void {
-    const segmentCounts = this._positions.map(pos => pos.segments);
-    this._positions = [];
+    this._posLine.length = 0;
+    this._posColumn.length = 0;
+    this._posLength.length = 0;
     this._length = 0;
     this._line = 0;
     this._column = 0;
     for (let i = 0; i < this.chunks.length; i++) {
       const text = this.chunks[i]!;
+      const segmentCount = this._posSegments[i] ?? this._segments.length;
       this._length += text.length;
       const newline = text.lastIndexOf('\n');
       if (newline === -1) {
         this._column += text.length;
       } else {
-        this._line += text.split('\n').length - 1;
+        let lineBreaks = 1;
+        for (let next = text.indexOf('\n', 0); ;) {
+          next = text.indexOf('\n', next + 1);
+          if (next === -1) {
+            break;
+          }
+          lineBreaks++;
+        }
         this._column = text.length - (newline + 1);
+        this._line += lineBreaks;
       }
-      this._positions.push({
-        line: this._line,
-        column: this._column,
-        segments: segmentCounts[i] ?? this._segments.length,
-        length: this._length
-      });
+      this._posLine[i] = this._line;
+      this._posColumn[i] = this._column;
+      this._posSegments[i] = segmentCount;
+      this._posLength[i] = this._length;
     }
-    const last = this._positions.at(-1);
-    this._segments.length = last?.segments ?? 0;
+    this._posSegments.length = this.chunks.length;
+    const lastIndex = this.chunks.length - 1;
+    this._segments.length = lastIndex >= 0 ? (this._posSegments[lastIndex] ?? 0) : 0;
+  }
+
+  private recordPosition(index: number): void {
+    this._posLine[index] = this._line;
+    this._posColumn[index] = this._column;
+    this._posSegments[index] = this._segments.length;
+    this._posLength[index] = this._length;
+  }
+
+  private truncatePositions(length: number): void {
+    this._posLine.length = length;
+    this._posColumn.length = length;
+    this._posSegments.length = length;
+    this._posLength.length = length;
+  }
+
+  private clearQueuedSpacer(): void {
+    this._queuedSpacerText = '';
+    this._queuedSpacerShouldAdd = undefined;
   }
 
   /** Capture output from a function without committing to the main buffer */

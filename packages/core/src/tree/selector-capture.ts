@@ -2,11 +2,11 @@ import { type Context } from '../context.js';
 import { Node, F_STATIC, defineType } from './node.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeRenderTextResult
+  writeRenderText
 } from './util/render-buffer.js';
 
 export interface SelectorCapture extends Node<Selector> {
@@ -46,21 +46,24 @@ export class SelectorCapture extends Node<Selector> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return pipe(
-      () => this.resolveValue(context),
-      node => this.renderResolvedSelector(context, node, bufferOrOptions, options)
-    );
-  }
-
-  private renderResolvedSelector(
-    context: Context,
-    node: Selector,
-    bufferOrOptions?: RenderBuffer | PrintOptions,
-    options?: PrintOptions
-  ): MaybePromise<string> {
-    return isRenderBuffer(bufferOrOptions)
-      ? writeRenderTextResult(bufferOrOptions, node.render(context, options))
-      : node.render(context, bufferOrOptions);
+    const node = this.resolveValue(context);
+    if (!isRenderBuffer(bufferOrOptions)) {
+      return isThenable(node)
+        ? node.then(resolved => resolved.render(context, bufferOrOptions))
+        : node.render(context, bufferOrOptions);
+    }
+    if (isThenable(node)) {
+      return node.then((resolved) => {
+        const rendered = resolved.render(context, options);
+        return isThenable(rendered)
+          ? rendered.then(out => writeRenderText(bufferOrOptions, out))
+          : writeRenderText(bufferOrOptions, rendered);
+      });
+    }
+    const rendered = node.render(context, options);
+    return isThenable(rendered)
+      ? rendered.then(out => writeRenderText(bufferOrOptions, out))
+      : writeRenderText(bufferOrOptions, rendered);
   }
 
   private requireSelector(value: unknown): Selector {

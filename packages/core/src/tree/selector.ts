@@ -1,4 +1,4 @@
-import { pipe, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { F_VISIBLE, Node, type NodeOptions, type NodeValue, defineType } from './node.js';
 import type { IfAny } from 'type-fest';
 import type { Context } from '../context.js';
@@ -130,10 +130,10 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return pipe(
-      () => this.resolveForRender(context),
-      node => this.renderOutput(context, node, bufferOrOptions, options)
-    );
+    const node = this.resolveForRender(context);
+    return isThenable(node)
+      ? (node as Promise<Node>).then(resolved => this.renderOutput(context, resolved, bufferOrOptions, options))
+      : this.renderOutput(context, node as Node, bufferOrOptions, options);
   }
 
   /**

@@ -5,7 +5,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
 import { Any } from './any.js';
 import { quoted } from './quoted.js';
-import { pipe, isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
@@ -112,37 +112,40 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   }
 
   override evalNode(context: Context): MaybePromise<this> {
-    return pipe(
-      () => super.evalNode(context),
-      () => {
-        const { value } = this.value;
-        // Handle Less interpolation that the parser may have left as a raw token in selectors:
-        //   [data=@{attr-data}]
-        // In Less semantics this should resolve to the variable value and be serialized quoted.
-        if (value instanceof Any && typeof value.value === 'string') {
-          const raw = value.value.trim();
-          const m = raw.match(/^@\{([^}]+)\}$/);
-          if (m) {
-            const key = m[1]!;
-            const rules = this.rulesParent;
-            if (rules) {
-              const found = rules.find('declaration', key, 'VarDeclaration');
-              const decl = Array.isArray(found) ? found[0] : found;
-              if (decl && isNode(decl, N.VarDeclaration)) {
-                const out = decl.value.value.eval(context);
-                if (isThenable(out)) {
-                  return (out as Promise<Node>).then((evaluated) => {
-                    return this.createResolvedValueNode(evaluated);
-                  });
-                }
-                return this.createResolvedValueNode(out as Node);
-              }
+    const evaluated = super.evalNode(context);
+    if (isThenable(evaluated)) {
+      return evaluated.then(() => this.evaluateInterpolatedAttributeValue(context));
+    }
+    return this.evaluateInterpolatedAttributeValue(context);
+  }
+
+  private evaluateInterpolatedAttributeValue(context: Context): MaybePromise<this> {
+    const { value } = this.value;
+    // Handle Less interpolation that the parser may have left as a raw token in selectors:
+    //   [data=@{attr-data}]
+    // In Less semantics this should resolve to the variable value and be serialized quoted.
+    if (value instanceof Any && typeof value.value === 'string') {
+      const raw = value.value.trim();
+      const m = raw.match(/^@\{([^}]+)\}$/);
+      if (m) {
+        const key = m[1]!;
+        const rules = this.rulesParent;
+        if (rules) {
+          const found = rules.find('declaration', key, 'VarDeclaration');
+          const decl = Array.isArray(found) ? found[0] : found;
+          if (decl && isNode(decl, N.VarDeclaration)) {
+            const out = decl.value.value.eval(context);
+            if (isThenable(out)) {
+              return (out as Promise<Node>).then((evaluated) => {
+                return this.createResolvedValueNode(evaluated);
+              });
             }
+            return this.createResolvedValueNode(out as Node);
           }
         }
-        return this;
       }
-    );
+    }
+    return this;
   }
 
   protected override resolveForRender(context: Context): MaybePromise<this> {

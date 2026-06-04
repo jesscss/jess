@@ -1,11 +1,11 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
+import { Node, defineType, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
 import { Dimension } from './dimension.js';
-import { type MaybePromise, pipe, tryStep } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
-  writeRenderTextResult,
+  writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 import round from 'lodash-es/round.js';
@@ -35,10 +35,17 @@ export class Negative extends Node<Node> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return pipe(
-      () => this.value.eval(context),
-      value => this.renderEvaluatedValue(context, value, bufferOrOptions, options)
-    );
+    if (!this.value.hasFlag(F_MAY_ASYNC)) {
+      const evaluated = this.value.eval(context);
+      if (!(evaluated instanceof Node)) {
+        throw new TypeError('Expected negative value to evaluate to a node');
+      }
+      return this.renderEvaluatedValue(context, evaluated, bufferOrOptions, options);
+    }
+    const value = this.value.eval(context);
+    return isThenable(value)
+      ? value.then(evaluated => this.renderEvaluatedValue(context, evaluated, bufferOrOptions, options))
+      : this.renderEvaluatedValue(context, value, bufferOrOptions, options);
   }
 
   private renderEvaluatedValue(
@@ -50,15 +57,17 @@ export class Negative extends Node<Node> {
     if (value instanceof Dimension && !this.isCompoundDimension(value)) {
       const rendered = this.renderNegatedDimension(value, isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions);
       return isRenderBuffer(bufferOrOptions)
-        ? writeRenderTextResult(bufferOrOptions, rendered)
+        ? writeRenderText(bufferOrOptions, rendered)
         : rendered;
     }
-    return pipe(
-      () => this.operateNegativeValue(value, context),
-      node => isRenderBuffer(bufferOrOptions)
-        ? node.render(context, bufferOrOptions, options)
-        : node.render(context, bufferOrOptions)
-    );
+    const operated = this.operateNegativeValue(value, context);
+    return isThenable(operated)
+      ? operated.then(node => isRenderBuffer(bufferOrOptions)
+          ? node.render(context, bufferOrOptions, options)
+          : node.render(context, bufferOrOptions))
+      : isRenderBuffer(bufferOrOptions)
+        ? operated.render(context, bufferOrOptions, options)
+        : operated.render(context, bufferOrOptions);
   }
 
   private isCompoundDimension(value: Dimension): boolean {
@@ -79,12 +88,17 @@ export class Negative extends Node<Node> {
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    return pipe(
-      () => this.value.eval(context),
-      tryStep((value: Node) => {
-        return this.operateNegativeValue(value, context);
-      }, { rethrow: true })
-    );
+    if (!this.value.hasFlag(F_MAY_ASYNC)) {
+      const evaluated = this.value.eval(context);
+      if (!(evaluated instanceof Node)) {
+        throw new TypeError('Expected negative value to evaluate to a node');
+      }
+      return this.operateNegativeValue(evaluated, context);
+    }
+    const value = this.value.eval(context);
+    return isThenable(value)
+      ? value.then(evaluated => this.operateNegativeValue(evaluated, context))
+      : this.operateNegativeValue(value, context);
   }
 
   private operateNegativeValue(value: Node, context: Context): MaybePromise<Node> {

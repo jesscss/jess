@@ -1,0 +1,51 @@
+{
+  "id": "oir-7fc5721a44b1604e",
+  "projectId": "jess",
+  "source": {
+    "kind": "task",
+    "taskId": "task-meta-intake",
+    "questionId": "q-fallback-task-meta-intake-mpyrpdyh-0"
+  },
+  "sourceKey": "task:task-meta-intake:q-fallback-task-meta-intake-mpyrpdyh-0",
+  "target": {
+    "kind": "thread"
+  },
+  "prompt": "This is a meta-intake task — I need to:",
+  "choices": [
+    "Infer the project's internal routing slices (coordinator domains)",
+    "Infer lever positions from project evidence",
+    "Bootstrap verification (try install + gates)",
+    "Draft starter tasks"
+  ],
+  "objective": {
+    "kind": "task_shaping",
+    "label": "Clarify Inspect the repo and draft starter tasks",
+    "successCriteria": [
+      "Owner answers the linked bounded-chat session."
+    ]
+  },
+  "status": "coordinator_review",
+  "boundedChatSessionId": "bc-jess-task_shaping-43a9369dc0-2026-06-04T00-39-12-617Z",
+  "commandIds": [
+    "orchestrator:fallback-question:task-meta-intake:q-fallback-task-meta-intake-mpyrpdyh-0"
+  ],
+  "receipts": [
+    {
+      "machineId": "owner-input",
+      "machineVersion": 1,
+      "commandId": "owner-response:bc-jess-task_shaping-43a9369dc0-2026-06-04T00-39-12-617Z",
+      "entityId": "oir-7fc5721a44b1604e",
+      "from": "waiting_for_owner",
+      "event": "submit_owner_response",
+      "to": "coordinator_review",
+      "actor": "owner",
+      "evidenceRefs": [
+        "bounded-chat:bc-jess-task_shaping-43a9369dc0-2026-06-04T00-39-12-617Z"
+      ],
+      "createdAt": "2026-06-04T02:14:35.586Z"
+    }
+  ],
+  "createdAt": "2026-06-04T00:39:12.617Z",
+  "updatedAt": "2026-06-04T02:14:35.586Z",
+  "createdBy": "spec-agent"
+}

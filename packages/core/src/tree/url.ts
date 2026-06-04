@@ -3,7 +3,7 @@ import type { Context } from '../context.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { isThenable, pipe, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
 import { prepareRenderPrintState } from './util/print.js';
 
@@ -59,40 +59,34 @@ export class Url extends Node<Node> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return pipe(
-      () => this.resolveRenderValue(context),
-      value => this.renderResolvedUrlValue(context, value, bufferOrOptions, options)
-    );
-  }
-
-  private renderResolvedUrlValue(
-    context: Context,
-    value: Node,
-    bufferOrOptions?: RenderBuffer | PrintOptions,
-    options?: PrintOptions
-  ): string {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const out = this.renderUrlSyntax(value, prepared);
+    const value = this.hasFlag(F_STATIC) ? this.value : this.value.eval(context);
+    if (isThenable(value)) {
+      return (value as Promise<Node>).then((resolved) => {
+        const out = this.renderUrlSyntax(resolved, prepared);
+        return buffer
+          ? writeRenderText(buffer, out)
+          : out;
+      });
+    }
+    const out = this.renderUrlSyntax(value as Node, prepared);
     return buffer
       ? writeRenderText(buffer, out)
       : out;
   }
 
-  private resolveRenderValue(context: Context): MaybePromise<Node> {
-    if (this.hasFlag(F_STATIC)) {
-      return this.value;
-    }
-    return this.value.resolve(context);
+  override evalNode(context: Context): MaybePromise<Node> {
+    return this.evaluateValue(context);
   }
 
-  private resolveValue(context: Context): MaybePromise<Node> {
+  private evaluateValue(context: Context): MaybePromise<Node> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
-    const value = this.value.resolve(context);
+    const value = this.value.eval(context);
     const finalize = (resolvedValue: Node): Node => {
       if (resolvedValue === this.value) {
         return this;
@@ -106,7 +100,7 @@ export class Url extends Node<Node> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return this.resolveValue(context);
+    return this.evaluateValue(context);
   }
 }
 

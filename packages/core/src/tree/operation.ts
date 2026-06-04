@@ -1,14 +1,14 @@
 import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation, type NodeOptions, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
-import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Call } from './call.js';
 import { list } from './list.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
-import { isRenderBuffer, writeRenderTextResult, type RenderBuffer } from './util/render-buffer.js';
+import { isRenderBuffer, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 
 export type { Operator };
@@ -93,15 +93,15 @@ export class Operation extends Node<OperationValue> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return pipe(
-      () => this.evaluateRenderOperands(context),
-      output => this.renderEvaluatedOutput(context, output, bufferOrOptions, options)
-    );
+    const output = this.evaluateRenderOperands(context);
+    return isThenable(output)
+      ? (output as Promise<OperationRenderResult>).then(result => this.renderEvaluatedOutput(context, result, bufferOrOptions, options))
+      : this.renderEvaluatedOutput(context, output as OperationRenderResult, bufferOrOptions, options);
   }
 
   private evaluateRenderOperands(context: Context): MaybePromise<OperationRenderResult> {
     let [left, op, right] = this.value;
-    const maybeLeft = left.resolve(context);
+    const maybeLeft = left.eval(context);
     const finalize = (l: Node, r: Node): MaybePromise<OperationRenderResult> => {
       const renderOperands = (): OperationRenderResult => {
         return l === left && r === right
@@ -140,7 +140,7 @@ export class Operation extends Node<OperationValue> {
       return renderOperands();
     };
     const handleLeft = (l: Node): MaybePromise<OperationRenderResult> => {
-      const maybeRight = right.resolve(context);
+      const maybeRight = right.eval(context);
       if (isThenable(maybeRight)) {
         return (maybeRight as Promise<Node>).then((r) => {
           return finalize(l, r);
@@ -165,22 +165,29 @@ export class Operation extends Node<OperationValue> {
       return this.renderOutput(context, output, bufferOrOptions, options);
     }
     const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
-    const rendered = pipe(
-      () => output.left.render(context, printOptions),
-      leftOut => pipe(
-        () => output.right.render(context, printOptions),
-        rightOut => `${leftOut} ${this.value[1]} ${rightOut}`
-      )
-    );
-    return isRenderBuffer(bufferOrOptions)
-      ? writeRenderTextResult(bufferOrOptions, rendered)
-      : rendered;
+    const finish = (leftOut: string): MaybePromise<string> => {
+      const right = output.right.render(context, printOptions);
+      const combine = (rightOut: string): string => `${leftOut} ${this.value[1]} ${rightOut}`;
+      return isThenable(right)
+        ? right.then(combine)
+        : combine(right);
+    };
+    const left = output.left.render(context, printOptions);
+    const rendered = isThenable(left)
+      ? left.then(finish)
+      : finish(left);
+    if (!isRenderBuffer(bufferOrOptions)) {
+      return rendered;
+    }
+    return isThenable(rendered)
+      ? (rendered as Promise<string>).then(out => writeRenderText(bufferOrOptions, out))
+      : writeRenderText(bufferOrOptions, rendered as string);
   }
 
-  private evaluateOperands(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Node> {
+  private evaluateOperands(context: Context): MaybePromise<Node> {
     let n = this;
     let [left, op, right] = n.value;
-    const maybeLeft = mode === 'eval' ? left.eval(context) : left.resolve(context);
+    const maybeLeft = left.eval(context);
     const finalize = (l: Node, r: Node): MaybePromise<Node> => {
       if (Operation.isPreservedSlashList(l) || Operation.isPreservedSlashList(r)) {
         if (l === left && r === right) {
@@ -230,7 +237,7 @@ export class Operation extends Node<OperationValue> {
       return n.withOperands(l, r);
     };
     const handleLeft = (l: Node): MaybePromise<Node> => {
-      const maybeRight = mode === 'eval' ? right.eval(context) : right.resolve(context);
+      const maybeRight = right.eval(context);
       if (isThenable(maybeRight)) {
         return (maybeRight as Promise<Node>).then((r) => {
           return finalize(l, r);
@@ -246,11 +253,11 @@ export class Operation extends Node<OperationValue> {
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    return this.evaluateOperands(context, 'eval');
+    return this.evaluateOperands(context);
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return this.evaluateOperands(context, 'resolve');
+    return this.evaluateOperands(context);
   }
 }
 

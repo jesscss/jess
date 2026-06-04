@@ -8,7 +8,11 @@ export function hasNodeChild(value: unknown): boolean {
     return value.some(item => hasNodeChild(item));
   }
   if (value !== null && typeof value === 'object') {
-    return Object.values(value).some(item => hasNodeChild(item));
+    for (const key in value) {
+      if (Object.hasOwn(value, key) && hasNodeChild(Reflect.get(value, key))) {
+        return true;
+      }
+    }
   }
   return false;
 }

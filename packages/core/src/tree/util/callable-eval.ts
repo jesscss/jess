@@ -8,7 +8,6 @@ import { createCallableDefaultState } from './callable-default-guard.js';
 import { createCallableOutputState, finalizeCallableEvalOutput } from './callable-output.js';
 import {
   type MixinEntry,
-  copyGuardForEval,
   createCallableOuterRules,
   createEmptyCallableOutputSurface,
   createMixinOutputRulesWrapper,
@@ -67,7 +66,6 @@ export async function evaluateCallableCollection({
     },
     specialCaseCallSiteRules: caller?.rulesParent ?? caller?.sourceRulesParent ?? context.rulesContext,
     ordinaryCallSiteRules: context.rulesContext,
-    copyGuardForEval,
     createOwnedRules: createOwnedCallableRulesSurface,
     createUnlockedRules: createUnlockedCallableRulesSurface,
     getRootSourceRules,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../../context.js';
 import { Bool } from '../../bool.js';
-import { rules } from '../../index.js';
+import { condition, rules } from '../../index.js';
 import { F_STATIC } from '../../node.js';
 import { createCallableOuterRules } from '../callable-surface.js';
 import { CALLABLE_DEFAULT_TRUE } from '../callable-default-guard.js';
@@ -12,19 +12,13 @@ import {
 } from '../callable-guard.js';
 
 describe('callable guard helpers', () => {
-  it('copies dynamic non-default guards and leaves static/default guards alone', () => {
+  it('uses source guards for dynamic non-default, static, and default guard evaluation', () => {
     const dynamicGuard = new Bool(true);
     dynamicGuard.hasFlag = () => false;
-    const copiedGuard = new Bool(false);
-    let copyCount = 0;
 
     const nonDefault = prepareCallableGuardState({
       hasDefault: false,
       candidateGuard: dynamicGuard,
-      copyGuardForEval: () => {
-        copyCount++;
-        return copiedGuard;
-      },
       paramBindingsLength: 0,
       rules: rules([]),
       parent: rules([]),
@@ -33,9 +27,6 @@ describe('callable guard helpers', () => {
     const defaultGuard = prepareCallableGuardState({
       hasDefault: true,
       candidateGuard: dynamicGuard,
-      copyGuardForEval: () => {
-        throw new Error('should not copy default guard');
-      },
       paramBindingsLength: 0,
       rules: rules([]),
       parent: rules([]),
@@ -46,19 +37,15 @@ describe('callable guard helpers', () => {
     const staticResult = prepareCallableGuardState({
       hasDefault: false,
       candidateGuard: staticGuard,
-      copyGuardForEval: () => {
-        throw new Error('should not copy static guard');
-      },
       paramBindingsLength: 0,
       rules: rules([]),
       parent: rules([]),
       createOuterRules: createCallableOuterRules
     });
 
-    expect(nonDefault.guard).toBe(copiedGuard);
+    expect(nonDefault.guard).toBe(dynamicGuard);
     expect(defaultGuard.guard).toBe(dynamicGuard);
     expect(staticResult.guard).toBe(staticGuard);
-    expect(copyCount).toBe(1);
   });
 
   it('prebinds caller guard outer rules for dynamic no-param guards', () => {
@@ -71,7 +58,6 @@ describe('callable guard helpers', () => {
     const result = prepareCallableGuardState({
       hasDefault: false,
       candidateGuard: dynamicGuard,
-      copyGuardForEval: guard => guard,
       paramBindingsLength: 0,
       rules: callableRules,
       parent: rules([]),
@@ -137,7 +123,6 @@ describe('callable guard helpers', () => {
       hasDefault: true,
       guard: dynamicGuard,
       candidateGuard: dynamicGuard,
-      copyGuardForEval: guard => guard,
       usesPreboundCallerGuardOuterRules: false,
       usesPreboundParamGuardOuterRules: false,
       rules: callableRules,
@@ -173,7 +158,6 @@ describe('callable guard helpers', () => {
       hasDefault: false,
       guard: dynamicGuard,
       candidateGuard: dynamicGuard,
-      copyGuardForEval: guard => guard,
       usesPreboundCallerGuardOuterRules: false,
       usesPreboundParamGuardOuterRules: false,
       rules: callableRules,
@@ -186,5 +170,32 @@ describe('callable guard helpers', () => {
     expect(result.contributesDefNone).toBe(true);
     expect(result.defersCandidateOutput).toBe(false);
     expect(result.pendingDefaultGroup).toBeUndefined();
+  });
+
+  it('evaluates condition guards as booleans without calling the public Bool-result eval wrapper', async () => {
+    const context = new Context();
+    const callableRules = rules([]);
+    const parent = rules([]);
+    const guard = condition([new Bool(true)]);
+    guard.eval = () => {
+      throw new Error('should not allocate a public Bool guard result');
+    };
+
+    const result = await evaluateCallableGuard({
+      context,
+      hasDefault: false,
+      guard,
+      candidateGuard: guard,
+      usesPreboundCallerGuardOuterRules: false,
+      usesPreboundParamGuardOuterRules: false,
+      rules: callableRules,
+      parent,
+      candidateIndex: 8,
+      createOuterRules: createCallableOuterRules
+    });
+
+    expect(result.passes).toBe(true);
+    expect(result.contributesDefNone).toBe(true);
+    expect(result.defersCandidateOutput).toBe(false);
   });
 });

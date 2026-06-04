@@ -52,7 +52,6 @@ describe('callable candidate execution helper', () => {
       nodeArgs: [any('blue')],
       defaultState,
       restrictMixinOutputLookup: true,
-      copyGuardForEval: guard => guard,
       createOuterRules: createCallableOuterRules
     });
 
@@ -99,7 +98,6 @@ describe('callable candidate execution helper', () => {
       nodeArgs: [],
       defaultState,
       restrictMixinOutputLookup: true,
-      copyGuardForEval: guard => guard,
       createOuterRules: createCallableOuterRules
     });
 

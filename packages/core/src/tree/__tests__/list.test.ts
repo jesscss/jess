@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { TreeContext, List, list, spaced, num, any, ref, rules, vardecl, type Rules as RulesClass } from '../index.js';
+import { TreeContext, List, list, spaced, num, any, op, ref, rules, vardecl, F_MAY_ASYNC, F_STATIC, type Rules as RulesClass } from '../index.js';
 import { Any } from '../any.js';
 import { Context } from '../../context.js';
 import { Node } from '../node.js';
@@ -222,6 +222,87 @@ describe('List', () => {
     }
   });
 
+  it('renders dynamic sync list values without per-call serial iteration scaffolding', () => {
+    const listNode = list([
+      op([num(1), '+', num(2)]),
+      any('solid')
+    ]);
+    const originalMap = listNode.value.map;
+    Object.defineProperty(listNode.value, 'map', {
+      configurable: true,
+      value: () => {
+        throw new Error('sync list render should not allocate mapped serial iteration entries');
+      }
+    });
+
+    try {
+      expect(listNode.render(context)).toBe('3, solid');
+    } finally {
+      Object.defineProperty(listNode.value, 'map', {
+        configurable: true,
+        writable: true,
+        value: originalMap
+      });
+    }
+  });
+
+  it('renders async list values without tuple-array serial iteration scaffolding', async () => {
+    const asyncItem = any('one');
+    asyncItem.resolve = async () => any('resolved');
+    asyncItem.render = async () => {
+      throw new Error('async list render should render the resolved item, not the source item');
+    };
+    asyncItem.addFlag(F_MAY_ASYNC);
+    asyncItem.removeFlag(F_STATIC);
+    const listNode = list([
+      asyncItem,
+      any('solid')
+    ]);
+    listNode.addFlag(F_MAY_ASYNC);
+    listNode.removeFlag(F_STATIC);
+    const originalMap = listNode.value.map;
+    Object.defineProperty(listNode.value, 'map', {
+      configurable: true,
+      value: () => {
+        throw new Error('async list render should not allocate mapped tuple entries');
+      }
+    });
+
+    try {
+      await expect(Promise.resolve(listNode.render(context))).resolves.toBe('resolved, solid');
+    } finally {
+      Object.defineProperty(listNode.value, 'map', {
+        configurable: true,
+        writable: true,
+        value: originalMap
+      });
+    }
+  });
+
+  it('renders dynamic sync list items directly without resolving the list items first', () => {
+    const dynamicItem = op([num(1), '+', num(2)]);
+    dynamicItem.resolve = () => {
+      throw new Error('List render should render dynamic sync items directly');
+    };
+    const listNode = list([
+      dynamicItem,
+      any('solid')
+    ]);
+
+    expect(listNode.render(context)).toBe('3, solid');
+  });
+
+  it('writes dynamic sync direct list render output into flat buffers once', () => {
+    const buffer = createRenderBuffer('flat');
+    const listNode = list([
+      op([num(1), '+', num(2)]),
+      any('solid')
+    ]);
+
+    expect(listNode.render(context, buffer)).toBe('3, solid');
+    expect(buffer.parts).toEqual(['3, solid']);
+  });
+
   it('resolves list values without touching render state', async () => {
     const node = rules([
       vardecl({
@@ -290,6 +371,42 @@ describe('List', () => {
     expect(result.toTrimmedString()).toBe('left, right');
     expect(leftChild.parent).toBe(left);
     expect(rightChild.parent).toBe(right);
+  });
+
+  it('adds list values without mapped copy-array scaffolding', () => {
+    const left = list([any('left')]);
+    const right = list([any('right')]);
+    const originalLeftMap = left.value.map;
+    const originalRightMap = right.value.map;
+    Object.defineProperty(left.value, 'map', {
+      configurable: true,
+      value: () => {
+        throw new Error('list addition should not map left child copies');
+      }
+    });
+    Object.defineProperty(right.value, 'map', {
+      configurable: true,
+      value: () => {
+        throw new Error('list addition should not map right child copies');
+      }
+    });
+
+    try {
+      const result = left.operate(right, '+', context);
+
+      expect(result.toTrimmedString()).toBe('left, right');
+    } finally {
+      Object.defineProperty(left.value, 'map', {
+        configurable: true,
+        writable: true,
+        value: originalLeftMap
+      });
+      Object.defineProperty(right.value, 'map', {
+        configurable: true,
+        writable: true,
+        value: originalRightMap
+      });
+    }
   });
 
   it('keeps source scalar children canonical after list plus scalar', () => {

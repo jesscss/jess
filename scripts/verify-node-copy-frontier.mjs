@@ -17,6 +17,7 @@ const patterns = [
 const ordinaryCopyPattern = /\.copy\(/u;
 const ordinaryClonePattern = /\.clone\(/u;
 const loopEvalSurfaceCopyPattern = /return copyWithReusableLeaves\(node\);/u;
+const guardEvalCopyPattern = /\bcopyGuardForEval\b/u;
 const infrastructureFiles = new Set([
   'packages/core/src/tree/node-base.ts',
   'packages/core/src/tree/util/cloning.ts'
@@ -90,6 +91,7 @@ const matches = [];
 const ordinaryCopyMatches = [];
 const ordinaryCloneMatches = [];
 const loopEvalSurfaceCopyMatches = [];
+const guardEvalCopyMatches = [];
 for (const scanRoot of getScanRoots()) {
   if (!fs.existsSync(scanRoot)) {
     continue;
@@ -109,6 +111,9 @@ for (const scanRoot of getScanRoots()) {
       }
       if (loopEvalSurfaceCopyPattern.test(line)) {
         loopEvalSurfaceCopyMatches.push({ file: relative, line: index + 1, text: line.trim() });
+      }
+      if (guardEvalCopyPattern.test(line)) {
+        guardEvalCopyMatches.push({ file: relative, line: index + 1, text: line.trim() });
       }
     });
   }
@@ -131,6 +136,7 @@ const unexpectedOrdinaryClone = ordinaryCloneMatches
   .filter(match => !isAllowedOrdinaryCloneLine(match.file, match.text));
 const unexpectedLoopEvalSurfaceCopies = loopEvalSurfaceCopyMatches
   .filter(match => !expectedLoopEvalSurfaceCopies.has(match.file));
+const unexpectedGuardEvalCopies = guardEvalCopyMatches;
 const filesWithLoopEvalSurfaceCopies = new Set(loopEvalSurfaceCopyMatches.map(match => match.file));
 const missingLoopEvalSurfaceCopies = [...expectedLoopEvalSurfaceCopies]
   .filter(file => !filesWithLoopEvalSurfaceCopies.has(file));
@@ -172,6 +178,16 @@ if (unexpectedLoopEvalSurfaceCopies.length > 0) {
   console.log('');
   console.log('Unexpected loop eval-surface child-copy seams:');
   for (const match of unexpectedLoopEvalSurfaceCopies) {
+    console.log(`- ${match.file}`);
+    console.log(`  ${match.line}: ${match.text}`);
+  }
+  process.exitCode = 1;
+}
+
+if (unexpectedGuardEvalCopies.length > 0) {
+  console.log('');
+  console.log('Unexpected callable guard eval copy hooks:');
+  for (const match of unexpectedGuardEvalCopies) {
     console.log(`- ${match.file}`);
     console.log(`  ${match.line}: ${match.text}`);
   }
