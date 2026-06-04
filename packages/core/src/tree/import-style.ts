@@ -5,7 +5,7 @@ import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
 import { Url } from './url.js';
 import { type Context } from '../context.js';
-import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import type { Ruleset } from './ruleset.js';
@@ -681,8 +681,16 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     importedRules: Rules,
     additiveNodes: Node[]
   ): Rules {
-    const additiveVariableNodes = additiveNodes.filter(node => isNode(node, N.VarDeclaration));
-    const additiveNonVariableNodes = additiveNodes.filter(node => !isNode(node, N.VarDeclaration));
+    const additiveVariableNodes: Node[] = [];
+    const additiveNonVariableNodes: Node[] = [];
+    for (let i = 0; i < additiveNodes.length; i++) {
+      const node = additiveNodes[i]!;
+      if (isNode(node, N.VarDeclaration)) {
+        additiveVariableNodes.push(node);
+      } else {
+        additiveNonVariableNodes.push(node);
+      }
+    }
     this.clearConfiguredImportBoundary(importedRules);
     if (additiveNonVariableNodes.length === 0) {
       this.attachConfiguredVarBindings(importedRules, additiveVariableNodes);
@@ -1220,12 +1228,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return pipe(
-      () => this.evalNode(context),
-      node => isRenderBuffer(bufferOrOptions)
-        ? node.render(context, bufferOrOptions, options)
-        : node.render(context, bufferOrOptions)
-    );
+    const node = this.evalNode(context);
+    const renderNode = (resolved: Rules): MaybePromise<string> => isRenderBuffer(bufferOrOptions)
+      ? resolved.render(context, bufferOrOptions, options)
+      : resolved.render(context, bufferOrOptions);
+    return isThenable(node)
+      ? node.then(renderNode)
+      : renderNode(node);
   }
 
   private wrapRulesWithPostlude(rules: Rules, postlude?: Node): Rules {

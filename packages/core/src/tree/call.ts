@@ -83,7 +83,6 @@ export type FinalizedCallSyntax = {
 type CallContentPlacementState = {
   source: Call;
   contentNode: Node;
-  reusesSourceContent: boolean;
   output?: Node;
 };
 
@@ -244,16 +243,9 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const placement: CallContentPlacementState = {
       source: state.source,
-      contentNode,
-      reusesSourceContent: false
+      contentNode
     };
-    if (contentNode.location.length === 0 && contentNode.hasFlag(F_STATIC)) {
-      contentNode.frozen = true;
-      placement.reusesSourceContent = true;
-      placement.output = contentNode;
-      return placement;
-    }
-    placement.output = copyWithReusableLeaves(contentNode);
+    placement.output = contentNode;
     return placement;
   }
 
@@ -355,10 +347,20 @@ export class Call extends Node<CallValue, CallOptions> {
 
   private markCallOutput<T extends Node>(node: T): T {
     node.inherit(this);
+    let hasOnlyDeclarationsAndComments = true;
+    if (isNode(node, N.Rules) && node.value.length > 0) {
+      for (let i = 0; i < node.value.length; i++) {
+        if (!isNode(node.value[i]!, N.Declaration | N.Comment)) {
+          hasOnlyDeclarationsAndComments = false;
+          break;
+        }
+      }
+    } else {
+      hasOnlyDeclarationsAndComments = false;
+    }
     if (
       isNode(node, N.Rules)
-      && node.value.length > 0
-      && node.value.every(child => isNode(child, N.Declaration | N.Comment))
+      && hasOnlyDeclarationsAndComments
       && !(
         isNode(this.value.name, N.Reference)
         && (this.value.name.options?.type === 'mixin'

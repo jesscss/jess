@@ -689,76 +689,81 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Replaced `Rules.evalNode(...)` `Array.from(rules)` materialization with
-   indexed scans over the source `rules.value` entries.
-2. [x] Replaced the import-priority `entries.filter(...)` lane with an indexed
-   predicate scan.
-3. [x] Replaced the call-priority `entries.filter(...)` lane with an indexed
-   predicate scan.
-4. [x] Replaced pending-import retry `serialForEach(...)` with an indexed drain
-   loop and async-rest continuation.
-5. [x] Replaced import-priority `serialForEach(...)` with an indexed async-rest
-   loop.
-6. [x] Replaced call-priority `serialForEach(...)` with an indexed async-rest
-   loop.
-7. [x] Replaced final normal-entry `serialForEach(...)` with an indexed
-   async-rest loop.
-8. [x] Preserved import/call priority semantics with focused rules/import tests
-   and the broader focused queue suite.
-9. [x] Replaced `Rules` nested-move `findIndex(...)`, `slice(...)`,
-   `.every(...)`, two `.filter(...)` passes, and spread output assembly with an
-   indexed first-nested search, child loop, partition, and pre-sized output.
-10. [x] Cut the remaining `Rules.evalNode(...)` `pipe(...)` prepare/finish
-    wrapper into a direct prepare call plus sync/async error restoration.
-11. [x] Removed `pipe` and `serialForEach` imports from `rules.ts`.
-12. [x] Moved plain CSS `@import` hoisting out of `AtRule` and into
-    `Rules._prepareOutputOrderAtRule(...)`, using existing context state and a
-    local `topImports` dedupe loop.
-13. [x] Deleted `AtRule._prepareAtRuleImportQueue(...)` and
-    `AtRule._queueTopImport(...)`; `AtRule` no longer mutates
-    `context.topImports`.
-14. [x] Audited `AtRule` method explosion after the import-hoist cut. Remaining
-    suspect phase shuttles include `evalBodyResult(...)`,
-    `evalBodyPreludeState(...)`, `evalPreludeValue(...)`,
-    `createLeafRenderState(...)`, and `createBodyEvalRecord(...)`; they are
-    recorded as collapse/delete candidates rather than treated as healthy API.
-15. [x] Verified focused rules/import/call/mixin/at-rule tests (`399` passed,
-    `9` skipped) and `pnpm --filter @jesscss/core build` with only the existing
-    `js-expr.ts` direct-`eval` warning.
+1. [x] Replaced `StyleImport` additive `with` config dual `.filter(...)`
+   partition with one indexed partition.
+2. [x] Cut `StyleImport.render(...)` remaining `pipe(...)` wrapper into direct
+   `evalNode(...)` plus sync/async render continuation.
+3. [x] Removed the `pipe` import from `import-style.ts`.
+4. [x] Replaced `Call.markCallOutput(...)` declaration-only `.every(...)` with
+   an indexed loop.
+5. [x] Cut `Call.createFinalizedCallContentState(...)`
+   `copyWithReusableLeaves(contentNode)`; finalized call content now reuses the
+   source content node instead of manufacturing an owned content copy.
+6. [x] Removed the now-unused finalized content `reusesSourceContent` bookkeeping
+   and static-content `frozen` write.
+7. [x] Audited `Call.evalArgNodes(... preserveSourceParents)`: the remaining
+   non-static list/sequence copy is still real debt, but it is tied to metadata
+   raw-args and public owned argument surfaces, so it stays queued for a
+   placement/materialization replacement rather than a blind delete.
+8. [x] Replaced the first `Rules` lookup `keys.every(...)` path-prefix compare
+   with an indexed `keysStartWith(...)` helper.
+9. [x] Replaced the second `Rules` lookup `keys.every(...)` path-prefix compare
+   with the same indexed helper.
+10. [x] Replaced `Rules` variable-path `slice(...)` with explicit
+    `remainderLength` handling and a loop-built remainder only for the multi-key
+    fallback API.
+11. [x] Replaced `Rules` compound-prefix key `slice(...)` with
+    `remainderLength`, single-key direct lookup, and loop-built multi-key
+    fallback.
+12. [x] Replaced `Rules` namespace first-key `slice(1)` with loop-built
+    `collectKeyRemainder(...)`.
+13. [x] Replaced pending declaration prep
+    `unresolvedDeclarations.slice(i + 1)` and spread rebuild with indexed
+    collection/rebuild loops.
+14. [x] Replaced ordered identity prep `orderedIdentities.slice(i + 1)` and
+    spread rebuild with indexed collection/rebuild loops; replaced merge helper
+    `prefixItems.every(...)` with an indexed compare.
+15. [x] Audited `Rules[Symbol.iterator]`: it remains only as a cold
+    public/convenience iterator. Current hot scans use `rules.value` indexed
+    loops. Verified focused import-style/call/rules/mixin/at-rule tests (`399`
+    passed, `9` skipped) and `pnpm --filter @jesscss/core build` with only the
+    existing `js-expr.ts` direct-`eval` warning.
 
 ### Next 15-Item Queue
 
-1. [ ] Replace `StyleImport` additive `with` config dual `.filter(...)`
-   partition with one indexed partition.
-2. [ ] Cut `StyleImport` remaining `pipe(...)` wrapper if it is just generic
-   continuation glue around direct import eval/render work.
-3. [ ] Replace `Call.markCallOutput(...)` declaration-only `.every(...)` with an
-   indexed loop.
-4. [ ] Inspect and cut `Call.createFinalizedCallContentState(...)`
-   `copyWithReusableLeaves(contentNode)` by moving placement/ownership state
-   out of copied output where tests permit.
-5. [ ] Inspect and cut `Call.evalArgNodes(... preserveSourceParents)` non-static
-   list/sequence copying by using source nodes plus placement/cold
-   materialization boundaries.
-6. [ ] Replace `Rules` lookup `keys.every(...)` at the first path-prefix
-   comparison with an indexed compare.
-7. [ ] Replace `Rules` lookup `keys.every(...)` at the second path-prefix
-   comparison with an indexed compare.
-8. [ ] Replace `Rules` path/key `slice(...)` in variable path matching with
-   offset/length or indexed-rest handling.
-9. [ ] Replace `Rules` path/key `slice(...)` in key matching with offset/length
-   or indexed-rest handling.
-10. [ ] Replace `Rules` path/key `slice(...)` for first-key remainder handling
-    with offset/length or indexed-rest handling.
-11. [ ] Replace pending declaration prep
-    `unresolvedDeclarations.slice(i + 1)` with indexed-start recursion or an
-    explicit continuation index.
-12. [ ] Replace ordered identity prep `orderedIdentities.slice(i + 1)` with
-    indexed-start recursion or an explicit continuation index.
-13. [ ] Replace merge helper `prefixItems.every(...)` with an indexed compare.
-14. [ ] Audit `Rules[Symbol.iterator]` generator usage and keep it only as a
-    cold public/convenience API; hot paths must not use iterator state or
-    yielded wrapper arrays.
+1. [ ] Replace `Call.evalArgNodes(... preserveSourceParents)` non-static
+   list/sequence copy with explicit raw-args placement state or a cold
+   materialization boundary.
+2. [ ] Remove `Call.evalArgNodes(...)` `evald.frozen = true` once preserved args
+   no longer pretend reused source containers are owned output.
+3. [ ] Audit `Call.markCallOutput(...)` `.inherit(this)` and remove it for
+   render-only outputs if tests prove call-site parent identity is not a public
+   contract.
+4. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
+   output with source-backed merge placement or direct render state.
+5. [ ] Audit `Rules._prepareOutputOrderAtRule(...)` / charset replacement
+   `new Nil().inherit(node)` sites; replace inherited nil placeholders with
+   narrow output-order state if parent identity is not needed.
+6. [ ] Replace `Rules` prefix-match `.map((match, index) => ({ ...match,
+   index }))` object factory with an indexed stable sort/selection strategy.
+7. [ ] Replace `Rules` namespace mixin `[...namespaceMixins].sort(...)` with an
+   indexed copy only when order actually differs, or a no-copy ordered scan.
+8. [ ] Replace `Rules` `results.push(...searchSurface(...))` spread calls in
+   lookup recursion with indexed append loops.
+9. [ ] Replace `Rules` remaining multi-key `collectKeyRemainder(...)` fallback
+   arrays with a lookup API that accepts `keys + start + length`.
+10. [ ] Replace `Rules` string-output trailing-newline `out.slice(0, -1)` with a
+    writer/buffer boundary that avoids trimming a completed string where
+    possible.
+11. [ ] Audit `StyleImport` `.inherit(...)` helper sites and keep only source
+    diagnostics that have a current test-backed need.
+12. [ ] Audit `StyleImport` postlude wrapper construction for copied/inherited
+    wrapper surfaces that can become placement records.
+13. [ ] Audit `Call.createFinalizedCallOutput(...)` / fallback syntax output for
+    owned `Call`/`Any` materialization that exists only for public resolve.
+14. [ ] Run an allocation/copy-frontier scan after the next cuts and restock
+    from actual `copyWithReusableLeaves`, `.inherit`, `frozen`, spread, and
+    array-helper hits.
 15. [ ] Verify focused import-style/call/rules/mixin/at-rule suites plus build;
     keep performance claims shelved unless a benchmark/profile round is run.
 

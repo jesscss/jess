@@ -130,6 +130,27 @@ function queueTopImport(context: Context, importRule: AtRule): void {
   }
 }
 
+function keysStartWith(keys: readonly string[], path: readonly string[]): boolean {
+  if (keys.length > path.length) {
+    return false;
+  }
+  for (let i = 0; i < keys.length; i++) {
+    if (keys[i] !== path[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function collectKeyRemainder(keys: readonly string[], start: number): string[] {
+  const length = keys.length - start;
+  const remainder = new Array<string>(length);
+  for (let i = 0; i < length; i++) {
+    remainder[i] = keys[start + i]!;
+  }
+  return remainder;
+}
+
 function renderRulesToString(
   source: Rules,
   node: Node,
@@ -1099,7 +1120,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const keys = Registries.getOrderedSelectorKeys(candidate.value.selector);
         if (
           keys.length === path.length
-          && keys.every((key, index) => key === path[index])
+          && keysStartWith(keys, path)
         ) {
           results.push(candidate);
         }
@@ -1188,7 +1209,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (
           keys.length > 0
           && keys.length < path.length
-          && keys.every((key, index) => key === path[index])
+          && keysStartWith(keys, path)
         ) {
           results.push({ ruleset: candidate, consumed: keys });
         }
@@ -1390,13 +1411,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           sawLegacyOnlyPrefix = true;
           continue;
         }
-        const remainder = path.slice(consumed.length);
-        if (remainder.length === 0) {
+        const remainderLength = path.length - consumed.length;
+        if (remainderLength === 0) {
           return [ruleset];
         }
-        const resolved = remainder.length === 1
+        const resolved = remainderLength === 1
           ? (() => {
-              const segment = remainder[0]!;
+              const segment = path[consumed.length]!;
               const simpleCallableMatches = ruleset.value.rules.findMixinsFast(segment, {
                 context: options.context,
                 hasTarget: options.hasTarget,
@@ -1414,10 +1435,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               });
               return simpleCallableRulesets.length > 0 ? simpleCallableRulesets : undefined;
             })()
-          : ruleset.value.rules.find('mixin', remainder, undefined, {
-              ...options,
-              searchParents: false
-            });
+          : ruleset.value.rules.find(
+              'mixin',
+              collectKeyRemainder(path, consumed.length),
+              undefined,
+              {
+                ...options,
+                searchParents: false
+              }
+            );
         if (resolved?.length) {
           return resolved;
         }
@@ -1454,14 +1480,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     });
 
     for (const { ruleset, consumed } of prefixMatches) {
-      const remainder = keys.slice(consumed.length);
-      if (remainder.length === 0) {
+      const remainderLength = keys.length - consumed.length;
+      if (remainderLength === 0) {
         return [ruleset];
       }
-      const resolved = ruleset.value.rules.find('mixin', remainder, undefined, {
-        ...options,
-        searchParents: false
-      });
+      const resolved = ruleset.value.rules.find(
+        'mixin',
+        remainderLength === 1 ? keys[consumed.length]! : collectKeyRemainder(keys, consumed.length),
+        undefined,
+        {
+          ...options,
+          searchParents: false
+        }
+      );
       if (resolved?.length) {
         return resolved;
       }
@@ -1479,7 +1510,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return undefined;
     }
 
-    const remainder = keys.slice(1);
+    const remainder = collectKeyRemainder(keys, 1);
     const orderedNamespaceMixins = [...namespaceMixins].sort((a, b) => {
       if (!isNode(a, N.Mixin) || !isNode(b, N.Mixin)) {
         return 0;
@@ -2978,13 +3009,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           const result = node.prepareRegistration(context);
 
           if (isThenable(result)) {
-            const remaining = unresolvedDeclarations.slice(i + 1);
-            return (result as Promise<Node>).then((resolvedNode) => {
+            const remaining: Node[] = [];
+            for (let nextIndex = i + 1; nextIndex < unresolvedDeclarations.length; nextIndex++) {
+              remaining.push(unresolvedDeclarations[nextIndex]!);
+            }
+            return result.then((resolvedNode) => {
               if (handleResolvedNode(resolvedNode, node, stillUnresolved)) {
                 madeProgress = true;
               }
               unresolvedDeclarations.length = 0;
-              unresolvedDeclarations.push(...stillUnresolved, ...remaining);
+              for (let nextIndex = 0; nextIndex < stillUnresolved.length; nextIndex++) {
+                unresolvedDeclarations.push(stillUnresolved[nextIndex]!);
+              }
+              for (let nextIndex = 0; nextIndex < remaining.length; nextIndex++) {
+                unresolvedDeclarations.push(remaining[nextIndex]!);
+              }
               if (madeProgress && unresolvedDeclarations.length > 0) {
                 return resolveDeclarations();
               }
@@ -3024,12 +3063,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           const result = node.prepareRegistration(context);
 
           if (isThenable(result)) {
-            const remaining = orderedIdentities.slice(i + 1);
-            return (result as Promise<Node>).then((resolvedNode) => {
+            const remaining: Node[] = [];
+            for (let nextIndex = i + 1; nextIndex < orderedIdentities.length; nextIndex++) {
+              remaining.push(orderedIdentities[nextIndex]!);
+            }
+            return result.then((resolvedNode) => {
               handleResolvedNode(resolvedNode, node, []);
               // Continue with remaining nodes
               orderedIdentities.length = 0;
-              orderedIdentities.push(...remaining);
+              for (let nextIndex = 0; nextIndex < remaining.length; nextIndex++) {
+                orderedIdentities.push(remaining[nextIndex]!);
+              }
               return resolveOrderedOnce();
             });
           }
@@ -3311,7 +3355,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (prefixItems.length === 0 || valueItems.length < prefixItems.length) {
         return false;
       }
-      return prefixItems.every((item, index) => sameMergedItem(item, valueItems[index]!));
+      for (let i = 0; i < prefixItems.length; i++) {
+        if (!sameMergedItem(prefixItems[i]!, valueItems[i]!)) {
+          return false;
+        }
+      }
+      return true;
     };
     const mergeDeclarationValues = (priorValue: Node, nextValue: Node, assign: string): Node => {
       const priorCopy = copyMergedValue(priorValue);
