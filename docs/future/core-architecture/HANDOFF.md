@@ -780,16 +780,27 @@ node value objects to smear source metadata across a subtree.
 
 Follow-up debt:
 
-1. [ ] Remove the remaining public `Node.treeContext` lazy fallback once tests
-   and compatibility callers can set source files through a root instead.
+1. [ ] Remove the remaining public `Node.treeContext` getter entirely once
+   compatibility callers can set source files through a root instead. Current
+   cut stopped standalone non-`Rules` reads from storing `_treeContext`, but the
+   cold getter still exists for compatibility.
 2. [ ] Remove non-`Rules` constructor `treeContext` arguments or turn them into
    root construction only.
-3. [ ] Replace source-map tests that set `leaf.treeContext.file` with root-owned
+3. [x] Replace source-map tests that set `leaf.treeContext.file` with root-owned
    source fixtures.
 4. [ ] Audit import first-use placement copies for canonical-source placement
    state so copied placement nodes do not need inherited source context.
 5. [ ] Keep guard/default scans cycle-safe until remaining copied/canonical
    graph paths are deleted.
+
+Latest source-root cleanup:
+
+- Source-map segment tests now attach `TreeContext.file` to `Rules` roots,
+  including the multi-file nested-rules case.
+- `sourceSegmentFor(...)` no longer falls back to `origin.treeContext`; source
+  maps read `origin.sourceRoot._treeContext` only.
+- The public `Node.treeContext` compatibility getter no longer stores a new
+  `_treeContext` on standalone non-`Rules` nodes.
 
 ### Next 15-Item Queue
 
@@ -803,7 +814,7 @@ Follow-up debt:
 4. [ ] Replace `Rules.toMergedItems(...)` recursive array collection with a
    prefix/iterator scan so `startsWithMergedValue(...)` stops allocating full
    item arrays.
-5. [ ] Remove broad `try/catch` stringification in merge placeholder detection;
+5. [x] Remove broad `try/catch` stringification in merge placeholder detection;
    use owned node-type checks or explicit value helpers instead.
 6. [ ] Design the `StyleImport` first-use placement state that can reference
    canonical source children without `copyImportPlacementNode(...)`.

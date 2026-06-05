@@ -41,6 +41,6 @@ describe('Node mutation', () => {
     expect(root._sourceRoot).toBe(root);
     expect(sourced._treeContext).toBeUndefined();
     expect(sourced._sourceRoot).toBe(root);
-    expect(sourced.treeContext).toBe(treeContext);
+    expect(sourced.sourceRoot?._treeContext).toBe(treeContext);
   });
 });

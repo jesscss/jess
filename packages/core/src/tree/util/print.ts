@@ -131,15 +131,21 @@ export type SourceSegment = {
   origColumn: number;  // 0-based
 };
 
+type SourceMapTreeContext = {
+  file?: {
+    fullPath?: string;
+    path?: string;
+    name?: string;
+  };
+};
+
+type SourceMapSourceRoot = {
+  _treeContext?: SourceMapTreeContext;
+};
+
 type SourceMapOrigin = {
   location?: unknown;
-  treeContext?: {
-    file?: {
-      fullPath?: string;
-      path?: string;
-      name?: string;
-    };
-  };
+  sourceRoot?: SourceMapSourceRoot;
 };
 
 const isSourceMapOrigin = (value: unknown): value is SourceMapOrigin => {
@@ -154,7 +160,7 @@ function sourceSegmentFor(originParam: unknown, genLine: number, genColumn: numb
   }
   const startLine = (loc[1] ?? 1) - 1;
   const startColumn = (loc[2] ?? 1) - 1;
-  const treeContext = origin?.sourceRoot?._treeContext ?? origin?.treeContext;
+  const treeContext = origin?.sourceRoot?._treeContext;
   const file = treeContext?.file?.fullPath || treeContext?.file?.path || treeContext?.file?.name;
   return {
     genLine,

@@ -52,8 +52,6 @@ Object.defineProperty(Node.prototype, 'treeContext', {
         this._treeContext = context;
       } else if (sourceRoot) {
         sourceRoot._treeContext = context;
-      } else {
-        this._treeContext = context;
       }
     }
     return context;

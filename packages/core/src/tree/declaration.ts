@@ -156,10 +156,8 @@ export function collectDeclarationMergeAdapterItems(
       }
       return;
     }
-    const isEmptyPlaceholder = (
-      isNode(child, N.Nil)
-      || String(child.valueOf?.() ?? '') === ''
-    );
+    const isEmptyPlaceholder = isNode(child, N.Nil)
+      || (isNode(child, N.Any) && child.value === '');
     if (!isEmptyPlaceholder) {
       mergedItems.push(child);
     }
@@ -833,10 +831,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
         return;
       }
-      const isEmptyPlaceholder = (
-        isNode(child, N.Nil)
-        || String(child.valueOf?.() ?? '') === ''
-      );
+      const isEmptyPlaceholder = isNode(child, N.Nil)
+        || (isNode(child, N.Any) && child.value === '');
       if (isEmptyPlaceholder) {
         emptyPlaceholder ??= child;
       }

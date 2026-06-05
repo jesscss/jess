@@ -4,6 +4,7 @@ import { OutputWriter, getPrintOptions } from '../print.js';
 import { buildSourceMap } from '../sourcemap.js';
 import { createTriviaMap } from '../trivia.js';
 import { rules, decl, any, ruleset, sellist, sel, el } from '../../index.js';
+import { TreeContext } from '../../../context.js';
 
 const token = (image: string): IToken => ({
   image,
@@ -19,12 +20,14 @@ const token = (image: string): IToken => ({
 describe('source map segments', () => {
   it('collects segments for simple declaration', () => {
     const w = new OutputWriter();
+    const treeContext = new TreeContext({
+      file: { name: 'root.jess', path: '.', fullPath: '/abs/root.jess' }
+    });
     const root = rules([
       decl({ name: any('color'), value: any('red') })
-    ]);
+    ], undefined, undefined, treeContext);
     // fake location & file for mapping
     (root.value[0] as any)._location = [0, 1, 1, 0, 1, 6];
-    (root as any).treeContext.file = { name: 'root.jess', path: '.', fullPath: '/abs/root.jess' };
     const css = root.toString(getPrintOptions({ writer: w }));
     expect(css).toBe('color: red;\n');
     const segs = w.getSegments();
@@ -35,6 +38,9 @@ describe('source map segments', () => {
 
   it('maps nested rules content lines', () => {
     const w = new OutputWriter();
+    const treeContext = new TreeContext({
+      file: { name: 'nested.jess', path: '.', fullPath: '/abs/nested.jess' }
+    });
     const nested = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
@@ -42,11 +48,10 @@ describe('source map segments', () => {
           decl({ name: any('x'), value: any('y') })
         ])
       })
-    ]);
+    ], undefined, undefined, treeContext);
     // attach fake locations and files
     const rs = (nested.value[0] as any).value.rules;
     (rs.value[0] as any)._location = [0, 1, 3, 0, 1, 8];
-    (nested as any).treeContext.file = { name: 'nested.jess', path: '.', fullPath: '/abs/nested.jess' };
     const css = nested.toString(getPrintOptions({ writer: w }));
     expect(css).toBe('.a {\n  x: y;\n}\n');
     const segs = w.getSegments();
@@ -107,17 +112,21 @@ describe('source map segments', () => {
 
   it('combines segments from different trees (files)', () => {
     const w = new OutputWriter();
+    const leftContext = new TreeContext({
+      file: { name: 'left.jess', path: '.', fullPath: '/abs/left.jess' }
+    });
     const left = rules([
       decl({ name: any('a'), value: any('1') })
-    ]);
+    ], undefined, undefined, leftContext);
     // attach file+location to the declaration itself so segments carry sources
-    (left.value[0] as any).treeContext.file = { name: 'left.jess', path: '.', fullPath: '/abs/left.jess' };
     (left.value[0] as any)._location = [0, 1, 1, 0, 1, 5];
 
+    const rightContext = new TreeContext({
+      file: { name: 'right.jess', path: '.', fullPath: '/abs/right.jess' }
+    });
     const right = rules([
       decl({ name: any('b'), value: any('2') })
-    ]);
-    (right.value[0] as any).treeContext.file = { name: 'right.jess', path: '.', fullPath: '/abs/right.jess' };
+    ], undefined, undefined, rightContext);
     (right.value[0] as any)._location = [0, 1, 1, 0, 1, 5];
 
     const root = rules([left, right]);

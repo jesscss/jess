@@ -3324,16 +3324,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
           return;
         }
-        let isEmptyString = false;
-        try {
-          isEmptyString = String(node?.valueOf?.() ?? '') === '';
-        } catch {
-          isEmptyString = false;
-        }
-        const isEmptyPlaceholder = (
-          isNode(node, N.Nil)
-          || isEmptyString
-        );
+        const isEmptyPlaceholder = isNode(node, N.Nil)
+          || (isNode(node, N.Any) && node.value === '');
         if (!isEmptyPlaceholder) {
           items.push(node);
         }
@@ -3432,18 +3424,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       const first = current.value[0];
-      let firstIsEmptyString = false;
-      try {
-        firstIsEmptyString = String(first?.valueOf?.() ?? '') === '';
-      } catch {
-        firstIsEmptyString = false;
-      }
       const isEmptyPlaceholder = Boolean(
         first
         && (
           isNode(first, N.Nil)
           || (isNode(first, N.List) && first.value.length === 0)
-          || firstIsEmptyString
+          || (isNode(first, N.Any) && first.value === '')
         )
       );
       if (!isEmptyPlaceholder) {
