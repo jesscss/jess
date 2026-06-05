@@ -214,6 +214,24 @@ describe('Call', () => {
     expect(rule.registrationPrepared).toBe(false);
   });
 
+  it('renders dynamic CSS call names without evaluating the name twice', async () => {
+    const name = any('source-name');
+    let nameEvaluations = 0;
+    name.eval = function evalForCounting() {
+      nameEvaluations++;
+      return any('rgb');
+    };
+    const rule = call({
+      name,
+      args: list([num(100), num(100), num(100)])
+    });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('rgb(100, 100, 100)');
+    expect(nameEvaluations).toBe(1);
+    expect(rule.evaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
   it('streams dynamic CSS call arguments without materializing a replacement arg list', async () => {
     const root = rules([
       vardecl({

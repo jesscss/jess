@@ -713,41 +713,42 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Strengthened the important optional CSS fallback render test to count
-   dynamic-name evaluation.
-2. [x] Verified the red failure was the intended fallback-probe signal:
-   `nameEvaluations` was `2`, expected `1`.
-3. [x] Moved non-extended optional CSS fallback rendering into the existing
-   render-local `Call.renderDynamicFunctionOutput(...)` state.
-4. [x] Reused the single evaluated dynamic name for important optional CSS
-   fallback syntax.
-5. [x] Preserved `mixin-ruleset` reference unwrapping before fallback
-   classification.
-6. [x] Kept plain JS and metadata JS function handling on the existing
-   extended-function branch.
-7. [x] Guarded the non-extended direct fallback path behind `silentFail` so
-   ordinary dynamic CSS calls still fall through existing semantics.
-8. [x] Preserved callable/mixin/rules-like exclusions before rendering CSS
-   fallback syntax.
-9. [x] Preserved `!important` suffix behavior by using
-   `renderFinalizedCallSyntax(...)`.
-10. [x] Wrote fallback text directly into render buffers instead of turning it
-    into a node.
-11. [x] Preserved the no-derived-call guarantee in the existing test.
-12. [x] Left mixin/rules-like dynamic names and final `evalState(...)` fallback
-    on the older path until separate proof covers those branches.
+1. [x] Added a focused dynamic CSS-name render test that counts dynamic-name
+   evaluation for a non-extended, non-silent call name.
+2. [x] Corrected the first attempted proof after it counted the source
+   variable reference instead of the render-local evaluated name.
+3. [x] Verified the red failure on the corrected proof was the intended final
+   fallback signal: `nameEvaluations` was `4`, expected `1`.
+4. [x] Widened the non-extended render-local branch so ordinary dynamic CSS
+   call names use the already-created state.
+5. [x] Reused the single evaluated dynamic name for non-silent CSS call-name
+   rendering.
+6. [x] Preserved optional CSS fallback behavior from the previous pass on the
+   same branch.
+7. [x] Preserved callable/mixin/rules-like exclusions before direct CSS
+   rendering.
+8. [x] Kept dynamic `calc` on the older path for now because calc-frame
+   semantics need a separate proof before deletion.
+9. [x] Rendered direct CSS-name output as text through
+   `renderFinalizedCallSyntax(...)` instead of materializing a replacement
+   `Call`.
+10. [x] Wrote direct CSS-name text into render buffers without creating a node.
+11. [x] Preserved render-only behavior: the source call remains unevaluated and
+    unprepared after render.
+12. [x] Left mixin/rules-like dynamic names, stylesheet-defined `Func` names,
+    dynamic `calc`, and final `evalState(...)` fallback on the older path until
+    separate proof covers those branches.
 13. [x] Re-ran the red test and saw it pass with one dynamic-name evaluation.
-14. [x] Ran the full `call.test.ts` file (`67` passed).
+14. [x] Ran the full `call.test.ts` file (`68` passed).
 15. [x] No benchmark/profile was run, so make no speed claim from this queue
     completion. This was another Call render probe-reduction pass.
 
 ### Next 15-Item Queue
 
 1. [ ] Continue `Call.renderDynamicFunctionOutput(...)`: mixin/rules-like
-   dynamic names, stylesheet-defined `Func` dynamic names, ordinary non-silent
-   non-extended dynamic names, and final `evalState(...)` fallback still fall
-   through older helper probes. Add focused proof before collapsing each
-   branch.
+   dynamic names, stylesheet-defined `Func` dynamic names, dynamic `calc`, and
+   final `evalState(...)` fallback still fall through older helper probes. Add
+   focused proof before collapsing each branch.
 2. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
    eval branches and classify each as immediate render, public materialization,
    or escaping plugin value; no generic ownership by default.

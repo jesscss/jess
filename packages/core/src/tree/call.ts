@@ -756,12 +756,12 @@ export class Call extends Node<CallValue, CallOptions> {
             return this.renderOutput(context, output, bufferOrOptions, options);
           }
         } else if (
-          this.options?.silentFail
-          && !(
+          !(
             isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
             || evaluatedName instanceof MixinCollection
             || Array.isArray(evaluatedName)
           )
+          && (this.options?.silentFail || evaluatedName !== 'calc')
         ) {
           const fallbackText = await this.renderFinalizedCallSyntax(evaluatedName, state, context, prepared);
           return isRenderBuffer(bufferOrOptions)
