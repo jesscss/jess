@@ -713,88 +713,92 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Cold-fenced `Call.markCallOutput(...)` ownership for plain dynamic JS
-   function render output by passing `ownOutput: false`; public resolve still
-   owns escaping/plugin results.
-2. [x] Cold-fenced metadata dynamic JS function render output through the same
-   non-owning `markCallOutput(...)` path.
-3. [x] Cold-fenced optional fallback success output in direct render, including
-   node results, single-rule unwrapped results, and cast results.
-4. [x] Threaded non-owning render options through finalized fallback text output
-   so render fallback strings do not get call-site parent identity first.
-5. [x] Kept the public optional fallback/resolve path on the default owning
-   behavior, preserving external value-node semantics while shrinking immediate
-   render.
-6. [x] Replaced `Rules` `@charset` output-order `new Nil().inherit(node)` with
-   `_createOutputOrderPlaceholder(...)`: explicit source node, index, location,
-   and tree context only.
-7. [x] Replaced `Rules` CSS `@import` output-order `new Nil().inherit(node)`
-   with the same explicit placeholder path.
-8. [x] Proved the placeholder cut against focused `Rules`, `StyleImport`,
-   `AtRule`, and `Call` coverage; hoisting/import-order behavior stayed green.
-9. [x] Replaced `Rules` path-resolution error marker `Reflect.get(...)` with a
-   typed direct marker read.
-10. [x] Replaced `Rules` `hasFlag` probe `Reflect.get(...)` with a guarded
-    direct method check.
-11. [x] Replaced remaining base `Node` plain-object value walker
-    `Object.hasOwn(...)` guards in visit, children, clone, deep-clone, and
-    trivia-detach traversal.
-12. [x] Replaced `copyRenderMetadata(...)` frame `Reflect.get/set(...)` with a
-    typed direct `frames` metadata path.
-13. [x] Replaced `Node.set(...)` `Reflect.set(...)` for whole-value mutation
-    with direct assignment through `_processNodes(...)`.
-14. [x] Replaced `Node.set(...)` keyed `Reflect.set(...)` with a guarded direct
-    record write.
-15. [x] Ran a fresh reflection/copy frontier scan and verified changed-file
-    ESLint, focused `node-mutation`/`call`/`rules`/`import-style` suite (`211`
-    passed, `9` skipped), broader focused eval/render suite (`502` passed, `9`
-    skipped), build, and `git diff --check`. Build still has only the existing
-    `src/tree/js-expr.ts` direct-`eval` warning.
+1. [x] Spawned two read-only review agents for the helper/method explosion:
+   one on `Call`, one on `Rules`/`StyleImport`; both independently prioritized
+   deleting small wrappers over adding smarter generic helpers.
+2. [x] Renamed `Call.resolveDynamicFunctionOutput(...)` to
+   `evalDynamicFunctionOutput(...)`; public `resolve(context)` remains only the
+   compatibility/materialization entrypoint, not a second eval architecture.
+3. [x] Deleted `CallContentPlacementState`,
+   `createFinalizedCallContentState(...)`, and
+   `createFinalizedCallContentNode(...)`; finalized call syntax now uses
+   `state.contentNode` directly.
+4. [x] Deleted `Call.createFinalizedCallTextOutput(...)`; fallback text output
+   now renders and wraps `Any` directly at the branch that needs it.
+5. [x] Deleted `Call.finalizeFunctionResult(...)`; metadata dynamic-function
+   result handling is inlined in its single caller.
+6. [x] Replaced the `{ ownOutput: false }` object protocol with a boolean
+   `markCallOutput(node, ownOutput)` / `eval*DynamicFunction(..., ownOutput)`
+   path.
+7. [x] Deleted `Rules.appendNodes(...)` and inlined direct push loops at lookup
+   aggregation sites.
+8. [x] Deleted `Rules.appendUniqueNodes(...)` and inlined the two identity
+   dedupe loops where lookup result ordering is visible.
+9. [x] Deleted `Rules._createOutputOrderPlaceholder(...)`; output-order
+   placeholders are explicit local `Nil` assignments at the branch.
+10. [x] Collapsed `Rules._prepareCharsetNode(...)` and
+    `_prepareOutputOrderAtRule(...)` into `_scanRegistrationNodes(...)`; no
+    private method ladder for two one-off output-order branches.
+11. [x] Removed the one-use `isCharsetNode(...)` wrapper by using existing
+    `isNode(node, N.Any)` narrowing inline.
+12. [x] Deleted `StyleImport.copyImportPlacementPath(...)`; successful
+    placement-path capture now uses direct `path.slice()`.
+13. [x] Deleted `StyleImport.copyImportPlacementChild(...)`; first-use import
+    placement calls `copyImportPlacementNode(...)` directly.
+14. [x] Merged `StyleImport.createFirstUseImportPlacementState(...)` child-copy
+    and `sourceByPlacement` loops; the mapping is written while source/child are
+    already local.
+15. [x] Replaced `StyleImport.findImportPlacementValuePath(...)`
+    `Object.keys(value)` allocation with direct `for...in` record traversal.
+
+Verification for this pass: changed-file ESLint passed for `call.ts`,
+`rules.ts`, and `import-style.ts`; the broader focused eval/render suite passed
+(`502` passed, `9` skipped); build passed with only the existing
+`src/tree/js-expr.ts` direct-`eval` warning.
 
 ### Next 15-Item Queue
 
 1. [ ] Replace `Call.evalArgNodes(...)` `frozen` preservation with explicit
    raw-args placement state or a cold materialization boundary; optional
    fallback parent tests must stay green.
-2. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
-   eval branches and classify each as immediate render, public resolve, or
-   escaping plugin value; no generic ownership by default.
-3. [ ] Delete inherited `Call.deriveCall(...)` fallback materialization for
+2. [ ] Collapse `Call.renderDynamicFunctionOutput(...)` into a render-local
+   state machine that evaluates state/name/fn once; do not add another generic
+   dynamic evaluator.
+3. [ ] Inline the public-materialization half of `Call.evalDynamicFunctionOutput(...)`
+   rather than sharing render-only ownership flags through helper wrappers.
+4. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
+   eval branches and classify each as immediate render, public materialization,
+   or escaping plugin value; no generic ownership by default.
+5. [ ] Delete inherited `Call.deriveCall(...)` fallback materialization for
    syntax that only stringifies; keep an owned `Call` only for public value-node
    return.
-4. [ ] Replace `Call.derivePreserveRulesLikeReference(...)` `.inherit(name)`
+6. [ ] Replace `Call.derivePreserveRulesLikeReference(...)` `.inherit(name)`
    with explicit live-reference state or a typed public materialization fence.
-5. [ ] Split `Reference` render-only variable lookup from public
+7. [ ] Split `Reference` render-only variable lookup from public
    materialization so common `@var` render never calls
    `applyReferenceResultMetadata(...)`, `.inherit(...)`, or `frozen`.
-6. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
+8. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
    shallow owned surface with explicit public materialization state or a live
    rules-like binding.
-7. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
+9. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
    metadata paths with a render-only value path and a separate public-value
    materializer.
-8. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
+10. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
    ownership with source/diagnostic state when the resolved node is only queued
    for registration.
-9. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
+11. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
    output with source-backed merge placement or direct render state.
-10. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
+12. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
     narrower merge-value copier or render-state path so merge normalization
     does not clone whole value subtrees.
-11. [ ] Replace `StyleImport` first-use import placement child copies with
+13. [ ] Replace `StyleImport` first-use import placement child copies with
     canonical children plus placement/render state; imports should not fake
     transferred ownership.
-12. [ ] Replace `StyleImport.deriveRulesSurface(...)` `.inherit(anchorRules)`
+14. [ ] Replace `StyleImport.deriveRulesSurface(...)` `.inherit(anchorRules)`
     for import wrappers with explicit source/visibility/placement fields.
-13. [ ] Classify remaining base `Node` visitor/defineType `Reflect.get(...)` /
+15. [ ] Classify remaining base `Node` visitor/defineType `Reflect.get(...)` /
     `Object.hasOwn(...)`: convert Jess-owned probes, document external visitor
     probes as cold/plugin compatibility.
-14. [ ] Classify `util/is-node.ts`, `util/print.ts`, and `util/bitset.ts`
-    reflection: convert owned narrowed shapes, leave genuine unknown/proxy
-    probes only with a note.
-15. [ ] Run the next allocation/copy/frontier scan and verify focused
-    import-style/call/rules/mixin/at-rule/ruleset/declaration suites plus build.
-    Keep performance claims shelved unless a benchmark/profile round is run.
 
 ## Active Correctness Queue
 

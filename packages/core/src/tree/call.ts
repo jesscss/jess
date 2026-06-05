@@ -79,12 +79,6 @@ export type FinalizedCallSyntax = {
   contentNode?: Node;
 };
 
-type CallContentPlacementState = {
-  source: Call;
-  contentNode: Node;
-  output?: Node;
-};
-
 type CallRawArgsPlacementState = {
   source: Call;
   sourceArgs: List<Node>;
@@ -226,33 +220,6 @@ export class Call extends Node<CallValue, CallOptions> {
     );
   }
 
-  private async createFinalizedCallTextOutput(
-    context: Context,
-    state: CallEvalState,
-    syntax: FinalizedCallSyntax,
-    options?: { ownOutput?: boolean }
-  ): Promise<Any<'any'>> {
-    const rendered = await state.source.renderFinalizedCallPublicText(context, state, syntax);
-    return state.source.markCallOutput(new Any(rendered, { role: 'any' }), options);
-  }
-
-  private createFinalizedCallContentState(state: CallEvalState): CallContentPlacementState | undefined {
-    const { contentNode } = state;
-    if (!contentNode) {
-      return undefined;
-    }
-    const placement: CallContentPlacementState = {
-      source: state.source,
-      contentNode
-    };
-    placement.output = contentNode;
-    return placement;
-  }
-
-  private createFinalizedCallContentNode(state: CallEvalState): Node | undefined {
-    return this.createFinalizedCallContentState(state)?.output;
-  }
-
   private async evalFinalizedCallSyntax(
     context: Context,
     state: CallEvalState,
@@ -270,7 +237,7 @@ export class Call extends Node<CallValue, CallOptions> {
           ? name
           : stringifyValueOf(name),
         args: evaluatedArgs,
-        contentNode: state.source.createFinalizedCallContentNode(state)
+        contentNode: state.contentNode
       }
     );
   }
@@ -293,11 +260,12 @@ export class Call extends Node<CallValue, CallOptions> {
       state.args,
       { preserveSourceParents: true }
     );
-    return this.createFinalizedCallTextOutput(context, state, {
+    const rendered = await state.source.renderFinalizedCallPublicText(context, state, {
       name: fallbackName,
       args: evaluatedArgs,
       ...(state.contentNode && { contentNode: state.contentNode })
     });
+    return state.source.markCallOutput(new Any(rendered, { role: 'any' }));
   }
 
   private derivePreserveRulesLikeReference(name: Node): Node {
@@ -337,8 +305,8 @@ export class Call extends Node<CallValue, CallOptions> {
     return list(out, nodes.options);
   }
 
-  private markCallOutput<T extends Node>(node: T, options?: { ownOutput?: boolean }): T {
-    if (options?.ownOutput !== false) {
+  private markCallOutput<T extends Node>(node: T, ownOutput = true): T {
+    if (ownOutput) {
       node.inherit(this);
     }
     let hasOnlyDeclarationsAndComments = true;
@@ -424,7 +392,7 @@ export class Call extends Node<CallValue, CallOptions> {
     if (typeof name === 'string') {
       return undefined;
     }
-    const outputOptions = renderFailureWith ? { ownOutput: false } : undefined;
+    const ownOutput = !renderFailureWith;
     return this.runInCallFrame(context, {}, async () => {
       let evaluatedName: unknown = await name.eval(context);
       if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
@@ -438,13 +406,13 @@ export class Call extends Node<CallValue, CallOptions> {
               ? await callWithContext(context, fn, ...state.args.value)
               : await callWithContext(context, fn);
             if (isNode(result)) {
-              return this.markCallOutput(await result.eval(context), outputOptions);
+              return this.markCallOutput(await result.eval(context), ownOutput);
             }
             const castResult = cast(result);
             if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
-              return this.markCallOutput(castResult.value[0]!, outputOptions);
+              return this.markCallOutput(castResult.value[0]!, ownOutput);
             }
-            return this.markCallOutput(castResult, outputOptions);
+            return this.markCallOutput(castResult, ownOutput);
           } catch (error) {
             const unitMode = context?.opts?.unitMode ?? 'loose';
             if (unitMode === 'strict') {
@@ -473,19 +441,20 @@ export class Call extends Node<CallValue, CallOptions> {
         state.args,
         { preserveSourceParents: true }
       );
-      return this.createFinalizedCallTextOutput(context, state, {
+      const rendered = await state.source.renderFinalizedCallPublicText(context, state, {
         name: typeof evaluatedName === 'string' || evaluatedName instanceof Node
           ? evaluatedName
           : stringifyValueOf(evaluatedName),
         args: evaluatedArgs,
         ...(state.contentNode && { contentNode: state.contentNode })
-      }, outputOptions);
+      });
+      return this.markCallOutput(new Any(rendered, { role: 'any' }), ownOutput);
     });
   }
 
   private async evalPlainDynamicFunction(
     context: Context,
-    options?: { ownOutput?: boolean }
+    ownOutput = true
   ): Promise<Node | undefined> {
     if (
       typeof this.value.name === 'string'
@@ -515,42 +484,19 @@ export class Call extends Node<CallValue, CallOptions> {
         ? await callWithContext(context, fn, ...state.args.value)
         : await callWithContext(context, fn);
       if (isNode(result)) {
-        return this.markCallOutput(await result.eval(context), options);
+        return this.markCallOutput(await result.eval(context), ownOutput);
       }
       const castResult = cast(result);
       if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
-        return this.markCallOutput(castResult.value[0]!, options);
+        return this.markCallOutput(castResult.value[0]!, ownOutput);
       }
-      return this.markCallOutput(castResult, options);
+      return this.markCallOutput(castResult, ownOutput);
     });
-  }
-
-  private async finalizeFunctionResult(
-    result: unknown,
-    context: Context,
-    markImportant?: boolean,
-    options?: { ownOutput?: boolean }
-  ): Promise<Node> {
-    if (isNode(result)) {
-      let evald = result.eval(context);
-      if (isThenable(evald)) {
-        evald = await evald;
-      }
-      if (markImportant && isNode(evald, N.Rules)) {
-        this.makeImportant(evald);
-      }
-      return this.markCallOutput(evald, options);
-    }
-    const castResult = cast(result);
-    if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
-      return this.markCallOutput(castResult.value[0]!, options);
-    }
-    return this.markCallOutput(castResult, options);
   }
 
   private async evalMetadataDynamicFunction(
     context: Context,
-    options?: { ownOutput?: boolean }
+    ownOutput = true
   ): Promise<Node | undefined> {
     if (
       typeof this.value.name === 'string'
@@ -576,7 +522,21 @@ export class Call extends Node<CallValue, CallOptions> {
       const result = state.args
         ? await callWithContext(context, fn, state.args)
         : await callWithContext(context, fn);
-      return await this.finalizeFunctionResult(result, context, this._options?.markImportant, options);
+      if (isNode(result)) {
+        let evald = result.eval(context);
+        if (isThenable(evald)) {
+          evald = await evald;
+        }
+        if (this._options?.markImportant && isNode(evald, N.Rules)) {
+          this.makeImportant(evald);
+        }
+        return this.markCallOutput(evald, ownOutput);
+      }
+      const castResult = cast(result);
+      if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
+        return this.markCallOutput(castResult.value[0]!, ownOutput);
+      }
+      return this.markCallOutput(castResult, ownOutput);
     });
   }
 
@@ -819,7 +779,7 @@ export class Call extends Node<CallValue, CallOptions> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): Promise<string> {
-    const node = await this.evalPlainDynamicFunction(context, { ownOutput: false });
+    const node = await this.evalPlainDynamicFunction(context, false);
     if (node) {
       return this.renderOutput(context, node, bufferOrOptions, options);
     }
@@ -838,7 +798,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       return this.renderOutput(context, fallback, bufferOrOptions, options);
     }
-    const metadataOutput = await this.evalMetadataDynamicFunction(context, { ownOutput: false });
+    const metadataOutput = await this.evalMetadataDynamicFunction(context, false);
     if (metadataOutput) {
       return this.renderOutput(context, metadataOutput, bufferOrOptions, options);
     }
@@ -846,7 +806,7 @@ export class Call extends Node<CallValue, CallOptions> {
     return this.renderOutput(context, output, bufferOrOptions, options);
   }
 
-  private async resolveDynamicFunctionOutput(context: Context): Promise<Node> {
+  private async evalDynamicFunctionOutput(context: Context): Promise<Node> {
     const node = await this.evalPlainDynamicFunction(context);
     if (node) {
       return node;
@@ -941,7 +901,7 @@ export class Call extends Node<CallValue, CallOptions> {
     ) {
       return this.evalNode(context);
     }
-    return this.resolveDynamicFunctionOutput(context);
+    return this.evalDynamicFunctionOutput(context);
   }
 
   /** Recursively makes declarations important */
@@ -1150,22 +1110,19 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       const finalizedName = typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n);
       if (this._options?.silentFail && typeof this.value.name !== 'string') {
-        return this.createFinalizedCallTextOutput(
-          context,
-          state,
-          {
-            name: finalizedName,
-            args: evaluatedArgs,
-            ...(state.contentNode && { contentNode: state.contentNode })
-          }
-        );
+        const rendered = await state.source.renderFinalizedCallPublicText(context, state, {
+          name: finalizedName,
+          args: evaluatedArgs,
+          ...(state.contentNode && { contentNode: state.contentNode })
+        });
+        return this.markCallOutput(new Any(rendered, { role: 'any' }));
       }
       const node = this.createFinalizedCallOutput(
         state,
         {
           name: finalizedName,
           args: evaluatedArgs,
-          contentNode: this.createFinalizedCallContentNode(state)
+          contentNode: state.contentNode
         }
       );
       return this.markCallOutput(node);

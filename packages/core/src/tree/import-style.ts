@@ -320,14 +320,6 @@ function findImportPlacementState(placementRules: Rules): ImportPlacementState |
 
 type ImportPlacementValuePath = readonly (string | number)[];
 
-function copyImportPlacementPath(path: readonly (string | number)[]): ImportPlacementValuePath {
-  const out = new Array<string | number>(path.length);
-  for (let i = 0; i < path.length; i++) {
-    out[i] = path[i]!;
-  }
-  return out;
-}
-
 function findImportPlacementValuePath(
   value: unknown,
   target: Node,
@@ -335,7 +327,7 @@ function findImportPlacementValuePath(
   seen = new Set<unknown>()
 ): ImportPlacementValuePath | undefined {
   if (value === target) {
-    return copyImportPlacementPath(path);
+    return path.slice();
   }
   if (value instanceof Node) {
     if (seen.has(value)) {
@@ -356,7 +348,7 @@ function findImportPlacementValuePath(
     return undefined;
   }
   if (isRecord(value)) {
-    for (const key of Object.keys(value)) {
+    for (const key in value) {
       path.push(key);
       const found = findImportPlacementValuePath(value[key], target, path, seen);
       path.pop();
@@ -558,19 +550,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
     const children = new Array<Node>(sourceRules.value.length);
     const childSegments = new Array<PlacementChildSegment>(sourceRules.value.length);
+    const sourceByPlacement = new Map<Node, Node>();
     for (let index = 0; index < sourceRules.value.length; index++) {
       const source = sourceRules.value[index]!;
-      const child = this.copyImportPlacementChild(source);
+      const child = copyImportPlacementNode(source);
       children[index] = child;
       childSegments[index] = createPlacementChildSegment(source, child, index);
-    }
-    const sourceByPlacement = new Map<Node, Node>();
-    for (let index = 0; index < children.length; index++) {
-      const placementChild = children[index];
-      const sourceChild = sourceRules.value[index];
-      if (placementChild && sourceChild) {
-        sourceByPlacement.set(placementChild, sourceChild);
-      }
+      sourceByPlacement.set(child, source);
     }
     return {
       source: sourceRules,
@@ -585,10 +571,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const placement = this.deriveRulesSurface(state.source, state.children);
     importPlacementStates.set(placement, state);
     return placement;
-  }
-
-  private copyImportPlacementChild(node: Node): Node {
-    return copyImportPlacementNode(node);
   }
 
   private getPostludeNodes(postlude?: Node): Node[] {
