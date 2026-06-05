@@ -63,6 +63,8 @@ const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
 type StyleImportRegistrationNode = Node<{ path: unknown }>;
+type PathResolutionError = Error & { _isPathResolutionError?: boolean };
+type FlagLikeNode = { hasFlag(flag: number): boolean };
 type PendingPrepHandler = (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean;
 type RulesRenderContextSnapshot = {
   rulesContext: Context['rulesContext'];
@@ -149,6 +151,28 @@ function collectKeyRemainder(keys: readonly string[], start: number): string[] {
     remainder[i] = keys[start + i]!;
   }
   return remainder;
+}
+
+function appendNodes<T>(target: T[], source: readonly T[]): void {
+  for (let i = 0; i < source.length; i++) {
+    target.push(source[i]!);
+  }
+}
+
+function appendUniqueNodes<T>(target: T[], source: readonly T[]): void {
+  for (let i = 0; i < source.length; i++) {
+    const node = source[i]!;
+    let found = false;
+    for (let existing = 0; existing < target.length; existing++) {
+      if (target[existing] === node) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      target.push(node);
+    }
+  }
 }
 
 function renderRulesToString(
@@ -333,13 +357,14 @@ function sourceRulesOf(rules: Rules): Rules {
 }
 
 function isStyleImportPathResolutionError(error: unknown): boolean {
-  return error instanceof Error && Reflect.get(error, '_isPathResolutionError') === true;
+  return error instanceof Error && (error as PathResolutionError)._isPathResolutionError === true;
 }
 
-function hasFlagMethod(value: unknown): value is { hasFlag(flag: number): boolean } {
+function hasFlagMethod(value: unknown): value is FlagLikeNode {
   return typeof value === 'object'
     && value !== null
-    && typeof Reflect.get(value, 'hasFlag') === 'function';
+    && 'hasFlag' in value
+    && typeof value.hasFlag === 'function';
 }
 
 function normalizeDeclarationFilter(filterType: string | undefined): 'VarDeclaration' | 'Declaration' | undefined {
@@ -786,7 +811,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           continue;
         }
 
-        results.push(...findWithinScopeSurface(
+        appendNodes(results, findWithinScopeSurface(
           entry.node,
           localContext || Boolean(entry.node.options?.local),
           visited
@@ -808,7 +833,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         first = false;
-        results.push(...findWithinScopeSurface(scope, options?.local, new Set<Rules>()));
+        appendNodes(results, findWithinScopeSurface(scope, options?.local, new Set<Rules>()));
       }
       cursor = cursor.parent;
       if (options?.searchParents === false) {
@@ -873,7 +898,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (localContext && entry.node.options?.local) {
           continue;
         }
-        results.push(...findWithinScopeSurface(
+        appendNodes(results, findWithinScopeSurface(
           entry.node,
           localContext || Boolean(entry.node.options?.local),
           visited
@@ -893,7 +918,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           break;
         }
         first = false;
-        results.push(...findWithinScopeSurface(scope, options?.local, new Set<Rules>()));
+        appendNodes(results, findWithinScopeSurface(scope, options?.local, new Set<Rules>()));
       }
       cursor = cursor.parent;
       if (options?.searchParents === false) {
@@ -1145,7 +1170,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (localContext && entry.node.options?.local) {
           continue;
         }
-        results.push(...searchSurface(
+        appendNodes(results, searchSurface(
           entry.node,
           localContext || Boolean(entry.node.options?.local),
           visited
@@ -1167,7 +1192,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         first = false;
-        results.push(...searchSurface(scope, options?.local, new Set<Rules>()));
+        appendNodes(results, searchSurface(scope, options?.local, new Set<Rules>()));
       }
       if (options?.searchParents === false) {
         break;
@@ -1234,7 +1259,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (localContext && entry.node.options?.local) {
           continue;
         }
-        results.push(...searchSurface(
+        appendNodes(results, searchSurface(
           entry.node,
           localContext || Boolean(entry.node.options?.local),
           visited
@@ -1256,7 +1281,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         first = false;
-        results.push(...searchSurface(scope, options?.local, new Set<Rules>()));
+        appendNodes(results, searchSurface(scope, options?.local, new Set<Rules>()));
       }
       if (options?.searchParents === false) {
         break;
@@ -1336,7 +1361,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           sawDefiniteMiss = true;
           continue;
         }
-        nestedResults.push(...resolved);
+        appendNodes(nestedResults, resolved);
       }
 
       if (nestedResults.length > 0) {
@@ -1396,17 +1421,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return exactPathMatches.length > 0 ? exactPathMatches : DEFINITE_MISS;
       }
 
-      const orderedPrefixMatches = prefixMatches
-        .map((match, index) => ({ ...match, index }))
-        .sort((a, b) => {
-          if (b.consumed.length !== a.consumed.length) {
-            return b.consumed.length - a.consumed.length;
-          }
-          return a.index - b.index;
-        });
+      prefixMatches.sort((a, b) => b.consumed.length - a.consumed.length);
       let sawLegacyOnlyPrefix = false;
 
-      for (const { ruleset, consumed } of orderedPrefixMatches) {
+      for (const { ruleset, consumed } of prefixMatches) {
         if (selectorNeedsLegacyFallback(ruleset)) {
           sawLegacyOnlyPrefix = true;
           continue;
@@ -1511,16 +1529,25 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
 
     const remainder = collectKeyRemainder(keys, 1);
-    const orderedNamespaceMixins = [...namespaceMixins].sort((a, b) => {
-      if (!isNode(a, N.Mixin) || !isNode(b, N.Mixin)) {
-        return 0;
+    const orderedNamespaceMixins: Mixin[] = [];
+    for (let i = 0; i < namespaceMixins.length; i++) {
+      const entry = namespaceMixins[i]!;
+      if (!isNode(entry, N.Mixin)) {
+        continue;
       }
-      return comparePosition(a, b);
-    });
+      let insertAt = orderedNamespaceMixins.length;
+      for (let existing = 0; existing < orderedNamespaceMixins.length; existing++) {
+        if (comparePosition(entry, orderedNamespaceMixins[existing]!) < 0) {
+          insertAt = existing;
+          break;
+        }
+      }
+      orderedNamespaceMixins.splice(insertAt, 0, entry);
+    }
 
     const resolved: MixinEntry[] = [];
     for (const entry of orderedNamespaceMixins) {
-      if (!isNode(entry, N.Mixin) || !mixinHasNoRequiredParams(entry)) {
+      if (!mixinHasNoRequiredParams(entry)) {
         continue;
       }
       const nested = entry.value.rules.find('mixin', remainder, undefined, {
@@ -1528,7 +1555,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         searchParents: false
       });
       if (nested?.length) {
-        resolved.push(...nested);
+        appendNodes(resolved, nested);
       }
     }
 
@@ -1572,7 +1599,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (indexed.length === 0) {
         return fast;
       }
-      return [...new Set([...fast, ...indexed])];
+      const combined = new Array<MixinEntry>();
+      appendNodes(combined, fast);
+      appendUniqueNodes(combined, indexed);
+      return combined;
     } else if (type === 'mixin' && isArray(keys) && keys.length > 1) {
       const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
       let compoundPrefixFast: MixinEntry[] | undefined;
@@ -1615,7 +1645,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const fast = mixinNamespaceFast ?? this.findMixinNamespacePathFast(keys, mixinFilterType, options);
       if (compoundPrefixFast !== undefined && compoundPrefixFast.length > 0) {
         if (fast !== undefined && fast.length > 0) {
-          return [...new Set([...compoundPrefixFast, ...fast])];
+          const combined = new Array<MixinEntry>();
+          appendNodes(combined, compoundPrefixFast);
+          appendUniqueNodes(combined, fast);
+          return combined;
         }
         return compoundPrefixFast;
       }
@@ -2614,10 +2647,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // registration prep and dynamic resolution. They evaluate when the
       // source-order walk reaches them.
       if (!this._isRegisterableType(node)) {
-        Reflect.set(node, 'index', nodeIndex);
+        node.index = nodeIndex;
         return;
       }
-      Reflect.set(node, 'index', nodeIndex);
+      node.index = nodeIndex;
       return this._prepareRegisterableNode(rules, node, index, nodeIndex, prepState, context);
     };
     const processRest = (start: number): MaybePromise<RegistrationPrepState> => {
@@ -2667,6 +2700,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     rules.mixinsByName ??= new Map();
   }
 
+  private _createOutputOrderPlaceholder(node: Node, nodeIndex: number | undefined): Nil {
+    const location = node.location.length === 0 ? undefined : node.location;
+    const placeholder = new Nil('', undefined, location, node.treeContext);
+    placeholder.sourceNode = node;
+    placeholder.index = nodeIndex;
+    return placeholder;
+  }
+
   private _prepareCharsetNode(
     rules: Rules,
     node: Node,
@@ -2682,8 +2723,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       context.currentCharset = node;
     }
     node.registrationPrepared = true;
-    rules.value[index] = new Nil().inherit(node);
-    Reflect.set(rules.value[index]!, 'index', nodeIndex);
+    rules.value[index] = this._createOutputOrderPlaceholder(node, nodeIndex);
     return true;
   }
 
@@ -2701,8 +2741,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Preserve the prelude as authored; evaluating here can strip comment tokens.
     queueTopImport(context, node);
     node.registrationPrepared = true;
-    rules.value[index] = new Nil().inherit(node);
-    Reflect.set(rules.value[index]!, 'index', nodeIndex);
+    rules.value[index] = this._createOutputOrderPlaceholder(node, nodeIndex);
     return true;
   }
 
@@ -2768,7 +2807,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     prepState: RegistrationPrepState
   ): void {
     rules.value[index] = node;
-    Reflect.set(node, 'index', nodeIndex);
+    node.index = nodeIndex;
     // After prep, check if it still has a static name.
     if (this._hasStaticName(node)) {
       this._registerNodeIfEligible(rules, node);
@@ -2993,7 +3032,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Declaration names are lookup identities. One pending declaration can
     // unblock another by registering a variable name used in interpolation.
     let attempts = 0;
-    const unresolvedDeclarations: Node[] = [...pendingDeclarations];
+    const unresolvedDeclarations = new Array<Node>(pendingDeclarations.length);
+    for (let i = 0; i < pendingDeclarations.length; i++) {
+      unresolvedDeclarations[i] = pendingDeclarations[i]!;
+    }
 
     const resolveDeclarations = (): MaybePromise<void> => {
       attempts++;
@@ -3040,7 +3082,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       if (madeProgress && stillUnresolved.length > 0) {
         unresolvedDeclarations.length = 0;
-        unresolvedDeclarations.push(...stillUnresolved);
+        appendNodes(unresolvedDeclarations, stillUnresolved);
         return resolveDeclarations();
       }
     };
@@ -3377,7 +3419,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           nextItems.shift();
         }
       }
-      return new List([...priorItems, ...nextItems]);
+      const mergedItems = new Array<Node>(priorItems.length + nextItems.length);
+      let mergedIndex = 0;
+      for (let i = 0; i < priorItems.length; i++) {
+        mergedItems[mergedIndex++] = priorItems[i]!;
+      }
+      for (let i = 0; i < nextItems.length; i++) {
+        mergedItems[mergedIndex++] = nextItems[i]!;
+      }
+      return new List(mergedItems);
     };
     const composeMergedValue = (
       decl: Node,
@@ -3423,7 +3473,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!isNode(current, N.List) || current.value.length === 0) {
         return;
       }
-      const [first, ...rest] = current.value;
+      const first = current.value[0];
       let firstIsEmptyString = false;
       try {
         firstIsEmptyString = String(first?.valueOf?.() ?? '') === '';
@@ -3441,15 +3491,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!isEmptyPlaceholder) {
         return;
       }
-      if (rest.length === 0) {
+      if (current.value.length === 1) {
         setDeclValue(node, new Nil());
         return;
       }
-      if (rest.length === 1) {
-        setDeclValue(node, copyMergedValue(rest[0]!));
+      if (current.value.length === 2) {
+        setDeclValue(node, copyMergedValue(current.value[1]!));
         return;
       }
-      setDeclValue(node, new List(rest.map(item => copyMergedValue(item))));
+      const rest = new Array<Node>(current.value.length - 1);
+      for (let i = 1; i < current.value.length; i++) {
+        rest[i - 1] = copyMergedValue(current.value[i]!);
+      }
+      setDeclValue(node, new List(rest));
     };
 
     const lastVisibleByName = new Map<string, DeclOccurrence>();
@@ -3464,8 +3518,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!isNode(node, N.Rules)) {
         return;
       }
-      for (const child of node.value) {
-        collectDeclarationStream(child, node);
+      for (let i = 0; i < node.value.length; i++) {
+        collectDeclarationStream(node.value[i]!, node);
       }
     };
 

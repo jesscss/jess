@@ -45,7 +45,7 @@ export function prepareCallableCandidateState({
     : createOwnedRules(candidateRules);
 
   if (isNode(candidate, N.Mixin)) {
-    Reflect.set(rules, 'parent', candidateRules.parent);
+    rules.parent = candidateRules.parent;
   }
 
   rules.options.rulesVisibility ??= {};

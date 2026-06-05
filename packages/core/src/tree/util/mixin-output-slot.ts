@@ -187,13 +187,9 @@ export function assignMixinOutputRuleIndexes(
   let outputRuleIndex = 0;
   for (const outputChild of outputRules.value) {
     const sourceChild = getMixinOutputSourceChild(outputRules, outputChild) ?? outputChild;
-    Reflect.set(
-      outputChild,
-      'index',
-      isIndexedRuleChild(sourceChild)
-        ? getMixinOutputRuleIndex(outputRules, outputChild, outputRuleIndex++)
-        : undefined
-    );
+    outputChild.index = isIndexedRuleChild(sourceChild)
+      ? getMixinOutputRuleIndex(outputRules, outputChild, outputRuleIndex++)
+      : undefined;
   }
 }
 

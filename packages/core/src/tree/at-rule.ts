@@ -16,6 +16,10 @@ import { canReuseLeaf, copyWithReusableLeaves, copyWithReusableLeavesPreservingC
 import { withRulesContext } from './util/context.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
 /**
  * When collapseNesting/hoist wrapped at-rule rules in a single Ruleset(&),
  * the real rulesets (.ma, .md, etc.) registered to the inner Rules (the wrapper
@@ -313,9 +317,9 @@ function hasCommentChild(value: unknown): boolean {
     }
     return false;
   }
-  if (value && typeof value === 'object') {
+  if (isRecord(value)) {
     for (const key in value) {
-      if (Object.hasOwn(value, key) && hasCommentChild(Reflect.get(value, key))) {
+      if (hasCommentChild(value[key])) {
         return true;
       }
     }
@@ -324,7 +328,7 @@ function hasCommentChild(value: unknown): boolean {
 }
 
 function isAtRuleLeafState(value: unknown): value is AtRuleLeafState {
-  return Boolean(value && typeof value === 'object' && Reflect.get(value, 'kind') === 'leaf-render');
+  return Boolean(value && typeof value === 'object' && 'kind' in value && value.kind === 'leaf-render');
 }
 
 function isAtRuleBodyEvalRecordResult(value: unknown): value is AtRuleBodyEvalRecord {

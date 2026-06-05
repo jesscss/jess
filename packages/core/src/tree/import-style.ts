@@ -66,9 +66,7 @@ function visitDescendantRulesets(value: unknown, cb: (ruleset: Ruleset) => void)
   }
   if (isObject(value)) {
     for (const key in value) {
-      if (Object.hasOwn(value, key)) {
-        visitDescendantRulesets(value[key], cb);
-      }
+      visitDescendantRulesets(value[key], cb);
     }
   }
 }
@@ -78,14 +76,16 @@ function copyImportPlacementValue(value: unknown): unknown {
     return copyImportPlacementNode(value);
   }
   if (Array.isArray(value)) {
-    return value.map(item => copyImportPlacementValue(item));
+    const out = new Array<unknown>(value.length);
+    for (let i = 0; i < value.length; i++) {
+      out[i] = copyImportPlacementValue(value[i]);
+    }
+    return out;
   }
   if (isObject(value)) {
     const out: Record<string, unknown> = {};
     for (const key in value) {
-      if (Object.hasOwn(value, key)) {
-        out[key] = copyImportPlacementValue(value[key]);
-      }
+      out[key] = copyImportPlacementValue(value[key]);
     }
     return out;
   }
@@ -109,14 +109,10 @@ function constructImportPlacementNode(node: Node, value: unknown): Node {
 }
 
 function copyImportPlacementAmpersand(node: Node): Node | undefined {
-  if (node.type !== 'Ampersand') {
+  if (!isNode(node, N.Ampersand)) {
     return undefined;
   }
-  const derive: unknown = Reflect.get(node, 'derive');
-  if (typeof derive !== 'function') {
-    return undefined;
-  }
-  const derived = derive.call(node);
+  const derived = node.derive();
   return derived instanceof Node ? derived : undefined;
 }
 
@@ -324,6 +320,14 @@ function findImportPlacementState(placementRules: Rules): ImportPlacementState |
 
 type ImportPlacementValuePath = readonly (string | number)[];
 
+function copyImportPlacementPath(path: readonly (string | number)[]): ImportPlacementValuePath {
+  const out = new Array<string | number>(path.length);
+  for (let i = 0; i < path.length; i++) {
+    out[i] = path[i]!;
+  }
+  return out;
+}
+
 function findImportPlacementValuePath(
   value: unknown,
   target: Node,
@@ -331,7 +335,7 @@ function findImportPlacementValuePath(
   seen = new Set<unknown>()
 ): ImportPlacementValuePath | undefined {
   if (value === target) {
-    return path;
+    return copyImportPlacementPath(path);
   }
   if (value instanceof Node) {
     if (seen.has(value)) {
@@ -342,7 +346,9 @@ function findImportPlacementValuePath(
   }
   if (Array.isArray(value)) {
     for (let index = 0; index < value.length; index++) {
-      const found = findImportPlacementValuePath(value[index], target, [...path, index], seen);
+      path.push(index);
+      const found = findImportPlacementValuePath(value[index], target, path, seen);
+      path.pop();
       if (found) {
         return found;
       }
@@ -351,7 +357,9 @@ function findImportPlacementValuePath(
   }
   if (isRecord(value)) {
     for (const key of Object.keys(value)) {
-      const found = findImportPlacementValuePath(value[key], target, [...path, key], seen);
+      path.push(key);
+      const found = findImportPlacementValuePath(value[key], target, path, seen);
+      path.pop();
       if (found) {
         return found;
       }
@@ -430,9 +438,12 @@ export function getImportPlacementChildSegments(placementRules: Rules): readonly
   if (!state) {
     return undefined;
   }
-  return state.childSegments.map(segment => (
-    createPlacementChildSegment(segment.source, placementRules.value[segment.index], segment.index)
-  ));
+  const segments = new Array<ImportPlacementChildSegment>(state.childSegments.length);
+  for (let i = 0; i < state.childSegments.length; i++) {
+    const segment = state.childSegments[i]!;
+    segments[i] = createPlacementChildSegment(segment.source, placementRules.value[segment.index], segment.index);
+  }
+  return segments;
 }
 
 function readImportPlacementRenderState(placementRules: Rules): ImportPlacementRenderState {
@@ -545,10 +556,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 
   private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
-    const children = sourceRules.value.map(node => this.copyImportPlacementChild(node));
-    const childSegments = sourceRules.value.map((source, index) => (
-      createPlacementChildSegment(source, children[index], index)
-    ));
+    const children = new Array<Node>(sourceRules.value.length);
+    const childSegments = new Array<PlacementChildSegment>(sourceRules.value.length);
+    for (let index = 0; index < sourceRules.value.length; index++) {
+      const source = sourceRules.value[index]!;
+      const child = this.copyImportPlacementChild(source);
+      children[index] = child;
+      childSegments[index] = createPlacementChildSegment(source, child, index);
+    }
     const sourceByPlacement = new Map<Node, Node>();
     for (let index = 0; index < children.length; index++) {
       const placementChild = children[index];
@@ -780,7 +795,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   private createCssImportAtRule(pathNode: Quoted | Url): AtRule {
     const preludeNodes: Node[] = [pathNode];
-    preludeNodes.push(...this.getPostludeNodes(this.options.importOptions?.postlude));
+    const postludeNodes = this.getPostludeNodes(this.options.importOptions?.postlude);
+    for (let i = 0; i < postludeNodes.length; i++) {
+      preludeNodes.push(postludeNodes[i]!);
+    }
     const prelude = preludeNodes.length === 1
       ? preludeNodes[0]
       : new Sequence(preludeNodes, undefined, undefined, this.treeContext);

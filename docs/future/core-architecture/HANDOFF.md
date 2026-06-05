@@ -68,6 +68,25 @@ keeps the Less path clean.
   proof: a real semantic requirement, a measured speed win, or a cold API
   boundary. "It is convenient", "the old result looked owned", and "a test
   asserted parent identity" are not valid reasons.
+- Default to **eval then serialize immediately**. If an evaluated value is only
+  being rendered to CSS bytes, it must not receive replacement ownership:
+  no `.inherit(...)`, no `frozen`, no parent/index rewrite, and no copied
+  container. Render the canonical value with the active scope/placement state
+  and move on.
+- A value may be materialized only if it escapes immediate serialization:
+  JS/plugin function arguments that can inspect or mutate nodes, explicit public
+  `eval`/compat APIs that promise a node result, or a real transformed syntax
+  node whose structure is different from the source and cannot be represented
+  as live binding / placement / render state. Even then, materialization belongs
+  behind a named cold boundary, not in the default render path.
+- `.inherit(...)` is no longer a valid generic "replacement" primitive for hot
+  eval/render. It conflates source metadata, parent placement, visibility flags,
+  generated state, and index. Split remaining uses into explicit narrow actions:
+  source diagnostics, selector flags, public materialization, or delete them.
+- `frozen` is a symptom of copied ownership. Treat every remaining `frozen`
+  write as temporary proof that a source node is being reused in an owned-result
+  path. Replace that path with live binding / placement state or push it behind
+  cold materialization.
 - Allocate owned nodes, state records, side maps, arrays, or helper wrappers
   only when they protect a real runtime invariant or remove more runtime cost
   than they add.
@@ -99,6 +118,11 @@ keeps the Less path clean.
   generic promise adapters, and promise-aware wrappers unless the path is a
   cold public convenience API or `F_MAY_ASYNC` proves the subtree can actually
   suspend. A generator is not free; it is just another hidden state machine.
+- Do not use `Object.hasOwn(...)`, `Reflect.get(...)`, `Reflect.set(...)`, or
+  `Reflect.has(...)` on shapes Jess owns and has already narrowed. This is not
+  a hostile proxy boundary. Direct property reads/writes are the default. Keep
+  reflective access only for genuinely unknown external objects, cold visitor /
+  plugin compatibility probes, or documented third-party internals.
 - Use existing node state as the hot-path dispatch contract; do not invent a
   second declaration graph, kind graph, or side-channel taxonomy unless a fact
   truly does not exist. The repo already carries many branch facts:
@@ -689,83 +713,88 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Replaced `StyleImport` additive `with` config dual `.filter(...)`
-   partition with one indexed partition.
-2. [x] Cut `StyleImport.render(...)` remaining `pipe(...)` wrapper into direct
-   `evalNode(...)` plus sync/async render continuation.
-3. [x] Removed the `pipe` import from `import-style.ts`.
-4. [x] Replaced `Call.markCallOutput(...)` declaration-only `.every(...)` with
-   an indexed loop.
-5. [x] Cut `Call.createFinalizedCallContentState(...)`
-   `copyWithReusableLeaves(contentNode)`; finalized call content now reuses the
-   source content node instead of manufacturing an owned content copy.
-6. [x] Removed the now-unused finalized content `reusesSourceContent` bookkeeping
-   and static-content `frozen` write.
-7. [x] Audited `Call.evalArgNodes(... preserveSourceParents)`: the remaining
-   non-static list/sequence copy is still real debt, but it is tied to metadata
-   raw-args and public owned argument surfaces, so it stays queued for a
-   placement/materialization replacement rather than a blind delete.
-8. [x] Replaced the first `Rules` lookup `keys.every(...)` path-prefix compare
-   with an indexed `keysStartWith(...)` helper.
-9. [x] Replaced the second `Rules` lookup `keys.every(...)` path-prefix compare
-   with the same indexed helper.
-10. [x] Replaced `Rules` variable-path `slice(...)` with explicit
-    `remainderLength` handling and a loop-built remainder only for the multi-key
-    fallback API.
-11. [x] Replaced `Rules` compound-prefix key `slice(...)` with
-    `remainderLength`, single-key direct lookup, and loop-built multi-key
-    fallback.
-12. [x] Replaced `Rules` namespace first-key `slice(1)` with loop-built
-    `collectKeyRemainder(...)`.
-13. [x] Replaced pending declaration prep
-    `unresolvedDeclarations.slice(i + 1)` and spread rebuild with indexed
-    collection/rebuild loops.
-14. [x] Replaced ordered identity prep `orderedIdentities.slice(i + 1)` and
-    spread rebuild with indexed collection/rebuild loops; replaced merge helper
-    `prefixItems.every(...)` with an indexed compare.
-15. [x] Audited `Rules[Symbol.iterator]`: it remains only as a cold
-    public/convenience iterator. Current hot scans use `rules.value` indexed
-    loops. Verified focused import-style/call/rules/mixin/at-rule tests (`399`
-    passed, `9` skipped) and `pnpm --filter @jesscss/core build` with only the
-    existing `js-expr.ts` direct-`eval` warning.
+1. [x] Cold-fenced `Call.markCallOutput(...)` ownership for plain dynamic JS
+   function render output by passing `ownOutput: false`; public resolve still
+   owns escaping/plugin results.
+2. [x] Cold-fenced metadata dynamic JS function render output through the same
+   non-owning `markCallOutput(...)` path.
+3. [x] Cold-fenced optional fallback success output in direct render, including
+   node results, single-rule unwrapped results, and cast results.
+4. [x] Threaded non-owning render options through finalized fallback text output
+   so render fallback strings do not get call-site parent identity first.
+5. [x] Kept the public optional fallback/resolve path on the default owning
+   behavior, preserving external value-node semantics while shrinking immediate
+   render.
+6. [x] Replaced `Rules` `@charset` output-order `new Nil().inherit(node)` with
+   `_createOutputOrderPlaceholder(...)`: explicit source node, index, location,
+   and tree context only.
+7. [x] Replaced `Rules` CSS `@import` output-order `new Nil().inherit(node)`
+   with the same explicit placeholder path.
+8. [x] Proved the placeholder cut against focused `Rules`, `StyleImport`,
+   `AtRule`, and `Call` coverage; hoisting/import-order behavior stayed green.
+9. [x] Replaced `Rules` path-resolution error marker `Reflect.get(...)` with a
+   typed direct marker read.
+10. [x] Replaced `Rules` `hasFlag` probe `Reflect.get(...)` with a guarded
+    direct method check.
+11. [x] Replaced remaining base `Node` plain-object value walker
+    `Object.hasOwn(...)` guards in visit, children, clone, deep-clone, and
+    trivia-detach traversal.
+12. [x] Replaced `copyRenderMetadata(...)` frame `Reflect.get/set(...)` with a
+    typed direct `frames` metadata path.
+13. [x] Replaced `Node.set(...)` `Reflect.set(...)` for whole-value mutation
+    with direct assignment through `_processNodes(...)`.
+14. [x] Replaced `Node.set(...)` keyed `Reflect.set(...)` with a guarded direct
+    record write.
+15. [x] Ran a fresh reflection/copy frontier scan and verified changed-file
+    ESLint, focused `node-mutation`/`call`/`rules`/`import-style` suite (`211`
+    passed, `9` skipped), broader focused eval/render suite (`502` passed, `9`
+    skipped), build, and `git diff --check`. Build still has only the existing
+    `src/tree/js-expr.ts` direct-`eval` warning.
 
 ### Next 15-Item Queue
 
-1. [ ] Replace `Call.evalArgNodes(... preserveSourceParents)` non-static
-   list/sequence copy with explicit raw-args placement state or a cold
-   materialization boundary.
-2. [ ] Remove `Call.evalArgNodes(...)` `evald.frozen = true` once preserved args
-   no longer pretend reused source containers are owned output.
-3. [ ] Audit `Call.markCallOutput(...)` `.inherit(this)` and remove it for
-   render-only outputs if tests prove call-site parent identity is not a public
-   contract.
-4. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
+1. [ ] Replace `Call.evalArgNodes(...)` `frozen` preservation with explicit
+   raw-args placement state or a cold materialization boundary; optional
+   fallback parent tests must stay green.
+2. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
+   eval branches and classify each as immediate render, public resolve, or
+   escaping plugin value; no generic ownership by default.
+3. [ ] Delete inherited `Call.deriveCall(...)` fallback materialization for
+   syntax that only stringifies; keep an owned `Call` only for public value-node
+   return.
+4. [ ] Replace `Call.derivePreserveRulesLikeReference(...)` `.inherit(name)`
+   with explicit live-reference state or a typed public materialization fence.
+5. [ ] Split `Reference` render-only variable lookup from public
+   materialization so common `@var` render never calls
+   `applyReferenceResultMetadata(...)`, `.inherit(...)`, or `frozen`.
+6. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
+   shallow owned surface with explicit public materialization state or a live
+   rules-like binding.
+7. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
+   metadata paths with a render-only value path and a separate public-value
+   materializer.
+8. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
+   ownership with source/diagnostic state when the resolved node is only queued
+   for registration.
+9. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
    output with source-backed merge placement or direct render state.
-5. [ ] Audit `Rules._prepareOutputOrderAtRule(...)` / charset replacement
-   `new Nil().inherit(node)` sites; replace inherited nil placeholders with
-   narrow output-order state if parent identity is not needed.
-6. [ ] Replace `Rules` prefix-match `.map((match, index) => ({ ...match,
-   index }))` object factory with an indexed stable sort/selection strategy.
-7. [ ] Replace `Rules` namespace mixin `[...namespaceMixins].sort(...)` with an
-   indexed copy only when order actually differs, or a no-copy ordered scan.
-8. [ ] Replace `Rules` `results.push(...searchSurface(...))` spread calls in
-   lookup recursion with indexed append loops.
-9. [ ] Replace `Rules` remaining multi-key `collectKeyRemainder(...)` fallback
-   arrays with a lookup API that accepts `keys + start + length`.
-10. [ ] Replace `Rules` string-output trailing-newline `out.slice(0, -1)` with a
-    writer/buffer boundary that avoids trimming a completed string where
-    possible.
-11. [ ] Audit `StyleImport` `.inherit(...)` helper sites and keep only source
-    diagnostics that have a current test-backed need.
-12. [ ] Audit `StyleImport` postlude wrapper construction for copied/inherited
-    wrapper surfaces that can become placement records.
-13. [ ] Audit `Call.createFinalizedCallOutput(...)` / fallback syntax output for
-    owned `Call`/`Any` materialization that exists only for public resolve.
-14. [ ] Run an allocation/copy-frontier scan after the next cuts and restock
-    from actual `copyWithReusableLeaves`, `.inherit`, `frozen`, spread, and
-    array-helper hits.
-15. [ ] Verify focused import-style/call/rules/mixin/at-rule suites plus build;
-    keep performance claims shelved unless a benchmark/profile round is run.
+10. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
+    narrower merge-value copier or render-state path so merge normalization
+    does not clone whole value subtrees.
+11. [ ] Replace `StyleImport` first-use import placement child copies with
+    canonical children plus placement/render state; imports should not fake
+    transferred ownership.
+12. [ ] Replace `StyleImport.deriveRulesSurface(...)` `.inherit(anchorRules)`
+    for import wrappers with explicit source/visibility/placement fields.
+13. [ ] Classify remaining base `Node` visitor/defineType `Reflect.get(...)` /
+    `Object.hasOwn(...)`: convert Jess-owned probes, document external visitor
+    probes as cold/plugin compatibility.
+14. [ ] Classify `util/is-node.ts`, `util/print.ts`, and `util/bitset.ts`
+    reflection: convert owned narrowed shapes, leave genuine unknown/proxy
+    probes only with a note.
+15. [ ] Run the next allocation/copy/frontier scan and verify focused
+    import-style/call/rules/mixin/at-rule/ruleset/declaration suites plus build.
+    Keep performance claims shelved unless a benchmark/profile round is run.
 
 ## Active Correctness Queue
 

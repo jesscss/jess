@@ -17,8 +17,8 @@ export function isPlainStaticRuleLeaf(node: Node): boolean {
   if (!isNode(node, N.Declaration) || !node.hasFlag(F_STATIC)) {
     return false;
   }
-  const assign = Reflect.get(node.options, 'assign');
-  const normalizedFromAssign = Reflect.get(node.options, 'normalizedFromAssign');
+  const assign = node.options.assign;
+  const normalizedFromAssign = node.options.normalizedFromAssign;
   return normalizedFromAssign === undefined
     && (assign === undefined || assign === ':');
 }

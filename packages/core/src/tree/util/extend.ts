@@ -149,7 +149,7 @@ export function setExtendOrderMap(map: WeakMap<Selector, number> | null, orderBy
 }
 
 function isSelectorNode(value: unknown): value is Selector {
-  return !!value && typeof value === 'object' && Reflect.get(value, 'isSelector') === true;
+  return !!value && typeof value === 'object' && 'isSelector' in value && value.isSelector === true;
 }
 
 function expectSelector(value: unknown): Selector {

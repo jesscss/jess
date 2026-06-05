@@ -33,7 +33,7 @@ export async function evaluateCallableCandidateOutput({
     candidateParent.adopt(rules);
     const newRules = await rules.eval(context);
     candidateParent.adopt(newRules);
-    Reflect.set(newRules, 'index', candidateIndex);
+    newRules.index = candidateIndex;
     attachMixinOutputSlot(newRules, sourceRules, restrictMixinOutputLookup);
     return newRules;
   } catch (error) {

@@ -42,9 +42,7 @@ function copyCallableRulesValue(value: unknown): unknown {
   if (isRecordValue(value)) {
     const out: Record<string, unknown> = {};
     for (const key in value) {
-      if (Object.hasOwn(value, key)) {
-        out[key] = copyCallableRulesValue(value[key]);
-      }
+      out[key] = copyCallableRulesValue(value[key]);
     }
     return out;
   }
@@ -52,14 +50,10 @@ function copyCallableRulesValue(value: unknown): unknown {
 }
 
 function copyCallableAmpersand(node: Node): Node | undefined {
-  if (node.type !== 'Ampersand') {
+  if (!isNode(node, N.Ampersand)) {
     return undefined;
   }
-  const makeCopy: unknown = Reflect.get(node, 'derive');
-  if (typeof makeCopy !== 'function') {
-    return undefined;
-  }
-  const copied = makeCopy.call(node);
+  const copied = node.derive();
   return copied instanceof Node ? copied : undefined;
 }
 

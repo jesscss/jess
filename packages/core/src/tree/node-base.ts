@@ -109,11 +109,17 @@ function mustBeNode(value: unknown): Node {
 }
 
 function setParent(node: Node, parent: Node | undefined): void {
-  Reflect.set(node, 'parent', parent);
+  node.parent = parent;
 }
 
 function isRulesNode(node: Node | { type?: string } | undefined): node is Rules {
   return node?.type === 'Rules';
+}
+
+type MutableNodeValue = Record<string | number, unknown>;
+
+function isMutableNodeValue(value: unknown): value is MutableNodeValue {
+  return typeof value === 'object' && value !== null;
 }
 
 type TreeVisitMethod = (node: Node, ctx?: unknown) => NodeVisitReturn;
@@ -329,9 +335,9 @@ export abstract class Node<
    * When evaluating, nodes are assigned an index and depth by the Rules node.
    * This is used for lookup order. Note, this _will_ be undefined
    * initially, but we assign it in the Rules node, which is also
-   * where we read it, so this makes the type easier.
+   * where we read it.
    */
-  index!: number;
+  index: number | undefined;
 
   /** @todo - Is there a reliable way to cache this? */
   get depth() {
@@ -355,7 +361,7 @@ export abstract class Node<
    * shouldn't be set directly. Instead, a parent should use
    * parent.adopt(thisNode);
    */
-  declare readonly parent: Node | undefined;
+  declare parent: Node | undefined;
 
   /** Patched at runtime in node.ts to return Nil instance */
   declare nil: () => Nil;
@@ -513,12 +519,12 @@ export abstract class Node<
   set<K extends NodeSetKey<Data>>(key: K, value: NodeSetValue<Data, K>): void;
   set(key: null | string | number, value: any) {
     if (key == null) {
-      Reflect.set(this, 'value', this._processNodes(value));
+      this.value = this._processNodes(value);
     } else {
-      if (typeof this.value !== 'object' || this.value === null) {
+      if (!isMutableNodeValue(this.value)) {
         throw new TypeError('Cannot set keyed value on a primitive node value.');
       }
-      Reflect.set(this.value, key, this._processNodes(value));
+      this.value[key] = this._processNodes(value);
     }
   }
 
@@ -647,12 +653,8 @@ export abstract class Node<
         }
       }
     } else if (isPlainObject(data)) {
-      const obj = data as Record<string, unknown>;
-      for (const k in obj) {
-        if (!Object.hasOwn(obj, k)) {
-          continue;
-        }
-        const v = obj[k];
+      for (const k in data) {
+        const v = data[k];
         if (isArray(v)) {
           if (reverse) {
             for (let j = v.length - 1; j >= 0; j--) {
@@ -690,12 +692,8 @@ export abstract class Node<
         }
       }
     } else if (isPlainObject(value)) {
-      const obj = value as Record<string, unknown>;
-      for (const k in obj) {
-        if (!Object.hasOwn(obj, k)) {
-          continue;
-        }
-        const v = obj[k];
+      for (const k in value) {
+        const v = value[k];
         if (isArray(v)) {
           for (let i = 0; i < v.length; i++) {
             if (v[i] instanceof Node) {
@@ -750,12 +748,8 @@ export abstract class Node<
       return;
     }
     if (isPlainObject(value)) {
-      const obj = value as Record<string, unknown>;
-      for (const k in obj) {
-        if (!Object.hasOwn(obj, k)) {
-          continue;
-        }
-        const childValue = obj[k];
+      for (const k in value) {
+        const childValue = value[k];
         if (isArray(childValue)) {
           if (reverse) {
             for (let i = childValue.length - 1; i >= 0; i--) {
@@ -872,9 +866,7 @@ export abstract class Node<
     } else if (isPlainObject(value)) {
       const clonedValue: Record<string, unknown> = {};
       for (const k in value) {
-        if (Object.hasOwn(value, k)) {
-          clonedValue[k] = this.cloneValue((value as Record<string, unknown>)[k]);
-        }
+        clonedValue[k] = this.cloneValue(value[k]);
       }
       return clonedValue;
     }
@@ -925,12 +917,8 @@ export abstract class Node<
         }
       }
     } else if (isPlainObject(value)) {
-      const obj = value as Record<string, unknown>;
-      for (const k in obj) {
-        if (!Object.hasOwn(obj, k)) {
-          continue;
-        }
-        const v = obj[k];
+      for (const k in value) {
+        const v = value[k];
         if (v instanceof Node) {
           obj[k] = cloneFn(v);
         } else if (isArray(v)) {
@@ -1007,9 +995,7 @@ export abstract class Node<
       }
     } else if (isPlainObject(value)) {
       for (const k in value) {
-        if (Object.hasOwn(value, k)) {
-          this._detachChildTrivia((value as Record<string, unknown>)[k]);
-        }
+        this._detachChildTrivia(value[k]);
       }
     } else if (value instanceof Node) {
       value.detachTrivia(true);

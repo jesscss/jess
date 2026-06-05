@@ -42,7 +42,7 @@ function getNodeType(value: any): Node {
     return createPublicBool(value);
   }
   if (typeof value === 'function') {
-    const options = Reflect.get(value, 'options');
+    const options = 'options' in value ? value.options : undefined;
     return new JsFunction(value, typeof options === 'object' && options !== null ? options : undefined);
   }
   if (isPlainObject(value)) {

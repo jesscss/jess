@@ -2,17 +2,17 @@ import type { Context } from '../../context.js';
 import { Node } from '../node.js';
 
 function getCallReferenceKey(name: unknown): string {
-  if (!name || typeof name !== 'object' || Reflect.get(name, 'type') !== 'Reference') {
+  if (!name || typeof name !== 'object' || !('type' in name) || name.type !== 'Reference') {
     return '';
   }
-  const value = Reflect.get(name, 'value');
+  const value = 'value' in name ? name.value : undefined;
   if (!value || typeof value !== 'object') {
     return '';
   }
-  const key = Reflect.get(value, 'key');
+  const key = 'key' in value ? value.key : undefined;
   return String(
     key && typeof key === 'object' && 'valueOf' in key
-      ? Reflect.apply(Reflect.get(key, 'valueOf'), key, [])
+      ? key.valueOf()
       : key ?? ''
   );
 }
@@ -25,7 +25,7 @@ export function getDefaultGuardValue(node: Node | undefined, context: Context): 
     return Boolean(context.isDefault);
   }
   if (node.type === 'Paren') {
-    const value = Reflect.get(node, 'value');
+    const { value } = node;
     return getDefaultGuardValue(value instanceof Node ? value : undefined, context);
   }
   if (node.type === 'Any' && String(node.valueOf?.() ?? '') === 'default()') {

@@ -24,7 +24,7 @@ function selectorArg(value: unknown): Selector | undefined {
   if (typeof value !== 'object' || value === null || !('arg' in value)) {
     return undefined;
   }
-  const arg = Reflect.get(value, 'arg');
+  const { arg } = value;
   return isSelector(arg) ? arg : undefined;
 }
 

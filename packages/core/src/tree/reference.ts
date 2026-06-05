@@ -1467,7 +1467,7 @@ function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeV
   }
   const preservedValue: PreservedRulesLikeValue = constructed;
   preservedValue.inherit(directValue);
-  Reflect.set(preservedValue, 'parent', directValue.parent);
+  preservedValue.parent = directValue.parent;
   preservedValue.sourceNode = directValue;
   return preservedValue;
 }

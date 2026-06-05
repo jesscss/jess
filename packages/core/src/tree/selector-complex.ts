@@ -183,8 +183,8 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     if (!Array.isArray(this.value)) {
       // Attempt to repair a malformed ComplexSelector that holds a single component directly.
       // We treat the current `value` as a single component.
-      const malformedValue = Reflect.get(this, 'value');
-      Reflect.set(this, 'value', [malformedValue]);
+      const malformedValue = this.value;
+      this.value = [malformedValue];
     }
     let value = this._valueOf;
     if (value === undefined) {
@@ -329,7 +329,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     }
     const collapsed = this.collapsedComponent(only, this.value);
     if (this.hoistToRoot) {
-      Reflect.set(collapsed, 'hoistToRoot', true);
+      collapsed.hoistToRoot = true;
     }
     return collapsed;
   }

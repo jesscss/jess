@@ -16,6 +16,10 @@ type CallableEvalCandidatePreparationOptions = {
   caller?: Node;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
 function guardContainsDefault(node: Node | undefined): boolean {
   if (!node) {
     return false;
@@ -30,7 +34,7 @@ function guardContainsDefault(node: Node | undefined): boolean {
       return true;
     }
   }
-  const value = (node as { value?: unknown }).value;
+  const value = node.value;
   if (Array.isArray(value)) {
     for (const item of value) {
       if (isNode(item) && guardContainsDefault(item)) {
@@ -39,12 +43,9 @@ function guardContainsDefault(node: Node | undefined): boolean {
     }
     return false;
   }
-  if (value && typeof value === 'object') {
+  if (isRecord(value)) {
     for (const key in value) {
-      if (!Object.hasOwn(value, key)) {
-        continue;
-      }
-      const item = Reflect.get(value, key);
+      const item = value[key];
       if (isNode(item) && guardContainsDefault(item)) {
         return true;
       }
@@ -134,12 +135,9 @@ function valueContainsCallKey(value: unknown, key: string): boolean {
     }
     return false;
   }
-  if (value && typeof value === 'object') {
+  if (isRecord(value)) {
     for (const property in value) {
-      if (
-        Object.hasOwn(value, property)
-        && valueContainsCallKey(Reflect.get(value, property), key)
-      ) {
+      if (valueContainsCallKey(value[property], key)) {
         return true;
       }
     }

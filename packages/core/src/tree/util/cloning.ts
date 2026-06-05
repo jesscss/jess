@@ -1,4 +1,6 @@
 import { F_NON_STATIC, Node } from '../node-base.js';
+import { N } from '../node-type.js';
+import { isNode } from './is-node.js';
 
 export function hasNodeChild(value: unknown): boolean {
   if (value instanceof Node) {
@@ -7,9 +9,9 @@ export function hasNodeChild(value: unknown): boolean {
   if (Array.isArray(value)) {
     return value.some(item => hasNodeChild(item));
   }
-  if (value !== null && typeof value === 'object') {
+  if (isRecord(value)) {
     for (const key in value) {
-      if (Object.hasOwn(value, key) && hasNodeChild(Reflect.get(value, key))) {
+      if (hasNodeChild(value[key])) {
         return true;
       }
     }
@@ -62,9 +64,7 @@ function copyChild(value: unknown): unknown {
   if (isRecord(value)) {
     const out: Record<string, unknown> = {};
     for (const key in value) {
-      if (Object.hasOwn(value, key)) {
-        out[key] = copyChild(value[key]);
-      }
+      out[key] = copyChild(value[key]);
     }
     return out;
   }
@@ -81,9 +81,7 @@ function copyChildPreservingComments(value: unknown): unknown {
   if (isRecord(value)) {
     const out: Record<string, unknown> = {};
     for (const key in value) {
-      if (Object.hasOwn(value, key)) {
-        out[key] = copyChildPreservingComments(value[key]);
-      }
+      out[key] = copyChildPreservingComments(value[key]);
     }
     return out;
   }
@@ -98,11 +96,19 @@ function nodeOptions(node: Node): unknown {
   return Object.getOwnPropertyDescriptor(node, '_options')?.value;
 }
 
+type FrameMetadataNode = Node & {
+  frames?: unknown;
+};
+
+function hasFrameMetadata(node: Node): node is FrameMetadataNode {
+  return 'frames' in node;
+}
+
 function copyRenderMetadata(source: Node, target: Node): void {
   target.hoistToRoot = source.hoistToRoot;
-  if ('frames' in source) {
-    const frames: unknown = Reflect.get(source, 'frames');
-    Reflect.set(target, 'frames', Array.isArray(frames) ? [...frames] : undefined);
+  if (hasFrameMetadata(source)) {
+    const frames = source.frames;
+    (target as FrameMetadataNode).frames = Array.isArray(frames) ? [...frames] : undefined;
   }
 }
 
@@ -126,14 +132,10 @@ function constructCopy(node: Node, value: unknown): Node {
 }
 
 function deriveAmpersand(node: Node): Node | undefined {
-  if (node.type !== 'Ampersand') {
+  if (!isNode(node, N.Ampersand)) {
     return undefined;
   }
-  const derive: unknown = Reflect.get(node, 'derive');
-  if (typeof derive !== 'function') {
-    return undefined;
-  }
-  const derived = derive.call(node);
+  const derived = node.derive();
   if (derived instanceof Node) {
     return derived;
   }

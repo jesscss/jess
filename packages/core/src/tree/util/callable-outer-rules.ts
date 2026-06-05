@@ -24,7 +24,7 @@ export function ensureCallableOuterRulesSurface({
   if (syncScopeFrame && rules.scopeFrame) {
     outerRules.scopeFrame = rules.scopeFrame;
   }
-  Reflect.set(outerRules, 'index', candidateIndex);
+  outerRules.index = candidateIndex;
   parent.adopt(outerRules);
   return outerRules;
 }

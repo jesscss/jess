@@ -78,7 +78,7 @@ export async function evaluateCallableSpecialCaseCandidate({
     attachMixinOutputSlot(unlocked, sourceRules, restrictMixinOutputLookup, {
       fallbackFrame: context.leakyRules === true ? parentFrame : undefined
     });
-    Reflect.set(unlocked, 'index', candidate.index);
+    unlocked.index = candidate.index;
     const evaledUnlocked = unlocked.eval(context);
     unlocked = (isThenable(evaledUnlocked) ? await evaledUnlocked : evaledUnlocked) as Rules;
     return { handled: true, output: unlocked };

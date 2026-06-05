@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, F_STATIC, type NodeLocation, type TreeContext } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation, type TreeContext } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -11,7 +11,6 @@ import { Rules } from './rules.js';
 import { callableRulesEntry } from './util/callable-entry.js';
 import { MixinCollection } from './util/callable-collection.js';
 import { Any } from './any.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
 import { List, list } from './list.js';
 import { Reference } from './reference.js';
 import {
@@ -230,10 +229,11 @@ export class Call extends Node<CallValue, CallOptions> {
   private async createFinalizedCallTextOutput(
     context: Context,
     state: CallEvalState,
-    syntax: FinalizedCallSyntax
+    syntax: FinalizedCallSyntax,
+    options?: { ownOutput?: boolean }
   ): Promise<Any<'any'>> {
     const rendered = await state.source.renderFinalizedCallPublicText(context, state, syntax);
-    return state.source.markCallOutput(new Any(rendered, { role: 'any' }));
+    return state.source.markCallOutput(new Any(rendered, { role: 'any' }), options);
   }
 
   private createFinalizedCallContentState(state: CallEvalState): CallContentPlacementState | undefined {
@@ -328,15 +328,7 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const out: Node[] = [];
     for (const node of nodes.value) {
-      const canUseStaticContainer = (
-        isNode(node, N.List | N.Sequence)
-        && node.location.length === 0
-        && node.hasFlag(F_STATIC)
-      );
-      const evalTarget = options?.preserveSourceParents && isNode(node, N.List | N.Sequence) && !canUseStaticContainer
-        ? copyWithReusableLeaves(node)
-        : node;
-      const evald = await evalTarget.eval(context) as Node;
+      const evald = await node.eval(context) as Node;
       if (evald === node && options?.preserveSourceParents) {
         evald.frozen = true;
       }
@@ -345,8 +337,10 @@ export class Call extends Node<CallValue, CallOptions> {
     return list(out, nodes.options);
   }
 
-  private markCallOutput<T extends Node>(node: T): T {
-    node.inherit(this);
+  private markCallOutput<T extends Node>(node: T, options?: { ownOutput?: boolean }): T {
+    if (options?.ownOutput !== false) {
+      node.inherit(this);
+    }
     let hasOnlyDeclarationsAndComments = true;
     if (isNode(node, N.Rules) && node.value.length > 0) {
       for (let i = 0; i < node.value.length; i++) {
@@ -430,6 +424,7 @@ export class Call extends Node<CallValue, CallOptions> {
     if (typeof name === 'string') {
       return undefined;
     }
+    const outputOptions = renderFailureWith ? { ownOutput: false } : undefined;
     return this.runInCallFrame(context, {}, async () => {
       let evaluatedName: unknown = await name.eval(context);
       if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
@@ -443,13 +438,13 @@ export class Call extends Node<CallValue, CallOptions> {
               ? await callWithContext(context, fn, ...state.args.value)
               : await callWithContext(context, fn);
             if (isNode(result)) {
-              return this.markCallOutput(await result.eval(context));
+              return this.markCallOutput(await result.eval(context), outputOptions);
             }
             const castResult = cast(result);
             if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
-              return this.markCallOutput(castResult.value[0]!);
+              return this.markCallOutput(castResult.value[0]!, outputOptions);
             }
-            return this.markCallOutput(castResult);
+            return this.markCallOutput(castResult, outputOptions);
           } catch (error) {
             const unitMode = context?.opts?.unitMode ?? 'loose';
             if (unitMode === 'strict') {
@@ -484,11 +479,14 @@ export class Call extends Node<CallValue, CallOptions> {
           : stringifyValueOf(evaluatedName),
         args: evaluatedArgs,
         ...(state.contentNode && { contentNode: state.contentNode })
-      });
+      }, outputOptions);
     });
   }
 
-  private async evalPlainDynamicFunction(context: Context): Promise<Node | undefined> {
+  private async evalPlainDynamicFunction(
+    context: Context,
+    options?: { ownOutput?: boolean }
+  ): Promise<Node | undefined> {
     if (
       typeof this.value.name === 'string'
       || this.value.contentNode
@@ -517,20 +515,21 @@ export class Call extends Node<CallValue, CallOptions> {
         ? await callWithContext(context, fn, ...state.args.value)
         : await callWithContext(context, fn);
       if (isNode(result)) {
-        return this.markCallOutput(await result.eval(context));
+        return this.markCallOutput(await result.eval(context), options);
       }
       const castResult = cast(result);
       if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
-        return this.markCallOutput(castResult.value[0]!);
+        return this.markCallOutput(castResult.value[0]!, options);
       }
-      return this.markCallOutput(castResult);
+      return this.markCallOutput(castResult, options);
     });
   }
 
   private async finalizeFunctionResult(
     result: unknown,
     context: Context,
-    markImportant?: boolean
+    markImportant?: boolean,
+    options?: { ownOutput?: boolean }
   ): Promise<Node> {
     if (isNode(result)) {
       let evald = result.eval(context);
@@ -540,16 +539,19 @@ export class Call extends Node<CallValue, CallOptions> {
       if (markImportant && isNode(evald, N.Rules)) {
         this.makeImportant(evald);
       }
-      return this.markCallOutput(evald);
+      return this.markCallOutput(evald, options);
     }
     const castResult = cast(result);
     if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
-      return this.markCallOutput(castResult.value[0]!);
+      return this.markCallOutput(castResult.value[0]!, options);
     }
-    return this.markCallOutput(castResult);
+    return this.markCallOutput(castResult, options);
   }
 
-  private async evalMetadataDynamicFunction(context: Context): Promise<Node | undefined> {
+  private async evalMetadataDynamicFunction(
+    context: Context,
+    options?: { ownOutput?: boolean }
+  ): Promise<Node | undefined> {
     if (
       typeof this.value.name === 'string'
       || this.value.contentNode
@@ -574,7 +576,7 @@ export class Call extends Node<CallValue, CallOptions> {
       const result = state.args
         ? await callWithContext(context, fn, state.args)
         : await callWithContext(context, fn);
-      return await this.finalizeFunctionResult(result, context, this._options?.markImportant);
+      return await this.finalizeFunctionResult(result, context, this._options?.markImportant, options);
     });
   }
 
@@ -817,7 +819,7 @@ export class Call extends Node<CallValue, CallOptions> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): Promise<string> {
-    const node = await this.evalPlainDynamicFunction(context);
+    const node = await this.evalPlainDynamicFunction(context, { ownOutput: false });
     if (node) {
       return this.renderOutput(context, node, bufferOrOptions, options);
     }
@@ -836,7 +838,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       return this.renderOutput(context, fallback, bufferOrOptions, options);
     }
-    const metadataOutput = await this.evalMetadataDynamicFunction(context);
+    const metadataOutput = await this.evalMetadataDynamicFunction(context, { ownOutput: false });
     if (metadataOutput) {
       return this.renderOutput(context, metadataOutput, bufferOrOptions, options);
     }
@@ -1018,7 +1020,7 @@ export class Call extends Node<CallValue, CallOptions> {
           ? n.sourceNode.parent
           : undefined;
         if (sourceParent) {
-          Reflect.set(n, 'parent', sourceParent);
+          n.parent = sourceParent;
         }
       }
       // Detached rulesets/collections share the same callable-body path as
@@ -1053,7 +1055,7 @@ export class Call extends Node<CallValue, CallOptions> {
         } catch (e) {
           if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
             if (this.parent?.type === 'SelectorCapture') {
-              return this.markCallOutput(new Any(stringifyValueOf(n), { role: 'ident' }).inherit(this));
+              return this.markCallOutput(new Any(stringifyValueOf(n), { role: 'ident' }));
             }
             if (isNode(name, N.Reference)) {
               throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
@@ -1114,7 +1116,7 @@ export class Call extends Node<CallValue, CallOptions> {
           const shouldRethrowForMode = unitMode === 'strict';
           if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
             if (this.parent?.type === 'SelectorCapture') {
-              return this.markCallOutput(new Any(stringifyValueOf(n), { role: 'ident' }).inherit(this));
+              return this.markCallOutput(new Any(stringifyValueOf(n), { role: 'ident' }));
             }
             if (isNode(name, N.Reference)) {
               throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);

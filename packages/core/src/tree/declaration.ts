@@ -33,6 +33,10 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { emitCommentTriviaAfterNode } from './util/trivia.js';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
 export const enum AssignmentType {
   Default = ':',
   Add = '+:',              // similar to += in JS, but merges lists / sequences / collections
@@ -233,7 +237,7 @@ const shouldResolveCustomPropertyValue = (node: Node): boolean => {
   if (node.type === 'Interpolated') {
     return true;
   }
-  return valueShouldResolveCustomProperty((node as { value?: unknown }).value);
+  return valueShouldResolveCustomProperty(node.value);
 };
 
 const valueShouldResolveCustomProperty = (value: unknown): boolean => {
@@ -248,12 +252,9 @@ const valueShouldResolveCustomProperty = (value: unknown): boolean => {
     }
     return false;
   }
-  if (value && typeof value === 'object') {
+  if (isRecord(value)) {
     for (const key in value) {
-      if (
-        Object.hasOwn(value, key)
-        && valueShouldResolveCustomProperty(Reflect.get(value, key))
-      ) {
+      if (valueShouldResolveCustomProperty(value[key])) {
         return true;
       }
     }

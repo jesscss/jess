@@ -51,6 +51,10 @@ export type RulesetValue = {
   selectorBeforeExtend?: Selector | Nil;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
 function copySelectorForRulesetMetadata(selector: Selector): Selector {
   const copied = copyOwnedWithReusableLeaves(selector);
   if (isRulesetSelectorMetadata(copied)) {
@@ -150,11 +154,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       }
       return;
     }
-    if (value !== null && typeof value === 'object') {
+    if (isRecord(value)) {
       for (const key in value) {
-        if (Object.hasOwn(value, key)) {
-          this.attachSelectorBitsToValue(Reflect.get(value, key), selectorBits);
-        }
+        this.attachSelectorBitsToValue(value[key], selectorBits);
       }
     }
   }
