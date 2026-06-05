@@ -1519,6 +1519,5 @@ type RulesetParams = ConstructorParameters<typeof Ruleset>;
 export const ruleset = defineType<RulesetValue>(Ruleset, 'Ruleset') as (
   value: RulesetValue | RulesetParams[0],
   options?: RulesetParams[1],
-  location?: RulesetParams[2],
-  treeContext?: RulesetParams[3]
+  location?: RulesetParams[2]
 ) => Ruleset;

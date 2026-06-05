@@ -6,7 +6,7 @@ import {
 } from './node.js';
 import { isNode } from './util/is-node.js';
 import { Nil } from './nil.js';
-import type { Context, TreeContext } from '../context.js';
+import type { Context } from '../context.js';
 import { Interpolated } from './interpolated.js';
 import { Any, any, type AnyRole } from './any.js';
 import { Reference } from './reference.js';
@@ -378,8 +378,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       [
         value,
         this._options ? { ...this._options } : undefined,
-        this.location,
-        this.sourceRoot?._treeContext
+        this.location
       ]
     );
     return this.applyDerivedMetadata(node);
@@ -1263,15 +1262,14 @@ function isDeclarationValue(
 export const decl = (
   value: DeclarationValue | { name: string; value: Node; important?: Any<'flag'> },
   options?: DeclarationOptions,
-  location?: LocationInfo,
-  treeContext?: TreeContext
+  location?: LocationInfo
 ) => {
   if (!isDeclarationValue(value)) {
     return new Declaration({
       name: any(value.name, { role: 'property' }),
       value: value.value,
       important: value.important
-    }, options, location, treeContext);
+    }, options, location);
   }
-  return new Declaration(value, options, location, treeContext);
+  return new Declaration(value, options, location);
 };

@@ -14,10 +14,9 @@ import { Node } from './node-base.js';
 // Import dependencies needed for patching (these import from node-base, not node)
 import { Nil } from './nil.js';
 import { Any } from './any.js';
-import { TreeContext } from '../context.js';
 import { type Operator } from './util/calculate.js';
 
-export { TreeContext };
+export type { TreeContext } from '../context.js';
 
 /**
  * Patch Node.prototype.nil to return a Nil instance
@@ -37,23 +36,3 @@ Node.prototype.operate = function(b: Node, op: Operator) {
   }
   throw new Error(`Cannot operate on ${this.type}`);
 };
-
-/**
- * Define a fallback treeContext for testing.
- */
-Object.defineProperty(Node.prototype, 'treeContext', {
-  get() {
-    const sourceRoot = this.sourceRoot;
-    let context = sourceRoot?._treeContext ?? this._treeContext;
-    if (!context) {
-      context = new TreeContext();
-      if (this.type === 'Rules') {
-        this._sourceRoot = this;
-        this._treeContext = context;
-      } else if (sourceRoot) {
-        sourceRoot._treeContext = context;
-      }
-    }
-    return context;
-  }
-});

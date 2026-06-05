@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, defineType, type LocationInfo, type TreeContext, type NodeOptions } from './node.js';
+import { Node, defineType, type LocationInfo, type NodeOptions } from './node.js';
 
 type Fn = (...args: any[]) => any;
 /**
@@ -11,12 +11,11 @@ export class JsFunction extends Node<Fn> {
   constructor(
     value: { name: string; fn: Fn } | Fn,
     options?: NodeOptions,
-    location?: LocationInfo,
-    treeContext?: TreeContext
+    location?: LocationInfo
   ) {
     const fn = typeof value === 'function' ? value : value.fn;
 
-    super(fn, options, location, treeContext);
+    super(fn, options, location);
     this.name = typeof value === 'function' ? undefined : value.name;
   }
 

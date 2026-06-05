@@ -85,8 +85,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return new Sequence(
       value,
       this._options ? { ...this._options } : undefined,
-      this.location.length ? this.location : undefined,
-      this.sourceRoot?._treeContext
+      this.location.length ? this.location : undefined
     ).inherit(this);
   }
 
@@ -98,8 +97,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return new Sequence(
       values,
       this._options ? { ...this._options } : undefined,
-      this.location.length ? this.location : undefined,
-      this.sourceRoot?._treeContext
+      this.location.length ? this.location : undefined
     ).inherit(this);
   }
 

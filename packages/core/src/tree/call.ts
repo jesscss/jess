@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation, type TreeContext } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -164,8 +164,7 @@ export class Call extends Node<CallValue, CallOptions> {
           ...name.options,
           preserveRulesLike: true
         },
-        name.location.length === 0 ? undefined : name.location,
-        name.sourceRoot?._treeContext
+        name.location.length === 0 ? undefined : name.location
       );
     }
     return {
@@ -882,8 +881,8 @@ export class Call extends Node<CallValue, CallOptions> {
     return this.renderOutput(context, output, bufferOrOptions, options);
   }
 
-  constructor(value: CallValue, options?: CallOptions, location?: NodeLocation, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
+  constructor(value: CallValue, options?: CallOptions, location?: NodeLocation) {
+    super(value, options, location);
     // Function calls are always non-static and may be async
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
@@ -1201,8 +1200,7 @@ export class Call extends Node<CallValue, CallOptions> {
         this._options
           ? { ...this._options, silentFail: false }
           : { silentFail: false },
-        this.location,
-        this.sourceRoot?._treeContext
+        this.location
       );
       return this.markCallOutput(node);
     };
@@ -1214,6 +1212,5 @@ type Params = ConstructorParameters<typeof Call>;
 export const call = defineType(Call, 'Call') as (
   value: Params[0],
   options?: Params[1],
-  location?: Params[2],
-  treeContext?: Params[3]
+  location?: Params[2]
 ) => Call;

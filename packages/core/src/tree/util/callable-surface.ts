@@ -61,8 +61,7 @@ function copyCallableCommentNode(node: Comment): Node {
   return new Comment(
     node.value,
     node.options ? { ...node.options } : undefined,
-    node.location.length === 0 ? undefined : node.location,
-    node.sourceRoot?._treeContext
+    node.location.length === 0 ? undefined : node.location
   ).inherit(node);
 }
 
@@ -76,8 +75,7 @@ function constructCallableRulesNode(node: Node, value: unknown): Node {
     [
       value,
       node.options ? { ...node.options } : undefined,
-      node.location.length === 0 ? undefined : node.location,
-      node.sourceRoot?._treeContext
+      node.location.length === 0 ? undefined : node.location
     ]
   );
   if (!(copy instanceof Node)) {

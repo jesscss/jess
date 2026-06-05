@@ -1,4 +1,4 @@
-import { defineType, type NodeOptions, type LocationInfo, type TreeContext, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node } from './node.js';
+import { defineType, type NodeOptions, type LocationInfo, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node } from './node.js';
 import { createPublicNil, Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
@@ -274,8 +274,7 @@ function createAmpersandWithSelectorContainer(
       selectorContainer
     },
     source.options,
-    source.location.length === 0 ? undefined : source.location,
-    source.sourceRoot?._treeContext
+    source.location.length === 0 ? undefined : source.location
   ).inherit(source);
 }
 
@@ -320,8 +319,7 @@ function createSimpleSelectorLike(selector: SimpleSelector, value: unknown): Sim
     [
       value,
       { ...selector.options },
-      selector.location.length === 0 ? undefined : selector.location,
-      selector.sourceRoot?._treeContext
+      selector.location.length === 0 ? undefined : selector.location
     ]
   );
   if (!(node instanceof SimpleSelector)) {
@@ -427,16 +425,15 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   constructor(
     value?: AmpersandValue | string,
     options?: NodeOptions,
-    location?: LocationInfo,
-    treeContext?: TreeContext
+    location?: LocationInfo
   ) {
     let finalValue: AmpersandValue = {};
     if (typeof value === 'string') {
       finalValue.appendValue = value;
-      super(finalValue, options, location, treeContext);
+      super(finalValue, options, location);
     } else {
       finalValue = value ? { appendValue: value.appendValue } : {};
-      super(finalValue, options, location, treeContext);
+      super(finalValue, options, location);
       const selectorContainer = value?.selectorContainer;
       if (selectorContainer) {
         this._selectorContainer = selectorContainer;
@@ -638,8 +635,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
         selectorContainer: this._selectorContainer
       },
       this._options ? { ...this._options } : undefined,
-      this.location.length === 0 ? undefined : this.location,
-      this.sourceRoot?._treeContext
+      this.location.length === 0 ? undefined : this.location
     ).inherit(this);
     if (this._storedSelector) {
       node._storedSelector = this._storedSelector;

@@ -92,8 +92,7 @@ export class Color extends Node<ColorData, ColorOptions> {
   constructor(
     value: ColorData | string | ColorValues,
     options?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[1],
-    location?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[2],
-    context?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[3]
+    location?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[2]
   ) {
     let colorData: ColorData;
     let colorOptions: ColorOptions = options ?? {};
@@ -132,7 +131,7 @@ export class Color extends Node<ColorData, ColorOptions> {
 
     // Keep value focused on channels/node; rendering intent is held in options.
     colorData.format = undefined;
-    super(colorData, colorOptions, location, context);
+    super(colorData, colorOptions, location);
     this.addFlag(F_STATIC);
   }
 

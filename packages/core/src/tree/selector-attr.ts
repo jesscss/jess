@@ -1,5 +1,4 @@
 import { defineType, type LocationInfo, type Node } from './node.js';
-import { type TreeContext } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import type { Context } from '../context.js';
@@ -42,8 +41,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
         mod: this.value.mod
       },
       this._options,
-      this.location,
-      this.sourceRoot?._treeContext
+      this.location
     );
     node.inherit(this);
     return node;
@@ -168,8 +166,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
           mod: this.value.mod
         },
         this._options,
-        this.location,
-        this.sourceRoot?._treeContext
+        this.location
       );
       node.inherit(this);
       return node;
@@ -249,6 +246,5 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
 export const attr = defineType<AttributeSelectorValue>(AttributeSelector, 'AttributeSelector', 'attr') as (
   value: AttributeSelectorValue,
   options?: undefined,
-  location?: LocationInfo | 0,
-  treeContext?: TreeContext
+  location?: LocationInfo | 0
 ) => AttributeSelector;

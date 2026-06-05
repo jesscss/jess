@@ -449,6 +449,5 @@ type Params = ConstructorParameters<typeof List>;
 export const list = defineType(List, 'List') as (
   value: Params[0],
   options?: Params[1],
-  location?: Params[2],
-  treeContext?: Params[3]
+  location?: Params[2]
 ) => List;

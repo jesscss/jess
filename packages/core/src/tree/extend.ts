@@ -6,8 +6,7 @@ import {
   F_IMPLICIT_AMPERSAND,
   F_MAY_ASYNC,
   type NodeLocation,
-  type NodeOptions,
-  type TreeContext
+  type NodeOptions
 } from './node.js';
 import { type Context } from '../context.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
@@ -63,8 +62,8 @@ export interface Extend extends Node<ExtendValue> {
 }
 
 export class Extend extends Node<ExtendValue> {
-  constructor(value: ExtendValue, options?: NodeOptions, location?: NodeLocation, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
+  constructor(value: ExtendValue, options?: NodeOptions, location?: NodeLocation) {
+    super(value, options, location);
     this.removeFlag(F_VISIBLE);
     this.addFlags(F_NON_STATIC, F_MAY_ASYNC);
   }

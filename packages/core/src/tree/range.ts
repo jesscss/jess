@@ -75,6 +75,5 @@ type RangeParams = ConstructorParameters<typeof Range>;
 export const range = defineType(Range, 'Range', 'range') as (
   value: RangeParams[0],
   options?: RangeParams[1],
-  location?: RangeParams[2],
-  treeContext?: RangeParams[3]
+  location?: RangeParams[2]
 ) => Range;

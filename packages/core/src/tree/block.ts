@@ -30,8 +30,7 @@ export class Block extends Node<Node, BlockOptions> {
     return new Block(
       value,
       this._options ? { ...this._options } : undefined,
-      location,
-      this.sourceRoot?._treeContext
+      location
     ).inherit(this);
   }
 
@@ -109,6 +108,5 @@ type BlockParams = ConstructorParameters<typeof Block>;
 export const block = defineType(Block, 'Block') as (
   value: BlockParams[0],
   options?: BlockParams[1],
-  location?: BlockParams[2],
-  treeContext?: BlockParams[3]
+  location?: BlockParams[2]
 ) => Block;

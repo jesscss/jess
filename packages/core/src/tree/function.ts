@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { defineType, F_VISIBLE, Node, type LocationInfo, type TreeContext } from './node.js';
+import { defineType, F_VISIBLE, Node, type LocationInfo } from './node.js';
 import type { Any, AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
 import { Rules } from './rules.js';
@@ -34,8 +34,8 @@ export type FuncOptions = {
 };
 
 export class Func extends Node<FuncValue, FuncOptions> {
-  constructor(value: FuncValue, options?: FuncOptions, location?: LocationInfo, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
+  constructor(value: FuncValue, options?: FuncOptions, location?: LocationInfo) {
+    super(value, options, location);
     // Like mixins/functions in source languages: not emitted directly.
     this.removeFlag(F_VISIBLE);
   }
@@ -108,6 +108,5 @@ export class Func extends Node<FuncValue, FuncOptions> {
 export const fn = defineType(Func, 'Func', 'fn') as (
   value: FuncValue | { name?: string; params?: List<Node>; body: Rules },
   options?: FuncOptions,
-  location?: LocationInfo,
-  treeContext?: TreeContext
+  location?: LocationInfo
 ) => Func;

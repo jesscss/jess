@@ -1804,7 +1804,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     rulesVisibility.Mixin ??= 'public';
     // Merge with existing options to preserve rulesVisibility
     const mergedOptions = { ...options, rulesVisibility };
-    super(value ?? [], mergedOptions, location, treeContext);
+    super(value ?? [], mergedOptions, location);
+    this._sourceRoot = this;
+    this._treeContext = treeContext;
   }
 
   * [Symbol.iterator]() {
@@ -2661,8 +2663,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const placeholder = new Nil(
           '',
           undefined,
-          node.location.length === 0 ? undefined : node.location,
-          node.sourceRoot?._treeContext
+          node.location.length === 0 ? undefined : node.location
         );
         placeholder.sourceNode = node;
         placeholder.index = nodeIndex;
@@ -2677,8 +2678,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const placeholder = new Nil(
           '',
           undefined,
-          node.location.length === 0 ? undefined : node.location,
-          node.sourceRoot?._treeContext
+          node.location.length === 0 ? undefined : node.location
         );
         placeholder.sourceNode = node;
         placeholder.index = nodeIndex;

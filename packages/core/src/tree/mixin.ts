@@ -4,7 +4,7 @@ import { List } from './list.js';
 import { Any, type AnyRole } from './any.js';
 import { Rules } from './rules.js';
 import { Interpolated } from './interpolated.js';
-import type { Context, TreeContext } from '../context.js';
+import type { Context } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
@@ -76,8 +76,8 @@ export type MixinOptions = {
  * @todo - Even though we allow a selector as a name.
  */
 export class Mixin extends Node<MixinValue, MixinOptions> {
-  constructor(value: MixinValue, options?: MixinOptions, location?: LocationInfo, context?: TreeContext) {
-    super(value, options, location, context);
+  constructor(value: MixinValue, options?: MixinOptions, location?: LocationInfo) {
+    super(value, options, location);
     this.removeFlag(F_VISIBLE);
   }
 
@@ -294,6 +294,5 @@ type MixinConstructorParams = ConstructorParameters<typeof Mixin>;
 export const mixin = defineType(Mixin, 'Mixin') as (
   value: MixinValue<AnyRole> | MixinConstructorParams[0],
   options?: MixinConstructorParams[1],
-  location?: MixinConstructorParams[2],
-  treeContext?: MixinConstructorParams[3]
+  location?: MixinConstructorParams[2]
 ) => Mixin;

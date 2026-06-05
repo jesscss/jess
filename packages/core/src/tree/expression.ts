@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, F_MAY_ASYNC, F_NON_STATIC, defineType, type NodeLocation, type NodeOptions, type TreeContext } from './node.js';
+import { Node, F_MAY_ASYNC, F_NON_STATIC, defineType, type NodeLocation, type NodeOptions } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { List } from './list.js';
@@ -21,8 +21,8 @@ export interface Expression extends Node<Node> {
 }
 
 export class Expression extends Node<Node> {
-  constructor(value: Node, options?: NodeOptions, location?: NodeLocation, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
+  constructor(value: Node, options?: NodeOptions, location?: NodeLocation) {
+    super(value, options, location);
     this.addFlag(F_NON_STATIC);
   }
 
@@ -88,6 +88,5 @@ type Params = ConstructorParameters<typeof Expression>;
 export const expr = defineType(Expression, 'Expression', 'expr') as (
   value: Params[0],
   options?: Params[1],
-  location?: Params[2],
-  treeContext?: Params[3]
+  location?: Params[2]
 ) => Expression;

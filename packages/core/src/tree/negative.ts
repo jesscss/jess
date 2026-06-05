@@ -1,4 +1,4 @@
-import { Node, defineType, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
+import { Node, defineType, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type LocationInfo, type NodeOptions } from './node.js';
 import type { Context } from '../context.js';
 import { Dimension } from './dimension.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -22,8 +22,8 @@ export class Negative extends Node<Node> {
     return w.getSince(mark);
   }
 
-  constructor(value: Node, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
+  constructor(value: Node, options?: NodeOptions, location?: LocationInfo) {
+    super(value, options, location);
     // Negative operations are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }

@@ -66,8 +66,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         // Own unchanged source children; evaluated clones may carry runtime state.
         ownedValue,
         this._options ? { ...this._options } : undefined,
-        this.location,
-        this.sourceRoot?._treeContext
+        this.location
       ]
     );
     if (hoistToRoot) {

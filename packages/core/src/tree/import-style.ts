@@ -1,10 +1,10 @@
 import { basename, dirname } from 'node:path';
-import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, TreeContext, defineType, type NodeLocation } from './node.js';
+import { TreeContext, type Context } from '../context.js';
+import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType, type NodeLocation } from './node.js';
 import { type Reference } from './reference.js';
 import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
 import { Url } from './url.js';
-import { type Context } from '../context.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -99,8 +99,7 @@ function constructImportPlacementNode(node: Node, value: unknown): Node {
     [
       value,
       node.options ? { ...node.options } : undefined,
-      node.location.length === 0 ? undefined : node.location,
-      node.sourceRoot?._treeContext
+      node.location.length === 0 ? undefined : node.location
     ]
   );
   if (!(copy instanceof Node)) {
@@ -122,8 +121,7 @@ function copyImportPlacementNode(node: Node): Node {
     return new Comment(
       node.value,
       node.options ? { ...node.options } : undefined,
-      node.location.length === 0 ? undefined : node.location,
-      node.sourceRoot?._treeContext
+      node.location.length === 0 ? undefined : node.location
     ).inherit(node);
   }
   const derivedAmpersand = copyImportPlacementAmpersand(node);
@@ -790,17 +788,17 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
     const prelude = preludeNodes.length === 1
       ? preludeNodes[0]
-      : new Sequence(preludeNodes, undefined, undefined, this.sourceRoot?._treeContext);
+      : new Sequence(preludeNodes);
 
     const location = this.location && this.location.length === 6 ? this.location : undefined;
     return new AtRule({
       name: new Any('@import', { role: 'atkeyword' }),
       prelude
-    }, undefined, location, this.sourceRoot?._treeContext);
+    }, undefined, location);
   }
 
-  constructor(value: StyleImportValue, options?: StyleImportOptions, location?: NodeLocation, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
+  constructor(value: StyleImportValue, options?: StyleImportOptions, location?: NodeLocation) {
+    super(value, options, location);
     // Style imports are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }

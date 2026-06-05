@@ -49,6 +49,5 @@ type Params = ConstructorParameters<typeof Collection>;
 export const coll = defineType(Collection, 'Collection', 'coll') as (
   value: Params[0],
   options?: Params[1],
-  location?: Params[2],
-  treeContext?: Params[3]
+  location?: Params[2]
 ) => Collection;

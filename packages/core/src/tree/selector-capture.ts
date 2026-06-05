@@ -102,6 +102,5 @@ type Params = ConstructorParameters<typeof SelectorCapture>;
 export const selcap = defineType(SelectorCapture, 'SelectorCapture', 'selcap') as (
   value: Params[0],
   options?: Params[1],
-  location?: Params[2],
-  treeContext?: Params[3]
+  location?: Params[2]
 ) => SelectorCapture;

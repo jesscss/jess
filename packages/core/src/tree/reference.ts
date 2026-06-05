@@ -1,5 +1,5 @@
 import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, F_STATIC, type LocationInfo } from './node.js';
-import type { Context, TreeContext } from '../context.js';
+import type { Context } from '../context.js';
 import { cast } from './util/cast.js';
 import type { FindOptions } from './util/registry-utils.js';
 import { Any, type AnyRole } from './any.js';
@@ -114,8 +114,7 @@ type PreservedRulesLikeValue = Node & { sourceNode?: Node };
 type NodeValueConstructor = new (
   value: unknown,
   options?: unknown,
-  location?: LocationInfo,
-  treeContext?: TreeContext
+  location?: LocationInfo
 ) => Node;
 
 function isNodeValueConstructor(value: unknown): value is NodeValueConstructor {
@@ -1479,8 +1478,7 @@ function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeV
   const constructed = new nodeConstructor(
     directValue.value,
     options && typeof options === 'object' ? { ...options } : undefined,
-    directValue.location.length === 0 ? undefined : directValue.location,
-    directValue.sourceRoot?._treeContext
+    directValue.location.length === 0 ? undefined : directValue.location
   );
   if (!(constructed instanceof Node)) {
     throw new TypeError('Preserved rules-like value must remain a Node');
@@ -2235,11 +2233,11 @@ function evaluateReferenceNode(args: {
  * which can itself contain a reference (a variable variable).
  */
 export class Reference extends Node<ReferenceValue, ReferenceOptions> {
-  constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: LocationInfo) {
     if (typeof value === 'string') {
       value = { key: value };
     }
-    super(value, options, location, treeContext);
+    super(value, options, location);
     // References are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC);
   }

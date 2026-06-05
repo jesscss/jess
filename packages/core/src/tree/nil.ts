@@ -10,7 +10,7 @@ import {
   type LocationInfo,
   type NodeOptions
 } from './node-base.js';
-import type { Context, TreeContext } from '../context.js';
+import type { Context } from '../context.js';
 
 export interface Nil extends Node<''> {
   valueOf(): '';
@@ -32,9 +32,8 @@ export class Nil extends Node<''> {
   constructor(
     value?: '',
     options?: NodeOptions,
-    location?: LocationInfo,
-    treeContext?: TreeContext) {
-    super('', options, location, treeContext);
+    location?: LocationInfo) {
+    super('', options, location);
     this.addFlag(F_STATIC);
     this.removeFlag(F_VISIBLE);
     // Nil nodes should never render, even if fullRender is set on prototype (e.g., in tests)

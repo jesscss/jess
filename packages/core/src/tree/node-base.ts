@@ -278,8 +278,6 @@ export abstract class Node<
   }
 
   _treeContext: TreeContext | undefined;
-  /** Assigned in index to avoid circularity */
-  declare readonly treeContext: TreeContext;
 
   protected _options: O & AllNodeOptions | undefined;
   get options(): O & AllNodeOptions {
@@ -517,8 +515,7 @@ export abstract class Node<
   constructor(
     value: Data,
     options?: O,
-    location?: NodeLocation,
-    treeContext?: TreeContext
+    location?: NodeLocation
   ) {
     // Make some props non-enumerable to avoid JSON serialization issues
     Object.defineProperties(this, {
@@ -535,10 +532,6 @@ export abstract class Node<
         configurable: false
       }
     });
-    if (isRulesNode(this)) {
-      this._sourceRoot = this;
-      this._treeContext = treeContext;
-    }
     this.value = this._processNodes(value);
     this._location = location;
     this._options = options;
@@ -563,18 +556,16 @@ export abstract class Node<
    * @param value - The node's value data
    * @param options - Node options
    * @param location - Location information
-   * @param treeContext - Tree context
    * @returns A new node instance with generated flag set if applicable
    */
   static create<T extends Node, V, NodeOptionsT extends NodeOptions>(
-    this: new (value: V, options?: NodeOptionsT, location?: LocationInfo, treeContext?: TreeContext) => T,
+    this: new (value: V, options?: NodeOptionsT, location?: LocationInfo) => T,
     value: V,
     options?: NodeOptionsT,
-    location?: LocationInfo,
-    treeContext?: TreeContext
+    location?: LocationInfo
   ): T {
     // Create the instance with the same signature as constructor
-    const instance = new this(value, options, location, treeContext);
+    const instance = new this(value, options, location);
 
     // Mark as generated if the value is an object that can be marked
     if (instance instanceof Node) {
@@ -927,7 +918,7 @@ export abstract class Node<
 
     const newNode: this = Reflect.construct(
       this.constructor,
-      [cloned, this._options ? { ...this._options } : undefined, this.location, this.sourceRoot?._treeContext]
+      [cloned, this._options ? { ...this._options } : undefined, this.location]
     );
     newNode.inherit(this);
 

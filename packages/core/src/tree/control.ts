@@ -1,5 +1,5 @@
 import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation, type NodeOptions } from './node.js';
-import type { Context, TreeContext } from '../context.js';
+import type { Context } from '../context.js';
 import { Rules } from './rules.js';
 import { Any } from './any.js';
 import { Num } from './number.js';
@@ -414,8 +414,8 @@ export class If extends Node<IfValue> {
   override allowRoot = true;
   override allowRuleRoot = true;
 
-  constructor(value: IfValue, options?: NodeOptions, location?: NodeLocation, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
+  constructor(value: IfValue, options?: NodeOptions, location?: NodeLocation) {
+    super(value, options, location);
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     for (const branch of value.branches) {
       if (branch.condition) {
@@ -524,8 +524,8 @@ export class For extends Node<StructuredLoopValue> {
   override allowRoot = true;
   override allowRuleRoot = true;
 
-  constructor(value: StructuredLoopValue, options?: NodeOptions, location?: NodeLocation, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
+  constructor(value: StructuredLoopValue, options?: NodeOptions, location?: NodeLocation) {
+    super(value, options, location);
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     for (const decl of getBindingDeclarations(value.pattern)) {
       this.adopt(decl);
@@ -689,8 +689,8 @@ export class While extends Node<WhileValue> {
   override allowRoot = true;
   override allowRuleRoot = true;
 
-  constructor(value: WhileValue, options?: NodeOptions, location?: NodeLocation, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
+  constructor(value: WhileValue, options?: NodeOptions, location?: NodeLocation) {
+    super(value, options, location);
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     this.adopt(value.condition);
     this.adopt(value.rules);

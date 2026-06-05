@@ -780,16 +780,18 @@ node value objects to smear source metadata across a subtree.
 
 Follow-up debt:
 
-1. [ ] Remove the remaining public `Node.treeContext` getter entirely once
-   compatibility callers can set source files through a root instead. Current
-   cut stopped standalone non-`Rules` reads from storing `_treeContext`, but the
-   cold getter still exists for compatibility.
-2. [ ] Remove non-`Rules` constructor `treeContext` arguments or turn them into
-   root construction only.
+1. [x] Remove the public `Node.treeContext` compatibility getter. There is no
+   lazy `TreeContext` allocation path on ordinary nodes now; callers must use
+   `Context.treeContext` or a `Rules` root with `_treeContext`.
+2. [x] Remove non-`Rules` constructor/factory `treeContext` arguments. `Node`
+   construction is now three-argument only; `Rules` is the only tree node class
+   with a real root-owned `treeContext` constructor slot.
 3. [x] Replace source-map tests that set `leaf.treeContext.file` with root-owned
    source fixtures.
-4. [ ] Audit import first-use placement copies for canonical-source placement
-   state so copied placement nodes do not need inherited source context.
+4. [x] Remove non-root `_treeContext` constructor arguments from placement,
+   clone/copy, selector, value, placeholder, and import wrapper construction.
+   Import first-use placement copies still exist, but they no longer carry
+   source-root context through ordinary node constructors.
 5. [ ] Keep guard/default scans cycle-safe until remaining copied/canonical
    graph paths are deleted.
 
@@ -799,8 +801,11 @@ Latest source-root cleanup:
   including the multi-file nested-rules case.
 - `sourceSegmentFor(...)` no longer falls back to `origin.treeContext`; source
   maps read `origin.sourceRoot._treeContext` only.
-- The public `Node.treeContext` compatibility getter no longer stores a new
-  `_treeContext` on standalone non-`Rules` nodes.
+- The public `Node.treeContext` compatibility getter is gone.
+- `Node` constructor and `Node.create(...)` no longer accept a `TreeContext`.
+  `Rules` explicitly owns `_sourceRoot = this` and `_treeContext`.
+- Non-`Rules` constructors/factories and ordinary materialization calls no
+  longer advertise or pass dead `treeContext`/`_treeContext` slots.
 
 ### Next 15-Item Queue
 

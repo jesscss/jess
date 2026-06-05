@@ -73,8 +73,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         // Own unchanged source children; evaluated clones may carry runtime state.
         ownedValue,
         this._options ? { ...this._options } : undefined,
-        this.location,
-        this.sourceRoot?._treeContext
+        this.location
       ]
     );
     if (hoistToRoot) {
@@ -466,6 +465,5 @@ type SelectorParams = ConstructorParameters<typeof ComplexSelector>;
 export const sel = defineType<ComplexSelectorValue>(ComplexSelector, 'ComplexSelector', 'sel') as (
   value: ComplexSelectorValue,
   options?: SelectorParams[1],
-  location?: SelectorParams[2],
-  treeContext?: SelectorParams[3]
+  location?: SelectorParams[2]
 ) => ComplexSelector;

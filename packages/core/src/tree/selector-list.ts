@@ -55,8 +55,7 @@ export class SelectorList extends Selector<Selector[]> {
         // Own unchanged source children; evaluated clones may carry runtime state.
         ownedValue,
         this._options ? { ...this._options } : undefined,
-        this.location,
-        this.sourceRoot?._treeContext
+        this.location
       ]
     );
     return node.inherit(this);

@@ -3,7 +3,7 @@
  * The patching happens in node.ts
  */
 import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from './node-base.js';
-import type { Context, TreeContext } from '../context.js';
+import type { Context } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 
 export type AnyRole =
@@ -125,11 +125,10 @@ export class Keyword extends Any<'keyword'> {
   constructor(
     value: string,
     options?: Omit<NodeOptions, 'role'>,
-    location?: LocationInfo,
-    context?: TreeContext
+    location?: LocationInfo
   ) {
     // Force role to 'keyword'
-    super(value, { ...options, role: 'keyword' }, location, context);
+    super(value, { ...options, role: 'keyword' }, location);
   }
 }
 defineType(Keyword, 'Keyword');
@@ -140,8 +139,7 @@ defineType(Keyword, 'Keyword');
 export function keyword(
   value: string,
   options?: Omit<NodeOptions, 'role'>,
-  location?: LocationInfo,
-  context?: TreeContext
+  location?: LocationInfo
 ): Keyword {
-  return new Keyword(value, options, location, context);
+  return new Keyword(value, options, location);
 }

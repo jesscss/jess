@@ -5,7 +5,6 @@ import {
   F_STATIC,
   type LocationInfo,
   type NodeOptions,
-  type TreeContext,
   defineType
 } from './node.js';
 import { type Operator, calculate } from './util/calculate.js';
@@ -370,12 +369,11 @@ defineType(Dimension, 'Dimension');
 export const dimension = (
   value: DimensionValue | [number, string] | number,
   options?: NodeOptions,
-  location?: LocationInfo,
-  treeContext?: TreeContext
+  location?: LocationInfo
 ) => {
   if (isArray(value)) {
     let [number, unit] = value;
-    return new Dimension({ number, unit }, options, location, treeContext);
+    return new Dimension({ number, unit }, options, location);
   }
-  return new Dimension(typeof value === 'number' ? { number: value } : value, options, location, treeContext);
+  return new Dimension(typeof value === 'number' ? { number: value } : value, options, location);
 };

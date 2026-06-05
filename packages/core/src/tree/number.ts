@@ -1,7 +1,6 @@
 import {
   type LocationInfo,
   type NodeOptions,
-  type TreeContext,
   defineType,
   type Node
 } from './node.js';
@@ -9,7 +8,6 @@ import { Dimension } from './dimension.js';
 import { Color } from './color.js';
 import { type Context } from '../context.js';
 import { type Operator } from './util/calculate.js';
-import isPlainObject from 'lodash-es/isPlainObject.js';
 
 /**
  * A number. Named `Num` to avoid conflict with the built-in `Number` class.
@@ -17,8 +15,8 @@ import isPlainObject from 'lodash-es/isPlainObject.js';
 export class Num extends Dimension {
   // Numbers are static and don't need evaluation
 
-  constructor(value: number | { number: number }, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
-    super(isPlainObject(value) ? value as { number: number } : { number: value as number }, options, location, treeContext);
+  constructor(value: number | { number: number }, options?: NodeOptions, location?: LocationInfo) {
+    super(typeof value === 'number' ? { number: value } : value, options, location);
   }
 
   // Method overloads for better type safety
@@ -45,6 +43,5 @@ defineType(Num, 'Num');
 export const num = (
   value: number,
   options?: NodeOptions,
-  location?: LocationInfo,
-  treeContext?: TreeContext
-) => new Num(value, options, location, treeContext);
+  location?: LocationInfo
+) => new Num(value, options, location);

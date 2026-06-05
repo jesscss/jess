@@ -5,7 +5,7 @@ import {
 } from './declaration.js';
 import { Any, type AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
-import { defineType, F_VISIBLE, type Node, type NodeLocation, type TreeContext } from './node.js';
+import { defineType, F_VISIBLE, type Node, type NodeLocation } from './node.js';
 import { Nil } from './nil.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
@@ -33,10 +33,9 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
   constructor(
     value: DeclarationValue<AnyRole>,
     options?: VarDeclarationOptions,
-    location?: NodeLocation,
-    treeContext?: TreeContext
+    location?: NodeLocation
   ) {
-    super(value, options, location, treeContext);
+    super(value, options, location);
     this.removeFlag(F_VISIBLE);
     /** Parameter declarations are not like var declarations */
     if (options?.paramVar) {
@@ -74,8 +73,7 @@ defineType<DeclarationValue>(VarDeclaration, 'VarDeclaration', 'vardecl');
 export const vardecl = (
   value: DeclarationValue<AnyRole> | { name: string; value: Node; important?: Any<'flag'> },
   options?: VarDeclarationOptions,
-  location?: NodeLocation,
-  treeContext?: TreeContext
+  location?: NodeLocation
 ) => {
   const { name } = value;
   const nameNode: DeclarationValue['name'] = typeof name === 'string'
@@ -83,11 +81,11 @@ export const vardecl = (
     : name instanceof Any
       ? new Any(name.value, { role: 'property' })
       : name instanceof Interpolated
-        ? new Interpolated(name.value, { ...name.options, role: 'property' }, name.location, name.sourceRoot?._treeContext)
+        ? new Interpolated(name.value, { ...name.options, role: 'property' }, name.location)
         : name;
   const declarationValue: DeclarationValue = {
     ...value,
     name: nameNode
   };
-  return new VarDeclaration(declarationValue, options, location, treeContext);
+  return new VarDeclaration(declarationValue, options, location);
 };
