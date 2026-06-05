@@ -155,15 +155,6 @@ export type ExtendedFn<T extends unknown[] = unknown[], R = unknown> = ((this: C
 export class Call extends Node<CallValue, CallOptions> {
   override _requiredSemi = true;
 
-  private deriveCall(value: CallValue, options?: CallOptions): Call {
-    return new Call(
-      value,
-      options,
-      this.location,
-      this.treeContext
-    ).inherit(this);
-  }
-
   private createEvalState(): CallEvalState {
     const preservesRulesLikeVariableTarget = isNode(this.value.name, N.Reference) && this.value.name.options?.type === 'variable';
     let name = this.value.name;
@@ -491,26 +482,29 @@ export class Call extends Node<CallValue, CallOptions> {
     if (!args) {
       return '';
     }
-    const normalizedArgs: Node[] = [];
-    for (let i = 0; i < args.value.length; i++) {
-      const arg = args.value[i];
-      if (arg) {
-        normalizedArgs.push(arg);
+    const rawArgs = args.value;
+    const last = rawArgs.length - 1;
+    const serializeArgAt = (start: number): MaybePromise<string> => {
+      let i = start;
+      while (i <= last && !rawArgs[i]) {
+        i++;
       }
-    }
-    const last = normalizedArgs.length - 1;
-    const serializeArgAt = (i: number): MaybePromise<string> => {
       if (i > last) {
         return w.getSince(mark);
       }
-      const arg = normalizedArgs[i]!;
+      const arg = rawArgs[i]!;
+      let next = i + 1;
+      while (next <= last && !rawArgs[next]) {
+        next++;
+      }
+      const hasNext = next <= last;
       const finishArg = (argMark: number): MaybePromise<string> => {
         w.trimHorizontalStartSince(argMark);
         w.trimHorizontalEndSince(argMark);
-        if (i < last) {
+        if (hasNext) {
           w.add(', ');
         }
-        return serializeArgAt(i + 1);
+        return serializeArgAt(next);
       };
       if (arg instanceof Paren && arg.options?.escaped) {
         w.add('(', arg);
@@ -521,10 +515,10 @@ export class Call extends Node<CallValue, CallOptions> {
             w.trimHorizontalStartSince(innerMark);
             w.trimHorizontalEndSince(innerMark);
             w.add(')', arg);
-            if (i < last) {
+            if (hasNext) {
               w.add(', ');
             }
-            return serializeArgAt(i + 1);
+            return serializeArgAt(next);
           };
           if (isThenable(rendered)) {
             return rendered.then((value) => {
@@ -536,10 +530,10 @@ export class Call extends Node<CallValue, CallOptions> {
           return finishParen();
         }
         w.add(')', arg);
-        if (i < last) {
+        if (hasNext) {
           w.add(', ');
         }
-        return serializeArgAt(i + 1);
+        return serializeArgAt(next);
       } else {
         const argMark = w.mark();
         const rendered = arg.eval(context);
@@ -1083,7 +1077,7 @@ export class Call extends Node<CallValue, CallOptions> {
         });
         return this.markCallOutput(new Any(rendered, { role: 'any' }));
       }
-      const node = this.deriveCall(
+      const node = new Call(
         {
           name: finalizedName,
           args: evaluatedArgs,
@@ -1091,7 +1085,9 @@ export class Call extends Node<CallValue, CallOptions> {
         },
         this._options
           ? { ...this._options, silentFail: false }
-          : { silentFail: false }
+          : { silentFail: false },
+        this.location,
+        this.treeContext
       );
       return this.markCallOutput(node);
     };

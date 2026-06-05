@@ -59,6 +59,33 @@ class RejectingAny extends Any<string> {
   }
 }
 
+function countDeriveCallUse(): { readonly count: number; restore(): void } {
+  const descriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
+  const original = descriptor?.value;
+  if (!descriptor || typeof original !== 'function') {
+    return {
+      count: 0,
+      restore() {}
+    };
+  }
+  let count = 0;
+  Object.defineProperty(Call.prototype, 'deriveCall', {
+    ...descriptor,
+    value: function deriveCallForCounting(this: Call, ...args: unknown[]) {
+      count++;
+      return Reflect.apply(original, this, args);
+    }
+  });
+  return {
+    get count() {
+      return count;
+    },
+    restore() {
+      Object.defineProperty(Call.prototype, 'deriveCall', descriptor);
+    }
+  };
+}
+
 let context: Context;
 describe('Call', () => {
   beforeEach(() => {
@@ -408,19 +435,7 @@ describe('Call', () => {
   });
 
   it('renders optional non-string fallback calls through native output', async () => {
-    const deriveCallDescriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
-    const originalDeriveCall = deriveCallDescriptor?.value;
-    if (!deriveCallDescriptor || typeof originalDeriveCall !== 'function') {
-      throw new Error('Expected Call.deriveCall for render-only fallback proof');
-    }
-    let derivedCalls = 0;
-    Object.defineProperty(Call.prototype, 'deriveCall', {
-      ...deriveCallDescriptor,
-      value: function deriveCallForCounting(this: Call, ...callArgs: unknown[]) {
-        derivedCalls++;
-        return Reflect.apply(originalDeriveCall, this, callArgs);
-      }
-    });
+    const derivedCalls = countDeriveCallUse();
     const args = list([seq([any('red'), dimension([10, 'px'])])]);
     const name = ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true });
     const rule = call({
@@ -436,14 +451,14 @@ describe('Call', () => {
       await expect(Promise.resolve(rule.render(context))).resolves.toBe('missing-fn(red 10px)');
       expect(await rule.render(context, buffer)).toBe('missing-fn(red 10px)');
       expect(buffer.parts).toEqual(['missing-fn(red 10px)']);
-      expect(derivedCalls).toBe(0);
+      expect(derivedCalls.count).toBe(0);
       expect(args.parent).toBe(rule);
       expect(name.parent).toBe(rule);
       expect(name.evaluated).toBe(false);
       expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
-      Object.defineProperty(Call.prototype, 'deriveCall', deriveCallDescriptor);
+      derivedCalls.restore();
     }
   });
 
@@ -463,19 +478,7 @@ describe('Call', () => {
   });
 
   it('renders important optional CSS fallback syntax without deriving output', async () => {
-    const deriveCallDescriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
-    const originalDeriveCall = deriveCallDescriptor?.value;
-    if (!deriveCallDescriptor || typeof originalDeriveCall !== 'function') {
-      throw new Error('Expected Call.deriveCall for important fallback proof');
-    }
-    let derivedCalls = 0;
-    Object.defineProperty(Call.prototype, 'deriveCall', {
-      ...deriveCallDescriptor,
-      value: function deriveCallForCounting(this: Call, ...callArgs: unknown[]) {
-        derivedCalls++;
-        return Reflect.apply(originalDeriveCall, this, callArgs);
-      }
-    });
+    const derivedCalls = countDeriveCallUse();
     const rule = call({
       name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
       args: list([any('red')])
@@ -483,11 +486,11 @@ describe('Call', () => {
 
     try {
       await expect(Promise.resolve(rule.render(context))).resolves.toBe('missing-fn(red) !important');
-      expect(derivedCalls).toBe(0);
+      expect(derivedCalls.count).toBe(0);
       expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
-      Object.defineProperty(Call.prototype, 'deriveCall', deriveCallDescriptor);
+      derivedCalls.restore();
     }
   });
 
@@ -1506,13 +1509,8 @@ describe('Call', () => {
 
   it('renders source-backed fallback call content without owning output content', async () => {
     const originalCopy = Sequence.prototype.copy;
-    const deriveCallDescriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
-    const originalDeriveCall = deriveCallDescriptor?.value;
-    if (!deriveCallDescriptor || typeof originalDeriveCall !== 'function') {
-      throw new Error('Expected Call.deriveCall for render-only fallback proof');
-    }
+    const derivedCalls = countDeriveCallUse();
     let sequenceCopies = 0;
-    let derivedCalls = 0;
     Sequence.prototype.copy = function copyForCounting(
       this: Sequence,
       ...args: Parameters<typeof originalCopy>
@@ -1520,13 +1518,6 @@ describe('Call', () => {
       sequenceCopies++;
       return originalCopy.apply(this, args);
     };
-    Object.defineProperty(Call.prototype, 'deriveCall', {
-      ...deriveCallDescriptor,
-      value: function deriveCallForCounting(this: Call, ...args: unknown[]) {
-        derivedCalls++;
-        return Reflect.apply(originalDeriveCall, this, args);
-      }
-    });
     const content = new Sequence(
       [any('raw'), any('content')],
       undefined,
@@ -1544,26 +1535,21 @@ describe('Call', () => {
       expect(await rule.render(context, buffer)).toBe('missing-fn(red): raw content');
 
       expect(sequenceCopies).toBe(0);
-      expect(derivedCalls).toBe(0);
+      expect(derivedCalls.count).toBe(0);
       expect(buffer.parts).toEqual(['missing-fn(red): raw content']);
       expect(content.parent).toBe(rule);
       expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
       Sequence.prototype.copy = originalCopy;
-      Object.defineProperty(Call.prototype, 'deriveCall', deriveCallDescriptor);
+      derivedCalls.restore();
     }
   });
 
   it('renders and resolves source-backed fallback content without deriving a fallback Call', async () => {
     const originalCopy = Sequence.prototype.copy;
-    const deriveCallDescriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
-    const originalDeriveCall = deriveCallDescriptor?.value;
-    if (!deriveCallDescriptor || typeof originalDeriveCall !== 'function') {
-      throw new Error('Expected Call.deriveCall for source-backed fallback ownership proof');
-    }
+    const derivedCalls = countDeriveCallUse();
     let sequenceCopies = 0;
-    let derivedCalls = 0;
     Sequence.prototype.copy = function copyForCounting(
       this: Sequence,
       ...args: Parameters<typeof originalCopy>
@@ -1571,13 +1557,6 @@ describe('Call', () => {
       sequenceCopies++;
       return originalCopy.apply(this, args);
     };
-    Object.defineProperty(Call.prototype, 'deriveCall', {
-      ...deriveCallDescriptor,
-      value: function deriveCallForCounting(this: Call, ...args: unknown[]) {
-        derivedCalls++;
-        return Reflect.apply(originalDeriveCall, this, args);
-      }
-    });
     const content = new Sequence(
       [any('raw'), any('content')],
       undefined,
@@ -1591,32 +1570,27 @@ describe('Call', () => {
 
     try {
       await expect(Promise.resolve(rule.render(context))).resolves.toBe('missing-fn(red): raw content');
-      expect(derivedCalls).toBe(0);
+      expect(derivedCalls.count).toBe(0);
       expect(sequenceCopies).toBe(0);
 
       const resolved = await rule.resolve(context);
 
       expect(isNode(resolved, N.Call)).toBe(false);
       expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
-      expect(derivedCalls).toBe(0);
+      expect(derivedCalls.count).toBe(0);
       expect(sequenceCopies).toBe(0);
       expect(content.parent).toBe(rule);
       expect(rule.evaluated).toBe(false);
     } finally {
       Sequence.prototype.copy = originalCopy;
-      Object.defineProperty(Call.prototype, 'deriveCall', deriveCallDescriptor);
+      derivedCalls.restore();
     }
   });
 
   it('renders optional JS failure fallback content without owning a fallback Call surface', async () => {
     const originalCopy = Sequence.prototype.copy;
-    const deriveCallDescriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
-    const originalDeriveCall = deriveCallDescriptor?.value;
-    if (!deriveCallDescriptor || typeof originalDeriveCall !== 'function') {
-      throw new Error('Expected Call.deriveCall for JS failure fallback proof');
-    }
+    const derivedCalls = countDeriveCallUse();
     let sequenceCopies = 0;
-    let derivedCalls = 0;
     Sequence.prototype.copy = function copyForCounting(
       this: Sequence,
       ...args: Parameters<typeof originalCopy>
@@ -1624,13 +1598,6 @@ describe('Call', () => {
       sequenceCopies++;
       return originalCopy.apply(this, args);
     };
-    Object.defineProperty(Call.prototype, 'deriveCall', {
-      ...deriveCallDescriptor,
-      value: function deriveCallForCounting(this: Call, ...args: unknown[]) {
-        derivedCalls++;
-        return Reflect.apply(originalDeriveCall, this, args);
-      }
-    });
     let calls = 0;
     const root = rules([]);
     root.register('function', new JsFunction({
@@ -1660,7 +1627,7 @@ describe('Call', () => {
       expect(await rule.render(context, buffer)).toBe('bad(red): raw content');
 
       expect(sequenceCopies).toBe(0);
-      expect(derivedCalls).toBe(0);
+      expect(derivedCalls.count).toBe(0);
       expect(calls).toBe(2);
       expect(buffer.parts).toEqual(['bad(red): raw content']);
       expect(content.parent).toBe(rule);
@@ -1668,7 +1635,7 @@ describe('Call', () => {
       expect(rule.registrationPrepared).toBe(false);
     } finally {
       Sequence.prototype.copy = originalCopy;
-      Object.defineProperty(Call.prototype, 'deriveCall', deriveCallDescriptor);
+      derivedCalls.restore();
     }
   });
 
@@ -1701,19 +1668,7 @@ describe('Call', () => {
   });
 
   it('renders optional JS success output once without deriving fallback syntax', async () => {
-    const deriveCallDescriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
-    const originalDeriveCall = deriveCallDescriptor?.value;
-    if (!deriveCallDescriptor || typeof originalDeriveCall !== 'function') {
-      throw new Error('Expected Call.deriveCall for optional JS success proof');
-    }
-    let derivedCalls = 0;
-    Object.defineProperty(Call.prototype, 'deriveCall', {
-      ...deriveCallDescriptor,
-      value: function deriveCallForCounting(this: Call, ...callArgs: unknown[]) {
-        derivedCalls++;
-        return Reflect.apply(originalDeriveCall, this, callArgs);
-      }
-    });
+    const derivedCalls = countDeriveCallUse();
     let calls = 0;
     const root = rules([]);
     root.register('function', new JsFunction({
@@ -1737,10 +1692,10 @@ describe('Call', () => {
 
       expect(buffer.parts).toEqual(['ok']);
       expect(calls).toBe(1);
-      expect(derivedCalls).toBe(0);
+      expect(derivedCalls.count).toBe(0);
       expect(rule.evaluated).toBe(false);
     } finally {
-      Object.defineProperty(Call.prototype, 'deriveCall', deriveCallDescriptor);
+      derivedCalls.restore();
     }
   });
 
@@ -1801,19 +1756,7 @@ describe('Call', () => {
   });
 
   it('renders and resolves optional JS failure fallback without evaluating the source call surface', async () => {
-    const deriveCallDescriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
-    const originalDeriveCall = deriveCallDescriptor?.value;
-    if (!deriveCallDescriptor || typeof originalDeriveCall !== 'function') {
-      throw new Error('Expected Call.deriveCall for JS failure fallback proof');
-    }
-    let derivedCalls = 0;
-    Object.defineProperty(Call.prototype, 'deriveCall', {
-      ...deriveCallDescriptor,
-      value: function deriveCallForCounting(this: Call, ...callArgs: unknown[]) {
-        derivedCalls++;
-        return Reflect.apply(originalDeriveCall, this, callArgs);
-      }
-    });
+    const derivedCalls = countDeriveCallUse();
     let calls = 0;
     const root = rules([]);
     root.register('function', new JsFunction({
@@ -1833,22 +1776,22 @@ describe('Call', () => {
 
     try {
       await expect(Promise.resolve(rule.render(context))).resolves.toBe('bad(red 10px)');
-      expect(derivedCalls).toBe(0);
+      expect(derivedCalls.count).toBe(0);
       expect(await rule.render(context, buffer)).toBe('bad(red 10px)');
-      expect(derivedCalls).toBe(0);
+      expect(derivedCalls.count).toBe(0);
       const resolved = await rule.resolve(context);
 
       expect(buffer.parts).toEqual(['bad(red 10px)']);
       expect(isNode(resolved, N.Call)).toBe(false);
       expect(resolved.toTrimmedString()).toBe('bad(red 10px)');
-      expect(derivedCalls).toBe(0);
+      expect(derivedCalls.count).toBe(0);
       expect(calls).toBe(3);
       expect(args.parent).toBe(rule);
       expect(name.parent).toBe(rule);
       expect(name.evaluated).toBe(false);
       expect(rule.evaluated).toBe(false);
     } finally {
-      Object.defineProperty(Call.prototype, 'deriveCall', deriveCallDescriptor);
+      derivedCalls.restore();
     }
   });
 

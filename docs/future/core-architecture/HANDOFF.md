@@ -713,35 +713,38 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Deleted unused `Call.evalFinalizedCallSyntax(...)`; fallback
-   materialization no longer carries a dead inherited-`Call` wrapper.
-2. [x] Deleted `Call.getOptionalFallbackName(...)`; both remaining callers now
-   compute the fallback name directly at the decision point.
-3. [x] Deleted `Call.renderChildToActiveWriter(...)`; argument/content
-   rendering now performs direct `eval(context)` plus `toTrimmedString(...)`
-   in the hot serializer sites.
-4. [x] Removed the unused `caller` payload from `CallEvalState`; call-frame
-   ownership already lives on `context.caller`.
-5. [x] Removed the copied `markImportant` payload from `CallEvalState`; render
-   and eval paths read the source call option directly.
-6. [x] Removed the now-unused `context` parameter from `Call.createEvalState()`.
-7. [x] Updated all `createEvalState(...)` call sites to the zero-argument path.
-8. [x] Kept the direct child-render replacements intentionally local instead of
-   adding a new utility; fewer hot-path function hops matters more than
-   cosmetic DRY here.
-9. [x] Confirmed `Call.deriveCall(...)` remains live only at fallback/public
-   materialization sites; it is still queued for a sharper public-vs-render
-   split.
-10. [x] Confirmed `Call.renderDynamicFunctionOutput(...)` still re-enters the
-    dynamic helper cluster; the full state-machine collapse remains the next
-    high-value cut rather than being papered over.
-11. [x] Confirmed `Call.evalDynamicFunctionOutput(...)` still shares the same
-    helper cluster; public materialization needs its own boring path.
-12. [x] Confirmed the remaining inline
-    `Reference(...).inherit(name)` preserve-rules-like fence is still present
-    in `createEvalState()`.
-13. [x] Ran focused `Call` lint after edits; no errors.
-14. [x] Ran focused `Call` tests after edits (`66` passed).
+1. [x] Deleted `Call.deriveCall(...)`; the final public fallback Call is now
+   constructed at the only remaining site and owned once by `markCallOutput`.
+2. [x] Updated fallback-materialization tests so absence of the private
+   `deriveCall` hook counts as zero derived fallback calls instead of failing
+   on an old instrumentation seam.
+3. [x] Removed the per-render `normalizedArgs` array from
+   `Call.serializeRenderedArgs(...)`; the serializer now walks source args and
+   skips empty slots in place.
+4. [x] Preserved escaped-paren and comma behavior while deleting that temporary
+   argument array.
+5. [x] Changed `Reference.applyReferenceResultMetadata(...)` from an options
+   object to a boolean `frozen` flag; no tiny `{ frozen: true }` allocation on
+   lookup finalization.
+6. [x] Deleted `Reference.copyReferenceValue(...)`; callers now use
+   `copyWithReusableLeaves(...)` directly where copying still exists.
+7. [x] Replaced `Reference` container `.every(...)` closure checks with indexed
+   loops in the source-free/render-text reusable-container gates.
+8. [x] Deleted the `pipe(...)` wrapper from
+   `resolveReferenceTargetValue(...)`.
+9. [x] Deleted the `pipe(...)` wrapper from
+   `finalizeDeclarationReferenceResult(...)`.
+10. [x] Deleted the `pipe(...)` wrapper from `Reference.render(...)`.
+11. [x] Deleted the `pipe(...)` wrapper from
+    `resolveRawReferenceLookupTarget(...)`, keeping `context.popReference()`
+    cleanup on success and catch.
+12. [x] Deleted the `pipe(...)` wrapper from `evaluateReferenceNode(...)`;
+    reference evaluation now uses direct MaybePromise branches and no generic
+    pipeline helper.
+13. [x] Removed the `pipe` import from `reference.ts`; `Reference` now has zero
+    `pipe(...)` calls.
+14. [x] Ran focused `Call`/`Reference` lint and the lookup-heavy focused suite
+    (`329` passed, `9` skipped) during the pass.
 15. [x] Recorded this as a cut-only pass. No benchmark/profile was run, so make
     no speed claim from this queue completion.
 
@@ -755,25 +758,25 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 3. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
    eval branches and classify each as immediate render, public materialization,
    or escaping plugin value; no generic ownership by default.
-4. [ ] Delete inherited `Call.deriveCall(...)` fallback materialization for
-   syntax that only stringifies; keep an owned `Call` only for public value-node
-   return.
-5. [ ] Replace the remaining inline preserve-rules-like `Reference(...).inherit(name)`
+4. [ ] Replace the remaining inline preserve-rules-like `Reference(...).inherit(name)`
    in `Call.createEvalState(...)` with explicit live-reference state or a typed
    public materialization fence.
-6. [ ] Collapse or split `Call.renderFinalizedCallSyntax(...)` and
+5. [ ] Collapse or split `Call.renderFinalizedCallSyntax(...)` and
    `renderFinalizedCallPublicText(...)`; there are still two similar finalized
    CSS-call stringifiers because public materialization and active render are
    blurred.
-7. [ ] Split `Reference` render-only variable lookup from public
+6. [ ] Split `Reference` render-only variable lookup from public
    materialization so common `@var` render never calls
    `applyReferenceResultMetadata(...)`, `.inherit(...)`, or `frozen`.
-8. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
+7. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
    shallow owned surface with explicit public materialization state or a live
    rules-like binding.
-9. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
+8. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
    metadata paths with a render-only value path and a separate public-value
    materializer.
+9. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
+   repeated branch code only if it can be done without reintroducing a generic
+   pipeline/helper ladder.
 10. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
    ownership with source/diagnostic state when the resolved node is only queued
    for registration; do not add a new privileged location-copy helper.

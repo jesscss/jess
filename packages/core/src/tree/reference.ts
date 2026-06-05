@@ -11,7 +11,7 @@ import type { Quoted } from './quoted.js';
 import { atIndex } from './util/collections.js';
 import type { Num } from './number.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Rules, RulesOptions, RuntimeVarBinding } from './rules.js';
 import type { Interpolated } from './interpolated.js';
 import { canReuseLeaf, copyWithReusableLeaves } from './util/cloning.js';
@@ -1366,22 +1366,23 @@ function resolveReferenceTargetValue(args: {
   context: Context;
 }): MaybePromise<[unknown, NormalizedLookupKey]> {
   const { valueKey } = args;
-  return pipe(
-    () => resolveAmbiguousReferenceTarget(args),
-    resolvedTarget => materializeReferenceTarget({
-      resolvedTarget,
-      valueKey,
-      context: args.context
-    })
-  );
+  const resolvedTarget = resolveAmbiguousReferenceTarget(args);
+  const materialize = (target: unknown) => materializeReferenceTarget({
+    resolvedTarget: target,
+    valueKey,
+    context: args.context
+  });
+  return isThenable(resolvedTarget)
+    ? Promise.resolve(resolvedTarget).then(materialize)
+    : materialize(resolvedTarget);
 }
 
 function applyReferenceResultMetadata(
   referenceNode: Reference,
   node: Node,
-  options?: { frozen?: boolean }
+  frozen = false
 ): Node {
-  if (options?.frozen) {
+  if (frozen) {
     node.frozen = true;
   }
   return node.inherit(referenceNode);
@@ -1393,14 +1394,9 @@ function cloneReferenceResultNode(
 ): Node {
   return applyReferenceResultMetadata(
     referenceNode,
-    copyReferenceValue(node),
-    { frozen: true }
+    copyWithReusableLeaves(node),
+    true
   );
-}
-
-function copyReferenceValue(node: Node): Node {
-  const copied = copyWithReusableLeaves(node);
-  return copied;
 }
 
 function canReturnReferenceValue(node: Node): boolean {
@@ -1414,7 +1410,13 @@ function canReturnSourceFreeReferenceContainer(node: Node): boolean {
   if (node.location.length !== 0 || !node.hasFlag(F_STATIC)) {
     return false;
   }
-  return node.value.every(child => child instanceof Node && canReuseLeaf(child));
+  for (let i = 0; i < node.value.length; i++) {
+    const child = node.value[i];
+    if (!(child instanceof Node) || !canReuseLeaf(child)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function canRenderReferenceContainerText(node: Node): boolean {
@@ -1424,7 +1426,13 @@ function canRenderReferenceContainerText(node: Node): boolean {
   if (!node.hasFlag(F_STATIC)) {
     return false;
   }
-  return node.value.every(child => child instanceof Node && canReuseLeaf(child));
+  for (let i = 0; i < node.value.length; i++) {
+    const child = node.value[i];
+    if (!(child instanceof Node) || !canReuseLeaf(child)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function canReturnReferenceValueWithoutCopy(node: Node): boolean {
@@ -1505,7 +1513,7 @@ function evaluateFallbackValue(
       return fallbackValue;
     }
     context.popReference();
-    return applyReferenceResultMetadata(referenceNode, fallbackValue, { frozen: true });
+    return applyReferenceResultMetadata(referenceNode, fallbackValue, true);
   }
   if (options.textOnly === true && canRenderFallbackContainerDirectly(fallbackValue)) {
     context.popReference();
@@ -1515,7 +1523,7 @@ function evaluateFallbackValue(
     context.popReference();
     return fallbackValue;
   }
-  const out = copyReferenceValue(fallbackValue).eval(context);
+  const out = copyWithReusableLeaves(fallbackValue).eval(context);
   if (isThenable(out)) {
     return Promise.resolve(out).then((node) => {
       context.popReference();
@@ -1739,7 +1747,7 @@ function finalizeEvaluatedDeclarationReference(
       resultNode,
       isMergedAssign
     ),
-    { frozen: true }
+    true
   );
 }
 
@@ -1768,13 +1776,13 @@ function finalizeDeclarationReferenceResult(
     context.popReference();
     return preservedValue;
   }
-  return withReferenceSearchScope(context, declaration, () => pipe(
-    () => evaluateDeclarationReferenceValue({
+  return withReferenceSearchScope(context, declaration, () => {
+    const evaluated = evaluateDeclarationReferenceValue({
       declValue: declarationValue,
       hasImportant: hasImportantDeclarationValue(declaration),
       context
-    }),
-    (evaluatedNode) => {
+    });
+    const finalize = (evaluatedNode: Node): Node => {
       const finalized = finalizeEvaluatedDeclarationReference(
         referenceNode,
         evaluatedNode,
@@ -1783,8 +1791,11 @@ function finalizeDeclarationReferenceResult(
       );
       context.popReference();
       return finalized;
-    }
-  ));
+    };
+    return isThenable(evaluated)
+      ? Promise.resolve(evaluated).then(finalize)
+      : finalize(evaluated);
+  });
 }
 
 function evaluateCalcSlashListValue(
@@ -1876,9 +1887,9 @@ function evaluateReferenceValueNode(
       return declValue;
     }
     if (options.reuseSourceFreeLeaves === true) {
-      return copyReferenceValue(declValue).eval(context);
+      return copyWithReusableLeaves(declValue).eval(context);
     }
-    return copyReferenceValue(declValue).eval(context);
+    return copyWithReusableLeaves(declValue).eval(context);
   } finally {
     context.calcFrames = savedCalcFrames;
   }
@@ -1997,29 +2008,67 @@ function resolveRawReferenceLookupTarget(
   const lookupType = referenceNode.options.type;
   context.pushReference();
 
-  const rawResult = pipe(
-    () => resolveInitialReferenceTarget(referenceNode, context),
-    resolved => evaluateReferenceKey(key, resolved, context),
-    ([resolvedTarget, valueKey]) => resolveReferenceTargetValue({
-      referenceNode,
-      resolvedTarget,
-      valueKey,
-      context
-    }),
-    ([resolvedTarget, valueKey]) => lookupResolvedReference({
-      referenceNode,
-      resolvedTarget,
-      lookupType,
-      valueKey: valueKey as NormalizedLookupKey,
-      target,
-      originalFilter: referenceNode.options.filter,
-      context
-    }),
-    ({ returnVal }) => {
-      context.popReference();
-      return finalizeRawReferenceLookupTarget(returnVal);
-    }
-  );
+  const finishLookup = ({ returnVal }: {
+    returnVal: RulesLookupResult | unknown;
+  }): unknown => {
+    context.popReference();
+    return finalizeRawReferenceLookupTarget(returnVal);
+  };
+  const runLookup = ([resolvedTarget, valueKey]: [unknown, NormalizedLookupKey]) => lookupResolvedReference({
+    referenceNode,
+    resolvedTarget,
+    lookupType,
+    valueKey: valueKey as NormalizedLookupKey,
+    target,
+    originalFilter: referenceNode.options.filter,
+    context
+  });
+  const resolveTargetValue = ([resolvedTarget, valueKey]: [unknown, NormalizedLookupKey]) => resolveReferenceTargetValue({
+    referenceNode,
+    resolvedTarget,
+    valueKey,
+    context
+  });
+  const evaluateKey = (resolved: unknown) => evaluateReferenceKey(key, resolved, context);
+  const initialTarget = resolveInitialReferenceTarget(referenceNode, context);
+  const rawResult = isThenable(initialTarget)
+    ? Promise.resolve(initialTarget)
+        .then(evaluateKey)
+        .then(resolveTargetValue)
+        .then(runLookup)
+        .then(finishLookup)
+    : (() => {
+        const evaluatedKey = evaluateKey(initialTarget);
+        if (isThenable(evaluatedKey)) {
+          return Promise.resolve(evaluatedKey)
+            .then(resolveTargetValue)
+            .then(runLookup)
+            .then(finishLookup);
+        }
+        const resolvedValue = resolveReferenceTargetValue({
+          referenceNode,
+          resolvedTarget: evaluatedKey[0],
+          valueKey: evaluatedKey[1],
+          context
+        });
+        if (isThenable(resolvedValue)) {
+          return Promise.resolve(resolvedValue)
+            .then(runLookup)
+            .then(finishLookup);
+        }
+        const lookup = lookupResolvedReference({
+          referenceNode,
+          resolvedTarget: resolvedValue[0],
+          lookupType,
+          valueKey: resolvedValue[1] as NormalizedLookupKey,
+          target,
+          originalFilter: referenceNode.options.filter,
+          context
+        });
+        return isThenable(lookup)
+          ? Promise.resolve(lookup).then(finishLookup)
+          : finishLookup(lookup);
+      })();
 
   if (isThenable(rawResult)) {
     return Promise.resolve(rawResult).catch((error) => {
@@ -2081,42 +2130,80 @@ function evaluateReferenceNode(args: {
     directStaticRender
   } = args;
   context.pushReference();
-  return pipe(
-    () => resolveInitialReferenceTarget(referenceNode, context),
-    resolved => evaluateReferenceKey(key, resolved, context),
-    ([resolvedTarget, valueKey]) => resolveReferenceTargetValue({
-      referenceNode,
-      resolvedTarget,
-      valueKey,
-      context
-    }),
-    ([resolvedTarget, valueKey]) => lookupResolvedReference({
-      referenceNode,
-      resolvedTarget,
-      lookupType,
-      valueKey: valueKey as NormalizedLookupKey,
-      target,
-      originalFilter,
-      context
-    }),
-    ({ returnVal, valueKey }) => {
-      const directRenderValue = directStaticRender === true
-        ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
-        : undefined;
-      if (directRenderValue) {
-        return directRenderValue;
-      }
-      return finalizeReferenceLookupResult({
-        referenceNode,
-        returnVal,
-        valueKey: valueKey as NormalizedLookupKey,
-        lookupType,
-        fallbackValue,
-        context,
-        textOnly
-      });
+  const finishLookup = ({ returnVal, valueKey }: {
+    returnVal: RulesLookupResult | unknown;
+    valueKey: NormalizedLookupKey;
+  }): MaybePromise<Node> => {
+    const directRenderValue = directStaticRender === true
+      ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
+      : undefined;
+    if (directRenderValue) {
+      return directRenderValue;
     }
-  );
+    return finalizeReferenceLookupResult({
+      referenceNode,
+      returnVal,
+      valueKey: valueKey as NormalizedLookupKey,
+      lookupType,
+      fallbackValue,
+      context,
+      textOnly
+    });
+  };
+  const runLookup = ([resolvedTarget, valueKey]: [unknown, NormalizedLookupKey]) => lookupResolvedReference({
+    referenceNode,
+    resolvedTarget,
+    lookupType,
+    valueKey: valueKey as NormalizedLookupKey,
+    target,
+    originalFilter,
+    context
+  });
+  const resolveTargetValue = ([resolvedTarget, valueKey]: [unknown, NormalizedLookupKey]) => resolveReferenceTargetValue({
+    referenceNode,
+    resolvedTarget,
+    valueKey,
+    context
+  });
+  const evaluateKey = (resolved: unknown) => evaluateReferenceKey(key, resolved, context);
+  const initialTarget = resolveInitialReferenceTarget(referenceNode, context);
+  if (isThenable(initialTarget)) {
+    return Promise.resolve(initialTarget)
+      .then(evaluateKey)
+      .then(resolveTargetValue)
+      .then(runLookup)
+      .then(finishLookup);
+  }
+  const evaluatedKey = evaluateKey(initialTarget);
+  if (isThenable(evaluatedKey)) {
+    return Promise.resolve(evaluatedKey)
+      .then(resolveTargetValue)
+      .then(runLookup)
+      .then(finishLookup);
+  }
+  const resolvedValue = resolveReferenceTargetValue({
+    referenceNode,
+    resolvedTarget: evaluatedKey[0],
+    valueKey: evaluatedKey[1],
+    context
+  });
+  if (isThenable(resolvedValue)) {
+    return Promise.resolve(resolvedValue)
+      .then(runLookup)
+      .then(finishLookup);
+  }
+  const lookup = lookupResolvedReference({
+    referenceNode,
+    resolvedTarget: resolvedValue[0],
+    lookupType,
+    valueKey: resolvedValue[1] as NormalizedLookupKey,
+    target,
+    originalFilter,
+    context
+  });
+  return isThenable(lookup)
+    ? Promise.resolve(lookup).then(finishLookup)
+    : finishLookup(lookup);
 }
 
 /**
@@ -2217,20 +2304,20 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     const renderResolved = (node: Node) => isRenderBuffer(bufferOrOptions)
       ? writeRenderTextResult(bufferOrOptions, node.render(context, options))
       : node.render(context, bufferOrOptions);
-    return pipe(
-      () => evaluateReferenceNode({
-        referenceNode: this,
-        target: this.value.target,
-        key: this.value.key,
-        lookupType: (this.options.type ?? 'variable') as LookupType,
-        fallbackValue: this.options.fallbackValue,
-        originalFilter: this.options.filter,
-        context,
-        textOnly: true,
-        directStaticRender: true
-      }),
-      renderResolved
-    );
+    const evaluated = evaluateReferenceNode({
+      referenceNode: this,
+      target: this.value.target,
+      key: this.value.key,
+      lookupType: (this.options.type ?? 'variable') as LookupType,
+      fallbackValue: this.options.fallbackValue,
+      originalFilter: this.options.filter,
+      context,
+      textOnly: true,
+      directStaticRender: true
+    });
+    return isThenable(evaluated)
+      ? Promise.resolve(evaluated).then(renderResolved)
+      : renderResolved(evaluated);
   }
 
   /**
