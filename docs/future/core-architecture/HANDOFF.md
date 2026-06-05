@@ -713,83 +713,82 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Added a dynamic calc-name characterization test after noticing the
-   previous branch already handled node-valued `calc` directly.
-2. [x] Verified that calc characterization passed without production changes,
-   so it was not counted as the red-green driver for this pass.
-3. [x] Added a focused dynamic stylesheet `Func` render test that counts
-   dynamic-name evaluation.
-4. [x] Fixed the initial synthetic `Func` fixture after it failed for missing
-   parent context instead of probe count.
-5. [x] Verified the corrected `Func` red failure was the intended final
-   fallback signal: `nameEvaluations` was `4`, expected `1`.
-6. [x] Added a render-local `Func` branch in
-   `Call.renderDynamicFunctionOutput(...)`.
-7. [x] Reused the single evaluated dynamic name for stylesheet function render.
-8. [x] Evaluated stylesheet function call args once through `evalArgNodes(...)`
-   before `Func.evalCall(...)`.
-9. [x] Rendered the `Func.evalCall(...)` result directly instead of falling
-   through `evalPlainDynamicFunction(...)`, optional probes,
-   `evalMetadataDynamicFunction(...)`, and final `evalState(...)`.
-10. [x] Preserved render-only behavior: the source call remains unevaluated and
-    unprepared after render.
-11. [x] Preserved the existing non-extended CSS fallback branch and callable
-    exclusions.
-12. [x] Left mixin/rules-like dynamic names and final `evalState(...)` fallback
-    on the older path until separate proof covers those branches.
-13. [x] Re-ran the red `Func` test and saw it pass with one dynamic-name
-    evaluation.
-14. [x] Ran the full `call.test.ts` file (`70` passed).
-15. [x] No benchmark/profile was run, so make no speed claim from this queue
-    completion. This was another Call render probe-reduction pass.
+1. [x] Targeted the next `Call.renderDynamicFunctionOutput(...)` fallthrough:
+   dynamic names that evaluate to detached `Rules`/`Collection` bodies.
+2. [x] Started from the existing rules-like variable render/resolve fixture
+   instead of a synthetic no-scope tree.
+3. [x] First attempted to count `Reference.prototype.eval(...)`; that tripped
+   the base `Node.eval` subclass guard, proving the test hook was invalid.
+4. [x] Replaced that hook with an `evalState(...)` counter on `Call.prototype`,
+   measuring the exact generic public-eval fallback render should avoid.
+5. [x] Verified the intended red failure: after `rule.render(context)`,
+   `evalStateCalls.count` was `1`, expected `0`.
+6. [x] Added a render-local `Rules | Collection` branch after the existing
+   stylesheet `Func` branch.
+7. [x] Reused the already evaluated dynamic name instead of recreating
+   `CallEvalState` and evaluating the name again through `evalState(...)`.
+8. [x] Preserved rules-like lexical parent behavior for variable calls by
+   applying the existing `sourceNode.parent` restoration before invocation.
+9. [x] Preserved the existing no-explicit-args rule for detached rules and
+   collections.
+10. [x] Built only the unavoidable `MixinCollection` callable adapter for this
+    semantic branch; no copied body/result tree was introduced.
+11. [x] Evaluated the callable result once and rendered it immediately through
+    `renderOutput(...)`.
+12. [x] Marked render output with `ownOutput = false`, so this render-only path
+    does not claim output-child parent identity.
+13. [x] Re-ran the focused red test and saw it pass: render no longer calls
+    `evalState(...)`.
+14. [x] Ran the full `call.test.ts` file (`70` passed), including detached
+    leaky/non-leaky ruleset scope fixtures.
+15. [x] No benchmark/profile was run, so make no speed claim. This pass removed
+    one confirmed dynamic-name render fallback, not the entire callable branch.
 
 ### Next 15-Item Queue
 
-1. [ ] Continue `Call.renderDynamicFunctionOutput(...)`: mixin/rules-like
-   dynamic names and final `evalState(...)` fallback still fall through older
-   helper probes. Add focused proof before collapsing each branch.
-2. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
+1. [ ] Continue `Call.renderDynamicFunctionOutput(...)`: direct `Mixin`,
+   `Ruleset`, `MixinCollection`, `Array`, and `Call` dynamic-name outputs still
+   need focused proof before bypassing the final `evalState(...)` fallback.
+2. [ ] Add a focused `Mixin`/`Ruleset` dynamic-name render fixture that proves
+   render does not call `evalState(...)` and preserves selector/body behavior.
+3. [ ] Add a focused `MixinCollection` or array dynamic-name fixture before
+   deleting that remaining generic fallback branch.
+4. [ ] Add a focused `Call`-valued dynamic-name fixture for alias calls
+   (`@alias: .mixin(...); @alias();`) before deciding whether render can eval
+   the inner call directly without owned output.
+5. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
    eval branches and classify each as immediate render, public materialization,
    or escaping plugin value; no generic ownership by default.
-3. [ ] Split `Reference` render-only variable lookup from public
+6. [ ] Split `Reference` render-only variable lookup from public
    materialization so common `@var` render never calls
    `applyReferenceResultMetadata(...)`, `.inherit(...)`, or `frozen`.
-4. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
+7. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
    shallow owned surface with explicit public materialization state or a live
    rules-like binding.
-5. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
+8. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
    metadata paths with a render-only value path and a separate public-value
    materializer.
-6. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
+9. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
    repeated branch code only if it can be done without reintroducing a generic
    pipeline/helper ladder.
-7. [ ] Continue `define-function.ts` boring-JS cleanup only where scans show
+10. [ ] Continue `define-function.ts` boring-JS cleanup only where scans show
    remaining convenience calls in hot argument conversion; keep cold signature
    setup/diagnostic helpers out of the hot queue unless they appear in profile
    evidence.
-8. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
+11. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
    ownership with source/diagnostic state when the resolved node is only queued
    for registration; do not add a new privileged location-copy helper.
-9. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
+12. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
    output with source-backed merge placement or direct render state.
-10. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
+13. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
     narrower merge-value copier or render-state path so merge normalization
     does not clone whole value subtrees.
-11. [ ] Replace `StyleImport` first-use import placement child copies with
+14. [ ] Replace `StyleImport` first-use import placement child copies with
     canonical children plus placement/render state; imports should not fake
     transferred ownership.
-12. [ ] Audit remaining `StyleImport.deriveRulesSurface(...)` wrapper creation
+15. [ ] Audit remaining `StyleImport.deriveRulesSurface(...)` wrapper creation
     for source/visibility/placement fields that can be direct state instead of
     derived `Rules` surfaces.
-13. [ ] Add a focused registration-prep test before deleting
-    `resolvedNode.inherit(node)`, proving source diagnostics/registration order
-    survive without replacement ownership.
-14. [ ] Add a focused `Call.renderDynamicFunctionOutput(...)` test that counts
-    dynamic name/function evaluation so the render-local state-machine cut does
-    not accidentally double-probe.
-15. [ ] Add or update proof tests around call output marking so render-only
-    dynamic output does not acquire owned parent identity unless it escapes
-    through a public/materialized value boundary.
 
 ## Active Correctness Queue
 

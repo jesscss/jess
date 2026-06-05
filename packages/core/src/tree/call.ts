@@ -759,6 +759,40 @@ export class Call extends Node<CallValue, CallOptions> {
           const argNodes = await this.evalArgNodes(context, state.args) ?? list([]);
           const output = await evaluatedName.evalCall(context, argNodes);
           return this.renderOutput(context, output, bufferOrOptions, options);
+        } else if (isNode(evaluatedName, N.Rules | N.Collection)) {
+          if (state.preservesRulesLikeVariableTarget) {
+            const sourceParent = 'sourceNode' in evaluatedName && isNode(evaluatedName.sourceNode)
+              ? evaluatedName.sourceNode.parent
+              : undefined;
+            if (sourceParent) {
+              evaluatedName.parent = sourceParent;
+            }
+          }
+          if (state.args && state.args.value.length > 0) {
+            throw new ReferenceError(`Cannot call ${evaluatedName.type} with arguments`);
+          }
+          const collection = new MixinCollection([
+            callableRulesEntry(
+              { rules: evaluatedName },
+              evaluatedName.parent,
+              evaluatedName.index
+            )
+          ]);
+          const output = await this.runInCallFrame(context, { caller: true }, async () => {
+            const result = await collection.evalCall(context, state.args);
+            if (isNode(result)) {
+              let evald = result.eval(context);
+              if (isThenable(evald)) {
+                evald = await evald;
+              }
+              if (this._options?.markImportant && isNode(evald, N.Rules)) {
+                this.makeImportant(evald);
+              }
+              return this.markCallOutput(evald, false);
+            }
+            return this.markCallOutput(cast(result), false);
+          });
+          return this.renderOutput(context, output, bufferOrOptions, options);
         } else if (
           !(
             isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)

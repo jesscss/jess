@@ -86,6 +86,33 @@ function countDeriveCallUse(): { readonly count: number; restore(): void } {
   };
 }
 
+function countEvalStateUse(): { readonly count: number; restore(): void } {
+  const descriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'evalState');
+  const original = descriptor?.value;
+  if (!descriptor || typeof original !== 'function') {
+    return {
+      count: 0,
+      restore() {}
+    };
+  }
+  let count = 0;
+  Object.defineProperty(Call.prototype, 'evalState', {
+    ...descriptor,
+    value: function evalStateForCounting(this: Call, ...args: unknown[]) {
+      count++;
+      return original.apply(this, args);
+    }
+  });
+  return {
+    get count() {
+      return count;
+    },
+    restore() {
+      Object.defineProperty(Call.prototype, 'evalState', descriptor);
+    }
+  };
+}
+
 let context: Context;
 describe('Call', () => {
   beforeEach(() => {
@@ -858,16 +885,22 @@ describe('Call', () => {
     context.rulesContext = evaldRoot;
     const name = ref('themeBlock', { type: 'variable' });
     const rule = call({ name });
+    const evalStateCalls = countEvalStateUse();
 
-    const rendered = await Promise.resolve(rule.render(context));
-    const resolved = await rule.resolve(context);
+    try {
+      const rendered = await Promise.resolve(rule.render(context));
+      expect(evalStateCalls.count).toBe(0);
+      const resolved = await rule.resolve(context);
 
-    expect(rendered).toContain('color: blue');
-    expect(isNode(resolved, N.Rules)).toBe(true);
-    expect(resolved.toTrimmedString()).toContain('color: blue');
-    expect(name.parent).toBe(rule);
-    expect(name.evaluated).toBe(false);
-    expect(rule.evaluated).toBe(false);
+      expect(rendered).toContain('color: blue');
+      expect(isNode(resolved, N.Rules)).toBe(true);
+      expect(resolved.toTrimmedString()).toContain('color: blue');
+      expect(name.parent).toBe(rule);
+      expect(name.evaluated).toBe(false);
+      expect(rule.evaluated).toBe(false);
+    } finally {
+      evalStateCalls.restore();
+    }
   });
 
   it('marks declaration-only JS call output without call-site back-pointers', async () => {
