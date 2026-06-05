@@ -708,15 +708,30 @@ export class Call extends Node<CallValue, CallOptions> {
         const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName;
         if (isExtendedFn(fn)) {
           const isMetadataFunction = Boolean(fn._internal || fn.options?.params);
-          if (isMetadataFunction || (!this.options?.silentFail && !this.options?.markImportant)) {
+          if (isMetadataFunction || !this.options?.markImportant) {
             const output = await this.runInCallFrame(context, { caller: true }, async () => {
-              const result = state.args
-                ? (
-                    isMetadataFunction
-                      ? await callWithContext(context, fn, state.args)
-                      : await callWithContext(context, fn, ...state.args.value)
-                  )
-                : await callWithContext(context, fn);
+              let result: unknown;
+              try {
+                result = state.args
+                  ? (
+                      isMetadataFunction
+                        ? await callWithContext(context, fn, state.args)
+                        : await callWithContext(context, fn, ...state.args.value)
+                    )
+                  : await callWithContext(context, fn);
+              } catch (error) {
+                if (
+                  isMetadataFunction
+                  || !this.options?.silentFail
+                  || (context?.opts?.unitMode ?? 'loose') === 'strict'
+                ) {
+                  throw error;
+                }
+                const fallbackName = isNode(this.value.name, N.Reference) && this.value.name.options.fallbackValue === true
+                  ? String(this.value.name.value.key)
+                  : stringifyValueOf(fn);
+                return this.renderFinalizedCallSyntax(fallbackName, state, context, prepared);
+              }
               if (isNode(result)) {
                 let evald = result.eval(context);
                 if (isThenable(evald)) {
@@ -733,6 +748,11 @@ export class Call extends Node<CallValue, CallOptions> {
               }
               return this.markCallOutput(castResult, false);
             });
+            if (typeof output === 'string') {
+              return isRenderBuffer(bufferOrOptions)
+                ? writeRenderTextResult(bufferOrOptions, output)
+                : output;
+            }
             return this.renderOutput(context, output, bufferOrOptions, options);
           }
         }

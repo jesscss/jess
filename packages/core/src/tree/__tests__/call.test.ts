@@ -1713,9 +1713,16 @@ describe('Call', () => {
     }));
     context.root = root;
     context.rulesContext = root;
+    const name = ref({ key: 'ok' }, { type: 'function', fallbackValue: true });
+    const originalEval = name.eval.bind(name);
+    let nameEvaluations = 0;
+    name.eval = function evalForCounting(evalContext: Context) {
+      nameEvaluations++;
+      return originalEval(evalContext);
+    };
     const buffer = createRenderBuffer('flat');
     const rule = call({
-      name: ref({ key: 'ok' }, { type: 'function', fallbackValue: true }),
+      name,
       args: list([])
     }, { silentFail: true });
 
@@ -1724,6 +1731,7 @@ describe('Call', () => {
 
       expect(buffer.parts).toEqual(['ok']);
       expect(calls).toBe(1);
+      expect(nameEvaluations).toBe(1);
       expect(derivedCalls.count).toBe(0);
       expect(rule.evaluated).toBe(false);
     } finally {
