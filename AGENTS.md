@@ -86,6 +86,9 @@ When working on the active evaluation-model refactor, use these docs as the cano
 
 - `docs/future/core-architecture/HANDOFF.md` for current architecture lanes,
   completion gates, the active queue, and verification
+- `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md` and
+  `pnpm run verify:aggressive-cutting-review` before committing queue passes
+  that touch eval/render/lookup/traversal/copying paths
 - `docs/future/node-copy-reduction/README.md` only as historical background for
   the older node-copy-specific phase
 

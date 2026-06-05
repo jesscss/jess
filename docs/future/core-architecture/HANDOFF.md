@@ -1809,6 +1809,30 @@ Restock only from evidence:
 Do not restock from completed lane history. Do not add entries shaped like
 “complete unless...” or “reopen only if...”. If it is not active work, remove it.
 
+## Aggressive Cutting Self-Prosecution
+
+- New traversal: this guardrail pass adds diff scanning in
+  `scripts/verify-aggressive-cutting-review.mjs`, but no runtime traversal in
+  `packages/core/src`. The script's loops inspect local git diff text only and
+  are outside eval/render.
+- New node/materialization: none in runtime code. The new script creates plain
+  diagnostic arrays from diff lines for a cold verification command; it creates
+  no AST nodes, wrappers, copies, inherited nodes, frozen nodes, or render-time
+  materialization.
+- Render path: untouched. This pass does not change eval/render behavior and
+  does not resolve values into arrays/nodes for stringification.
+- Helper/API surface: adds one explicit verification command,
+  `pnpm run verify:aggressive-cutting-review`, plus the repo-local review doc.
+  This is accepted because it prevents unprosecuted helper/API growth in future
+  queue passes and is not on the runtime path.
+- Metadata mutations: none in runtime code. The script scans for parent/source,
+  `frozen`, `Reflect.*`, `Object.hasOwn`, and similar danger tokens so future
+  queue passes must justify them rather than smuggling them in.
+- Evidence: code-path evidence only; performance remains shelved. The proof for
+  this pass is that the verifier is cold tooling and the handoff now requires a
+  self-prosecution block before queue work closes.
+- Verdict: accepted.
+
 ## Worktree / Commit Rule
 
 For queue runs:
@@ -1822,7 +1846,9 @@ For queue runs:
 7. Keep/revert based on measured evidence.
 8. Update this handoff only with active queue state, profile snapshot, and next
    target.
-9. Commit and push when clean.
+9. Run `pnpm run verify:aggressive-cutting-review` and update the
+   `Aggressive Cutting Self-Prosecution` block before committing.
+10. Commit and push when clean.
 
 If using sub-agents, keep work isolated in existing core-architecture worktrees,
 merge/push each accepted change to `origin/dev`, refresh from `origin/dev`, and

@@ -1,0 +1,74 @@
+# Aggressive Cutting Review
+
+This is the repo-local guardrail for Jess core architecture queue passes. It is
+not a performance benchmark. It is a refusal checklist for accidental machinery.
+
+Use it before committing changes that touch AST nodes, eval/render, lookup,
+copying, inheritance, traversal, source/root metadata, output writing, or the
+core architecture handoff.
+
+## Hard Rules
+
+1. No new traversal unless it deletes worse traversal.
+   Added loops, recursion, `map/filter/sort`, parent walks, source walks,
+   generators, side-map lookups, or object/array scans must explain why the fact
+   could not be carried by parser/adoption/eval state already on the path.
+2. No new node creation without a named ownership boundary.
+   Classify every `new Node`, copy, `.inherit`, `.adopt`,
+   `copyWithReusableLeaves`, wrapper `Rules`, materialized array, `frozen`, or
+   parent/source metadata mutation.
+3. Render means stringify.
+   Resolving into nodes or arrays just to render is suspect by default.
+4. No helper growth.
+   A helper must delete more hot-path function/API surface than it adds.
+5. No metadata mutation as convenience tax.
+   Parent restoration, frozen/source/location inheritance, lazy context/options,
+   `Reflect.*`, `Object.hasOwn`, and structural probes are guilty until proven
+   necessary.
+6. Evidence before performance claims.
+   Tests and code-path evidence can prove "less wrong machinery." Only profiles
+   or benchmarks can prove "faster."
+
+## Ownership Classifications
+
+- `render-only`: rejected unless impossible to stringify directly.
+- `eval-to-immediate-string`: rejected.
+- `public materialization`: allowed only on a cold public path.
+- `semantic placement state`: allowed when canonical source references cannot
+  represent the behavior.
+- `construction/adoption flag`: allowed when it removes later rediscovery.
+
+## Required Self-Prosecution Block
+
+Each queue pass must update `docs/future/core-architecture/HANDOFF.md` with:
+
+```md
+## Aggressive Cutting Self-Prosecution
+
+- New traversal:
+- New node/materialization:
+- Render path:
+- Helper/API surface:
+- Metadata mutations:
+- Evidence:
+- Verdict:
+```
+
+Every bullet must name exact files/functions or say `none`. `Verdict` must be
+one of:
+
+- `accepted`: the pass deletes machinery or carries state earlier;
+- `rejected`: the proposed change added unjustified machinery and was reverted;
+- `deferred`: the pass found a real target but needs tests/profile evidence.
+
+## Local Check
+
+Run:
+
+```sh
+pnpm run verify:aggressive-cutting-review
+```
+
+The script scans the current diff for danger tokens and checks that the handoff
+contains the self-prosecution block. The script cannot decide architecture; it
+exists to make the agent stop and prosecute its own diff before committing.

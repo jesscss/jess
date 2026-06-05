@@ -68,6 +68,7 @@
     "verify:node-copy-frontier": "node scripts/verify-node-copy-frontier.mjs",
     "verify:render-buffer-frontier": "node scripts/verify-render-buffer-frontier.mjs",
     "verify:materialization-frontier": "node scripts/verify-materialization-frontier.mjs",
+    "verify:aggressive-cutting-review": "node scripts/verify-aggressive-cutting-review.mjs",
     "audit:node-creation": "node scripts/audit-node-creation-hotspots.mjs",
     "measure:less:hotpath": "pnpm --filter @jesscss/plugin-js build && node scripts/measure-less-hotpath.mjs",
     "measure:less:hotpath:record": "pnpm --filter @jesscss/plugin-js build && node scripts/measure-less-hotpath.mjs --save --compare-latest",
