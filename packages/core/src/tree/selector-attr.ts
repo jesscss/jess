@@ -1,7 +1,7 @@
 import { defineType, type LocationInfo, type Node } from './node.js';
 import { type TreeContext } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import type { Context } from '../context.js';
 import { Any } from './any.js';
 import { quoted } from './quoted.js';
@@ -9,6 +9,12 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import {
+  isRenderBuffer,
+  prepareBufferPrintState,
+  type RenderBuffer,
+  writeRenderText
+} from './util/render-buffer.js';
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -27,25 +33,12 @@ export type AttributeSelectorValue = {
  *   e.g. [id="foo"]
 */
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
-  private copyForDerived(node: Node): Node {
-    return canReuseLeaf(node) ? reuseLeaf(node) : copyWithReusableLeaves(node);
-  }
-
-  private withResolvedParts(name: string | Node, value: Node | undefined): AttributeSelector {
-    const currentName = this.value.name;
-    const currentValue = this.value.value;
-    const nextName = (
-      typeof name === 'string'
-        ? name
-        : name === currentName
-          ? this.copyForDerived(name)
-          : name
-    );
+  private createResolvedValueNode(value: Node): AttributeSelector {
     const node = new AttributeSelector(
       {
-        name: nextName,
+        name: this.value.name,
         op: this.value.op,
-        value: value && value === currentValue ? this.copyForDerived(value) : value,
+        value: quoted(String(value.valueOf())),
         mod: this.value.mod
       },
       this._options,
@@ -54,10 +47,6 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     );
     node.inherit(this);
     return node;
-  }
-
-  private createResolvedValueNode(value: Node): AttributeSelector {
-    return this.withResolvedParts(this.value.name, quoted(String(value.valueOf())));
   }
 
   private resolveAttributeValue(context: Context): MaybePromise<Node | undefined> {
@@ -84,11 +73,15 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return value?.resolve(context);
   }
 
-  private renderAttributeSyntax(options?: PrintOptions): string {
+  private renderAttributeParts(
+    name: string | Node,
+    value: Node | undefined,
+    options?: PrintOptions
+  ): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, op, value, mod } = this.value;
+    const { op, mod } = this.value;
     w.add('[');
     if (typeof name === 'string') {
       w.add(name, this);
@@ -107,6 +100,10 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     }
     w.add(']');
     return w.getSince(mark);
+  }
+
+  private renderAttributeSyntax(options?: PrintOptions): string {
+    return this.renderAttributeParts(this.value.name, this.value.value, options);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
@@ -155,7 +152,27 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
       if (resolvedName === currentName && resolvedValue === currentValue) {
         return this;
       }
-      return this.withResolvedParts(resolvedName, resolvedValue);
+      const ownedName = typeof resolvedName === 'string'
+        ? resolvedName
+        : resolvedName === currentName
+          ? canReuseLeaf(resolvedName) ? reuseLeaf(resolvedName) : copyWithReusableLeaves(resolvedName)
+          : resolvedName;
+      const ownedValue = resolvedValue && resolvedValue === currentValue
+        ? canReuseLeaf(resolvedValue) ? reuseLeaf(resolvedValue) : copyWithReusableLeaves(resolvedValue)
+        : resolvedValue;
+      const node = new AttributeSelector(
+        {
+          name: ownedName,
+          op: this.value.op,
+          value: ownedValue,
+          mod: this.value.mod
+        },
+        this._options,
+        this.location,
+        this.sourceRoot?._treeContext
+      );
+      node.inherit(this);
+      return node;
     };
     if (isThenable(name)) {
       return (name as Promise<string | Node>).then((resolvedName) => {
@@ -177,6 +194,35 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
 
   override resolve(context: Context): MaybePromise<this> {
     return this.resolveForRender(context);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const printOptions = isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions;
+    const currentName = this.value.name;
+    const name = typeof currentName === 'string' ? currentName : currentName.resolve(context);
+    const value = this.resolveAttributeValue(context);
+    const finalize = (resolvedName: string | Node, resolvedValue: Node | undefined): string => {
+      const prepared = buffer
+        ? prepareBufferPrintState(context, options)
+        : prepareRenderPrintState(context, printOptions);
+      const out = this.renderAttributeParts(resolvedName, resolvedValue, prepared);
+      return buffer ? writeRenderText(buffer, out) : out;
+    };
+    if (isThenable(name)) {
+      return (name as Promise<string | Node>).then((resolvedName) => {
+        if (isThenable(value)) {
+          return (value as Promise<Node | undefined>).then(resolvedValue => finalize(resolvedName, resolvedValue));
+        }
+        return finalize(resolvedName, value as Node | undefined);
+      });
+    }
+    if (isThenable(value)) {
+      return (value as Promise<Node | undefined>).then(resolvedValue => finalize(name as string | Node, resolvedValue));
+    }
+    return finalize(name as string | Node, value as Node | undefined);
   }
 
   override toTrimmedString(options?: PrintOptions) {

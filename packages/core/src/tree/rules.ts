@@ -3315,22 +3315,34 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ? reuseLeaf(value)
         : copyWithReusableLeaves(value)
     );
-    const toMergedItems = (value: Node, assign: string): Node[] => {
-      const items: Node[] = [];
-      const collect = (node: Node): void => {
+    const forEachMergedItem = (
+      value: Node,
+      assign: string,
+      visit: (node: Node) => boolean | void
+    ): boolean => {
+      const stack: Node[] = [value];
+      let keepGoing = true;
+      while (stack.length > 0 && keepGoing) {
+        const node = stack.pop()!;
         if (isNode(node, N.List) || (assign === '&_:' && isNode(node, N.Sequence))) {
-          for (const item of node.value) {
-            collect(item);
+          for (let i = node.value.length - 1; i >= 0; i--) {
+            stack.push(node.value[i]!);
           }
-          return;
+          continue;
         }
         const isEmptyPlaceholder = isNode(node, N.Nil)
           || (isNode(node, N.Any) && node.value === '');
         if (!isEmptyPlaceholder) {
-          items.push(node);
+          keepGoing &&= visit(node) !== false;
         }
-      };
-      collect(value);
+      }
+      return keepGoing;
+    };
+    const collectMergedItems = (value: Node, assign: string): Node[] => {
+      const items: Node[] = [];
+      forEachMergedItem(value, assign, (node) => {
+        items.push(node);
+      });
       return items;
     };
     const sameMergedItem = (left: Node, right: Node): boolean => {
@@ -3341,26 +3353,30 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     };
     const startsWithMergedValue = (value: Node, prefix: Node, assign: string): boolean => {
-      const valueItems = toMergedItems(value, assign);
-      const prefixItems = toMergedItems(prefix, assign);
-      if (prefixItems.length === 0 || valueItems.length < prefixItems.length) {
+      const prefixItems = collectMergedItems(prefix, assign);
+      if (prefixItems.length === 0) {
         return false;
       }
-      for (let i = 0; i < prefixItems.length; i++) {
-        if (!sameMergedItem(prefixItems[i]!, valueItems[i]!)) {
+      let index = 0;
+      let matches = true;
+      forEachMergedItem(value, assign, (node) => {
+        if (index >= prefixItems.length) {
           return false;
         }
-      }
-      return true;
+        if (!sameMergedItem(prefixItems[index]!, node)) {
+          matches = false;
+          return false;
+        }
+        index++;
+      });
+      return matches && index === prefixItems.length;
     };
     const mergeDeclarationValues = (priorValue: Node, nextValue: Node, assign: string): Node => {
-      const priorCopy = copyMergedValue(priorValue);
-      const nextCopy = copyMergedValue(nextValue);
       if (assign === '&_:') {
-        return spaced([priorCopy, nextCopy]);
+        return spaced([copyMergedValue(priorValue), copyMergedValue(nextValue)]);
       }
-      const priorItems = toMergedItems(priorCopy, assign);
-      const nextItems = toMergedItems(nextCopy, assign);
+      const priorItems = collectMergedItems(priorValue, assign);
+      const nextItems = collectMergedItems(nextValue, assign);
       let nextStart = 0;
       if (priorItems.length > 0 && nextItems.length > 0) {
         const lastPrior = priorItems[priorItems.length - 1]!;
@@ -3372,10 +3388,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const mergedItems = new Array<Node>(priorItems.length + nextItems.length - nextStart);
       let mergedIndex = 0;
       for (let i = 0; i < priorItems.length; i++) {
-        mergedItems[mergedIndex++] = priorItems[i]!;
+        mergedItems[mergedIndex++] = copyMergedValue(priorItems[i]!);
       }
       for (let i = nextStart; i < nextItems.length; i++) {
-        mergedItems[mergedIndex++] = nextItems[i]!;
+        mergedItems[mergedIndex++] = copyMergedValue(nextItems[i]!);
       }
       return new List(mergedItems);
     };

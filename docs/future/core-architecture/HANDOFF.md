@@ -809,9 +809,11 @@ Latest source-root cleanup:
    metadata by default.
 2. [ ] Add a focused regression proving resolved dynamic registration nodes keep
    correct diagnostics/order without `resolvedNode.inherit(node)`.
-3. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` with merge
-   placement/render state or a narrow leaf-only copier proven by merge tests.
-4. [ ] Replace `Rules.toMergedItems(...)` recursive array collection with a
+3. [ ] Replace all remaining `Rules` merge `copyWithReusableLeaves(value)` with
+   merge placement/render state or a narrow leaf-only copier proven by merge
+   tests. Latest cut stopped copying whole merge containers before flattening;
+   output items are still owned at the final materialization boundary.
+4. [x] Replace `Rules.toMergedItems(...)` recursive array collection with a
    prefix/iterator scan so `startsWithMergedValue(...)` stops allocating full
    item arrays.
 5. [x] Remove broad `try/catch` stringification in merge placeholder detection;
@@ -820,10 +822,11 @@ Latest source-root cleanup:
    canonical source children without `copyImportPlacementNode(...)`.
 7. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers that only carry
    source/visibility/placement fields and can be represented as side state.
-8. [ ] Remove `AttributeSelector.copyForDerived(...)` by rendering resolved
+8. [x] Remove `AttributeSelector.copyForDerived(...)` by rendering resolved
    same-child values without constructing an owned selector surface.
-9. [ ] Delete `AttributeSelector.withResolvedParts(...)` entirely if render can
-   write resolved name/value directly into the active writer.
+9. [x] Delete `AttributeSelector.withResolvedParts(...)` entirely. Render now
+   writes resolved name/value directly into the active writer; public
+   `resolve(...)` materializes its cold owned result at the call site.
 10. [ ] Continue selector placement guard cleanup in `selector-list.ts`,
     `selector-compound.ts`, `selector-complex.ts`, and `interpolated.ts`.
 11. [ ] Split `Reference.cloneReferenceResultNode(...)` into a cold public API
