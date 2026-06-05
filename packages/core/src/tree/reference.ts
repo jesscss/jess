@@ -1464,10 +1464,6 @@ function isRulesLikeReferenceValue(node: Node): boolean {
   return isNode(node, N.Rules | N.Collection | N.Mixin | N.Ruleset);
 }
 
-function freezeRulesLikeReferenceValue(node: Node): void {
-  node.frozen = true;
-}
-
 /**
  * Rules-like references are public/callable surfaces, not text-only render
  * containers. Keep the source children canonical, but return a shallow owned
@@ -1475,7 +1471,6 @@ function freezeRulesLikeReferenceValue(node: Node): void {
  * mutating the source tree.
  */
 function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeValue {
-  freezeRulesLikeReferenceValue(directValue);
   const options = Object.getOwnPropertyDescriptor(directValue, '_options')?.value;
   const nodeConstructor = directValue.constructor;
   if (!isNodeValueConstructor(nodeConstructor)) {
@@ -1650,7 +1645,6 @@ function finalizeRuntimeVarBindingResult(
       referenceNode.options?.preserveRulesLike === true
       && isRulesLikeReferenceValue(evald)
     ) {
-      freezeRulesLikeReferenceValue(evald);
       context.popReference();
       return evald;
     }
@@ -1659,7 +1653,6 @@ function finalizeRuntimeVarBindingResult(
       return evald;
     }
     if (canReturnReferenceValue(evald)) {
-      evald.frozen = true;
       context.popReference();
       return evald;
     }
@@ -1889,7 +1882,6 @@ function evaluateReferenceValueNode(
   if (savedCalcFrames !== 0) {
     context.calcFrames = 0;
   }
-  declValue.frozen = true;
   try {
     if (isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset') {
       return declValue;
@@ -1900,6 +1892,7 @@ function evaluateReferenceValueNode(
     if (options.reuseSourceFreeLeaves === true && canReturnReferenceValueWithoutCopy(declValue)) {
       return declValue;
     }
+    declValue.frozen = true;
     if (options.reuseSourceFreeLeaves === true) {
       return copyWithReusableLeaves(declValue).eval(context);
     }

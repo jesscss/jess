@@ -713,73 +713,78 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Targeted the next `Reference` fallback ownership cut:
-   reusable static fallback values in `evaluateFallbackValue(...)`.
-2. [x] Added a focused red proof around public `resolve(context)` of a
-   childless scalar fallback.
-3. [x] Proved the old path did not copy the scalar fallback.
-4. [x] Proved the old path still called `.inherit(...)` on the fallback.
-5. [x] Extended that proof to require no `frozen` write and no fallback-parent
-   rewrite.
-6. [x] Cut the reusable fallback branch so it pops reference state and returns
-   the fallback node directly.
-7. [x] Deleted the duplicate `textOnly` branch inside that same reusable
-   fallback case.
-8. [x] Avoided introducing a public materializer wrapper; reusable fallback
-   now means direct reuse for both render and public resolve.
-9. [x] Strengthened source-free static fallback list proof to count
-   `List.prototype.inherit(...)`.
-10. [x] Proved source-free static fallback lists also remain unfrozen and keep
-    their original parent.
-11. [x] Confirmed fallback render-only tests still prove no `.inherit(...)`,
-    copy, or parent rewrite on scalar and container render paths.
-12. [x] Confirmed the full `reference.test.ts` suite still passes after the
-    public fallback metadata cut.
-13. [x] Left dynamic/source-backed fallback copying alone; those paths still
-    evaluate or copy for semantic reasons and need separate proof before cuts.
+1. [x] Targeted the next `Reference` frozen-metadata cuts:
+   rules-like preservation and runtime-binding scalar reuse.
+2. [x] Rewrote the stale rules-like proof from "freeze canonical source" to
+   "keep canonical source unfrozen."
+3. [x] Watched that proof fail on `freezeRulesLikeReferenceValue(...)`, proving
+   the old contract was real and stale.
+4. [x] Deleted `freezeRulesLikeReferenceValue(...)` and removed its call from
+   `createRulesLikeReferenceSurface(...)`.
+5. [x] Removed the matching runtime-preserve rules-like freeze in
+   `finalizeRuntimeVarBindingResult(...)`.
+6. [x] Confirmed rules-like shallow surfaces still preserve `sourceNode`, reuse
+   canonical children, and avoid `.clone()` / `.inherit(...)`.
+7. [x] Added a public runtime-binding scalar eval proof beside the existing
+   render-only proof.
+8. [x] Watched that proof fail on `frozen` metadata, first in the finalizer and
+   then in `evaluateReferenceValueNode(...)`.
+9. [x] Removed `evald.frozen = true` from the reusable scalar branch in
+   `finalizeRuntimeVarBindingResult(...)`.
+10. [x] Moved `declValue.frozen = true` in `evaluateReferenceValueNode(...)`
+    below the direct reuse exits so reusable leaves/text containers are not
+    mutated just for inspection.
+11. [x] Confirmed source-free runtime scalar public eval now returns the same
+    leaf with no copy and no frozen metadata.
+12. [x] Deliberately did not fight base eval parent stamping in that scalar
+    path; that is a separate `Node.evalStatic` / public eval materialization
+    concern.
+13. [x] Confirmed the full `reference.test.ts` suite now has `103` passing
+    tests.
 14. [x] This is an object/function-call and mutation cut, not a measured
     performance win; no benchmark/profile claim is attached.
-15. [x] Next Reference work should attack rules-like `frozen`, runtime-binding
-    scalar `frozen`, and the generic finalizer ladder.
+15. [x] Next work should audit dynamic/source-backed fallback copies, base
+    eval parent stamping, and the generic finalizer ladder.
 
 ### Next 15-Item Queue
 
-1. [ ] Audit whether `createRulesLikeReferenceSurface(...)` can stop freezing
-   canonical rules-like values, or push that freeze behind a cold public
-   materialization boundary.
-2. [ ] Audit `finalizeRuntimeVarBindingResult(...)` scalar reuse:
-   `evald.frozen = true` may be the same owned-result habit as fallback reuse.
-3. [ ] Audit dynamic/source-backed fallback copies in `evaluateFallbackValue(...)`
+1. [ ] Audit dynamic/source-backed fallback copies in `evaluateFallbackValue(...)`
    and decide whether render/direct eval can avoid `copyWithReusableLeaves(...)`
    without breaking semantic fallback evaluation.
-4. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
+2. [ ] Audit `Node.evalStatic(...)` parent stamping for reused source-free
+   runtime scalar leaves; do not rewrite parent identity unless a cold public
+   materialization API requires it.
+3. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
    repeated branch code only if it can be done without reintroducing a generic
    pipeline/helper ladder.
-5. [ ] Audit whether `finalizeReferenceLookupResult(...)` can split variable
+4. [ ] Audit whether `finalizeReferenceLookupResult(...)` can split variable
    render from callable/index/rules-like finalization without another generic
    helper wrapper.
-6. [ ] Audit direct/runtime/declaration finalizers for `textOnly` branches that
+5. [ ] Audit direct/runtime/declaration finalizers for `textOnly` branches that
    still call `copyWithReusableLeaves(...)` or `applyReferenceResultMetadata(...)`.
-7. [ ] Continue `define-function.ts` boring-JS cleanup only where scans show
+6. [ ] Continue `define-function.ts` boring-JS cleanup only where scans show
    remaining convenience calls in hot argument conversion; keep cold signature
    setup/diagnostic helpers out of the hot queue unless they appear in profile
    evidence.
-8. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
+7. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
    ownership with source/diagnostic state when the resolved node is only queued
    for registration; do not add a new privileged location-copy helper.
-9. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
+8. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
    output with source-backed merge placement or direct render state.
-10. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
+9. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
     narrower merge-value copier or render-state path so merge normalization
     does not clone whole value subtrees.
-11. [ ] Replace `StyleImport` first-use import placement child copies with
+10. [ ] Replace `StyleImport` first-use import placement child copies with
     canonical children plus placement/render state; imports should not fake
     transferred ownership.
-12. [ ] Audit remaining `StyleImport.deriveRulesSurface(...)` wrapper creation
+11. [ ] Audit remaining `StyleImport.deriveRulesSurface(...)` wrapper creation
     for source/visibility/placement fields that can be direct state instead of
     derived `Rules` surfaces.
-13. [ ] Keep `Call.renderDynamicFunctionOutput(...)` on audit-only status
+12. [ ] Keep `Call.renderDynamicFunctionOutput(...)` on audit-only status
     unless fresh proof finds a remaining concrete branch cut.
+13. [ ] Scan for any remaining `frozen = true` in `reference.ts` after the
+    scalar/rules-like cuts and classify each as cold materialization, copy/eval
+    boundary, or deletion target.
 14. [ ] Run a hotpath sanity check after the first meaningful Reference
     ownership cut, not before.
 15. [ ] Reactivate full performance rounds if two more queue passes land

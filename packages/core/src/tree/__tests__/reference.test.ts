@@ -285,6 +285,48 @@ describe('reference', () => {
       }
     });
 
+    it('resolves runtime-binding scalar references without frozen result metadata', async () => {
+      const sourceValue = any('red');
+      const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
+      const runtimeScope = rules([]);
+      runtimeScope.scopeFrame = buildScopeFrame(
+        undefined,
+        runtimeScope,
+        undefined,
+        new Map([
+          ['tone', {
+            value: sourceValue,
+            sourceNode: paramDecl
+          }]
+        ])
+      );
+      context.rulesContext = runtimeScope;
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'red') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const refNode = ref({ key: 'tone' }, { type: 'variable' });
+        const resolved = await refNode.eval(context);
+
+        expect(resolved).toBe(sourceValue);
+        expect(resolved.toTrimmedString()).toBe('red');
+        expect(scalarCopies).toBe(0);
+        expect(sourceValue.frozen).toBe(false);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
+    });
+
     it('keeps runtime-binding containers on the owned output path for default guards', async () => {
       const sourceDefault = defaultguard();
       const sourceValue = list([sourceDefault]);
@@ -1308,7 +1350,7 @@ describe('reference', () => {
       }
     });
 
-    it('freezes canonical rules-like sources alongside preserved surfaces', async () => {
+    it('keeps canonical rules-like sources unfrozen alongside preserved surfaces', async () => {
       const sourceValue = rules([
         decl({ name: 'color', value: any('blue') })
       ]);
@@ -1323,7 +1365,7 @@ describe('reference', () => {
       const resolved = await ref({ key: 'block' }, { type: 'variable', preserveRulesLike: true }).eval(context);
       expect(resolved).toBeInstanceOf(RulesClass);
       expect(resolved.sourceNode).toBeInstanceOf(RulesClass);
-      expect(resolved.sourceNode?.frozen).toBe(true);
+      expect(resolved.sourceNode?.frozen).toBe(false);
       expect(context.referenceStack).toBe(0);
     });
 
