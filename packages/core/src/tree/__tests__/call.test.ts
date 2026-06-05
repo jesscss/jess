@@ -1,6 +1,6 @@
 import type { IToken } from 'chevrotain';
 import * as treeIndex from '../index.js';
-import { Any, Call, F_NON_STATIC, JsFunction, List, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, list, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Any, Call, F_NON_STATIC, JsFunction, List, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, fn, list, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import {
   getCallRawArgDiagnosticMessageSource,
   getCallRawArgDiagnosticSource,
@@ -227,6 +227,54 @@ describe('Call', () => {
     });
 
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('rgb(100, 100, 100)');
+    expect(nameEvaluations).toBe(1);
+    expect(rule.evaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders dynamic calc names through one name eval with calc frames', async () => {
+    const name = any('source-name');
+    let nameEvaluations = 0;
+    name.eval = function evalForCounting() {
+      nameEvaluations++;
+      return any('calc');
+    };
+    const rule = call({
+      name,
+      args: list([
+        op([dimension([10, 'px']), '*', num(2)])
+      ])
+    });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('calc(20px)');
+    expect(nameEvaluations).toBe(1);
+    expect(context.calcFrames).toBe(0);
+    expect(rule.evaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders dynamic stylesheet function names without evaluating the name twice', async () => {
+    const fnNode = fn({
+      name: any('make-color'),
+      body: rules([
+        decl({ name: 'return', value: any('blue') })
+      ])
+    });
+    const root = rules([fnNode]);
+    context.root = root;
+    context.rulesContext = root;
+    const name = any('source-name');
+    let nameEvaluations = 0;
+    name.eval = function evalForCounting() {
+      nameEvaluations++;
+      return fnNode;
+    };
+    const rule = call({
+      name,
+      args: list([])
+    });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('blue');
     expect(nameEvaluations).toBe(1);
     expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);

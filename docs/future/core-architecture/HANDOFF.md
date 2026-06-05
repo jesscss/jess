@@ -713,42 +713,41 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Added a focused dynamic CSS-name render test that counts dynamic-name
-   evaluation for a non-extended, non-silent call name.
-2. [x] Corrected the first attempted proof after it counted the source
-   variable reference instead of the render-local evaluated name.
-3. [x] Verified the red failure on the corrected proof was the intended final
+1. [x] Added a dynamic calc-name characterization test after noticing the
+   previous branch already handled node-valued `calc` directly.
+2. [x] Verified that calc characterization passed without production changes,
+   so it was not counted as the red-green driver for this pass.
+3. [x] Added a focused dynamic stylesheet `Func` render test that counts
+   dynamic-name evaluation.
+4. [x] Fixed the initial synthetic `Func` fixture after it failed for missing
+   parent context instead of probe count.
+5. [x] Verified the corrected `Func` red failure was the intended final
    fallback signal: `nameEvaluations` was `4`, expected `1`.
-4. [x] Widened the non-extended render-local branch so ordinary dynamic CSS
-   call names use the already-created state.
-5. [x] Reused the single evaluated dynamic name for non-silent CSS call-name
-   rendering.
-6. [x] Preserved optional CSS fallback behavior from the previous pass on the
-   same branch.
-7. [x] Preserved callable/mixin/rules-like exclusions before direct CSS
-   rendering.
-8. [x] Kept dynamic `calc` on the older path for now because calc-frame
-   semantics need a separate proof before deletion.
-9. [x] Rendered direct CSS-name output as text through
-   `renderFinalizedCallSyntax(...)` instead of materializing a replacement
-   `Call`.
-10. [x] Wrote direct CSS-name text into render buffers without creating a node.
-11. [x] Preserved render-only behavior: the source call remains unevaluated and
+6. [x] Added a render-local `Func` branch in
+   `Call.renderDynamicFunctionOutput(...)`.
+7. [x] Reused the single evaluated dynamic name for stylesheet function render.
+8. [x] Evaluated stylesheet function call args once through `evalArgNodes(...)`
+   before `Func.evalCall(...)`.
+9. [x] Rendered the `Func.evalCall(...)` result directly instead of falling
+   through `evalPlainDynamicFunction(...)`, optional probes,
+   `evalMetadataDynamicFunction(...)`, and final `evalState(...)`.
+10. [x] Preserved render-only behavior: the source call remains unevaluated and
     unprepared after render.
-12. [x] Left mixin/rules-like dynamic names, stylesheet-defined `Func` names,
-    dynamic `calc`, and final `evalState(...)` fallback on the older path until
-    separate proof covers those branches.
-13. [x] Re-ran the red test and saw it pass with one dynamic-name evaluation.
-14. [x] Ran the full `call.test.ts` file (`68` passed).
+11. [x] Preserved the existing non-extended CSS fallback branch and callable
+    exclusions.
+12. [x] Left mixin/rules-like dynamic names and final `evalState(...)` fallback
+    on the older path until separate proof covers those branches.
+13. [x] Re-ran the red `Func` test and saw it pass with one dynamic-name
+    evaluation.
+14. [x] Ran the full `call.test.ts` file (`70` passed).
 15. [x] No benchmark/profile was run, so make no speed claim from this queue
     completion. This was another Call render probe-reduction pass.
 
 ### Next 15-Item Queue
 
 1. [ ] Continue `Call.renderDynamicFunctionOutput(...)`: mixin/rules-like
-   dynamic names, stylesheet-defined `Func` dynamic names, dynamic `calc`, and
-   final `evalState(...)` fallback still fall through older helper probes. Add
-   focused proof before collapsing each branch.
+   dynamic names and final `evalState(...)` fallback still fall through older
+   helper probes. Add focused proof before collapsing each branch.
 2. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
    eval branches and classify each as immediate render, public materialization,
    or escaping plugin value; no generic ownership by default.
