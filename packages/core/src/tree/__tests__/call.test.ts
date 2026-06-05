@@ -1,6 +1,6 @@
 import type { IToken } from 'chevrotain';
 import * as treeIndex from '../index.js';
-import { Any, Call, F_NON_STATIC, JsFunction, List, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, fn, list, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Any, Call, F_NON_STATIC, JsFunction, List, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, fn, list, mixin, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import {
   getCallRawArgDiagnosticMessageSource,
   getCallRawArgDiagnosticSource,
@@ -305,6 +305,64 @@ describe('Call', () => {
     expect(nameEvaluations).toBe(1);
     expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders dynamic mixin names without calling public eval state', async () => {
+    const mixinDef = mixin({
+      name: any('.theme'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const root = rules([mixinDef]);
+    context.root = root;
+    context.rulesContext = root;
+    const name = any('source-name');
+    name.eval = function evalForMixinName() {
+      return mixinDef;
+    };
+    const rule = call({ name });
+    const evalStateCalls = countEvalStateUse();
+
+    try {
+      const rendered = await Promise.resolve(rule.render(context));
+
+      expect(rendered).toContain('color: red');
+      expect(evalStateCalls.count).toBe(0);
+      expect(rule.evaluated).toBe(false);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      evalStateCalls.restore();
+    }
+  });
+
+  it('renders dynamic ruleset names without calling public eval state', async () => {
+    const mixinRuleset = ruleset({
+      selector: el('.theme'),
+      rules: rules([
+        decl({ name: 'color', value: any('blue') })
+      ])
+    });
+    const root = rules([mixinRuleset]);
+    context.root = root;
+    context.rulesContext = root;
+    const name = any('source-name');
+    name.eval = function evalForRulesetName() {
+      return mixinRuleset;
+    };
+    const rule = call({ name });
+    const evalStateCalls = countEvalStateUse();
+
+    try {
+      const rendered = await Promise.resolve(rule.render(context));
+
+      expect(rendered).toContain('color: blue');
+      expect(evalStateCalls.count).toBe(0);
+      expect(rule.evaluated).toBe(false);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      evalStateCalls.restore();
+    }
   });
 
   it('streams dynamic CSS call arguments without materializing a replacement arg list', async () => {

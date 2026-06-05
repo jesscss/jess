@@ -714,81 +714,84 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 ### Latest 15-Item Queue Completion Pass
 
 1. [x] Targeted the next `Call.renderDynamicFunctionOutput(...)` fallthrough:
-   dynamic names that evaluate to detached `Rules`/`Collection` bodies.
-2. [x] Started from the existing rules-like variable render/resolve fixture
-   instead of a synthetic no-scope tree.
-3. [x] First attempted to count `Reference.prototype.eval(...)`; that tripped
-   the base `Node.eval` subclass guard, proving the test hook was invalid.
-4. [x] Replaced that hook with an `evalState(...)` counter on `Call.prototype`,
-   measuring the exact generic public-eval fallback render should avoid.
-5. [x] Verified the intended red failure: after `rule.render(context)`,
+   dynamic names that evaluate directly to `Mixin` or `Ruleset` nodes.
+2. [x] Added a focused dynamic `Mixin` render fixture using the real `mixin(...)`
+   node factory, not a fake callable.
+3. [x] Reused the existing `evalState(...)` counter so the proof measured the
+   exact public-eval fallback render should not enter.
+4. [x] Verified the intended red failure for the mixin fixture:
    `evalStateCalls.count` was `1`, expected `0`.
-6. [x] Added a render-local `Rules | Collection` branch after the existing
-   stylesheet `Func` branch.
-7. [x] Reused the already evaluated dynamic name instead of recreating
-   `CallEvalState` and evaluating the name again through `evalState(...)`.
-8. [x] Preserved rules-like lexical parent behavior for variable calls by
-   applying the existing `sourceNode.parent` restoration before invocation.
-9. [x] Preserved the existing no-explicit-args rule for detached rules and
-   collections.
-10. [x] Built only the unavoidable `MixinCollection` callable adapter for this
-    semantic branch; no copied body/result tree was introduced.
-11. [x] Evaluated the callable result once and rendered it immediately through
-    `renderOutput(...)`.
-12. [x] Marked render output with `ownOutput = false`, so this render-only path
+5. [x] Added a render-local branch for `Mixin`, `Ruleset`,
+   `MixinCollection`, and array-valued dynamic callable outputs.
+6. [x] Converted direct `Mixin`/`Ruleset`/array outputs into a
+   `MixinCollection` only at the callable invocation boundary.
+7. [x] Reused an existing `MixinCollection` when the dynamic name already
+   produced one; no wrapper-on-wrapper path was added.
+8. [x] Invoked the callable output from the render branch directly instead of
+   falling through `evalPlainDynamicFunction(...)`, optional probes,
+   metadata probes, and final `evalState(...)`.
+9. [x] Evaluated callable results once and rendered them immediately through
+   `renderOutput(...)`.
+10. [x] Marked render output with `ownOutput = false`, so this render-only path
     does not claim output-child parent identity.
-13. [x] Re-ran the focused red test and saw it pass: render no longer calls
-    `evalState(...)`.
-14. [x] Ran the full `call.test.ts` file (`70` passed), including detached
-    leaky/non-leaky ruleset scope fixtures.
+11. [x] Preserved the existing `No matching mixins` selector-capture and
+    reference error behavior.
+12. [x] Preserved silent-fail rendering by returning finalized call syntax
+    instead of materializing an owned fallback call.
+13. [x] Added the sibling dynamic `Ruleset` render fixture to prove ruleset as
+    mixin output also bypasses `evalState(...)`.
+14. [x] Ran the focused dynamic `Mixin`/`Ruleset` tests and the full
+    `call.test.ts` file (`72` passed).
 15. [x] No benchmark/profile was run, so make no speed claim. This pass removed
-    one confirmed dynamic-name render fallback, not the entire callable branch.
+    another confirmed dynamic-name render fallback and widened direct callable
+    render coverage.
 
 ### Next 15-Item Queue
 
-1. [ ] Continue `Call.renderDynamicFunctionOutput(...)`: direct `Mixin`,
-   `Ruleset`, `MixinCollection`, `Array`, and `Call` dynamic-name outputs still
-   need focused proof before bypassing the final `evalState(...)` fallback.
-2. [ ] Add a focused `Mixin`/`Ruleset` dynamic-name render fixture that proves
-   render does not call `evalState(...)` and preserves selector/body behavior.
-3. [ ] Add a focused `MixinCollection` or array dynamic-name fixture before
-   deleting that remaining generic fallback branch.
-4. [ ] Add a focused `Call`-valued dynamic-name fixture for alias calls
+1. [ ] Add focused `MixinCollection` and array dynamic-name render fixtures to
+   prove the newly direct callable branch covers both shapes without calling
+   `evalState(...)`.
+2. [ ] Add a focused `Call`-valued dynamic-name fixture for alias calls
    (`@alias: .mixin(...); @alias();`) before deciding whether render can eval
    the inner call directly without owned output.
-5. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
+3. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
    eval branches and classify each as immediate render, public materialization,
    or escaping plugin value; no generic ownership by default.
-6. [ ] Split `Reference` render-only variable lookup from public
+4. [ ] Split `Reference` render-only variable lookup from public
    materialization so common `@var` render never calls
    `applyReferenceResultMetadata(...)`, `.inherit(...)`, or `frozen`.
-7. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
+5. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
    shallow owned surface with explicit public materialization state or a live
    rules-like binding.
-8. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
+6. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
    metadata paths with a render-only value path and a separate public-value
    materializer.
-9. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
+7. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
    repeated branch code only if it can be done without reintroducing a generic
    pipeline/helper ladder.
-10. [ ] Continue `define-function.ts` boring-JS cleanup only where scans show
+8. [ ] Continue `define-function.ts` boring-JS cleanup only where scans show
    remaining convenience calls in hot argument conversion; keep cold signature
    setup/diagnostic helpers out of the hot queue unless they appear in profile
    evidence.
-11. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
+9. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
    ownership with source/diagnostic state when the resolved node is only queued
    for registration; do not add a new privileged location-copy helper.
-12. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
+10. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
    output with source-backed merge placement or direct render state.
-13. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
+11. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
     narrower merge-value copier or render-state path so merge normalization
     does not clone whole value subtrees.
-14. [ ] Replace `StyleImport` first-use import placement child copies with
+12. [ ] Replace `StyleImport` first-use import placement child copies with
     canonical children plus placement/render state; imports should not fake
     transferred ownership.
-15. [ ] Audit remaining `StyleImport.deriveRulesSurface(...)` wrapper creation
+13. [ ] Audit remaining `StyleImport.deriveRulesSurface(...)` wrapper creation
     for source/visibility/placement fields that can be direct state instead of
     derived `Rules` surfaces.
+14. [ ] Audit whether the direct callable render branch and the public
+    `evalFromStateInFrame(...)` callable branch can share a smaller primitive
+    without reintroducing a helper ladder or owned-output default.
+15. [ ] Add proof that silent-fail direct callable render preserves finalized
+    call syntax without constructing an owned fallback `Call`.
 
 ## Active Correctness Queue
 

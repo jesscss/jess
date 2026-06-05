@@ -794,6 +794,50 @@ export class Call extends Node<CallValue, CallOptions> {
           });
           return this.renderOutput(context, output, bufferOrOptions, options);
         } else if (
+          isNode(evaluatedName, N.Mixin | N.Ruleset)
+          || evaluatedName instanceof MixinCollection
+          || Array.isArray(evaluatedName)
+        ) {
+          const collection = evaluatedName instanceof MixinCollection
+            ? evaluatedName
+            : new MixinCollection(Array.isArray(evaluatedName) ? evaluatedName : [evaluatedName]);
+          const output = await this.runInCallFrame(context, { caller: true }, async () => {
+            try {
+              const result = await collection.evalCall(context, state.args);
+              if (isNode(result)) {
+                let evald = result.eval(context);
+                if (isThenable(evald)) {
+                  evald = await evald;
+                }
+                if (this._options?.markImportant && isNode(evald, N.Rules)) {
+                  this.makeImportant(evald);
+                }
+                return this.markCallOutput(evald, false);
+              }
+              return this.markCallOutput(cast(result), false);
+            } catch (error) {
+              if (error instanceof ReferenceError && error.message.includes('No matching mixins')) {
+                if (this.parent?.type === 'SelectorCapture') {
+                  return this.markCallOutput(new Any(stringifyValueOf(collection), { role: 'ident' }), false);
+                }
+                if (isNode(name, N.Reference)) {
+                  throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
+                }
+                throw error;
+              }
+              if (!this._options?.silentFail) {
+                throw error;
+              }
+              return this.renderFinalizedCallSyntax(name, state, context, prepared);
+            }
+          });
+          if (typeof output === 'string') {
+            return isRenderBuffer(bufferOrOptions)
+              ? writeRenderTextResult(bufferOrOptions, output)
+              : output;
+          }
+          return this.renderOutput(context, output, bufferOrOptions, options);
+        } else if (
           !(
             isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
             || evaluatedName instanceof MixinCollection
