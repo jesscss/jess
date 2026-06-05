@@ -713,60 +713,53 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Re-scanned `Call.renderDynamicFunctionOutput(...)` after the dynamic-name
-   cuts; no remaining known direct dynamic-name branch still falls through
-   outer `evalState(...)`.
-2. [x] Audited `markCallOutput(...)` call-site intent: public eval paths still
-   default to ownership, render-local dynamic output passes `ownOutput = false`,
-   and the call-alias render branch intentionally avoids `markCallOutput(...)`.
-3. [x] Kept `markCallOutput(...)` as-is for now because extracting a shared
-   helper would add another call ladder without deleting a stronger branch.
-4. [x] Added proof for silent-fail direct callable render so the direct branch
-   is guarded before leaving `Call`.
-5. [x] First tried a no-matching-mixin fixture; it correctly stayed a hard
-   `ReferenceError`, matching the public eval branch rather than optional
-   fallback behavior.
-6. [x] Reframed the proof around the supported silent-fail case: a callable is
-   found, but evaluating its output fails.
-7. [x] Counted `deriveCall(...)` to prove render does not construct a fallback
-   call surface.
-8. [x] Counted `Call.prototype.clone(...)` to prove render does not clone/own a
-   fallback call.
-9. [x] Counted `evalState(...)` to prove the direct callable failure path does
-   not re-enter outer public eval materialization.
-10. [x] Verified the supported silent-fail dynamic callable failure renders
-    finalized source syntax directly.
-11. [x] Preserved the hard `No matching mixins` behavior; do not silently turn
-    missing mixin matches into optional CSS syntax without a separate semantics
-    decision.
-12. [x] Re-ran the focused silent-fail callable proof and saw it pass.
-13. [x] Left direct callable/public eval sharing as an audit item only; a shared
-    primitive is not worth adding until it deletes more branching than it adds.
-14. [x] Pivoted the next queue to `Reference` render-only variable lookup and
-    ownership cleanup.
-15. [x] No benchmark/profile was run, so make no speed claim. This was the
-    final `Call` guard/audit pass before the Reference cut lane.
+1. [x] Started the `Reference` lane with the common Less `@space` shape:
+   simple variable reference, no target, no filter, no rules-like preservation.
+2. [x] Added focused proof that render of a source-backed static sequence value
+   does not call public `Reference.evalNode(...)`.
+3. [x] Proved the same render leaves the source value unfrozen and parented to
+   its canonical declaration surface.
+4. [x] Proved flat/segmented buffer render stays aligned for the same raw value.
+5. [x] Verified the proof already passed behaviorally, meaning previous
+   text-only finalization avoided obvious owned-result metadata for this case.
+6. [x] Cut the implementation anyway: `Reference.render(...)` now tries
+   `resolveRawReferenceLookupTarget(...)` first for simple variable refs with
+   no fallback.
+7. [x] Render returns directly from the raw lookup only when the resolved value
+   is a node, non-rules-like, and safe for text-only render.
+8. [x] Missing, non-node, rules-like, dynamic, fallback, target, filtered, and
+   preserved-rules-like references fall back to the existing evaluator.
+9. [x] Kept fallback handling out of the raw fast path for now to avoid changing
+   optional reference semantics.
+10. [x] Kept rules-like references out of the raw fast path because they still
+    need the public/callable materialization decision.
+11. [x] Collapsed the broad evaluator call into one local fallback closure so
+    the raw path does not duplicate the generic render/eval block.
+12. [x] Re-ran the focused raw-lookup proof and saw it pass.
+13. [x] Ran the full `reference.test.ts` file (`102` passed).
+14. [x] This is a branch-count/function-ladder cut, not a measured performance
+    win; no benchmark/profile was run.
+15. [x] Next Reference work should attack rules-like/fallback ownership and the
+    remaining `finalizeReferenceLookupResult(...)` ladder.
 
 ### Next 15-Item Queue
 
-1. [ ] Split `Reference` render-only variable lookup from public
-   materialization so common `@var` render never calls
-   `applyReferenceResultMetadata(...)`, `.inherit(...)`, or `frozen`.
-2. [ ] Add focused proof for the Less-common `margin: @space` shape: render
-   a variable reference value without calling public `Reference.eval(...)`
-   materialization or applying public result metadata.
-3. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
+1. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
    shallow owned surface with explicit public materialization state or a live
    rules-like binding.
-4. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
+2. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
    metadata paths with a render-only value path and a separate public-value
    materializer.
-5. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
+3. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
    repeated branch code only if it can be done without reintroducing a generic
    pipeline/helper ladder.
-6. [ ] Audit whether `finalizeReferenceLookupResult(...)` can split variable
+4. [ ] Audit whether `finalizeReferenceLookupResult(...)` can split variable
    render from callable/index/rules-like finalization without another generic
    helper wrapper.
+5. [ ] Add a focused proof for optional/fallback reference render that counts
+   `.inherit(...)`, `frozen`, and copy use before cutting fallback metadata.
+6. [ ] Audit direct/runtime/declaration finalizers for `textOnly` branches that
+   still call `copyWithReusableLeaves(...)` or `applyReferenceResultMetadata(...)`.
 7. [ ] Continue `define-function.ts` boring-JS cleanup only where scans show
    remaining convenience calls in hot argument conversion; keep cold signature
    setup/diagnostic helpers out of the hot queue unless they appear in profile

@@ -550,6 +550,41 @@ describe('reference', () => {
       }
     });
 
+    it('renders simple variable references through raw lookup without public eval materialization', async () => {
+      const first = dimension([1, 'px']);
+      const second = dimension([2, 'px']);
+      const sourceValue = spaced([first, second]);
+      const node = rules([
+        vardecl({
+          name: any('space'),
+          value: sourceValue
+        })
+      ]);
+      const sourceParent = sourceValue.parent;
+      setRulesContext(await node.eval(context));
+      const refNode = ref({ key: 'space' }, { type: 'variable' });
+      const buffer = createRenderBuffer('segmented');
+      const originalEvalNode = refNode.evalNode;
+      let evalNodeCalls = 0;
+      refNode.evalNode = function evalNodeForCounting(
+        this: typeof refNode,
+        ...args: Parameters<typeof originalEvalNode>
+      ): ReturnType<typeof originalEvalNode> {
+        evalNodeCalls++;
+        return originalEvalNode.apply(this, args);
+      };
+
+      expect(await Promise.resolve(refNode.render(context))).toBe('1px 2px');
+      expect(await Promise.resolve(refNode.render(context, buffer))).toBe('1px 2px');
+      expect(buffer.segments).toEqual(['1px 2px']);
+      expect(evalNodeCalls).toBe(0);
+      expect(sourceValue.frozen).toBe(false);
+      expect(sourceValue.parent).toBe(sourceParent);
+      expect(refNode.evaluated).toBe(false);
+      expect(refNode.registrationPrepared).toBe(false);
+      expect(context.referenceStack).toBe(0);
+    });
+
     it('keeps runtime-binding container sources canonical during public resolve', async () => {
       const sourceValue = list([any('red'), any('blue')]);
       const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });

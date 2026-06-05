@@ -2325,20 +2325,50 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     const renderResolved = (node: Node) => isRenderBuffer(bufferOrOptions)
       ? writeRenderTextResult(bufferOrOptions, node.render(context, options))
       : node.render(context, bufferOrOptions);
-    const evaluated = evaluateReferenceNode({
-      referenceNode: this,
-      target: this.value.target,
-      key: this.value.key,
-      lookupType: (this.options.type ?? 'variable') as LookupType,
-      fallbackValue: this.options.fallbackValue,
-      originalFilter: this.options.filter,
-      context,
-      textOnly: true,
-      directStaticRender: true
-    });
-    return isThenable(evaluated)
-      ? Promise.resolve(evaluated).then(renderResolved)
-      : renderResolved(evaluated);
+    const renderThroughEvaluator = () => {
+      const evaluated = evaluateReferenceNode({
+        referenceNode: this,
+        target: this.value.target,
+        key: this.value.key,
+        lookupType: (this.options.type ?? 'variable') as LookupType,
+        fallbackValue: this.options.fallbackValue,
+        originalFilter: this.options.filter,
+        context,
+        textOnly: true,
+        directStaticRender: true
+      });
+      return isThenable(evaluated)
+        ? Promise.resolve(evaluated).then(renderResolved)
+        : renderResolved(evaluated);
+    };
+    const renderRaw = (value: unknown): string | undefined => {
+      if (
+        value === RAW_REFERENCE_TARGET_NOT_FOUND
+        || !isNode(value)
+        || isRulesLikeReferenceValue(value)
+        || !canRenderReferenceValueTextOnly(value)
+      ) {
+        return undefined;
+      }
+      return renderResolved(value);
+    };
+    if (canRenderRawVariableReferenceDirectly(this) && this.options.fallbackValue === undefined) {
+      const rawValue = resolveRawReferenceLookupTarget(this, context);
+      if (isThenable(rawValue)) {
+        return Promise.resolve(rawValue).then((value) => {
+          const rendered = renderRaw(value);
+          if (rendered !== undefined) {
+            return rendered;
+          }
+          return renderThroughEvaluator();
+        });
+      }
+      const rendered = renderRaw(rawValue);
+      if (rendered !== undefined) {
+        return rendered;
+      }
+    }
+    return renderThroughEvaluator();
   }
 
   /**
