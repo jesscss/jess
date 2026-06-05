@@ -697,6 +697,47 @@ export class Call extends Node<CallValue, CallOptions> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): Promise<string> {
+    if (
+      typeof this.value.name !== 'string'
+      && !this.value.contentNode
+    ) {
+      const state = this.createEvalState();
+      const { name } = state;
+      if (typeof name !== 'string') {
+        const evaluatedName = await name.eval(context);
+        const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName;
+        if (isExtendedFn(fn)) {
+          const isMetadataFunction = Boolean(fn._internal || fn.options?.params);
+          if (isMetadataFunction || (!this.options?.silentFail && !this.options?.markImportant)) {
+            const output = await this.runInCallFrame(context, { caller: true }, async () => {
+              const result = state.args
+                ? (
+                    isMetadataFunction
+                      ? await callWithContext(context, fn, state.args)
+                      : await callWithContext(context, fn, ...state.args.value)
+                  )
+                : await callWithContext(context, fn);
+              if (isNode(result)) {
+                let evald = result.eval(context);
+                if (isThenable(evald)) {
+                  evald = await evald;
+                }
+                if (isMetadataFunction && this._options?.markImportant && isNode(evald, N.Rules)) {
+                  this.makeImportant(evald);
+                }
+                return this.markCallOutput(evald, false);
+              }
+              const castResult = cast(result);
+              if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
+                return this.markCallOutput(castResult.value[0]!, false);
+              }
+              return this.markCallOutput(castResult, false);
+            });
+            return this.renderOutput(context, output, bufferOrOptions, options);
+          }
+        }
+      }
+    }
     const node = await this.evalPlainDynamicFunction(context, false);
     if (node) {
       return this.renderOutput(context, node, bufferOrOptions, options);

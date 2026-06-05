@@ -1135,6 +1135,38 @@ describe('Call', () => {
     }
   });
 
+  it('renders metadata dynamic functions without evaluating the dynamic name twice', async () => {
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'raw-length',
+      fn: defineFunction(
+        'raw-length',
+        async function(this: { rawArgs: List }) {
+          return any(String(this.rawArgs.value.length));
+        },
+        { params: [{ name: 'value', type: Sequence }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+
+    const name = ref({ key: 'raw-length' }, { type: 'function' });
+    const originalEval = name.eval.bind(name);
+    let nameEvaluations = 0;
+    name.eval = function evalForCounting(evalContext: Context) {
+      nameEvaluations++;
+      return originalEval(evalContext);
+    };
+
+    const rendered = await Promise.resolve(call({
+      name,
+      args: list([seq([any('red'), dimension(10, 'px')])])
+    }).render(context));
+
+    expect(rendered).toBe('1');
+    expect(nameEvaluations).toBe(1);
+  });
+
   it('renders and resolves metadata JS functions without reconstructing the source call', async () => {
     class CountingCall extends Call {
       static countConstructions = false;

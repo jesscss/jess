@@ -713,43 +713,40 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Audited `Call.renderDynamicFunctionOutput(...)` and left the full
-   render-local state-machine collapse queued; the current helper probes still
-   share semantics with public materialization and need proof before deletion.
-2. [x] Added shared `util/import-queue.ts` so root/top CSS import queueing is
-   no longer duplicated between `Rules` and `StyleImport`.
-3. [x] Replaced import queue location `location?.join(':')` comparisons with
-   direct fixed-array comparison.
-4. [x] Replaced import queue `${name}:${prelude}` signature strings with direct
-   name/prelude comparison.
-5. [x] Changed import queue duplicate detection to return immediately on a hit
-   instead of carrying an `alreadyQueued` flag through the whole loop.
-6. [x] Routed `Rules` root import hoisting through the shared queue utility.
-7. [x] Deleted the local `Rules.queueTopImport(...)` duplicate implementation.
-8. [x] Routed `StyleImport` CSS import queueing through the shared queue utility.
-9. [x] Deleted the local `StyleImport.queueCssImport(...)` duplicate
-   implementation.
-10. [x] Verified no remaining `location?.join(':')` or `nodeSig` import queue
-    signatures in `rules.ts` / `import-style.ts`.
-11. [x] Replaced `Rules` pending-declaration registration `.includes(...)` with
-    an indexed identity scan.
-12. [x] Replaced `Rules` simple ruleset fast-registry `.includes(...)` with an
-    indexed identity scan.
-13. [x] Replaced `Rules` static mixin fast-registry `.includes(...)` with an
-    indexed identity scan.
-14. [x] Ran focused lint for `call.ts`, `rules.ts`, `import-style.ts`, and
-    `util/import-queue.ts`.
-15. [x] Ran focused call/mixin/reference/rules/import-style tests (`430`
-    passed, `9` skipped). No benchmark/profile was run, so make no speed claim
-    from this queue completion.
+1. [x] Added a focused red test proving metadata dynamic render evaluated the
+   dynamic function name twice before this pass.
+2. [x] Verified the red failure was the intended count mismatch
+   (`nameEvaluations` was `2`, expected `1`).
+3. [x] Added a render-local extended-function branch in
+   `Call.renderDynamicFunctionOutput(...)` that creates eval state once.
+4. [x] Evaluated the dynamic function name once in that render-local branch.
+5. [x] Classified evaluated extended functions once as metadata/rawArgs or
+   plain positional functions.
+6. [x] Routed metadata dynamic render directly through `callWithContext(context,
+   fn, state.args)` without first probing the plain positional helper.
+7. [x] Routed plain non-silent/non-important dynamic render directly through
+   `callWithContext(context, fn, ...state.args.value)` after the same single
+   name evaluation.
+8. [x] Kept silent-fail/important/content fallback cases on the older path
+   until separate proof covers their error/fallback semantics.
+9. [x] Rendered the direct extended-function output immediately instead of
+   returning to `evalPlainDynamicFunction(...)` /
+   `evalMetadataDynamicFunction(...)` probes.
+10. [x] Preserved render-buffer output by passing the direct result through the
+    existing `renderOutput(...)` boundary.
+11. [x] Preserved metadata `markImportant` behavior for node results.
+12. [x] Re-ran the red test and saw it pass with one dynamic-name evaluation.
+13. [x] Ran focused lint for `call.ts` and `call.test.ts`.
+14. [x] Ran focused call/mixin/reference tests (`290` passed).
+15. [x] No benchmark/profile was run, so make no speed claim from this queue
+    completion. This was a call render probe-reduction pass.
 
 ### Next 15-Item Queue
 
-1. [ ] Finish `Call.renderDynamicFunctionOutput(...)`: it still probes plain
-   dynamic, optional fallback syntax, optional fallback output, metadata output,
-   then full eval in sequence. Collapse it into the smallest render-local
-   state machine that does not re-evaluate state/name/fn or share ownership
-   flags with public materialization.
+1. [ ] Continue `Call.renderDynamicFunctionOutput(...)`: silent-fail,
+   important, content, optional fallback, and non-extended dynamic names still
+   fall through the older helper probe chain. Add focused proof before
+   collapsing those branches.
 2. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
    eval branches and classify each as immediate render, public materialization,
    or escaping plugin value; no generic ownership by default.
