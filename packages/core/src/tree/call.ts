@@ -180,11 +180,22 @@ export class Call extends Node<CallValue, CallOptions> {
 
   private createEvalState(context: Context): CallEvalState {
     const preservesRulesLikeVariableTarget = isNode(this.value.name, N.Reference) && this.value.name.options?.type === 'variable';
-    const name = typeof this.value.name === 'string'
-      ? this.value.name
-      : preservesRulesLikeVariableTarget
-        ? this.derivePreserveRulesLikeReference(this.value.name)
-        : this.value.name;
+    let name = this.value.name;
+    if (
+      preservesRulesLikeVariableTarget
+      && isNode(name, N.Reference)
+      && name.options?.preserveRulesLike !== true
+    ) {
+      name = new Reference(
+        name.value,
+        {
+          ...name.options,
+          preserveRulesLike: true
+        },
+        name.location.length === 0 ? undefined : name.location,
+        name.treeContext
+      ).inherit(name);
+    }
     return {
       source: this,
       name,
@@ -207,19 +218,6 @@ export class Call extends Node<CallValue, CallOptions> {
     });
   }
 
-  private createFinalizedCallOutput(state: CallEvalState, syntax: FinalizedCallSyntax): Call {
-    return state.source.deriveCall(
-      {
-        name: syntax.name,
-        args: syntax.args,
-        ...(syntax.contentNode && { contentNode: syntax.contentNode })
-      },
-      state.source._options
-        ? { ...state.source._options, silentFail: false }
-        : { silentFail: false }
-    );
-  }
-
   private async evalFinalizedCallSyntax(
     context: Context,
     state: CallEvalState,
@@ -228,17 +226,19 @@ export class Call extends Node<CallValue, CallOptions> {
     const evaluatedArgs = await state.source.evalArgNodes(
       context,
       state.args,
-      { preserveSourceParents: true }
+      true
     );
-    return state.source.createFinalizedCallOutput(
-      state,
+    return state.source.deriveCall(
       {
         name: typeof name === 'string' || name instanceof Node
           ? name
           : stringifyValueOf(name),
         args: evaluatedArgs,
         contentNode: state.contentNode
-      }
+      },
+      state.source._options
+        ? { ...state.source._options, silentFail: false }
+        : { silentFail: false }
     );
   }
 
@@ -258,7 +258,7 @@ export class Call extends Node<CallValue, CallOptions> {
     const evaluatedArgs = await state.source.evalArgNodes(
       context,
       state.args,
-      { preserveSourceParents: true }
+      true
     );
     const rendered = await state.source.renderFinalizedCallPublicText(context, state, {
       name: fallbackName,
@@ -268,28 +268,10 @@ export class Call extends Node<CallValue, CallOptions> {
     return state.source.markCallOutput(new Any(rendered, { role: 'any' }));
   }
 
-  private derivePreserveRulesLikeReference(name: Node): Node {
-    if (!isNode(name, N.Reference)) {
-      return name;
-    }
-    if (name.options?.preserveRulesLike === true) {
-      return name;
-    }
-    return new Reference(
-      name.value,
-      {
-        ...name.options,
-        preserveRulesLike: true
-      },
-      name.location.length === 0 ? undefined : name.location,
-      name.treeContext
-    ).inherit(name);
-  }
-
   private async evalArgNodes(
     context: Context,
     nodes?: List<Node>,
-    options?: { preserveSourceParents?: boolean }
+    preserveSourceParents = false
   ): Promise<List<Node> | undefined> {
     if (!nodes) {
       return undefined;
@@ -297,7 +279,7 @@ export class Call extends Node<CallValue, CallOptions> {
     const out: Node[] = [];
     for (const node of nodes.value) {
       const evald = await node.eval(context) as Node;
-      if (evald === node && options?.preserveSourceParents) {
+      if (evald === node && preserveSourceParents) {
         evald.frozen = true;
       }
       out.push(evald);
@@ -439,7 +421,7 @@ export class Call extends Node<CallValue, CallOptions> {
       const evaluatedArgs = await state.source.evalArgNodes(
         context,
         state.args,
-        { preserveSourceParents: true }
+        true
       );
       const rendered = await state.source.renderFinalizedCallPublicText(context, state, {
         name: typeof evaluatedName === 'string' || evaluatedName instanceof Node
@@ -1093,7 +1075,7 @@ export class Call extends Node<CallValue, CallOptions> {
       if (n === 'calc') {
         context.calcFrames++;
       }
-      const evaluatedArgs = await this.evalArgNodes(context, args, { preserveSourceParents: true })
+      const evaluatedArgs = await this.evalArgNodes(context, args, true)
         .finally(() => {
           if (n === 'calc') {
             context.calcFrames--;
@@ -1117,13 +1099,15 @@ export class Call extends Node<CallValue, CallOptions> {
         });
         return this.markCallOutput(new Any(rendered, { role: 'any' }));
       }
-      const node = this.createFinalizedCallOutput(
-        state,
+      const node = this.deriveCall(
         {
           name: finalizedName,
           args: evaluatedArgs,
           contentNode: state.contentNode
-        }
+        },
+        this._options
+          ? { ...this._options, silentFail: false }
+          : { silentFail: false }
       );
       return this.markCallOutput(node);
     };

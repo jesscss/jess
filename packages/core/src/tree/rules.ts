@@ -2725,7 +2725,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): MaybePromise<this> {
     this._stampRegistrationMaps(rules);
     if (!this._hasPendingPrep(prepState)) {
-      return this._finishRegistrationWithoutPending(rules, context, saved);
+      this._restoreRegistrationContext(context, saved);
+      return this;
     }
     const declarationResult = this._finishDeclarationNameRegistrationPrep(rules, context, prepState.declarationNames);
     const finishAfterDeclarations = () => {
@@ -2735,14 +2736,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return (declarationResult as Promise<void>).then(finishAfterDeclarations);
     }
     return finishAfterDeclarations();
-  }
-
-  private _finishRegistrationWithoutPending(
-    rules: Rules,
-    context: Context,
-    saved: ReturnType<Rules['_snapshotContext']>
-  ): this {
-    return this._restoreRegistrationAndReturn(context, saved);
   }
 
   private _stampRegistrationMaps(rules: Rules): void {
@@ -2888,7 +2881,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     context: Context,
     pendingDeclarationNames: PendingDeclarationNamePrepState
   ): MaybePromise<void> {
-    const result = this._resolvePendingDeclarationNamePrep(rules, context, pendingDeclarationNames);
+    let result: MaybePromise<void> | undefined;
+    if (pendingDeclarationNames.nodes.length > 0) {
+      const handleResolvedNode = (resolvedNode: Node, node: Node, stillUnresolved: Node[]): boolean => {
+        return this._recordResolvedRegistrationNode(
+          rules,
+          pendingDeclarationNames.resolvedNodes,
+          resolvedNode,
+          node,
+          stillUnresolved
+        );
+      };
+      result = this._retryPendingDeclarationNamePrep(
+        context,
+        pendingDeclarationNames.nodes,
+        handleResolvedNode
+      );
+    }
     const finish = () => {
       this._applyResolvedRegistrationNodes(rules, pendingDeclarationNames.resolvedNodes);
     };
@@ -2914,66 +2923,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       );
     };
 
-    const orderedResult = this._preparePendingOrderedIdentitiesOnce(context, prepState.orderedIdentity.nodes, handleResolvedNode);
-    const finish = () => this._finishPendingPrep(rules, context, saved, prepState.orderedIdentity.resolvedNodes);
+    const orderedIdentities = prepState.orderedIdentity.nodes;
+    const orderedResult = orderedIdentities.length === 0
+      ? undefined
+      : this._prepareOrderedIdentitiesInSourceOrder(context, orderedIdentities, handleResolvedNode);
+    const finish = () => {
+      this._applyResolvedRegistrationNodes(rules, prepState.orderedIdentity.resolvedNodes);
+      this._restoreRegistrationContext(context, saved);
+      return this;
+    };
     if (isThenable(orderedResult)) {
       return (orderedResult as Promise<void>).then(finish);
     }
     return finish();
-  }
-
-  private _resolvePendingDeclarationNamePrep(
-    rules: Rules,
-    context: Context,
-    pendingDeclarationNames: PendingDeclarationNamePrepState
-  ): MaybePromise<void> {
-    if (pendingDeclarationNames.nodes.length === 0) {
-      return;
-    }
-    const handleResolvedNode = (resolvedNode: Node, node: Node, stillUnresolved: Node[]): boolean => {
-      return this._recordResolvedRegistrationNode(
-        rules,
-        pendingDeclarationNames.resolvedNodes,
-        resolvedNode,
-        node,
-        stillUnresolved
-      );
-    };
-    const result = this._retryPendingDeclarationNamePrep(
-      context,
-      pendingDeclarationNames.nodes,
-      handleResolvedNode
-    );
-    return result;
-  }
-
-  private _preparePendingOrderedIdentitiesOnce(
-    context: Context,
-    orderedIdentities: Node[],
-    handleResolvedNode: PendingPrepHandler
-  ): MaybePromise<void> {
-    if (orderedIdentities.length === 0) {
-      return;
-    }
-    return this._prepareOrderedIdentitiesInSourceOrder(context, orderedIdentities, handleResolvedNode);
-  }
-
-  private _finishPendingPrep(
-    rules: Rules,
-    context: Context,
-    saved: ReturnType<Rules['_snapshotContext']>,
-    resolvedNodes: Node[]
-  ): this {
-    this._applyResolvedRegistrationNodes(rules, resolvedNodes);
-    return this._restoreRegistrationAndReturn(context, saved);
-  }
-
-  private _restoreRegistrationAndReturn(
-    context: Context,
-    saved: ReturnType<Rules['_snapshotContext']>
-  ): this {
-    this._restoreRegistrationContext(context, saved);
-    return this;
   }
 
   private _recordResolvedRegistrationNode(
@@ -3015,12 +2977,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  private _isDeclarationRegistrationNode(node: Node): boolean {
-    return isNode(node, N.VarDeclaration) || isNode(node, N.Declaration);
-  }
-
   private _addPendingPrep(prepState: RegistrationPrepState, node: Node): void {
-    if (this._isDeclarationRegistrationNode(node)) {
+    if (isNode(node, N.VarDeclaration | N.Declaration)) {
       prepState.declarationNames.nodes.push(node);
       return;
     }

@@ -713,92 +713,85 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Spawned two read-only review agents for the helper/method explosion:
-   one on `Call`, one on `Rules`/`StyleImport`; both independently prioritized
-   deleting small wrappers over adding smarter generic helpers.
-2. [x] Renamed `Call.resolveDynamicFunctionOutput(...)` to
-   `evalDynamicFunctionOutput(...)`; public `resolve(context)` remains only the
-   compatibility/materialization entrypoint, not a second eval architecture.
-3. [x] Deleted `CallContentPlacementState`,
-   `createFinalizedCallContentState(...)`, and
-   `createFinalizedCallContentNode(...)`; finalized call syntax now uses
-   `state.contentNode` directly.
-4. [x] Deleted `Call.createFinalizedCallTextOutput(...)`; fallback text output
-   now renders and wraps `Any` directly at the branch that needs it.
-5. [x] Deleted `Call.finalizeFunctionResult(...)`; metadata dynamic-function
-   result handling is inlined in its single caller.
-6. [x] Replaced the `{ ownOutput: false }` object protocol with a boolean
-   `markCallOutput(node, ownOutput)` / `eval*DynamicFunction(..., ownOutput)`
-   path.
-7. [x] Deleted `Rules.appendNodes(...)` and inlined direct push loops at lookup
-   aggregation sites.
-8. [x] Deleted `Rules.appendUniqueNodes(...)` and inlined the two identity
-   dedupe loops where lookup result ordering is visible.
-9. [x] Deleted `Rules._createOutputOrderPlaceholder(...)`; output-order
-   placeholders are explicit local `Nil` assignments at the branch.
-10. [x] Collapsed `Rules._prepareCharsetNode(...)` and
-    `_prepareOutputOrderAtRule(...)` into `_scanRegistrationNodes(...)`; no
-    private method ladder for two one-off output-order branches.
-11. [x] Removed the one-use `isCharsetNode(...)` wrapper by using existing
-    `isNode(node, N.Any)` narrowing inline.
-12. [x] Deleted `StyleImport.copyImportPlacementPath(...)`; successful
-    placement-path capture now uses direct `path.slice()`.
-13. [x] Deleted `StyleImport.copyImportPlacementChild(...)`; first-use import
-    placement calls `copyImportPlacementNode(...)` directly.
-14. [x] Merged `StyleImport.createFirstUseImportPlacementState(...)` child-copy
-    and `sourceByPlacement` loops; the mapping is written while source/child are
-    already local.
-15. [x] Replaced `StyleImport.findImportPlacementValuePath(...)`
-    `Object.keys(value)` allocation with direct `for...in` record traversal.
-
-Verification for this pass: changed-file ESLint passed for `call.ts`,
-`rules.ts`, and `import-style.ts`; the broader focused eval/render suite passed
-(`502` passed, `9` skipped); build passed with only the existing
-`src/tree/js-expr.ts` direct-`eval` warning.
+1. [x] Deleted `Call.createFinalizedCallOutput(...)`; real fallback
+   materialization calls `deriveCall(...)` directly where it is still needed.
+2. [x] Inlined `Call.derivePreserveRulesLikeReference(...)` into
+   `createEvalState(...)`, removing the one-call method while preserving the
+   current public materialization fence.
+3. [x] Replaced `Call.evalArgNodes(...)` `{ preserveSourceParents: true }`
+   option objects with a direct boolean.
+4. [x] Updated all `Call.evalArgNodes(...)` callers to use the boolean path;
+   no tiny options object just to set `frozen`.
+5. [x] Removed `StyleImport.deriveRulesSurface(...)` `.inherit(anchorRules)` in
+   the child-node branch; it now constructs the wrapper with location/tree
+   context and explicitly sets parent/index.
+6. [x] Left `Rules` pending-registration `resolvedNode.inherit(node)` for a
+   later pass after confirming it reaches private location state that `Rules`
+   should not patch around with another privileged helper.
+7. [x] Deleted `Rules._finishRegistrationWithoutPending(...)`; the no-pending
+   branch restores context and returns directly.
+8. [x] Deleted `Rules._finishPendingPrep(...)`; ordered-identity finalization
+   now applies resolved nodes and restores context at the async boundary.
+9. [x] Deleted `Rules._restoreRegistrationAndReturn(...)`; callers now restore
+   context directly where needed.
+10. [x] Deleted `Rules._preparePendingOrderedIdentitiesOnce(...)`; the caller
+    checks length and calls `_prepareOrderedIdentitiesInSourceOrder(...)`
+    directly.
+11. [x] Deleted `Rules._resolvePendingDeclarationNamePrep(...)`; declaration
+    pending-name retry is inlined into the declaration finish path.
+12. [x] Deleted `Rules._isDeclarationRegistrationNode(...)`; `_addPendingPrep`
+    now uses the direct `isNode(... VarDeclaration | Declaration)` predicate.
+13. [x] Ran focused `Call` lint/tests immediately after the call cuts (`66`
+    passed).
+14. [x] Ran focused `Rules`/`StyleImport`/`Call` lint/tests after the
+    registration/import cuts (`207` passed, `9` skipped).
+15. [x] Ran the broader focused eval/render suite (`502` passed, `9` skipped)
+    and build. Build still has only the existing `src/tree/js-expr.ts`
+    direct-`eval` warning.
 
 ### Next 15-Item Queue
 
-1. [ ] Replace `Call.evalArgNodes(...)` `frozen` preservation with explicit
-   raw-args placement state or a cold materialization boundary; optional
-   fallback parent tests must stay green.
-2. [ ] Collapse `Call.renderDynamicFunctionOutput(...)` into a render-local
+1. [ ] Collapse `Call.renderDynamicFunctionOutput(...)` into a render-local
    state machine that evaluates state/name/fn once; do not add another generic
    dynamic evaluator.
-3. [ ] Inline the public-materialization half of `Call.evalDynamicFunctionOutput(...)`
+2. [ ] Inline the public-materialization half of `Call.evalDynamicFunctionOutput(...)`
    rather than sharing render-only ownership flags through helper wrappers.
-4. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
+3. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
    eval branches and classify each as immediate render, public materialization,
    or escaping plugin value; no generic ownership by default.
-5. [ ] Delete inherited `Call.deriveCall(...)` fallback materialization for
+4. [ ] Delete inherited `Call.deriveCall(...)` fallback materialization for
    syntax that only stringifies; keep an owned `Call` only for public value-node
    return.
-6. [ ] Replace `Call.derivePreserveRulesLikeReference(...)` `.inherit(name)`
-   with explicit live-reference state or a typed public materialization fence.
-7. [ ] Split `Reference` render-only variable lookup from public
+5. [ ] Replace the remaining inline preserve-rules-like `Reference(...).inherit(name)`
+   in `Call.createEvalState(...)` with explicit live-reference state or a typed
+   public materialization fence.
+6. [ ] Split `Reference` render-only variable lookup from public
    materialization so common `@var` render never calls
    `applyReferenceResultMetadata(...)`, `.inherit(...)`, or `frozen`.
-8. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
+7. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
    shallow owned surface with explicit public materialization state or a live
    rules-like binding.
-9. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
+8. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
    metadata paths with a render-only value path and a separate public-value
    materializer.
-10. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
+9. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
    ownership with source/diagnostic state when the resolved node is only queued
-   for registration.
-11. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
+   for registration; do not add a new privileged location-copy helper.
+10. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
    output with source-backed merge placement or direct render state.
-12. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
+11. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
     narrower merge-value copier or render-state path so merge normalization
     does not clone whole value subtrees.
-13. [ ] Replace `StyleImport` first-use import placement child copies with
+12. [ ] Replace `StyleImport` first-use import placement child copies with
     canonical children plus placement/render state; imports should not fake
     transferred ownership.
-14. [ ] Replace `StyleImport.deriveRulesSurface(...)` `.inherit(anchorRules)`
-    for import wrappers with explicit source/visibility/placement fields.
-15. [ ] Classify remaining base `Node` visitor/defineType `Reflect.get(...)` /
+13. [ ] Audit remaining `StyleImport.deriveRulesSurface(...)` wrapper creation
+    for source/visibility/placement fields that can be direct state instead of
+    derived `Rules` surfaces.
+14. [ ] Classify remaining base `Node` visitor/defineType `Reflect.get(...)` /
     `Object.hasOwn(...)`: convert Jess-owned probes, document external visitor
     probes as cold/plugin compatibility.
+15. [ ] Run the next focused eval/render suite plus build, then commit the run.
 
 ## Active Correctness Queue
 

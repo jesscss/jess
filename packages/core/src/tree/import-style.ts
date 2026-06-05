@@ -514,8 +514,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   ): Rules {
     const sourceLocation = anchorRules.location.length === 6 ? anchorRules.location : undefined;
     const wrapped = childNodes !== undefined
-      ? new Rules([], anchorRules.options ? { ...anchorRules.options } : undefined, sourceLocation, anchorRules.treeContext).inherit(anchorRules)
+      ? new Rules([], anchorRules.options ? { ...anchorRules.options } : undefined, sourceLocation, anchorRules.treeContext)
       : anchorRules.derive();
+    if (childNodes !== undefined) {
+      wrapped.parent = anchorRules.parent;
+      wrapped.index = anchorRules.index;
+    }
     if (options?.resetScopeFrame) {
       wrapped.scopeFrame = undefined;
     }
