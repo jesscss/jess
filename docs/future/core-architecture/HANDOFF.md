@@ -713,44 +713,41 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Strengthened the optional JS success render test to count dynamic-name
-   evaluation, not just function invocation and derived-call absence.
-2. [x] Verified the red failure was the intended hot-path ladder signal:
-   `nameEvaluations` was `3`, expected `1`.
-3. [x] Extended the render-local `Call.renderDynamicFunctionOutput(...)`
-   branch to include optional plain JS functions when `markImportant` is not
-   requested.
-4. [x] Reused the already-created render eval state for optional plain JS
-   function success instead of falling through fallback-syntax, fallback-output,
-   and full-eval probes.
-5. [x] Reused the single evaluated function name for optional plain JS function
-   invocation.
-6. [x] Routed optional plain JS success through one `callWithContext(context,
-   fn, ...state.args.value)` call.
-7. [x] Preserved the render-only ownership cut by keeping direct render output
-   on `markCallOutput(..., false)`.
-8. [x] Added direct fallback-string handling so optional render failure output
-   can write to a render buffer without pretending the string is a node.
-9. [x] Preserved strict unit-mode behavior by rethrowing optional JS failures
-   when `unitMode` is `strict`.
-10. [x] Preserved metadata-function failure behavior by keeping metadata errors
-    on the rethrow path instead of treating them like optional CSS fallback.
-11. [x] Preserved the existing optional fallback spelling by using the source
-    reference key when `fallbackValue` is true.
-12. [x] Left content-bearing optional calls on the older path; they have
-    separate tests and still need a focused single-state proof before deletion.
+1. [x] Strengthened the content-bearing optional JS render test to count
+   dynamic-name evaluation, not just function invocation.
+2. [x] Verified the red failure was the intended leftover probe signal:
+   `nameEvaluations` was `2`, expected `1`.
+3. [x] Removed the `contentNode` exclusion from the render-local
+   `Call.renderDynamicFunctionOutput(...)` extended-function branch.
+4. [x] Routed content-bearing optional JS success through the same single
+   render eval state used by non-content optional JS success.
+5. [x] Reused the single evaluated dynamic function name for content-bearing
+   optional JS success.
+6. [x] Preserved the direct `callWithContext(context, fn, ...state.args.value)`
+   path for plain JS functions with content.
+7. [x] Preserved render-only output ownership by keeping node results on
+   `markCallOutput(..., false)`.
+8. [x] Preserved optional JS failure fallback behavior through the existing
+   direct branch catch path and `renderFinalizedCallSyntax(...)`.
+9. [x] Preserved content fallback spelling because render finalization still
+   reads `state.contentNode`.
+10. [x] Preserved metadata-function behavior by leaving metadata calls on the
+    direct rethrow path for failures.
+11. [x] Left `markImportant` optional calls on the older path until a separate
+    proof covers their Less fallback/important semantics.
+12. [x] Left non-extended dynamic names on the older path until a separate
+    proof covers CSS fallback syntax and mixin/rules-like exclusions.
 13. [x] Re-ran the red test and saw it pass with one dynamic-name evaluation.
-14. [x] Ran the full `call.test.ts` file (`67` passed) after two semantic edge
-    failures were fixed in the direct branch.
+14. [x] Ran the full `call.test.ts` file (`67` passed).
 15. [x] No benchmark/profile was run, so make no speed claim from this queue
     completion. This was another Call render probe-reduction pass.
 
 ### Next 15-Item Queue
 
-1. [ ] Continue `Call.renderDynamicFunctionOutput(...)`: content-bearing
-   optional JS calls, `markImportant` optional calls, non-extended dynamic
-   names, and final `evalState(...)` fallback still fall through older helper
-   probes. Add focused proof before collapsing each branch.
+1. [ ] Continue `Call.renderDynamicFunctionOutput(...)`: `markImportant`
+   optional calls, non-extended dynamic names, mixin/rules-like dynamic names,
+   and final `evalState(...)` fallback still fall through older helper probes.
+   Add focused proof before collapsing each branch.
 2. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
    eval branches and classify each as immediate render, public materialization,
    or escaping plugin value; no generic ownership by default.

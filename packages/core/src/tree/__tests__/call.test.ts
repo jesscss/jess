@@ -1684,8 +1684,15 @@ describe('Call', () => {
     }));
     context.root = root;
     context.rulesContext = root;
+    const name = ref({ key: 'wrap' }, { type: 'function', fallbackValue: true });
+    const originalEval = name.eval.bind(name);
+    let nameEvaluations = 0;
+    name.eval = function evalForCounting(evalContext: Context) {
+      nameEvaluations++;
+      return originalEval(evalContext);
+    };
     const rule = call({
-      name: ref({ key: 'wrap' }, { type: 'function', fallbackValue: true }),
+      name,
       args: list([]),
       contentNode: new Sequence(
         [any('raw'), any('content')],
@@ -1697,6 +1704,7 @@ describe('Call', () => {
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('wrapped');
 
     expect(calls).toBe(1);
+    expect(nameEvaluations).toBe(1);
   });
 
   it('renders optional JS success output once without deriving fallback syntax', async () => {

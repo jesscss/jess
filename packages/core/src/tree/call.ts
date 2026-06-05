@@ -697,10 +697,7 @@ export class Call extends Node<CallValue, CallOptions> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): Promise<string> {
-    if (
-      typeof this.value.name !== 'string'
-      && !this.value.contentNode
-    ) {
+    if (typeof this.value.name !== 'string') {
       const state = this.createEvalState();
       const { name } = state;
       if (typeof name !== 'string') {
