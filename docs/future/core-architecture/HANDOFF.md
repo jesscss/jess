@@ -713,41 +713,37 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Deleted `Call.createFinalizedCallOutput(...)`; real fallback
-   materialization calls `deriveCall(...)` directly where it is still needed.
-2. [x] Inlined `Call.derivePreserveRulesLikeReference(...)` into
-   `createEvalState(...)`, removing the one-call method while preserving the
-   current public materialization fence.
-3. [x] Replaced `Call.evalArgNodes(...)` `{ preserveSourceParents: true }`
-   option objects with a direct boolean.
-4. [x] Updated all `Call.evalArgNodes(...)` callers to use the boolean path;
-   no tiny options object just to set `frozen`.
-5. [x] Removed `StyleImport.deriveRulesSurface(...)` `.inherit(anchorRules)` in
-   the child-node branch; it now constructs the wrapper with location/tree
-   context and explicitly sets parent/index.
-6. [x] Left `Rules` pending-registration `resolvedNode.inherit(node)` for a
-   later pass after confirming it reaches private location state that `Rules`
-   should not patch around with another privileged helper.
-7. [x] Deleted `Rules._finishRegistrationWithoutPending(...)`; the no-pending
-   branch restores context and returns directly.
-8. [x] Deleted `Rules._finishPendingPrep(...)`; ordered-identity finalization
-   now applies resolved nodes and restores context at the async boundary.
-9. [x] Deleted `Rules._restoreRegistrationAndReturn(...)`; callers now restore
-   context directly where needed.
-10. [x] Deleted `Rules._preparePendingOrderedIdentitiesOnce(...)`; the caller
-    checks length and calls `_prepareOrderedIdentitiesInSourceOrder(...)`
-    directly.
-11. [x] Deleted `Rules._resolvePendingDeclarationNamePrep(...)`; declaration
-    pending-name retry is inlined into the declaration finish path.
-12. [x] Deleted `Rules._isDeclarationRegistrationNode(...)`; `_addPendingPrep`
-    now uses the direct `isNode(... VarDeclaration | Declaration)` predicate.
-13. [x] Ran focused `Call` lint/tests immediately after the call cuts (`66`
-    passed).
-14. [x] Ran focused `Rules`/`StyleImport`/`Call` lint/tests after the
-    registration/import cuts (`207` passed, `9` skipped).
-15. [x] Ran the broader focused eval/render suite (`502` passed, `9` skipped)
-    and build. Build still has only the existing `src/tree/js-expr.ts`
-    direct-`eval` warning.
+1. [x] Deleted unused `Call.evalFinalizedCallSyntax(...)`; fallback
+   materialization no longer carries a dead inherited-`Call` wrapper.
+2. [x] Deleted `Call.getOptionalFallbackName(...)`; both remaining callers now
+   compute the fallback name directly at the decision point.
+3. [x] Deleted `Call.renderChildToActiveWriter(...)`; argument/content
+   rendering now performs direct `eval(context)` plus `toTrimmedString(...)`
+   in the hot serializer sites.
+4. [x] Removed the unused `caller` payload from `CallEvalState`; call-frame
+   ownership already lives on `context.caller`.
+5. [x] Removed the copied `markImportant` payload from `CallEvalState`; render
+   and eval paths read the source call option directly.
+6. [x] Removed the now-unused `context` parameter from `Call.createEvalState()`.
+7. [x] Updated all `createEvalState(...)` call sites to the zero-argument path.
+8. [x] Kept the direct child-render replacements intentionally local instead of
+   adding a new utility; fewer hot-path function hops matters more than
+   cosmetic DRY here.
+9. [x] Confirmed `Call.deriveCall(...)` remains live only at fallback/public
+   materialization sites; it is still queued for a sharper public-vs-render
+   split.
+10. [x] Confirmed `Call.renderDynamicFunctionOutput(...)` still re-enters the
+    dynamic helper cluster; the full state-machine collapse remains the next
+    high-value cut rather than being papered over.
+11. [x] Confirmed `Call.evalDynamicFunctionOutput(...)` still shares the same
+    helper cluster; public materialization needs its own boring path.
+12. [x] Confirmed the remaining inline
+    `Reference(...).inherit(name)` preserve-rules-like fence is still present
+    in `createEvalState()`.
+13. [x] Ran focused `Call` lint after edits; no errors.
+14. [x] Ran focused `Call` tests after edits (`66` passed).
+15. [x] Recorded this as a cut-only pass. No benchmark/profile was run, so make
+    no speed claim from this queue completion.
 
 ### Next 15-Item Queue
 
@@ -765,33 +761,36 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 5. [ ] Replace the remaining inline preserve-rules-like `Reference(...).inherit(name)`
    in `Call.createEvalState(...)` with explicit live-reference state or a typed
    public materialization fence.
-6. [ ] Split `Reference` render-only variable lookup from public
+6. [ ] Collapse or split `Call.renderFinalizedCallSyntax(...)` and
+   `renderFinalizedCallPublicText(...)`; there are still two similar finalized
+   CSS-call stringifiers because public materialization and active render are
+   blurred.
+7. [ ] Split `Reference` render-only variable lookup from public
    materialization so common `@var` render never calls
    `applyReferenceResultMetadata(...)`, `.inherit(...)`, or `frozen`.
-7. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
+8. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
    shallow owned surface with explicit public materialization state or a live
    rules-like binding.
-8. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
+9. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
    metadata paths with a render-only value path and a separate public-value
    materializer.
-9. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
+10. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
    ownership with source/diagnostic state when the resolved node is only queued
    for registration; do not add a new privileged location-copy helper.
-10. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
+11. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
    output with source-backed merge placement or direct render state.
-11. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
+12. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
     narrower merge-value copier or render-state path so merge normalization
     does not clone whole value subtrees.
-12. [ ] Replace `StyleImport` first-use import placement child copies with
+13. [ ] Replace `StyleImport` first-use import placement child copies with
     canonical children plus placement/render state; imports should not fake
     transferred ownership.
-13. [ ] Audit remaining `StyleImport.deriveRulesSurface(...)` wrapper creation
+14. [ ] Audit remaining `StyleImport.deriveRulesSurface(...)` wrapper creation
     for source/visibility/placement fields that can be direct state instead of
     derived `Rules` surfaces.
-14. [ ] Classify remaining base `Node` visitor/defineType `Reflect.get(...)` /
+15. [ ] Classify remaining base `Node` visitor/defineType `Reflect.get(...)` /
     `Object.hasOwn(...)`: convert Jess-owned probes, document external visitor
     probes as cold/plugin compatibility.
-15. [ ] Run the next focused eval/render suite plus build, then commit the run.
 
 ## Active Correctness Queue
 

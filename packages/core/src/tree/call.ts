@@ -68,8 +68,6 @@ type CallEvalState = {
   name: string | Node;
   args?: List<Node>;
   contentNode?: Node;
-  caller?: Call;
-  markImportant?: boolean;
   preservesRulesLikeVariableTarget: boolean;
 };
 
@@ -157,18 +155,6 @@ export type ExtendedFn<T extends unknown[] = unknown[], R = unknown> = ((this: C
 export class Call extends Node<CallValue, CallOptions> {
   override _requiredSemi = true;
 
-  private renderChildToActiveWriter(
-    node: Node,
-    context: Context,
-    options: PrintOptions
-  ): MaybePromise<string> {
-    const rendered = node.eval(context);
-    const writeRendered = (value: Node): string => value.toTrimmedString(options);
-    return isThenable(rendered)
-      ? (rendered as Promise<Node>).then(writeRendered)
-      : writeRendered(rendered as Node);
-  }
-
   private deriveCall(value: CallValue, options?: CallOptions): Call {
     return new Call(
       value,
@@ -178,7 +164,7 @@ export class Call extends Node<CallValue, CallOptions> {
     ).inherit(this);
   }
 
-  private createEvalState(context: Context): CallEvalState {
+  private createEvalState(): CallEvalState {
     const preservesRulesLikeVariableTarget = isNode(this.value.name, N.Reference) && this.value.name.options?.type === 'variable';
     let name = this.value.name;
     if (
@@ -201,14 +187,12 @@ export class Call extends Node<CallValue, CallOptions> {
       name,
       args: this.value.args,
       contentNode: this.value.contentNode,
-      caller: context.caller,
-      markImportant: this._options?.markImportant,
       preservesRulesLikeVariableTarget
     };
   }
 
   private evalState(context: Context): Promise<Node> {
-    const state = this.createEvalState(context);
+    const state = this.createEvalState();
     return this.evalFromState(context, state).then((node) => {
       node.evaluated = true;
       if (node !== this) {
@@ -218,43 +202,15 @@ export class Call extends Node<CallValue, CallOptions> {
     });
   }
 
-  private async evalFinalizedCallSyntax(
-    context: Context,
-    state: CallEvalState,
-    name: string | Node | unknown
-  ): Promise<Call> {
-    const evaluatedArgs = await state.source.evalArgNodes(
-      context,
-      state.args,
-      true
-    );
-    return state.source.deriveCall(
-      {
-        name: typeof name === 'string' || name instanceof Node
-          ? name
-          : stringifyValueOf(name),
-        args: evaluatedArgs,
-        contentNode: state.contentNode
-      },
-      state.source._options
-        ? { ...state.source._options, silentFail: false }
-        : { silentFail: false }
-    );
-  }
-
-  private getOptionalFallbackName(name: Node | string | unknown, fallbackValue: unknown): string {
-    return isNode(name, N.Reference) && name.options.fallbackValue === true
-      ? String(name.value.key)
-      : stringifyValueOf(fallbackValue);
-  }
-
   private async evalOptionalFallbackCallSyntax(
     context: Context,
     state: CallEvalState,
     name: Node | string | unknown,
     fallbackValue: unknown
   ): Promise<Node> {
-    const fallbackName = this.getOptionalFallbackName(name, fallbackValue);
+    const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
+      ? String(name.value.key)
+      : stringifyValueOf(fallbackValue);
     const evaluatedArgs = await state.source.evalArgNodes(
       context,
       state.args,
@@ -369,7 +325,7 @@ export class Call extends Node<CallValue, CallOptions> {
       return undefined;
     }
 
-    const state = this.createEvalState(context);
+    const state = this.createEvalState();
     const name = state.name;
     if (typeof name === 'string') {
       return undefined;
@@ -400,7 +356,9 @@ export class Call extends Node<CallValue, CallOptions> {
             if (unitMode === 'strict') {
               throw error;
             }
-            const fallbackName = this.getOptionalFallbackName(this.value.name, fn);
+            const fallbackName = isNode(this.value.name, N.Reference) && this.value.name.options.fallbackValue === true
+              ? String(this.value.name.value.key)
+              : stringifyValueOf(fn);
             if (renderFailureWith) {
               return this.renderFinalizedCallSyntax(fallbackName, state, context, renderFailureWith);
             }
@@ -446,7 +404,7 @@ export class Call extends Node<CallValue, CallOptions> {
     ) {
       return undefined;
     }
-    const state = this.createEvalState(context);
+    const state = this.createEvalState();
     const { name } = state;
     if (typeof name === 'string') {
       return undefined;
@@ -486,7 +444,7 @@ export class Call extends Node<CallValue, CallOptions> {
     ) {
       return undefined;
     }
-    const state = this.createEvalState(context);
+    const state = this.createEvalState();
     const { name } = state;
     if (typeof name === 'string') {
       return undefined;
@@ -558,7 +516,7 @@ export class Call extends Node<CallValue, CallOptions> {
         w.add('(', arg);
         if (arg.value) {
           const innerMark = w.mark();
-          const rendered = this.renderChildToActiveWriter(arg.value, context, printOptions);
+          const rendered = arg.value.eval(context);
           const finishParen = (): MaybePromise<string> => {
             w.trimHorizontalStartSince(innerMark);
             w.trimHorizontalEndSince(innerMark);
@@ -568,9 +526,14 @@ export class Call extends Node<CallValue, CallOptions> {
             }
             return serializeArgAt(i + 1);
           };
-          return isThenable(rendered)
-            ? rendered.then(finishParen)
-            : finishParen();
+          if (isThenable(rendered)) {
+            return rendered.then((value) => {
+              value.toTrimmedString(printOptions);
+              return finishParen();
+            });
+          }
+          (rendered as Node).toTrimmedString(printOptions);
+          return finishParen();
         }
         w.add(')', arg);
         if (i < last) {
@@ -579,10 +542,15 @@ export class Call extends Node<CallValue, CallOptions> {
         return serializeArgAt(i + 1);
       } else {
         const argMark = w.mark();
-        const rendered = this.renderChildToActiveWriter(arg, context, printOptions);
-        return isThenable(rendered)
-          ? rendered.then(() => finishArg(argMark))
-          : finishArg(argMark);
+        const rendered = arg.eval(context);
+        if (isThenable(rendered)) {
+          return rendered.then((value) => {
+            value.toTrimmedString(printOptions);
+            return finishArg(argMark);
+          });
+        }
+        (rendered as Node).toTrimmedString(printOptions);
+        return finishArg(argMark);
       }
     };
     return serializeArgAt(0);
@@ -619,10 +587,15 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       if (contentNode) {
         w.add(': ');
-        const renderedContent = this.renderChildToActiveWriter(contentNode, context, prepared);
-        return isThenable(renderedContent)
-          ? renderedContent.then(() => w.getSince(mark))
-          : w.getSince(mark);
+        const renderedContent = contentNode.eval(context);
+        if (isThenable(renderedContent)) {
+          return renderedContent.then((value) => {
+            value.toTrimmedString(prepared);
+            return w.getSince(mark);
+          });
+        }
+        (renderedContent as Node).toTrimmedString(prepared);
+        return w.getSince(mark);
       }
       return w.getSince(mark);
     };
@@ -667,15 +640,20 @@ export class Call extends Node<CallValue, CallOptions> {
     w.add('(');
     const finishCall = (): MaybePromise<string> => {
       w.add(')');
-      if (state.markImportant) {
+      if (this._options?.markImportant) {
         w.add(' !important');
       }
       if (contentNode) {
         w.add(': ');
-        const renderedContent = this.renderChildToActiveWriter(contentNode, context, prepared);
-        return isThenable(renderedContent)
-          ? renderedContent.then(() => w.getSince(mark))
-          : w.getSince(mark);
+        const renderedContent = contentNode.eval(context);
+        if (isThenable(renderedContent)) {
+          return renderedContent.then((value) => {
+            value.toTrimmedString(prepared);
+            return w.getSince(mark);
+          });
+        }
+        (renderedContent as Node).toTrimmedString(prepared);
+        return w.getSince(mark);
       }
       return w.getSince(mark);
     };
@@ -706,15 +684,20 @@ export class Call extends Node<CallValue, CallOptions> {
       w.trimHorizontalEndSince(argsMark);
     }
     w.add(')');
-    if (state.markImportant) {
+    if (this._options?.markImportant) {
       w.add(' !important');
     }
     if (syntax.contentNode) {
       w.add(': ');
-      const renderedContent = this.renderChildToActiveWriter(syntax.contentNode, context, prepared);
-      return isThenable(renderedContent)
-        ? renderedContent.then(() => w.getSince(mark))
-        : w.getSince(mark);
+      const renderedContent = syntax.contentNode.eval(context);
+      if (isThenable(renderedContent)) {
+        return renderedContent.then((value) => {
+          value.toTrimmedString(prepared);
+          return w.getSince(mark);
+        });
+      }
+      (renderedContent as Node).toTrimmedString(prepared);
+      return w.getSince(mark);
     }
     return w.getSince(mark);
   }
@@ -730,7 +713,7 @@ export class Call extends Node<CallValue, CallOptions> {
       return undefined;
     }
 
-    const state = this.createEvalState(context);
+    const state = this.createEvalState();
     const name = state.name;
     if (typeof name === 'string') {
       return undefined;
@@ -909,7 +892,7 @@ export class Call extends Node<CallValue, CallOptions> {
 
   /** Come back and redo -- too hard to reason about as a MaybePromise */
   override async evalNode(context: Context): Promise<Node> {
-    const state = this.createEvalState(context);
+    const state = this.createEvalState();
     return this.evalFromState(context, state);
   }
 
@@ -918,7 +901,8 @@ export class Call extends Node<CallValue, CallOptions> {
   }
 
   private async evalFromStateInFrame(context: Context, state: CallEvalState): Promise<Node> {
-    const { name, args, markImportant } = state;
+    const { name, args } = state;
+    const markImportant = this._options?.markImportant;
 
     let n: string | Node | MixinCollection | unknown;
     if (typeof name === 'string') {
