@@ -713,79 +713,84 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Added focused `MixinCollection` and array dynamic-name render fixtures
-   for the callable branch added in the previous pass.
-2. [x] Verified those two shapes already bypass `evalState(...)`; no production
-   change was needed for them.
-3. [x] Added the next focused `Call`-valued dynamic-name fixture for alias calls
-   like `@alias: .mixin(...); @alias();`.
-4. [x] Verified the intended red failure for the alias fixture:
-   `evalStateCalls.count` was `1`, expected `0`.
-5. [x] Added a narrow render-local `N.Call` branch before the stylesheet
-   `Func` branch.
-6. [x] Evaluated the inner alias call directly from the render branch instead
-   of recreating outer `CallEvalState`.
-7. [x] Preserved the existing public eval behavior for call-valued names:
-   the inner call owns its own call-frame/eval semantics.
-8. [x] Rendered the inner call output immediately through `renderOutput(...)`.
-9. [x] Applied `markImportant` only when the inner alias output is `Rules`, the
-   same condition used by the public eval branch.
-10. [x] Avoided `markCallOutput(...)` on the alias branch; the render-only outer
-    call should not claim parent identity for the inner call output.
-11. [x] Left the non-callable CSS fallback and optional fallback branches
-    unchanged.
-12. [x] Re-ran the focused collection/array/alias tests and saw all three pass.
-13. [x] Ran the full `call.test.ts` file (`75` passed).
-14. [x] Confirmed the remaining direct dynamic callable exclusions are now
-    mostly proof/audit work, not known `evalState(...)` fallthroughs.
-15. [x] No benchmark/profile was run, so make no speed claim. This pass removed
-    the final confirmed call-valued dynamic-name render fallback in `Call`.
+1. [x] Re-scanned `Call.renderDynamicFunctionOutput(...)` after the dynamic-name
+   cuts; no remaining known direct dynamic-name branch still falls through
+   outer `evalState(...)`.
+2. [x] Audited `markCallOutput(...)` call-site intent: public eval paths still
+   default to ownership, render-local dynamic output passes `ownOutput = false`,
+   and the call-alias render branch intentionally avoids `markCallOutput(...)`.
+3. [x] Kept `markCallOutput(...)` as-is for now because extracting a shared
+   helper would add another call ladder without deleting a stronger branch.
+4. [x] Added proof for silent-fail direct callable render so the direct branch
+   is guarded before leaving `Call`.
+5. [x] First tried a no-matching-mixin fixture; it correctly stayed a hard
+   `ReferenceError`, matching the public eval branch rather than optional
+   fallback behavior.
+6. [x] Reframed the proof around the supported silent-fail case: a callable is
+   found, but evaluating its output fails.
+7. [x] Counted `deriveCall(...)` to prove render does not construct a fallback
+   call surface.
+8. [x] Counted `Call.prototype.clone(...)` to prove render does not clone/own a
+   fallback call.
+9. [x] Counted `evalState(...)` to prove the direct callable failure path does
+   not re-enter outer public eval materialization.
+10. [x] Verified the supported silent-fail dynamic callable failure renders
+    finalized source syntax directly.
+11. [x] Preserved the hard `No matching mixins` behavior; do not silently turn
+    missing mixin matches into optional CSS syntax without a separate semantics
+    decision.
+12. [x] Re-ran the focused silent-fail callable proof and saw it pass.
+13. [x] Left direct callable/public eval sharing as an audit item only; a shared
+    primitive is not worth adding until it deletes more branching than it adds.
+14. [x] Pivoted the next queue to `Reference` render-only variable lookup and
+    ownership cleanup.
+15. [x] No benchmark/profile was run, so make no speed claim. This was the
+    final `Call` guard/audit pass before the Reference cut lane.
 
 ### Next 15-Item Queue
 
-1. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
-   eval branches and classify each as immediate render, public materialization,
-   or escaping plugin value; no generic ownership by default.
-2. [ ] Add proof that silent-fail direct callable render preserves finalized
-   call syntax without constructing an owned fallback `Call`.
-3. [ ] Audit whether the direct callable render branch and the public
-   `evalFromStateInFrame(...)` callable branch can share a smaller primitive
-   without reintroducing a helper ladder or owned-output default.
-4. [ ] Split `Reference` render-only variable lookup from public
+1. [ ] Split `Reference` render-only variable lookup from public
    materialization so common `@var` render never calls
    `applyReferenceResultMetadata(...)`, `.inherit(...)`, or `frozen`.
-5. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
+2. [ ] Add focused proof for the Less-common `margin: @space` shape: render
+   a variable reference value without calling public `Reference.eval(...)`
+   materialization or applying public result metadata.
+3. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
    shallow owned surface with explicit public materialization state or a live
    rules-like binding.
-6. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
+4. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
    metadata paths with a render-only value path and a separate public-value
    materializer.
-7. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
+5. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
    repeated branch code only if it can be done without reintroducing a generic
    pipeline/helper ladder.
-8. [ ] Continue `define-function.ts` boring-JS cleanup only where scans show
+6. [ ] Audit whether `finalizeReferenceLookupResult(...)` can split variable
+   render from callable/index/rules-like finalization without another generic
+   helper wrapper.
+7. [ ] Continue `define-function.ts` boring-JS cleanup only where scans show
    remaining convenience calls in hot argument conversion; keep cold signature
    setup/diagnostic helpers out of the hot queue unless they appear in profile
    evidence.
-9. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
+8. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
    ownership with source/diagnostic state when the resolved node is only queued
    for registration; do not add a new privileged location-copy helper.
-10. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
+9. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
    output with source-backed merge placement or direct render state.
-11. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
+10. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
     narrower merge-value copier or render-state path so merge normalization
     does not clone whole value subtrees.
-12. [ ] Replace `StyleImport` first-use import placement child copies with
+11. [ ] Replace `StyleImport` first-use import placement child copies with
     canonical children plus placement/render state; imports should not fake
     transferred ownership.
-13. [ ] Audit remaining `StyleImport.deriveRulesSurface(...)` wrapper creation
+12. [ ] Audit remaining `StyleImport.deriveRulesSurface(...)` wrapper creation
     for source/visibility/placement fields that can be direct state instead of
     derived `Rules` surfaces.
-14. [ ] Re-scan `Call.renderDynamicFunctionOutput(...)` for remaining probe
-    ladders after the dynamic-name branch cuts; do not add a helper unless it
-    deletes more calls than it creates.
-15. [ ] Move back to Reference render-only variable lookup if no more
-    evidence-backed `Call` branch cuts remain.
+13. [ ] Keep `Call.renderDynamicFunctionOutput(...)` on audit-only status
+    unless fresh proof finds a remaining concrete branch cut.
+14. [ ] Run a hotpath sanity check after the first meaningful Reference
+    ownership cut, not before.
+15. [ ] Reactivate full performance rounds if two more queue passes land
+    without deleting obvious hot-path object/function-call waste.
 
 ## Active Correctness Queue
 

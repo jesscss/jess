@@ -457,6 +457,49 @@ describe('Call', () => {
     }
   });
 
+  it('renders silent-fail dynamic callable failures without owning a fallback call', async () => {
+    const mixinDef = mixin({
+      name: any('.theme'),
+      rules: rules([
+        decl({ name: 'color', value: ref('missing-color', { type: 'variable' }) })
+      ])
+    });
+    const root = rules([mixinDef]);
+    context.root = root;
+    context.rulesContext = root;
+    const collection = new MixinCollection([mixinDef]);
+    const name = any('missing-theme');
+    name.eval = function evalForMissingCallableName() {
+      return collection;
+    };
+    const rule = call({ name }, { silentFail: true });
+    const originalClone = Call.prototype.clone;
+    const derivedCalls = countDeriveCallUse();
+    const evalStateCalls = countEvalStateUse();
+    let clonedCalls = 0;
+    Call.prototype.clone = function cloneForCounting(
+      this: Call,
+      ...cloneArgs: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      clonedCalls++;
+      return originalClone.apply(this, cloneArgs);
+    };
+
+    try {
+      await expect(Promise.resolve(rule.render(context))).resolves.toBe('missing-theme()');
+
+      expect(derivedCalls.count).toBe(0);
+      expect(clonedCalls).toBe(0);
+      expect(evalStateCalls.count).toBe(0);
+      expect(rule.evaluated).toBe(false);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      Call.prototype.clone = originalClone;
+      derivedCalls.restore();
+      evalStateCalls.restore();
+    }
+  });
+
   it('streams dynamic CSS call arguments without materializing a replacement arg list', async () => {
     const root = rules([
       vardecl({
