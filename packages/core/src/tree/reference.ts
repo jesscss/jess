@@ -1526,12 +1526,8 @@ function evaluateFallbackValue(
     return fallbackValue;
   }
   if (canReuseFallbackValue(fallbackValue)) {
-    if (options.textOnly === true) {
-      context.popReference();
-      return fallbackValue;
-    }
     context.popReference();
-    return applyReferenceResultMetadata(referenceNode, fallbackValue, true);
+    return fallbackValue;
   }
   if (options.textOnly === true && canRenderFallbackContainerDirectly(fallbackValue)) {
     context.popReference();

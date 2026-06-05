@@ -1356,7 +1356,9 @@ describe('reference', () => {
 
     it('does not copy childless scalar fallback values before resolve(context)', async () => {
       const originalCopy = Any.prototype.copy;
+      const originalInherit = Any.prototype.inherit;
       let scalarCopies = 0;
+      let scalarInherits = 0;
       Any.prototype.copy = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
@@ -1369,6 +1371,16 @@ describe('reference', () => {
 
       try {
         const fallback = any('red');
+        const fallbackParent = fallback.parent;
+        Any.prototype.inherit = function inheritForCounting(
+          this: Any,
+          ...args: Parameters<typeof originalInherit>
+        ): ReturnType<typeof originalInherit> {
+          if (this === fallback) {
+            scalarInherits++;
+          }
+          return originalInherit.apply(this, args);
+        };
         const refNode = ref(
           { key: 'missing' },
           {
@@ -1380,9 +1392,13 @@ describe('reference', () => {
 
         expect(resolved.toTrimmedString()).toBe('red');
         expect(scalarCopies).toBe(0);
+        expect(scalarInherits).toBe(0);
+        expect(fallback.frozen).toBe(false);
+        expect(fallback.parent).toBe(fallbackParent);
         expect(refNode.toTrimmedString()).toBe('$missing');
       } finally {
         Any.prototype.copy = originalCopy;
+        Any.prototype.inherit = originalInherit;
       }
     });
 
@@ -1656,6 +1672,18 @@ describe('reference', () => {
 
     it('reuses source-free static fallback lists as inert output containers', async () => {
       const fallback = list([any('red')]);
+      const fallbackParent = fallback.parent;
+      const originalInherit = List.prototype.inherit;
+      let listInherits = 0;
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (this === fallback) {
+          listInherits++;
+        }
+        return originalInherit.apply(this, args);
+      };
       const refNode = ref(
         { key: 'missing' },
         {
@@ -1664,11 +1692,18 @@ describe('reference', () => {
         }
       );
 
-      const resolved = await refNode.resolve(context);
+      try {
+        const resolved = await refNode.resolve(context);
 
-      expect(resolved).toBe(fallback);
-      expect(resolved.toTrimmedString()).toBe('red');
-      expect(refNode.toTrimmedString()).toBe('$missing');
+        expect(resolved).toBe(fallback);
+        expect(resolved.toTrimmedString()).toBe('red');
+        expect(listInherits).toBe(0);
+        expect(fallback.frozen).toBe(false);
+        expect(fallback.parent).toBe(fallbackParent);
+        expect(refNode.toTrimmedString()).toBe('$missing');
+      } finally {
+        List.prototype.inherit = originalInherit;
+      }
     });
 
     it('reuses source-free static fallback sequences as inert output containers', async () => {

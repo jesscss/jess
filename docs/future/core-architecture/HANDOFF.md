@@ -713,55 +713,51 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Targeted the next `Reference` ownership cut:
-   `createRulesLikeReferenceSurface(...)`.
-2. [x] Removed the generic `.inherit(...)` call from that helper.
-3. [x] Replaced it with explicit shallow-surface metadata:
-   `parent`, `index`, and `sourceNode`.
-4. [x] Preserved constructor-based public rules-like materialization for now;
-   this pass did not delete the surface itself.
-5. [x] Kept `freezeRulesLikeReferenceValue(...)` in place as known remaining
-   debt; this pass only cut the inherited metadata blob.
-6. [x] Strengthened the rules-like variable-reference proof to count
-   `Rules.prototype.inherit(...)` calls and confirm zero inherited metadata on
-   the existing runtime-binding preserve path.
-7. [x] Avoided forcing runtime-binding preserve through an extra new surface
-   after the focused test showed that would add object creation for no render
-   contract.
-8. [x] Strengthened the direct mixin-ruleset proof to count
-   `Mixin.prototype.inherit(...)` calls on the helper-backed path.
-9. [x] Confirmed direct mixin-ruleset lookup still returns a preserved
-   `MixinCollection` item rather than the live canonical mixin.
-10. [x] Confirmed the preserved direct mixin keeps `sourceNode` pointed at the
-    canonical mixin without invoking `.inherit(...)`.
-11. [x] Confirmed rules-like variable preservation still keeps canonical source
-    children and does not clone the source `Rules`.
-12. [x] Left parent-identity assertions out of the hot proof because eval'd
-    output parent identity is not a goal unless a cold public materialization
-    API explicitly promises it.
-13. [x] Re-ran the focused rules-like variable/direct mixin-ruleset proof and
-    saw it pass.
-14. [x] This is an object/function-call cut, not a measured performance win; no
-    benchmark/profile claim is attached.
-15. [x] Next Reference work should attack `frozen`, fallback/direct-value
-    metadata, and the remaining generic finalizer ladder.
+1. [x] Targeted the next `Reference` fallback ownership cut:
+   reusable static fallback values in `evaluateFallbackValue(...)`.
+2. [x] Added a focused red proof around public `resolve(context)` of a
+   childless scalar fallback.
+3. [x] Proved the old path did not copy the scalar fallback.
+4. [x] Proved the old path still called `.inherit(...)` on the fallback.
+5. [x] Extended that proof to require no `frozen` write and no fallback-parent
+   rewrite.
+6. [x] Cut the reusable fallback branch so it pops reference state and returns
+   the fallback node directly.
+7. [x] Deleted the duplicate `textOnly` branch inside that same reusable
+   fallback case.
+8. [x] Avoided introducing a public materializer wrapper; reusable fallback
+   now means direct reuse for both render and public resolve.
+9. [x] Strengthened source-free static fallback list proof to count
+   `List.prototype.inherit(...)`.
+10. [x] Proved source-free static fallback lists also remain unfrozen and keep
+    their original parent.
+11. [x] Confirmed fallback render-only tests still prove no `.inherit(...)`,
+    copy, or parent rewrite on scalar and container render paths.
+12. [x] Confirmed the full `reference.test.ts` suite still passes after the
+    public fallback metadata cut.
+13. [x] Left dynamic/source-backed fallback copying alone; those paths still
+    evaluate or copy for semantic reasons and need separate proof before cuts.
+14. [x] This is an object/function-call and mutation cut, not a measured
+    performance win; no benchmark/profile claim is attached.
+15. [x] Next Reference work should attack rules-like `frozen`, runtime-binding
+    scalar `frozen`, and the generic finalizer ladder.
 
 ### Next 15-Item Queue
 
-1. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
-   metadata paths with a render-only value path and a separate public-value
-   materializer.
-2. [ ] Audit whether `createRulesLikeReferenceSurface(...)` can stop freezing
+1. [ ] Audit whether `createRulesLikeReferenceSurface(...)` can stop freezing
    canonical rules-like values, or push that freeze behind a cold public
    materialization boundary.
-3. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
+2. [ ] Audit `finalizeRuntimeVarBindingResult(...)` scalar reuse:
+   `evald.frozen = true` may be the same owned-result habit as fallback reuse.
+3. [ ] Audit dynamic/source-backed fallback copies in `evaluateFallbackValue(...)`
+   and decide whether render/direct eval can avoid `copyWithReusableLeaves(...)`
+   without breaking semantic fallback evaluation.
+4. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
    repeated branch code only if it can be done without reintroducing a generic
    pipeline/helper ladder.
-4. [ ] Audit whether `finalizeReferenceLookupResult(...)` can split variable
+5. [ ] Audit whether `finalizeReferenceLookupResult(...)` can split variable
    render from callable/index/rules-like finalization without another generic
    helper wrapper.
-5. [ ] Add a focused proof for optional/fallback reference render that counts
-   `.inherit(...)`, `frozen`, and copy use before cutting fallback metadata.
 6. [ ] Audit direct/runtime/declaration finalizers for `textOnly` branches that
    still call `copyWithReusableLeaves(...)` or `applyReferenceResultMetadata(...)`.
 7. [ ] Continue `define-function.ts` boring-JS cleanup only where scans show
