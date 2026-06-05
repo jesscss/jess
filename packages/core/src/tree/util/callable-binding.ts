@@ -3,7 +3,7 @@ import { Sequence } from '../sequence.js';
 import { copyWithReusableLeaves, hasNodeChild } from './cloning.js';
 
 export function canReuseBoundValue(value: Node): boolean {
-  return (value.frozen || value.hasFlag(F_STATIC))
+  return value.hasFlag(F_STATIC)
     && value.location.length === 0
     && !hasNodeChild(value.value);
 }
@@ -12,9 +12,7 @@ export function cloneBoundValue(value: Node): Node {
   if (canReuseBoundValue(value)) {
     return value;
   }
-  const boundValue = copyWithReusableLeaves(value).detachTrivia(true);
-  boundValue.frozen = true;
-  return boundValue;
+  return copyWithReusableLeaves(value).detachTrivia(true);
 }
 
 export function createRestBindingValue(args: Node[]): Sequence {

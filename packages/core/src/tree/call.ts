@@ -20,6 +20,7 @@ import {
   writeRenderTextResult
 } from './util/render-buffer.js';
 import { emitCommentTriviaBetweenNodes } from './util/trivia.js';
+import { copyWithReusableLeaves } from './util/cloning.js';
 
 function stringifyValueOf(value: unknown): string {
   if (value && typeof value === 'object' && 'valueOf' in value) {
@@ -205,32 +206,19 @@ export class Call extends Node<CallValue, CallOptions> {
 
   private async evalArgNodes(
     context: Context,
-    nodes?: List<Node>,
-    preserveSourceParents = false
+    nodes?: List<Node>
   ): Promise<List<Node> | undefined> {
     if (!nodes) {
       return undefined;
     }
     const source = nodes.value;
     const out = new Array<Node>(source.length);
-    let shouldRestoreSourceParents = false;
     for (let i = 0; i < source.length; i++) {
       const node = source[i]!;
       const evald = await node.eval(context) as Node;
-      if (evald === node && preserveSourceParents) {
-        shouldRestoreSourceParents = true;
-      }
-      out[i] = evald;
+      out[i] = evald === node ? copyWithReusableLeaves(evald) : evald;
     }
-    const evaluatedArgs = list(out, nodes.options);
-    if (shouldRestoreSourceParents) {
-      for (let i = 0; i < source.length; i++) {
-        if (out[i] === source[i]) {
-          source[i]!.parent = nodes;
-        }
-      }
-    }
-    return evaluatedArgs;
+    return list(out, nodes.options);
   }
 
   private markCallOutput<T extends Node>(node: T, ownOutput = true): T {
@@ -364,22 +352,13 @@ export class Call extends Node<CallValue, CallOptions> {
       ) {
         return undefined;
       }
-      const evaluatedArgs = await state.source.evalArgNodes(
-        context,
-        state.args,
-        true
-      );
       const rendered = await state.source.renderFinalizedCallSyntax(
         typeof evaluatedName === 'string' || evaluatedName instanceof Node
           ? evaluatedName
           : stringifyValueOf(evaluatedName),
         state,
         context,
-        prepareRenderPrintState(context),
-        {
-          args: evaluatedArgs,
-          ...(state.contentNode && { contentNode: state.contentNode })
-        }
+        prepareRenderPrintState(context)
       );
       return this.markCallOutput(new Any(rendered, { role: 'any' }), ownOutput);
     });
@@ -1177,7 +1156,7 @@ export class Call extends Node<CallValue, CallOptions> {
       if (n === 'calc') {
         context.calcFrames++;
       }
-      const evaluatedArgs = await this.evalArgNodes(context, args, true)
+      const evaluatedArgs = await this.evalArgNodes(context, args)
         .finally(() => {
           if (n === 'calc') {
             context.calcFrames--;

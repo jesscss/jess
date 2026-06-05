@@ -104,8 +104,10 @@ describe('callable output helpers', () => {
     });
 
     expect(output.value).toEqual([outputA, outputB]);
-    expect(outputA.frozen).toBe(true);
-    expect(outputB.frozen).toBe(true);
+    expect(outputA.frozen).toBe(false);
+    expect(outputB.frozen).toBe(false);
+    expect(outputA.parent).toBe(output);
+    expect(outputB.parent).toBe(output);
     expect(outputA.index).toBe(0);
     expect(outputB.index).toBe(1);
     expect(getMixinOutputPlacementRecord(output)).toEqual({

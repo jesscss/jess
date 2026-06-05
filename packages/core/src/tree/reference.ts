@@ -1657,7 +1657,6 @@ function finalizeRuntimeVarBindingResult(
     }
     context.popReference();
     const resultNode = copyReferenceResultNode(evald);
-    resultNode.frozen = true;
     return resultNode.inherit(referenceNode);
   };
   const shouldUseDefinitionRulesContext = isNode(bindingSource, N.VarDeclaration) && (
@@ -1753,7 +1752,6 @@ function finalizeEvaluatedDeclarationReference(
     resultNode,
     isMergedAssign
   );
-  normalized.frozen = true;
   return normalized.inherit(referenceNode);
 }
 

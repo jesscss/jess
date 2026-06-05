@@ -1809,17 +1809,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this._treeContext = treeContext;
   }
 
-  * [Symbol.iterator]() {
-    let value = this.value;
-    /**
-     * This should always be the case? But at one point something somewhere
-     * set the value to undefined I think, so just leaving this defensively.
-     */
-    if (isArray(value)) {
-      yield* value.entries();
-    }
-  }
-
   /**
    * Used by Ruleset, Mixins, and AtRules etc to render
    * rules with braces.

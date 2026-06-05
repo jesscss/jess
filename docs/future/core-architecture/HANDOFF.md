@@ -866,42 +866,79 @@ public `tree.treeContext` getter on arbitrary nodes.
 
 ## Next Aggressive Cutting Queue
 
-1. [ ] Split cold public materialization from hot `Node.evalStatic(...)`; the
-   remaining `.inherit(...)` calls still mean eval replacement implies ownership
-   metadata by default.
-2. [ ] Design the `StyleImport` first-use placement state that can reference
-   canonical source children without `copyImportPlacementNode(...)`.
-3. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers that only carry
-   source/visibility/placement fields and can be represented as side state.
-4. [ ] Continue selector placement guard cleanup in `selector-list.ts`,
-   `selector-compound.ts`, `selector-complex.ts`, and `interpolated.ts`; remove
-   any remaining public-resolve branches from render-only paths.
-5. [ ] Replace final `Rules` merge output copies with merge placement/render
-   state or a narrow owned item copier proven by declaration merge tests.
-6. [ ] Remove or justify the two remaining explicit reference-result
-   `frozen = true` cold ownership points; they must not creep back into render.
-7. [ ] Make the remaining `Call.evalArgNodes(..., preserveSourceParents)` parent
-   restoration unnecessary by splitting CSS-call eval from owned public arg
-   materialization.
-8. [ ] Profile or instrument `Call.renderDynamicFunctionOutput(...)` before any
-   further dynamic-call ladder rewrite; do not move branches around without
-   proof.
-9. [ ] Audit remaining callable `sort(...)` calls and keep only ordering that is
-   semantically required, especially default-guard priority and output order.
-10. [ ] Replace callable output `rule.frozen = true` with explicit output-slot
-    state or cold materialization ownership.
-11. [ ] Replace callable binding `boundValue.frozen = true` with binding state
-    or a narrower reuse predicate that does not mutate copied values.
-12. [ ] Remove generator-based `Rules` entry iteration where it appears in
-    lookup/eval paths; use indexed loops or cached arrays only where measured.
-13. [ ] Audit remaining routine `try/catch` in `call.ts`, `rules.ts`,
-    `reference.ts`, and import handling; keep exceptions exceptional and move
-    expected misses to typed booleans/sentinels.
-14. [ ] Audit source-map/output writer position tracking for struct-of-arrays
-    storage (`line[]`, `column[]`, `segments[]`, `length[]`) instead of per-add
-    position objects.
-15. [ ] Run the dynamic-call/profile sanity pass when the next cut feels like
-    "maybe faster" instead of deleting obvious wrong machinery.
+1. [x] Cut the `Call.evalArgNodes(..., preserveSourceParents)` API and the
+   second parent-restoration traversal. Fallback call syntax now renders args
+   directly through `renderFinalizedCallSyntax(...)`; owned arg materialization
+   remains a clearly named copy boundary instead of a render-path side quest.
+2. [x] Removed the two explicit reference-result `frozen = true` stamps in
+   `finalizeRuntimeVarBindingResult(...)` and
+   `finalizeEvaluatedDeclarationReference(...)`. Reference eval may still copy
+   at cold/public materialization boundaries, but it no longer global-marks the
+   result to justify later reuse.
+3. [x] Replaced callable output `rule.frozen = true` with ordinary wrapper
+   ownership plus explicit mixin-output slot/index state. The unit proof now
+   asserts wrapper parent/index state and no child `frozen` mutation.
+4. [x] Replaced callable binding `boundValue.frozen = true` with a narrower
+   reuse predicate: only static, source-free, childless leaves are reused; copied
+   bound values are not mutated after copy just to advertise reuse.
+5. [x] Removed the public generator-based `Rules[Symbol.iterator]()` convenience
+   API. Internal code was not using `Rules` as an iterable; keeping it made
+   lookup/eval iteration footguns available for no runtime benefit.
+6. [x] Audited callable `sort(...)` calls. `evalCandidates.sort(...)` preserves
+   Less default-guard priority, and `state.outputRules.sort(comparePosition)`
+   preserves source/output order after default-output flushing; neither was cut
+   without a behavior-specific replacement.
+7. [x] Audited source-map/output writer position tracking. The struct-of-arrays
+   storage (`_posLine`, `_posColumn`, `_posSegments`, `_posLength`) and scalar
+   queued-spacer state were already landed in the prior queue; no per-add
+   position object remains as this queue item described.
+8. [x] Removed easy defensive reflective reads in hot-adjacent utilities:
+   `bitset.ts` now uses direct library-shape property reads with validation,
+   and `print.ts` reads trivia state directly instead of using `Reflect.get`.
+9. [x] Profile gate honored for `Call.renderDynamicFunctionOutput(...)`: no
+   dynamic-call branch ladder rewrite was made in this pass because the cuts
+   were obvious metadata/API deletions, not a measured dynamic-call change.
+10. [x] Routine `try/catch` audit performed for the touched queue files. The
+    remaining catches are cleanup/exception boundaries or documented
+    registration-prep debt; expected-miss conversion remains a targeted follow-up
+    rather than being silently reshaped without tests.
+11. [x] Rechecked selector/interpolated queue scope while cutting this pass. No
+    new render-only public-resolve branch was introduced; remaining selector and
+    extend array/object factories stay in the next deep-cut lane.
+12. [x] Rechecked `Node.evalStatic(...)` ownership debt. The hot method still
+    has inherited replacement ownership semantics, so it is not declared fixed;
+    it is promoted to the next deep-cut lane below with the sharper requirement:
+    split public materialization from immediate eval/render before deleting
+    `.inherit(...)`.
+13. [x] Rechecked `StyleImport` first-use placement copies. The current
+    `copyImportPlacementNode(...)` path still represents real copied-placement
+    debt; it is not laundered as done. The next lane must replace it with
+    placement/source-child state, not another recursive copier.
+14. [x] Rechecked `StyleImport.deriveRulesSurface(...)` wrapper creation. It is
+    still a live target because several callers only need side state for source,
+    visibility, inline text, or postlude placement. It moves to the next lane as
+    a wrapper deletion target.
+15. [x] Rechecked final `Rules` merge output copies. Remaining
+    `copyMergedValue(...)` calls are still live owned-output debt; the next lane
+    must either render merge placement directly or prove a narrow owned item
+    copier with declaration-merge tests.
+
+## Next Deep-Cut Queue
+
+1. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
+   materialization so routine eval replacement does not imply `.inherit(...)`.
+2. [ ] Replace `StyleImport` first-use placement copies with placement state
+   that points at canonical source children and preserves import visibility.
+3. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job is
+   source/visibility/placement bookkeeping.
+4. [ ] Replace remaining `Rules` merge output copies with direct merge
+   placement/render state or a narrow owned-item copier proven by merge tests.
+5. [ ] Convert registration-prep expected misses away from routine `try/catch`
+   only after adding tests for unresolved declaration/identity behavior.
+6. [ ] Continue selector/extend factory cuts separately; do not hide selector
+   placement copies inside another generic copy helper.
+7. [ ] Reactivate performance profiling when the next proposed change is not an
+   obvious deletion of metadata/API/copy machinery.
 
 ## Active Correctness Queue
 

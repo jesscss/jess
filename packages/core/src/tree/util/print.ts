@@ -77,14 +77,21 @@ type RestorablePrintStateKey =
 const DEFAULT_SPACER_SHOULD_ADD = (nextText: string): boolean => !/^[ \t\r\n\f]/u.test(nextText);
 
 function isTriviaMap(value: unknown): value is TriviaMap {
-  return Boolean(
-    value
-    && typeof value === 'object'
-    && Reflect.get(value, 'runs') instanceof Set
-    && typeof Reflect.get(value, 'lookup') === 'function'
-    && typeof Reflect.get(value, 'entries') === 'function'
-    && typeof Reflect.get(value, 'has') === 'function'
-  );
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  if (
+    !('runs' in value)
+    || !('lookup' in value)
+    || !('entries' in value)
+    || !('has' in value)
+  ) {
+    return false;
+  }
+  return value.runs instanceof Set
+    && typeof value.lookup === 'function'
+    && typeof value.entries === 'function'
+    && typeof value.has === 'function';
 }
 
 function ensureFinalPrintOptions(options: PrintOptions): asserts options is FinalPrintOptions {
@@ -243,7 +250,7 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.composedSelectorStack = seed?.composedSelectorStack;
   state.composedSelectorCache = new WeakMap();
   state.ampersandFirst = seed?.ampersandFirst;
-  const contextTrivia = Reflect.get(context.opts, 'trivia');
+  const contextTrivia = 'trivia' in context.opts ? context.opts.trivia : undefined;
   state.trivia = seed?.trivia ?? (isTriviaMap(contextTrivia) ? contextTrivia : undefined);
   state.emittedTrivia = new Set();
 

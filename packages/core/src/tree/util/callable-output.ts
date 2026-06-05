@@ -123,7 +123,6 @@ export function finalizeCallableOutput({
 
   const output = createWrapperOutput(state.sourceRules, restrictMixinOutputLookup);
   for (const rule of state.outputRules) {
-    rule.frozen = true;
     output.push(rule);
   }
   attachMixinOutputSlot(output, state.sourceRules, restrictMixinOutputLookup);
