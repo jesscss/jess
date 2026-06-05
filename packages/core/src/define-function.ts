@@ -344,12 +344,23 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
   const listArg = args.length === 1 && isNode(args[0], N.List)
     ? args[0] as List
     : undefined;
-  args = listArg ? [...listArg.value] : args;
+  if (listArg) {
+    const listValues = listArg.value;
+    args = new Array(listValues.length);
+    for (let i = 0; i < listValues.length; i++) {
+      args[i] = listValues[i];
+    }
+  }
   // Only reject record-based calls (plain objects) when there's no params metadata
   // Collections are allowed as positional arguments even without params metadata
   // (e.g., detached rulesets passed to mixins)
-  if (!runtimeFn.options?.params && args.some(arg => isPlainObject(arg) && !isNode(arg))) {
-    throw new Error('Record-based call without params is not supported');
+  if (!runtimeFn.options?.params) {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (isPlainObject(arg) && !isNode(arg)) {
+        throw new Error('Record-based call without params is not supported');
+      }
+    }
   }
 
   const hasParams = !!runtimeFn.options?.params;
@@ -372,9 +383,18 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
       setRawArgsPlacement(originalArgsList, placement);
     }
   } else {
-    originalArgsList = new List(args.map(arg => isNode(arg) ? copyWithReusableLeaves(arg) : arg));
+    const copiedArgs = new Array(args.length);
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      copiedArgs[i] = isNode(arg) ? copyWithReusableLeaves(arg) : arg;
+    }
+    originalArgsList = new List(copiedArgs);
   }
-  args = [...originalArgsList.value];
+  const originalValues = originalArgsList.value;
+  args = new Array(originalValues.length);
+  for (let i = 0; i < originalValues.length; i++) {
+    args[i] = originalValues[i];
+  }
 
   const params = runtimeFn.options?.params;
   const options = runtimeFn.options;
@@ -410,7 +430,13 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
 
       // Check if we have a record object (plain object) in args
       // Collections are treated as positional arguments, not record-based calls
-      const hasRecordArg = args.some(arg => isPlainObject(arg));
+      let hasRecordArg = false;
+      for (let i = 0; i < args.length; i++) {
+        if (isPlainObject(args[i])) {
+          hasRecordArg = true;
+          break;
+        }
+      }
 
       for (let i = 0; i < signature.length; i++) {
         const def = signature[i]!;
@@ -430,7 +456,13 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
       }
 
       // Check if we have too many arguments (not counting rest params or record args)
-      const hasRest = signature.some(p => p.rest);
+      let hasRest = false;
+      for (let i = 0; i < signature.length; i++) {
+        if (signature[i]!.rest) {
+          hasRest = true;
+          break;
+        }
+      }
       if (!hasRest && !hasRecordArg && args.length > signature.length) {
         isValid = false;
       }
@@ -514,17 +546,32 @@ function applyConversionPlugins(value: unknown, plugins: ConversionPlugin[]): un
  */
 function parseArgumentsToRecord(args: any[], params: readonly ParamDefinition[]): any {
   const record: any = {};
-  const restIndex = params.findIndex(p => p.rest);
+  let restIndex = -1;
+  for (let i = 0; i < params.length; i++) {
+    if (params[i]!.rest) {
+      restIndex = i;
+      break;
+    }
+  }
   const hasRest = restIndex >= 0;
 
   // Handle pure record call (single object argument)
   if (args.length === 1 && isPlainObject(args[0])) {
-    const isClassInstance = params?.some((opt) => {
+    let isClassInstance = false;
+    for (let i = 0; i < params.length; i++) {
+      const opt = params[i]!;
       const types = Array.isArray(opt.type) ? opt.type : [opt.type];
-      return types.some(type =>
-        typeof type === 'function' && args[0] instanceof type
-      );
-    });
+      for (let j = 0; j < types.length; j++) {
+        const type = types[j];
+        if (typeof type === 'function' && args[0] instanceof type) {
+          isClassInstance = true;
+          break;
+        }
+      }
+      if (isClassInstance) {
+        break;
+      }
+    }
 
     if (!isClassInstance) {
       const input = args[0] as any;
@@ -636,15 +683,19 @@ function buildPositionalArgs(record: any, params: readonly ParamDefinition[]): a
       const v = record[name];
       const arr: any[] = Array.isArray(v) ? v : (v === undefined ? [] : [v]);
       if (def.lazy) {
-        positionalArgs.push(...arr.map(item => createThunk(item, def)));
+        for (let j = 0; j < arr.length; j++) {
+          positionalArgs.push(createThunk(arr[j], def));
+        }
       } else {
-        positionalArgs.push(...arr.map((item) => {
+        for (let j = 0; j < arr.length; j++) {
+          const item = arr[j];
           // Apply conversion plugins if defined
           if (def.convert && item instanceof Dimension) {
-            return applyConversionPlugins(item, def.convert);
+            positionalArgs.push(applyConversionPlugins(item, def.convert));
+          } else {
+            positionalArgs.push(item);
           }
-          return item;
-        }));
+        }
       }
     } else {
       const v = record[name];
@@ -732,7 +783,9 @@ async function buildCallWithContextPositionalArgs(
       const v = record[name];
       const arr: any[] = Array.isArray(v) ? v : (v === undefined ? [] : [v]);
       if (def.lazy) {
-        positionalArgs.push(...arr.map(item => createThunk(item, def, context)));
+        for (let j = 0; j < arr.length; j++) {
+          positionalArgs.push(createThunk(arr[j], def, context));
+        }
       } else {
         for (const item of arr) {
           let processedItem: any = (isNode(item) && !item.evaluated) ? item.eval(context) : item;
@@ -885,10 +938,22 @@ function validateArguments(record: any, params?: readonly ParamDefinition[]) {
       const elementTypes = Array.isArray(expectedType) ? expectedType : [expectedType];
       for (let idx = 0; idx < value.length; idx++) {
         const el = value[idx];
-        const isValid = (Array.isArray(elementTypes) ? elementTypes : [elementTypes]).some(type => isValidType(el, type));
+        let isValid = false;
+        for (let i = 0; i < elementTypes.length; i++) {
+          if (isValidType(el, elementTypes[i]!)) {
+            isValid = true;
+            break;
+          }
+        }
         if (!isValid) {
-          const types = Array.isArray(elementTypes) ? elementTypes : [elementTypes];
-          const typeList = types.map((t: any) => typeof t === 'function' ? t.name : t).join(', ');
+          let typeList = '';
+          for (let i = 0; i < elementTypes.length; i++) {
+            if (i > 0) {
+              typeList += ', ';
+            }
+            const t = elementTypes[i] as any;
+            typeList += typeof t === 'function' ? t.name : t;
+          }
           const actualType = typeof el === 'object' && el !== null ? el.constructor?.name || typeof el : typeof el;
           throw new TypeError(`Element ${idx} of '${paramName}' must be of type '${typeList}'. Got: ${actualType}`);
         }
@@ -932,9 +997,22 @@ function validateArgumentIfNeeded(
 function validateValue(value: any, expectedType: ArgType | readonly ArgType[], paramName: string, context: string = 'Argument'): ValidationResult {
   // Handle array of types (union types)
   if (Array.isArray(expectedType)) {
-    const isValid = expectedType.some(type => isValidType(value, type));
+    let isValid = false;
+    for (let i = 0; i < expectedType.length; i++) {
+      if (isValidType(value, expectedType[i]!)) {
+        isValid = true;
+        break;
+      }
+    }
     if (!isValid) {
-      const typeList = expectedType.map((t: any) => typeof t === 'function' ? t.name : t).join(', ');
+      let typeList = '';
+      for (let i = 0; i < expectedType.length; i++) {
+        if (i > 0) {
+          typeList += ', ';
+        }
+        const t = expectedType[i] as any;
+        typeList += typeof t === 'function' ? t.name : t;
+      }
       const actualType = typeof value === 'object' && value !== null ? value.constructor?.name || typeof value : typeof value;
       return {
         isValid: false,

@@ -130,21 +130,21 @@ function getTreeVisitMethod(visitor: unknown): TreeVisitMethod | undefined {
   if (typeof visitor !== 'object' || visitor === null) {
     return undefined;
   }
-  const method = Reflect.get(visitor, '_visit');
+  const method = (visitor as { _visit?: unknown })._visit;
   return typeof method === 'function' ? method : undefined;
 }
 
 function hasVisitedNodeSet(visitor: unknown): boolean {
   return typeof visitor === 'object'
     && visitor !== null
-    && Reflect.get(visitor, 'visitedNodes') instanceof Set;
+    && (visitor as { visitedNodes?: unknown }).visitedNodes instanceof Set;
 }
 
 function getVisitMethod(visitor: unknown): VisitMethod | undefined {
   if (typeof visitor !== 'object' || visitor === null) {
     return undefined;
   }
-  const method = Reflect.get(visitor, 'visit');
+  const method = (visitor as { visit?: unknown }).visit;
   return typeof method === 'function' ? method : undefined;
 }
 
@@ -179,9 +179,7 @@ export const defineType = <
   let ctor = Clazz;
   do {
     const proto = ctor?.prototype;
-    const type = proto && Object.hasOwn(proto, 'type')
-      ? proto.type
-      : undefined;
+    const type = proto?.type;
 
     if (!type) {
       break;

@@ -713,40 +713,34 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Deleted `Call.deriveCall(...)`; the final public fallback Call is now
-   constructed at the only remaining site and owned once by `markCallOutput`.
-2. [x] Updated fallback-materialization tests so absence of the private
-   `deriveCall` hook counts as zero derived fallback calls instead of failing
-   on an old instrumentation seam.
-3. [x] Removed the per-render `normalizedArgs` array from
-   `Call.serializeRenderedArgs(...)`; the serializer now walks source args and
-   skips empty slots in place.
-4. [x] Preserved escaped-paren and comma behavior while deleting that temporary
-   argument array.
-5. [x] Changed `Reference.applyReferenceResultMetadata(...)` from an options
-   object to a boolean `frozen` flag; no tiny `{ frozen: true }` allocation on
-   lookup finalization.
-6. [x] Deleted `Reference.copyReferenceValue(...)`; callers now use
-   `copyWithReusableLeaves(...)` directly where copying still exists.
-7. [x] Replaced `Reference` container `.every(...)` closure checks with indexed
-   loops in the source-free/render-text reusable-container gates.
-8. [x] Deleted the `pipe(...)` wrapper from
-   `resolveReferenceTargetValue(...)`.
-9. [x] Deleted the `pipe(...)` wrapper from
-   `finalizeDeclarationReferenceResult(...)`.
-10. [x] Deleted the `pipe(...)` wrapper from `Reference.render(...)`.
-11. [x] Deleted the `pipe(...)` wrapper from
-    `resolveRawReferenceLookupTarget(...)`, keeping `context.popReference()`
-    cleanup on success and catch.
-12. [x] Deleted the `pipe(...)` wrapper from `evaluateReferenceNode(...)`;
-    reference evaluation now uses direct MaybePromise branches and no generic
-    pipeline helper.
-13. [x] Removed the `pipe` import from `reference.ts`; `Reference` now has zero
-    `pipe(...)` calls.
-14. [x] Ran focused `Call`/`Reference` lint and the lookup-heavy focused suite
-    (`329` passed, `9` skipped) during the pass.
-15. [x] Recorded this as a cut-only pass. No benchmark/profile was run, so make
-    no speed claim from this queue completion.
+1. [x] Replaced fixed visitor `Reflect.get(visitor, '_visit')` with direct
+   `_visit` property access.
+2. [x] Replaced fixed visitor `Reflect.get(visitor, 'visit')` with direct
+   `visit` property access.
+3. [x] Replaced `Reflect.get(visitor, 'visitedNodes')` with direct
+   `visitedNodes` access.
+4. [x] Left dynamic visitor method lookup on `Reflect.get(visitor, methodName)`
+   as a cold/plugin compatibility boundary instead of adding unsafe casts.
+5. [x] Replaced `Object.hasOwn(proto, 'type')` in `defineType(...)` with direct
+   prototype `type` access; node prototypes are Jess-owned shapes here.
+6. [x] Replaced `isNode(...)` duck-typing `Reflect.get(value, 'type')` /
+   `Reflect.get(value, 'children')` with direct property reads.
+7. [x] Replaced `isNode(..., mask)` `Reflect.get(value, 'nodeType')` with a
+   direct property read.
+8. [x] Replaced `callWithContext(...)` list-argument spread copy with an indexed
+   array fill.
+9. [x] Replaced no-metadata record-argument `.some(...)` with an indexed loop.
+10. [x] Replaced metadata argument `args.map(...)` cloning with an indexed loop.
+11. [x] Replaced `originalArgsList` spread copy with an indexed loop.
+12. [x] Replaced overload matching `.some(...)` checks for record/rest args
+    with indexed loops.
+13. [x] Replaced `parseArgumentsToRecord(...)` `findIndex(...)` and nested
+    class-instance `.some(...)` checks with indexed loops.
+14. [x] Replaced rest-argument `map(...)` + spread pushes and union type
+    validation `.some(...)` / `.map(...).join(...)` with indexed loops.
+15. [x] Ran focused lint and function/visitor-heavy tests (`250` passed,
+    `8` skipped). No benchmark/profile was run, so make no speed claim from
+    this queue completion.
 
 ### Next 15-Item Queue
 
@@ -777,23 +771,23 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 9. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
    repeated branch code only if it can be done without reintroducing a generic
    pipeline/helper ladder.
-10. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
+10. [ ] Continue `define-function.ts` boring-JS cleanup: classify remaining
+   `.map(...)`/`.some(...)` sites as cold signature setup, diagnostics, or hot
+   argument conversion before deleting more convenience calls.
+11. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
    ownership with source/diagnostic state when the resolved node is only queued
    for registration; do not add a new privileged location-copy helper.
-11. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
+12. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
    output with source-backed merge placement or direct render state.
-12. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
+13. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
     narrower merge-value copier or render-state path so merge normalization
     does not clone whole value subtrees.
-13. [ ] Replace `StyleImport` first-use import placement child copies with
+14. [ ] Replace `StyleImport` first-use import placement child copies with
     canonical children plus placement/render state; imports should not fake
     transferred ownership.
-14. [ ] Audit remaining `StyleImport.deriveRulesSurface(...)` wrapper creation
+15. [ ] Audit remaining `StyleImport.deriveRulesSurface(...)` wrapper creation
     for source/visibility/placement fields that can be direct state instead of
     derived `Rules` surfaces.
-15. [ ] Classify remaining base `Node` visitor/defineType `Reflect.get(...)` /
-    `Object.hasOwn(...)`: convert Jess-owned probes, document external visitor
-    probes as cold/plugin compatibility.
 
 ## Active Correctness Queue
 
