@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
 import { Context } from '../../context.js';
 import { JsExpression } from '../js-expr.js';
 import * as Registries from '../util/registry-utils.js';
@@ -1219,7 +1219,9 @@ describe('reference', () => {
 
     it('preserves rules-like variable references as shallow owned surfaces', async () => {
       const originalClone = RulesClass.prototype.clone;
+      const originalInherit = RulesClass.prototype.inherit;
       let clonedRules = 0;
+      let inheritedRules = 0;
       RulesClass.prototype.clone = function cloneForCounting(
         this: RulesClass,
         ...args: Parameters<typeof originalClone>
@@ -1229,6 +1231,15 @@ describe('reference', () => {
       };
       const sourceDecl = decl({ name: 'color', value: any('blue') });
       const sourceValue = rules([sourceDecl]);
+      RulesClass.prototype.inherit = function inheritForCounting(
+        this: RulesClass,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === sourceValue) {
+          inheritedRules++;
+        }
+        return originalInherit.apply(this, args);
+      };
       const sourceBinding = vardecl({
         name: any('block'),
         value: sourceValue
@@ -1253,10 +1264,12 @@ describe('reference', () => {
           throw new Error('Expected Rules source');
         }
         expect(clonedRules).toBe(0);
+        expect(inheritedRules).toBe(0);
         expect(resolved.value[0]).toBe(resolvedSource.value[0]);
         expect(context.referenceStack).toBe(0);
       } finally {
         RulesClass.prototype.clone = originalClone;
+        RulesClass.prototype.inherit = originalInherit;
       }
     });
 
@@ -1695,23 +1708,39 @@ describe('reference', () => {
         name: any('.fast-mixin'),
         rules: rules([decl({ name: 'color', value: any('green') })])
       });
+      const originalInherit = MixinClass.prototype.inherit;
+      let inheritedMixins = 0;
+      MixinClass.prototype.inherit = function inheritForCounting(
+        this: MixinClass,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === mixinDef) {
+          inheritedMixins++;
+        }
+        return originalInherit.apply(this, args);
+      };
       const root = rules([mixinDef]);
       const evald = setRulesContext(await root.eval(context));
 
-      const resolved = await ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }).resolve(context);
+      try {
+        const resolved = await ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }).resolve(context);
 
-      expect(resolved.type).toBe('MixinCollection');
-      expect(resolved.value).toHaveLength(1);
-      expect(resolved.value[0]).not.toBe(mixinDef);
-      expect(resolved.value[0]!.type).toBe('Mixin');
-      expect(resolved.value[0]!.sourceNode).toBe(mixinDef);
+        expect(resolved.type).toBe('MixinCollection');
+        expect(resolved.value).toHaveLength(1);
+        expect(resolved.value[0]).not.toBe(mixinDef);
+        expect(resolved.value[0]!.type).toBe('Mixin');
+        expect(resolved.value[0]!.sourceNode).toBe(mixinDef);
+        expect(inheritedMixins).toBe(0);
 
-      const resolvedAgain = resolved.resolve(context);
+        const resolvedAgain = resolved.resolve(context);
 
-      expect(resolvedAgain).toBe(resolved);
-      expect(resolved.evaluated).toBe(false);
-      expect(resolved.registrationPrepared).toBe(false);
-      expect(context.referenceStack).toBe(0);
+        expect(resolvedAgain).toBe(resolved);
+        expect(resolved.evaluated).toBe(false);
+        expect(resolved.registrationPrepared).toBe(false);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        MixinClass.prototype.inherit = originalInherit;
+      }
     });
 
     it('should get a variable from scope', async () => {

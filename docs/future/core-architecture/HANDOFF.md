@@ -713,43 +713,47 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Started the `Reference` lane with the common Less `@space` shape:
-   simple variable reference, no target, no filter, no rules-like preservation.
-2. [x] Added focused proof that render of a source-backed static sequence value
-   does not call public `Reference.evalNode(...)`.
-3. [x] Proved the same render leaves the source value unfrozen and parented to
-   its canonical declaration surface.
-4. [x] Proved flat/segmented buffer render stays aligned for the same raw value.
-5. [x] Verified the proof already passed behaviorally, meaning previous
-   text-only finalization avoided obvious owned-result metadata for this case.
-6. [x] Cut the implementation anyway: `Reference.render(...)` now tries
-   `resolveRawReferenceLookupTarget(...)` first for simple variable refs with
-   no fallback.
-7. [x] Render returns directly from the raw lookup only when the resolved value
-   is a node, non-rules-like, and safe for text-only render.
-8. [x] Missing, non-node, rules-like, dynamic, fallback, target, filtered, and
-   preserved-rules-like references fall back to the existing evaluator.
-9. [x] Kept fallback handling out of the raw fast path for now to avoid changing
-   optional reference semantics.
-10. [x] Kept rules-like references out of the raw fast path because they still
-    need the public/callable materialization decision.
-11. [x] Collapsed the broad evaluator call into one local fallback closure so
-    the raw path does not duplicate the generic render/eval block.
-12. [x] Re-ran the focused raw-lookup proof and saw it pass.
-13. [x] Ran the full `reference.test.ts` file (`102` passed).
-14. [x] This is a branch-count/function-ladder cut, not a measured performance
-    win; no benchmark/profile was run.
-15. [x] Next Reference work should attack rules-like/fallback ownership and the
-    remaining `finalizeReferenceLookupResult(...)` ladder.
+1. [x] Targeted the next `Reference` ownership cut:
+   `createRulesLikeReferenceSurface(...)`.
+2. [x] Removed the generic `.inherit(...)` call from that helper.
+3. [x] Replaced it with explicit shallow-surface metadata:
+   `parent`, `index`, and `sourceNode`.
+4. [x] Preserved constructor-based public rules-like materialization for now;
+   this pass did not delete the surface itself.
+5. [x] Kept `freezeRulesLikeReferenceValue(...)` in place as known remaining
+   debt; this pass only cut the inherited metadata blob.
+6. [x] Strengthened the rules-like variable-reference proof to count
+   `Rules.prototype.inherit(...)` calls and confirm zero inherited metadata on
+   the existing runtime-binding preserve path.
+7. [x] Avoided forcing runtime-binding preserve through an extra new surface
+   after the focused test showed that would add object creation for no render
+   contract.
+8. [x] Strengthened the direct mixin-ruleset proof to count
+   `Mixin.prototype.inherit(...)` calls on the helper-backed path.
+9. [x] Confirmed direct mixin-ruleset lookup still returns a preserved
+   `MixinCollection` item rather than the live canonical mixin.
+10. [x] Confirmed the preserved direct mixin keeps `sourceNode` pointed at the
+    canonical mixin without invoking `.inherit(...)`.
+11. [x] Confirmed rules-like variable preservation still keeps canonical source
+    children and does not clone the source `Rules`.
+12. [x] Left parent-identity assertions out of the hot proof because eval'd
+    output parent identity is not a goal unless a cold public materialization
+    API explicitly promises it.
+13. [x] Re-ran the focused rules-like variable/direct mixin-ruleset proof and
+    saw it pass.
+14. [x] This is an object/function-call cut, not a measured performance win; no
+    benchmark/profile claim is attached.
+15. [x] Next Reference work should attack `frozen`, fallback/direct-value
+    metadata, and the remaining generic finalizer ladder.
 
 ### Next 15-Item Queue
 
-1. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
-   shallow owned surface with explicit public materialization state or a live
-   rules-like binding.
-2. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
+1. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
    metadata paths with a render-only value path and a separate public-value
    materializer.
+2. [ ] Audit whether `createRulesLikeReferenceSurface(...)` can stop freezing
+   canonical rules-like values, or push that freeze behind a cold public
+   materialization boundary.
 3. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
    repeated branch code only if it can be done without reintroducing a generic
    pipeline/helper ladder.

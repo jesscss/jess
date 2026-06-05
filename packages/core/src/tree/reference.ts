@@ -1491,8 +1491,9 @@ function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeV
     throw new TypeError('Preserved rules-like value must remain a Node');
   }
   const preservedValue: PreservedRulesLikeValue = constructed;
-  preservedValue.inherit(directValue);
-  preservedValue.parent = directValue.parent;
+  const sourceNode = directValue.sourceNode instanceof Node ? directValue.sourceNode : directValue;
+  preservedValue.parent = directValue.parent ?? sourceNode.parent;
+  preservedValue.index = directValue.index ?? sourceNode.index;
   preservedValue.sourceNode = directValue;
   return preservedValue;
 }
