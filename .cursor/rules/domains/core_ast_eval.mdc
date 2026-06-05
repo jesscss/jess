@@ -21,7 +21,13 @@ globs:
 ## Architecture priority
 
 - Follow `AGENTS.md` for repo-wide goals.
-- If the work touches the evaluation-model refactor, use `docs/future/node-copy-reduction/README.md` and `docs/future/node-copy-reduction/session-instance-architecture.md` as the canonical design docs.
+- If the work touches the evaluation-model refactor, use
+  `docs/future/core-architecture/HANDOFF.md` as the active queue and
+  `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md` before closing a
+  queue pass.
+- Use `docs/future/core-architecture/PERFORMANCE-HANDOFF.md` for parked
+  performance protocol and reactivation thresholds.
+- Use `docs/future/node-copy-reduction/README.md` only as historical background.
 - Do not preserve clone-heavy or materialization-heavy internals just to keep a local slice green if that fights the target runtime model.
 
 ## Cross-package testing nuance

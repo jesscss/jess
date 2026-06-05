@@ -5,10 +5,10 @@ not become a running work log.
 
 For repo-wide rules, read `AGENTS.md`. For the active architecture roadmap, use:
 
-- `docs/future/node-copy-reduction/README.md`
-- `docs/future/node-copy-reduction/HANDOFF.md`
-- `docs/future/performance/2026-04-13-registry-redesign-handoff.md`
-- `docs/future/pre-eval-elimination.md`
+- `docs/future/core-architecture/HANDOFF.md`
+- `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md`
+- `docs/future/core-architecture/PERFORMANCE-HANDOFF.md`
+- `docs/future/node-copy-reduction/README.md` only as historical background
 
 ## Package Build Shape
 
