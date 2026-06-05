@@ -123,6 +123,12 @@ keeps the Less path clean.
   a hostile proxy boundary. Direct property reads/writes are the default. Keep
   reflective access only for genuinely unknown external objects, cold visitor /
   plugin compatibility probes, or documented third-party internals.
+- Do not wrap explicit/private runtime state in convenience accessors for
+  internal hot paths. If the node owns `_treeContext`, `_options`, `_location`,
+  flags, or similarly declared runtime fields, internal code should read the
+  field directly after type narrowing. A getter that only returns a field is a
+  function call and another API surface to defend; keep it only for public
+  compatibility or lazy allocation semantics that callers explicitly need.
 - Use existing node state as the hot-path dispatch contract; do not invent a
   second declaration graph, kind graph, or side-channel taxonomy unless a fact
   truly does not exist. The repo already carries many branch facts:
@@ -727,6 +733,8 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
    copies remain because first-use placement still needs explicit output state.
 6. [x] Cut lazy tree-context allocation from `StyleImport` placement copies,
    derived rules surfaces, CSS import wrappers, and render context switching.
+   Follow-up cut deleted `Node.treeContextIfSet`; owned-node internals now read
+   `_treeContext` directly instead of paying a convenience getter.
 7. [x] Replaced `AttributeSelector.withResolvedParts(...)` `Reflect.construct`
    and spread reconstruction with direct `new AttributeSelector(...)` and
    explicit fields.

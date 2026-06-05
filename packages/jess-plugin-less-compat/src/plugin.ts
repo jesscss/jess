@@ -174,7 +174,7 @@ export class LessCompatPlugin extends AbstractPlugin {
   }
 
   private sourceMayContainPluginDirective(tree?: Rules): boolean {
-    const source = tree?.treeContextIfSet?.file?.source;
+    const source = tree?._treeContext?.file?.source;
     return typeof source === 'string' && source.includes('@plugin');
   }
 

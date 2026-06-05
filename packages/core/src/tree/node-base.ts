@@ -250,7 +250,7 @@ export abstract class Node<
     return (this._location ??= []);
   }
 
-  private _treeContext: TreeContext | undefined;
+  _treeContext: TreeContext | undefined;
   /** Assigned in index to avoid circularity */
   declare readonly treeContext: TreeContext;
 
@@ -508,10 +508,6 @@ export abstract class Node<
     this._treeContext = treeContext;
     this._location = location;
     this._options = options;
-  }
-
-  get treeContextIfSet(): TreeContext | undefined {
-    return this._treeContext;
   }
 
   set<K extends NodeSetKey<Data>>(key: K, value: NodeSetValue<Data, K>): void;
@@ -897,7 +893,7 @@ export abstract class Node<
 
     const newNode: this = Reflect.construct(
       this.constructor,
-      [cloned, this._options ? { ...this._options } : undefined, this.location, this.treeContextIfSet]
+      [cloned, this._options ? { ...this._options } : undefined, this.location, this._treeContext]
     );
     newNode.inherit(this);
 
@@ -1136,7 +1132,7 @@ export abstract class Node<
       setParent(this, this.parent ?? node.parent);
     }
     this._location = node.location;
-    this._treeContext ??= node.treeContextIfSet;
+    this._treeContext ??= node._treeContext;
     /** Copy state exactly (not OR, to preserve removed flags) */
     // Only sync F_VISIBLE flag, preserve all other flags
     if (!node.hasFlag(F_VISIBLE)) {

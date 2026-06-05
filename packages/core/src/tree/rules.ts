@@ -3124,7 +3124,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Dynamically created Rules (e.g., mixin parameter wrappers) may not have treeContext
     // and we don't want to lose leakyRules and other settings
     // IMPORTANT: Check the explicit tree context, not treeContext (getter that lazily creates).
-    const rulesTreeContext = rules.treeContextIfSet;
+    const rulesTreeContext = rules._treeContext;
     if (rulesTreeContext && (!treeContext || treeContext !== rulesTreeContext)) {
       context.allRoots.push(rules);
       context.treeContext = rulesTreeContext;

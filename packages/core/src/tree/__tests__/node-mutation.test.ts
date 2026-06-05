@@ -28,11 +28,11 @@ describe('Node mutation', () => {
 
   it('exposes only an explicitly attached tree context without creating one', () => {
     const node = any('10px');
-    expect(node.treeContextIfSet).toBeUndefined();
+    expect(node._treeContext).toBeUndefined();
 
     const treeContext = new TreeContext();
     const sourced = new Any('10px', undefined, undefined, treeContext);
 
-    expect(sourced.treeContextIfSet).toBe(treeContext);
+    expect(sourced._treeContext).toBe(treeContext);
   });
 });

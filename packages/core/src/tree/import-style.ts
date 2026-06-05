@@ -100,7 +100,7 @@ function constructImportPlacementNode(node: Node, value: unknown): Node {
       value,
       node.options ? { ...node.options } : undefined,
       node.location.length === 0 ? undefined : node.location,
-      node.treeContextIfSet
+      node._treeContext
     ]
   );
   if (!(copy instanceof Node)) {
@@ -123,7 +123,7 @@ function copyImportPlacementNode(node: Node): Node {
       node.value,
       node.options ? { ...node.options } : undefined,
       node.location.length === 0 ? undefined : node.location,
-      node.treeContextIfSet
+      node._treeContext
     ).inherit(node);
   }
   const derivedAmpersand = copyImportPlacementAmpersand(node);
@@ -515,7 +515,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   ): Rules {
     const sourceLocation = anchorRules.location.length === 6 ? anchorRules.location : undefined;
     const wrapped = childNodes !== undefined
-      ? new Rules([], anchorRules.options ? { ...anchorRules.options } : undefined, sourceLocation, anchorRules.treeContextIfSet)
+      ? new Rules([], anchorRules.options ? { ...anchorRules.options } : undefined, sourceLocation, anchorRules._treeContext)
       : anchorRules.derive();
     if (childNodes !== undefined) {
       wrapped.parent = anchorRules.parent;
@@ -788,13 +788,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
     const prelude = preludeNodes.length === 1
       ? preludeNodes[0]
-      : new Sequence(preludeNodes, undefined, undefined, this.treeContextIfSet);
+      : new Sequence(preludeNodes, undefined, undefined, this._treeContext);
 
     const location = this.location && this.location.length === 6 ? this.location : undefined;
     return new AtRule({
       name: new Any('@import', { role: 'atkeyword' }),
       prelude
-    }, undefined, location, this.treeContextIfSet);
+    }, undefined, location, this._treeContext);
   }
 
   constructor(value: StyleImportValue, options?: StyleImportOptions, location?: NodeLocation, treeContext?: TreeContext) {
@@ -944,8 +944,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       if (inheritedReferenceMode && !importOptions!.multiple) {
         importOptions!.reference = true;
       }
-      if (node.treeContextIfSet) {
-        context.treeContext = node.treeContextIfSet;
+      if (node._treeContext) {
+        context.treeContext = node._treeContext;
       }
       if (importOptions!.multiple || importOptions!.reference) {
         // Scope push/pop is intentionally paired in this method's try/finally.

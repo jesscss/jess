@@ -277,7 +277,7 @@ describe('Control Nodes', () => {
       throw new Error('Expected unmatched $if output to be Rules');
     }
     expect(resolved.location).toHaveLength(0);
-    expect(resolved.treeContextIfSet).toBeUndefined();
+    expect(resolved._treeContext).toBeUndefined();
     expect(resolved.scopeFrame).toBeUndefined();
     expect(resolved.parent).toBeUndefined();
     expect(resolved.toTrimmedString()).toBe('');
@@ -468,7 +468,7 @@ describe('Control Nodes', () => {
       throw new Error('Expected false $while output to be Rules');
     }
     expect(resolved.location).toHaveLength(0);
-    expect(resolved.treeContextIfSet).toBeUndefined();
+    expect(resolved._treeContext).toBeUndefined();
     expect(resolved.scopeFrame).toBeUndefined();
     expect(resolved.toTrimmedString()).toBe('');
     expect(node.evaluated).toBe(false);

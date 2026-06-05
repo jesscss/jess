@@ -69,7 +69,7 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     const parentLibrary = parent !== this && isSelector(parent)
       ? parent.keySetLibrary
       : undefined;
-    const treeContext = this.treeContextIfSet;
+    const treeContext = this._treeContext;
     const library = keySetLibrary
       ?? parentLibrary
       ?? sourceLibrary

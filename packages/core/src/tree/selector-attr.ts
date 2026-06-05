@@ -50,7 +50,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
       },
       this._options,
       this.location,
-      this.treeContextIfSet
+      this._treeContext
     );
     node.inherit(this);
     return node;
