@@ -511,7 +511,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     const selector = this._selectorContainer?.selector;
     if (selector && isNode(selector, N.SelectorList) && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
       const arg = copyOwnedWithReusableLeaves(selector);
-      if (!isNode(arg, N.Selector)) {
+      if (!(arg instanceof Selector)) {
         throw new TypeError('Expected selector copy');
       }
       return createGeneratedIsPseudo(arg);

@@ -197,13 +197,8 @@ export class Call extends Node<CallValue, CallOptions> {
     const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
       ? String(name.value.key)
       : stringifyValueOf(fallbackValue);
-    const evaluatedArgs = await state.source.evalArgNodes(
-      context,
-      state.args,
-      true
-    );
     const rendered = await state.source.renderFinalizedCallSyntax(fallbackName, state, context, prepareRenderPrintState(context), {
-      args: evaluatedArgs,
+      args: state.args,
       ...(state.contentNode && { contentNode: state.contentNode })
     });
     return state.source.markCallOutput(new Any(rendered, { role: 'any' }));

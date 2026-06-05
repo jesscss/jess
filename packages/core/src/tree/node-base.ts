@@ -1095,7 +1095,7 @@ export abstract class Node<
       evald = node;
     }
     evald.evaluated = true;
-    if (node !== evald && typeof evald.inherit === 'function') {
+    if (node !== evald) {
       evald.inherit(node);
     }
     return evald;

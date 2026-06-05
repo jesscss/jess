@@ -31,7 +31,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return canReuseLeaf(node) ? reuseLeaf(node) : copyWithReusableLeaves(node);
   }
 
-  private withResolvedParts(name: string | Node, value: Node | undefined): this {
+  private withResolvedParts(name: string | Node, value: Node | undefined): AttributeSelector {
     const currentName = this.value.name;
     const currentValue = this.value.value;
     const nextName = (
@@ -41,24 +41,22 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
           ? this.copyForDerived(name)
           : name
     );
-    const node: this = Reflect.construct(
-      this.constructor,
-      [
-        {
-          ...this.value,
-          name: nextName,
-          value: value && value === currentValue ? this.copyForDerived(value) : value
-        },
-        this._options ? { ...this._options } : undefined,
-        this.location,
-        this.treeContext
-      ]
+    const node = new AttributeSelector(
+      {
+        name: nextName,
+        op: this.value.op,
+        value: value && value === currentValue ? this.copyForDerived(value) : value,
+        mod: this.value.mod
+      },
+      this._options,
+      this.location,
+      this.treeContextIfSet
     );
     node.inherit(this);
     return node;
   }
 
-  private createResolvedValueNode(value: Node): this {
+  private createResolvedValueNode(value: Node): AttributeSelector {
     return this.withResolvedParts(this.value.name, quoted(String(value.valueOf())));
   }
 
@@ -111,7 +109,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return w.getSince(mark);
   }
 
-  override evalNode(context: Context): MaybePromise<this> {
+  override evalNode(context: Context): MaybePromise<Node> {
     const evaluated = super.evalNode(context);
     if (isThenable(evaluated)) {
       return evaluated.then(() => this.evaluateInterpolatedAttributeValue(context));
@@ -119,7 +117,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return this.evaluateInterpolatedAttributeValue(context);
   }
 
-  private evaluateInterpolatedAttributeValue(context: Context): MaybePromise<this> {
+  private evaluateInterpolatedAttributeValue(context: Context): MaybePromise<Node> {
     const { value } = this.value;
     // Handle Less interpolation that the parser may have left as a raw token in selectors:
     //   [data=@{attr-data}]
@@ -148,20 +146,30 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return this;
   }
 
-  protected override resolveForRender(context: Context): MaybePromise<this> {
+  protected override resolveForRender(context: Context): MaybePromise<AttributeSelector> {
     const currentName = this.value.name;
     const currentValue = this.value.value;
     const name = typeof currentName === 'string' ? currentName : currentName.resolve(context);
     const value = this.resolveAttributeValue(context);
-    const finalize = (resolvedName: string | Node, resolvedValue: Node | undefined): this => {
+    const finalize = (resolvedName: string | Node, resolvedValue: Node | undefined): AttributeSelector => {
       if (resolvedName === currentName && resolvedValue === currentValue) {
         return this;
       }
       return this.withResolvedParts(resolvedName, resolvedValue);
     };
-    if (isThenable(name) || isThenable(value)) {
-      return Promise.all([name, value]).then(([resolvedName, resolvedValue]) => {
-        return finalize(resolvedName as string | Node, resolvedValue as Node | undefined);
+    if (isThenable(name)) {
+      return (name as Promise<string | Node>).then((resolvedName) => {
+        if (isThenable(value)) {
+          return (value as Promise<Node | undefined>).then((resolvedValue) => {
+            return finalize(resolvedName, resolvedValue);
+          });
+        }
+        return finalize(resolvedName, value as Node | undefined);
+      });
+    }
+    if (isThenable(value)) {
+      return (value as Promise<Node | undefined>).then((resolvedValue) => {
+        return finalize(name as string | Node, resolvedValue);
       });
     }
     return finalize(name as string | Node, value as Node | undefined);

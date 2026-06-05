@@ -713,97 +713,85 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Audited `Node.evalStatic(...)` parent stamping. The hot path still calls
-   `.inherit(...)` when eval returns a different node; next work should split
-   cold public materialization from immediate eval/render so this is not a
-   default ownership rewrite.
-2. [x] Classified remaining `reference.ts` `copyWithReusableLeaves(...)` sites:
-   public owned result materialization, dynamic container fallback
-   materialization, declaration value copy/eval boundary, and rules-like
-   callable materialization. None are defended as hot-path ideals.
-3. [x] Revisited direct `Reference` MaybePromise cleanup. No new wrapper was
-   added; the current direct scalar fallback path keeps explicit pop/return
-   branches because a shared helper would restore the ladder shape.
-4. [x] Audited `finalizeReferenceLookupResult(...)`. Variable render already has
-   raw/direct exits, but callable/index/rules-like finalization still shares
-   too much classification; this remains a branch-count reduction target.
-5. [x] Audited `textOnly` direct/runtime/declaration paths. The copy paths are
-   not currently entered for the existing scalar text-only exits; the remaining
-   copy work is escaped-node/public-result materialization.
-6. [x] Audited `define-function.ts` and kept it out of this pass because no
-   fresh profile-backed hot argument-conversion cut was found.
-7. [x] Audited `Rules._applyResolvedRegistrationNodes(...)`: it still calls
-   `resolvedNode.inherit(node)` before `adopt(...)`. This is real remaining
-   ownership cruft and stays in the next cut queue with focused tests.
-8. [x] Audited `Rules` merge adapter output. `copyWithReusableLeaves(value)` is
-   still present; it is merge-placement materialization, not a final design.
-9. [x] Audited `Rules.copyMergedValue(...)`/`toMergedItems(...)`. Merge
-   normalization still recursively builds arrays before final output; keep it
-   as an aggressive cut target.
-10. [x] Audited `StyleImport` first-use placement. It still copies every child
-    with `copyImportPlacementNode(...)`; this is import placement state debt,
-    not a reason to fake transferred ownership.
-11. [x] Audited `StyleImport.deriveRulesSurface(...)`. It still creates wrapper
-    `Rules` surfaces for placement/source/visibility state; next work should
-    prove which fields can be direct state.
-12. [x] Kept `Call.renderDynamicFunctionOutput(...)` audit-only. No concrete
-    branch deletion beat the risk of reshaping dynamic JS/plugin call behavior
-    without profile evidence.
-13. [x] Scanned remaining `reference.ts` `frozen = true`: one public result
-    metadata path and one declaration copy/eval boundary remain. Both are
-    deletion candidates only after cold materialization is split.
-14. [x] Ran the hotpath sanity check. First run exposed real object-valued
-    child traversal crashes; fixed `Node._visitEntries(...)`,
-    `Node._deepCloneChildren(...)`, and added attribute-selector eval/clone
-    regressions. Full-gate follow-up also stopped clone/copy from manufacturing
-    empty tree contexts and restored direct call-argument comment trivia in the
-    no-list-materialization render path.
-15. [x] Reran hotpath sanity after rebuilding core: `import-reference` remains
-    usable (`trimmedMedian=21.78ms`, `roundRsd=3.2%`) and `mixins-guards` is
-    usable (`trimmedMedian=19.26ms`, `roundRsd=4.6%`). This is sanity evidence
-    only, not a before/after speed claim.
+1. [x] Cut one owned-shape branch from `Node.evalStatic(...)`: `_evalStaticSync`
+   now calls `.inherit(...)` directly when `evalNode(...)` returns a different
+   `Node`; no `typeof inherit` defensive check in our own result path.
+2. [x] Removed `Rules._applyResolvedRegistrationNodes(...)`
+   `resolvedNode.inherit(node)`. The replacement already carries index state
+   and `rules.adopt(resolvedNode)` owns the parent link.
+3. [x] Kept `Rules` merge `copyWithReusableLeaves(value)` as live debt, but
+   verified it under declaration merge tests after the registration cut.
+4. [x] Reduced `Rules` merge array churn by replacing `nextItems.shift()` with
+   a start index and exact output array sizing.
+5. [x] Audited `StyleImport.createFirstUseImportPlacementState(...)`; child
+   copies remain because first-use placement still needs explicit output state.
+6. [x] Cut lazy tree-context allocation from `StyleImport` placement copies,
+   derived rules surfaces, CSS import wrappers, and render context switching.
+7. [x] Replaced `AttributeSelector.withResolvedParts(...)` `Reflect.construct`
+   and spread reconstruction with direct `new AttributeSelector(...)` and
+   explicit fields.
+8. [x] Replaced `AttributeSelector.resolveForRender(...)` `Promise.all(...)`
+   with explicit sync/async branches.
+9. [x] Continued selector placement guard cleanup: `Ampersand.getResolvedSelector`
+   now checks copied selector ownership with `instanceof Selector`, not the
+   bitmask.
+10. [x] Audited direct argument render trivia parity. No new issue found after
+    the previous call-argument trivia fix; focused call/trivia coverage remains
+    green.
+11. [x] Re-classified `Reference.cloneReferenceResultNode(...)` as cold public
+    result materialization; no hot render call site was found in this pass.
+12. [x] Kept `applyReferenceResultMetadata(...)` as deletion target, but did
+    not touch it without the cold public materialization split.
+13. [x] Kept the remaining `reference.ts` declaration `frozen = true` as a
+    copy/eval boundary pending live-binding replacement.
+14. [x] Cut one `Call.evalArgNodes(...)` use: optional fallback syntax now
+    renders from source args directly instead of pre-evaluating into a new
+    `List` and then rendering/evaluating again.
+15. [x] Scanned `call.ts` dynamic render/eval duplication. The remaining shared
+    ladders are real dynamic JS/plugin behavior and should be attacked with
+    profile evidence or narrower helper deletion tests. Hotpath sanity after
+    this pass was not claim-grade: `import-reference` noisy
+    (`trimmedMedian=46.94ms`, `roundRsd=130.1%`) and `mixins-guards` unstable
+    (`trimmedMedian=39.27ms`, `roundRsd=12.4%`).
 
 ### Next 15-Item Queue
 
-1. [ ] Split cold public materialization from hot `Node.evalStatic(...)` so
-   eval/render does not default to `.inherit(...)` when a node returns a
-   different rendered value.
-2. [ ] Add a focused red/green around `Rules._applyResolvedRegistrationNodes(...)`
-   and remove `resolvedNode.inherit(node)` if registration order only needs
-   index/source diagnostics.
+1. [ ] Split cold public materialization from hot `Node.evalStatic(...)`; the
+   remaining `.inherit(...)` calls still mean eval replacement implies ownership
+   metadata by default.
+2. [ ] Add a focused regression proving resolved dynamic registration nodes keep
+   correct diagnostics/order without `resolvedNode.inherit(node)`.
 3. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` with merge
    placement/render state or a narrow leaf-only copier proven by merge tests.
 4. [ ] Replace `Rules.toMergedItems(...)` recursive array collection with a
-   lower-allocation merge scan; no `map`, spread, placeholder arrays, or broad
-   stringification catches in the hot merge path.
-5. [ ] Cut `StyleImport.createFirstUseImportPlacementState(...)` child copies by
-   using canonical source children plus explicit placement segments.
-6. [ ] Collapse `StyleImport.deriveRulesSurface(...)` where wrapper `Rules`
-   surfaces only carry source/visibility/placement state.
-7. [ ] Audit `AttributeSelector.withResolvedParts(...)` and `copyForDerived(...)`;
-   it still uses `Reflect.construct`, spread options, `.inherit(...)`, and
-   copy-with-reusable-leaves for resolved render surfaces.
-8. [ ] Replace `AttributeSelector.resolveForRender(...)` `Promise.all(...)`
-   path with explicit sync/async branches if it appears in hot selector work.
-9. [ ] Continue replacing selector placement bitmask guards with direct class
-   checks where the copied shape is owned and the bitmask cannot represent every
-   concrete selector subtype.
-10. [ ] Audit remaining direct argument render paths for source trivia parity;
-    call args now emit between-arg comments without materializing a list string.
+   prefix/iterator scan so `startsWithMergedValue(...)` stops allocating full
+   item arrays.
+5. [ ] Remove broad `try/catch` stringification in merge placeholder detection;
+   use owned node-type checks or explicit value helpers instead.
+6. [ ] Design the `StyleImport` first-use placement state that can reference
+   canonical source children without `copyImportPlacementNode(...)`.
+7. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers that only carry
+   source/visibility/placement fields and can be represented as side state.
+8. [ ] Remove `AttributeSelector.copyForDerived(...)` by rendering resolved
+   same-child values without constructing an owned selector surface.
+9. [ ] Delete `AttributeSelector.withResolvedParts(...)` entirely if render can
+   write resolved name/value directly into the active writer.
+10. [ ] Continue selector placement guard cleanup in `selector-list.ts`,
+    `selector-compound.ts`, `selector-complex.ts`, and `interpolated.ts`.
 11. [ ] Split `Reference.cloneReferenceResultNode(...)` into a cold public API
-   materialization path so hot render/reference lookup never asks for an owned
-   result node by default.
+    materialization path so hot render/reference lookup never asks for an owned
+    result node by default.
 12. [ ] Delete or narrow `applyReferenceResultMetadata(...)`; defaulting to
     `.inherit(...)` and optional `frozen` should not be a generic reference
     result ceremony.
 13. [ ] Remove the remaining `reference.ts` declaration `frozen = true` by
     replacing the copy/eval boundary with live binding or cold public
     materialization.
-14. [ ] Audit `Call.evalArgNodes(...)`: it still allocates a new array/list and
-    stamps `frozen` for source-parent preservation.
-15. [ ] Scan `call.ts` for dynamic render/eval helper duplication now that
-    resolve/eval concepts have merged; delete wrappers that only rename the
-    same branch ladder.
+14. [ ] Continue `Call.evalArgNodes(...)` cuts: make the remaining
+    `preserveSourceParents` branch unnecessary instead of stamping `frozen`.
+15. [ ] Profile or instrument `Call.renderDynamicFunctionOutput(...)` before
+    any further dynamic-call ladder rewrite; do not move branches around
+    without proof.
 
 ## Active Correctness Queue
 

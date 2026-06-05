@@ -2961,7 +2961,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const node = rules.value[i]!;
       const resolvedNode = resolvedByIndex.get(node.index);
       if (resolvedNode && resolvedNode !== node) {
-        rules.value[i] = resolvedNode.inherit(node);
+        rules.value[i] = resolvedNode;
         rules.adopt(resolvedNode);
       }
     }
@@ -3369,19 +3369,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       const priorItems = toMergedItems(priorCopy, assign);
       const nextItems = toMergedItems(nextCopy, assign);
+      let nextStart = 0;
       if (priorItems.length > 0 && nextItems.length > 0) {
         const lastPrior = priorItems[priorItems.length - 1]!;
         const firstNext = nextItems[0]!;
         if (sameMergedItem(lastPrior, firstNext)) {
-          nextItems.shift();
+          nextStart = 1;
         }
       }
-      const mergedItems = new Array<Node>(priorItems.length + nextItems.length);
+      const mergedItems = new Array<Node>(priorItems.length + nextItems.length - nextStart);
       let mergedIndex = 0;
       for (let i = 0; i < priorItems.length; i++) {
         mergedItems[mergedIndex++] = priorItems[i]!;
       }
-      for (let i = 0; i < nextItems.length; i++) {
+      for (let i = nextStart; i < nextItems.length; i++) {
         mergedItems[mergedIndex++] = nextItems[i]!;
       }
       return new List(mergedItems);
