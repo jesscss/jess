@@ -1537,6 +1537,39 @@ describe('reference', () => {
       }
     });
 
+    it('resolves dynamic JsExpression fallback scalars without copying the fallback node', async () => {
+      const fallback = new JsExpression('"dynamic-red"');
+      const fallbackParent = fallback.parent;
+      const originalCopy = fallback.copy;
+      let copyCalls = 0;
+      fallback.copy = function copyForCounting(
+        this: typeof fallback,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        copyCalls++;
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const refNode = ref(
+          { key: 'missing' },
+          {
+            type: 'variable',
+            fallbackValue: fallback
+          }
+        );
+
+        const resolved = await refNode.resolve(context);
+
+        expect(resolved.toTrimmedString()).toBe('dynamic-red');
+        expect(copyCalls).toBe(0);
+        expect(fallback.parent).toBe(fallbackParent);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        fallback.copy = originalCopy;
+      }
+    });
+
     it('renders source-backed static fallback containers as text without container copies', async () => {
       const fallback = list([any('red'), any('blue')]);
       fallback._location = [10, 1, 11, 20, 1, 21];

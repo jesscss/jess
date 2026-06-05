@@ -713,47 +713,49 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Targeted the next `Reference` frozen-metadata cuts:
-   rules-like preservation and runtime-binding scalar reuse.
-2. [x] Rewrote the stale rules-like proof from "freeze canonical source" to
-   "keep canonical source unfrozen."
-3. [x] Watched that proof fail on `freezeRulesLikeReferenceValue(...)`, proving
-   the old contract was real and stale.
-4. [x] Deleted `freezeRulesLikeReferenceValue(...)` and removed its call from
-   `createRulesLikeReferenceSurface(...)`.
-5. [x] Removed the matching runtime-preserve rules-like freeze in
-   `finalizeRuntimeVarBindingResult(...)`.
-6. [x] Confirmed rules-like shallow surfaces still preserve `sourceNode`, reuse
-   canonical children, and avoid `.clone()` / `.inherit(...)`.
-7. [x] Added a public runtime-binding scalar eval proof beside the existing
-   render-only proof.
-8. [x] Watched that proof fail on `frozen` metadata, first in the finalizer and
-   then in `evaluateReferenceValueNode(...)`.
-9. [x] Removed `evald.frozen = true` from the reusable scalar branch in
-   `finalizeRuntimeVarBindingResult(...)`.
-10. [x] Moved `declValue.frozen = true` in `evaluateReferenceValueNode(...)`
-    below the direct reuse exits so reusable leaves/text containers are not
-    mutated just for inspection.
-11. [x] Confirmed source-free runtime scalar public eval now returns the same
-    leaf with no copy and no frozen metadata.
-12. [x] Deliberately did not fight base eval parent stamping in that scalar
-    path; that is a separate `Node.evalStatic` / public eval materialization
-    concern.
-13. [x] Confirmed the full `reference.test.ts` suite now has `103` passing
-    tests.
-14. [x] This is an object/function-call and mutation cut, not a measured
+1. [x] Targeted `Reference.evaluateFallbackValue(...)` dynamic fallback copies.
+2. [x] Confirmed existing render-only fallback tests already bypass container
+   copies for source-backed/static and dynamic fallback render.
+3. [x] Audited public dynamic/source-backed container fallback resolve and kept
+   broad container copy out of this pass because `List.evalNode(...)` can
+   replace/evaluate children and the canonical fallback test still depends on
+   preserving source syntax.
+4. [x] Found a narrower obvious cut: dynamic scalar `JsExpression` fallbacks
+   were still routed through `copyWithReusableLeaves(fallbackValue).eval(...)`
+   for public resolve.
+5. [x] Added a focused public resolve proof for `JsExpression` fallback
+   scalars with copy counting.
+6. [x] Watched that proof fail before the copy assertion because the old path
+   called `Node.eval(...)` on `JsExpression`, treating its async eval as sync.
+7. [x] Cut the path by using the fallback node's own `resolve(context)`
+   directly for dynamic scalar fallbacks.
+8. [x] Preserved reference-stack cleanup for both synchronous and promise
+   success/failure in that new direct path.
+9. [x] Renamed the dynamic fallback predicate from render-only wording to
+   `canUseDynamicFallbackScalarDirectly(...)`.
+10. [x] Confirmed public resolve now returns `dynamic-red` without copying the
+    fallback node.
+11. [x] Confirmed render of the same `JsExpression` fallback still bypasses
+    copying and returns the same text.
+12. [x] Left dynamic/source-backed container fallback copies in place as a
+    separate semantic boundary, not as defended architecture.
+13. [x] This pass found correctness evidence while cutting object creation:
+    public dynamic `JsExpression` fallback resolve no longer trips the sync
+    `Node.evalStatic(...)` path.
+14. [x] This is an object/function-call and correctness cut, not a measured
     performance win; no benchmark/profile claim is attached.
-15. [x] Next work should audit dynamic/source-backed fallback copies, base
-    eval parent stamping, and the generic finalizer ladder.
+15. [x] Next work should audit base eval parent stamping and classify remaining
+    `reference.ts` copy/frozen/materialization boundaries before another
+    speculative Reference cut.
 
 ### Next 15-Item Queue
 
-1. [ ] Audit dynamic/source-backed fallback copies in `evaluateFallbackValue(...)`
-   and decide whether render/direct eval can avoid `copyWithReusableLeaves(...)`
-   without breaking semantic fallback evaluation.
-2. [ ] Audit `Node.evalStatic(...)` parent stamping for reused source-free
+1. [ ] Audit `Node.evalStatic(...)` parent stamping for reused source-free
    runtime scalar leaves; do not rewrite parent identity unless a cold public
    materialization API requires it.
+2. [ ] Scan remaining `copyWithReusableLeaves(...)` call sites in
+   `reference.ts` and classify each as dynamic container materialization,
+   declaration merge semantics, public owned result, or deletion target.
 3. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
    repeated branch code only if it can be done without reintroducing a generic
    pipeline/helper ladder.

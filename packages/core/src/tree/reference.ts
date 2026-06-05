@@ -1497,7 +1497,7 @@ function canRenderFallbackContainerDirectly(node: Node): boolean {
   return isNode(node, N.List | N.Sequence);
 }
 
-function canRenderDynamicFallbackScalarDirectly(node: Node): boolean {
+function canUseDynamicFallbackScalarDirectly(node: Node): boolean {
   return node instanceof JsExpression;
 }
 
@@ -1528,9 +1528,26 @@ function evaluateFallbackValue(
     context.popReference();
     return fallbackValue;
   }
-  if (options.textOnly === true && canRenderDynamicFallbackScalarDirectly(fallbackValue)) {
+  if (options.textOnly === true && canUseDynamicFallbackScalarDirectly(fallbackValue)) {
     context.popReference();
     return fallbackValue;
+  }
+  if (canUseDynamicFallbackScalarDirectly(fallbackValue)) {
+    const out = fallbackValue.resolve(context);
+    if (isThenable(out)) {
+      return Promise.resolve(out).then(
+        (node) => {
+          context.popReference();
+          return node;
+        },
+        (error) => {
+          context.popReference();
+          throw error;
+        }
+      );
+    }
+    context.popReference();
+    return out;
   }
   const out = copyWithReusableLeaves(fallbackValue).eval(context);
   if (isThenable(out)) {
