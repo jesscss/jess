@@ -23,6 +23,7 @@ import {
 } from './util/render-buffer.js';
 import type { PrintOptions } from './util/print.js';
 import { createPlacementChildSegment, type PlacementChildSegment } from './util/placement-state.js';
+import { queueTopImport } from './util/import-queue.js';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -796,38 +797,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }, undefined, location, this.treeContext);
   }
 
-  private queueCssImport(context: Context, importRule: AtRule): void {
-    if (context.inReferenceImportScope) {
-      return;
-    }
-    const topImports = (context.topImports ??= []);
-    const nodeLoc = importRule.location?.join(':') ?? '';
-    const nodeSig = `${importRule.value.name.valueOf?.() ?? importRule.value.name}:${importRule.value.prelude?.valueOf?.() ?? ''}`;
-    let alreadyQueued = false;
-    for (let i = 0; i < topImports.length; i++) {
-      const queuedNode = topImports[i]!;
-      if (!isNode(queuedNode, N.AtRule)) {
-        continue;
-      }
-      const queued = queuedNode as AtRule;
-      if (
-        queued === importRule
-        || queued.sourceNode === importRule.sourceNode
-        || queued.sourceNode === importRule
-        || (
-          (queued.location?.join(':') ?? '') === nodeLoc
-          && `${queued.value.name.valueOf?.() ?? queued.value.name}:${queued.value.prelude?.valueOf?.() ?? ''}` === nodeSig
-        )
-      ) {
-        alreadyQueued = true;
-        break;
-      }
-    }
-    if (!alreadyQueued) {
-      topImports.push(importRule);
-    }
-  }
-
   constructor(value: StyleImportValue, options?: StyleImportOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     // Style imports are always non-static and may be async
@@ -990,7 +959,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       try {
         if (this.isPlainCssImport(finalPath)) {
           const importRule = this.createCssImportAtRule(evaluatedPathNode);
-          this.queueCssImport(context, importRule);
+          queueTopImport(context, importRule);
           return this.createImportAnchorSurface(context);
         }
         const isInlineImport = importOptions!.inline === true;

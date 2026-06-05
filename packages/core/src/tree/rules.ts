@@ -58,6 +58,7 @@ import type { MixinOutputSlot } from './util/mixin-output-slot.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 import type { MixinEntry } from './util/callable-entry.js';
 import { isIndexedRuleChild } from './util/callable-surface.js';
+import { queueTopImport } from './util/import-queue.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
@@ -93,38 +94,6 @@ function isStyleImportRegistrationNode(node: Node): node is StyleImportRegistrat
 function isImportAtRule(node: Node): node is AtRule {
   return isNode(node, N.AtRule)
     && String(node.value.name.valueOf?.() ?? node.value.name ?? '').trim() === '@import';
-}
-
-function queueTopImport(context: Context, importRule: AtRule): void {
-  if (context.inReferenceImportScope) {
-    return;
-  }
-  const topImports = (context.topImports ??= []);
-  const nodeLoc = importRule.location?.join(':') ?? '';
-  const nodeSig = `${importRule.value.name.valueOf?.() ?? importRule.value.name}:${importRule.value.prelude?.valueOf?.() ?? ''}`;
-  let alreadyQueued = false;
-  for (let i = 0; i < topImports.length; i++) {
-    const queuedNode = topImports[i]!;
-    if (!isNode(queuedNode, N.AtRule)) {
-      continue;
-    }
-    const queued = queuedNode as AtRule;
-    if (
-      queued === importRule
-      || queued.sourceNode === importRule.sourceNode
-      || queued.sourceNode === importRule
-      || (
-        (queued.location?.join(':') ?? '') === nodeLoc
-        && `${queued.value.name.valueOf?.() ?? queued.value.name}:${queued.value.prelude?.valueOf?.() ?? ''}` === nodeSig
-      )
-    ) {
-      alreadyQueued = true;
-      break;
-    }
-  }
-  if (!alreadyQueued) {
-    topImports.push(importRule);
-  }
 }
 
 function keysStartWith(keys: readonly string[], path: readonly string[]): boolean {
@@ -2468,7 +2437,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
           }
         } else if (this.scopeFrame && !this._indexing) {
-          if (!this.scopeFrame.pendingDeclarationNames.includes(node as VarDeclaration)) {
+          let hasPendingDeclaration = false;
+          for (let i = 0; i < this.scopeFrame.pendingDeclarationNames.length; i++) {
+            if (this.scopeFrame.pendingDeclarationNames[i] === node) {
+              hasPendingDeclaration = true;
+              break;
+            }
+          }
+          if (!hasPendingDeclaration) {
             this.scopeFrame.pendingDeclarationNames.push(node as VarDeclaration);
           }
         }
@@ -2485,7 +2461,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!arr) {
           mm.set(rulesetKey, arr = []);
         }
-        if (!arr.includes(node as Ruleset)) {
+        let hasRuleset = false;
+        for (let i = 0; i < arr.length; i++) {
+          if (arr[i] === node) {
+            hasRuleset = true;
+            break;
+          }
+        }
+        if (!hasRuleset) {
           arr.push(node as Ruleset);
         }
       }
@@ -2501,7 +2484,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!arr) {
           mm.set(key, arr = []);
         }
-        if (!arr.includes(node as Mixin)) {
+        let hasMixin = false;
+        for (let i = 0; i < arr.length; i++) {
+          if (arr[i] === node) {
+            hasMixin = true;
+            break;
+          }
+        }
+        if (!hasMixin) {
           arr.push(node as Mixin);
         }
       }

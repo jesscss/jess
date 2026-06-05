@@ -713,37 +713,35 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Removed the preserve-rules-like `Reference(...).inherit(name)` from
-   `Call.createEvalState(...)`; the temporary reference now carries only the
-   explicit `preserveRulesLike` option.
-2. [x] Routed optional fallback call syntax materialization through
-   `renderFinalizedCallSyntax(...)` instead of the duplicate public-text
-   stringifier.
-3. [x] Routed optional fallback output rendering through
-   `renderFinalizedCallSyntax(...)` instead of the duplicate public-text
-   stringifier.
-4. [x] Routed dynamic silent-fail output rendering through
-   `renderFinalizedCallSyntax(...)` instead of the duplicate public-text
-   stringifier.
-5. [x] Deleted `Call.renderFinalizedCallPublicText(...)`.
-6. [x] Deleted the now-unused exported `FinalizedCallSyntax` type; no repo
-   caller imported it.
-7. [x] Deleted `Call.evalDynamicFunctionOutput(...)`.
-8. [x] Inlined the dynamic public resolve sequence into `Call.resolve(...)`
-   without restoring a separate generic wrapper.
-9. [x] Preserved the existing synchronous `resolve(...)` fast return for
-   already-evaluated calls after the wrapper deletion.
-10. [x] Changed `Call.markCallOutput(...)` to return immediately for non-`Rules`
-    outputs and empty rules instead of running declaration/comment
-    classification setup.
-11. [x] Removed the redundant second `isNode(node, N.Rules)` branch inside
-    `markCallOutput(...)` after the early return narrows the shape.
-12. [x] Replaced `Call.evalArgNodes(...)` `for...of` + `push(...)` growth with
-    a pre-sized indexed result array.
-13. [x] Ran focused lint for `call.ts`.
-14. [x] Ran focused call/mixin/reference tests (`289` passed).
-15. [x] No benchmark/profile was run, so make no speed claim from this queue
-    completion. This was a call-wrapper/ownership/iterator deletion pass.
+1. [x] Audited `Call.renderDynamicFunctionOutput(...)` and left the full
+   render-local state-machine collapse queued; the current helper probes still
+   share semantics with public materialization and need proof before deletion.
+2. [x] Added shared `util/import-queue.ts` so root/top CSS import queueing is
+   no longer duplicated between `Rules` and `StyleImport`.
+3. [x] Replaced import queue location `location?.join(':')` comparisons with
+   direct fixed-array comparison.
+4. [x] Replaced import queue `${name}:${prelude}` signature strings with direct
+   name/prelude comparison.
+5. [x] Changed import queue duplicate detection to return immediately on a hit
+   instead of carrying an `alreadyQueued` flag through the whole loop.
+6. [x] Routed `Rules` root import hoisting through the shared queue utility.
+7. [x] Deleted the local `Rules.queueTopImport(...)` duplicate implementation.
+8. [x] Routed `StyleImport` CSS import queueing through the shared queue utility.
+9. [x] Deleted the local `StyleImport.queueCssImport(...)` duplicate
+   implementation.
+10. [x] Verified no remaining `location?.join(':')` or `nodeSig` import queue
+    signatures in `rules.ts` / `import-style.ts`.
+11. [x] Replaced `Rules` pending-declaration registration `.includes(...)` with
+    an indexed identity scan.
+12. [x] Replaced `Rules` simple ruleset fast-registry `.includes(...)` with an
+    indexed identity scan.
+13. [x] Replaced `Rules` static mixin fast-registry `.includes(...)` with an
+    indexed identity scan.
+14. [x] Ran focused lint for `call.ts`, `rules.ts`, `import-style.ts`, and
+    `util/import-queue.ts`.
+15. [x] Ran focused call/mixin/reference/rules/import-style tests (`430`
+    passed, `9` skipped). No benchmark/profile was run, so make no speed claim
+    from this queue completion.
 
 ### Next 15-Item Queue
 
