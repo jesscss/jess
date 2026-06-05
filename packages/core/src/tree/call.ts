@@ -701,7 +701,10 @@ export class Call extends Node<CallValue, CallOptions> {
       const state = this.createEvalState();
       const { name } = state;
       if (typeof name !== 'string') {
-        const evaluatedName = await name.eval(context);
+        let evaluatedName: unknown = await name.eval(context);
+        if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
+          evaluatedName = await evaluatedName.eval(context);
+        }
         const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName;
         if (isExtendedFn(fn)) {
           const isMetadataFunction = Boolean(fn._internal || fn.options?.params);
@@ -752,6 +755,18 @@ export class Call extends Node<CallValue, CallOptions> {
             }
             return this.renderOutput(context, output, bufferOrOptions, options);
           }
+        } else if (
+          this.options?.silentFail
+          && !(
+            isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
+            || evaluatedName instanceof MixinCollection
+            || Array.isArray(evaluatedName)
+          )
+        ) {
+          const fallbackText = await this.renderFinalizedCallSyntax(evaluatedName, state, context, prepared);
+          return isRenderBuffer(bufferOrOptions)
+            ? writeRenderTextResult(bufferOrOptions, fallbackText)
+            : fallbackText;
         }
       }
     }

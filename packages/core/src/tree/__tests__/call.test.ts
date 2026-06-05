@@ -479,13 +479,21 @@ describe('Call', () => {
 
   it('renders important optional CSS fallback syntax without deriving output', async () => {
     const derivedCalls = countDeriveCallUse();
+    const name = ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true });
+    const originalEval = name.eval.bind(name);
+    let nameEvaluations = 0;
+    name.eval = function evalForCounting(evalContext: Context) {
+      nameEvaluations++;
+      return originalEval(evalContext);
+    };
     const rule = call({
-      name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
+      name,
       args: list([any('red')])
     }, { silentFail: true, markImportant: true });
 
     try {
       await expect(Promise.resolve(rule.render(context))).resolves.toBe('missing-fn(red) !important');
+      expect(nameEvaluations).toBe(1);
       expect(derivedCalls.count).toBe(0);
       expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
