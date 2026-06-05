@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { any } from '../../any.js';
+import { list } from '../../list.js';
 import { createArgumentsBindingValue, createRestBindingValue, getArgumentsBindingValues } from '../callable-binding.js';
 
 describe('callable binding helpers', () => {
@@ -27,5 +28,23 @@ describe('callable binding helpers', () => {
     const rest = createRestBindingValue([first, second]);
 
     expect(getArgumentsBindingValues([rest])).toEqual(rest.value);
+  });
+
+  it('reuses source-free static scalar leaves for rest bindings', () => {
+    const value = any('3px');
+
+    const rest = createRestBindingValue([value]);
+
+    expect(rest.value[0]).toBe(value);
+  });
+
+  it('keeps static containers on the owned binding path for now', () => {
+    const source = list([any('4px')]);
+
+    const rest = createRestBindingValue([source]);
+
+    expect(rest.value[0]).not.toBe(source);
+    expect(rest.value[0]?.valueOf()).toBe(source.valueOf());
+    expect(source.value[0]?.parent).toBe(source);
   });
 });

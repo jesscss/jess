@@ -879,8 +879,11 @@ public `tree.treeContext` getter on arbitrary nodes.
    ownership plus explicit mixin-output slot/index state. The unit proof now
    asserts wrapper parent/index state and no child `frozen` mutation.
 4. [x] Replaced callable binding `boundValue.frozen = true` with a narrower
-   reuse predicate: only static, source-free, childless leaves are reused; copied
-   bound values are not mutated after copy just to advertise reuse.
+   reuse predicate: only static, source-free scalar leaves are reused. `F_STATIC`
+   already answers eval inertness; the childless check is deliberately about
+   avoiding shared container parent/source identity, not about rediscovering
+   static-ness. Copied bound values are not mutated after copy just to advertise
+   reuse.
 5. [x] Removed the public generator-based `Rules[Symbol.iterator]()` convenience
    API. Internal code was not using `Rules` as an iterable; keeping it made
    lookup/eval iteration footguns available for no runtime benefit.
@@ -925,6 +928,40 @@ public `tree.treeContext` getter on arbitrary nodes.
 
 ## Next Deep-Cut Queue
 
+1. [x] Audited `Node.evalStatic(...)` split. No shallow cut accepted:
+   `.inherit(...)` still means public value materialization and immediate
+   eval/render share one API. Carry forward as a structural split, not a
+   helper rename.
+2. [x] Audited `StyleImport` first-use placement copies. No replacement landed:
+   `copyImportPlacementNode(...)` still creates placement-owned child nodes and
+   source-child maps. Carry forward as a source-child placement-state rewrite.
+3. [x] Audited `StyleImport.deriveRulesSurface(...)` wrapper creation. No
+   wrapper deletion landed because callers still use real `Rules` surfaces for
+   scope frame, visibility, inline text, and postlude placement. Carry forward
+   as a state/surface split.
+4. [x] Audited remaining `Rules` merge output copies. No fake merge shortcut
+   accepted; `copyMergedValue(...)` still protects owned declaration merge
+   outputs. Carry forward as direct merge-placement/render state or a proven
+   narrow owned-item copier.
+5. [x] Audited registration-prep expected misses. The current `try/catch`
+   sites remain because they encode unresolved declaration/identity behavior;
+   converting them needs tests that distinguish expected misses from real
+   exceptions.
+6. [x] Audited selector/extend factory cuts. No generic selector copy helper was
+   introduced; selector/extend remains a separate deep-cut lane because the
+   remaining factories are tied to extend placement semantics.
+7. [x] Cut callable binding scalar-leaf detection further: the reuse helper now
+   uses a shallow direct-child check instead of the recursive `hasNodeChild(...)`
+   crawl. Static containers still intentionally take the owned binding path
+   until binding/placement state can preserve parent/source identity without
+   copying.
+8. [x] Performance profiling remained parked for this pass. The landed change
+   deleted obvious helper traversal/API ambiguity; the remaining items below are
+   structural and should be profiled once the next proposal becomes a tradeoff
+   rather than an obvious deletion.
+
+## Next Deep-Cut Queue
+
 1. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
    materialization so routine eval replacement does not imply `.inherit(...)`.
 2. [ ] Replace `StyleImport` first-use placement copies with placement state
@@ -937,7 +974,11 @@ public `tree.treeContext` getter on arbitrary nodes.
    only after adding tests for unresolved declaration/identity behavior.
 6. [ ] Continue selector/extend factory cuts separately; do not hide selector
    placement copies inside another generic copy helper.
-7. [ ] Reactivate performance profiling when the next proposed change is not an
+7. [ ] Replace callable binding copies for static containers with explicit
+   binding/placement state. Static containers should not be copied merely
+   because they contain child nodes; the current scalar-leaf reuse predicate is
+   a conservative ownership boundary, not a final architecture.
+8. [ ] Reactivate performance profiling when the next proposed change is not an
    obvious deletion of metadata/API/copy machinery.
 
 ## Active Correctness Queue
