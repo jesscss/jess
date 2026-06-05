@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { any, comment, decl, rules, Any, Node } from '../../index.js';
+import { any, attr, comment, decl, quoted, rules, Any, Node } from '../../index.js';
 import { cloneWithReusableLeaves } from '../cloning.js';
 
 describe('cloning helpers', () => {
@@ -33,5 +33,18 @@ describe('cloning helpers', () => {
     } finally {
       Any.prototype.clone = originalClone;
     }
+  });
+
+  it('clones direct object-valued node children', () => {
+    const node = attr({
+      name: 'data',
+      op: '=',
+      value: quoted('foo')
+    });
+    const cloned = node.clone(true);
+
+    expect(cloned).not.toBe(node);
+    expect(cloned.value.value).not.toBe(node.value.value);
+    expect(cloned.toString()).toBe('[data="foo"]');
   });
 });

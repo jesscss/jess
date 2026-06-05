@@ -122,6 +122,27 @@ describe('Attribute Selector', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  test('evals direct object-valued attribute selector children', async () => {
+    const node = rules([
+      vardecl({
+        name: 'attr-data',
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const attrNode = attr({
+      name: 'data',
+      op: '=',
+      value: ref({ key: 'attr-data' }, { type: 'variable' })
+    });
+    const evaluated = await attrNode.eval(context);
+
+    expect(evaluated.toTrimmedString()).toBe('[data=foo]');
+  });
+
   test('keeps source attribute selector values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({

@@ -699,7 +699,7 @@ export abstract class Node<
             }
           }
         } else if (v instanceof Node) {
-          cb(v, k, obj, idx++);
+          cb(v, k, value, idx++);
         }
       }
     } else if (value instanceof Node) {
@@ -897,7 +897,7 @@ export abstract class Node<
 
     const newNode: this = Reflect.construct(
       this.constructor,
-      [cloned, this._options ? { ...this._options } : undefined, this.location, this.treeContext]
+      [cloned, this._options ? { ...this._options } : undefined, this.location, this.treeContextIfSet]
     );
     newNode.inherit(this);
 
@@ -918,7 +918,7 @@ export abstract class Node<
       for (const k in value) {
         const v = value[k];
         if (v instanceof Node) {
-          obj[k] = cloneFn(v);
+          value[k] = cloneFn(v);
         } else if (isArray(v)) {
           this._deepCloneChildren(v, cloneFn);
         }
@@ -1136,7 +1136,7 @@ export abstract class Node<
       setParent(this, this.parent ?? node.parent);
     }
     this._location = node.location;
-    this._treeContext ??= node.treeContext;
+    this._treeContext ??= node.treeContextIfSet;
     /** Copy state exactly (not OR, to preserve removed flags) */
     // Only sync F_VISIBLE flag, preserve all other flags
     if (!node.hasFlag(F_VISIBLE)) {

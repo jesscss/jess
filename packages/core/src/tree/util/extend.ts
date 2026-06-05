@@ -110,7 +110,7 @@
 
 import type { Rules } from '../rules.js';
 import type { Selector } from '../selector.js';
-import { SimpleSelector } from '../selector-simple.js';
+import type { SimpleSelector } from '../selector-simple.js';
 import { SelectorList } from '../selector-list.js';
 import { ComplexSelector, type ComplexSelectorComponent } from '../selector-complex.js';
 import { CompoundSelector } from '../selector-compound.js';
@@ -1018,10 +1018,23 @@ function copySelectorsForPlacement(selectors: Selector[]): Selector[] {
   return selectors.map(selector => copySelectorForExtend(selector));
 }
 
+function isSimpleSelectorPlacementCopy(node: Node): node is SimpleSelector {
+  switch (node.type) {
+    case 'Ampersand':
+    case 'AttributeSelector':
+    case 'BasicSelector':
+    case 'InterpolatedSelector':
+    case 'PseudoSelector':
+      return true;
+    default:
+      return false;
+  }
+}
+
 function copySimpleSelectorsForPlacement(nodes: SimpleSelector[]): SimpleSelector[] {
   return nodes.map((node) => {
     const copied = copyOwnedWithReusableLeaves(node);
-    if (!isNode(copied, N.SimpleSelector)) {
+    if (!isSimpleSelectorPlacementCopy(copied)) {
       throw new TypeError('Expected simple selector copy');
     }
     return copied;

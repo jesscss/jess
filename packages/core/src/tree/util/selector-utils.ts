@@ -24,7 +24,7 @@ export function copySelectorForPlacement(
   keySetLibrary?: BitSetLibrary<string>
 ): Selector {
   const copied = copyOwnedWithReusableLeaves(selector);
-  if (!isNode(copied, N.Selector)) {
+  if (!(copied instanceof Selector)) {
     throw new TypeError('Expected selector copy');
   }
   return attachSelectorBitLibrary(copied, keySetLibrary ?? selector.keySetLibrary);

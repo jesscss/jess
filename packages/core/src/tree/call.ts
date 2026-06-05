@@ -19,6 +19,7 @@ import {
   type RenderBuffer,
   writeRenderTextResult
 } from './util/render-buffer.js';
+import { emitCommentTriviaBetweenNodes } from './util/trivia.js';
 
 function stringifyValueOf(value: unknown): string {
   if (value && typeof value === 'object' && 'valueOf' in value) {
@@ -496,12 +497,17 @@ export class Call extends Node<CallValue, CallOptions> {
         next++;
       }
       const hasNext = next <= last;
+      const writeArgSeparator = (): void => {
+        if (!hasNext) {
+          return;
+        }
+        emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
+        w.add(', ');
+      };
       const finishArg = (argMark: number): MaybePromise<string> => {
         w.trimHorizontalStartSince(argMark);
         w.trimHorizontalEndSince(argMark);
-        if (hasNext) {
-          w.add(', ');
-        }
+        writeArgSeparator();
         return serializeArgAt(next);
       };
       if (arg instanceof Paren && arg.options?.escaped) {
@@ -513,9 +519,7 @@ export class Call extends Node<CallValue, CallOptions> {
             w.trimHorizontalStartSince(innerMark);
             w.trimHorizontalEndSince(innerMark);
             w.add(')', arg);
-            if (hasNext) {
-              w.add(', ');
-            }
+            writeArgSeparator();
             return serializeArgAt(next);
           };
           if (isThenable(rendered)) {
@@ -528,9 +532,7 @@ export class Call extends Node<CallValue, CallOptions> {
           return finishParen();
         }
         w.add(')', arg);
-        if (hasNext) {
-          w.add(', ');
-        }
+        writeArgSeparator();
         return serializeArgAt(next);
       } else {
         const argMark = w.mark();
