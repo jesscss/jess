@@ -31,7 +31,7 @@ export class Block extends Node<Node, BlockOptions> {
       value,
       this._options ? { ...this._options } : undefined,
       location,
-      this.treeContext
+      this.sourceRoot?._treeContext
     ).inherit(this);
   }
 
@@ -44,7 +44,7 @@ export class Block extends Node<Node, BlockOptions> {
     let end = type === 'square' ? ']' : '}';
     w.add(start);
     value.toString(options);
-    const trivia = options.trivia ?? this.treeContext?.opts?.trivia;
+    const trivia = options.trivia ?? this.sourceRoot?._treeContext?.opts?.trivia;
     if (trivia) {
       w.add(consumeTriviaText(trivia, this.location[3], 'before', options));
     }

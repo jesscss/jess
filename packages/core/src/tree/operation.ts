@@ -43,7 +43,7 @@ export class Operation extends Node<OperationValue> {
       [finalLeft, this.value[1], finalRight],
       this._options ? { ...this._options } : undefined,
       this.location,
-      this.treeContext
+      this.sourceRoot?._treeContext
     );
     return node.inherit(this);
   }

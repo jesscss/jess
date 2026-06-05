@@ -56,7 +56,7 @@ export class SelectorList extends Selector<Selector[]> {
         ownedValue,
         this._options ? { ...this._options } : undefined,
         this.location,
-        this.treeContext
+        this.sourceRoot?._treeContext
       ]
     );
     return node.inherit(this);

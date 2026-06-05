@@ -79,7 +79,7 @@ function createDerivedIterationRulesSurface(
       rulesVisibility: { ...sourceOptions.rulesVisibility }
     },
     sourceLocation,
-    sourceRules.treeContext
+    sourceRules._treeContext
   ).inherit(sourceRules);
   if (options.preserveFunctionRegistry === true && sourceRules.functionRegistry) {
     output.functionRegistry = sourceRules.functionRegistry.cloneForRules(output);

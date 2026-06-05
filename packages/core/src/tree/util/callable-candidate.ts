@@ -20,10 +20,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
 
-function guardContainsDefault(node: Node | undefined): boolean {
+function guardContainsDefault(node: Node | undefined, seen?: Set<Node>): boolean {
   if (!node) {
     return false;
   }
+  if (seen?.has(node)) {
+    return false;
+  }
+  (seen ??= new Set()).add(node);
   if (node.type === 'DefaultGuard') {
     return true;
   }
@@ -37,7 +41,7 @@ function guardContainsDefault(node: Node | undefined): boolean {
   const value = node.value;
   if (Array.isArray(value)) {
     for (const item of value) {
-      if (isNode(item) && guardContainsDefault(item)) {
+      if (isNode(item) && guardContainsDefault(item, seen)) {
         return true;
       }
     }
@@ -46,12 +50,12 @@ function guardContainsDefault(node: Node | undefined): boolean {
   if (isRecord(value)) {
     for (const key in value) {
       const item = value[key];
-      if (isNode(item) && guardContainsDefault(item)) {
+      if (isNode(item) && guardContainsDefault(item, seen)) {
         return true;
       }
       if (Array.isArray(item)) {
         for (const child of item) {
-          if (isNode(child) && guardContainsDefault(child)) {
+          if (isNode(child) && guardContainsDefault(child, seen)) {
             return true;
           }
         }

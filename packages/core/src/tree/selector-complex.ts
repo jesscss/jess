@@ -74,7 +74,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         ownedValue,
         this._options ? { ...this._options } : undefined,
         this.location,
-        this.treeContext
+        this.sourceRoot?._treeContext
       ]
     );
     if (hoistToRoot) {
@@ -368,7 +368,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       if (!isUnresolvedAmpersand(amp)) {
         continue;
       }
-      const file = amp.treeContext?.file;
+      const file = amp.sourceRoot?._treeContext?.file;
       const selectorText = String(this.valueOf?.() ?? '&');
       context.warnings.push(toDiagnostic(WARN.parentlessAmpersand({
         ctx: file ? { file } : undefined,

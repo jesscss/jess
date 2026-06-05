@@ -966,7 +966,7 @@ export function processExtends(context: Context): void {
       const targetLocation = instruction.target.location;
       const targetLine = targetLocation.length >= 2 ? targetLocation[1] : undefined;
       const targetColumn = targetLocation.length >= 3 ? targetLocation[2] : undefined;
-      const targetFile = instruction.target.treeContext?.file;
+      const targetFile = instruction.target.sourceRoot?._treeContext?.file;
       const targetFilePath = targetFile?.fullPath;
       const blockedProtectedRootExists = Array.from(rulesetsByRoot.keys()).some((root) => {
         if (!root) {

@@ -1480,7 +1480,7 @@ function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeV
     directValue.value,
     options && typeof options === 'object' ? { ...options } : undefined,
     directValue.location.length === 0 ? undefined : directValue.location,
-    directValue.treeContext
+    directValue.sourceRoot?._treeContext
   );
   if (!(constructed instanceof Node)) {
     throw new TypeError('Preserved rules-like value must remain a Node');

@@ -120,7 +120,7 @@ function constructCopy(node: Node, value: unknown): Node {
       value,
       options && isRecord(options) ? { ...options } : undefined,
       node.location,
-      node._treeContext
+      node.sourceRoot?._treeContext
     ]
   );
   if (!(copy instanceof Node)) {

@@ -165,7 +165,7 @@ export class Call extends Node<CallValue, CallOptions> {
           preserveRulesLike: true
         },
         name.location.length === 0 ? undefined : name.location,
-        name.treeContext
+        name.sourceRoot?._treeContext
       );
     }
     return {
@@ -1202,7 +1202,7 @@ export class Call extends Node<CallValue, CallOptions> {
           ? { ...this._options, silentFail: false }
           : { silentFail: false },
         this.location,
-        this.treeContext
+        this.sourceRoot?._treeContext
       );
       return this.markCallOutput(node);
     };

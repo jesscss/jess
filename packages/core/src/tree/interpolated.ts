@@ -433,7 +433,7 @@ export class Interpolated<
       },
       this._options ? { ...this._options } : undefined,
       this.location,
-      this.treeContext
+      this.sourceRoot?._treeContext
     ).inherit(this);
   }
 }

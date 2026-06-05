@@ -381,7 +381,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         value,
         this._options ? { ...this._options } : undefined,
         this.location,
-        this.treeContext
+        this.sourceRoot?._treeContext
       ]
     );
     return this.applyDerivedMetadata(node);

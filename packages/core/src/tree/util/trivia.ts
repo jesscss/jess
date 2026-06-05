@@ -58,7 +58,7 @@ function isTriviaMap(value: unknown): value is TriviaMap {
 }
 
 function treeTrivia(node: Node): TriviaMap | undefined {
-  const trivia: unknown = node.treeContext?.opts?.trivia;
+  const trivia: unknown = node.sourceRoot?._treeContext?.opts?.trivia;
   return isTriviaMap(trivia) ? trivia : undefined;
 }
 

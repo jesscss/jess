@@ -435,7 +435,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       },
       this._options ? { ...this._options } : undefined,
       this.location.length ? this.location : undefined,
-      this.treeContext
+      this.sourceRoot?._treeContext
     ).inherit(this);
     return this.applyDerivedMetadata(node);
   }
@@ -671,7 +671,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       },
       this._options ? { ...this._options } : undefined,
       this.location.length ? this.location : undefined,
-      this.treeContext
+      this.sourceRoot?._treeContext
     ).inherit(this);
     return this.applyDerivedMetadata(node);
   }
@@ -1085,7 +1085,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (prelude) {
       const preludeTrivia = withoutComments
         ? emptyHeaderTrivia()
-        : options.trivia ?? prelude.treeContext?.opts?.trivia;
+        : options.trivia ?? prelude.sourceRoot?._treeContext?.opts?.trivia;
       const preludePrintOptions: FinalPrintOptions = options.context && preludeTrivia
         ? {
             ...options,

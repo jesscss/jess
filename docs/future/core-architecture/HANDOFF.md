@@ -129,6 +129,13 @@ keeps the Less path clean.
   field directly after type narrowing. A getter that only returns a field is a
   function call and another API surface to defend; keep it only for public
   compatibility or lazy allocation semantics that callers explicitly need.
+- `TreeContext` belongs on the source `Rules` root, not every node. Children
+  should keep source identity through existing parent/adoption paths:
+  `adopt(...)` may stamp an immediate `_sourceRoot`, and `sourceRoot` may find
+  a cached root through parents. Do not add bespoke recursive source-root or
+  tree-context propagation methods that walk arbitrary node values. If context
+  transfer is needed, prove which existing ownership/adoption path failed and
+  fix that path.
 - Use existing node state as the hot-path dispatch contract; do not invent a
   second declaration graph, kind graph, or side-channel taxonomy unless a fact
   truly does not exist. The repo already carries many branch facts:
@@ -761,6 +768,28 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
     this pass was not claim-grade: `import-reference` noisy
     (`trimmedMedian=46.94ms`, `roundRsd=130.1%`) and `mixins-guards` unstable
     (`trimmedMedian=39.27ms`, `roundRsd=12.4%`).
+
+### Source-Root Context Cut
+
+`TreeContext` has been moved back toward root ownership: `Rules` owns
+`_treeContext`, ordinary nodes carry or discover `_sourceRoot`, and internal
+render/import/source-map code reads the source root instead of lazy-allocating a
+context on every node. This intentionally uses existing adoption/parent
+relationships; the rejected shape is any recursive helper that walks arbitrary
+node value objects to smear source metadata across a subtree.
+
+Follow-up debt:
+
+1. [ ] Remove the remaining public `Node.treeContext` lazy fallback once tests
+   and compatibility callers can set source files through a root instead.
+2. [ ] Remove non-`Rules` constructor `treeContext` arguments or turn them into
+   root construction only.
+3. [ ] Replace source-map tests that set `leaf.treeContext.file` with root-owned
+   source fixtures.
+4. [ ] Audit import first-use placement copies for canonical-source placement
+   state so copied placement nodes do not need inherited source context.
+5. [ ] Keep guard/default scans cycle-safe until remaining copied/canonical
+   graph paths are deleted.
 
 ### Next 15-Item Queue
 

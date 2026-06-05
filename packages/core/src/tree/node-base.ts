@@ -116,6 +116,28 @@ function isRulesNode(node: Node | { type?: string } | undefined): node is Rules 
   return node?.type === 'Rules';
 }
 
+function sourceRootOf(node: Node): Rules | undefined {
+  if (isRulesNode(node)) {
+    return node;
+  }
+  if (node._sourceRoot) {
+    return node._sourceRoot;
+  }
+  let current = node.parent;
+  while (current) {
+    if (isRulesNode(current)) {
+      node._sourceRoot = current;
+      return current;
+    }
+    if (current._sourceRoot) {
+      node._sourceRoot = current._sourceRoot;
+      return current._sourceRoot;
+    }
+    current = current.parent;
+  }
+  return undefined;
+}
+
 type MutableNodeValue = Record<string | number, unknown>;
 
 function isMutableNodeValue(value: unknown): value is MutableNodeValue {
@@ -248,6 +270,11 @@ export abstract class Node<
   _location: NodeLocation | undefined;
   get location() {
     return (this._location ??= []);
+  }
+
+  _sourceRoot: Rules | undefined;
+  get sourceRoot(): Rules | undefined {
+    return sourceRootOf(this);
   }
 
   _treeContext: TreeContext | undefined;
@@ -445,6 +472,10 @@ export abstract class Node<
     if (!node.frozen) {
       setParent(node, this);
     }
+    const sourceRoot = sourceRootOf(this);
+    if (sourceRoot && !node._sourceRoot) {
+      node._sourceRoot = sourceRoot;
+    }
     if (node.hasFlag(F_NON_STATIC)) {
       this.addFlag(F_NON_STATIC);
       this.removeFlag(F_STATIC);
@@ -504,8 +535,11 @@ export abstract class Node<
         configurable: false
       }
     });
+    if (isRulesNode(this)) {
+      this._sourceRoot = this;
+      this._treeContext = treeContext;
+    }
     this.value = this._processNodes(value);
-    this._treeContext = treeContext;
     this._location = location;
     this._options = options;
   }
@@ -893,7 +927,7 @@ export abstract class Node<
 
     const newNode: this = Reflect.construct(
       this.constructor,
-      [cloned, this._options ? { ...this._options } : undefined, this.location, this._treeContext]
+      [cloned, this._options ? { ...this._options } : undefined, this.location, this.sourceRoot?._treeContext]
     );
     newNode.inherit(this);
 
@@ -970,7 +1004,10 @@ export abstract class Node<
    * the new output position.
    */
   detachTrivia(deep?: boolean): this {
-    this._treeContext = undefined;
+    this._sourceRoot = undefined;
+    if (isRulesNode(this)) {
+      this._treeContext = undefined;
+    }
     this._location = undefined;
     if (deep) {
       this._detachChildTrivia(this.value);
@@ -1132,7 +1169,10 @@ export abstract class Node<
       setParent(this, this.parent ?? node.parent);
     }
     this._location = node.location;
-    this._treeContext ??= node._treeContext;
+    this._sourceRoot ??= node.sourceRoot;
+    if (isRulesNode(this)) {
+      this._treeContext ??= node.sourceRoot?._treeContext;
+    }
     /** Copy state exactly (not OR, to preserve removed flags) */
     // Only sync F_VISIBLE flag, preserve all other flags
     if (!node.hasFlag(F_VISIBLE)) {
@@ -1208,7 +1248,7 @@ export abstract class Node<
     const w = options.writer!;
     const mark = w.mark();
     const trivia = options.trivia
-      ?? this.treeContext?.opts?.trivia;
+      ?? this.sourceRoot?._treeContext?.opts?.trivia;
     if (trivia && options.trivia !== trivia) {
       options.trivia = trivia;
     }

@@ -154,7 +154,8 @@ function sourceSegmentFor(originParam: unknown, genLine: number, genColumn: numb
   }
   const startLine = (loc[1] ?? 1) - 1;
   const startColumn = (loc[2] ?? 1) - 1;
-  const file = origin?.treeContext?.file?.fullPath || origin?.treeContext?.file?.path || origin?.treeContext?.file?.name;
+  const treeContext = origin?.sourceRoot?._treeContext ?? origin?.treeContext;
+  const file = treeContext?.file?.fullPath || treeContext?.file?.path || treeContext?.file?.name;
   return {
     genLine,
     genColumn,

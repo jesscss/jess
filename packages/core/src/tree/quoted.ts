@@ -30,7 +30,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
       value,
       this._options ? { ...this._options } : undefined,
       this.location,
-      this.treeContext
+      this.sourceRoot?._treeContext
     ).inherit(this);
   }
 

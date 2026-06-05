@@ -62,7 +62,7 @@ function copyCallableCommentNode(node: Comment): Node {
     node.value,
     node.options ? { ...node.options } : undefined,
     node.location.length === 0 ? undefined : node.location,
-    node.treeContext
+    node.sourceRoot?._treeContext
   ).inherit(node);
 }
 
@@ -77,7 +77,7 @@ function constructCallableRulesNode(node: Node, value: unknown): Node {
       value,
       node.options ? { ...node.options } : undefined,
       node.location.length === 0 ? undefined : node.location,
-      node.treeContext
+      node.sourceRoot?._treeContext
     ]
   );
   if (!(copy instanceof Node)) {
@@ -170,7 +170,7 @@ function createDerivedRulesSurface(
       rulesVisibility: { ...sourceOptions.rulesVisibility }
     },
     sourceLocation,
-    sourceRules.treeContext
+    sourceRules._treeContext
   ).inherit(sourceRules);
   if (sourceRules.functionRegistry) {
     output.functionRegistry = sourceRules.functionRegistry.cloneForRules(output);

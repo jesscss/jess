@@ -131,7 +131,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       },
       this._options ? { ...this._options } : undefined,
       this.location.length ? this.location : undefined,
-      this.treeContext
+      this.sourceRoot?._treeContext
     ).inherit(this);
   }
 

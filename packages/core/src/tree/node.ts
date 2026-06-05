@@ -43,9 +43,18 @@ Node.prototype.operate = function(b: Node, op: Operator) {
  */
 Object.defineProperty(Node.prototype, 'treeContext', {
   get() {
-    let context = this._treeContext;
+    const sourceRoot = this.sourceRoot;
+    let context = sourceRoot?._treeContext ?? this._treeContext;
     if (!context) {
-      context = this._treeContext = new TreeContext();
+      context = new TreeContext();
+      if (this.type === 'Rules') {
+        this._sourceRoot = this;
+        this._treeContext = context;
+      } else if (sourceRoot) {
+        sourceRoot._treeContext = context;
+      } else {
+        this._treeContext = context;
+      }
     }
     return context;
   }

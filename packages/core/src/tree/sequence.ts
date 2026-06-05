@@ -86,7 +86,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       value,
       this._options ? { ...this._options } : undefined,
       this.location.length ? this.location : undefined,
-      this.treeContext
+      this.sourceRoot?._treeContext
     ).inherit(this);
   }
 
@@ -99,7 +99,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       values,
       this._options ? { ...this._options } : undefined,
       this.location.length ? this.location : undefined,
-      this.treeContext
+      this.sourceRoot?._treeContext
     ).inherit(this);
   }
 
@@ -149,7 +149,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
   override compare(other: Node) {
     if (other instanceof Sequence) {
-      const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
+      const equalityMode = this.sourceRoot?._treeContext?.equalityMode ?? 'coerce';
       const result = compareNodeArray(this.value, other.value, equalityMode);
       return result;
     }
@@ -191,8 +191,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
       const sourceTrivia = (
         printOptions.trivia
-        && prev.treeContext?.opts?.trivia === printOptions.trivia
-        && node.treeContext?.opts?.trivia === printOptions.trivia
+        && prev.sourceRoot?._treeContext?.opts?.trivia === printOptions.trivia
+        && node.sourceRoot?._treeContext?.opts?.trivia === printOptions.trivia
       );
       const trivia = sourceTrivia ? printOptions.trivia : undefined;
       const hasTrivia = Boolean(
@@ -254,8 +254,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         const prevEndsWithSpace = prevLastChar === ' ';
         const sourceTrivia = (
           printOptions.trivia
-          && prev.treeContext?.opts?.trivia === printOptions.trivia
-          && node.treeContext?.opts?.trivia === printOptions.trivia
+          && prev.sourceRoot?._treeContext?.opts?.trivia === printOptions.trivia
+          && node.sourceRoot?._treeContext?.opts?.trivia === printOptions.trivia
         );
         const trivia = sourceTrivia ? printOptions.trivia : undefined;
         const hasTrivia = Boolean(
@@ -367,8 +367,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     const prevEndsWithSpace = prevLastChar === ' ';
     const sourceTrivia = (
       printOptions.trivia
-      && prev.treeContext?.opts?.trivia === printOptions.trivia
-      && node.treeContext?.opts?.trivia === printOptions.trivia
+      && prev.sourceRoot?._treeContext?.opts?.trivia === printOptions.trivia
+      && node.sourceRoot?._treeContext?.opts?.trivia === printOptions.trivia
     );
     const trivia = sourceTrivia ? printOptions.trivia : undefined;
     const hasTrivia = Boolean(

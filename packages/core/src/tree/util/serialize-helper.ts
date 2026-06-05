@@ -53,7 +53,7 @@ export function hasPrintableTriviaAt(
   side: TriviaSide,
   options?: Pick<FinalPrintOptions, 'context' | 'trivia'>
 ): boolean {
-  const trivia = options?.trivia ?? node.treeContext?.opts?.trivia;
+  const trivia = options?.trivia ?? node.sourceRoot?._treeContext?.opts?.trivia;
   if (!trivia) {
     return false;
   }
@@ -75,7 +75,7 @@ function captureNodeTrivia(
   side: TriviaSide,
   options: FinalPrintOptions
 ): string {
-  const trivia: TriviaMap | undefined = options.trivia ?? node.treeContext?.opts?.trivia;
+  const trivia: TriviaMap | undefined = options.trivia ?? node.sourceRoot?._treeContext?.opts?.trivia;
   if (trivia && options.trivia !== trivia) {
     options.trivia = trivia;
   }
@@ -108,7 +108,7 @@ type RenderRuleEntry = {
 };
 
 function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'context' | 'trivia'>): boolean {
-  const trivia = options?.trivia ?? node.treeContext?.opts?.trivia;
+  const trivia = options?.trivia ?? node.sourceRoot?._treeContext?.opts?.trivia;
   const tokens = getPrintableTriviaTokens(trivia?.lookup(node.location[0], 'before'), options);
   if (!tokens) {
     return false;

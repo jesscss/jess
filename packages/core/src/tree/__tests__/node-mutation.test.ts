@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Any, any, paren } from '../index.js';
+import { Any, Rules, any, paren } from '../index.js';
 import { TreeContext } from '../../context.js';
 
 describe('Node mutation', () => {
@@ -26,13 +26,21 @@ describe('Node mutation', () => {
     expect(parent1.value).toBe(child);
   });
 
-  it('exposes only an explicitly attached tree context without creating one', () => {
+  it('keeps tree context on Rules while children point at the source root', () => {
     const node = any('10px');
     expect(node._treeContext).toBeUndefined();
+    expect(node._sourceRoot).toBeUndefined();
 
     const treeContext = new TreeContext();
     const sourced = new Any('10px', undefined, undefined, treeContext);
+    expect(sourced._treeContext).toBeUndefined();
+    expect(sourced._sourceRoot).toBeUndefined();
 
-    expect(sourced._treeContext).toBe(treeContext);
+    const root = new Rules([sourced], undefined, undefined, treeContext);
+    expect(root._treeContext).toBe(treeContext);
+    expect(root._sourceRoot).toBe(root);
+    expect(sourced._treeContext).toBeUndefined();
+    expect(sourced._sourceRoot).toBe(root);
+    expect(sourced.treeContext).toBe(treeContext);
   });
 });

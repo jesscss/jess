@@ -83,7 +83,7 @@ export const vardecl = (
     : name instanceof Any
       ? new Any(name.value, { role: 'property' })
       : name instanceof Interpolated
-        ? new Interpolated(name.value, { ...name.options, role: 'property' }, name.location, name.treeContext)
+        ? new Interpolated(name.value, { ...name.options, role: 'property' }, name.location, name.sourceRoot?._treeContext)
         : name;
   const declarationValue: DeclarationValue = {
     ...value,

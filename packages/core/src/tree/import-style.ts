@@ -100,7 +100,7 @@ function constructImportPlacementNode(node: Node, value: unknown): Node {
       value,
       node.options ? { ...node.options } : undefined,
       node.location.length === 0 ? undefined : node.location,
-      node._treeContext
+      node.sourceRoot?._treeContext
     ]
   );
   if (!(copy instanceof Node)) {
@@ -123,7 +123,7 @@ function copyImportPlacementNode(node: Node): Node {
       node.value,
       node.options ? { ...node.options } : undefined,
       node.location.length === 0 ? undefined : node.location,
-      node._treeContext
+      node.sourceRoot?._treeContext
     ).inherit(node);
   }
   const derivedAmpersand = copyImportPlacementAmpersand(node);
@@ -549,7 +549,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         source
       }
     });
-    return new Any(source, { role: 'any' }, getInlineSourceLocation(source), treeContext);
+    const node = new Any(source, { role: 'any' }, getInlineSourceLocation(source));
+    new Rules([node], undefined, undefined, treeContext);
+    return node;
   }
 
   private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
@@ -788,13 +790,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
     const prelude = preludeNodes.length === 1
       ? preludeNodes[0]
-      : new Sequence(preludeNodes, undefined, undefined, this._treeContext);
+      : new Sequence(preludeNodes, undefined, undefined, this.sourceRoot?._treeContext);
 
     const location = this.location && this.location.length === 6 ? this.location : undefined;
     return new AtRule({
       name: new Any('@import', { role: 'atkeyword' }),
       prelude
-    }, undefined, location, this._treeContext);
+    }, undefined, location, this.sourceRoot?._treeContext);
   }
 
   constructor(value: StyleImportValue, options?: StyleImportOptions, location?: NodeLocation, treeContext?: TreeContext) {
@@ -944,8 +946,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       if (inheritedReferenceMode && !importOptions!.multiple) {
         importOptions!.reference = true;
       }
-      if (node._treeContext) {
-        context.treeContext = node._treeContext;
+      const nodeTreeContext = node.sourceRoot?._treeContext;
+      if (nodeTreeContext) {
+        context.treeContext = nodeTreeContext;
       }
       if (importOptions!.multiple || importOptions!.reference) {
         // Scope push/pop is intentionally paired in this method's try/finally.

@@ -74,7 +74,7 @@ function createEvaluatedPseudoSelector(
     },
     source._options ? { ...source._options } : undefined,
     source.location.length ? source.location : undefined,
-    source.treeContext
+    source.sourceRoot?._treeContext
   ).inherit(source);
   node.generated = source.generated;
   return node;

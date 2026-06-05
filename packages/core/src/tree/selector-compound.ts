@@ -67,7 +67,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         ownedValue,
         this._options ? { ...this._options } : undefined,
         this.location,
-        this.treeContext
+        this.sourceRoot?._treeContext
       ]
     );
     if (hoistToRoot) {

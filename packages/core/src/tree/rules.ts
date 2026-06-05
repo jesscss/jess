@@ -318,7 +318,7 @@ function normalizeMixinFilter(filterType: string | undefined): 'Mixin' | 'Rulese
 }
 
 function consumeLeadingTrivia(node: Node, options: PrintOptions): string {
-  const trivia = (options.trivia ?? node.treeContext?.opts?.trivia) as
+  const trivia = (options.trivia ?? node.sourceRoot?._treeContext?.opts?.trivia) as
     | TreeContext['opts']['trivia']
     | undefined;
   if (trivia && options.trivia !== trivia) {
@@ -329,7 +329,7 @@ function consumeLeadingTrivia(node: Node, options: PrintOptions): string {
 }
 
 function consumeEofTrivia(node: Node, options: PrintOptions): string {
-  const trivia = (options.trivia ?? node.treeContext?.opts?.trivia) as
+  const trivia = (options.trivia ?? node.sourceRoot?._treeContext?.opts?.trivia) as
     | TreeContext['opts']['trivia']
     | undefined;
   if (trivia && options.trivia !== trivia) {
@@ -531,7 +531,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         value,
         this.options ? { ...this.options } : undefined,
         sourceLocation,
-        this.treeContext
+        this.sourceRoot?._treeContext
       ]
     );
     if (!(derived instanceof Rules)) {
@@ -2662,7 +2662,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           '',
           undefined,
           node.location.length === 0 ? undefined : node.location,
-          node.treeContext
+          node.sourceRoot?._treeContext
         );
         placeholder.sourceNode = node;
         placeholder.index = nodeIndex;
@@ -2678,7 +2678,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           '',
           undefined,
           node.location.length === 0 ? undefined : node.location,
-          node.treeContext
+          node.sourceRoot?._treeContext
         );
         placeholder.sourceNode = node;
         placeholder.index = nodeIndex;

@@ -177,7 +177,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       },
       this._options ? { ...this._options } : undefined,
       this.location.length ? this.location : undefined,
-      this.treeContext
+      this.sourceRoot?._treeContext
     ).inherit(this);
     node.hoistToRoot = this.hoistToRoot;
     node.frames = this.frames ? [...this.frames] : undefined;

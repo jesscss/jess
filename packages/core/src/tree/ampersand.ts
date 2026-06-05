@@ -275,7 +275,7 @@ function createAmpersandWithSelectorContainer(
     },
     source.options,
     source.location.length === 0 ? undefined : source.location,
-    source.treeContext
+    source.sourceRoot?._treeContext
   ).inherit(source);
 }
 
@@ -321,7 +321,7 @@ function createSimpleSelectorLike(selector: SimpleSelector, value: unknown): Sim
       value,
       { ...selector.options },
       selector.location.length === 0 ? undefined : selector.location,
-      selector.treeContext
+      selector.sourceRoot?._treeContext
     ]
   );
   if (!(node instanceof SimpleSelector)) {
@@ -605,7 +605,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       const parentSelector = amp.parent;
       const isBareWrapperAmp = isSingleAmpersandWrapper(parentSelector);
       if (!isBareWrapperAmp) {
-        const file = amp.treeContext?.file;
+        const file = amp.sourceRoot?._treeContext?.file;
         const selectorText = String(amp.parent?.valueOf?.() ?? '&');
         context.warnings.push(toDiagnostic(WARN.parentlessAmpersand({
           ctx: file ? { file } : undefined,
@@ -639,7 +639,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       },
       this._options ? { ...this._options } : undefined,
       this.location.length === 0 ? undefined : this.location,
-      this.treeContext
+      this.sourceRoot?._treeContext
     ).inherit(this);
     if (this._storedSelector) {
       node._storedSelector = this._storedSelector;

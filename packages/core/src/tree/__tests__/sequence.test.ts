@@ -517,6 +517,7 @@ describe('Sequence', () => {
     const first = num(10, undefined, [0, 1, 1, 2, 1, 3], treeContext);
     const second = num(20, undefined, [2, 1, 3, 3, 1, 4], treeContext);
     const rule = seq([first, second]);
+    rules([rule], undefined, undefined, treeContext);
 
     expect(rule.toTrimmedString({
       trivia
@@ -532,6 +533,7 @@ describe('Sequence', () => {
     const first = num(10, undefined, [0, 1, 1, 2, 1, 3], treeContext);
     const second = num(20, undefined, [2, 1, 3, 3, 1, 4], treeContext);
     const rule = seq([first, second]);
+    rules([rule], undefined, undefined, treeContext);
     context.opts.trivia = trivia;
 
     expect(rule.render(context, { trivia })).toBe('1020');
@@ -546,6 +548,7 @@ describe('Sequence', () => {
     const first = any('is', undefined, [0, 1, 1, 2, 1, 3], treeContext);
     const second = any('equal', undefined, [2, 1, 3, 7, 1, 8], treeContext);
     const rule = seq([first, second]);
+    rules([rule], undefined, undefined, treeContext);
     rule.evaluated = true;
 
     expect(rule.toTrimmedString({
@@ -570,6 +573,7 @@ describe('Sequence', () => {
     const first = any('is', undefined, [0, 1, 1, 1, 1, 2], treeContext);
     const second = any('equal', undefined, [3, 1, 4, 7, 1, 8], treeContext);
     const rule = seq([first, second]);
+    rules([rule], undefined, undefined, treeContext);
     rule.evaluated = true;
 
     expect(rule.toTrimmedString({
@@ -595,6 +599,7 @@ describe('Sequence', () => {
     const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
     const second = num(20, undefined, [3, 1, 4, 4, 1, 5], treeContext);
     const rule = seq([first, second]);
+    rules([rule], undefined, undefined, treeContext);
 
     expect(rule.toTrimmedString({
       trivia
@@ -618,6 +623,7 @@ describe('Sequence', () => {
     const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
     const second = num(20, undefined, [3, 1, 4, 4, 1, 5], treeContext);
     const rule = seq([first, second]);
+    rules([rule], undefined, undefined, treeContext);
     context.opts.trivia = trivia;
 
     expect(rule.render(context, { trivia })).toBe('10  20');
