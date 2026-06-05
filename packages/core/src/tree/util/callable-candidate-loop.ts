@@ -122,11 +122,19 @@ export async function executeCallableCandidateLoop({
       createOuterRules
     });
     if (debugDefaultGuard && execution.debugDefaultProbeResult) {
+      const debugParams: unknown[] = [];
+      const paramValues = candidateParams?.value;
+      if (paramValues) {
+        for (let i = 0; i < paramValues.length; i++) {
+          const param = paramValues[i];
+          debugParams.push(param?.valueOf() ?? String(param));
+        }
+      }
       console.log('[default-guard:candidate]', JSON.stringify({
         caller: debugCaller(),
         candidate: candidateName?.valueOf?.() ?? '<anon>',
         guard: candidateGuard?.valueOf?.() ?? candidateGuard?.toString?.() ?? '',
-        params: candidateParams?.value?.map((param: any) => param?.valueOf?.() ?? String(param)) ?? [],
+        params: debugParams,
         passWhenDefaultFalse: execution.debugDefaultProbeResult.passWhenDefaultFalse,
         passWhenDefaultTrue: execution.debugDefaultProbeResult.passWhenDefaultTrue
       }));

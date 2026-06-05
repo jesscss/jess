@@ -8,10 +8,24 @@ export function getCallableRestSignature(args: Node[], restName: string, hasFile
   if (args.length === 0 && !hasFileContext) {
     return restName;
   }
-  return args.map(getCallableNodeSignature).join(' ');
+  let signature = '';
+  for (let i = 0; i < args.length; i++) {
+    if (i !== 0) {
+      signature += ' ';
+    }
+    signature += getCallableNodeSignature(args[i]!);
+  }
+  return signature;
 }
 
 export function getCallableSignatureKey(parts: Array<string | undefined>): string | undefined {
-  const signatureValues = parts.filter((part): part is string => part !== undefined);
-  return signatureValues.length > 0 ? signatureValues.join(';') : undefined;
+  let signature: string | undefined;
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part === undefined) {
+      continue;
+    }
+    signature = signature === undefined ? part : `${signature};${part}`;
+  }
+  return signature;
 }

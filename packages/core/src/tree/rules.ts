@@ -3346,11 +3346,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return items;
     };
     const sameMergedItem = (left: Node, right: Node): boolean => {
-      try {
-        return left.compare(right) === 0 || String(left.valueOf()) === String(right.valueOf());
-      } catch {
-        return false;
-      }
+      return left.compare(right) === 0 || String(left.valueOf()) === String(right.valueOf());
     };
     const startsWithMergedValue = (value: Node, prefix: Node, assign: string): boolean => {
       const prefixItems = collectMergedItems(prefix, assign);
@@ -3414,7 +3410,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return undefined;
       }
       if (startsWithMergedValue(nextDeclValue.value, basePriorValue, assign)) {
-        return copyMergedValue(nextDeclValue.value);
+        return nextDeclValue.value;
       }
       const mergedValue = mergeDeclarationValues(basePriorValue, nextDeclValue.value, assign);
       setDeclValue(decl, mergedValue);
@@ -3500,7 +3496,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ) ?? currentAccumulatedValue;
       }
       const currentValue = getDeclValue(node)?.value;
-      currentAccumulatedValue ??= currentValue ? copyMergedValue(currentValue) : undefined;
+      currentAccumulatedValue ??= currentValue;
 
       const existingAnchor = mergedAnchorByName.get(name);
       const occurrence = { node, ownerRules };

@@ -32,14 +32,21 @@ export function matchCallableParams({
   args,
   hasFileContext
 }: CallableParamMatchOptions): CallableParamMatch | undefined {
-  const bindingRecordsByIndex = new Map<number, CallableParamBindingRecord>();
+  const bindingRecordsByIndex = new Array<CallableParamBindingRecord | undefined>(params.length);
   const signatureParts: Array<string | undefined> = new Array(params.length);
-  const hasRestParam = params.value.some(param => param.type === 'Rest');
+  let hasRestParam = false;
+  for (let i = 0; i < params.value.length; i++) {
+    if (params.value[i]!.type === 'Rest') {
+      hasRestParam = true;
+      break;
+    }
+  }
   const maxPositionalArgs = hasRestParam ? Number.POSITIVE_INFINITY : params.length;
   const positions = params.length;
   let requiredPositions = 0;
 
-  for (const param of params.value) {
+  for (let i = 0; i < params.value.length; i++) {
+    const param = params.value[i]!;
     if (isNode(param, N.VarDeclaration)) {
       if (param.value.value instanceof Nil) {
         requiredPositions++;
@@ -64,15 +71,22 @@ export function matchCallableParams({
     let argValue: Node;
 
     if (isNode(arg, N.VarDeclaration)) {
-      paramIndex = params.value.findIndex((candidate) => {
+      for (let j = 0; j < params.value.length; j++) {
+        const candidate = params.value[j]!;
         if (isNode(candidate, N.VarDeclaration)) {
-          return candidate.value.name.valueOf() === arg.value.name.valueOf();
+          if (candidate.value.name.valueOf() === arg.value.name.valueOf()) {
+            paramIndex = j;
+            break;
+          }
+          continue;
         }
         if (isNode(candidate, N.Any) && candidate.options.role === 'property') {
-          return candidate.valueOf() === arg.value.name.valueOf();
+          if (candidate.valueOf() === arg.value.name.valueOf()) {
+            paramIndex = j;
+            break;
+          }
         }
-        return false;
-      });
+      }
       if (paramIndex >= 0) {
         param = params.value[paramIndex];
         argValue = arg.value.value;
@@ -96,29 +110,32 @@ export function matchCallableParams({
     }
 
     if (isNode(param, N.VarDeclaration)) {
-      bindingRecordsByIndex.set(paramIndex, {
+      bindingRecordsByIndex[paramIndex] = {
         name: param.value.name.valueOf(),
         value: argValue,
         prepareValue: cloneBoundValue,
         readonly: param.options.readonly,
         sourceNode: isNode(arg, N.VarDeclaration) ? arg : param
-      });
+      };
       signatureParts[paramIndex] = getCallableNodeSignature(argValue);
     } else if (isNode(param, N.Any) && param.options.role === 'property') {
-      bindingRecordsByIndex.set(paramIndex, {
+      bindingRecordsByIndex[paramIndex] = {
         name: param.valueOf(),
         value: argValue,
         prepareValue: cloneBoundValue,
         sourceNode: isNode(arg, N.VarDeclaration) ? arg : param
-      });
+      };
       signatureParts[paramIndex] = getCallableNodeSignature(argValue);
     } else if (param.type === 'Rest') {
-      const rest = args.slice(argPos);
+      const rest = new Array<Node>(args.length - argPos);
+      for (let j = argPos; j < args.length; j++) {
+        rest[j - argPos] = args[j]!;
+      }
       const restName = param.value ? `${param.value}` : `rest${i}`;
-      bindingRecordsByIndex.set(paramIndex, {
+      bindingRecordsByIndex[paramIndex] = {
         name: restName,
         prepareValue: () => createRestBindingValue(rest)
-      });
+      };
       signatureParts[paramIndex] = getCallableRestSignature(rest, restName, hasFileContext);
     } else {
       signatureParts[paramIndex] = getCallableNodeSignature(argValue);
@@ -131,7 +148,12 @@ export function matchCallableParams({
     argPos++;
   }
 
-  const positionalArgCount = args.filter(arg => !isNode(arg, N.VarDeclaration)).length;
+  let positionalArgCount = 0;
+  for (let i = 0; i < args.length; i++) {
+    if (!isNode(args[i], N.VarDeclaration)) {
+      positionalArgCount++;
+    }
+  }
   if (positionalArgCount > maxPositionalArgs) {
     return undefined;
   }
@@ -151,30 +173,36 @@ export function matchCallableParams({
       continue;
     }
     if (isNode(param, N.VarDeclaration)) {
-      bindingRecordsByIndex.set(i, {
+      bindingRecordsByIndex[i] = {
         name: param.value.name.valueOf(),
         value: param.value.value,
         prepareValue: cloneBoundValue,
         readonly: param.options.readonly,
         sourceNode: param
-      });
+      };
       signatureParts[i] = getCallableNodeSignature(param.value.value);
     } else if (param.type === 'Rest') {
       const restName = param.value ? `${param.value}` : `rest${i}`;
-      bindingRecordsByIndex.set(i, {
+      bindingRecordsByIndex[i] = {
         name: restName,
         prepareValue: hasFileContext
           ? () => new Sequence([])
           : () => new Any(restName, { role: 'property' })
-      });
+      };
       signatureParts[i] = hasFileContext ? '' : restName;
     }
   }
 
+  const bindings: CallableParamBindingRecord[] = [];
+  for (let i = 0; i < bindingRecordsByIndex.length; i++) {
+    const binding = bindingRecordsByIndex[i];
+    if (binding) {
+      bindings.push(binding);
+    }
+  }
+
   return {
-    bindings: [...bindingRecordsByIndex.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([, binding]) => binding),
+    bindings,
     signatureKey: getCallableSignatureKey(signatureParts)
   };
 }

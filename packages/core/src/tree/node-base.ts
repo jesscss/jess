@@ -170,11 +170,15 @@ function getVisitMethod(visitor: unknown): VisitMethod | undefined {
   return typeof method === 'function' ? method : undefined;
 }
 
+function isStringKeyRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 function getTypeVisitMethod(visitor: unknown, methodName: string): TypeVisitMethod | undefined {
-  if (typeof visitor !== 'object' || visitor === null) {
+  if (!isStringKeyRecord(visitor)) {
     return undefined;
   }
-  const method = Reflect.get(visitor, methodName);
+  const method = visitor[methodName];
   return typeof method === 'function' ? method : undefined;
 }
 
@@ -1037,16 +1041,9 @@ export abstract class Node<
 
       // Note: Rules nodes handle index assignment for themselves and their children
       // Other nodes will get indices assigned by their parent Rules
-      let out: MaybePromise<void>;
-      try {
-        out = node.forEachNode(n => n.prepareRegistration(context), context);
-      } catch (error: unknown) {
-        throw error;
-      }
+      const out = node.forEachNode(n => n.prepareRegistration(context), context);
       if (isThenable(out)) {
-        return (out as Promise<void>).then(() => node).catch((error: unknown) => {
-          throw error;
-        });
+        return (out as Promise<void>).then(() => node);
       }
       return node;
     }
@@ -1130,9 +1127,6 @@ export abstract class Node<
    * from another node.
    */
   eval(context: Context): MaybePromise<Node> {
-    if (Object.getPrototypeOf(this).eval !== Node.prototype.eval) {
-      throw new Error('Do not call super.eval() from a subclass.');
-    }
     return Node.evalStatic(this, context);
   }
 

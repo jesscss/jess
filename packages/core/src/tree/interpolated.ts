@@ -432,8 +432,7 @@ export class Interpolated<
         replacements: evaluatedReplacements
       },
       this._options ? { ...this._options } : undefined,
-      this.location,
-      this.sourceRoot?._treeContext
+      this.location
     ).inherit(this);
   }
 }

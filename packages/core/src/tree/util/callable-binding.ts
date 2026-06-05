@@ -18,20 +18,29 @@ export function cloneBoundValue(value: Node): Node {
 }
 
 export function createRestBindingValue(args: Node[]): Sequence {
-  return new Sequence(args.map(restArg => cloneBoundValue(restArg)));
+  const restArgs = new Array<Node>(args.length);
+  for (let i = 0; i < args.length; i++) {
+    restArgs[i] = cloneBoundValue(args[i]!);
+  }
+  return new Sequence(restArgs);
 }
 
 export function createArgumentsBindingValue(args: Node[]): Sequence {
   const value = new Sequence([]);
-  value.value.push(...args);
+  for (let i = 0; i < args.length; i++) {
+    value.value.push(args[i]!);
+  }
   return value;
 }
 
 export function getArgumentsBindingValues(args: Node[]): Node[] {
   const argumentNodes: Node[] = [];
-  for (const argNode of args) {
+  for (let i = 0; i < args.length; i++) {
+    const argNode = args[i]!;
     if (argNode instanceof Sequence) {
-      argumentNodes.push(...argNode.value);
+      for (let j = 0; j < argNode.value.length; j++) {
+        argumentNodes.push(argNode.value[j]!);
+      }
     } else {
       argumentNodes.push(argNode);
     }

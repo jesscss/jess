@@ -326,7 +326,11 @@ function findImportPlacementValuePath(
   seen = new Set<unknown>()
 ): ImportPlacementValuePath | undefined {
   if (value === target) {
-    return path.slice();
+    const out = new Array<string | number>(path.length);
+    for (let i = 0; i < path.length; i++) {
+      out[i] = path[i]!;
+    }
+    return out;
   }
   if (value instanceof Node) {
     if (seen.has(value)) {
@@ -532,10 +536,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       }
     }
     return wrapped;
-  }
-
-  private createImportAnchorSurface(context: Context, childNodes?: Node[]): Rules {
-    return this.deriveRulesSurface(this.getImportAnchorRules(context), childNodes ?? [], { resetScopeFrame: true });
   }
 
   private createInlineSourceNode(source: string, resolvedPath: string): Any<'any'> {
@@ -961,7 +961,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         if (this.isPlainCssImport(finalPath)) {
           const importRule = this.createCssImportAtRule(evaluatedPathNode);
           queueTopImport(context, importRule);
-          return this.createImportAnchorSurface(context);
+          return this.deriveRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true });
         }
         const isInlineImport = importOptions!.inline === true;
         let rules: Rules;
@@ -975,21 +975,21 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           }
           const source = await sourceGetter.getSource!(resolvedPath);
           const sourceNode = this.createInlineSourceNode(source, resolvedPath);
-          const sourceRules = this.createImportAnchorSurface(context, [sourceNode]);
+          const sourceRules = this.deriveRulesSurface(this.getImportAnchorRules(context), [sourceNode], { resetScopeFrame: true });
           rules = this.wrapRulesWithPostlude(sourceRules, importOptions!.postlude);
         } else {
           try {
             const loaded = await context.getTree(finalPath, importOptions);
             if (!loaded.node) {
-              return this.createImportAnchorSurface(context);
+              return this.deriveRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true });
             }
             ({ node: rules, resolvedPath } = loaded);
           } catch (error) {
             if (importOptions!.optional) {
-              return this.createImportAnchorSurface(context);
+              return this.deriveRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true });
             }
             if (importOptions!.reference && isParseError(error)) {
-              return this.createImportAnchorSurface(context);
+              return this.deriveRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true });
             }
             throw error;
           }

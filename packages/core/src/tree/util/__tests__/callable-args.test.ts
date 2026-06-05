@@ -20,7 +20,7 @@ describe('callable arg evaluation helper', () => {
     expect(evaluated[0]).toBe(namedArg);
   });
 
-  it('expands rest sequence/list values into positional args and freezes direct eval results', async () => {
+  it('expands rest sequence/list values into positional args without freezing direct eval results', async () => {
     const context = new Context();
     const rulesContext = rules([]);
     const firstArg = any('red');
@@ -32,8 +32,12 @@ describe('callable arg evaluation helper', () => {
       args: [firstArg, restArg]
     });
 
-    expect(evaluated.map(arg => arg.valueOf())).toEqual(['red', 'blue', 'green']);
-    expect(evaluated[0]?.frozen).toBe(true);
+    const rendered = new Array<unknown>(evaluated.length);
+    for (let i = 0; i < evaluated.length; i++) {
+      rendered[i] = evaluated[i]?.valueOf();
+    }
+    expect(rendered).toEqual(['red', 'blue', 'green']);
+    expect(evaluated[0]?.frozen).toBe(false);
   });
 
   it('casts non-node args into evaluated node values', async () => {

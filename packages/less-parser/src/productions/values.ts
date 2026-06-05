@@ -196,7 +196,7 @@ function createEachPattern(
       }
       if (isNode(param, N.Any) && param.options.role === 'property') {
         return new VarDeclaration({
-          name: new Any(param.value, { role: 'property' }, param.location, param.treeContext),
+          name: new Any(param.value, { role: 'property' }, param.location, param.sourceRoot?._treeContext),
           value: new Any('', { role: 'any' })
         }, { paramVar: true }, param.location, context);
       }

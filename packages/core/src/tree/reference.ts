@@ -1393,26 +1393,10 @@ function resolveReferenceTargetValue(args: {
     : materialize(resolvedTarget);
 }
 
-function applyReferenceResultMetadata(
-  referenceNode: Reference,
-  node: Node,
-  frozen = false
-): Node {
-  if (frozen) {
-    node.frozen = true;
-  }
-  return node.inherit(referenceNode);
-}
-
-function cloneReferenceResultNode(
-  referenceNode: Reference,
+function copyReferenceResultNode(
   node: Node
 ): Node {
-  return applyReferenceResultMetadata(
-    referenceNode,
-    copyWithReusableLeaves(node),
-    true
-  );
+  return copyWithReusableLeaves(node);
 }
 
 function canReturnReferenceValue(node: Node): boolean {
@@ -1470,7 +1454,7 @@ function isRulesLikeReferenceValue(node: Node): boolean {
  * mutating the source tree.
  */
 function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeValue {
-  const options = Object.getOwnPropertyDescriptor(directValue, '_options')?.value;
+  const options = directValue.options;
   const nodeConstructor = directValue.constructor;
   if (!isNodeValueConstructor(nodeConstructor)) {
     throw new TypeError('Preserved rules-like value must have a constructable node type');
@@ -1672,7 +1656,9 @@ function finalizeRuntimeVarBindingResult(
       return evald;
     }
     context.popReference();
-    return cloneReferenceResultNode(referenceNode, evald);
+    const resultNode = copyReferenceResultNode(evald);
+    resultNode.frozen = true;
+    return resultNode.inherit(referenceNode);
   };
   const shouldUseDefinitionRulesContext = isNode(bindingSource, N.VarDeclaration) && (
     bindingSource.options?.paramVar
@@ -1762,15 +1748,13 @@ function finalizeEvaluatedDeclarationReference(
   }
   const resultNode = isMergedAssign
     ? evaluatedNode
-    : cloneReferenceResultNode(referenceNode, evaluatedNode);
-  return applyReferenceResultMetadata(
-    referenceNode,
-    normalizeMergedAssignReferenceResult(
-      resultNode,
-      isMergedAssign
-    ),
-    true
+    : copyReferenceResultNode(evaluatedNode);
+  const normalized = normalizeMergedAssignReferenceResult(
+    resultNode,
+    isMergedAssign
   );
+  normalized.frozen = true;
+  return normalized.inherit(referenceNode);
 }
 
 function finalizeDeclarationReferenceResult(
@@ -1907,7 +1891,6 @@ function evaluateReferenceValueNode(
     if (options.reuseSourceFreeLeaves === true && canReturnReferenceValueWithoutCopy(declValue)) {
       return declValue;
     }
-    declValue.frozen = true;
     if (options.reuseSourceFreeLeaves === true) {
       return copyWithReusableLeaves(declValue).eval(context);
     }

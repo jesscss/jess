@@ -213,15 +213,24 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const source = nodes.value;
     const out = new Array<Node>(source.length);
+    let shouldRestoreSourceParents = false;
     for (let i = 0; i < source.length; i++) {
       const node = source[i]!;
       const evald = await node.eval(context) as Node;
       if (evald === node && preserveSourceParents) {
-        evald.frozen = true;
+        shouldRestoreSourceParents = true;
       }
       out[i] = evald;
     }
-    return list(out, nodes.options);
+    const evaluatedArgs = list(out, nodes.options);
+    if (shouldRestoreSourceParents) {
+      for (let i = 0; i < source.length; i++) {
+        if (out[i] === source[i]) {
+          source[i]!.parent = nodes;
+        }
+      }
+    }
+    return evaluatedArgs;
   }
 
   private markCallOutput<T extends Node>(node: T, ownOutput = true): T {

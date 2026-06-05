@@ -18,7 +18,8 @@ export async function evaluateCallableArgs({
 }: EvaluateCallableArgsOptions): Promise<Node[]> {
   return await withRulesContext(context, rulesContext, async () => {
     const evaluatedArgs: Node[] = [];
-    for (const arg of args) {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
       if (isNode(arg)) {
         // Named arguments participate in parameter binding only; evaluating
         // them here would register/override vars in the caller scope.
@@ -30,13 +31,12 @@ export async function evaluateCallableArgs({
         if (evald.type === 'Rest') {
           const restValue = evald.value;
           if (isNode(restValue, N.Sequence) || isNode(restValue, N.List)) {
-            for (const restArg of restValue.value) {
-              evaluatedArgs.push(restArg);
+            for (let j = 0; j < restValue.value.length; j++) {
+              evaluatedArgs.push(restValue.value[j]!);
             }
             continue;
           }
         }
-        evald.frozen = true;
         evaluatedArgs.push(evald);
         continue;
       }

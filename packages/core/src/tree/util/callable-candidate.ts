@@ -105,7 +105,11 @@ function getCallableCandidateIdentity(candidate: MixinEntry): object {
 
 function stringifyCallableKey(value: unknown): string {
   if (Array.isArray(value)) {
-    return value.map(item => stringifyCallableKey(item)).join('');
+    let key = '';
+    for (let i = 0; i < value.length; i++) {
+      key += stringifyCallableKey(value[i]);
+    }
+    return key;
   }
   if (value instanceof Object && 'valueOf' in value && typeof value.valueOf === 'function') {
     return String(value.valueOf());
@@ -189,10 +193,17 @@ export function prepareCallableEvalCandidates({
   const evalCandidates: MixinEntry[] = [];
   let hasDefault = false;
 
-  for (const candidate of mixinCandidates) {
+  for (let i = 0; i < mixinCandidates.length; i++) {
+    const candidate = mixinCandidates[i]!;
     const candidateRules = getMixinEntryRules(candidate);
     const sourceRules = candidateRules.sourceNode;
-    const inStack = rulesEvalStack.some(entry => entry === sourceRules);
+    let inStack = false;
+    for (let j = 0; j < rulesEvalStack.length; j++) {
+      if (rulesEvalStack[j] === sourceRules) {
+        inStack = true;
+        break;
+      }
+    }
     const blockedByFailedGuardAncestor = isNode(candidate)
       ? hasFailedGuardAncestor(candidate)
       : false;
