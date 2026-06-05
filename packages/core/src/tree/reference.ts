@@ -237,12 +237,18 @@ function findVarDeclarationFast(
       if (!bucket) {
         frame.declarationBucketsByName.set(resolvedName, bucket = []);
       }
-      if (!bucket.some((entry) => {
+      let hasEntry = false;
+      for (let i = 0; i < bucket.length; i++) {
+        const entry = bucket[i]!;
         const entryIdentity = entry.sourceNode.sourceNode ?? entry.sourceNode;
-        return entry.sourceNode === decl
+        if (entry.sourceNode === decl
           || entry.sourceNode === sourceIdentity
-          || entryIdentity === sourceIdentity;
-      })) {
+          || entryIdentity === sourceIdentity) {
+          hasEntry = true;
+          break;
+        }
+      }
+      if (!hasEntry) {
         bucket.push({
           cell: {
             value: decl.value.value,
@@ -567,7 +573,14 @@ function getLookupKeyString(valueKey: NormalizedLookupKey): string {
 }
 
 function getLookupKeyDisplay(valueKey: NormalizedLookupKey): string {
-  return Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
+  if (!Array.isArray(valueKey)) {
+    return String(valueKey);
+  }
+  let out = '';
+  for (let i = 0; i < valueKey.length; i++) {
+    out += valueKey[i];
+  }
+  return out;
 }
 
 function isWithinReferenceParamVarScope(
@@ -1178,7 +1191,11 @@ function evaluateReferenceKey(
       return [resolvedTarget, normalizeSelectorReferenceKey(resolvedKey)];
     }
     if (Array.isArray(resolvedKey)) {
-      return [resolvedTarget, resolvedKey.map(String)];
+      const normalized = new Array<string>(resolvedKey.length);
+      for (let i = 0; i < resolvedKey.length; i++) {
+        normalized[i] = String(resolvedKey[i]);
+      }
+      return [resolvedTarget, normalized];
     }
     const normalizedKey = isNode(resolvedKey) ? resolvedKey.valueOf() : resolvedKey;
     if (typeof normalizedKey === 'string' || typeof normalizedKey === 'number') {
@@ -2236,7 +2253,11 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       } else if (k instanceof Node) {
         k.toString(options);
       } else if (Array.isArray(k)) {
-        w.add(k.map(k => String(k)).join(''));
+        let out = '';
+        for (let i = 0; i < k.length; i++) {
+          out += String(k[i]);
+        }
+        w.add(out);
       } else {
         w.add(String(k));
       }

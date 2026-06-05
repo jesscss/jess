@@ -3476,28 +3476,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const lastVisibleByName = new Map<string, DeclOccurrence>();
     const mergedAnchorByName = new Map<string, DeclOccurrence>();
     const accumulatedValueByName = new Map<string, Node>();
-    const stream: DeclOccurrence[] = [];
-    const collectDeclarationStream = (node: Node, ownerRules: Rules): void => {
-      if (isNode(node, N.Declaration)) {
-        stream.push({ node, ownerRules });
-        return;
-      }
-      if (!isNode(node, N.Rules)) {
-        return;
-      }
-      for (let i = 0; i < node.value.length; i++) {
-        collectDeclarationStream(node.value[i]!, node);
-      }
-    };
-
-    for (const node of rules.value) {
-      collectDeclarationStream(node, rules);
-    }
-
-    for (const occurrence of stream) {
-      const { node, ownerRules } = occurrence;
+    const processDeclarationOccurrence = (node: Node, ownerRules: Rules): void => {
       if (!isNode(node, N.Declaration)) {
-        continue;
+        return;
       }
       const name = String(node.value.name);
       const assign = String(node.options.normalizedFromAssign ?? '');
@@ -3507,9 +3488,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         mergedAnchorByName.delete(name);
         accumulatedValueByName.delete(name);
         if (node.visible) {
-          lastVisibleByName.set(name, occurrence);
+          lastVisibleByName.set(name, { node, ownerRules });
         }
-        continue;
+        return;
       }
       normalizeMergedDeclarationValue(node);
       let currentAccumulatedValue: Node | undefined;
@@ -3529,6 +3510,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       currentAccumulatedValue ??= currentValue ? copyMergedValue(currentValue) : undefined;
 
       const existingAnchor = mergedAnchorByName.get(name);
+      const occurrence = { node, ownerRules };
       if (existingAnchor && isNode(existingAnchor.node, N.Declaration)) {
         const anchorIsSameOccurrence = existingAnchor.node === node
           && existingAnchor.ownerRules === ownerRules;
@@ -3545,7 +3527,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (node.visible) {
             lastVisibleByName.set(name, occurrence);
           }
-          continue;
+          return;
         }
       }
 
@@ -3556,6 +3538,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (node.visible) {
         lastVisibleByName.set(name, occurrence);
       }
+    };
+    const walkMergedDeclarations = (node: Node, ownerRules: Rules): void => {
+      if (isNode(node, N.Declaration)) {
+        processDeclarationOccurrence(node, ownerRules);
+        return;
+      }
+      if (!isNode(node, N.Rules)) {
+        return;
+      }
+      for (let i = 0; i < node.value.length; i++) {
+        walkMergedDeclarations(node.value[i]!, node);
+      }
+    };
+
+    for (const node of rules.value) {
+      walkMergedDeclarations(node, rules);
     }
   }
 

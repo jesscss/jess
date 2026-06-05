@@ -713,34 +713,37 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Replaced fixed visitor `Reflect.get(visitor, '_visit')` with direct
-   `_visit` property access.
-2. [x] Replaced fixed visitor `Reflect.get(visitor, 'visit')` with direct
-   `visit` property access.
-3. [x] Replaced `Reflect.get(visitor, 'visitedNodes')` with direct
-   `visitedNodes` access.
-4. [x] Left dynamic visitor method lookup on `Reflect.get(visitor, methodName)`
-   as a cold/plugin compatibility boundary instead of adding unsafe casts.
-5. [x] Replaced `Object.hasOwn(proto, 'type')` in `defineType(...)` with direct
-   prototype `type` access; node prototypes are Jess-owned shapes here.
-6. [x] Replaced `isNode(...)` duck-typing `Reflect.get(value, 'type')` /
-   `Reflect.get(value, 'children')` with direct property reads.
-7. [x] Replaced `isNode(..., mask)` `Reflect.get(value, 'nodeType')` with a
-   direct property read.
-8. [x] Replaced `callWithContext(...)` list-argument spread copy with an indexed
-   array fill.
-9. [x] Replaced no-metadata record-argument `.some(...)` with an indexed loop.
-10. [x] Replaced metadata argument `args.map(...)` cloning with an indexed loop.
-11. [x] Replaced `originalArgsList` spread copy with an indexed loop.
-12. [x] Replaced overload matching `.some(...)` checks for record/rest args
-    with indexed loops.
-13. [x] Replaced `parseArgumentsToRecord(...)` `findIndex(...)` and nested
-    class-instance `.some(...)` checks with indexed loops.
-14. [x] Replaced rest-argument `map(...)` + spread pushes and union type
-    validation `.some(...)` / `.map(...).join(...)` with indexed loops.
-15. [x] Ran focused lint and function/visitor-heavy tests (`250` passed,
-    `8` skipped). No benchmark/profile was run, so make no speed claim from
-    this queue completion.
+1. [x] Replaced `normalizeParamSignatures(...)` `params.map(sig => [...sig])`
+   with indexed signature/result copies.
+2. [x] Replaced hybrid positional-argument `args.slice(0, -1)` with an indexed
+   fill.
+3. [x] Replaced hybrid rest-argument `positionalArgs.slice(i)` with an indexed
+   fill.
+4. [x] Replaced trailing rest-argument `args.slice(i)` in both plain argument
+   conversion and `parseCallWithContextArgs(...)` with indexed fills.
+5. [x] Replaced reference pending-declaration duplicate `.some(...)` with an
+   indexed bucket scan.
+6. [x] Replaced `evaluateReferenceKey(...)` array-key `map(String)` with an
+   indexed normalized-key fill.
+7. [x] Replaced `Reference.renderReferenceSyntax(...)` array-key
+   `map(...).join('')` with direct string accumulation.
+8. [x] Replaced `getLookupKeyDisplay(...)` array-key `join('')` with direct
+   string accumulation.
+9. [x] Removed the temporary `DeclOccurrence[]` stream from
+   `Rules._coalesceMergedDeclarations(...)`.
+10. [x] Processed merged declarations during traversal instead of allocating a
+    second per-declaration collection pass.
+11. [x] Kept merge traversal owner-aware by threading `ownerRules` through the
+    direct walker rather than recovering placement after collection.
+12. [x] Renamed the old declaration-stream collector to
+    `walkMergedDeclarations(...)` so the code no longer advertises an array
+    phase.
+13. [x] Ran focused lint for `define-function.ts`, `reference.ts`, and
+    `rules.ts`.
+14. [x] Ran focused declaration/rules/call/mixin tests (`304` passed,
+    `8` skipped).
+15. [x] No benchmark/profile was run, so make no speed claim from this queue
+    completion. This was a helper-array/spread/string-helper deletion pass.
 
 ### Next 15-Item Queue
 
@@ -771,9 +774,10 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 9. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
    repeated branch code only if it can be done without reintroducing a generic
    pipeline/helper ladder.
-10. [ ] Continue `define-function.ts` boring-JS cleanup: classify remaining
-   `.map(...)`/`.some(...)` sites as cold signature setup, diagnostics, or hot
-   argument conversion before deleting more convenience calls.
+10. [ ] Continue `define-function.ts` boring-JS cleanup only where scans show
+   remaining convenience calls in hot argument conversion; keep cold signature
+   setup/diagnostic helpers out of the hot queue unless they appear in profile
+   evidence.
 11. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
    ownership with source/diagnostic state when the resolved node is only queued
    for registration; do not add a new privileged location-copy helper.

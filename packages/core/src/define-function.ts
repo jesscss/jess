@@ -194,9 +194,23 @@ function normalizeParamSignatures(params: DefineFunctionOptions['params'] | unde
   if (!params) {
     return [];
   }
-  return isOverloadedParams(params)
-    ? params.map(sig => [...sig])
-    : [[...params]];
+  if (isOverloadedParams(params)) {
+    const out = new Array<ParamDefinition[]>(params.length);
+    for (let i = 0; i < params.length; i++) {
+      const sig = params[i]!;
+      const copy = new Array<ParamDefinition>(sig.length);
+      for (let j = 0; j < sig.length; j++) {
+        copy[j] = sig[j]!;
+      }
+      out[i] = copy;
+    }
+    return out;
+  }
+  const copy = new Array<ParamDefinition>(params.length);
+  for (let i = 0; i < params.length; i++) {
+    copy[i] = params[i]!;
+  }
+  return [copy];
 }
 
 export function defineFunction<
@@ -582,7 +596,10 @@ function parseArgumentsToRecord(args: any[], params: readonly ParamDefinition[])
 
   // Handle hybrid call (positional + record)
   if (args.length > 1 && isPlainObject(args[args.length - 1])) {
-    const positionalArgs = args.slice(0, -1);
+    const positionalArgs = new Array(args.length - 1);
+    for (let i = 0; i < args.length - 1; i++) {
+      positionalArgs[i] = args[i];
+    }
     const recordArg = args[args.length - 1];
 
     // Set values from positional arguments
@@ -598,7 +615,11 @@ function parseArgumentsToRecord(args: any[], params: readonly ParamDefinition[])
         const def = params[i]!;
         const paramName = def.name;
         if (def.rest) {
-          record[paramName] = positionalArgs.slice(i);
+          const rest = new Array(positionalArgs.length - i);
+          for (let j = i; j < positionalArgs.length; j++) {
+            rest[j - i] = positionalArgs[j];
+          }
+          record[paramName] = rest;
           break;
         } else if (i < positionalArgs.length) {
           record[paramName] = positionalArgs[i];
@@ -630,7 +651,11 @@ function parseArgumentsToRecord(args: any[], params: readonly ParamDefinition[])
       const def = params[i]!;
       const paramName = def.name;
       if (def.rest) {
-        record[paramName] = args.slice(i);
+        const rest = new Array(args.length - i);
+        for (let j = i; j < args.length; j++) {
+          rest[j - i] = args[j];
+        }
+        record[paramName] = rest;
         break;
       } else if (i < args.length) {
         record[paramName] = args[i];
@@ -754,7 +779,11 @@ function parseCallWithContextArgs(args: any[], params: readonly ParamDefinition[
         continue;
       }
       if (def.rest) {
-        record[paramName] = args.slice(i);
+        const rest = new Array(args.length - i);
+        for (let j = i; j < args.length; j++) {
+          rest[j - i] = args[j];
+        }
+        record[paramName] = rest;
         break;
       } else {
         record[paramName] = arg;
