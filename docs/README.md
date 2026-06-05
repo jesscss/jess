@@ -2,7 +2,9 @@
 
 User-facing documentation is maintained in the Docusaurus site under `packages/docs`.
 
-This `docs/` folder is kept only for a small set of **dev-facing architecture notes** (notably extend-roots), plus an `_archive/` of older brainstorming.
+This `docs/` folder is kept only for a small set of **dev-facing architecture notes**.
+Older brainstorming was removed from the working tree; use git history for
+archaeology.
 
 Forward-looking refactor and design work lives under:
 

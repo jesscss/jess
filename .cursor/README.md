@@ -46,7 +46,6 @@ This repo uses a **path-scoped Cursor context system** so day-to-day work does n
 - `.cursor/PROJECT_STATE.md` is intentionally small: package/build shape,
   verification commands, and the current debugging focus only when one is
   actively open.
-- `.cursor/DEBUGGING_ORCHESTRATION.md` explains the debugging system design.
 - Area plans should stay small and current. Prefer package docs and scoped rules
   over long root-level status files.
 

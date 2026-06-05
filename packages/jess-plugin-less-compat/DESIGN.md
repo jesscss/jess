@@ -10,7 +10,8 @@ This package provides a **Less.js compatibility layer** for Jess by converting b
   - `src/transform/` (to/from Less + typed adapter support)
   - `test/` (integration/unit coverage)
 
-Historical analyses and plans were moved to `_archive/` to keep the package root small.
+Historical transition analyses were removed from the working tree to keep the
+package root small. Use git history for archaeology.
 
 ## Approach (high-level)
 
@@ -34,7 +35,8 @@ Historical analyses and plans were moved to `_archive/` to keep the package root
 
 ## Status (as of 2026-02-09)
 
-This package is intentionally **experimental** (see `README.md`). The root-level deep-dive docs were archived; the current focus should be:
+This package is intentionally **experimental** (see `README.md`). Keep the
+package root focused on current adapter behavior:
 
 - Make adapter + conversion behavior correct for the plugins you care about
 - Grow tests around real plugin integrations in `test/integration/`

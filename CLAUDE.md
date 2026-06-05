@@ -52,8 +52,6 @@ Do not keep branch-stage snapshots, pass counts, or transient failure notes here
 For the core architecture/eval-render work:
 
 - treat `docs/future/core-architecture/HANDOFF.md` as the active entry point
-- treat `docs/future/node-copy-reduction/README.md` as historical background for
-  the older node-copy-specific phase
 - do not add broad status trackers or stale architecture documents that mostly describe machinery the repo does not currently have
 - use `.cursor/PROJECT_STATE.md` for transient debugging state and latest baseline notes
 

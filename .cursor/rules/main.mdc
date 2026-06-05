@@ -6,18 +6,10 @@ globs:
 
 # Cursor Rules
 
-> Legacy note: this file previously applied repo-wide. It is now scoped to `.cursor/**` to avoid duplicating newer glob-scoped rules.\n+> Source-of-truth for day-to-day work is now primarily in `.cursor/rules/00-global.mdc`, `20-quality-bar.mdc`, and `30-tests.mdc` plus domain/package/subtree rules.
-
-## Change Tracking
-
-We maintain a daily log of changes and improvements in `.cursor/changes.md`. This file should be updated at the end of each day with:
-- Recent fixes and improvements
-- Ongoing work and issues
-- Notable changes to architecture or patterns
-
-**Important**: When updating `changes.md`, always add the most recent changes at the **top** of the file, tagged with the current date (e.g., `## 2025-Dec-9`). This ensures the latest work is always visible first.
-
-See `.cursor/changes.md` for the latest updates.
+> Legacy note: this file previously applied repo-wide. It is now scoped to
+> `.cursor/**` to avoid duplicating newer glob-scoped rules. Source-of-truth for
+> day-to-day work is now primarily in `.cursor/rules/00-global.mdc`,
+> `20-quality-bar.mdc`, and `30-tests.mdc` plus domain/package/subtree rules.
 
 ## Debugging Methodology
 

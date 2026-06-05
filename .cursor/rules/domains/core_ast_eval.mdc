@@ -27,7 +27,6 @@ globs:
   queue pass.
 - Use `docs/future/core-architecture/PERFORMANCE-HANDOFF.md` for parked
   performance protocol and reactivation thresholds.
-- Use `docs/future/node-copy-reduction/README.md` only as historical background.
 - Do not preserve clone-heavy or materialization-heavy internals just to keep a local slice green if that fights the target runtime model.
 
 ## Cross-package testing nuance

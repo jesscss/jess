@@ -1856,13 +1856,9 @@ reuse the worktree for the next task.
 
 ## Historical Pointers
 
-The older node-copy-specific framing is historical context only:
-
-- `docs/future/node-copy-reduction/README.md`
-- `docs/future/node-copy-reduction/HANDOFF.md`
-- `docs/future/node-copy-reduction/less-hotpath-history.jsonl`
-
-Do not resurrect those files as the active queue.
+The older node-copy-specific framing and transition-period benchmark notes were
+removed from the working tree. Use git history for archaeology; do not
+resurrect those files as the active queue.
 
 The older alpha sandbox benchmark files from `/Users/matthew/git/oss/less copy.js`
 are preserved in

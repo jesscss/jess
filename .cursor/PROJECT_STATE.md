@@ -8,7 +8,6 @@ For repo-wide rules, read `AGENTS.md`. For the active architecture roadmap, use:
 - `docs/future/core-architecture/HANDOFF.md`
 - `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md`
 - `docs/future/core-architecture/PERFORMANCE-HANDOFF.md`
-- `docs/future/node-copy-reduction/README.md` only as historical background
 
 ## Package Build Shape
 

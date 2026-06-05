@@ -89,8 +89,6 @@ When working on the active evaluation-model refactor, use these docs as the cano
 - `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md` and
   `pnpm run verify:aggressive-cutting-review` before committing queue passes
   that touch eval/render/lookup/traversal/copying paths
-- `docs/future/node-copy-reduction/README.md` only as historical background for
-  the older node-copy-specific phase
 
 Use the handoff to understand the direction. Do not add broad status trackers
 or stale architecture documents that mostly describe machinery the repo does

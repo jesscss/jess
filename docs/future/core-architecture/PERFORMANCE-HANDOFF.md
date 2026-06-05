@@ -8,26 +8,10 @@ Use `HANDOFF.md` for the active queue. Use this file for parked performance
 protocol, measured targets, rejected experiments, historical evidence, and
 reactivation thresholds.
 
-## Historical Sources
+## Preserved Lesson
 
-Use these sources as evidence, not as active task machinery:
-
-- `docs/future/performance/2026-04-13-registry-redesign-handoff.md`: durable
-  roadmap for canonical-tree runtime, explicit scope frames, source-order
-  render/eval, and temporary output buffering.
-- `docs/_archive/future-performance-2026-04-13/less-benchmark-audit.md`:
-  benchmark evidence from the broad Less path.
-- `docs/_archive/future-performance-2026-04-13/registry-architecture-audit.md`:
-  lookup/registry evidence and measured lookup counts.
-- `docs/_archive/future-performance-2026-04-13/v8-suspicious-code-audit.md`:
-  V8/code-smell inventory. Line numbers and file shapes may be stale.
-- `docs/_archive/future-performance-2026-04-13/registry-redesign-proposal.md`:
-  deeper architecture proposal. Do not import old task-loop machinery from it.
-- `docs/future/node-copy-reduction/README.md` and
-  `docs/future/node-copy-reduction/less-hotpath-history.jsonl`: historical
-  copy-reduction context and hot-path benchmark records.
-
-Durable historical lesson: the target is still one canonical source tree,
+Historical transition docs were removed from the working tree. The durable
+lesson they preserved remains: the target is still one canonical source tree,
 explicit live lookup/binding state, source-order render/eval, temporary output
 state, and no routine copied evaluated AST.
 
