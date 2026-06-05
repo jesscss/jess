@@ -16,6 +16,7 @@ import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { defineFunction } from '../../define-function.js';
+import { MixinCollection } from '../util/callable-collection.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -357,6 +358,97 @@ describe('Call', () => {
       const rendered = await Promise.resolve(rule.render(context));
 
       expect(rendered).toContain('color: blue');
+      expect(evalStateCalls.count).toBe(0);
+      expect(rule.evaluated).toBe(false);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      evalStateCalls.restore();
+    }
+  });
+
+  it('renders dynamic mixin collection names without calling public eval state', async () => {
+    const mixinDef = mixin({
+      name: any('.theme'),
+      rules: rules([
+        decl({ name: 'color', value: any('green') })
+      ])
+    });
+    const root = rules([mixinDef]);
+    context.root = root;
+    context.rulesContext = root;
+    const collection = new MixinCollection([mixinDef]);
+    const name = any('source-name');
+    name.eval = function evalForMixinCollectionName() {
+      return collection;
+    };
+    const rule = call({ name });
+    const evalStateCalls = countEvalStateUse();
+
+    try {
+      const rendered = await Promise.resolve(rule.render(context));
+
+      expect(rendered).toContain('color: green');
+      expect(evalStateCalls.count).toBe(0);
+      expect(rule.evaluated).toBe(false);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      evalStateCalls.restore();
+    }
+  });
+
+  it('renders dynamic callable array names without calling public eval state', async () => {
+    const mixinDef = mixin({
+      name: any('.theme'),
+      rules: rules([
+        decl({ name: 'color', value: any('purple') })
+      ])
+    });
+    const root = rules([mixinDef]);
+    context.root = root;
+    context.rulesContext = root;
+    const name = any('source-name');
+    name.eval = function evalForCallableArrayName() {
+      return [mixinDef];
+    };
+    const rule = call({ name });
+    const evalStateCalls = countEvalStateUse();
+
+    try {
+      const rendered = await Promise.resolve(rule.render(context));
+
+      expect(rendered).toContain('color: purple');
+      expect(evalStateCalls.count).toBe(0);
+      expect(rule.evaluated).toBe(false);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      evalStateCalls.restore();
+    }
+  });
+
+  it('renders dynamic call alias names without calling public eval state', async () => {
+    const mixinDef = mixin({
+      name: any('.theme'),
+      rules: rules([
+        decl({ name: 'color', value: any('orange') })
+      ])
+    });
+    const root = rules([mixinDef]);
+    context.root = root;
+    context.rulesContext = root;
+    const alias = call({
+      name: ref({ key: '.theme' }, { type: 'mixin' })
+    });
+    const name = any('source-name');
+    name.eval = function evalForCallAliasName() {
+      return alias;
+    };
+    const rule = call({ name });
+    const evalStateCalls = countEvalStateUse();
+
+    try {
+      const rendered = await Promise.resolve(rule.render(context));
+
+      expect(rendered).toContain('color: orange');
       expect(evalStateCalls.count).toBe(0);
       expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);

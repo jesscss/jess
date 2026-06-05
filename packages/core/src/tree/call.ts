@@ -755,6 +755,12 @@ export class Call extends Node<CallValue, CallOptions> {
             }
             return this.renderOutput(context, output, bufferOrOptions, options);
           }
+        } else if (isNode(evaluatedName, N.Call)) {
+          const output = await evaluatedName.eval(context);
+          if (this._options?.markImportant && isNode(output, N.Rules)) {
+            this.makeImportant(output);
+          }
+          return this.renderOutput(context, output, bufferOrOptions, options);
         } else if (isNode(evaluatedName, N.Func)) {
           const argNodes = await this.evalArgNodes(context, state.args) ?? list([]);
           const output = await evaluatedName.evalCall(context, argNodes);

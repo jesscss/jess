@@ -713,50 +713,44 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Targeted the next `Call.renderDynamicFunctionOutput(...)` fallthrough:
-   dynamic names that evaluate directly to `Mixin` or `Ruleset` nodes.
-2. [x] Added a focused dynamic `Mixin` render fixture using the real `mixin(...)`
-   node factory, not a fake callable.
-3. [x] Reused the existing `evalState(...)` counter so the proof measured the
-   exact public-eval fallback render should not enter.
-4. [x] Verified the intended red failure for the mixin fixture:
+1. [x] Added focused `MixinCollection` and array dynamic-name render fixtures
+   for the callable branch added in the previous pass.
+2. [x] Verified those two shapes already bypass `evalState(...)`; no production
+   change was needed for them.
+3. [x] Added the next focused `Call`-valued dynamic-name fixture for alias calls
+   like `@alias: .mixin(...); @alias();`.
+4. [x] Verified the intended red failure for the alias fixture:
    `evalStateCalls.count` was `1`, expected `0`.
-5. [x] Added a render-local branch for `Mixin`, `Ruleset`,
-   `MixinCollection`, and array-valued dynamic callable outputs.
-6. [x] Converted direct `Mixin`/`Ruleset`/array outputs into a
-   `MixinCollection` only at the callable invocation boundary.
-7. [x] Reused an existing `MixinCollection` when the dynamic name already
-   produced one; no wrapper-on-wrapper path was added.
-8. [x] Invoked the callable output from the render branch directly instead of
-   falling through `evalPlainDynamicFunction(...)`, optional probes,
-   metadata probes, and final `evalState(...)`.
-9. [x] Evaluated callable results once and rendered them immediately through
-   `renderOutput(...)`.
-10. [x] Marked render output with `ownOutput = false`, so this render-only path
-    does not claim output-child parent identity.
-11. [x] Preserved the existing `No matching mixins` selector-capture and
-    reference error behavior.
-12. [x] Preserved silent-fail rendering by returning finalized call syntax
-    instead of materializing an owned fallback call.
-13. [x] Added the sibling dynamic `Ruleset` render fixture to prove ruleset as
-    mixin output also bypasses `evalState(...)`.
-14. [x] Ran the focused dynamic `Mixin`/`Ruleset` tests and the full
-    `call.test.ts` file (`72` passed).
+5. [x] Added a narrow render-local `N.Call` branch before the stylesheet
+   `Func` branch.
+6. [x] Evaluated the inner alias call directly from the render branch instead
+   of recreating outer `CallEvalState`.
+7. [x] Preserved the existing public eval behavior for call-valued names:
+   the inner call owns its own call-frame/eval semantics.
+8. [x] Rendered the inner call output immediately through `renderOutput(...)`.
+9. [x] Applied `markImportant` only when the inner alias output is `Rules`, the
+   same condition used by the public eval branch.
+10. [x] Avoided `markCallOutput(...)` on the alias branch; the render-only outer
+    call should not claim parent identity for the inner call output.
+11. [x] Left the non-callable CSS fallback and optional fallback branches
+    unchanged.
+12. [x] Re-ran the focused collection/array/alias tests and saw all three pass.
+13. [x] Ran the full `call.test.ts` file (`75` passed).
+14. [x] Confirmed the remaining direct dynamic callable exclusions are now
+    mostly proof/audit work, not known `evalState(...)` fallthroughs.
 15. [x] No benchmark/profile was run, so make no speed claim. This pass removed
-    another confirmed dynamic-name render fallback and widened direct callable
-    render coverage.
+    the final confirmed call-valued dynamic-name render fallback in `Call`.
 
 ### Next 15-Item Queue
 
-1. [ ] Add focused `MixinCollection` and array dynamic-name render fixtures to
-   prove the newly direct callable branch covers both shapes without calling
-   `evalState(...)`.
-2. [ ] Add a focused `Call`-valued dynamic-name fixture for alias calls
-   (`@alias: .mixin(...); @alias();`) before deciding whether render can eval
-   the inner call directly without owned output.
-3. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
+1. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
    eval branches and classify each as immediate render, public materialization,
    or escaping plugin value; no generic ownership by default.
+2. [ ] Add proof that silent-fail direct callable render preserves finalized
+   call syntax without constructing an owned fallback `Call`.
+3. [ ] Audit whether the direct callable render branch and the public
+   `evalFromStateInFrame(...)` callable branch can share a smaller primitive
+   without reintroducing a helper ladder or owned-output default.
 4. [ ] Split `Reference` render-only variable lookup from public
    materialization so common `@var` render never calls
    `applyReferenceResultMetadata(...)`, `.inherit(...)`, or `frozen`.
@@ -787,11 +781,11 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 13. [ ] Audit remaining `StyleImport.deriveRulesSurface(...)` wrapper creation
     for source/visibility/placement fields that can be direct state instead of
     derived `Rules` surfaces.
-14. [ ] Audit whether the direct callable render branch and the public
-    `evalFromStateInFrame(...)` callable branch can share a smaller primitive
-    without reintroducing a helper ladder or owned-output default.
-15. [ ] Add proof that silent-fail direct callable render preserves finalized
-    call syntax without constructing an owned fallback `Call`.
+14. [ ] Re-scan `Call.renderDynamicFunctionOutput(...)` for remaining probe
+    ladders after the dynamic-name branch cuts; do not add a helper unless it
+    deletes more calls than it creates.
+15. [ ] Move back to Reference render-only variable lookup if no more
+    evidence-backed `Call` branch cuts remain.
 
 ## Active Correctness Queue
 
