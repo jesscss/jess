@@ -713,85 +713,87 @@ Next 15 header-fragment caller-deletion queue items, performance still shelved:
 
 ### Latest 15-Item Queue Completion Pass
 
-1. [x] Replaced `normalizeParamSignatures(...)` `params.map(sig => [...sig])`
-   with indexed signature/result copies.
-2. [x] Replaced hybrid positional-argument `args.slice(0, -1)` with an indexed
-   fill.
-3. [x] Replaced hybrid rest-argument `positionalArgs.slice(i)` with an indexed
-   fill.
-4. [x] Replaced trailing rest-argument `args.slice(i)` in both plain argument
-   conversion and `parseCallWithContextArgs(...)` with indexed fills.
-5. [x] Replaced reference pending-declaration duplicate `.some(...)` with an
-   indexed bucket scan.
-6. [x] Replaced `evaluateReferenceKey(...)` array-key `map(String)` with an
-   indexed normalized-key fill.
-7. [x] Replaced `Reference.renderReferenceSyntax(...)` array-key
-   `map(...).join('')` with direct string accumulation.
-8. [x] Replaced `getLookupKeyDisplay(...)` array-key `join('')` with direct
-   string accumulation.
-9. [x] Removed the temporary `DeclOccurrence[]` stream from
-   `Rules._coalesceMergedDeclarations(...)`.
-10. [x] Processed merged declarations during traversal instead of allocating a
-    second per-declaration collection pass.
-11. [x] Kept merge traversal owner-aware by threading `ownerRules` through the
-    direct walker rather than recovering placement after collection.
-12. [x] Renamed the old declaration-stream collector to
-    `walkMergedDeclarations(...)` so the code no longer advertises an array
-    phase.
-13. [x] Ran focused lint for `define-function.ts`, `reference.ts`, and
-    `rules.ts`.
-14. [x] Ran focused declaration/rules/call/mixin tests (`304` passed,
-    `8` skipped).
+1. [x] Removed the preserve-rules-like `Reference(...).inherit(name)` from
+   `Call.createEvalState(...)`; the temporary reference now carries only the
+   explicit `preserveRulesLike` option.
+2. [x] Routed optional fallback call syntax materialization through
+   `renderFinalizedCallSyntax(...)` instead of the duplicate public-text
+   stringifier.
+3. [x] Routed optional fallback output rendering through
+   `renderFinalizedCallSyntax(...)` instead of the duplicate public-text
+   stringifier.
+4. [x] Routed dynamic silent-fail output rendering through
+   `renderFinalizedCallSyntax(...)` instead of the duplicate public-text
+   stringifier.
+5. [x] Deleted `Call.renderFinalizedCallPublicText(...)`.
+6. [x] Deleted the now-unused exported `FinalizedCallSyntax` type; no repo
+   caller imported it.
+7. [x] Deleted `Call.evalDynamicFunctionOutput(...)`.
+8. [x] Inlined the dynamic public resolve sequence into `Call.resolve(...)`
+   without restoring a separate generic wrapper.
+9. [x] Preserved the existing synchronous `resolve(...)` fast return for
+   already-evaluated calls after the wrapper deletion.
+10. [x] Changed `Call.markCallOutput(...)` to return immediately for non-`Rules`
+    outputs and empty rules instead of running declaration/comment
+    classification setup.
+11. [x] Removed the redundant second `isNode(node, N.Rules)` branch inside
+    `markCallOutput(...)` after the early return narrows the shape.
+12. [x] Replaced `Call.evalArgNodes(...)` `for...of` + `push(...)` growth with
+    a pre-sized indexed result array.
+13. [x] Ran focused lint for `call.ts`.
+14. [x] Ran focused call/mixin/reference tests (`289` passed).
 15. [x] No benchmark/profile was run, so make no speed claim from this queue
-    completion. This was a helper-array/spread/string-helper deletion pass.
+    completion. This was a call-wrapper/ownership/iterator deletion pass.
 
 ### Next 15-Item Queue
 
-1. [ ] Collapse `Call.renderDynamicFunctionOutput(...)` into a render-local
-   state machine that evaluates state/name/fn once; do not add another generic
-   dynamic evaluator.
-2. [ ] Inline the public-materialization half of `Call.evalDynamicFunctionOutput(...)`
-   rather than sharing render-only ownership flags through helper wrappers.
-3. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
+1. [ ] Finish `Call.renderDynamicFunctionOutput(...)`: it still probes plain
+   dynamic, optional fallback syntax, optional fallback output, metadata output,
+   then full eval in sequence. Collapse it into the smallest render-local
+   state machine that does not re-evaluate state/name/fn or share ownership
+   flags with public materialization.
+2. [ ] Audit remaining `Call.markCallOutput(...)` call sites around CSS/mixin
    eval branches and classify each as immediate render, public materialization,
    or escaping plugin value; no generic ownership by default.
-4. [ ] Replace the remaining inline preserve-rules-like `Reference(...).inherit(name)`
-   in `Call.createEvalState(...)` with explicit live-reference state or a typed
-   public materialization fence.
-5. [ ] Collapse or split `Call.renderFinalizedCallSyntax(...)` and
-   `renderFinalizedCallPublicText(...)`; there are still two similar finalized
-   CSS-call stringifiers because public materialization and active render are
-   blurred.
-6. [ ] Split `Reference` render-only variable lookup from public
+3. [ ] Split `Reference` render-only variable lookup from public
    materialization so common `@var` render never calls
    `applyReferenceResultMetadata(...)`, `.inherit(...)`, or `frozen`.
-7. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
+4. [ ] Replace `Reference.createRulesLikeReferenceSurface(...)` inherited
    shallow owned surface with explicit public materialization state or a live
    rules-like binding.
-8. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
+5. [ ] Replace `Reference` fallback/direct-value `frozen` and `.inherit(...)`
    metadata paths with a render-only value path and a separate public-value
    materializer.
-9. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
+6. [ ] Revisit the newly direct `Reference` MaybePromise chains and compress
    repeated branch code only if it can be done without reintroducing a generic
    pipeline/helper ladder.
-10. [ ] Continue `define-function.ts` boring-JS cleanup only where scans show
+7. [ ] Continue `define-function.ts` boring-JS cleanup only where scans show
    remaining convenience calls in hot argument conversion; keep cold signature
    setup/diagnostic helpers out of the hot queue unless they appear in profile
    evidence.
-11. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
+8. [ ] Replace `Rules` `resolvedNode.inherit(node)` pending-registration
    ownership with source/diagnostic state when the resolved node is only queued
    for registration; do not add a new privileged location-copy helper.
-12. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
+9. [ ] Replace `Rules` merge `copyWithReusableLeaves(value)` in merge adapter
    output with source-backed merge placement or direct render state.
-13. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
+10. [ ] Replace `Rules` `copyMergedValue(...)` array/object recursion with a
     narrower merge-value copier or render-state path so merge normalization
     does not clone whole value subtrees.
-14. [ ] Replace `StyleImport` first-use import placement child copies with
+11. [ ] Replace `StyleImport` first-use import placement child copies with
     canonical children plus placement/render state; imports should not fake
     transferred ownership.
-15. [ ] Audit remaining `StyleImport.deriveRulesSurface(...)` wrapper creation
+12. [ ] Audit remaining `StyleImport.deriveRulesSurface(...)` wrapper creation
     for source/visibility/placement fields that can be direct state instead of
     derived `Rules` surfaces.
+13. [ ] Add a focused registration-prep test before deleting
+    `resolvedNode.inherit(node)`, proving source diagnostics/registration order
+    survive without replacement ownership.
+14. [ ] Add a focused `Call.renderDynamicFunctionOutput(...)` test that counts
+    dynamic name/function evaluation so the render-local state-machine cut does
+    not accidentally double-probe.
+15. [ ] Add or update proof tests around call output marking so render-only
+    dynamic output does not acquire owned parent identity unless it escapes
+    through a public/materialized value boundary.
 
 ## Active Correctness Queue
 

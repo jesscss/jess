@@ -71,12 +71,6 @@ type CallEvalState = {
   preservesRulesLikeVariableTarget: boolean;
 };
 
-export type FinalizedCallSyntax = {
-  name: string | Node;
-  args?: List<Node>;
-  contentNode?: Node;
-};
-
 type CallRawArgsPlacementState = {
   source: Call;
   sourceArgs: List<Node>;
@@ -171,7 +165,7 @@ export class Call extends Node<CallValue, CallOptions> {
         },
         name.location.length === 0 ? undefined : name.location,
         name.treeContext
-      ).inherit(name);
+      );
     }
     return {
       source: this,
@@ -207,8 +201,7 @@ export class Call extends Node<CallValue, CallOptions> {
       state.args,
       true
     );
-    const rendered = await state.source.renderFinalizedCallPublicText(context, state, {
-      name: fallbackName,
+    const rendered = await state.source.renderFinalizedCallSyntax(fallbackName, state, context, prepareRenderPrintState(context), {
       args: evaluatedArgs,
       ...(state.contentNode && { contentNode: state.contentNode })
     });
@@ -223,13 +216,15 @@ export class Call extends Node<CallValue, CallOptions> {
     if (!nodes) {
       return undefined;
     }
-    const out: Node[] = [];
-    for (const node of nodes.value) {
+    const source = nodes.value;
+    const out = new Array<Node>(source.length);
+    for (let i = 0; i < source.length; i++) {
+      const node = source[i]!;
       const evald = await node.eval(context) as Node;
       if (evald === node && preserveSourceParents) {
         evald.frozen = true;
       }
-      out.push(evald);
+      out[i] = evald;
     }
     return list(out, nodes.options);
   }
@@ -238,20 +233,18 @@ export class Call extends Node<CallValue, CallOptions> {
     if (ownOutput) {
       node.inherit(this);
     }
+    if (!isNode(node, N.Rules) || node.value.length === 0) {
+      return node;
+    }
     let hasOnlyDeclarationsAndComments = true;
-    if (isNode(node, N.Rules) && node.value.length > 0) {
-      for (let i = 0; i < node.value.length; i++) {
-        if (!isNode(node.value[i]!, N.Declaration | N.Comment)) {
-          hasOnlyDeclarationsAndComments = false;
-          break;
-        }
+    for (let i = 0; i < node.value.length; i++) {
+      if (!isNode(node.value[i]!, N.Declaration | N.Comment)) {
+        hasOnlyDeclarationsAndComments = false;
+        break;
       }
-    } else {
-      hasOnlyDeclarationsAndComments = false;
     }
     if (
-      isNode(node, N.Rules)
-      && hasOnlyDeclarationsAndComments
+      hasOnlyDeclarationsAndComments
       && !(
         isNode(this.value.name, N.Reference)
         && (this.value.name.options?.type === 'mixin'
@@ -372,13 +365,18 @@ export class Call extends Node<CallValue, CallOptions> {
         state.args,
         true
       );
-      const rendered = await state.source.renderFinalizedCallPublicText(context, state, {
-        name: typeof evaluatedName === 'string' || evaluatedName instanceof Node
+      const rendered = await state.source.renderFinalizedCallSyntax(
+        typeof evaluatedName === 'string' || evaluatedName instanceof Node
           ? evaluatedName
           : stringifyValueOf(evaluatedName),
-        args: evaluatedArgs,
-        ...(state.contentNode && { contentNode: state.contentNode })
-      });
+        state,
+        context,
+        prepareRenderPrintState(context),
+        {
+          args: evaluatedArgs,
+          ...(state.contentNode && { contentNode: state.contentNode })
+        }
+      );
       return this.markCallOutput(new Any(rendered, { role: 'any' }), ownOutput);
     });
   }
@@ -618,7 +616,7 @@ export class Call extends Node<CallValue, CallOptions> {
     state: CallEvalState,
     context: Context,
     prepared: PrintOptions,
-    syntax?: Pick<FinalizedCallSyntax, 'args' | 'contentNode'>
+    syntax?: { args?: List<Node>; contentNode?: Node }
   ): MaybePromise<string> {
     const w = getPrintOptions(prepared).writer!;
     const mark = w.mark();
@@ -655,45 +653,6 @@ export class Call extends Node<CallValue, CallOptions> {
     return isThenable(renderedArgs)
       ? renderedArgs.then(finishCall)
       : finishCall();
-  }
-
-  private renderFinalizedCallPublicText(
-    context: Context,
-    state: CallEvalState,
-    syntax: FinalizedCallSyntax
-  ): MaybePromise<string> {
-    const prepared = prepareRenderPrintState(context);
-    const w = getPrintOptions(prepared).writer!;
-    const mark = w.mark();
-    if (typeof syntax.name === 'string') {
-      w.add(syntax.name, state.source);
-    } else {
-      syntax.name.toTrimmedString(prepared);
-    }
-    w.add('(');
-    if (syntax.args) {
-      const argsMark = w.mark();
-      syntax.args.toTrimmedString(prepared);
-      w.trimHorizontalStartSince(argsMark);
-      w.trimHorizontalEndSince(argsMark);
-    }
-    w.add(')');
-    if (this._options?.markImportant) {
-      w.add(' !important');
-    }
-    if (syntax.contentNode) {
-      w.add(': ');
-      const renderedContent = syntax.contentNode.eval(context);
-      if (isThenable(renderedContent)) {
-        return renderedContent.then((value) => {
-          value.toTrimmedString(prepared);
-          return w.getSince(mark);
-        });
-      }
-      (renderedContent as Node).toTrimmedString(prepared);
-      return w.getSince(mark);
-    }
-    return w.getSince(mark);
   }
 
   private async renderOptionalFallbackCallSyntax(
@@ -763,19 +722,6 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const output = await this.evalState(context);
     return this.renderOutput(context, output, bufferOrOptions, options);
-  }
-
-  private async evalDynamicFunctionOutput(context: Context): Promise<Node> {
-    const node = await this.evalPlainDynamicFunction(context);
-    if (node) {
-      return node;
-    }
-    const fallback = await this.evalOptionalFallbackOutput(context);
-    if (fallback) {
-      return fallback;
-    }
-    const metadataOutput = await this.evalMetadataDynamicFunction(context);
-    return metadataOutput ?? this.evalState(context);
   }
 
   constructor(value: CallValue, options?: CallOptions, location?: NodeLocation, treeContext?: TreeContext) {
@@ -860,7 +806,19 @@ export class Call extends Node<CallValue, CallOptions> {
     ) {
       return this.evalNode(context);
     }
-    return this.evalDynamicFunctionOutput(context);
+    return this.evalPlainDynamicFunction(context).then((node) => {
+      if (node) {
+        return node;
+      }
+      return this.evalOptionalFallbackOutput(context).then((fallback) => {
+        if (fallback) {
+          return fallback;
+        }
+        return this.evalMetadataDynamicFunction(context).then(metadataOutput => (
+          metadataOutput ?? this.evalState(context)
+        ));
+      });
+    });
   }
 
   /** Recursively makes declarations important */
@@ -1070,8 +1028,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       const finalizedName = typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n);
       if (this._options?.silentFail && typeof this.value.name !== 'string') {
-        const rendered = await state.source.renderFinalizedCallPublicText(context, state, {
-          name: finalizedName,
+        const rendered = await state.source.renderFinalizedCallSyntax(finalizedName, state, context, prepareRenderPrintState(context), {
           args: evaluatedArgs,
           ...(state.contentNode && { contentNode: state.contentNode })
         });
