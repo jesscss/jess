@@ -2,6 +2,7 @@ import {
   F_STATIC,
   F_NON_STATIC,
   F_MAY_ASYNC,
+  F_HAS_NODE_CHILD,
   any,
   dimension,
   num,
@@ -31,6 +32,7 @@ describe('Node Flags', () => {
       expect(node.hasFlag(F_STATIC)).toBe(true);
       expect(node.hasFlag(F_NON_STATIC)).toBe(false);
       expect(node.hasFlag(F_MAY_ASYNC)).toBe(false);
+      expect(node.hasFlag(F_HAS_NODE_CHILD)).toBe(false);
       expect(Object.getOwnPropertyDescriptor(node, '_options')?.value).toBeUndefined();
     });
 
@@ -39,6 +41,7 @@ describe('Node Flags', () => {
       expect(node.hasFlag(F_STATIC)).toBe(true);
       expect(node.hasFlag(F_NON_STATIC)).toBe(false);
       expect(node.hasFlag(F_MAY_ASYNC)).toBe(false);
+      expect(node.hasFlag(F_HAS_NODE_CHILD)).toBe(false);
     });
 
     it('Num should be F_STATIC', () => {
@@ -52,6 +55,7 @@ describe('Node Flags', () => {
       expect(node.hasFlag(F_STATIC)).toBe(true);
       expect(node.hasFlag(F_NON_STATIC)).toBe(false);
       expect(node.hasFlag(F_MAY_ASYNC)).toBe(false);
+      expect(node.hasFlag(F_HAS_NODE_CHILD)).toBe(false);
     });
 
     it('Bool should be F_STATIC', () => {
@@ -119,6 +123,7 @@ describe('Node Flags', () => {
       expect(node.hasFlag(F_STATIC)).toBe(true);
       expect(node.hasFlag(F_NON_STATIC)).toBe(false);
       expect(node.hasFlag(F_MAY_ASYNC)).toBe(false);
+      expect(node.hasFlag(F_HAS_NODE_CHILD)).toBe(true);
     });
 
     it('container with one non-static child should get F_NON_STATIC', () => {

@@ -250,6 +250,8 @@ export const F_IMPLICIT_AMPERSAND = 0b100000;
 export const F_EXTENDED = 0b1000000;
 /** Selector item that matches an extend target and should be suppressed in reference-mode output. */
 export const F_EXTEND_TARGET = 0b10000000;
+/** Node value owns at least one child node. */
+export const F_HAS_NODE_CHILD = 0b100000000;
 
 // Default state: only visible is true
 export const F_DEFAULT = F_VISIBLE;
@@ -474,6 +476,7 @@ export abstract class Node<
     if (!node.frozen) {
       setParent(node, this);
     }
+    this.addFlag(F_HAS_NODE_CHILD);
     const sourceRoot = sourceRootOf(this);
     if (sourceRoot && !node._sourceRoot) {
       node._sourceRoot = sourceRoot;

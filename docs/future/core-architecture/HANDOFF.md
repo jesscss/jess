@@ -950,11 +950,11 @@ public `tree.treeContext` getter on arbitrary nodes.
 6. [x] Audited selector/extend factory cuts. No generic selector copy helper was
    introduced; selector/extend remains a separate deep-cut lane because the
    remaining factories are tied to extend placement semantics.
-7. [x] Cut callable binding scalar-leaf detection further: the reuse helper now
-   uses a shallow direct-child check instead of the recursive `hasNodeChild(...)`
-   crawl. Static containers still intentionally take the owned binding path
-   until binding/placement state can preserve parent/source identity without
-   copying.
+7. [x] Cut callable binding scalar-leaf detection further: adoption now stamps
+   `F_HAS_NODE_CHILD` when a node owns child nodes, and the reuse helper reads
+   that flag instead of crawling or shape-probing `value` at bind time. Static
+   containers still intentionally take the owned binding path until
+   binding/placement state can preserve parent/source identity without copying.
 8. [x] Performance profiling remained parked for this pass. The landed change
    deleted obvious helper traversal/API ambiguity; the remaining items below are
    structural and should be profiled once the next proposal becomes a tradeoff
@@ -976,8 +976,8 @@ public `tree.treeContext` getter on arbitrary nodes.
    placement copies inside another generic copy helper.
 7. [ ] Replace callable binding copies for static containers with explicit
    binding/placement state. Static containers should not be copied merely
-   because they contain child nodes; the current scalar-leaf reuse predicate is
-   a conservative ownership boundary, not a final architecture.
+   because they contain child nodes; `F_HAS_NODE_CHILD` is only a cheap current
+   ownership boundary, not a final architecture.
 8. [ ] Reactivate performance profiling when the next proposed change is not an
    obvious deletion of metadata/API/copy machinery.
 
