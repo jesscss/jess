@@ -89,9 +89,15 @@ Binding prototype status:
   string-key production facade. Planned numeric ids are promising only when the
   reference already carries the id; string-to-id conversion on each read remains
   rejected.
-- Next binding step, when selected: prototype a production `BindingFrame`
-  facade for ordinary static variable references and run it against focused
-  reference tests before touching broader callable lookup.
+- Production integration status: the first `ScopeFrame` variable facade and
+  source-order/current-read hardening are in production for covered static
+  variable references and static `:=` writes. This is not the full binding
+  index yet; declaration-bucket `Reference` hits still return source
+  declaration nodes, and callable lookup still uses the existing registry path.
+- Next binding step, when selected: make declaration-bucket variable hits
+  return binding/value identity directly so assignment and reference
+  finalization can stop bouncing through source declaration nodes. Do not start
+  lookup caching until that identity boundary is clean.
 
 ## Active Binding Implementation Lane
 
@@ -147,7 +153,7 @@ next step starts.
      control-loop lookups changes stateful output (`tick: 1, 1, 2` became
      `tick: 1, 2, 3`), so source-order/current hardening remains step 3.
 
-3. [ ] Facade source-order/current-read hardening.
+3. [x] Facade source-order/current-read hardening.
    Prove the production facade preserves Less contextual lookup and Jess current
    read semantics in the same real runtime path.
 
@@ -188,6 +194,10 @@ next step starts.
      source-position declarations, `:=` mutates the resolved outer binding, and
      `:=` RHS values can come from live mixin parameter or `$for` iteration
      cells.
+   - Completed production hardening: `$!` source-position reads can route
+     through the facade with `start` and `includeLive: false`, while ordinary
+     `$name` current reads remain off contextual-start facade routing so
+     `$while`/loop live cells still behave correctly.
    - Remaining production debt: declaration-bucket `Reference` hits still
      return source declaration nodes. That is why the static `:=` cut still
      updates the resolved declaration value as well as the frame cell. The
@@ -209,15 +219,32 @@ next step starts.
      Jess/Less contextual refs are current/lazy (`seen` after a later same-name
      binding is `blue`, not `red`), while snapshot/occurrence reads must be
      explicit.
-   - Next production step is not cache work. It is to carry a cheap read-mode
-     fact into `Reference` lookup (`current` vs `$!` source-position) and only
-     allow facade `start` routing for the explicit `$!` mode.
-     Do not infer this mode by crawling parents or probing node shapes.
-   - Do not start step 4 lookup caching until production contextual-start
-     routing is either safely widened or explicitly split into a later
-     production milestone.
+   - Do not start lookup caching until declaration-bucket hits return binding
+     identity cleanly enough that the cache can cache binding identity instead
+     of source declaration nodes.
 
-4. [ ] Lookup cache prototype.
+4. [ ] Declaration-bucket binding identity.
+   Make covered static variable declaration hits return binding/value identity
+   directly from the `ScopeFrame` facade instead of returning source
+   `VarDeclaration` nodes.
+
+   Scope:
+   - static string `type: variable` reads only
+   - no explicit target
+   - no interpolation/dynamic key
+   - preserve `$!` source-position reads and ordinary current reads
+   - keep registry/`findVarDeclarationFast(...)` fallback for unmodeled cases
+   - no evaluated-value cache
+
+   Completion gate:
+   - reference render/eval tests prove source declarations remain canonical
+   - `:=`/`setDefined` writes mutate only the resolved binding cell where safe
+   - no new node creation, copying, `.inherit(...)`, or source-parent mutation
+   - no new traversal beyond the existing frame-chain/bucket scan
+   - focused reference, scope-frame, mixin, control, declaration tests pass
+   - benchmark leash recorded as status unless a clean before/after is run
+
+5. [ ] Lookup cache prototype.
    Add a frame-local lookup-identity cache only after the facade behavior is
    proven. Cache binding identity, not evaluated values.
 
@@ -229,7 +256,7 @@ next step starts.
    - no evaluated-node reuse
    - focused behavior tests plus benchmark before/after
 
-5. [ ] Callable records prototype.
+6. [ ] Callable records prototype.
    Move only simple static callable lookup into binding records. Namespace,
    guard matching, candidate evaluation, import visibility, and callable output
    stay out of the facade until separately proven.
@@ -241,7 +268,7 @@ next step starts.
    - benchmark/profile evidence shows whether this attacks the measured
      `Reference.evalNode`/callable lookup bucket
 
-6. [ ] Evaluated-value cache.
+7. [ ] Evaluated-value cache.
    Only after lookup identity is correct, consider effect-gated evaluated-value
    caching on binding cells.
 
@@ -406,6 +433,16 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Binding lane status correction: accepted as documentation-only. It marks the
+  already-landed source-order/current-read facade hardening complete and adds
+  the next production binding step: declaration-bucket hits must return
+  binding identity before lookup caching. New traversal: none. New
+  node/materialization: none; no `Node`, copy, `.inherit(...)`, wrapper Rules,
+  array/object materialization, source/parent mutation, or frozen state was
+  added. Render path: unchanged. Helper/API surface: none. Metadata
+  mutations: none. Evidence: focused `scope-frame/reference/mixin/control/
+  declaration` tests passed (`355` tests), plus
+  `pnpm run verify:aggressive-cutting-review` and `git diff --check`.
 - Current binding prototype pass: accepted as design/harness work only, not
   production eval/render machinery. The script adds one current-slot pointer
   table per prototype frame so current reads and `:=` assignment do not scan
