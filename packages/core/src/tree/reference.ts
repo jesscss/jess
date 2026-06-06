@@ -31,7 +31,6 @@ import {
   writeRenderTextResult,
   type RenderBuffer
 } from './util/render-buffer.js';
-import { withRulesContext } from './util/context.js';
 import {
   blocksAmbientMixinOutputLookup,
   canEnterMixinOutputForLookup,
@@ -1574,22 +1573,77 @@ function finalizeRuntimeVarBindingResult(
   if (options.textOnly === true) {
     evalFlags |= REF_EVAL_REUSE_RENDER_TEXT;
   }
-  const evaluateBinding = () => evaluateReferenceValueNode(binding.value, context, evalFlags);
-  const evaluateInRulesContext = () => shouldUseDefinitionRulesContext
-    ? withRulesContext(
-        context,
-        binding.rulesContext ?? bindingSource.rulesParent ?? context.rulesContext,
-        evaluateBinding
-      )
-    : evaluateBinding();
-  const evaluatedBinding = bindingSource
-    ? withReferenceSearchScope(context, bindingSource, evaluateInRulesContext)
-    : evaluateInRulesContext();
+  const evaluatedBinding = evaluateRuntimeVarBindingValue(
+    binding,
+    bindingSource,
+    context,
+    evalFlags,
+    shouldUseDefinitionRulesContext
+  );
 
   if (isThenable(evaluatedBinding)) {
     return Promise.resolve(evaluatedBinding).then(finalizeRuntimeBinding);
   }
   return finalizeRuntimeBinding(evaluatedBinding);
+}
+
+function evaluateRuntimeVarBindingValue(
+  binding: RuntimeVarBinding,
+  bindingSource: RuntimeVarBinding['sourceNode'],
+  context: Context,
+  evalFlags: number,
+  useDefinitionRulesContext: boolean
+): MaybePromise<Node> {
+  const savedRulesContext = context.rulesContext;
+  let changedRulesContext = false;
+  if (useDefinitionRulesContext && bindingSource) {
+    context.rulesContext = binding.rulesContext ?? bindingSource.rulesParent ?? context.rulesContext;
+    changedRulesContext = true;
+  }
+  if (bindingSource) {
+    context.searchScope.add(bindingSource);
+  }
+
+  try {
+    const result = evaluateReferenceValueNode(binding.value, context, evalFlags);
+    if (isThenable(result)) {
+      return Promise.resolve(result).then(
+        (node) => {
+          if (bindingSource) {
+            context.searchScope.delete(bindingSource);
+          }
+          if (changedRulesContext) {
+            context.rulesContext = savedRulesContext;
+          }
+          return node;
+        },
+        (error) => {
+          if (bindingSource) {
+            context.searchScope.delete(bindingSource);
+          }
+          if (changedRulesContext) {
+            context.rulesContext = savedRulesContext;
+          }
+          throw error;
+        }
+      );
+    }
+    if (bindingSource) {
+      context.searchScope.delete(bindingSource);
+    }
+    if (changedRulesContext) {
+      context.rulesContext = savedRulesContext;
+    }
+    return result;
+  } catch (error) {
+    if (bindingSource) {
+      context.searchScope.delete(bindingSource);
+    }
+    if (changedRulesContext) {
+      context.rulesContext = savedRulesContext;
+    }
+    throw error;
+  }
 }
 
 function withReferenceSearchScope<T>(
