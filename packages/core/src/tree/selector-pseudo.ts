@@ -7,7 +7,6 @@ import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
-import type { BitSetLibrary } from './util/bitset.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
@@ -26,14 +25,6 @@ export type PseudoSelectorValue = {
   generatedPseudoPlacementOverride?: GeneratedPseudoPlacementOverrideState;
 };
 
-type GeneratedPseudoPlacementState = {
-  source: PseudoSelector;
-  name: ':is';
-  arg: Selector;
-  keySetLibrary?: BitSetLibrary<string>;
-  omitWrapperForSingleSelectorList: boolean;
-};
-
 type GeneratedPseudoPlacementOverrideState = {
   omitWrapperForSingleSelectorList?: boolean;
 };
@@ -43,24 +34,6 @@ function setGeneratedPseudoPlacementOverride(
   override: GeneratedPseudoPlacementOverrideState
 ): void {
   source.value.generatedPseudoPlacementOverride = override;
-}
-
-function getGeneratedPseudoPlacementState(source: PseudoSelector): GeneratedPseudoPlacementState | undefined {
-  const { name, arg } = source.value;
-  if (source.generated && name === ':is' && arg && isNode(arg, N.Selector)) {
-    const override = source.value.generatedPseudoPlacementOverride;
-    if (!override) {
-      return undefined;
-    }
-    return {
-      source,
-      name,
-      arg,
-      keySetLibrary: source.keySetLibrary,
-      omitWrapperForSingleSelectorList: override.omitWrapperForSingleSelectorList === true
-    };
-  }
-  return undefined;
 }
 
 function createEvaluatedPseudoSelector(
@@ -90,21 +63,26 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     const w = options.writer!;
     let { name, arg } = this.value;
     const mark = w.mark();
-    const generatedState = getGeneratedPseudoPlacementState(this);
-    if (generatedState) {
-      ({ name, arg } = generatedState);
-      if (generatedState.keySetLibrary) {
-        attachSelectorBitLibrary(arg, generatedState.keySetLibrary);
+    const generatedOverride = this.generated
+      && name === ':is'
+      && arg
+      && isNode(arg, N.Selector)
+      ? this.value.generatedPseudoPlacementOverride
+      : undefined;
+    if (generatedOverride) {
+      if (this.keySetLibrary) {
+        attachSelectorBitLibrary(arg, this.keySetLibrary);
       }
-      const omitGeneratedWrapper = generatedState.omitWrapperForSingleSelectorList
+      const omitGeneratedWrapper = generatedOverride.omitWrapperForSingleSelectorList === true
         && (!isNode(arg, N.SelectorList) || arg.value.length === 1);
+      if (omitGeneratedWrapper) {
+        arg.toString(options);
+        return w.getSince(mark);
+      }
       const argMark = w.mark();
       arg.toString(options);
       w.replaceSince(argMark, normalizeSelectorArg, arg);
       const out = w.getSince(argMark);
-      if (omitGeneratedWrapper) {
-        return w.getSince(mark);
-      }
       w.restore(argMark);
       w.add(name, this);
       w.add('(');
@@ -162,53 +140,6 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   override toTrimmedString(options?: PrintOptions) {
     return this.renderPseudoSyntax(options);
   }
-
-  /**
-   * @todo - This should be vastly simplifiable. For
-   *
-   * Also, :is()
-   */
-  // get keys() {
-  //   let keys = this._keys
-  //   if (!keys) {
-  //     let { arg } = this
-  //     if (arg && (arg instanceof Selector || isNode(arg, N.SelectorList))) {
-  //       if (isNode(arg, N.SelectorList)) {
-  //         /**
-  //          * If an :is starts with an ampersand with no eval'd selector,
-  //          * it's relative, and can't be flattened.
-  //          *
-  //          * @note As far as I can tell, starting with a combinator
-  //          * is allowed / legal for :is() and :where() but won't
-  //          * actually apply to anything.
-  //          */
-  //         /**
-  //          * Push the first selectors of the inner list to an array
-  //          * at the front of the return array.
-  //          */
-  //         const selKeys = arg.value.map(sel => {
-  //           const childKeys = sel.keys
-  //           return isArray(childKeys) ? childKeys.flat(Infinity) : [childKeys]
-  //         }) as string[][]
-  //         const returnKeys: [string[], ...string[]] = [[]]
-  //         selKeys.forEach(keys => {
-  //           const [first, ...rest] = keys
-  //           returnKeys[0].push(first!)
-  //           returnKeys.push(...rest)
-  //         })
-  //         keys = returnKeys
-  //       } else {
-  //         keys = arg.keys
-  //       }
-  //       Object.defineProperty(this, '_keys', { value: keys })
-  //       return keys
-  //     } else {
-  //       keys = this.valueOf()
-  //     }
-  //     Object.defineProperty(this, '_keys', { value: keys })
-  //   }
-  //   return keys
-  // }
 
   override valueOf(): string {
     let valueOf = this._valueOf;

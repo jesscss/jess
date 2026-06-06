@@ -3,13 +3,15 @@
 This is the active runbook for Jess core architecture work. Keep it short and
 operational.
 
-Use the three-doc split:
+Use the four-doc split:
 
 1. `HANDOFF.md`: how to perform the next pass, the active work, gates, focus
    spec, and completion steps.
 2. `AGGRESSIVE-CUTTING-REVIEW.md`: hardline patch-shape rules.
 3. `PERFORMANCE-HANDOFF.md`: benchmark/profile protocol, evidence history,
    target queues, and rejected experiments.
+4. `NODE-REWRITE-TRACKER.md`: node-by-node rewrite table and completion
+   status.
 
 ## How To Work
 
@@ -50,7 +52,7 @@ current output with focused tests, rewrite the method toward structural facts
 and straight-line boring JavaScript, then rerun the same output tests. Reject
 text inspection, callback-array helpers, nested hot closures, defensive generic
 probes, and helper wrappers unless the method cannot preserve behavior without
-them.
+them. Track each completed node in `NODE-REWRITE-TRACKER.md`.
 
 ## Active Work
 
@@ -82,10 +84,10 @@ Next deep-cut queue:
 2. [x] Replace generated `PseudoSelector.renderPseudoSyntax(...)` comma
    inspection with a structural selector-list item-count decision. Output is
    still rendered, but render text no longer decides whether to unwrap.
-3. [ ] Sweep `PseudoSelector` end to end: remove remaining generated placement
-   wrapper/state cruft, replace capture/normalize paths with direct selector
-   argument rendering where tests prove equivalence, and keep authored
-   pseudo-selector semantics intact.
+3. [x] Complete the first node rewrite pass: `PseudoSelector`. Removed the
+   generated render-state helper/object allocation, removed the render-text
+   comma predicate, skipped wrapper capture when structurally unwrapping, and
+   deleted a dead commented keys experiment.
 4. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -165,17 +167,19 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
-- New traversal: none. `PseudoSelector.renderPseudoSyntax(...)` replaced
-  `!out.includes(',')` with a structural decision:
-  `!isNode(arg, N.SelectorList) || arg.value.length === 1`.
+- New traversal: none. `PseudoSelector.renderPseudoSyntax(...)` uses the
+  existing `SelectorList.value.length` structural fact for generated wrapper
+  omission and does not add any loop or scan.
 - New node/materialization: none. No new `Node`, copy, wrapper `Rules`,
   `.inherit(...)`, `.adopt(...)`, or `frozen` path was added.
 - Render path: improved shape. The generated `:is(...)` path still renders the
   selected output string, but it no longer renders selector text first to decide
-  whether the wrapper should exist. Wrapper omission is now decided from AST
-  shape before output inspection.
-- Helper/API surface: none added. The change is inline straight-line render
-  logic inside the existing method.
+  whether the wrapper should exist. When wrapper omission is structurally known,
+  the method now renders the argument directly and skips the temporary
+  mark/getSince/restore path.
+- Helper/API surface: deleted `getGeneratedPseudoPlacementState(...)` and the
+  temporary `GeneratedPseudoPlacementState` object. The remaining logic is
+  inline straight-line render code inside the existing method.
 - Metadata mutations: none. No parent restoration, `frozen`, `.inherit(...)`,
   source metadata mutation, `Reflect.*`, or `Object.hasOwn(...)` was added.
 - Evidence: focused selector output tests passed after the rewrite:
