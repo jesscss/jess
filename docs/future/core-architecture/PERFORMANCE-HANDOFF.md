@@ -886,6 +886,43 @@ experiment, so it makes no speed claim. The code-path proof is narrower: the
 runtime-binding sync path no longer allocates the binding-eval/rules-context
 closure pair before evaluating the same binding value.
 
+### Reference Pass 9 Rules Lookup Executor Closure Cut
+
+Date: 2026-06-06.
+
+Change: removed `createRulesReferenceLookupExecutor(...)` and its returned
+per-lookup `performRulesLookup(scope)` closure. Rules/leaky lookup now carries
+the same lookup data as explicit state and calls a module-local lookup function
+directly.
+
+Current CPU/counter status:
+
+- `benchmark-v39.less` profiler status after the patch: `Reference.evalNode`
+  `482` calls / `9.57ms`, `Rules.find` `68` calls / `0.47ms`;
+- top reference keys were repeated variable reads: `value` `230`, `val` `68`,
+  `size` `40`, `hue` `36`, `idx` `32`;
+- static node-creation audit showed `reference.ts` at `21` creation or copy
+  surfaces and global totals `new-node` `321`, `with-surface` `34`,
+  `copy-leaves` `31`, `derive` `30`.
+
+Interpretation: status only. This CPU/counter refresh was run after the edit,
+so it is not before/after speed evidence. The code-path proof is narrower: the
+rules reference lookup path no longer constructs a per-lookup executor closure.
+
+Sanity command:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result status:
+
+- `functions`: usable, median `13.80ms`;
+- `import-reference`: usable, median `22.20ms`;
+- `mixins-guards`: usable, median `17.60ms`;
+- `extend-chaining`: usable, median `5.40ms`;
+- `media`: usable, median `6.77ms`.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

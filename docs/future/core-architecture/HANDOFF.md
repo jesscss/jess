@@ -313,39 +313,43 @@ Next deep-cut queue:
    Runtime binding eval now performs the same rules-context/search-scope
    save/restore directly; async cleanup continuations remain only for actual
    thenables.
-12. [ ] Continue `Reference` before moving to the next node. Audit and cut the
+12. [x] Continue `Reference` pass 9. Removed
+   `createRulesReferenceLookupExecutor(...)` and its returned per-lookup
+   `performRulesLookup(scope)` closure. Leaky rules lookup now carries the same
+   lookup data as state and calls a module-local lookup function directly.
+13. [ ] Continue `Reference` before moving to the next node. Audit and cut the
    remaining copy/materialization pressure: `createRulesLikeReferenceSurface`,
    `evaluateReferenceValueNode(...)`, declaration finalization, merged assign
    normalization, and the remaining `.inherit(...)`/`copyWithReusableLeaves(...)`
    ownership boundaries.
-13. [ ] Sweep `Ampersand` template placement next. Replace
+14. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
-14. [ ] Sweep selector matching/extend equality. Replace hot `valueOf()` equality
+15. [ ] Sweep selector matching/extend equality. Replace hot `valueOf()` equality
    predicates with structural/keyset checks where possible, keeping
    `valueOf()` only as a measured, cached fast-path when it wins.
-15. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
+16. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
    materialization so routine eval replacement does not imply `.inherit(...)`.
-16. [ ] Replace `StyleImport` first-use placement copies with placement state
+17. [ ] Replace `StyleImport` first-use placement copies with placement state
    that points at canonical source children and preserves import visibility.
-17. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
+18. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
    is source/visibility/placement bookkeeping.
-18. [ ] Replace remaining `Rules` merge output copies with direct merge
+19. [ ] Replace remaining `Rules` merge output copies with direct merge
    placement/render state or a narrow owned-item copier proven by merge tests.
-19. [ ] Convert registration-prep expected misses away from routine `try/catch`
+20. [ ] Convert registration-prep expected misses away from routine `try/catch`
    only after adding tests for unresolved declaration/identity behavior.
-20. [ ] Continue selector/extend factory cuts separately; do not hide selector
+21. [ ] Continue selector/extend factory cuts separately; do not hide selector
    placement copies inside another generic copy helper.
-21. [ ] Replace callable binding copies for static containers with explicit
+22. [ ] Replace callable binding copies for static containers with explicit
    binding/placement state. Static containers should not be copied merely
    because they contain child nodes; `F_HAS_NODE_CHILD` is only a cheap current
    ownership boundary, not a final architecture.
-22. [ ] Attack the measured copy stack next: `copyChild`,
+23. [ ] Attack the measured copy stack next: `copyChild`,
    `copyWithReusableLeaves`, `copyCallableRulesValue`, `constructCopy`, and
    `.inherit(...)`. CPU evidence says these are mostly registration derivation,
    selector header rendering, JS function argument ownership, reference value
    eval, and binding clone debt; do not justify them as render output copying.
-23. [ ] Audit repeated callable/mixin evaluation from the profile before making
+24. [ ] Audit repeated callable/mixin evaluation from the profile before making
    more local helper cuts. If a mixin candidate or output body is evaluated
    more than the semantic call count requires, carry placement/binding state or
    cache the cold public materialization boundary instead of copying/evaluating
@@ -609,6 +613,22 @@ the gate passed.
   cleanup continuations remain because actual thenables still need rejection
   cleanup. Evidence: focused `reference/declaration/mixin/ruleset/operation`
   tests passed (`341` tests), including async binding and calc coverage.
+- Reference pass 9 rules-lookup executor closure cut: accepted as a narrow
+  lookup setup deletion. Current profile status after the patch still shows
+  `Reference.evalNode` as the main non-parse bucket (`482` calls / `9.57ms`)
+  and `Rules.find` small (`68` calls / `0.47ms`); the static audit dropped
+  `reference.ts` from `23` to `21` creation/copy surfaces and global
+  `with-surface` from `36` to `34`. Process note: this CPU/counter refresh was
+  run after the edit, so it is status evidence rather than a before/after speed
+  proof. New traversal: none; no loop, recursion, parent/source walk, side map,
+  array helper, or object scan was added. New node/materialization: none; no
+  `Node`, copy, `.inherit(...)`, wrapper Rules, materialized array, source or
+  parent mutation, or frozen state was added. Render path: unchanged; this only
+  changes how rules lookup state is carried before the same adapter lookup.
+  Helper/API surface: one module-local lookup function and one typed state
+  alias replace `createRulesReferenceLookupExecutor(...)` plus its returned
+  per-lookup closure. Metadata mutations: none. Evidence: focused
+  `reference/declaration/mixin/ruleset/operation` tests passed (`341` tests).
 - New traversal: none added. Pass 4 kept the existing lookup sequence but
   removed eagerly allocated lookup/finalizer closures from
   `evaluateReferenceNode(...)`. No parent/source walk, side-map lookup,

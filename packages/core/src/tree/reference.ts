@@ -552,6 +552,19 @@ type RulesLookupAdapter = {
   ) => RulesLookupResult;
 };
 
+type RulesReferenceLookupContext = {
+  referenceNode: Reference;
+  target: ReferenceValue['target'];
+  resolution: ReferenceOptions['resolution'];
+  isInterpolatedVariable: boolean;
+  filter: (n: Node) => boolean;
+  context: Context;
+  hasTarget: boolean;
+  adapter: RulesLookupAdapter;
+  valueKey: NormalizedLookupKey;
+  env: RulesLookupAdapterEnv;
+};
+
 type PreparedReferenceLookup = {
   adapter: RulesLookupAdapter;
   env: RulesLookupAdapterEnv;
@@ -938,9 +951,9 @@ function lookupRulesReferenceTarget(args: {
   context: Context;
   rulesParent: Rules | undefined;
   sourceRulesParent: Rules | undefined;
-  performRulesLookup: (scope: Rules) => RulesLookupResult;
+  lookupContext: RulesReferenceLookupContext;
 }): MaybePromise<RulesLookupResult> {
-  const first = args.performRulesLookup(args.resolvedTarget);
+  const first = performRulesReferenceLookup(args.resolvedTarget, args.lookupContext);
   if (isThenable(first)) {
     return Promise.resolve(first).then((resolved) => {
       if (isRulesLookupResult(resolved) || !args.context.leakyRules) {
@@ -958,11 +971,11 @@ function lookupRulesReferenceTarget(args: {
 function lookupLeakyRulesReferenceTargets(args: {
   rulesParent: Rules | undefined;
   sourceRulesParent: Rules | undefined;
-  performRulesLookup: (scope: Rules) => RulesLookupResult;
+  lookupContext: RulesReferenceLookupContext;
 }): MaybePromise<RulesLookupResult> {
   const rulesParent = args.rulesParent;
   if (isNode(rulesParent, N.Rules)) {
-    const result = args.performRulesLookup(rulesParent);
+    const result = performRulesReferenceLookup(rulesParent, args.lookupContext);
     if (isThenable(result)) {
       return Promise.resolve(result).then((resolved) => {
         if (isRulesLookupResult(resolved)) {
@@ -970,7 +983,7 @@ function lookupLeakyRulesReferenceTargets(args: {
         }
         const sourceRulesParent = args.sourceRulesParent;
         return isNode(sourceRulesParent, N.Rules)
-          ? args.performRulesLookup(sourceRulesParent)
+          ? performRulesReferenceLookup(sourceRulesParent, args.lookupContext)
           : undefined;
       });
     }
@@ -981,7 +994,7 @@ function lookupLeakyRulesReferenceTargets(args: {
 
   const sourceRulesParent = args.sourceRulesParent;
   return isNode(sourceRulesParent, N.Rules)
-    ? args.performRulesLookup(sourceRulesParent)
+    ? performRulesReferenceLookup(sourceRulesParent, args.lookupContext)
     : undefined;
 }
 
@@ -993,7 +1006,7 @@ function lookupReferenceTarget(args: {
   context: Context;
   rulesParent: Rules | undefined;
   sourceRulesParent: Rules | undefined;
-  performRulesLookup: (scope: Rules) => RulesLookupResult;
+  lookupContext: RulesReferenceLookupContext;
 }): MaybePromise<RulesLookupResult> {
   const {
     resolvedTarget,
@@ -1003,7 +1016,7 @@ function lookupReferenceTarget(args: {
     context,
     rulesParent,
     sourceRulesParent,
-    performRulesLookup
+    lookupContext
   } = args;
 
   if (!isNode(resolvedTarget, N.Rules)) {
@@ -1015,22 +1028,14 @@ function lookupReferenceTarget(args: {
     context,
     rulesParent,
     sourceRulesParent,
-    performRulesLookup
+    lookupContext
   });
 }
 
-function createRulesReferenceLookupExecutor(args: {
-  referenceNode: Reference;
-  target: ReferenceValue['target'];
-  resolution: ReferenceOptions['resolution'];
-  isInterpolatedVariable: boolean;
-  filter: (n: Node) => boolean;
-  context: Context;
-  hasTarget: boolean;
-  adapter: RulesLookupAdapter;
-  valueKey: NormalizedLookupKey;
-  env: RulesLookupAdapterEnv;
-}): (scope: Rules) => RulesLookupResult {
+function performRulesReferenceLookup(
+  scope: Rules,
+  lookupContext: RulesReferenceLookupContext
+): RulesLookupResult {
   const {
     referenceNode,
     target,
@@ -1042,22 +1047,19 @@ function createRulesReferenceLookupExecutor(args: {
     adapter,
     valueKey,
     env
-  } = args;
-
-  return (scope: Rules): RulesLookupResult => {
-    const opts = buildReferenceLookupOptions({
-      referenceNode,
-      target,
-      targetRules: scope,
-      resolution,
-      isInterpolatedVariable,
-      filter,
-      context,
-      hasTarget,
-      adapter
-    });
-    return adapter.lookup(scope, valueKey, opts, env);
-  };
+  } = lookupContext;
+  const opts = buildReferenceLookupOptions({
+    referenceNode,
+    target,
+    targetRules: scope,
+    resolution,
+    isInterpolatedVariable,
+    filter,
+    context,
+    hasTarget,
+    adapter
+  });
+  return adapter.lookup(scope, valueKey, opts, env);
 }
 
 function lookupResolvedReference(args: {
@@ -1090,7 +1092,7 @@ function lookupResolvedReference(args: {
     context
   });
 
-  const performLookup = createRulesReferenceLookupExecutor({
+  const lookupContext: RulesReferenceLookupContext = {
     referenceNode,
     target,
     resolution: referenceNode.options.resolution,
@@ -1101,7 +1103,7 @@ function lookupResolvedReference(args: {
     adapter,
     valueKey,
     env
-  });
+  };
 
   const returnVal = lookupReferenceTarget({
     resolvedTarget: isNode(resolvedTarget) ? resolvedTarget : undefined,
@@ -1111,7 +1113,7 @@ function lookupResolvedReference(args: {
     context,
     rulesParent: referenceNode.rulesParent,
     sourceRulesParent: referenceNode.sourceRulesParent,
-    performRulesLookup: performLookup
+    lookupContext
   });
 
   if (isThenable(returnVal)) {
