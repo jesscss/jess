@@ -13,11 +13,12 @@ Use the four-doc split:
 4. `NODE-REWRITE-TRACKER.md`: node-by-node rewrite table and completion
    status.
 
-Design proposals that are not yet active implementation plans:
+Active implementation specs:
 
 - `BINDING-INDEX-PROPOSAL.md`: binding-index implementation spec for
   reference lookup, Less contextual semantics, Jess/Sass-style live bindings,
-  and removal of transitional fallback bridges.
+  and removal of transitional fallback bridges. It is active while the
+  `Active Binding Implementation Lane` below has unchecked items.
 
 ## How To Work
 
@@ -27,18 +28,33 @@ Design proposals that are not yet active implementation plans:
    or this handoff.
 3. Read `PERFORMANCE-HANDOFF.md` before making or accepting any speed claim, or
    before touching a measured hot path.
-4. Start each non-correctness pass from the benchmark leash below.
-5. State one hypothesis before editing.
-6. Make the smallest behavior-preserving cut that removes measured work or
+4. Choose work from the highest-priority active lane below. An unchecked active
+   implementation lane outranks benchmark cutting, node cleanup, and smell
+   sweeps unless this handoff explicitly marks that lane paused.
+5. Start each non-correctness pass from the benchmark leash below when the
+   selected lane touches measured hot paths.
+6. State one hypothesis before editing.
+7. Make the smallest behavior-preserving cut that removes measured work or
    clearly wrong machinery.
-7. Run focused tests first, then the required gates.
-8. Keep, reshape, or revert based on the benchmark evidence and the aggressive
+8. Run focused tests first, then the required gates.
+9. Keep, reshape, or revert based on the benchmark evidence and the aggressive
    cutting self-prosecution.
-9. Commit and push the completed pass.
+10. Commit and push the completed pass.
 
 ## Focus Spec
 
-Active mode: **benchmark-leashed aggressive cutting**.
+Active mode: **binding-index integration**.
+
+Priority rule: finish the active binding implementation lane before returning
+to the deep-cut queue. `AGGRESSIVE-CUTTING-REVIEW.md` and the benchmark leash
+are patch-shape/evidence gates for binding work; they are not permission to
+select unrelated cutting work while binding steps remain unchecked. The only
+ways to leave the binding lane are:
+
+- all binding steps are complete;
+- a correctness blocker requires a focused detour;
+- this handoff explicitly marks the binding lane paused and names the temporary
+  replacement lane.
 
 The goal is the fastest credible path from parsed Less to CSS output:
 
@@ -53,12 +69,16 @@ The goal is the fastest credible path from parsed Less to CSS output:
 Less is the optimizing path. Preserve SCSS-enabling seams only when they are
 concrete and cheap or isolated behind cold extension boundaries.
 
-Work shape: go node by node and method by method. For each target, prove the
-current output with focused tests, rewrite the method toward structural facts
-and straight-line boring JavaScript, then rerun the same output tests. Reject
-text inspection, callback-array helpers, nested hot closures, defensive generic
-probes, and helper wrappers unless the method cannot preserve behavior without
-them. Track each completed node in `NODE-REWRITE-TRACKER.md`.
+Work shape while binding is active: take the next unchecked binding step,
+identify the bridge or fallback it deletes, prove the covered behavior with
+focused tests, then patch the smallest lookup/binding surface that moves that
+case from old lookup to the binding frame. Reject new cache layers, node
+materialization, helper ladders, and fallback "second chances" unless the case
+is explicitly unmodeled and labeled as a temporary bridge with a deletion
+condition.
+
+Node-by-node cleanup resumes only after the binding lane is complete or paused
+above. When it resumes, track completed nodes in `NODE-REWRITE-TRACKER.md`.
 
 ## Active Work
 
@@ -100,7 +120,7 @@ Binding prototype status:
   miss from the binding frame and stop. Only unmodeled cold/complex cases may
   route to old registry/search/materialization paths, and every such bridge
   needs a deletion condition in `BINDING-INDEX-PROPOSAL.md` or this handoff.
-- Next binding step, when selected: delete the remaining `UNCOVERED` bridges
+- Next binding step: delete the remaining `UNCOVERED` bridges
   one by one by carrying the missing facts at construction/adoption time:
   manual-frame indexing state and fallback-frame lookup ownership. Do not start
   lookup caching until those bridge boundaries are narrower.
@@ -536,7 +556,12 @@ next step starts.
    - No cache, evaluated-value reuse, side map, materialized node, output
      wrapper, or render-path change was added.
 
-Next deep-cut queue:
+Secondary deep-cut queue:
+
+Do not select this queue while `Active Binding Implementation Lane` has
+unchecked items, unless the binding lane is explicitly paused in the Focus Spec
+above. These items are still valid targets, but they are secondary to finishing
+the binding index/scope lookup refactor.
 
 0. [x] Move callable `default()` guard classification out of
    `prepareCallableEvalCandidates(...)`. Parsed Less now passes explicit
