@@ -128,4 +128,52 @@ describe('ScopeFrame variable facade', () => {
 
     expect(hit.kind).toBe('uncovered');
   });
+
+  it('resolves fallback live slots from the same facade lookup', async () => {
+    const fallbackRules = rules([]);
+    const fallbackFrame = fallbackRules.getScopeFrame();
+    fallbackFrame.liveSlotsByName.set('x', { value: any('blue') });
+    const root = rules([]);
+    await root.eval(new Context());
+    const frame = root.getScopeFrame();
+    frame.fallbackFrame = fallbackFrame;
+
+    const hit = lookupScopeFrameVariable(frame, 'x');
+
+    expect(hit.kind).toBe('live');
+    expect(hit.kind === 'live' && hit.cell.value?.valueOf()).toBe('blue');
+  });
+
+  it('resolves fallback declarations from the same facade lookup', async () => {
+    const fallbackRules = rules([
+      vardecl({ name: 'x', value: any('blue') })
+    ]);
+    await fallbackRules.eval(new Context());
+    const root = rules([]);
+    await root.eval(new Context());
+    const frame = root.getScopeFrame();
+    frame.fallbackFrame = fallbackRules.getScopeFrame();
+
+    const hit = lookupScopeFrameVariable(frame, 'x');
+
+    expect(hit.kind).toBe('declaration');
+    expect(hit.kind === 'declaration' && hit.entry.cell.value?.valueOf()).toBe('blue');
+  });
+
+  it('returns a covered miss across fallback frames', async () => {
+    const fallbackRules = rules([
+      vardecl({ name: 'x', value: any('blue') })
+    ]);
+    await fallbackRules.eval(new Context());
+    const root = rules([]);
+    await root.eval(new Context());
+    const frame = root.getScopeFrame();
+    frame.fallbackFrame = fallbackRules.getScopeFrame();
+
+    const hit = lookupScopeFrameVariable(frame, 'missing', {
+      bailOnPendingDeclarations: true
+    });
+
+    expect(hit.kind).toBe('miss');
+  });
 });

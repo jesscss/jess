@@ -625,6 +625,42 @@ Keep criteria:
 
 ## Recent Benchmark Sanity Notes
 
+### Fallback-Frame Lookup Ownership
+
+Date: 2026-06-06.
+
+Change: `lookupScopeFrameVariable(...)` now owns fallback-frame variable lookup
+for covered static variable reads. It searches the primary frame chain and then
+the fallback frame chain before returning `miss`, so fallback live-slot hits,
+fallback declaration hits, and covered fallback misses do not route through the
+old `lookupRuntimeVarBinding(...)` / `findVarDeclarationFast(...)` ladder.
+
+Sanity command:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result status:
+
+- `functions`: usable, median `12.33ms`;
+- `import-reference`: usable, median `20.09ms`;
+- `mixins-guards`: usable, median `17.44ms`;
+- `extend-chaining`: usable, median `5.51ms`;
+- `media`: usable, median `6.66ms`.
+
+Additional status:
+
+- `node scripts/profile-less-benchmark.mjs --file=benchmark-v39.less` reported
+  `Reference.evalNode` `482` calls / `5.07ms`, `Rules.find` `68` calls /
+  `0.34ms`, and `Rules.find` still only on function keys for this fixture.
+- `pnpm run audit:node-creation` reported `reference.ts` `21`, global
+  `new-node` `321`, `with-surface` `34`, `copy-leaves` `31`, `derive` `30`.
+
+Interpretation: status only. This pass moved fallback ownership into the
+binding facade for covered static variable reads. It was not a controlled
+before/after performance experiment and makes no speed claim.
+
 ### Manual-Frame Declaration Coverage
 
 Date: 2026-06-06.

@@ -332,6 +332,36 @@ describe('reference', () => {
       }
     });
 
+    it('resolves fallback-frame declarations without Rules.find fallback', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'tone') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const fallbackScope = rules([
+          vardecl({ name: any('tone'), value: any('blue') })
+        ]);
+        await fallbackScope.eval(context);
+        const runtimeScope = rules([]);
+        await runtimeScope.eval(context);
+        runtimeScope.getScopeFrame().fallbackFrame = fallbackScope.getScopeFrame();
+        context.rulesContext = runtimeScope;
+
+        const resolved = await ref({ key: 'tone' }, { type: 'variable' }).eval(context);
+
+        expect(resolved.toTrimmedString()).toBe('blue');
+        expect(declarationHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
     it('keeps runtime-binding containers on the owned output path for default guards', async () => {
       const sourceDefault = defaultguard();
       const sourceValue = list([sourceDefault]);

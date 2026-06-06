@@ -231,59 +231,67 @@ export function lookupScopeFrameVariable(
 ): ScopeFrameVariableLookupResult {
   let f = frame;
   let start = options?.start;
-  let hasFallbackFrame = false;
-  while (f) {
-    hasFallbackFrame ||= f.fallbackFrame !== undefined;
-    const live = options?.includeLive === false
-      ? undefined
-      : f.liveSlotsByName.get(name);
-    if (live) {
-      const sourceNode = live.sourceNode;
-      if (!sourceNode || !options?.blockedSource?.(sourceNode)) {
-        return {
-          kind: 'live',
-          cell: live,
-          sourceNode
-        };
-      }
-    }
-
-    if (options?.includeDeclarations !== false && !f.declarationsCovered) {
-      return { kind: 'uncovered' };
-    }
-
-    if (
-      options?.bailOnPendingDeclarations
-      && f.pendingDeclarationNames.length > 0
-    ) {
-      return { kind: 'uncovered' };
-    }
-
-    const bucket = options?.includeDeclarations === false
-      ? undefined
-      : f.declarationBucketsByName.get(name);
-    if (bucket?.length) {
-      for (let i = bucket.length - 1; i >= 0; i--) {
-        const entry = bucket[i]!;
-        if (
-          start !== undefined
-          && !(entry.sourceNode.index !== undefined && entry.sourceNode.index < start)
-        ) {
-          continue;
-        }
-        if (!options?.filter || options.filter(entry.sourceNode)) {
+  let fallbackFrame = frame?.fallbackFrame;
+  while (true) {
+    while (f) {
+      const live = options?.includeLive === false
+        ? undefined
+        : f.liveSlotsByName.get(name);
+      if (live) {
+        const sourceNode = live.sourceNode;
+        if (!sourceNode || !options?.blockedSource?.(sourceNode)) {
           return {
-            kind: 'declaration',
-            entry
+            kind: 'live',
+            cell: live,
+            sourceNode
           };
         }
       }
+
+      if (options?.includeDeclarations !== false && !f.declarationsCovered) {
+        return { kind: 'uncovered' };
+      }
+
+      if (
+        options?.bailOnPendingDeclarations
+        && f.pendingDeclarationNames.length > 0
+      ) {
+        return { kind: 'uncovered' };
+      }
+
+      const bucket = options?.includeDeclarations === false
+        ? undefined
+        : f.declarationBucketsByName.get(name);
+      if (bucket?.length) {
+        for (let i = bucket.length - 1; i >= 0; i--) {
+          const entry = bucket[i]!;
+          if (
+            start !== undefined
+            && !(entry.sourceNode.index !== undefined && entry.sourceNode.index < start)
+          ) {
+            continue;
+          }
+          if (!options?.filter || options.filter(entry.sourceNode)) {
+            return {
+              kind: 'declaration',
+              entry
+            };
+          }
+        }
+      }
+
+      start = undefined;
+      f = f.parent;
     }
 
+    if (!fallbackFrame) {
+      return { kind: 'miss' };
+    }
+
+    f = fallbackFrame;
+    fallbackFrame = fallbackFrame.fallbackFrame;
     start = undefined;
-    f = f.parent;
   }
-  return hasFallbackFrame ? { kind: 'uncovered' } : { kind: 'miss' };
 }
 
 export function assignScopeFrameVariable(

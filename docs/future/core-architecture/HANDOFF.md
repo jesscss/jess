@@ -429,11 +429,10 @@ next step starts.
      entirely, preserving the live/current vs source-position split proven by
      the `$for` binding test.
    - Remaining uncovered bridges: explicit targets, interpolated variable keys,
-     non-snapshot contextual `start`, still-dynamic or async pending
-     declaration names, manual frames before declaration coverage is known, and
-     fallback-frame lookup ownership.
+     non-snapshot contextual `start`, still-dynamic or async deferred
+     declaration names, and manual frames before declaration coverage is known.
 
-9. [ ] Fallback-frame lookup ownership.
+9. [x] Fallback-frame lookup ownership.
    Move fallback-frame variable lookup into the binding facade only if it
    deletes the equivalent old live-slot/`findVarDeclarationFast(...)` fallback
    walk for covered static variable reads. Do not add a second fallback chain
@@ -445,6 +444,21 @@ next step starts.
    - covered fallback misses stop without registry/search fallback
    - no new traversal unless the old traversal is deleted for that path
    - benchmark/profile leash recorded
+
+   Status:
+   - `lookupScopeFrameVariable(...)` now searches the direct frame chain and
+     then the fallback frame chain before returning `miss`. A fallback frame no
+     longer forces `uncovered` by itself.
+   - Fallback live-slot hits, fallback declaration hits, and fallback covered
+     misses are now owned by the same frame facade for covered static variable
+     reads.
+   - `Reference.lookupVariableReference(...)` therefore stops before
+     `lookupRuntimeVarBinding(...)`, `findVarDeclarationFast(...)`, and
+     registry/search fallback for covered fallback hit/miss cases.
+   - Remaining uncovered bridges: explicit targets, interpolated variable keys,
+     non-snapshot contextual `start`, still-dynamic or async deferred
+     declaration names, manual frames before declaration coverage is known, and
+     fallback frames whose declaration surface is not covered.
 
 10. [ ] Lookup cache prototype.
    Add a frame-local lookup-identity cache only after the facade behavior is
@@ -635,6 +649,37 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Fallback-frame lookup ownership pass: accepted as binding-bridge deletion,
+  not as a speed claim. `packages/core/src/tree/scope-frame.ts` now searches the
+  primary frame chain and then the fallback frame chain inside
+  `lookupScopeFrameVariable(...)`, so fallback live-slot hits, fallback
+  declaration hits, and covered fallback misses are owned by the frame facade
+  instead of returning `uncovered` solely because a fallback frame exists.
+  `packages/core/src/tree/reference.ts` does not need a new branch: covered
+  fallback hits return the existing `RuntimeVarBinding` shape, and covered
+  fallback misses still stop through the existing local miss sentinel before
+  `lookupRuntimeVarBinding(...)`, `findVarDeclarationFast(...)`, or registry
+  fallback. New traversal: one fallback-frame walk was added inside the facade,
+  but it replaces the old covered static-variable fallback traversal through
+  `lookupRuntimeVarBinding(...)`/`findVarDeclarationFast(...)`; no child scan,
+  source walk, generator, side map, `map/filter/sort`, or recursive AST walk was
+  added. New node/materialization: none; no `Node`, copy, `.inherit(...)`,
+  `.adopt(...)`, wrapper `Rules`, frozen/source/parent metadata mutation, or
+  render-time array materialization was added. Render path: unchanged; render
+  still stringifies evaluated values and this pass only changes lookup
+  ownership. Helper/API surface: no helper or public API added. Metadata
+  mutations: none. Evidence: focused `scope-frame/reference/mixin/call/import`
+  tests passed (`406` passed, `1` skipped), including new direct facade tests
+  for fallback live hits, fallback declaration hits, covered fallback misses,
+  and a production reference test proving fallback declaration reads avoid
+  `Rules.find(...)`. Post-patch profiler status on `benchmark-v39.less`:
+  `Reference.evalNode` `482` calls / `5.07ms`, `Rules.find` `68` calls /
+  `0.34ms`, still only function keys for that fixture. Static node-creation
+  audit stayed `reference.ts` `21`, global `new-node` `321`, `with-surface`
+  `34`, `copy-leaves` `31`, `derive` `30`. Stable hot-path sanity was usable
+  for all five tracked fixtures: `functions` `12.33ms`, `import-reference`
+  `20.09ms`, `mixins-guards` `17.44ms`, `extend-chaining` `5.51ms`, and
+  `media` `6.66ms`.
 - Manual-frame declaration coverage pass: accepted as binding-bridge deletion,
   not as a speed claim. `packages/core/src/tree/scope-frame.ts` now carries
   `declarationsCovered`, and `lookupScopeFrameVariable(...)` returns
