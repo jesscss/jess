@@ -71,20 +71,27 @@ function createRulesetMixinPlacementRecord(
 function createSourceIndexByOutput(
   childSegments: readonly MixinOutputChildSegment[]
 ): ReadonlyMap<Node, number> {
-  return new Map(
-    childSegments
-      .filter((segment): segment is MixinOutputChildSegment & { output: Node } => segment.output !== undefined)
-      .map(segment => [segment.output, segment.index])
-  );
+  const out = new Map<Node, number>();
+  for (let i = 0; i < childSegments.length; i++) {
+    const segment = childSegments[i]!;
+    if (segment.output) {
+      out.set(segment.output, segment.index);
+    }
+  }
+  return out;
 }
 
 export function getMixinOutputChildSegments(
   sourceRules: Rules,
   outputRules?: Rules
 ): MixinOutputChildSegment[] {
-  return sourceRules.value.map((source, index) => (
-    createPlacementChildSegment(source, outputRules?.value[index], index)
-  ));
+  const source = sourceRules.value;
+  const output = outputRules?.value;
+  const out = new Array<MixinOutputChildSegment>(source.length);
+  for (let i = 0; i < source.length; i++) {
+    out[i] = createPlacementChildSegment(source[i]!, output?.[i], i);
+  }
+  return out;
 }
 
 export function getMixinOutputPlacementRecord(outputRules: Rules): PlacementRecord<Rules, Rules> | undefined {
@@ -139,9 +146,14 @@ export function getMixinOutputSourceChildren(outputRules: Rules): Node[] | undef
   if (!slot) {
     return undefined;
   }
-  return slot.placementChildren
-    .map(outputChild => slot.sourceByOutput.get(outputChild))
-    .filter((source): source is Node => source !== undefined);
+  const out: Node[] = [];
+  for (let i = 0; i < slot.placementChildren.length; i++) {
+    const source = slot.sourceByOutput.get(slot.placementChildren[i]!);
+    if (source) {
+      out.push(source);
+    }
+  }
+  return out;
 }
 
 export function getMixinOutputPlacementChildren(outputRules: Rules): readonly Node[] | undefined {
@@ -288,8 +300,8 @@ function isSourceChainNode(value: unknown): value is SourceChainNode {
 export function isFromRestrictedMixinOutput(node: unknown): boolean {
   const queue: unknown[] = [node];
   const seen = new Set<unknown>();
-  while (queue.length > 0) {
-    const current = queue.shift();
+  for (let i = 0; i < queue.length; i++) {
+    const current = queue[i];
     if (!isSourceChainNode(current) || seen.has(current)) {
       continue;
     }
@@ -373,22 +385,27 @@ export function attachMixinOutputSlot(
   const existingRulesetPlacement = outputRules.options.mixinOutputSlot?.rulesetPlacement;
   const childSegments = getMixinOutputChildSegments(sourceRules, outputRules);
   const sourceIndexByOutput = createSourceIndexByOutput(childSegments);
+  const sourceByOutput = new Map<Node, Node>();
+  const outputBySource = new Map<Node, Node>();
+  for (let i = 0; i < childSegments.length; i++) {
+    const segment = childSegments[i]!;
+    if (segment.output) {
+      sourceByOutput.set(segment.output, segment.source);
+      outputBySource.set(segment.source, segment.output);
+    }
+  }
+  const placementChildren = new Array<Node>(outputRules.value.length);
+  for (let i = 0; i < outputRules.value.length; i++) {
+    placementChildren[i] = outputRules.value[i]!;
+  }
   const slot: MixinOutputSlot = {
     sourceRules,
     outputRules,
     childSegments,
-    sourceByOutput: new Map(
-      childSegments
-        .filter((segment): segment is MixinOutputChildSegment & { output: Node } => segment.output !== undefined)
-        .map(segment => [segment.output, segment.source])
-    ),
-    outputBySource: new Map(
-      childSegments
-        .filter((segment): segment is MixinOutputChildSegment & { output: Node } => segment.output !== undefined)
-        .map(segment => [segment.source, segment.output])
-    ),
+    sourceByOutput,
+    outputBySource,
     sourceIndexByOutput,
-    placementChildren: outputRules.value.slice(),
+    placementChildren,
     scopeFrame: outputRules.getScopeFrame(),
     ...(outputRules.options.rulesVisibility ? { rulesVisibility: outputRules.options.rulesVisibility } : {}),
     referenceMode: false,

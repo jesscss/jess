@@ -1,8 +1,9 @@
 import {
-  type Node,
+  Node,
   defineType,
   F_EXTENDED,
-  F_EXTEND_TARGET
+  F_EXTEND_TARGET,
+  F_MAY_ASYNC
 } from './node.js';
 import { type Context } from '../context.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
@@ -210,6 +211,9 @@ export class SelectorList extends Selector<Selector[]> {
 
   override evalNode(context: Context): MaybePromise<SelectorList | Selector> {
     attachSelectorBitLibrary(this, context.selectorBits);
+    if (!this.hasFlag(F_MAY_ASYNC)) {
+      return this.finalizeEvaluatedSelectors(this.evaluateSelectorsSync(context, false), true);
+    }
     const evaluatedValue = this.evaluateSelectors(context, false);
     return isThenable(evaluatedValue)
       ? (evaluatedValue as Promise<Selector[]>).then(value => this.finalizeEvaluatedSelectors(value, true))
@@ -218,10 +222,31 @@ export class SelectorList extends Selector<Selector[]> {
 
   protected override resolveForRender(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
+    if (!this.hasFlag(F_MAY_ASYNC)) {
+      return this.finalizeEvaluatedSelectors(this.evaluateSelectorsSync(context, true), false);
+    }
     const resolvedValue = this.evaluateSelectors(context, true);
     return isThenable(resolvedValue)
       ? (resolvedValue as Promise<Selector[]>).then(value => this.finalizeEvaluatedSelectors(value, false))
       : this.finalizeEvaluatedSelectors(resolvedValue as Selector[], false);
+  }
+
+  private evaluateSelectorsSync(context: Context, resolve: boolean): Selector[] {
+    const currentValue = this.value;
+    const evaluatedValue = new Array<Selector>(currentValue.length);
+    for (let i = 0; i < currentValue.length; i++) {
+      const item = currentValue[i]!;
+      const out = resolve ? item.resolve(context) : item.eval(context);
+      if (!(out instanceof Node)) {
+        if (out !== null && typeof out === 'object') {
+          throw new TypeError('Expected sync selector evaluation to return a node');
+        }
+        evaluatedValue[i] = item;
+        continue;
+      }
+      evaluatedValue[i] = isNode(out, N.Selector) ? out : item;
+    }
+    return evaluatedValue;
   }
 
   private evaluateSelectors(context: Context, resolve: boolean): MaybePromise<Selector[]> {

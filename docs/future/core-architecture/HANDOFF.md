@@ -463,10 +463,27 @@ repo evidence showing the path is cold/public/semantic.
    cut therefore keeps the copy fallback only for non-static bodies, nested
    rulesets/at-rules, and assignment/merge declaration bodies. Keep shrinking
    that semantic boundary; do not polish recursive copy as the destination.
+   Follow-up cut: callable output placement metadata no longer builds
+   `filter(...).map(...)` arrays for `sourceByOutput`, `outputBySource`, or
+   `sourceIndexByOutput`, no longer uses `.map(...)` for
+   `getMixinOutputChildSegments(...)`, no longer slices `placementChildren`,
+   and no longer uses `queue.shift()` while checking restricted mixin-output
+   ancestry. `pushCallableOutputRules(...)` also uses an indexed append loop
+   instead of spread. A fresh parent-identity audit found the remaining
+   ruleset-as-mixin nested-output parent assertions are still semantic: nested
+   source reuse previously broke dynamic mixins, detached/local-var output,
+   selector collapse, and declaration merge chains. Do not delete those tests
+   until a source-plus-placement replacement exists for nested/dynamic bodies.
 2. [ ] Rewrite mixin/callable tests that currently require output children to
    be distinct owned nodes or require `child.parent === result`. Keep tests for
    rendered CSS, source-child mapping, source index, diagnostics, and any cold
    materialization API that remains.
+   Progress: audited the callable/mixin output tests again. Static direct mixin
+   output already asserts source-backed children and canonical parentage. The
+   remaining wrapper-output `child.parent === output` checks are structural
+   ownership for real wrapper `Rules`, not eval'd source-child vanity. The
+   nested ruleset-as-mixin distinct-child checks remain until nested placement
+   can be represented without moving or corrupting canonical nested children.
 3. [ ] Audit every remaining `copyWithReusableLeaves(...)` call by purpose:
    public materialization, mutation isolation, trivia/source preservation, or
    obsolete ownership habit. Add a focused frontier that fails if render/eval
@@ -570,6 +587,11 @@ repo evidence showing the path is cold/public/semantic.
     and ownership steps. Selector container cutting is complete enough to move
     the next queue to remaining render wrappers in `Selector`, `Declaration`,
     `AtRule`, and `Ruleset`.
+    Follow-up cut: `SelectorList`, `CompoundSelector`, and `ComplexSelector`
+    now dispatch to explicit sync eval/resolve loops when the container lacks
+    `F_MAY_ASYNC`; the may-async rest loops remain only for flagged containers.
+    The sync branch uses a cheap `instanceof Node` invariant check and does not
+    call `isThenable(...)` per child.
 12. [x] Audit `OutputWriter.getSince(...)`, `preview(...)`, `capture(...)`,
     `replaceSince(...)`, and detached `new OutputWriter()` callers. Classify
     each as public `toString`, sourcemap transform, final emitted value, or
@@ -1811,26 +1833,39 @@ Do not restock from completed lane history. Do not add entries shaped like
 
 ## Aggressive Cutting Self-Prosecution
 
-- New traversal: this guardrail pass adds diff scanning in
-  `scripts/verify-aggressive-cutting-review.mjs`, but no runtime traversal in
-  `packages/core/src`. The script's loops inspect local git diff text only and
-  are outside eval/render.
-- New node/materialization: none in runtime code. The new script creates plain
-  diagnostic arrays from diff lines for a cold verification command; it creates
-  no AST nodes, wrappers, copies, inherited nodes, frozen nodes, or render-time
-  materialization.
-- Render path: untouched. This pass does not change eval/render behavior and
-  does not resolve values into arrays/nodes for stringification.
-- Helper/API surface: adds one explicit verification command,
-  `pnpm run verify:aggressive-cutting-review`, plus the repo-local review doc.
-  This is accepted because it prevents unprosecuted helper/API growth in future
-  queue passes and is not on the runtime path.
-- Metadata mutations: none in runtime code. The script scans for parent/source,
-  `frozen`, `Reflect.*`, `Object.hasOwn`, and similar danger tokens so future
-  queue passes must justify them rather than smuggling them in.
-- Evidence: code-path evidence only; performance remains shelved. The proof for
-  this pass is that the verifier is cold tooling and the handoff now requires a
-  self-prosecution block before queue work closes.
+- New traversal: accepted replacements only. `mixin-output-slot.ts` replaces
+  existing `filter(...).map(...)`, `.map(...)`, `.slice()`, and
+  `queue.shift()` traversal with indexed loops over the same data. Selector
+  containers add explicit sync loops, but only to bypass the existing generic
+  maybe-async loop when `F_MAY_ASYNC` proves no child can suspend; the
+  may-async rest loops remain unchanged. `pushCallableOutputRules(...)`
+  replaces spread append with an indexed append loop.
+- New node/materialization: none. This pass creates no AST nodes, wrappers,
+  copies, inherited nodes, frozen nodes, or render-time materialized value
+  arrays. It deletes temporary arrays used to build placement maps and avoids
+  per-child promise probes on sync selector containers.
+- Render path: selector render/eval still evaluates selector children and
+  finalizes the same selector shapes. Sync selector containers now take the
+  direct loop; flagged may-async containers keep the old continuation path.
+  Callable output rendering still uses existing semantic ownership boundaries;
+  no render-only source child was copied or reparented.
+- Helper/API surface: three small private sync helpers were added on
+  `SelectorList`, `CompoundSelector`, and `ComplexSelector`. They are accepted
+  because they split the hot sync path away from per-child `isThenable(...)`
+  checks and do not add public API. No new public helper or node method was
+  added.
+- Metadata mutations: no new parent/source/frozen/inherit metadata mutation was
+  added. Existing callable nested-output parent assertions were audited and
+  retained only where they still protect real wrapper/nested placement
+  semantics; dynamic/nested callable body source reuse remains rejected until a
+  source-plus-placement model can preserve local vars, selector collapse, and
+  merge behavior.
+- Evidence: focused callable/selector tests passed (`175` tests), lint passed
+  for touched files, `@jesscss/core` and `jess` built, and hotpath sanity was
+  run. The first unbuilt measurement was discarded as not patch-correlated; the
+  built patched run showed `mixins-guards` around `79.52ms` but an A/B with the
+  patch reversed measured `79.14ms`, so that noisy slowdown is pre-existing in
+  the built baseline rather than caused by this slice. No speed win is claimed.
 - Verdict: accepted.
 
 ## Worktree / Commit Rule

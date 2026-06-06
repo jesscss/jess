@@ -1,6 +1,7 @@
 import {
-  type Node,
-  defineType
+  Node,
+  defineType,
+  F_MAY_ASYNC
 } from './node.js';
 import type { Context } from '../context.js';
 import { createPublicNil, Nil } from './nil.js';
@@ -165,6 +166,9 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
 
   override evalNode(context: Context): MaybePromise<CompoundSelector | Selector | Nil> {
     attachSelectorBitLibrary(this, context.selectorBits);
+    if (!this.hasFlag(F_MAY_ASYNC)) {
+      return this.finalizeComponents(this.evaluateComponentsSync(context, false), true);
+    }
     const evaluatedValue = this.evaluateComponents(context, false);
     return isThenable(evaluatedValue)
       ? (evaluatedValue as Promise<Array<Selector | Nil>>).then(value => this.finalizeComponents(value, true))
@@ -173,10 +177,31 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
 
   protected override resolveForRender(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
+    if (!this.hasFlag(F_MAY_ASYNC)) {
+      return this.finalizeComponents(this.evaluateComponentsSync(context, true), false);
+    }
     const resolvedValue = this.evaluateComponents(context, true);
     return isThenable(resolvedValue)
       ? (resolvedValue as Promise<Array<Selector | Nil>>).then(value => this.finalizeComponents(value, false))
       : this.finalizeComponents(resolvedValue as Array<Selector | Nil>, false);
+  }
+
+  private evaluateComponentsSync(context: Context, resolve: boolean): Array<Selector | Nil> {
+    const currentValue = this.value;
+    const evaluatedValue = new Array<Selector | Nil>(currentValue.length);
+    for (let i = 0; i < currentValue.length; i++) {
+      const item = currentValue[i]!;
+      const out = resolve ? item.resolve(context) : item.eval(context);
+      if (!(out instanceof Node)) {
+        if (out !== null && typeof out === 'object') {
+          throw new TypeError('Expected sync compound selector evaluation to return a node');
+        }
+        evaluatedValue[i] = item;
+        continue;
+      }
+      evaluatedValue[i] = out instanceof Selector || out instanceof Nil ? out : item;
+    }
+    return evaluatedValue;
   }
 
   private evaluateComponents(context: Context, resolve: boolean): MaybePromise<Array<Selector | Nil>> {

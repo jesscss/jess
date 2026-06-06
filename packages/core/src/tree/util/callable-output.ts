@@ -49,7 +49,9 @@ export function pushCallableOutputRules(
   state: CallableOutputState,
   outputRules: readonly Rules[]
 ): void {
-  state.outputRules.push(...outputRules);
+  for (let i = 0; i < outputRules.length; i++) {
+    state.outputRules.push(outputRules[i]!);
+  }
 }
 
 export async function finalizeCallableEvalOutput({
