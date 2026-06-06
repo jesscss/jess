@@ -204,6 +204,7 @@ export function lookupScopeFrameVariable(
     start?: number;
     filter?: (node: Node) => boolean;
     blockedSource?: (node: Node) => boolean;
+    includeLive?: boolean;
     includeDeclarations?: boolean;
     bailOnPendingDeclarations?: boolean;
   }
@@ -211,7 +212,9 @@ export function lookupScopeFrameVariable(
   let f = frame;
   let start = options?.start;
   while (f) {
-    const live = f.liveSlotsByName.get(name);
+    const live = options?.includeLive === false
+      ? undefined
+      : f.liveSlotsByName.get(name);
     if (live) {
       const sourceNode = live.sourceNode;
       if (!sourceNode || !options?.blockedSource?.(sourceNode)) {
@@ -255,4 +258,21 @@ export function lookupScopeFrameVariable(
     f = f.parent;
   }
   return undefined;
+}
+
+export function assignScopeFrameVariable(
+  frame: ScopeFrame | undefined,
+  name: string,
+  value: Node
+): ScopeFrameVariableLookupResult | undefined {
+  const hit = lookupScopeFrameVariable(frame, name);
+  if (!hit) {
+    return undefined;
+  }
+  if (hit.kind === 'live') {
+    hit.cell.value = value;
+  } else {
+    hit.entry.cell.value = value;
+  }
+  return hit;
 }

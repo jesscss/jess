@@ -165,6 +165,24 @@ next step starts.
    - no new traversal beyond the existing frame-chain walk
    - no side-map/cache added yet
 
+   Status:
+   - Facade-level semantics are now covered by
+     `packages/core/src/tree/__tests__/scope-frame.test.ts`: current reads are
+     separate from source-order occurrence reads; snapshot/occurrence reads can
+     ignore live cells; child `:` shadowing leaves parent cells unchanged; and
+     assignment writes mutate the resolved scoped binding cell.
+   - `lookupScopeFrameVariable(...)` now has `includeLive: false` for snapshot
+     reads.
+   - `assignScopeFrameVariable(...)` exists as the narrow binding-cell write
+     operation, but is not yet wired into production declaration eval.
+   - Production `Reference` still does not route contextual `start` lookups
+     through the facade. The earlier control-loop failure remains the evidence:
+     widening that path without placement/eval hardening changed stateful loop
+     output from `tick: 1, 1, 2` to `tick: 1, 2, 3`.
+   - Do not start step 4 lookup caching until production contextual-start
+     routing is either safely widened or explicitly split into a later
+     production milestone.
+
 4. [ ] Lookup cache prototype.
    Add a frame-local lookup-identity cache only after the facade behavior is
    proven. Cache binding identity, not evaluated values.
@@ -363,6 +381,23 @@ the gate passed.
   src/tree/scope-frame.ts` passed, and hot-path benchmark sanity completed with
   usable signals except unstable `functions`. This is behavior-gated facade
   progress, not a speed claim.
+- Binding facade semantics pass: accepted as step-3 facade hardening, not as a
+  production contextual-start widening. Added focused tests in
+  `packages/core/src/tree/__tests__/scope-frame.test.ts`, an `includeLive:
+  false` snapshot option, and `assignScopeFrameVariable(...)`. New traversal:
+  no additional traversal shape beyond the existing frame-chain lookup reused by
+  assignment. New node/materialization: none; assignment mutates the resolved
+  `BindingCell.value` and does not create nodes, copy nodes, or alter parent or
+  source metadata. Render path: unchanged. Helper/API surface: one narrow
+  assignment API was added because `:=` needs an explicit cell-write operation
+  instead of being modeled as copy/replacement. Metadata mutations: no parent,
+  source, `frozen`, inherited-location, lazy context/options, or generic
+  defensive-read mutation was added. Evidence: `pnpm --filter @jesscss/core
+  exec vitest src/tree/__tests__/scope-frame.test.ts` passed,
+  then the focused reference/mixin/control/import-style set plus scope-frame
+  passed (`370` passed, `1` skipped) after rebuilding. A parallel build/test
+  attempt failed while `@jesscss/core/lib` was being cleaned, so it was a
+  build-race artifact; the sequential rerun passed.
 - New traversal: none added. Pass 4 kept the existing lookup sequence but
   removed eagerly allocated lookup/finalizer closures from
   `evaluateReferenceNode(...)`. No parent/source walk, side-map lookup,
