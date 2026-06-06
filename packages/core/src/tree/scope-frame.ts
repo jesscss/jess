@@ -65,6 +65,12 @@ export type ScopeFrameVariableLookupResult =
   | {
     kind: 'declaration';
     entry: BindingEntry;
+  }
+  | {
+    kind: 'miss';
+  }
+  | {
+    kind: 'uncovered';
   };
 
 /**
@@ -208,10 +214,12 @@ export function lookupScopeFrameVariable(
     includeDeclarations?: boolean;
     bailOnPendingDeclarations?: boolean;
   }
-): ScopeFrameVariableLookupResult | undefined {
+): ScopeFrameVariableLookupResult {
   let f = frame;
   let start = options?.start;
+  let hasFallbackFrame = false;
   while (f) {
+    hasFallbackFrame ||= f.fallbackFrame !== undefined;
     const live = options?.includeLive === false
       ? undefined
       : f.liveSlotsByName.get(name);
@@ -230,7 +238,7 @@ export function lookupScopeFrameVariable(
       options?.bailOnPendingDeclarations
       && f.pendingDeclarationNames.length > 0
     ) {
-      return undefined;
+      return { kind: 'uncovered' };
     }
 
     const bucket = options?.includeDeclarations === false
@@ -257,7 +265,7 @@ export function lookupScopeFrameVariable(
     start = undefined;
     f = f.parent;
   }
-  return undefined;
+  return hasFallbackFrame ? { kind: 'uncovered' } : { kind: 'miss' };
 }
 
 export function assignScopeFrameVariable(
@@ -266,7 +274,7 @@ export function assignScopeFrameVariable(
   value: Node
 ): ScopeFrameVariableLookupResult | undefined {
   const hit = lookupScopeFrameVariable(frame, name);
-  if (!hit) {
+  if (hit.kind === 'miss' || hit.kind === 'uncovered') {
     return undefined;
   }
   if (hit.kind === 'live') {

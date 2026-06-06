@@ -527,6 +527,8 @@ function getLookupStartIndex(node: Node): number | undefined {
 type LookupType = NonNullable<ReferenceOptions['type']>;
 type NormalizedLookupKey = string | string[] | number;
 type RulesLookupResult = RuntimeVarBinding | Node | MixinEntry[] | undefined;
+const SCOPE_FRAME_VARIABLE_MISS = Symbol('scope-frame-variable-miss');
+type ScopeFrameVariableBindingResult = RuntimeVarBinding | typeof SCOPE_FRAME_VARIABLE_MISS | undefined;
 
 function isRulesLookupResult(value: unknown): value is Exclude<RulesLookupResult, undefined> {
   return isRuntimeVarBinding(value) || isNode(value) || Array.isArray(value);
@@ -789,7 +791,7 @@ function lookupScopeFrameVariableBinding(
   key: string,
   opts: FindOptions,
   env: RulesLookupAdapterEnv
-): RulesLookupResult {
+): ScopeFrameVariableBindingResult {
   if (
     env.hasTarget
     || env.isInterpolatedVariable
@@ -797,15 +799,33 @@ function lookupScopeFrameVariableBinding(
   ) {
     return undefined;
   }
-  const hit = lookupScopeFrameVariable(targetRules.getScopeFrame(), key, {
+  const frame = targetRules.getScopeFrame();
+  const rulesParent = targetRules.rulesParent;
+  if (
+    frame.parent === undefined
+    && rulesParent !== undefined
+  ) {
+    return undefined;
+  }
+  if (
+    targetRules.scopeFrame === frame
+    && targetRules.varsByName === undefined
+    && targetRules.rulesIndexed < targetRules.value.length
+  ) {
+    return undefined;
+  }
+  const hit = lookupScopeFrameVariable(frame, key, {
     start: opts.start,
     filter: env.filter,
     blockedSource: node => env.context.searchScope.has(node),
     includeLive: env.readMode !== 'snapshot',
     bailOnPendingDeclarations: true
   });
-  if (!hit) {
+  if (hit.kind === 'uncovered') {
     return undefined;
+  }
+  if (hit.kind === 'miss') {
+    return SCOPE_FRAME_VARIABLE_MISS;
   }
   const cell = hit.kind === 'declaration' ? hit.entry.cell : hit.cell;
   const sourceNode = hit.kind === 'declaration' ? hit.entry.sourceNode : hit.sourceNode;
@@ -856,6 +876,9 @@ function lookupVariableReference(
   if (typeof valueKey === 'string') {
     const frameHit = lookupScopeFrameVariableBinding(targetRules, keyStr, opts, env);
     if (frameHit) {
+      if (frameHit === SCOPE_FRAME_VARIABLE_MISS) {
+        return undefined;
+      }
       return frameHit;
     }
   }

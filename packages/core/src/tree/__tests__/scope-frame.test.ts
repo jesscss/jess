@@ -79,4 +79,30 @@ describe('ScopeFrame variable facade', () => {
     expect(parent?.kind).toBe('declaration');
     expect(parent?.kind === 'declaration' && parent.entry.cell.value?.valueOf()).toBe('blue');
   });
+
+  it('returns a covered miss when indexed frames have no matching binding', async () => {
+    const root = rules([
+      vardecl({ name: 'x', value: any('red') })
+    ]);
+    await root.eval(new Context());
+
+    const hit = lookupScopeFrameVariable(root.getScopeFrame(), 'missing', {
+      bailOnPendingDeclarations: true
+    });
+
+    expect(hit.kind).toBe('miss');
+  });
+
+  it('returns uncovered when pending dynamic declarations still need old lookup handling', async () => {
+    const root = rules([]);
+    await root.eval(new Context());
+    const frame = root.getScopeFrame();
+    frame.pendingDeclarationNames.push(vardecl({ name: 'dynamic', value: any('red') }));
+
+    const hit = lookupScopeFrameVariable(frame, 'missing', {
+      bailOnPendingDeclarations: true
+    });
+
+    expect(hit.kind).toBe('uncovered');
+  });
 });

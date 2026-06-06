@@ -99,10 +99,12 @@ Binding prototype status:
   miss from the binding frame and stop. Only unmodeled cold/complex cases may
   route to old registry/search/materialization paths, and every such bridge
   needs a deletion condition in `BINDING-INDEX-PROPOSAL.md` or this handoff.
-- Next binding step, when selected: split covered `MISS` from `UNCOVERED`
-  lookup results so covered static variable reads stop falling through old
-  fallback ladders by construction. Do not start lookup caching until that
-  bridge is gone.
+- Next binding step, when selected: delete the remaining `UNCOVERED` bridges
+  one by one by carrying the missing facts at construction/adoption time:
+  parent-frame coverage for detached/caller scopes, manual-frame indexing
+  state, fallback-frame lookup ownership, and pending dynamic-name promotion
+  state. Do not start lookup caching until those bridge boundaries are
+  narrower.
 
 ## Active Binding Implementation Lane
 
@@ -268,11 +270,11 @@ next step starts.
      materialization for public ownership, not render-only copying.
    - Focused tests now prove a covered static variable hit does not call
      `Rules.find(...)`, matching the existing miss/snapshot coverage.
-   - Remaining bridge debt: the facade still returns `undefined` for both
-     covered misses and unmodeled cases. The next step must make that state
-     explicit and delete fallback routing for covered static hit/miss paths.
+   - Completed bridge debt: the facade now returns explicit `miss` and
+     `uncovered` states, and covered static variable misses stop before the old
+     live-slot/`findVarDeclarationFast(...)`/registry ladder.
 
-5. [ ] Split covered `MISS` from `UNCOVERED` fallback.
+5. [x] Split covered `MISS` from `UNCOVERED` fallback.
    Replace ambiguous `undefined` facade results with an explicit covered-miss
    or uncovered result so `Reference` can stop trying old live-slot,
    `findVarDeclarationFast(...)`, and registry/search ladders for paths the
@@ -293,6 +295,31 @@ next step starts.
    - no new traversal, node creation, copy, `.inherit(...)`, or metadata
      mutation
    - benchmark/profile leash recorded
+
+   Status:
+   - `lookupScopeFrameVariable(...)` now returns `live`, `declaration`,
+     `miss`, or `uncovered`. `assignScopeFrameVariable(...)` preserves its old
+     public shape by converting `miss`/`uncovered` back to `undefined`.
+   - `Reference.lookupScopeFrameVariableBinding(...)` turns a covered `miss`
+     into a local sentinel and `lookupVariableReference(...)` stops immediately
+     instead of trying `lookupRuntimeVarBinding(...)`,
+     `findVarDeclarationFast(...)`, or registry/search fallback.
+   - `uncovered` remains the only bridge back to old lookup for this lane:
+     explicit targets, interpolated variable keys, non-snapshot contextual
+     `start`, pending dynamic declaration names, prebuilt/manual unindexed
+     frames, frames with fallback chains, and scopes whose AST parent rules
+     chain is not represented in the current frame parent.
+   - Rejected too-broad cut: treating every facade miss as terminal broke
+     detached ruleset variable calls (`content` was not found) because the
+     root parent frame had not been built yet. Treating every manually built
+     unindexed frame as uncovered also broke `$for` snapshot reads by letting
+     the old path see loop live slots. The kept boundary is narrower:
+     generated loop live slots can still hit/continue, but unrepresented
+     parent/fallback/manual-indexing cases remain explicit `uncovered`.
+   - Next bridge-deletion target: make `Rules.getScopeFrame(...)` or
+     adoption/callable wiring carry represented-parent and manual-indexing
+     facts so more `uncovered` cases become covered hit/miss without old
+     lookup.
 
 6. [ ] Lookup cache prototype.
    Add a frame-local lookup-identity cache only after the facade behavior is
@@ -483,6 +510,41 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Covered miss vs uncovered pass: accepted as binding-bridge deletion, not as
+  a speed claim. `packages/core/src/tree/scope-frame.ts` now returns explicit
+  `miss` and `uncovered` states from `lookupScopeFrameVariable(...)`;
+  `packages/core/src/tree/reference.ts` treats covered static variable misses
+  as terminal through a module-level sentinel, so those misses no longer call
+  `lookupRuntimeVarBinding(...)`, `findVarDeclarationFast(...)`, or registry
+  fallback. New traversal: none beyond the existing frame-chain walk; no child
+  scan, source walk, `map/filter/sort`, generator, side map, or recursive AST
+  walk was added. New node/materialization: none; no `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  metadata mutation, or array materialization was added. Render path:
+  unchanged; render still stringifies the evaluated value and this pass only
+  changes miss routing. Helper/API surface: one existing facade return type
+  became discriminated and one module-level sentinel was added to keep the
+  local adapter boundary explicit without allocating per miss. Metadata
+  mutations: none. Rejected variants: terminal miss for every facade miss broke
+  detached ruleset calls because an unbuilt ancestor frame still had to be
+  discovered by old lookup; treating every prebuilt unindexed frame as
+  uncovered broke `$for` snapshot reads by letting old lookup see loop live
+  slots. Evidence: focused `scope-frame/reference/declaration/mixin/control`
+  tests passed (`358` tests); eslint for touched files passed; `@jesscss/core`
+  build passed. Post-patch profiler status on `benchmark-v39.less`:
+  `Reference.evalNode` `482` calls / `5.57ms`, `Rules.find` `68` calls /
+  `0.40ms`, still only function keys for that fixture. Static node-creation
+  audit remained `reference.ts` `21`, global `new-node` `321`, `with-surface`
+  `34`, `copy-leaves` `31`, `derive` `30`. Stable hot-path sanity was usable
+  for all five tracked fixtures: `functions` `12.39ms`, `import-reference`
+  `18.77ms`, `mixins-guards` `16.94ms`, `extend-chaining` `5.09ms`, and
+  `media` `6.35ms`. Danger-token prosecution: the added `new Context()` and
+  `rules([])` calls are focused test fixture setup only, not production
+  eval/render node creation. The `frame.parent` check is a read-only coverage
+  guard that prevents terminal misses when the AST parent rules chain is not
+  represented in the frame chain; it does not mutate parent/source metadata.
+  The `.inherit(...)`/`.adopt(...)` text appears only in this prosecution as
+  forbidden machinery; this pass adds no such calls.
 - Declaration-bucket binding identity pass: accepted as binding-bridge
   deletion, not as a speed claim. `packages/core/src/tree/reference.ts` now
   returns the existing `RuntimeVarBinding` shape for declaration-bucket hits

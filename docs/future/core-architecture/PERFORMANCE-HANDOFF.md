@@ -1022,6 +1022,58 @@ Result status:
 - `extend-chaining`: usable, median `5.74ms`;
 - `media`: usable, median `6.46ms`.
 
+### Binding Step 5 Covered Miss vs Uncovered Fallback
+
+Date: 2026-06-06.
+
+Change: `ScopeFrame` variable lookup now returns explicit `miss` or
+`uncovered` states. Covered static variable misses stop before the old
+runtime-binding, fast-var, and registry fallback ladder. `uncovered` remains
+only for cases whose lookup facts are not yet represented by the binding frame.
+
+Pre-edit CPU/counter status:
+
+- `benchmark-v39.less` profiler status: `Reference.evalNode` `482` calls /
+  `5.33ms`, `Rules.find` `68` calls / `0.38ms`;
+- top reference keys were repeated variable reads: `value` `230`, `val` `68`,
+  `size` `40`, `hue` `36`, `idx` `32`;
+- static node-creation audit showed `reference.ts` at `21` creation or copy
+  surfaces and global totals `new-node` `321`, `with-surface` `34`,
+  `copy-leaves` `31`, `derive` `30`.
+
+Post-edit CPU/counter status:
+
+- `benchmark-v39.less` profiler status: `Reference.evalNode` `482` calls /
+  `5.57ms`, `Rules.find` `68` calls / `0.40ms`;
+- `Rules.find` stayed only function lookup for this fixture:
+  `function:hsl` `36`, `function:percentage` `24`, `function:range` `8`;
+- top reference keys stayed `value` `230`, `val` `68`, `size` `40`,
+  `hue` `36`, `idx` `32`;
+- static node-creation audit stayed `reference.ts` `21`, global totals
+  `new-node` `321`, `with-surface` `34`, `copy-leaves` `31`, `derive` `30`.
+
+Interpretation: status only, not speed proof. The code-path proof is that
+covered misses now return a terminal local sentinel in `Reference`, while
+pending dynamic names, fallback frames, unrepresented parent frame chains, and
+manual unindexed frames stay `uncovered` and may use old lookup. Two broader
+cuts were rejected by tests: terminal miss for all facade misses broke
+detached rulesets, and treating all prebuilt unindexed frames as uncovered
+broke `$for` snapshot reads.
+
+Sanity command:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result status:
+
+- `functions`: usable, median `12.39ms`;
+- `import-reference`: usable, median `18.77ms`;
+- `mixins-guards`: usable, median `16.94ms`;
+- `extend-chaining`: usable, median `5.09ms`;
+- `media`: usable, median `6.35ms`.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
