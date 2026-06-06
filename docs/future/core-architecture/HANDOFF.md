@@ -294,39 +294,46 @@ Next deep-cut queue:
    freezing, and inheriting a declaration container that is already safe to
    reuse. Focused test now asserts identity plus no `copy(...)`/`.inherit(...)`
    for source-free static declaration containers.
-9. [ ] Continue `Reference` before moving to the next node. Audit and cut the
+9. [x] Continue `Reference` pass 6. Hoisted the per-call
+   `findVarDeclarationFast(...)` bucket selection, candidate ordering, and
+   deferred dynamic-name promotion closures to module scope. The lookup still
+   performs the same scans, but ordinary variable reads no longer allocate
+   those helper functions on every hot lookup. `createRulesLikeReferenceSurface(...)` was
+   audited and left in place because existing tests prove it is still a public
+   shallow-owned rules-like materialization boundary.
+10. [ ] Continue `Reference` before moving to the next node. Audit and cut the
    remaining copy/materialization pressure: `createRulesLikeReferenceSurface`,
    `evaluateReferenceValueNode(...)`, declaration finalization, merged assign
    normalization, and the remaining `.inherit(...)`/`copyWithReusableLeaves(...)`
    ownership boundaries.
-10. [ ] Sweep `Ampersand` template placement next. Replace
+11. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
-11. [ ] Sweep selector matching/extend equality. Replace hot `valueOf()` equality
+12. [ ] Sweep selector matching/extend equality. Replace hot `valueOf()` equality
    predicates with structural/keyset checks where possible, keeping
    `valueOf()` only as a measured, cached fast-path when it wins.
-12. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
+13. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
    materialization so routine eval replacement does not imply `.inherit(...)`.
-13. [ ] Replace `StyleImport` first-use placement copies with placement state
+14. [ ] Replace `StyleImport` first-use placement copies with placement state
    that points at canonical source children and preserves import visibility.
-14. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
+15. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
    is source/visibility/placement bookkeeping.
-15. [ ] Replace remaining `Rules` merge output copies with direct merge
+16. [ ] Replace remaining `Rules` merge output copies with direct merge
    placement/render state or a narrow owned-item copier proven by merge tests.
-16. [ ] Convert registration-prep expected misses away from routine `try/catch`
+17. [ ] Convert registration-prep expected misses away from routine `try/catch`
    only after adding tests for unresolved declaration/identity behavior.
-17. [ ] Continue selector/extend factory cuts separately; do not hide selector
+18. [ ] Continue selector/extend factory cuts separately; do not hide selector
    placement copies inside another generic copy helper.
-18. [ ] Replace callable binding copies for static containers with explicit
+19. [ ] Replace callable binding copies for static containers with explicit
    binding/placement state. Static containers should not be copied merely
    because they contain child nodes; `F_HAS_NODE_CHILD` is only a cheap current
    ownership boundary, not a final architecture.
-19. [ ] Attack the measured copy stack next: `copyChild`,
+20. [ ] Attack the measured copy stack next: `copyChild`,
    `copyWithReusableLeaves`, `copyCallableRulesValue`, `constructCopy`, and
    `.inherit(...)`. CPU evidence says these are mostly registration derivation,
    selector header rendering, JS function argument ownership, reference value
    eval, and binding clone debt; do not justify them as render output copying.
-20. [ ] Audit repeated callable/mixin evaluation from the profile before making
+21. [ ] Audit repeated callable/mixin evaluation from the profile before making
    more local helper cuts. If a mixin candidate or output body is evaluated
    more than the semantic call count requires, carry placement/binding state or
    cache the cold public materialization boundary instead of copying/evaluating
@@ -529,6 +536,30 @@ the gate passed.
   then passed with the explicit `context.calcFrames === 0` boundary; the full
   focused reference/declaration/list/sequence/condition/operation family
   passes.
+- Reference pass 6 lookup helper hoist: accepted as hot lookup function-call
+  and closure-allocation deletion. Pre-pass evidence on `benchmark-v39.less`
+  showed `Reference.evalNode` still as the main non-parse bucket
+  (`482` calls / `5.69ms`) while `Rules.find` was only `68` calls / `0.38ms`;
+  top keys were repeated loop/current variable reads (`value`, `val`, `size`,
+  `hue`, `idx`). New traversal: none; the existing bucket scan,
+  candidate-order comparison, and deferred dynamic-name promotion loops were
+  moved out of `findVarDeclarationFast(...)` but not expanded; the `sourceNode`
+  reads are the same existing bucket identity/source-order checks, now at
+  module scope instead of inside per-call closures. The existing `try` remains
+  the same source-position comparison fallback and is not expected-miss control
+  flow. New
+  node/materialization: none; no copy, clone, `.inherit(...)`, wrapper Rules,
+  source/parent mutation, or array materialization was added. Render path:
+  unchanged; this is lookup-only and does not resolve into nodes to stringify.
+  Helper/API surface: three module-local helpers were added only to delete
+  three per-call nested helper allocations from the hot variable lookup path;
+  no public API or generic wrapper was added. Metadata mutations: unchanged;
+  the existing deferred dynamic-name bucket update remains the same mutation at
+  the same semantic point. Rejected cut: `createRulesLikeReferenceSurface(...)`
+  was audited but not removed because current tests assert a shallow owned
+  public rules-like surface while keeping source children canonical and avoiding
+  clone/inherit. Evidence: focused
+  `reference/declaration/mixin/ruleset` tests passed (`330` tests).
 - New traversal: none added. Pass 4 kept the existing lookup sequence but
   removed eagerly allocated lookup/finalizer closures from
   `evaluateReferenceNode(...)`. No parent/source walk, side-map lookup,

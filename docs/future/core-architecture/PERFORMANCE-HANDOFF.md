@@ -771,6 +771,44 @@ it returned a copied/frozen `List`; it now asserts source identity and zero
 `copy(...)`/`.inherit(...)`. Calc slash-list tests rejected a broader direct
 return, so the kept cut is explicitly bounded by `context.calcFrames === 0`.
 
+### Reference Pass 6 Lookup Helper Hoist
+
+Date: 2026-06-06.
+
+Change: `findVarDeclarationFast(...)` no longer allocates nested helper
+functions for bucket selection, candidate ordering, and deferred dynamic-name
+promotion on every variable lookup. The same scans and mutations remain; they
+now live in module-local helpers.
+
+Pre-pass CPU/counter status:
+
+- `benchmark-v39.less` profiler status: `Reference.evalNode` `482` calls /
+  `5.69ms`, `Rules.find` `68` calls / `0.38ms`;
+- top reference keys were repeated variable reads: `value` `230`, `val` `68`,
+  `size` `40`, `hue` `36`, `idx` `32`;
+- static node-creation audit still showed `reference.ts` with `23` creation or
+  copy surfaces, and global audit totals `new-node` `321`, `with-surface` `36`,
+  `copy-leaves` `31`, `derive` `30`.
+
+Sanity command:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result status:
+
+- `functions`: usable, median `13.09ms`;
+- `import-reference`: usable, median `21.33ms`;
+- `mixins-guards`: usable, median `17.54ms`;
+- `extend-chaining`: usable, median `5.55ms`;
+- `media`: usable, median `6.73ms`.
+
+Interpretation: status only. This was not a clean before/after benchmark
+experiment, so it makes no speed claim. The code-path proof is narrower: the
+hot variable lookup path no longer constructs the bucket/order/deferred-name
+helper closures per call.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

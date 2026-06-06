@@ -128,6 +128,113 @@ const isRuntimeVarBinding = (value: unknown): value is RuntimeVarBinding => (
   && value.kind === 'runtime-var-binding'
 );
 
+function selectVarBucketCandidate(
+  bucket: BindingEntry[] | undefined,
+  start: number | undefined,
+  filter: (n: Node) => boolean
+): Node | undefined {
+  if (!bucket?.length) {
+    return undefined;
+  }
+  for (let i = bucket.length - 1; i >= 0; i--) {
+    const candidate = bucket[i]!;
+    if (start !== undefined && !(candidate.sourceNode.index !== undefined && candidate.sourceNode.index < start)) {
+      continue;
+    }
+    if (filter(candidate.sourceNode)) {
+      return candidate.sourceNode;
+    }
+  }
+  return undefined;
+}
+
+function laterVarMatch<T extends Node>(a: T | undefined, b: T | undefined): T | undefined {
+  if (!a) {
+    return b;
+  }
+  if (!b) {
+    return a;
+  }
+  if (!a.parent && b.parent) {
+    return b;
+  }
+  if (a.parent && !b.parent) {
+    return a;
+  }
+  if (
+    a.parent === b.parent
+    && a.index !== undefined
+    && b.index !== undefined
+  ) {
+    return a.index <= b.index ? b : a;
+  }
+  let position: ReturnType<typeof comparePosition>;
+  try {
+    position = comparePosition(a, b);
+  } catch {
+    return a.parent || !b.parent ? a : b;
+  }
+  return position !== undefined && position <= 0 ? b : a;
+}
+
+function promoteResolvedPendingVarDecls(
+  scope: Rules,
+  frame: ScopeFrame
+): void {
+  if (frame.pendingDeclarationNames.length === 0) {
+    return;
+  }
+  const remaining: VarDeclaration[] = [];
+  let mutated = false;
+
+  for (const decl of frame.pendingDeclarationNames) {
+    if (decl.parent !== scope) {
+      remaining.push(decl);
+      continue;
+    }
+
+    const declName = decl.value.name;
+    const isStaticName = !(declName instanceof Node) || declName.hasFlag(F_STATIC);
+    if (!isStaticName) {
+      remaining.push(decl);
+      continue;
+    }
+
+    const resolvedName = `${declName.valueOf()}`;
+    const sourceIdentity = decl.sourceNode ?? decl;
+    let bucket = frame.declarationBucketsByName.get(resolvedName);
+    if (!bucket) {
+      frame.declarationBucketsByName.set(resolvedName, bucket = []);
+    }
+    let hasEntry = false;
+    for (let i = 0; i < bucket.length; i++) {
+      const entry = bucket[i]!;
+      const entryIdentity = entry.sourceNode.sourceNode ?? entry.sourceNode;
+      if (entry.sourceNode === decl
+        || entry.sourceNode === sourceIdentity
+        || entryIdentity === sourceIdentity) {
+        hasEntry = true;
+        break;
+      }
+    }
+    if (!hasEntry) {
+      bucket.push({
+        cell: {
+          value: decl.value.value,
+          sourceNode: decl,
+          readonly: decl.options?.readonly
+        },
+        sourceNode: decl
+      });
+    }
+    mutated = true;
+  }
+
+  if (mutated) {
+    frame.pendingDeclarationNames = remaining;
+  }
+}
+
 /**
  * Fast parent-chain walk for ordinary VarDeclaration lookup.
  *
@@ -157,112 +264,6 @@ function findVarDeclarationFast(
     local?: boolean;
   }
 ): Node | undefined {
-  const selectBucketCandidate = (
-    bucket: BindingEntry[] | undefined,
-    start: number | undefined
-  ): Node | undefined => {
-    if (!bucket?.length) {
-      return undefined;
-    }
-    for (let i = bucket.length - 1; i >= 0; i--) {
-      const candidate = bucket[i]!;
-      if (start !== undefined && !(candidate.sourceNode.index !== undefined && candidate.sourceNode.index < start)) {
-        continue;
-      }
-      if (filter(candidate.sourceNode)) {
-        return candidate.sourceNode;
-      }
-    }
-    return undefined;
-  };
-
-  const laterOf = <T extends Node>(a: T | undefined, b: T | undefined): T | undefined => {
-    if (!a) {
-      return b;
-    }
-    if (!b) {
-      return a;
-    }
-    if (!a.parent && b.parent) {
-      return b;
-    }
-    if (a.parent && !b.parent) {
-      return a;
-    }
-    if (
-      a.parent === b.parent
-      && a.index !== undefined
-      && b.index !== undefined
-    ) {
-      return a.index <= b.index ? b : a;
-    }
-    let position: ReturnType<typeof comparePosition>;
-    try {
-      position = comparePosition(a, b);
-    } catch {
-      return a.parent || !b.parent ? a : b;
-    }
-    return position !== undefined && position <= 0 ? b : a;
-  };
-
-  const promoteResolvedPendingDecls = (
-    scope: Rules,
-    frame: ScopeFrame
-  ): void => {
-    if (frame.pendingDeclarationNames.length === 0) {
-      return;
-    }
-    const remaining: VarDeclaration[] = [];
-    let mutated = false;
-
-    for (const decl of frame.pendingDeclarationNames) {
-      if (decl.parent !== scope) {
-        remaining.push(decl);
-        continue;
-      }
-
-      const declName = decl.value.name;
-      const isStaticName = !(declName instanceof Node) || declName.hasFlag(F_STATIC);
-      if (!isStaticName) {
-        remaining.push(decl);
-        continue;
-      }
-
-      const resolvedName = `${declName.valueOf()}`;
-      const sourceIdentity = decl.sourceNode ?? decl;
-      let bucket = frame.declarationBucketsByName.get(resolvedName);
-      if (!bucket) {
-        frame.declarationBucketsByName.set(resolvedName, bucket = []);
-      }
-      let hasEntry = false;
-      for (let i = 0; i < bucket.length; i++) {
-        const entry = bucket[i]!;
-        const entryIdentity = entry.sourceNode.sourceNode ?? entry.sourceNode;
-        if (entry.sourceNode === decl
-          || entry.sourceNode === sourceIdentity
-          || entryIdentity === sourceIdentity) {
-          hasEntry = true;
-          break;
-        }
-      }
-      if (!hasEntry) {
-        bucket.push({
-          cell: {
-            value: decl.value.value,
-            sourceNode: decl,
-            readonly: decl.options?.readonly
-          },
-          sourceNode: decl
-        });
-      }
-      mutated = true;
-    }
-
-    if (mutated) {
-      frame.pendingDeclarationNames = remaining;
-    }
-  };
-
   const findVarWithinScopeSurface = (
     scope: Rules,
     scopeStart: number | undefined,
@@ -286,10 +287,10 @@ function findVarDeclarationFast(
       scope._indexRules();
     }
     const frame = scope.getScopeFrame();
-    promoteResolvedPendingDecls(scope, frame);
+    promoteResolvedPendingVarDecls(scope, frame);
     let publicMatch: Node | undefined;
     let optionalMatch: Node | undefined;
-    const currentCandidate = selectBucketCandidate(frame.declarationBucketsByName.get(name), undefined);
+    const currentCandidate = selectVarBucketCandidate(frame.declarationBucketsByName.get(name), undefined, filter);
     if (currentCandidate) {
       const scopeVisibility = visibilityOverride ?? scope.options.rulesVisibility?.VarDeclaration;
       const isRulesetBodyScope = isNode(scope.parent, N.Ruleset) || isNode(scope.sourceNode, N.Ruleset);
@@ -315,8 +316,8 @@ function findVarDeclarationFast(
         localContext,
         visited
       );
-      publicMatch = laterOf(publicMatch, lexicalResult.publicMatch);
-      optionalMatch = laterOf(optionalMatch, lexicalResult.optionalMatch);
+      publicMatch = laterVarMatch(publicMatch, lexicalResult.publicMatch);
+      optionalMatch = laterVarMatch(optionalMatch, lexicalResult.optionalMatch);
     }
 
     if (!includeChildSurfaces) {
@@ -360,8 +361,8 @@ function findVarDeclarationFast(
         visited,
         visibility
       );
-      publicMatch = laterOf(publicMatch, childResult.publicMatch);
-      optionalMatch = laterOf(optionalMatch, childResult.optionalMatch);
+      publicMatch = laterVarMatch(publicMatch, childResult.publicMatch);
+      optionalMatch = laterVarMatch(optionalMatch, childResult.optionalMatch);
     }
 
     return { publicMatch, optionalMatch };
@@ -386,8 +387,8 @@ function findVarDeclarationFast(
             undefined,
             false
           );
-          publicMatch = laterOf(publicMatch, boundaryResult.publicMatch);
-          optionalMatch = laterOf(optionalMatch, boundaryResult.optionalMatch);
+          publicMatch = laterVarMatch(publicMatch, boundaryResult.publicMatch);
+          optionalMatch = laterVarMatch(optionalMatch, boundaryResult.optionalMatch);
           break;
         }
       }
@@ -398,8 +399,8 @@ function findVarDeclarationFast(
         options.local,
         new Set<Rules>()
       );
-      publicMatch = laterOf(publicMatch, result.publicMatch);
-      optionalMatch = laterOf(optionalMatch, result.optionalMatch);
+      publicMatch = laterVarMatch(publicMatch, result.publicMatch);
+      optionalMatch = laterVarMatch(optionalMatch, result.optionalMatch);
       // No match at this scope; continue up the chain
     }
     cursor = cursor.parent;
@@ -420,8 +421,8 @@ function findVarDeclarationFast(
             undefined,
             false
           );
-          publicMatch = laterOf(publicMatch, boundaryResult.publicMatch);
-          optionalMatch = laterOf(optionalMatch, boundaryResult.optionalMatch);
+          publicMatch = laterVarMatch(publicMatch, boundaryResult.publicMatch);
+          optionalMatch = laterVarMatch(optionalMatch, boundaryResult.optionalMatch);
           break;
         }
         const result = findVarWithinScopeSurface(
@@ -430,8 +431,8 @@ function findVarDeclarationFast(
           options.local,
           new Set<Rules>()
         );
-        publicMatch = laterOf(publicMatch, result.publicMatch);
-        optionalMatch = laterOf(optionalMatch, result.optionalMatch);
+        publicMatch = laterVarMatch(publicMatch, result.publicMatch);
+        optionalMatch = laterVarMatch(optionalMatch, result.optionalMatch);
       }
       const fallbackCandidate: unknown = isNode(cursor, N.Rules)
         ? cursor.scopeFrame?.fallbackFrame?.rulesNode
