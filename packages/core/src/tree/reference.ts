@@ -128,6 +128,10 @@ const isRuntimeVarBinding = (value: unknown): value is RuntimeVarBinding => (
   && value.kind === 'runtime-var-binding'
 );
 
+const REF_EVAL_PRESERVE_RULES_LIKE = 1;
+const REF_EVAL_REUSE_SOURCE_FREE = 1 << 1;
+const REF_EVAL_REUSE_RENDER_TEXT = 1 << 2;
+
 function selectVarBucketCandidate(
   bucket: BindingEntry[] | undefined,
   start: number | undefined,
@@ -1563,11 +1567,14 @@ function finalizeRuntimeVarBindingResult(
     )
   );
 
-  const evaluateBinding = () => evaluateReferenceValueNode(binding.value, context, {
-    preserveRulesLike: referenceNode.options?.type === 'mixin-ruleset',
-    reuseSourceFreeLeaves: true,
-    reuseRenderTextContainers: options.textOnly === true
-  });
+  let evalFlags = REF_EVAL_REUSE_SOURCE_FREE;
+  if (referenceNode.options?.type === 'mixin-ruleset') {
+    evalFlags |= REF_EVAL_PRESERVE_RULES_LIKE;
+  }
+  if (options.textOnly === true) {
+    evalFlags |= REF_EVAL_REUSE_RENDER_TEXT;
+  }
+  const evaluateBinding = () => evaluateReferenceValueNode(binding.value, context, evalFlags);
   const evaluateInRulesContext = () => shouldUseDefinitionRulesContext
     ? withRulesContext(
         context,
@@ -1678,11 +1685,10 @@ function finalizeDeclarationReferenceResult(
     return preservedValue;
   }
   return withReferenceSearchScope(context, declaration, () => {
-    const evaluated = evaluateDeclarationReferenceValue({
-      declValue: declarationValue,
-      hasImportant,
-      context
-    });
+    if (hasImportant) {
+      context.pushImportantSource();
+    }
+    const evaluated = evaluateReferenceValueNode(declarationValue, context);
     const finalize = (evaluatedNode: Node): Node => {
       const finalized = finalizeEvaluatedDeclarationReference(
         referenceNode,
@@ -1756,14 +1762,10 @@ function evaluateCalcSlashListValue(
 function evaluateReferenceValueNode(
   declValue: Node,
   context: Context,
-  options: {
-    preserveRulesLike?: boolean;
-    reuseSourceFreeLeaves?: boolean;
-    reuseRenderTextContainers?: boolean;
-  } = {}
+  flags = 0
 ): MaybePromise<Node> {
   if (
-    options.preserveRulesLike === true
+    (flags & REF_EVAL_PRESERVE_RULES_LIKE) !== 0
     && isRulesLikeReferenceValue(declValue)
   ) {
     return createRulesLikeReferenceSurface(declValue);
@@ -1782,8 +1784,8 @@ function evaluateReferenceValueNode(
     }
     if (
       (
-        options.reuseRenderTextContainers === true
-        || options.reuseSourceFreeLeaves === true
+        (flags & REF_EVAL_REUSE_RENDER_TEXT) !== 0
+        || (flags & REF_EVAL_REUSE_SOURCE_FREE) !== 0
       )
       && canReturnReferenceValue(declValue)
     ) {
@@ -1793,18 +1795,6 @@ function evaluateReferenceValueNode(
   } finally {
     context.calcFrames = savedCalcFrames;
   }
-}
-
-function evaluateDeclarationReferenceValue(args: {
-  declValue: Node;
-  hasImportant: boolean;
-  context: Context;
-}): MaybePromise<Node> {
-  const { declValue, hasImportant, context } = args;
-  if (hasImportant) {
-    context.pushImportantSource();
-  }
-  return evaluateReferenceValueNode(declValue, context);
 }
 
 function normalizeMergedAssignReferenceResult(
