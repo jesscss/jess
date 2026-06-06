@@ -1439,17 +1439,17 @@ function evaluateFallbackValue(
   referenceNode: Reference,
   fallbackValue: Node,
   context: Context,
-  options: { textOnly?: boolean } = {}
+  textOnly = false
 ): MaybePromise<Node> {
   if (canReturnReferenceValue(fallbackValue)) {
     context.popReference();
     return fallbackValue;
   }
-  if (options.textOnly === true && isNode(fallbackValue, N.List | N.Sequence)) {
+  if (textOnly && isNode(fallbackValue, N.List | N.Sequence)) {
     context.popReference();
     return fallbackValue;
   }
-  if (options.textOnly === true && fallbackValue instanceof JsExpression) {
+  if (textOnly && fallbackValue instanceof JsExpression) {
     context.popReference();
     return fallbackValue;
   }
@@ -1481,15 +1481,14 @@ function evaluateFallbackValue(
   return out;
 }
 
-function finalizeFallbackReferenceResult(args: {
-  referenceNode: Reference;
-  valueKey: NormalizedLookupKey;
-  lookupType: LookupType;
-  fallbackValue: ReferenceOptions['fallbackValue'];
-  context: Context;
-  textOnly?: boolean;
-}): MaybePromise<Node> {
-  const { referenceNode, valueKey, lookupType, fallbackValue, context, textOnly } = args;
+function finalizeFallbackReferenceResult(
+  referenceNode: Reference,
+  valueKey: NormalizedLookupKey,
+  lookupType: LookupType,
+  fallbackValue: ReferenceOptions['fallbackValue'],
+  context: Context,
+  textOnly: boolean
+): MaybePromise<Node> {
   const valueKeyStr = getLookupKeyDisplay(valueKey);
 
   if (!fallbackValue) {
@@ -1506,20 +1505,20 @@ function finalizeFallbackReferenceResult(args: {
     any.options.role = referenceNode.options.role;
     return any;
   }
-  return evaluateFallbackValue(referenceNode, fallbackValue, context, { textOnly });
+  return evaluateFallbackValue(referenceNode, fallbackValue, context, textOnly);
 }
 
 function finalizeDirectReferenceResult(
   referenceNode: Reference,
   returnVal: unknown,
   context: Context,
-  options: { textOnly?: boolean } = {}
+  textOnly = false
 ): Node {
   if (isArray(returnVal)) {
     context.popReference();
     return createDirectCallableReferenceResult(referenceNode, returnVal);
   }
-  return finalizeDirectNodeReferenceResult(referenceNode, cast(returnVal), context, options);
+  return finalizeDirectNodeReferenceResult(referenceNode, cast(returnVal), context, textOnly);
 }
 
 function createDirectCallableReferenceResult(
@@ -1545,10 +1544,10 @@ function finalizeDirectNodeReferenceResult(
   referenceNode: Reference,
   result: Node,
   context: Context,
-  options: { textOnly?: boolean } = {}
+  textOnly = false
 ): Node {
   context.popReference();
-  if (options.textOnly === true && canReturnReferenceValue(result)) {
+  if (textOnly && canReturnReferenceValue(result)) {
     return result;
   }
   if (
@@ -1564,7 +1563,7 @@ function finalizeRuntimeVarBindingResult(
   referenceNode: Reference,
   binding: RuntimeVarBinding,
   context: Context,
-  options: { textOnly?: boolean } = {}
+  textOnly = false
 ): MaybePromise<Node> {
   const bindingSource = binding.sourceNode;
   const finalizeRuntimeBinding = (evald: Node) => {
@@ -1585,7 +1584,7 @@ function finalizeRuntimeVarBindingResult(
       context.popReference();
       return evald;
     }
-    if (options.textOnly === true) {
+    if (textOnly) {
       context.popReference();
       return evald;
     }
@@ -1612,7 +1611,7 @@ function finalizeRuntimeVarBindingResult(
   ) {
     evalFlags |= REF_EVAL_PRESERVE_RULES_LIKE;
   }
-  if (options.textOnly === true) {
+  if (textOnly) {
     evalFlags |= REF_EVAL_REUSE_RENDER_TEXT;
   }
   const evaluatedBinding = evaluateRuntimeVarBindingValue(
@@ -1692,7 +1691,7 @@ function finalizeDeclarationReferenceResult(
   referenceNode: Reference,
   declaration: Declaration | VarDeclaration,
   context: Context,
-  options: { textOnly?: boolean } = {}
+  textOnly = false
 ): MaybePromise<Node> {
   const declarationValue = declaration.value.value;
   let isMergedAssign = false;
@@ -1727,7 +1726,7 @@ function finalizeDeclarationReferenceResult(
     const evaluated = evaluateReferenceValueNode(declarationValue, context);
     const finalize = (evaluatedNode: Node): Node => {
       try {
-        if (options.textOnly === true && !isMergedAssign) {
+        if (textOnly && !isMergedAssign) {
           context.popReference();
           return evaluatedNode;
         }
@@ -1883,34 +1882,32 @@ function normalizeMergedAssignReferenceResult(
   return new List(mergedItems);
 }
 
-function finalizeReferenceLookupResult(args: {
-  referenceNode: Reference;
-  returnVal: RulesLookupResult | unknown;
-  valueKey: NormalizedLookupKey;
-  lookupType: LookupType;
-  fallbackValue: ReferenceOptions['fallbackValue'];
-  context: Context;
-  textOnly?: boolean;
-}): MaybePromise<Node> {
-  const { referenceNode, returnVal, valueKey, lookupType, fallbackValue, context, textOnly } = args;
-
+function finalizeReferenceLookupResult(
+  referenceNode: Reference,
+  returnVal: RulesLookupResult | unknown,
+  valueKey: NormalizedLookupKey,
+  lookupType: LookupType,
+  fallbackValue: ReferenceOptions['fallbackValue'],
+  context: Context,
+  textOnly = false
+): MaybePromise<Node> {
   if (returnVal === undefined) {
-    return finalizeFallbackReferenceResult({
+    return finalizeFallbackReferenceResult(
       referenceNode,
       valueKey,
       lookupType,
       fallbackValue,
       context,
       textOnly
-    });
+    );
   }
   if (isRuntimeVarBinding(returnVal)) {
-    return finalizeRuntimeVarBindingResult(referenceNode, returnVal, context, { textOnly });
+    return finalizeRuntimeVarBindingResult(referenceNode, returnVal, context, textOnly);
   }
   if (isNode(returnVal, N.Declaration) || isNode(returnVal, N.VarDeclaration)) {
-    return finalizeDeclarationReferenceResult(referenceNode, returnVal, context, { textOnly });
+    return finalizeDeclarationReferenceResult(referenceNode, returnVal, context, textOnly);
   }
-  return finalizeDirectReferenceResult(referenceNode, returnVal, context, { textOnly });
+  return finalizeDirectReferenceResult(referenceNode, returnVal, context, textOnly);
 }
 
 function finalizeRawReferenceLookupTarget(
@@ -2120,6 +2117,7 @@ function evaluateReferenceNode(args: {
     textOnly,
     directStaticRender
   } = args;
+  const renderTextOnly = textOnly === true;
   context.pushReference();
   const initialTarget = resolveInitialReferenceTarget(referenceNode, context);
   if (isThenable(initialTarget)) {
@@ -2147,15 +2145,15 @@ function evaluateReferenceNode(args: {
         if (directRenderValue) {
           return directRenderValue;
         }
-        return finalizeReferenceLookupResult({
+        return finalizeReferenceLookupResult(
           referenceNode,
           returnVal,
           valueKey,
           lookupType,
           fallbackValue,
           context,
-          textOnly
-        });
+          renderTextOnly
+        );
       });
   }
   const evaluatedKey = evaluateReferenceKey(key, initialTarget, context);
@@ -2183,15 +2181,15 @@ function evaluateReferenceNode(args: {
         if (directRenderValue) {
           return directRenderValue;
         }
-        return finalizeReferenceLookupResult({
+        return finalizeReferenceLookupResult(
           referenceNode,
           returnVal,
           valueKey,
           lookupType,
           fallbackValue,
           context,
-          textOnly
-        });
+          renderTextOnly
+        );
       });
   }
   const resolvedValue = resolveReferenceTargetValue({
@@ -2218,15 +2216,15 @@ function evaluateReferenceNode(args: {
         if (directRenderValue) {
           return directRenderValue;
         }
-        return finalizeReferenceLookupResult({
+        return finalizeReferenceLookupResult(
           referenceNode,
           returnVal,
           valueKey,
           lookupType,
           fallbackValue,
           context,
-          textOnly
-        });
+          renderTextOnly
+        );
       });
   }
   const lookup = lookupResolvedReference({
@@ -2247,15 +2245,15 @@ function evaluateReferenceNode(args: {
         if (directRenderValue) {
           return directRenderValue;
         }
-        return finalizeReferenceLookupResult({
+        return finalizeReferenceLookupResult(
           referenceNode,
           returnVal,
           valueKey,
           lookupType,
           fallbackValue,
           context,
-          textOnly
-        });
+          renderTextOnly
+        );
       });
   }
 
@@ -2265,15 +2263,15 @@ function evaluateReferenceNode(args: {
   if (directRenderValue) {
     return directRenderValue;
   }
-  return finalizeReferenceLookupResult({
+  return finalizeReferenceLookupResult(
     referenceNode,
-    returnVal: lookup.returnVal,
-    valueKey: lookup.valueKey,
+    lookup.returnVal,
+    lookup.valueKey,
     lookupType,
     fallbackValue,
     context,
-    textOnly
-  });
+    renderTextOnly
+  );
 }
 
 /**

@@ -620,6 +620,13 @@ Next deep-cut queue:
    stayed in the caller. This is a function-hop/API-surface cut only; the
    remaining public copy/inherit boundary for non-render declaration references
    is still real debt and remains queued.
+   Second partial status: finalization no longer builds private `{ textOnly }`
+   option objects or `finalizeReferenceLookupResult(...)`/fallback args
+   objects. The render-only boolean is normalized once in
+   `evaluateReferenceNode(...)` and passed positionally through private
+   finalizers. This removes object plumbing only; it does not alter fallback,
+   runtime binding, declaration, direct-node, or callable materialization
+   semantics.
 15. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -728,6 +735,35 @@ the gate passed.
   `482` calls / `5.32ms`, `Rules.find` `68` calls / `0.38ms`; status only, not
   speed proof. Verdict: keep the deletion; continue attacking the remaining
   Reference copy/materialization boundary with tests before leaving item 14.
+- Reference finalizer options-object pass: accepted as private object-plumbing
+  deletion, not as a speed claim and not as a semantic materialization change.
+  `packages/core/src/tree/reference.ts` now passes the render-only `textOnly`
+  state as a boolean through `evaluateFallbackValue(...)`,
+  `finalizeDirectReferenceResult(...)`,
+  `finalizeDirectNodeReferenceResult(...)`,
+  `finalizeRuntimeVarBindingResult(...)`,
+  `finalizeDeclarationReferenceResult(...)`,
+  `finalizeReferenceLookupResult(...)`, and
+  `finalizeFallbackReferenceResult(...)`. `evaluateReferenceNode(...)`
+  normalizes `textOnly === true` once and no longer builds five
+  `finalizeReferenceLookupResult({ ... })` objects. New traversal: none. New
+  node/materialization: none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, side map, cache, materialized array, frozen/source/parent
+  mutation, or render-path materialization was added. Existing materialization:
+  unchanged; the same fallback/runtime/declaration/direct/callable branches
+  still own the same copy/materialization decisions as before this pass. Render
+  path: unchanged except for boolean plumbing; render-only references still set
+  the same reuse flags and return the same nodes. Helper/API surface: no public
+  API added; private finalizer signatures got smaller and the args object
+  wrappers were removed. Metadata mutations: none. Evidence:
+  `reference.test.ts` and `call.test.ts` passed (`188` tests), focused eslint
+  passed, `rg` found no remaining `{ textOnly }`/options-object patterns in
+  `reference.ts`, static node-creation audit stayed `reference.ts` `20`,
+  `new-node` `321`, `with-surface` `33`, `copy-leaves` `31`, `derive` `30`.
+  Clean `benchmark-v39.less` profiler status after the patch was
+  `Reference.evalNode` `482` calls / `5.65ms`, `Rules.find` `68` calls /
+  `0.37ms`; status only, not speed proof. Verdict: keep the deletion; continue
+  item 14 toward actual copy/materialization removal.
 - Static compound reference path identity pass: accepted as path-fact
   preservation, not as a speed claim. `packages/core/src/tree/reference.ts`
   now returns the original static string-array lookup key when the evaluated

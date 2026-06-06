@@ -1365,6 +1365,40 @@ deleted wrapper stack:
 `copyWithReusableLeaves(...)`/`.inherit(...)` public declaration-reference
 boundary is still queued for evidence-backed removal or isolation.
 
+### Reference Step 12 Finalizer Options-Object Cut
+
+Date: 2026-06-06.
+
+Change: Reference finalizers pass the render-only `textOnly` state as a boolean
+instead of building private option/args objects. This deletes object plumbing in
+the finalization ladder; it does not change fallback/runtime binding/
+declaration/direct/callable materialization semantics.
+
+Pre-edit CPU/counter status:
+
+- `benchmark-v39.less` profiler status before this pass: `Reference.evalNode`
+  `482` calls / `6.13ms`, `Rules.find` `68` calls / `0.36ms`;
+- `Rules.find` was only function lookup for this fixture:
+  `function:hsl` `36`, `function:percentage` `24`, `function:range` `8`;
+- static node-creation audit showed `reference.ts` at `20` creation or copy
+  surfaces and global totals `new-node` `321`, `with-surface` `33`,
+  `copy-leaves` `31`, `derive` `30`.
+
+Post-edit CPU/counter status:
+
+- clean `benchmark-v39.less` profiler status: `Reference.evalNode` `482`
+  calls / `5.65ms`, `Rules.find` `68` calls / `0.37ms`;
+- top repeated reference keys stayed `value` `230`, `val` `68`, `size` `40`,
+  `hue` `36`, `idx` `32`;
+- static node-creation audit stayed `reference.ts` `20`, global totals
+  `new-node` `321`, `with-surface` `33`, `copy-leaves` `31`, `derive` `30`.
+
+Interpretation: status only, not speed proof. The code-path proof is that
+`reference.ts` no longer contains `{ textOnly }`, `options.textOnly`, or
+`finalizeReferenceLookupResult({ ... })`/fallback args-object patterns. The
+remaining item-14 work is still the actual copy/materialization boundary, not
+more option plumbing.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
