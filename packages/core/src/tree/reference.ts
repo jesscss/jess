@@ -1589,8 +1589,7 @@ function finalizeRuntimeVarBindingResult(
       return evald;
     }
     context.popReference();
-    const resultNode = copyWithReusableLeaves(evald);
-    return resultNode.inherit(referenceNode);
+    return evald;
   };
   const shouldUseDefinitionRulesContext = isNode(bindingSource, N.VarDeclaration) && (
     bindingSource.options?.paramVar
@@ -1730,10 +1729,11 @@ function finalizeDeclarationReferenceResult(
           context.popReference();
           return evaluatedNode;
         }
-        const resultNode = isMergedAssign
-          ? evaluatedNode
-          : copyWithReusableLeaves(evaluatedNode);
-        const normalized = normalizeMergedAssignReferenceResult(resultNode, isMergedAssign);
+        if (!isMergedAssign) {
+          context.popReference();
+          return evaluatedNode;
+        }
+        const normalized = normalizeMergedAssignReferenceResult(evaluatedNode, true);
         const finalized = normalized.inherit(referenceNode);
         context.popReference();
         return finalized;

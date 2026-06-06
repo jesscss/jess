@@ -1399,6 +1399,40 @@ Interpretation: status only, not speed proof. The code-path proof is that
 remaining item-14 work is still the actual copy/materialization boundary, not
 more option plumbing.
 
+### Reference Step 13 Public Resolve Post-Eval Copy Cut
+
+Date: 2026-06-06.
+
+Change: runtime-binding and non-merged declaration public resolve now return the
+evaluated node from `evaluateReferenceValueNode(...)` directly instead of
+copying that evaluated node again and stamping `.inherit(reference)`. Merged
+declaration references still keep their explicit normalization/inherit path.
+
+Pre-edit CPU/counter status:
+
+- `benchmark-v39.less` profiler status before this pass: `Reference.evalNode`
+  `482` calls / `5.58ms`, `Rules.find` `68` calls / `0.40ms`;
+- `Rules.find` was only function lookup for this fixture:
+  `function:hsl` `36`, `function:percentage` `24`, `function:range` `8`;
+- static node-creation audit showed `reference.ts` at `20` creation or copy
+  surfaces and global totals `new-node` `321`, `with-surface` `33`,
+  `copy-leaves` `31`, `derive` `30`.
+
+Post-edit CPU/counter status:
+
+- clean `benchmark-v39.less` profiler status: `Reference.evalNode` `482`
+  calls / `5.27ms`, `Rules.find` `68` calls / `0.35ms`;
+- top repeated reference keys stayed `value` `230`, `val` `68`, `size` `40`,
+  `hue` `36`, `idx` `32`;
+- static node-creation audit dropped `reference.ts` from `20` to `18` and
+  global `copy-leaves` from `31` to `29`; `new-node` stayed `321`,
+  `with-surface` stayed `33`, and `derive` stayed `30`.
+
+Interpretation: status only, not speed proof. The code-path proof is that two
+post-eval public-resolve ownership copies are gone, with focused tests proving
+dynamic runtime-binding and dynamic declaration containers no longer inherit
+from the reference while canonical source parents remain intact.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

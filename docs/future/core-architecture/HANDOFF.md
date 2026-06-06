@@ -627,6 +627,12 @@ Next deep-cut queue:
    finalizers. This removes object plumbing only; it does not alter fallback,
    runtime binding, declaration, direct-node, or callable materialization
    semantics.
+   Third partial status: dynamic runtime-binding and non-merged dynamic
+   declaration public resolve no longer apply a second
+   `copyWithReusableLeaves(evaluated).inherit(reference)` after
+   `evaluateReferenceValueNode(...)` already produced the evaluated owned
+   result. Merged declaration references still keep their explicit
+   normalization/inherit boundary.
 15. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -764,6 +770,37 @@ the gate passed.
   `Reference.evalNode` `482` calls / `5.65ms`, `Rules.find` `68` calls /
   `0.37ms`; status only, not speed proof. Verdict: keep the deletion; continue
   item 14 toward actual copy/materialization removal.
+- Reference public-resolve post-eval ownership copy pass: accepted as actual
+  copy/materialization deletion. `packages/core/src/tree/reference.ts` no
+  longer copies and `.inherit(reference)` stamps evaluated runtime-binding
+  values after `evaluateReferenceValueNode(...)`; it returns the evaluated node
+  directly. Non-merged declaration references now do the same. Merged
+  declaration references still flow through
+  `normalizeMergedAssignReferenceResult(...)` and retain the existing
+  `.inherit(reference)` boundary because that path can create a public merged
+  result. New traversal: none. New node/materialization: none; two
+  `copyWithReusableLeaves(...)` calls and their reference `.inherit(...)`
+  stamps were removed from public resolve finalization. Render path: unchanged;
+  render-only paths already skipped these post-eval stamps and now public
+  resolve matches that ownership model for runtime bindings and non-merged
+  declarations. Helper/API surface: no helper or public API added. Metadata
+  mutations: removed reference ownership stamps from those evaluated output
+  nodes; no parent/source restoration or new metadata mutation was added.
+  Test-only materialization/control: the new focused tests allocate a tiny
+  runtime scope, `Map`, `AsyncNativeRenderAny`, and `try/finally` monkey patch
+  solely to prove the removed runtime path no longer calls
+  `List.inherit(refNode)`; none of that exists in runtime code. Evidence: added
+  focused public-resolve tests for dynamic runtime-binding and dynamic
+  declaration containers proving `List.inherit(refNode)` is not called while
+  canonical source parents remain intact. `reference.test.ts` passed
+  (`114` tests), focused eslint passed, static node-creation audit dropped
+  `reference.ts` from `20` to `18` and global `copy-leaves` from `31` to `29`
+  while `new-node` stayed `321`, `with-surface` stayed `33`, and `derive`
+  stayed `30`. Clean `benchmark-v39.less` profiler status after the patch was
+  `Reference.evalNode` `482` calls / `5.27ms`, `Rules.find` `68` calls /
+  `0.35ms`; status only, not speed proof. Verdict: keep the deletion; continue
+  item 14 on remaining fallback/evaluateReferenceValueNode/merged/callable
+  materialization boundaries.
 - Static compound reference path identity pass: accepted as path-fact
   preservation, not as a speed claim. `packages/core/src/tree/reference.ts`
   now returns the original static string-array lookup key when the evaluated
