@@ -1316,6 +1316,75 @@ describe('Control Nodes', () => {
     }
   });
 
+  it('keeps $for current reads and snapshot reads on separate binding paths', async () => {
+    const context = new Context();
+    const loopRules = rules([
+      decl({ name: 'current', value: ref({ key: 'value' }, { type: 'variable' }) }),
+      decl({
+        name: 'snapshot',
+        value: ref({ key: 'value' }, { type: 'variable', readMode: 'snapshot' })
+      })
+    ]);
+    const root = rules([
+      vardecl({ name: 'value', value: any('outer') }),
+      makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)
+    ]);
+
+    const css = await renderNodeToString(root, context);
+
+    expect(css).toBeString(`
+      current: a;
+      snapshot: outer;
+      current: b;
+      snapshot: outer;
+    `);
+  });
+
+  it('routes $for setDefined writes through the resolved outer binding', async () => {
+    const context = new Context();
+    const loopRules = rules([
+      vardecl({ name: 'color', value: any('blue') }, { setDefined: true }),
+      decl({ name: 'inner', value: ref({ key: 'color' }, { type: 'variable' }) })
+    ]);
+    const root = rules([
+      vardecl({ name: 'color', value: any('red') }),
+      makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules),
+      decl({ name: 'after', value: ref({ key: 'color' }, { type: 'variable' }) })
+    ]);
+
+    const css = await renderNodeToString(root, context);
+
+    expect(css).toBeString(`
+      inner: blue;
+      inner: blue;
+      after: blue;
+    `);
+  });
+
+  it('evaluates $for setDefined writes from live iteration bindings', async () => {
+    const context = new Context();
+    const loopRules = rules([
+      vardecl({
+        name: 'color',
+        value: ref({ key: 'value' }, { type: 'variable' })
+      }, { setDefined: true }),
+      decl({ name: 'inner', value: ref({ key: 'color' }, { type: 'variable' }) })
+    ]);
+    const root = rules([
+      vardecl({ name: 'color', value: any('red') }),
+      makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules),
+      decl({ name: 'after', value: ref({ key: 'color' }, { type: 'variable' }) })
+    ]);
+
+    const css = await renderNodeToString(root, context);
+
+    expect(css).toBeString(`
+      inner: a;
+      inner: b;
+      after: b;
+    `);
+  });
+
   it('keeps canonical $for body children parented to the source wrapper', async () => {
     const context = new Context();
     const itemDecl = decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) });

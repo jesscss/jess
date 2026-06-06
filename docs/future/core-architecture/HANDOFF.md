@@ -177,8 +177,17 @@ next step starts.
      operation. Static `VarDeclaration` `:=`/`setDefined` is now wired through
      production `Rules.registerNode(...)`: it updates the resolved declaration
      value plus the matching frame cell and skips `deriveWithOptions`, adopt,
-     array splice/unshift, and re-registration. Non-variable `setDefined`
-     declaration placement still uses the old path and remains queued.
+     array splice/unshift, and re-registration. The write path now evaluates
+     the assigned RHS when registration has the active `Context`; this is
+     required for values sourced from transient mixin params and `$for` live
+     slots. Non-variable `setDefined` declaration placement still uses the old
+     path and remains queued.
+   - Cross-structure binding evidence now covers the same semantics in real
+     mixin and `$for` paths, not only in the facade unit tests: current reads
+     see live/current cells, `$!`/snapshot reads ignore live cells and honor
+     source-position declarations, `:=` mutates the resolved outer binding, and
+     `:=` RHS values can come from live mixin parameter or `$for` iteration
+     cells.
    - Remaining production debt: declaration-bucket `Reference` hits still
      return source declaration nodes. That is why the static `:=` cut still
      updates the resolved declaration value as well as the frame cell. The
@@ -474,6 +483,27 @@ the gate passed.
   model. Evidence: focused `Rules` `setDefined`/readonly tests pass, including
   a new assertion that static `setDefined` does not call
   `deriveWithOptions(...)`.
+- Cross-structure binding proof pass: accepted as behavior hardening plus one
+  narrow production fix. New traversal: none. The pass uses the already
+  available registration `Context` only when the target `Rules` surface already
+  carries live slots, then evaluates the assigned RHS once at the `setDefined`
+  write boundary. This fixes the proven failure where `$for` assigned a raw
+  `Reference` to an outer binding and later tried to evaluate it after the
+  iteration live slot was gone. A broader attempt to pass context through all
+  registration prep was rejected because it broke dynamic declaration-name
+  reference tests; the kept path is gated by `scopeFrame.liveSlotsByName.size`.
+  New node/materialization: none; no `Node`, copy, wrapper `Rules`,
+  `.inherit(...)`, `.adopt(...)`, parent/source rewrite, or array
+  materialization was added to production. The added `new Context()` and
+  `new Any(...)` calls are test fixture construction only. Render path:
+  unchanged; tests render final CSS directly. Helper/API surface: no helper or
+  public API added. Metadata mutations: no new parent/source/frozen/lazy
+  context/options or generic defensive reads. Evidence: focused mixin/control
+  tests now cover current vs `$!` snapshot reads, static `:=`, and live-slot
+  RHS `:=` in both mixin and `$for` structures. The `$for` live-slot RHS test
+  failed before the write-boundary eval fix with `'value' is not defined` and
+  passed after it; `reference.test.ts` also passes after rejecting the broader
+  context route.
 - New traversal: none added. Pass 4 kept the existing lookup sequence but
   removed eagerly allocated lookup/finalizer closures from
   `evaluateReferenceNode(...)`. No parent/source walk, side-map lookup,

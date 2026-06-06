@@ -2266,7 +2266,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return (this._rulesSet ??= []);
   }
 
-  registerNode(node: Node, options?: Record<string, any>, _context?: Context) {
+  registerNode(node: Node, options?: Record<string, any>, context?: Context) {
     if (node.type === 'Extend' || node.type === 'ExtendList') {
       this._hasExtends = true;
     }
@@ -2342,9 +2342,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             throw new ReferenceError(`"${key}" is readonly`);
           }
           if (isNode(node, N.VarDeclaration) && isNode(result, N.VarDeclaration)) {
-            result.value.value = node.value.value;
+            let assignedValue = node.value.value;
+            if (context) {
+              const evaluatedValue = assignedValue.eval(context);
+              if (!isThenable(evaluatedValue)) {
+                assignedValue = evaluatedValue;
+              }
+            }
+            result.value.value = assignedValue;
             if (isNode(result.parent, N.Rules)) {
-              assignScopeFrameVariable(result.parent.getScopeFrame(), key, node.value.value);
+              assignScopeFrameVariable(result.parent.getScopeFrame(), key, assignedValue);
             }
             return;
           }
@@ -2744,7 +2751,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return;
     }
     if (node.registrationPrepared) {
-      this._storePreparedRegistrationNode(rules, node, index, nodeIndex, prepState);
+      this._storePreparedRegistrationNode(rules, node, index, nodeIndex, prepState, context);
       return;
     }
     // Prepare static identities before registration. Rulesets still need selector/keySet prep.
@@ -2758,10 +2765,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       : node.prepareRegistration(context);
     if (isThenable(prepared)) {
       return Promise.resolve(prepared).then((preparedNode) => {
-        this._storePreparedRegistrationNode(rules, preparedNode, index, nodeIndex, prepState);
+        this._storePreparedRegistrationNode(rules, preparedNode, index, nodeIndex, prepState, context);
       });
     }
-    this._storePreparedRegistrationNode(rules, prepared, index, nodeIndex, prepState);
+    this._storePreparedRegistrationNode(rules, prepared, index, nodeIndex, prepState, context);
   }
 
   /**
@@ -2790,13 +2797,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     node: Node,
     index: number,
     nodeIndex: number | undefined,
-    prepState: RegistrationPrepState
+    prepState: RegistrationPrepState,
+    context: Context
   ): void {
     rules.value[index] = node;
     node.index = nodeIndex;
     // After prep, check if it still has a static name.
     if (this._hasStaticName(node)) {
-      this._registerNodeIfEligible(rules, node);
+      const registrationContext = rules.scopeFrame?.liveSlotsByName.size
+        ? context
+        : undefined;
+      this._registerNodeIfEligible(rules, node, registrationContext);
       return;
     }
     this._addPendingPrep(prepState, node);
@@ -2851,14 +2862,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /**
    * Register a node if it's eligible for registration
    */
-  private _registerNodeIfEligible(rules: Rules, node: Node) {
+  private _registerNodeIfEligible(rules: Rules, node: Node, context?: Context) {
     if (isNode(node, N.Declaration)) {
-      rules.registerNode(node);
+      rules.registerNode(node, undefined, context);
     } else if (isNode(node, N.Mixin)) {
-      rules.registerNode(node);
+      rules.registerNode(node, undefined, context);
     } else if (isNode(node, N.Ruleset)) {
       // registerNode handles rulesets and mixins on the callable mixin surface
-      rules.registerNode(node);
+      rules.registerNode(node, undefined, context);
     }
   }
 

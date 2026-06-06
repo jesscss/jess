@@ -2821,6 +2821,113 @@ describe('Mixin', () => {
       expect('setRuntimeVarBinding' in RulesClass.prototype).toBe(false);
     });
 
+    it('keeps mixin current reads and snapshot reads on separate binding paths', async () => {
+      const root = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        mixin({
+          name: any('.paint'),
+          rules: rules([
+            decl({ name: 'current-before', value: ref({ key: 'color' }, { type: 'variable' }) }),
+            decl({
+              name: 'snapshot-before',
+              value: ref({ key: 'color' }, { type: 'variable', readMode: 'snapshot' })
+            }),
+            vardecl({ name: 'color', value: any('blue') }),
+            decl({ name: 'current-after', value: ref({ key: 'color' }, { type: 'variable' }) }),
+            decl({
+              name: 'snapshot-after',
+              value: ref({ key: 'color' }, { type: 'variable', readMode: 'snapshot' })
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.use'),
+          rules: rules([
+            call({ name: ref({ key: '.paint' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+
+      expect(css).toBeString(`
+        .use {
+          current-before: blue;
+          snapshot-before: red;
+          current-after: blue;
+          snapshot-after: blue;
+        }
+      `);
+    });
+
+    it('routes mixin setDefined writes through the resolved caller binding', async () => {
+      const root = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        mixin({
+          name: any('.set-color'),
+          rules: rules([
+            vardecl({ name: 'color', value: any('blue') }, { setDefined: true })
+          ])
+        }),
+        ruleset({
+          selector: el('.use'),
+          rules: rules([
+            call({ name: ref({ key: '.set-color' }, { type: 'mixin' }) }),
+            decl({ name: 'after-call', value: ref({ key: 'color' }, { type: 'variable' }) })
+          ])
+        }),
+        decl({ name: 'after-root', value: ref({ key: 'color' }, { type: 'variable' }) })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+
+      expect(css).toBeString(`
+        .use {
+          after-call: blue;
+        }
+        after-root: blue;
+      `);
+    });
+
+    it('evaluates mixin setDefined writes from live parameter bindings', async () => {
+      const root = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        mixin({
+          name: any('.set-color'),
+          params: list([any('next', { role: 'property' })]),
+          rules: rules([
+            vardecl({
+              name: 'color',
+              value: ref({ key: 'next' }, { type: 'variable' })
+            }, { setDefined: true })
+          ])
+        }),
+        ruleset({
+          selector: el('.use'),
+          rules: rules([
+            call({
+              name: ref({ key: '.set-color' }, { type: 'mixin' }),
+              args: list([any('blue')])
+            }),
+            decl({ name: 'after-call', value: ref({ key: 'color' }, { type: 'variable' }) })
+          ])
+        }),
+        decl({ name: 'after-root', value: ref({ key: 'color' }, { type: 'variable' }) })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+
+      expect(css).toBeString(`
+        .use {
+          after-call: blue;
+        }
+        after-root: blue;
+      `);
+    });
+
     it('does not prepare unused mixin parameter containers before lookup', async () => {
       const originalDetachTrivia = Node.prototype.detachTrivia;
       let detachedArgContainers = 0;

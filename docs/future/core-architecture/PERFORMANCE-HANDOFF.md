@@ -710,6 +710,37 @@ experiment, so it makes no speed claim. The behavioral proof is the focused
 `Rules` `setDefined`/readonly test set plus the new assertion that static
 `setDefined` does not call `deriveWithOptions(...)`.
 
+### Cross-Structure Binding Proof
+
+Date: 2026-06-06.
+
+Change: added real mixin and `$for` binding tests for current reads,
+`$!`/snapshot reads, static `:=`, and live-slot RHS `:=`. The production fix
+evaluates the assigned RHS at the `setDefined` write boundary when the
+registration target already carries live slots; a broader context-through-all
+registration route was rejected because it broke dynamic declaration-name
+reference tests.
+
+Sanity command:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result status:
+
+- `functions`: usable, median `13.31ms`;
+- `import-reference`: usable, median `21.91ms`;
+- `mixins-guards`: usable, median `18.05ms`;
+- `extend-chaining`: usable, median `5.48ms`;
+- `media`: usable, median `6.91ms`.
+
+Interpretation: status only. This was not a clean before/after benchmark
+experiment, so it makes no speed claim. The behavioral proof is the focused
+failure and fix: `$for` live-slot RHS assignment failed with `'value' is not
+defined` before the write-boundary eval and passed after gating context use to
+live-slot registration surfaces.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
