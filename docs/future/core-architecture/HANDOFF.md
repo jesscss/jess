@@ -642,6 +642,13 @@ Next deep-cut queue:
    already stringifies directly, but public value materialization still creates
    owned containers via `withResolvedValue(...)`/`withValue(...)` when children
    change.
+   Fifth partial status: `List.evalNode(...)` and `Sequence.evalNode(...)`
+   no longer pay the private `evaluateItems(...)`/`evaluateValues(...)` wrapper
+   calls, and `List.evalNode(...)` no longer uses `Array.every(...)` callbacks
+   to decide whether evaluated items changed. This is only function-call and
+   callback deletion around the existing public materialization boundary; the
+   owned `withResolvedValue(...)`/`withValue(...)` surfaces still exist and
+   remain queued.
 15. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -838,6 +845,34 @@ the gate passed.
   target should be the shared `List.eval(...)`/`Sequence.eval(...)` owned
   container boundary if tests prove public materialization can be separated
   from render/eval-to-immediate-string.
+- List/Sequence eval wrapper pass: accepted as function-call/callback deletion,
+  not as node-materialization deletion. `packages/core/src/tree/list.ts` deleted
+  private `evaluateItems(...)` and now calls `evaluateNodeArrayMaybe(...)` or
+  `evaluateNodeArraySync(...)` directly from `evalNode(...)`; its unchanged
+  check is a simple `for` loop instead of two `Array.every(...)` callback
+  paths. `packages/core/src/tree/sequence.ts` deleted private
+  `evaluateValues(...)` and calls `evaluateNodeArrayMaybe(...)` directly in the
+  async-capable branch. New traversal: none; the same evaluated array is checked
+  once, but the callback/function-wrapper layer is gone. New node/materialization:
+  none added and none deleted; `List.withResolvedValue(...)` and
+  `Sequence.withValue(...)` still create owned public containers when child
+  evaluation changes the value. Render path: unchanged and still direct-string
+  for dynamic render; this pass does not resolve into arrays/nodes to stringify.
+  Helper/API surface: two private helpers removed; no helper or public API
+  added. Metadata mutations: none; no parent/source restoration, frozen state,
+  side map, cache, `Reflect.*`, or defensive structural probe was added.
+  Evidence: `list.test.ts`, `sequence.test.ts`, `spaced.test.ts`, `call.test.ts`,
+  and `reference.test.ts` passed (`247` tests), focused eslint passed, and `rg`
+  found no remaining `evaluateItems`, `evaluateValues`, or `.every(...)` in
+  `list.ts`/`sequence.ts`. Static node-creation audit stayed flat:
+  `sequence.ts` `18`, `reference.ts` `17`, global `new-node` `321`,
+  `with-surface` `33`, `copy-leaves` `28`, `derive` `30`, because the public
+  owned-container boundary remains real. Clean `benchmark-v39.less` profiler
+  sanity after the patch was `Reference.evalNode` `482` calls / `5.60ms`,
+  `Rules.find` `68` calls / `0.41ms`; status only, not speed proof. Verdict:
+  keep the helper/callback deletion; continue with the actual
+  `List.withResolvedValue(...)`/`Sequence.withValue(...)` materialization
+  boundary or return to the next measured Reference/Rules lookup target.
 - Static compound reference path identity pass: accepted as path-fact
   preservation, not as a speed claim. `packages/core/src/tree/reference.ts`
   now returns the original static string-array lookup key when the evaluated

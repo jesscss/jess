@@ -1472,6 +1472,43 @@ source container. The exposed next target is shared public container
 materialization in `List.eval(...)`/`Sequence.eval(...)`, not another Reference
 wrapper.
 
+### List/Sequence Eval Wrapper Cut
+
+Date: 2026-06-06.
+
+Change: `List.evalNode(...)` and `Sequence.evalNode(...)` no longer pay private
+evaluation-wrapper calls before evaluating child arrays. `List.evalNode(...)`
+also replaced `Array.every(...)` callback checks with direct loops. This is
+function-call/callback deletion only; it does not remove the owned
+`List.withResolvedValue(...)` or `Sequence.withValue(...)` public
+materialization boundary.
+
+Pre-edit CPU/counter status:
+
+- `benchmark-v39.less` profiler status before this pass: `Reference.evalNode`
+  `482` calls / `7.24ms`, `Rules.find` `68` calls / `0.65ms`;
+- `Rules.find` was only function lookup for this fixture:
+  `function:hsl` `36`, `function:percentage` `24`, `function:range` `8`;
+- static node-creation audit showed `sequence.ts` at `18`, `reference.ts` at
+  `17`, and global totals `new-node` `321`, `with-surface` `33`,
+  `copy-leaves` `28`, `derive` `30`.
+
+Post-edit CPU/counter status:
+
+- clean `benchmark-v39.less` profiler sanity after the patch:
+  `Reference.evalNode` `482` calls / `5.60ms`, `Rules.find` `68` calls /
+  `0.41ms`;
+- top repeated reference keys stayed `value` `230`, `val` `68`, `size` `40`,
+  `hue` `36`, `idx` `32`;
+- static node-creation audit stayed flat: `sequence.ts` `18`, `reference.ts`
+  `17`, global `new-node` `321`, `with-surface` `33`, `copy-leaves` `28`,
+  `derive` `30`.
+
+Interpretation: status only, not speed proof. The code-path proof is that
+`evaluateItems`, `evaluateValues`, and `.every(...)` are gone from
+`list.ts`/`sequence.ts`. The remaining target is still the owned public
+container materialization boundary, not another local wrapper.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

@@ -269,12 +269,6 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return renderListValueSyntax(value, getPrintOptions(options), this._options?.sep ?? ',');
   }
 
-  private evaluateItems(context: Context): MaybePromise<Node[]> {
-    return this.hasFlag(F_MAY_ASYNC)
-      ? evaluateNodeArrayMaybe(context, this.value)
-      : evaluateNodeArraySync(context, this.value);
-  }
-
   get length() {
     return this.value.length;
   }
@@ -392,15 +386,26 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
-    const values = this.evaluateItems(context);
+    const source = this.value;
+    const values = this.hasFlag(F_MAY_ASYNC)
+      ? evaluateNodeArrayMaybe(context, source)
+      : evaluateNodeArraySync(context, source);
     if (isThenable(values)) {
       return (values as Promise<Node[]>).then((resolvedValues) => {
-        const unchanged = resolvedValues.every((node, index) => node === this.value[index]);
-        return unchanged ? this : this.withResolvedValue(resolvedValues);
+        for (let i = 0; i < resolvedValues.length; i++) {
+          if (resolvedValues[i] !== source[i]) {
+            return this.withResolvedValue(resolvedValues);
+          }
+        }
+        return this;
       });
     }
-    const unchanged = values.every((node, index) => node === this.value[index]);
-    return unchanged ? this : this.withResolvedValue(values);
+    for (let i = 0; i < values.length; i++) {
+      if (values[i] !== source[i]) {
+        return this.withResolvedValue(values);
+      }
+    }
+    return this;
   }
 
   /** @todo move to ToCssVisitor */

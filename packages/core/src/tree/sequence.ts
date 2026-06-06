@@ -101,12 +101,6 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     ).inherit(this);
   }
 
-  private evaluateValues(context: Context): MaybePromise<Node[]> {
-    return this.hasFlag(F_MAY_ASYNC)
-      ? evaluateNodeArrayMaybe(context, this.value)
-      : evaluateNodeArraySync(context, this.value);
-  }
-
   private finalizeValues(values: Node[]): Node {
     let count = 0;
     let only: Node | undefined;
@@ -539,7 +533,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     if (!this.hasFlag(F_MAY_ASYNC)) {
       return this.finalizeValues(evaluateNodeArraySync(context, this.value));
     }
-    const values = this.evaluateValues(context);
+    const values = evaluateNodeArrayMaybe(context, this.value);
     return isThenable(values)
       ? (values as Promise<Node[]>).then(resolved => this.finalizeValues(resolved))
       : this.finalizeValues(values as Node[]);
