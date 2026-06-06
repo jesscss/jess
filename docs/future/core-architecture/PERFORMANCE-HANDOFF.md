@@ -653,6 +653,34 @@ pair, so it makes no speed claim. The benchmark remains useful as a leash: the
 facade slice stayed behavior-gated and did not obviously break the hot-path
 runner.
 
+### `$!` Source-Position Facade Route
+
+Date: 2026-06-06.
+
+Change: `$!name` now carries an explicit source-position read fact on
+`Reference`, and covered same-frame `$!` variable reads route through the
+`ScopeFrame` facade with `start` and `includeLive: false`. Ordinary `$name`
+current reads and loop/live reads remain on the existing path.
+
+Sanity command:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result status:
+
+- `functions`: usable, median `12.72ms`;
+- `import-reference`: usable, median `17.15ms`;
+- `mixins-guards`: usable, median `16.32ms`;
+- `extend-chaining`: usable, median `4.62ms`;
+- `media`: unstable, median `5.74ms`.
+
+Interpretation: status only. This was not a clean before/after benchmark
+experiment, so it makes no speed claim. The important proof for the slice is
+behavioral: explicit `$!` source-position reads can use the facade without
+breaking ordinary current/live `$while` reads.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

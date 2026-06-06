@@ -66,6 +66,11 @@ describe('reference', () => {
       expect(node.toTrimmedString()).toBe('$foo');
     });
 
+    it('serializes a snapshot variable reference', () => {
+      let node = ref({ key: 'foo' }, { type: 'variable', readMode: 'snapshot' });
+      expect(node.toTrimmedString()).toBe('$!foo');
+    });
+
     it('should serialize a declaration reference', () => {
       let node = ref({ key: 'foo' }, { type: 'declaration' });
       expect(node.toTrimmedString()).toBe('$.foo');
@@ -2211,6 +2216,35 @@ describe('reference', () => {
       } finally {
         RulesClass.prototype.find = originalFind;
       }
+    });
+
+    it('snapshot reads avoid DeclarationRegistry.find for covered same-frame source-order lookup', async () => {
+      const originalFind = RulesClass.prototype.find;
+      let declarationHits = 0;
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'color') {
+          declarationHits++;
+        }
+        return originalFind.apply(this, args);
+      };
+
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        decl({
+          name: any('seen'),
+          value: ref({ key: 'color' }, { type: 'variable', readMode: 'snapshot' })
+        }),
+        vardecl({ name: 'color', value: any('blue') })
+      ]);
+
+      const css = await renderNodeToString(node, context);
+
+      RulesClass.prototype.find = originalFind;
+      expect(css).toBeString(`
+        seen: red;
+      `);
+      expect(declarationHits).toBe(0);
     });
 
     it('plain lexical misses do not fall back when only later child rules could match', async () => {

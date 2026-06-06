@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 /**
  * Jess language token definitions.
  *
@@ -8,7 +9,7 @@
  * - `JessWhile`    `$while` keyword (longer_alt: DollarVariable)
  * - `JessDollar`   lone `$` for mixin-call operator (`$ > name()`)
  * - `DollarParen`  `$(` for expression context
- * - `DollarCaret`  `$^` for linear-variable access (`$^color`)
+ * - `DollarBang`   `$!` for source-position variable access (`$!color`)
  * Dashed at-rules (`@-compose`, `@-from`, `@-export`) are
  * lexed as ordinary `AtKeyword` tokens; the parser dispatches on `.image`.
  */
@@ -40,7 +41,7 @@ function $preBuildTokens() {
    *
    * Required priority (high → low) for `$`-prefix tokens:
    *   JessIf/JessElse/JessFor/JessWhile  (handle $if, $else, …)
-   *   DollarParen / DollarCaret          (handle $(, $^)
+   *   DollarParen / DollarBang           (handle $(, $!)
    *   DollarVariable                     (handles $ident)
    *   JessDollar                         (lone $ — last resort)
    *
@@ -64,8 +65,8 @@ function $preBuildTokens() {
   const afterDollarVariable = [
     /** `$(` — starts a Jess expression context. */
     { name: 'DollarParen',  pattern: /\$\(/, start_chars_hint: ['$'], categories: ['BlockMarker'] },
-    /** `$^` — linear-variable access / assignment. */
-    { name: 'DollarCaret',  pattern: /\$\^/, start_chars_hint: ['$'], categories: ['BlockMarker'] },
+    /** `$!` — source-position variable access. */
+    { name: 'DollarBang',  pattern: /\$!/, start_chars_hint: ['$'], categories: ['BlockMarker'] },
     /**
      * Keyword tokens — `longer_alt: 'DollarVariable'` ensures `$ifoo` stays
      * as DollarVariable while exact `$if` becomes JessIf.
@@ -104,7 +105,7 @@ export type JessExtraTokenType =
   | 'JessFor'
   | 'JessWhile'
   | 'DollarParen'
-  | 'DollarCaret'
+  | 'DollarBang'
   | 'JessDollar';
 
 export type JessTokenType = ScssTokenType | JessExtraTokenType;

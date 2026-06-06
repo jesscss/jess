@@ -464,7 +464,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const { mergeAdapter, importantText } = renderState ?? {};
     const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
     const mark = w.mark();
-    // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
+    // setDefined uses `:=` with default spacing rules.
     const printedAssign = (normalizedFromAssign || renderState?.normalizedFromAssign)
       ? AssignmentType.Default
       : assign;

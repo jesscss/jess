@@ -1278,21 +1278,18 @@ describe('Rules', () => {
         //
         // This test demonstrates Sass !global behavior with mixins using live resolution.
         //
-        // Solution implemented: `$~color` syntax for live resolution.
-        // - `$color` = scoped lookup (Less-style)
-        // - `$^color` = linear lookup from definition position (Sass-style for regular code)
-        // - `$~color` = linear lookup from call site position (Sass-style for mixins/functions)
+        // Current syntax uses `$!color` for explicit source-position reads in
+        // the live-binding model.
         //
-        // When a mixin uses `$~color`, the variable is resolved at the call site, allowing
+        // When a mixin uses explicit live-binding syntax, the variable is resolved at the call site, allowing
         // !global assignments to affect mixin behavior correctly.
 
         let node = rules([
           // Global variable declaration
           vardecl({ name: 'color', value: any('red') }),
 
-          // Mixin definition that uses the variable with live resolution
-          // In Jess, this would be: my-mixin() { color: $~color; }
-          // This makes the mixin resolve the variable at call time, not definition time
+          // Mixin definition that uses explicit live-binding semantics.
+          // This makes the mixin resolve the variable at call time, not definition time.
           mixin({
             name: any('my-mixin'),
             rules: rules([
@@ -1395,7 +1392,7 @@ describe('Rules', () => {
         let box3MixinRules = box3MixinResult;
         expect(box3MixinRules.value.length).toBeGreaterThan(0);
         let box3MixinDecl = await box3MixinRules.at(0)!.eval(context);
-        // With live resolution ($~color), the mixin should resolve the variable
+        // With explicit live-binding syntax, the mixin should resolve the variable
         // at the call site, so it should be 'blue' (the value after !global assignment)
         expect(box3MixinDecl.toTrimmedString()).toBe('color: blue');
 

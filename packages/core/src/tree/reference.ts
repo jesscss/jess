@@ -50,8 +50,8 @@ import type { MixinEntry } from './util/callable-entry.js';
  *    - in `$|.foo()`, `.foo` is a mixin
  *    - in `$foo|.mixin()`, `.mixin` is a mixin in `$foo`
  *    - Resolution:
- *      - `$` searches scope,
- *      - `$^` searches in declaration order
+ *      - `$foo` reads the current scoped binding,
+ *      - `$!foo` reads by source position
  *   in Less
  *   - `@foo` refers to a variable
  *   - `$foo` refers to a property
@@ -94,6 +94,8 @@ export type ReferenceOptions = {
    * - 'live': Resolve using call-site/live lookup semantics
    */
   resolution?: 'contextual' | 'live';
+  /** Explicit source-position read mode for Jess `$!x`. */
+  readMode?: 'snapshot';
   /**
    * Optional references just resolve to the string
    * representation if the fallback value is set to true.
@@ -529,6 +531,7 @@ function isRulesLookupResult(value: unknown): value is Exclude<RulesLookupResult
 type RulesLookupAdapterEnv = {
   context: Context;
   keyNode: ReferenceValue['key'];
+  readMode: ReferenceOptions['readMode'];
   hasTarget: boolean;
   inCall: boolean;
   isInterpolatedVariable: boolean;
@@ -709,6 +712,7 @@ function prepareReferenceLookup(args: {
     env: {
       context,
       keyNode,
+      readMode: referenceNode.options.readMode,
       hasTarget,
       inCall: isNode(referenceNode.parent, N.Call),
       isInterpolatedVariable,
@@ -769,12 +773,18 @@ function lookupScopeFrameVariableBinding(
   opts: FindOptions,
   env: RulesLookupAdapterEnv
 ): RulesLookupResult {
-  if (env.hasTarget || env.isInterpolatedVariable || opts.start !== undefined) {
+  if (
+    env.hasTarget
+    || env.isInterpolatedVariable
+    || (opts.start !== undefined && env.readMode !== 'snapshot')
+  ) {
     return undefined;
   }
   const hit = lookupScopeFrameVariable(targetRules.getScopeFrame(), key, {
+    start: opts.start,
     filter: env.filter,
     blockedSource: node => env.context.searchScope.has(node),
+    includeLive: env.readMode !== 'snapshot',
     bailOnPendingDeclarations: true
   });
   if (!hit) {
@@ -2244,13 +2254,16 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let { type = 'variable', resolution, fallbackValue } = this.options;
+    let { type = 'variable', resolution, fallbackValue, readMode } = this.options;
     let { target, key, rawKey } = this.value;
     const printableKey = rawKey ?? key;
     if (target) {
       target.toString(options);
     } else {
       w.add('$');
+    }
+    if (readMode === 'snapshot') {
+      w.add('!');
     }
     if (resolution === 'live') {
       w.add('~');

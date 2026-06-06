@@ -20,7 +20,7 @@ export type VarDeclarationOptions = DeclarationOptions & {
  *   SCSS: `$foo: 1`
  *
  * @example `setDefined`
- *   Jess: `$^foo: 1`
+ *   Jess: `$foo := 1`
  *   SCSS: `$foo: 1 !global`
  *
  *

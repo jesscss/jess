@@ -175,6 +175,10 @@ next step starts.
      reads.
    - `assignScopeFrameVariable(...)` exists as the narrow binding-cell write
      operation, but is not yet wired into production declaration eval.
+   - `$!name` is now the current syntax for explicit source-position reads in
+     the live-binding model. Do not revive historical `$^` or `$~` lookup
+     syntax. Parser work should carry this as a cheap `Reference` fact, not
+     infer it later from parent shape.
    - Production `Reference` still does not route contextual `start` lookups
      through the facade. The earlier control-loop failure remains the evidence:
      widening that path without placement/eval hardening changed stateful loop
@@ -188,8 +192,8 @@ next step starts.
      binding is `blue`, not `red`), while snapshot/occurrence reads must be
      explicit.
    - Next production step is not cache work. It is to carry a cheap read-mode
-     fact into `Reference` lookup (`current` vs `snapshot/occurrence`) and only
-     allow facade `start` routing for the explicit snapshot/occurrence mode.
+     fact into `Reference` lookup (`current` vs `$!` source-position) and only
+     allow facade `start` routing for the explicit `$!` mode.
      Do not infer this mode by crawling parents or probing node shapes.
    - Do not start step 4 lookup caching until production contextual-start
      routing is either safely widened or explicitly split into a later
@@ -423,6 +427,25 @@ the gate passed.
   failed with `$while exceeded 10000 iterations`; after revert the focused
   control guard passed again. Verdict: step 3 needs an explicit carried
   read-mode fact before production `start` facade routing.
+- `$!` source-position route: accepted as the narrow production widening for
+  step 3. `ReferenceOptions` now carries `readMode: 'snapshot'` only for
+  explicit `$!` reads; ordinary `$x` current reads and loop/live reads keep the
+  existing path. The Jess parser emits that flag from `$!name`, and
+  `Reference` serializes it back as `$!name`. The scope-frame facade receives
+  `start` and `includeLive: false` only for this explicit mode, so it avoids
+  broad declaration-registry lookup for covered same-frame source-order reads
+  without hiding live loop cells from ordinary current reads. New traversal:
+  none beyond the existing frame-chain lookup. New node/materialization: none.
+  Helper/API surface: no helper added; one existing options object gained a
+  narrow carried fact. Metadata mutations: none. Evidence: focused core
+  reference/control tests passed; parser `$!` baseline passed after rebuilding
+  `@jesscss/core`. The full parser baseline still has the pre-existing
+  collection parent mismatch and is not claimed as passed by this slice.
+  `pnpm run measure:less:hotpath -- --stable` was run as a leash sanity check:
+  `functions` usable median `12.72ms`, `import-reference` usable median
+  `17.15ms`, `mixins-guards` usable median `16.32ms`, `extend-chaining` usable
+  median `4.62ms`, and `media` unstable median `5.74ms`. This is status only,
+  not a before/after speed claim.
 - New traversal: none added. Pass 4 kept the existing lookup sequence but
   removed eagerly allocated lookup/finalizer closures from
   `evaluateReferenceNode(...)`. No parent/source walk, side-map lookup,

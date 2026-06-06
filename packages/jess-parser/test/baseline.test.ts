@@ -64,6 +64,15 @@ describe('jess-parser (baseline)', () => {
     expect(result.tree.toString()).toContain('$foo');
   });
 
+  it('parses snapshot dollar variable reference', () => {
+    const parser = new Parser();
+    const result = parser.parse('.a { color: $!foo; }');
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.length).toBe(0);
+    assertValidTree(result.tree);
+    expect(result.tree.toString()).toContain('$!foo');
+  });
+
   it('parses parenthesized dollar expression', () => {
     const parser = new Parser();
     const result = parser.parse('.a { width: $(1 + 1)px; }');

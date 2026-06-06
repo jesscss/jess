@@ -787,9 +787,9 @@ describe('Style import', () => {
       expect(derivedColorValue.toTrimmedString()).toBe('blue');
     });
 
-    it('updates computed variables with "with" type - linear lookup', async () => {
+    it('updates computed variables with "with" type - source-position lookup', async () => {
       // Test that when we inject a variable, dependent variables are updated
-      // This tests linear lookup ($^var)
+      // This tests explicit source-position lookup ($!var)
       const libraryPath = resolve(process.cwd(), 'library.jess');
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'baseColor', value: any('red') }),
@@ -867,9 +867,9 @@ describe('Style import', () => {
       expect(derivedColorValue.toTrimmedString()).toBe('yellow');
     });
 
-    it('updates computed variables with "set" type - linear lookup', async () => {
+    it('updates computed variables with "set" type - source-position lookup', async () => {
       // Test that when we inject a variable with "set", dependent variables are updated
-      // This tests linear lookup ($^var)
+      // This tests explicit source-position lookup ($!var)
       const libraryPath = resolve(process.cwd(), 'library.jess');
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'baseColor', value: any('red') }),

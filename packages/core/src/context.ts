@@ -235,8 +235,8 @@ export class Context {
 
   /**
    * This is set when entering rulesets so that child nodes
-   * can use this to lookup values. When evaluating inside a mixin/function,
-   * this also enables live variable resolution ($~variable).
+   * can use this to look up values. Jess `$!variable` carries explicit
+   * source-position read mode for the live-binding model.
    */
   rulesContext?: Rules;
   /** Entire context root (ultimate root) */
