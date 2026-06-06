@@ -1688,72 +1688,6 @@ function evaluateRuntimeVarBindingValue(
   }
 }
 
-function withReferenceSearchScope<T>(
-  context: Context,
-  node: Node,
-  work: () => MaybePromise<T>
-): MaybePromise<T> {
-  context.searchScope.add(node);
-  const cleanup = () => {
-    context.searchScope.delete(node);
-  };
-  try {
-    const result = work();
-    if (isThenable(result)) {
-      return Promise.resolve(result).then(
-        (resolved) => {
-          cleanup();
-          return resolved;
-        },
-        (error) => {
-          cleanup();
-          throw error;
-        }
-      );
-    }
-    cleanup();
-    return result;
-  } catch (error) {
-    cleanup();
-    throw error;
-  }
-}
-
-function hasImportantDeclarationValue(
-  declaration: Declaration | VarDeclaration
-): boolean {
-  return isNode(declaration, N.Declaration) && !!declaration.value.important;
-}
-
-function isMergedAssignDeclaration(
-  declaration: Declaration | VarDeclaration
-): boolean {
-  if (!isNode(declaration, N.Declaration)) {
-    return false;
-  }
-  const normalizedAssign = declaration.options?.normalizedFromAssign;
-  return normalizedAssign === '+:' || normalizedAssign === '&,:' || normalizedAssign === '&_:';
-}
-
-function finalizeEvaluatedDeclarationReference(
-  referenceNode: Reference,
-  evaluatedNode: Node,
-  isMergedAssign: boolean,
-  options: { textOnly?: boolean } = {}
-): Node {
-  if (options.textOnly === true && !isMergedAssign) {
-    return evaluatedNode;
-  }
-  const resultNode = isMergedAssign
-    ? evaluatedNode
-    : copyWithReusableLeaves(evaluatedNode);
-  const normalized = normalizeMergedAssignReferenceResult(
-    resultNode,
-    isMergedAssign
-  );
-  return normalized.inherit(referenceNode);
-}
-
 function finalizeDeclarationReferenceResult(
   referenceNode: Reference,
   declaration: Declaration | VarDeclaration,
@@ -1761,8 +1695,13 @@ function finalizeDeclarationReferenceResult(
   options: { textOnly?: boolean } = {}
 ): MaybePromise<Node> {
   const declarationValue = declaration.value.value;
-  const isMergedAssign = isMergedAssignDeclaration(declaration);
-  const hasImportant = hasImportantDeclarationValue(declaration);
+  let isMergedAssign = false;
+  let hasImportant = false;
+  if (isNode(declaration, N.Declaration)) {
+    hasImportant = !!declaration.value.important;
+    const normalizedAssign = declaration.options?.normalizedFromAssign;
+    isMergedAssign = normalizedAssign === '+:' || normalizedAssign === '&,:' || normalizedAssign === '&_:';
+  }
   if (
     context.calcFrames === 0
     && !hasImportant
@@ -1780,25 +1719,43 @@ function finalizeDeclarationReferenceResult(
     context.popReference();
     return preservedValue;
   }
-  return withReferenceSearchScope(context, declaration, () => {
+  context.searchScope.add(declaration);
+  try {
     if (hasImportant) {
       context.pushImportantSource();
     }
     const evaluated = evaluateReferenceValueNode(declarationValue, context);
     const finalize = (evaluatedNode: Node): Node => {
-      const finalized = finalizeEvaluatedDeclarationReference(
-        referenceNode,
-        evaluatedNode,
-        isMergedAssign,
-        options
-      );
-      context.popReference();
-      return finalized;
+      try {
+        if (options.textOnly === true && !isMergedAssign) {
+          context.popReference();
+          return evaluatedNode;
+        }
+        const resultNode = isMergedAssign
+          ? evaluatedNode
+          : copyWithReusableLeaves(evaluatedNode);
+        const normalized = normalizeMergedAssignReferenceResult(resultNode, isMergedAssign);
+        const finalized = normalized.inherit(referenceNode);
+        context.popReference();
+        return finalized;
+      } finally {
+        context.searchScope.delete(declaration);
+      }
     };
-    return isThenable(evaluated)
-      ? Promise.resolve(evaluated).then(finalize)
-      : finalize(evaluated);
-  });
+    if (isThenable(evaluated)) {
+      return Promise.resolve(evaluated).then(
+        finalize,
+        (error) => {
+          context.searchScope.delete(declaration);
+          throw error;
+        }
+      );
+    }
+    return finalize(evaluated);
+  } catch (error) {
+    context.searchScope.delete(declaration);
+    throw error;
+  }
 }
 
 function evaluateCalcSlashListValue(

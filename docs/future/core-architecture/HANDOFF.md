@@ -612,6 +612,14 @@ Next deep-cut queue:
    public `evaluateReferenceValueNode(...)` materialization, merged assign
    normalization, and remaining non-render `.inherit(...)`/
    `copyWithReusableLeaves(...)` ownership boundaries.
+   Partial status: declaration-reference finalization no longer pays the
+   single-use `withReferenceSearchScope(...)`,
+   `finalizeEvaluatedDeclarationReference(...)`,
+   `hasImportantDeclarationValue(...)`, or `isMergedAssignDeclaration(...)`
+   helper/predicate layer. Search-scope cleanup and important/merged semantics
+   stayed in the caller. This is a function-hop/API-surface cut only; the
+   remaining public copy/inherit boundary for non-render declaration references
+   is still real debt and remains queued.
 15. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -691,6 +699,35 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Reference declaration-finalization helper pass: accepted as helper/API
+  surface deletion, not as a speed claim and not as completion of the Reference
+  materialization audit. `packages/core/src/tree/reference.ts` deleted four
+  single-use wrappers around declaration references:
+  `withReferenceSearchScope(...)`, `finalizeEvaluatedDeclarationReference(...)`,
+  `hasImportantDeclarationValue(...)`, and `isMergedAssignDeclaration(...)`.
+  Search-scope cleanup now lives directly in
+  `finalizeDeclarationReferenceResult(...)`, and important/merged classification
+  is computed once beside the declaration value it controls. New traversal:
+  none. New node/materialization: none; no `Node`, copy,
+  `copyWithReusableLeaves(...)`, `.inherit(...)`, `.adopt(...)`, wrapper
+  `Rules`, side map, cache, materialized array, frozen/source/parent mutation,
+  or render-path materialization was added. Existing materialization: the
+  non-render declaration-reference `copyWithReusableLeaves(...)` plus
+  `.inherit(reference)` boundary remains in place and remains queued; this pass
+  did not justify or expand it. Render path: unchanged; render-only non-merged
+  declaration references still return evaluated nodes directly. Helper/API
+  surface: four private helpers removed; no helper or public API added.
+  Metadata mutations: no new mutation; the existing `context.searchScope`
+  add/delete and `context.popReference()` behavior moved from the helper into
+  the caller with the same sync/async/error cleanup shape. Evidence: focused
+  `reference.test.ts` passed (`112` tests), focused eslint passed, static
+  node-creation audit dropped `reference.ts` from `21` to `20` and global
+  `with-surface` from `34` to `33` while `new-node` stayed `321`,
+  `copy-leaves` stayed `31`, and `derive` stayed `30`. Clean
+  `benchmark-v39.less` profiler status after the patch was `Reference.evalNode`
+  `482` calls / `5.32ms`, `Rules.find` `68` calls / `0.38ms`; status only, not
+  speed proof. Verdict: keep the deletion; continue attacking the remaining
+  Reference copy/materialization boundary with tests before leaving item 14.
 - Static compound reference path identity pass: accepted as path-fact
   preservation, not as a speed claim. `packages/core/src/tree/reference.ts`
   now returns the original static string-array lookup key when the evaluated

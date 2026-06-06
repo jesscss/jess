@@ -1327,6 +1327,44 @@ remaining binding-handle work is still to stop rediscovering binding facts
 across repeated lookups, and any evaluated value/text reuse still needs explicit
 static/effect facts plus benchmark proof.
 
+### Reference Step 11 Declaration Finalization Helper Cut
+
+Date: 2026-06-06.
+
+Change: declaration-reference finalization deleted four single-use helper/
+predicate layers and keeps the same search-scope cleanup directly in
+`finalizeDeclarationReferenceResult(...)`. This is a helper/function-hop cut,
+not a new materialization strategy.
+
+Pre-edit CPU/counter status:
+
+- `benchmark-v39.less` profiler status before this pass: `Reference.evalNode`
+  `482` calls / `5.20ms`, `Rules.find` `68` calls / `0.35ms`;
+- `Rules.find` was only function lookup for this fixture:
+  `function:hsl` `36`, `function:percentage` `24`, `function:range` `8`;
+- static node-creation audit showed `reference.ts` at `21` creation or copy
+  surfaces and global totals `new-node` `321`, `with-surface` `34`,
+  `copy-leaves` `31`, `derive` `30`.
+
+Post-edit CPU/counter status:
+
+- clean `benchmark-v39.less` profiler status: `Reference.evalNode` `482`
+  calls / `5.32ms`, `Rules.find` `68` calls / `0.38ms`;
+- top repeated reference keys stayed `value` `230`, `val` `68`, `size` `40`,
+  `hue` `36`, `idx` `32`;
+- static node-creation audit dropped `reference.ts` from `21` to `20` and
+  global `with-surface` from `34` to `33`; `new-node` stayed `321`,
+  `copy-leaves` stayed `31`, and `derive` stayed `30`.
+
+Interpretation: status only, not speed proof. The code-path proof is the
+deleted wrapper stack:
+`withReferenceSearchScope(...)`,
+`finalizeEvaluatedDeclarationReference(...)`,
+`hasImportantDeclarationValue(...)`, and
+`isMergedAssignDeclaration(...)`. The remaining
+`copyWithReusableLeaves(...)`/`.inherit(...)` public declaration-reference
+boundary is still queued for evidence-backed removal or isolation.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
