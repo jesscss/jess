@@ -14,7 +14,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Rules, RulesOptions, RuntimeVarBinding } from './rules.js';
 import type { Interpolated } from './interpolated.js';
-import { canReuseLeaf, copyWithReusableLeaves } from './util/cloning.js';
+import { copyWithReusableLeaves } from './util/cloning.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
 import { JsArray } from './js-array.js';
@@ -1400,47 +1400,15 @@ function copyReferenceResultNode(
 }
 
 function canReturnReferenceValue(node: Node): boolean {
-  return canReuseLeaf(node);
-}
-
-function canReturnSourceFreeReferenceContainer(node: Node): boolean {
-  if (!isNode(node, N.List | N.Sequence)) {
-    return false;
-  }
-  if (node.location.length !== 0 || !node.hasFlag(F_STATIC)) {
-    return false;
-  }
-  for (let i = 0; i < node.value.length; i++) {
-    const child = node.value[i];
-    if (!(child instanceof Node) || !canReuseLeaf(child)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function canRenderReferenceContainerText(node: Node): boolean {
-  if (!isNode(node, N.List | N.Sequence)) {
-    return false;
-  }
-  if (!node.hasFlag(F_STATIC)) {
-    return false;
-  }
-  for (let i = 0; i < node.value.length; i++) {
-    const child = node.value[i];
-    if (!(child instanceof Node) || !canReuseLeaf(child)) {
-      return false;
-    }
-  }
-  return true;
+  return node.hasFlag(F_STATIC) && !isRulesLikeReferenceValue(node);
 }
 
 function canReturnReferenceValueWithoutCopy(node: Node): boolean {
-  return canReturnReferenceValue(node) || canReturnSourceFreeReferenceContainer(node);
+  return canReturnReferenceValue(node);
 }
 
 function canRenderReferenceValueTextOnly(node: Node): boolean {
-  return canReturnReferenceValue(node) || canRenderReferenceContainerText(node);
+  return canReturnReferenceValue(node);
 }
 
 function isRulesLikeReferenceValue(node: Node): boolean {

@@ -258,6 +258,66 @@ Next measured target:
   placement/binding state can avoid repeated body evaluation or copied public
   materialization.
 
+### 2026-06-05 Static Reference Value Copy Cut
+
+Hypothesis: a static non-rules-like referenced value should not be copied merely
+because it has source trivia or child nodes. `F_STATIC` already means the value
+is inert for eval, so routine reference eval/render can reuse the canonical
+static value. Rules-like values stay excluded until callable/public ownership is
+handled by explicit placement/materialization state.
+
+Before patch:
+
+- CPU profile
+  `profiling/core-architecture/CPU.20260605.175415.48626.0.001.cpuprofile`
+  showed `Reference.evalNode` at `146 / 1234` samples (`11.8%`);
+- `Reference.evalNode` bucket split: copy/result ownership `47` samples,
+  callable lookup/mixin registry `30`, variable declaration lookup `21`,
+  function/declaration registry lookup `19`, result finalization/eval value
+  `16`, target/key normalization `10`, variable live binding lookup `2`;
+- copy leaves included `copyChild` `26` samples. This was evidence that the
+  hot reference story was not only raw `Rules.find(...)`; looked-up value
+  finalization and ownership copying were a large part of the stack.
+
+Patch kept:
+
+- `packages/core/src/tree/reference.ts` now allows
+  `canReturnReferenceValue(...)` for any `F_STATIC` non-rules-like value;
+- deleted `canReturnSourceFreeReferenceContainer(...)` and
+  `canRenderReferenceContainerText(...)`, removing the child scans that tried
+  to re-prove source-free reusable leaves on every reference result path;
+- no new traversal, node creation, parent/source mutation, `.inherit(...)`, or
+  copy helper was added.
+
+After patch:
+
+- CPU profile
+  `profiling/core-architecture/CPU.20260605.180616.3382.0.001.cpuprofile`
+  showed `Reference.evalNode` at `133 / 1183` samples (`11.2%`);
+- `Reference.evalNode` bucket split: copy/result ownership `26` samples,
+  callable lookup/mixin registry `56`, variable declaration lookup `32`,
+  function/declaration registry lookup `7`, result finalization/eval value
+  `12`, target/key normalization `0`, variable live binding lookup `0`;
+- top leaves were `findVarWithinScopeSurface` `17`, `copyChild` `15`,
+  `findWithinScopeSurface` `12` total across two lines, and smaller
+  finalization/key frames;
+- hot-path sanity benchmark after this patch: `functions` median `15.18ms`,
+  `import-reference` median `21.34ms`, `mixins-guards` median `18.28ms`,
+  `extend-chaining` median `5.65ms`, `media` median `6.76ms` with `media`
+  noisy. Compared with the prior stable snapshot (`functions` `12.86ms`,
+  `import-reference` `19.78ms`, `mixins-guards` `18.74ms`,
+  `extend-chaining` `5.30ms`, `media` `6.46ms`), this is mixed and not a
+  speed win.
+
+Next measured target:
+
+- The remaining `Reference.evalNode` story is lookup plus callable output
+  evaluation, not live binding lookup itself. `findVarWithinScopeSurface` is
+  the top leaf, but callable/mixin evaluation owns the largest semantic bucket.
+  Before adding helper polish, count semantic mixin/reference calls against
+  candidate/output eval work and keep cutting copy/materialization pressure
+  around the looked-up value path.
+
 ## Parked Measured Targets
 
 Keep these targets visible when performance rounds reactivate:

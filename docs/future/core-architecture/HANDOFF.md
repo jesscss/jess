@@ -69,28 +69,31 @@ Next deep-cut queue:
    `hasDefault: true | false` for guarded mixins/rulesets, and the hot
    candidate loop trusts carried metadata instead of recursively scanning
    guards.
-1. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
+1. [x] Return static non-rules-like reference values directly. `Reference`
+   no longer copies static source-backed lists/sequences merely because they
+   have children, and the old source-free container child scans are gone.
+2. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
    materialization so routine eval replacement does not imply `.inherit(...)`.
-2. [ ] Replace `StyleImport` first-use placement copies with placement state
+3. [ ] Replace `StyleImport` first-use placement copies with placement state
    that points at canonical source children and preserves import visibility.
-3. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
+4. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
    is source/visibility/placement bookkeeping.
-4. [ ] Replace remaining `Rules` merge output copies with direct merge
+5. [ ] Replace remaining `Rules` merge output copies with direct merge
    placement/render state or a narrow owned-item copier proven by merge tests.
-5. [ ] Convert registration-prep expected misses away from routine `try/catch`
+6. [ ] Convert registration-prep expected misses away from routine `try/catch`
    only after adding tests for unresolved declaration/identity behavior.
-6. [ ] Continue selector/extend factory cuts separately; do not hide selector
+7. [ ] Continue selector/extend factory cuts separately; do not hide selector
    placement copies inside another generic copy helper.
-7. [ ] Replace callable binding copies for static containers with explicit
+8. [ ] Replace callable binding copies for static containers with explicit
    binding/placement state. Static containers should not be copied merely
    because they contain child nodes; `F_HAS_NODE_CHILD` is only a cheap current
    ownership boundary, not a final architecture.
-8. [ ] Attack the measured copy stack next: `copyChild`,
+9. [ ] Attack the measured copy stack next: `copyChild`,
    `copyWithReusableLeaves`, `copyCallableRulesValue`, `constructCopy`, and
    `.inherit(...)`. CPU evidence says these are mostly registration derivation,
    selector header rendering, JS function argument ownership, reference value
    eval, and binding clone debt; do not justify them as render output copying.
-9. [ ] Audit repeated callable/mixin evaluation from the profile before making
+10. [ ] Audit repeated callable/mixin evaluation from the profile before making
    more local helper cuts. If a mixin candidate or output body is evaluated
    more than the semantic call count requires, carry placement/binding state or
    cache the cold public materialization boundary instead of copying/evaluating
@@ -142,28 +145,34 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
-- New traversal: `packages/core/src/tree/util/callable-entry.ts`
-  centralizes `callableGuardContainsDefault(...)` for cold/direct
-  construction-time inference only. Its loops and cycle `Set` are accepted
-  solely as an API/synthetic-entry fallback when a caller omits
-  `options.hasDefault`; parsed Less avoids this traversal by passing explicit
-  `hasDefault: true | false` from `packages/less-parser/src/productions/root.ts`.
-- New node/materialization: none. No new `Node`, copy, wrapper `Rules`,
-  `.inherit(...)`, `.adopt(...)`, or `frozen` path was added.
-- Render path: unchanged. This pass removed guard rediscovery from callable
-  candidate preparation; it does not resolve or materialize nodes to stringify.
-- Helper/API surface: one recursive detector was moved out of
-  `prepareCallableEvalCandidates(...)` and reused by `Mixin`/`Ruleset`
-  constructors and synthetic callable entries. This is accepted only because it
-  deletes the measured candidate-loop traversal and is bypassed by parsed Less
-  when the parser has the fact.
-- Metadata mutations: removed the redundant hot-loop
-  `candidate.options.hasDefault = true` write. Constructors allocate a tiny
-  replacement options object only when direct API callers omit the flag and a
-  guard actually contains `default()`.
-- Evidence: before CPU profile had `guardContainsDefault` as the top frame
-  (`313` samples). After the parser/core change and rebuild, CPU profile
-  `profiling/core-architecture/CPU.20260605.174243.84124.0.001.cpuprofile`
-  reports `guardContainsDefault = 0` and `callableGuardContainsDefault = 0`
-  samples; the same run now points at copy/ownership and lookup surfaces.
+- New traversal: none. This pass deleted the child loops in
+  `canReturnSourceFreeReferenceContainer(...)` and
+  `canRenderReferenceContainerText(...)` instead of adding another scan.
+- New node/materialization: none added. The pass removes copy pressure by
+  letting static non-rules-like reference values return/render directly through
+  `canReturnReferenceValue(...)`; rules-like values still stay on the owned
+  output path because callable/public materialization semantics are not solved
+  by handing out the canonical rules surface. The remaining
+  `copyWithReusableLeaves(...)` import in `reference.ts` is pre-existing
+  dynamic fallback/public materialization debt, not a new copy path.
+- Render path: improved shape. Rendering a static referenced container now
+  renders the canonical static value directly instead of proving every child is
+  a source-free reusable leaf before avoiding a copy. Dynamic fallback and
+  public materialization paths remain separate.
+- Helper/API surface: deleted two helper functions and simplified
+  `canReturnReferenceValueWithoutCopy(...)` and
+  `canRenderReferenceValueTextOnly(...)` to the same static non-rules-like
+  predicate. No new helper or public method was added.
+- Metadata mutations: none. No parent restoration, `frozen`, `.inherit(...)`,
+  source metadata mutation, `Reflect.*`, or `Object.hasOwn(...)` was added.
+- Evidence: before this reference cut, CPU profile
+  `profiling/core-architecture/CPU.20260605.175415.48626.0.001.cpuprofile`
+  showed `Reference.evalNode` at `146 / 1234` samples (`11.8%`), with
+  copy/result ownership at `47` samples and `copyChild` at `26` leaf samples.
+  After the static reference cut and rebuild, CPU profile
+  `profiling/core-architecture/CPU.20260605.180616.3382.0.001.cpuprofile`
+  shows `Reference.evalNode` at `133 / 1183` samples (`11.2%`), copy/result
+  ownership at `26` samples, and `copyChild` at `15` leaf samples. The real
+  hot-path benchmark was mixed/noisy, so this is accepted as measured copy
+  machinery deletion, not as an end-to-end speed win.
 - Verdict: accepted.
