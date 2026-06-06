@@ -361,10 +361,44 @@ Evidence:
 Next measured target:
 
 - Continue `Reference` before moving to the next node. The remaining target is
-  the lookup/finalization/copy helper cluster, especially
-  `findVarDeclarationFast`, key evaluation/conversion, declaration
-  finalization, rules-like reference value surfaces, and
-  `evaluateReferenceValueNode(...)` copy pressure.
+  the copy/materialization ownership cluster, especially rules-like reference
+  value surfaces, `evaluateReferenceValueNode(...)` copy pressure, declaration
+  finalization, merged assign normalization, and key evaluation/conversion.
+
+### 2026-06-05 Reference Helper Surface Cut
+
+Hypothesis: after the class-surface pass, `Reference` still had one-call
+helpers and temporary objects that made the lookup/finalization path harder to
+reason about without protecting semantics.
+
+Patch kept:
+
+- `findVarDeclarationFast(...)` now returns the matched node directly instead
+  of a single-field `{ match }` object;
+- `findVarDeclarationFast(...)` no longer allocates a per-scope IIFE result
+  object to split public/optional current-scope matches;
+- `resolveInitialReferenceTarget(...)` no longer allocates an IIFE to compute a
+  simple runtime live-slot key;
+- deleted fallback predicate wrappers, lookup adapter factories, result-kind
+  classification helper/type, copy delegation wrapper, and the one-call target
+  materialization wrappers;
+- target materialization still preserves the existing `.inherit(...)` and
+  copy/materialization semantics. This pass did not solve ownership pressure.
+
+Evidence:
+
+- focused Reference-family tests passed: `410` tests across
+  `reference`, `mixin`, `declaration`, `ruleset`, `list`, `sequence`,
+  `condition`, and `operation`;
+- `pnpm --filter @jesscss/core build` passed with the existing `js-expr.ts`
+  direct-eval bundler warning;
+- `pnpm exec eslint packages/core/src/tree/reference.ts` passed;
+- hot-path sanity benchmark after this patch:
+  `functions` median `12.70ms`, `import-reference` median `18.21ms`,
+  `mixins-guards` median `17.01ms`, `extend-chaining` median `5.13ms`, and
+  `media` median `6.33ms`; all five signals were usable;
+- no speed claim. This pass did not capture a clean before/after benchmark
+  pair, so the benchmark is a leash sanity line only.
 
 ## Parked Measured Targets
 

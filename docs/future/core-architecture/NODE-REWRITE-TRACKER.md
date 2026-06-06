@@ -67,7 +67,7 @@ its public render/eval/resolve/value methods have been reviewed for:
 | Quoted | `packages/core/src/tree/quoted.ts` | `Node` | queued | Audit interpolation/replacement and string escape paths. |
 | Range | `packages/core/src/tree/range.ts` | `Node` | queued | Audit loop/range output and allocations. |
 | RawRules | `packages/core/src/tree/rules-raw.ts` | `Rules` | queued | Audit after `Rules`; keep raw render direct. |
-| Reference | `packages/core/src/tree/reference.ts` | `Node` | in progress | Pass 1 deleted alias return-value predicates, removed the useless `evalNode(...)` Promise identity wrapper, flattened the direct render entry path, filled lookup options directly instead of via spread helpers, and removed the scope-array recursive walker. Remaining: lookup/finalization/copy helper cluster, key conversion, rules-like surfaces, and declaration materialization. |
+| Reference | `packages/core/src/tree/reference.ts` | `Node` | in progress | Passes 1-2 deleted alias predicates, result/fallback/materialization wrapper helpers, the useless `evalNode(...)` Promise wrapper, direct render closures, option spread helpers, scope-array walker, runtime-key IIFE, and small `findVarDeclarationFast(...)` result/IIFE allocations. Remaining: copy/materialization ownership boundaries, rules-like surfaces, declaration finalization, merged assign normalization, and key conversion. |
 | Rest | `packages/core/src/tree/rest.ts` | `Node` | queued | Audit scalar/rest wrapper paths. |
 | Rules | `packages/core/src/tree/rules.ts` | `Node` | queued | High priority: body eval/render, imports, placement state, merge output. |
 | Ruleset | `packages/core/src/tree/ruleset.ts` | `Node` | queued | High priority: selector composition, body prep, wrappers, render branches. |

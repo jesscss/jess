@@ -31,8 +31,6 @@ import {
   writeRenderTextResult,
   type RenderBuffer
 } from './util/render-buffer.js';
-import type { Mixin } from './mixin.js';
-import type { Ruleset } from './ruleset.js';
 import { withRulesContext } from './util/context.js';
 import {
   blocksAmbientMixinOutputLookup,
@@ -156,9 +154,7 @@ function findVarDeclarationFast(
     hasTarget?: boolean;
     local?: boolean;
   }
-): {
-  match: Node | undefined;
-} {
+): Node | undefined {
   const selectBucketCandidate = (
     bucket: BindingEntry[] | undefined,
     start: number | undefined
@@ -289,27 +285,21 @@ function findVarDeclarationFast(
     }
     const frame = scope.getScopeFrame();
     promoteResolvedPendingDecls(scope, frame);
-    let { publicMatch, optionalMatch } = (() => {
-      let currentPublicMatch: Node | undefined;
-      let currentOptionalMatch: Node | undefined;
-      const currentCandidate = selectBucketCandidate(frame.declarationBucketsByName.get(name), undefined);
-      if (currentCandidate) {
-        const scopeVisibility = visibilityOverride ?? scope.options.rulesVisibility?.VarDeclaration;
-        const isRulesetBodyScope = isNode(scope.parent, N.Ruleset) || isNode(scope.sourceNode, N.Ruleset);
-        const isOptionalCurrentScope = visibilityOverride === undefined
-          ? scopeVisibility === 'optional' && !isRulesetBodyScope
-          : scopeVisibility === 'optional';
-        if (isOptionalCurrentScope) {
-          currentOptionalMatch = currentCandidate;
-        } else {
-          currentPublicMatch = currentCandidate;
-        }
+    let publicMatch: Node | undefined;
+    let optionalMatch: Node | undefined;
+    const currentCandidate = selectBucketCandidate(frame.declarationBucketsByName.get(name), undefined);
+    if (currentCandidate) {
+      const scopeVisibility = visibilityOverride ?? scope.options.rulesVisibility?.VarDeclaration;
+      const isRulesetBodyScope = isNode(scope.parent, N.Ruleset) || isNode(scope.sourceNode, N.Ruleset);
+      const isOptionalCurrentScope = visibilityOverride === undefined
+        ? scopeVisibility === 'optional' && !isRulesetBodyScope
+        : scopeVisibility === 'optional';
+      if (isOptionalCurrentScope) {
+        optionalMatch = currentCandidate;
+      } else {
+        publicMatch = currentCandidate;
       }
-      return {
-        publicMatch: currentPublicMatch,
-        optionalMatch: currentOptionalMatch
-      };
-    })();
+    }
     const lexicalParentRules = frame.parent?.rulesNode;
     const astRulesParent = scope.rulesParent;
     if (
@@ -451,16 +441,12 @@ function findVarDeclarationFast(
     }
   }
   if (publicMatch !== undefined) {
-    return {
-      match: publicMatch
-    };
+    return publicMatch;
   }
   if (optionalMatch !== undefined) {
-    return {
-      match: optionalMatch
-    };
+    return optionalMatch;
   }
-  return { match: undefined };
+  return undefined;
 }
 
 const { isArray } = Array;
@@ -564,7 +550,6 @@ type PreparedReferenceLookup = {
   env: RulesLookupAdapterEnv;
 };
 
-type ReferenceLookupResultKind = 'fallback' | 'runtime-binding' | 'declaration' | 'direct';
 const RAW_REFERENCE_TARGET_NOT_FOUND = Symbol('RAW_REFERENCE_TARGET_NOT_FOUND');
 
 function getLookupKeyString(valueKey: NormalizedLookupKey): string {
@@ -822,7 +807,7 @@ function lookupVariableReference(
     hasTarget: env.hasTarget,
     local: opts.local
   });
-  return fast.match;
+  return fast;
 }
 
 function lookupDeclarationReference(
@@ -876,29 +861,26 @@ function getIndexReferenceFilterType(
   return isNode(keyNode, N.Quoted) ? 'Declaration' : 'VarDeclaration';
 }
 
-function createRulesLookupAdapter(
-  applyContextualStart: boolean,
-  lookup: RulesLookupAdapter['lookup']
-): RulesLookupAdapter {
-  return { applyContextualStart, lookup };
-}
-
-function createCallableLookupAdapter(
-  filterType?: 'Mixin'
-): RulesLookupAdapter {
-  return createRulesLookupAdapter(false, (targetRules, valueKey, opts, env) => (
-    lookupCallableReference(targetRules, valueKey, opts, env, filterType)
-  ));
-}
-
 const RULES_LOOKUP_ADAPTERS: Record<LookupType, RulesLookupAdapter> = {
-  index: createRulesLookupAdapter(false, lookupIndexReference),
-  property: createRulesLookupAdapter(true, lookupPropertyReference),
-  variable: createRulesLookupAdapter(true, lookupVariableReference),
-  declaration: createRulesLookupAdapter(true, lookupDeclarationReference),
-  function: createRulesLookupAdapter(false, lookupFunctionReference),
-  mixin: createCallableLookupAdapter('Mixin'),
-  ['mixin-ruleset']: createCallableLookupAdapter()
+  index: { applyContextualStart: false, lookup: lookupIndexReference },
+  property: { applyContextualStart: true, lookup: lookupPropertyReference },
+  variable: { applyContextualStart: true, lookup: lookupVariableReference },
+  declaration: { applyContextualStart: true, lookup: lookupDeclarationReference },
+  function: { applyContextualStart: false, lookup: lookupFunctionReference },
+  mixin: {
+    applyContextualStart: false,
+    lookup: (targetRules, valueKey, opts, env) => lookupCallableReference(
+      targetRules,
+      valueKey,
+      opts,
+      env,
+      'Mixin'
+    )
+  },
+  ['mixin-ruleset']: {
+    applyContextualStart: false,
+    lookup: lookupCallableReference
+  }
 };
 
 function lookupRulesReferenceTarget(args: {
@@ -1210,16 +1192,13 @@ function resolveInitialReferenceTarget(
     return finalizeRawTarget(rawTarget);
   }
   const runtimeRulesParent = referenceNode.rulesParent;
-  const runtimeLiveSlotKey = (() => {
-    const key = referenceNode.value.rawKey ?? referenceNode.value.key;
-    if (typeof key === 'string') {
-      return key;
-    }
-    if (typeof key === 'number') {
-      return String(key);
-    }
-    return undefined;
-  })();
+  const runtimeKey = referenceNode.value.rawKey ?? referenceNode.value.key;
+  let runtimeLiveSlotKey: string | undefined;
+  if (typeof runtimeKey === 'string') {
+    runtimeLiveSlotKey = runtimeKey;
+  } else if (typeof runtimeKey === 'number') {
+    runtimeLiveSlotKey = String(runtimeKey);
+  }
   const runtimeParentHasLiveSlot = runtimeLiveSlotKey !== undefined
     && runtimeRulesParent?.scopeFrame?.liveSlotsByName.has(runtimeLiveSlotKey);
   const resolvedTarget = target
@@ -1285,44 +1264,7 @@ function resolveAmbiguousReferenceTarget(args: {
   return resolvedTarget;
 }
 
-function materializeMixinCollectionTarget(
-  resolvedTarget: MixinCollection,
-  valueKey: NormalizedLookupKey,
-  context: Context
-): MaybePromise<[unknown, NormalizedLookupKey]> {
-  return Promise.resolve(resolvedTarget.evalCall(context)).then(r => [r, valueKey]);
-}
-
 type JsFunctionTarget = Node<(...args: unknown[]) => unknown>;
-type RulesLikeTarget = Mixin | Ruleset;
-
-function materializeJsFunctionTarget(
-  resolvedTarget: JsFunctionTarget,
-  valueKey: NormalizedLookupKey,
-  context: Context
-): MaybePromise<[unknown, NormalizedLookupKey]> {
-  const jsResult = resolvedTarget.value.call(context);
-  if (isThenable(jsResult)) {
-    return Promise.resolve(jsResult).then(result => [result, valueKey]);
-  }
-  return [jsResult, valueKey];
-}
-
-function materializeRulesLikeTarget(
-  resolvedTarget: RulesLikeTarget,
-  valueKey: NormalizedLookupKey,
-  context: Context
-): MaybePromise<[Rules, NormalizedLookupKey]> {
-  const mixinResult = resolvedTarget.value.rules.eval(context);
-  const finalizeRules = (rules: Rules): [Rules, NormalizedLookupKey] => {
-    rules.inherit(resolvedTarget.value.rules);
-    return [rules, valueKey];
-  };
-  if (isThenable(mixinResult)) {
-    return Promise.resolve(mixinResult).then(finalizeRules);
-  }
-  return finalizeRules(mixinResult);
-}
 
 function materializeReferenceTarget(args: {
   resolvedTarget: unknown;
@@ -1333,16 +1275,26 @@ function materializeReferenceTarget(args: {
   const { resolvedTarget } = args;
 
   if (resolvedTarget instanceof MixinCollection) {
-    return materializeMixinCollectionTarget(resolvedTarget, valueKey, context);
+    return Promise.resolve(resolvedTarget.evalCall(context)).then(r => [r, valueKey]);
   }
   if (isNode(resolvedTarget, N.JsFunction)) {
-    return materializeJsFunctionTarget(resolvedTarget, valueKey, context);
+    const jsResult = (resolvedTarget as JsFunctionTarget).value.call(context);
+    if (isThenable(jsResult)) {
+      return Promise.resolve(jsResult).then(result => [result, valueKey]);
+    }
+    return [jsResult, valueKey];
   }
-  if (isNode(resolvedTarget, N.Mixin)) {
-    return materializeRulesLikeTarget(resolvedTarget, valueKey, context);
-  }
-  if (isNode(resolvedTarget, N.Ruleset)) {
-    return materializeRulesLikeTarget(resolvedTarget, valueKey, context);
+  if (isNode(resolvedTarget, N.Mixin | N.Ruleset)) {
+    const sourceRules = resolvedTarget.value.rules;
+    const mixinResult = sourceRules.eval(context);
+    const finalizeRules = (rules: Rules): [Rules, NormalizedLookupKey] => {
+      rules.inherit(sourceRules);
+      return [rules, valueKey];
+    };
+    if (isThenable(mixinResult)) {
+      return Promise.resolve(mixinResult).then(finalizeRules);
+    }
+    return finalizeRules(mixinResult);
   }
 
   return [resolvedTarget, valueKey];
@@ -1356,20 +1308,18 @@ function resolveReferenceTargetValue(args: {
 }): MaybePromise<[unknown, NormalizedLookupKey]> {
   const { valueKey } = args;
   const resolvedTarget = resolveAmbiguousReferenceTarget(args);
-  const materialize = (target: unknown) => materializeReferenceTarget({
-    resolvedTarget: target,
+  if (isThenable(resolvedTarget)) {
+    return Promise.resolve(resolvedTarget).then(target => materializeReferenceTarget({
+      resolvedTarget: target,
+      valueKey,
+      context: args.context
+    }));
+  }
+  return materializeReferenceTarget({
+    resolvedTarget,
     valueKey,
     context: args.context
   });
-  return isThenable(resolvedTarget)
-    ? Promise.resolve(resolvedTarget).then(materialize)
-    : materialize(resolvedTarget);
-}
-
-function copyReferenceResultNode(
-  node: Node
-): Node {
-  return copyWithReusableLeaves(node);
 }
 
 function canReturnReferenceValue(node: Node): boolean {
@@ -1408,19 +1358,6 @@ function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeV
   return preservedValue;
 }
 
-function canRenderFallbackContainerDirectly(node: Node): boolean {
-  return isNode(node, N.List | N.Sequence);
-}
-
-function canUseDynamicFallbackScalarDirectly(node: Node): boolean {
-  return node instanceof JsExpression;
-}
-
-function canReuseFallbackValue(node: Node): boolean {
-  return node.hasFlag(F_STATIC)
-    && canReturnReferenceValue(node);
-}
-
 function evaluateFallbackValue(
   referenceNode: Reference,
   fallbackValue: Node,
@@ -1435,19 +1372,19 @@ function evaluateFallbackValue(
     context.popReference();
     return fallbackValue;
   }
-  if (canReuseFallbackValue(fallbackValue)) {
+  if (canReturnReferenceValue(fallbackValue)) {
     context.popReference();
     return fallbackValue;
   }
-  if (options.textOnly === true && canRenderFallbackContainerDirectly(fallbackValue)) {
+  if (options.textOnly === true && isNode(fallbackValue, N.List | N.Sequence)) {
     context.popReference();
     return fallbackValue;
   }
-  if (options.textOnly === true && canUseDynamicFallbackScalarDirectly(fallbackValue)) {
+  if (options.textOnly === true && fallbackValue instanceof JsExpression) {
     context.popReference();
     return fallbackValue;
   }
-  if (canUseDynamicFallbackScalarDirectly(fallbackValue)) {
+  if (fallbackValue instanceof JsExpression) {
     const out = fallbackValue.resolve(context);
     if (isThenable(out)) {
       return Promise.resolve(out).then(
@@ -1589,7 +1526,7 @@ function finalizeRuntimeVarBindingResult(
       return evald;
     }
     context.popReference();
-    const resultNode = copyReferenceResultNode(evald);
+    const resultNode = copyWithReusableLeaves(evald);
     return resultNode.inherit(referenceNode);
   };
   const shouldUseDefinitionRulesContext = isNode(bindingSource, N.VarDeclaration) && (
@@ -1680,7 +1617,7 @@ function finalizeEvaluatedDeclarationReference(
   }
   const resultNode = isMergedAssign
     ? evaluatedNode
-    : copyReferenceResultNode(evaluatedNode);
+    : copyWithReusableLeaves(evaluatedNode);
   const normalized = normalizeMergedAssignReferenceResult(
     resultNode,
     isMergedAssign
@@ -1876,19 +1813,6 @@ function normalizeMergedAssignReferenceResult(
   return new List(mergedItems);
 }
 
-function classifyReferenceLookupResult(returnVal: RulesLookupResult | unknown): ReferenceLookupResultKind {
-  if (returnVal === undefined) {
-    return 'fallback';
-  }
-  if (isRuntimeVarBinding(returnVal)) {
-    return 'runtime-binding';
-  }
-  if (isNode(returnVal, N.Declaration | N.VarDeclaration)) {
-    return 'declaration';
-  }
-  return 'direct';
-}
-
 function finalizeReferenceLookupResult(args: {
   referenceNode: Reference;
   returnVal: RulesLookupResult | unknown;
@@ -1900,8 +1824,7 @@ function finalizeReferenceLookupResult(args: {
 }): MaybePromise<Node> {
   const { referenceNode, returnVal, valueKey, lookupType, fallbackValue, context, textOnly } = args;
 
-  const resultKind = classifyReferenceLookupResult(returnVal);
-  if (resultKind === 'fallback') {
+  if (returnVal === undefined) {
     return finalizeFallbackReferenceResult({
       referenceNode,
       valueKey,
@@ -1923,8 +1846,7 @@ function finalizeReferenceLookupResult(args: {
 function finalizeRawReferenceLookupTarget(
   returnVal: RulesLookupResult | unknown
 ): unknown {
-  const resultKind = classifyReferenceLookupResult(returnVal);
-  if (resultKind === 'fallback') {
+  if (returnVal === undefined) {
     return RAW_REFERENCE_TARGET_NOT_FOUND;
   }
   if (isRuntimeVarBinding(returnVal)) {
