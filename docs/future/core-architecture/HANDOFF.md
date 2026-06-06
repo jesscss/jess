@@ -66,7 +66,7 @@ Correctness queue: no active correctness blockers. If a `.less` fixture fails
 to parse/evaluate, add a focused repro before changing expected output. If CSS
 differs, review semantics manually before changing tests.
 
-Benchmark leash:
+Performance leash:
 
 1. Record a post-selector/callable-cut stable hot-path snapshot.
 2. Profile broad `benchmark.less`.
@@ -76,6 +76,8 @@ Benchmark leash:
    object/memory pressure without slowing runtime, or fixes correctness.
 
 Immediate benchmark commands are defined in `PERFORMANCE-HANDOFF.md`.
+Performance evidence/history stays parked there; this handoff owns the active
+work lane and the gates for proving each slice complete.
 
 Binding prototype status:
 
@@ -90,6 +92,100 @@ Binding prototype status:
 - Next binding step, when selected: prototype a production `BindingFrame`
   facade for ordinary static variable references and run it against focused
   reference tests before touching broader callable lookup.
+
+## Active Binding Implementation Lane
+
+This lane is the current integration path for `BINDING-INDEX-PROPOSAL.md`.
+Do not jump ahead: each step must prove behavior and patch shape before the
+next step starts.
+
+1. [x] Harness semantic proof.
+   `scripts/prototype-binding-frame-layout.mjs` proves same-frame current
+   reads, `$!`/occurrence reads, `:=` parent-cell mutation, and child `:`
+   shadowing before timing layout variants.
+
+   Completion gate:
+   - `pnpm run prototype:binding-frame-layout`
+   - small-frame and large-frame harness runs recorded in
+     `BINDING-INDEX-PROPOSAL.md`
+   - no production eval/render code changed
+
+2. [ ] Production facade, static variable only.
+   Add one `ScopeFrame`/BindingFrame facade method for ordinary static variable
+   lookup. It may unify live-slot lookup and declaration-bucket lookup, but it
+   must leave existing registry/`Rules.find(...)` fallback in place.
+
+   Scope:
+   - `Reference` option `type: variable`
+   - static string key only
+   - no explicit target
+   - no dynamic key/interpolation
+   - no callable/mixin lookup
+   - no evaluated-value cache
+   - no node copy/materialization
+
+   Completion gate:
+   - focused reference variable tests pass
+   - focused mixin live-slot tests pass
+   - focused control/loop live-slot tests pass
+   - import/reference tests that cover caller-scope and guard behavior pass
+   - covered hot cases do not call `DeclarationRegistry.find(...)`
+   - `pnpm run verify:aggressive-cutting-review`
+   - `git diff --check`
+   - one hot-path benchmark sanity run is recorded as status, not as a speed
+     claim unless there is a clean before/after pair
+
+3. [ ] Facade source-order/current-read hardening.
+   Prove the production facade preserves Less contextual lookup and Jess current
+   read semantics in the same real runtime path.
+
+   Required behavior cases:
+   - Less-style source-order variable lookup still resolves by reference start
+   - `$!`/snapshot or contextual reads do not see later same-frame changes
+   - ordinary Jess current reads can see later same-frame bindings where the
+     language requires it
+   - child `:` shadowing does not mutate a parent binding
+   - `:=` mutates the resolved scoped binding cell
+
+   Completion gate:
+   - add or identify focused tests for each required behavior case
+   - no fallback broad registry search on covered static-key reads
+   - no new traversal beyond the existing frame-chain walk
+   - no side-map/cache added yet
+
+4. [ ] Lookup cache prototype.
+   Add a frame-local lookup-identity cache only after the facade behavior is
+   proven. Cache binding identity, not evaluated values.
+
+   Completion gate:
+   - cache key includes read mode, key, lookup mode, start bucket, and frame
+     lookup/current-pointer version
+   - dynamic-name promotion and live-slot/current-pointer changes invalidate
+     correctly
+   - no evaluated-node reuse
+   - focused behavior tests plus benchmark before/after
+
+5. [ ] Callable records prototype.
+   Move only simple static callable lookup into binding records. Namespace,
+   guard matching, candidate evaluation, import visibility, and callable output
+   stay out of the facade until separately proven.
+
+   Completion gate:
+   - focused mixin/callable guard and import-reference tests pass
+   - callable output is not cached
+   - no body copy is introduced to satisfy parent/source metadata
+   - benchmark/profile evidence shows whether this attacks the measured
+     `Reference.evalNode`/callable lookup bucket
+
+6. [ ] Evaluated-value cache.
+   Only after lookup identity is correct, consider effect-gated evaluated-value
+   caching on binding cells.
+
+   Completion gate:
+   - dependency/effect facts are explicit
+   - no rules/mixin output caching
+   - no public materialization cache on the hot render path
+   - benchmark before/after proves value
 
 Next deep-cut queue:
 
