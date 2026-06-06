@@ -96,11 +96,13 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       if (generatedState.keySetLibrary) {
         attachSelectorBitLibrary(arg, generatedState.keySetLibrary);
       }
+      const omitGeneratedWrapper = generatedState.omitWrapperForSingleSelectorList
+        && (!isNode(arg, N.SelectorList) || arg.value.length === 1);
       const argMark = w.mark();
       arg.toString(options);
       w.replaceSince(argMark, normalizeSelectorArg, arg);
       const out = w.getSince(argMark);
-      if (generatedState.omitWrapperForSingleSelectorList && !out.includes(',')) {
+      if (omitGeneratedWrapper) {
         return w.getSince(mark);
       }
       w.restore(argMark);

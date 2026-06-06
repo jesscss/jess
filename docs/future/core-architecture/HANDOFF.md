@@ -45,6 +45,13 @@ The goal is the fastest credible path from parsed Less to CSS output:
 Less is the optimizing path. Preserve SCSS-enabling seams only when they are
 concrete and cheap or isolated behind cold extension boundaries.
 
+Work shape: go node by node and method by method. For each target, prove the
+current output with focused tests, rewrite the method toward structural facts
+and straight-line boring JavaScript, then rerun the same output tests. Reject
+text inspection, callback-array helpers, nested hot closures, defensive generic
+probes, and helper wrappers unless the method cannot preserve behavior without
+them.
+
 ## Active Work
 
 Correctness queue: no active correctness blockers. If a `.less` fixture fails
@@ -72,28 +79,41 @@ Next deep-cut queue:
 1. [x] Return static non-rules-like reference values directly. `Reference`
    no longer copies static source-backed lists/sequences merely because they
    have children, and the old source-free container child scans are gone.
-2. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
+2. [x] Replace generated `PseudoSelector.renderPseudoSyntax(...)` comma
+   inspection with a structural selector-list item-count decision. Output is
+   still rendered, but render text no longer decides whether to unwrap.
+3. [ ] Sweep `PseudoSelector` end to end: remove remaining generated placement
+   wrapper/state cruft, replace capture/normalize paths with direct selector
+   argument rendering where tests prove equivalence, and keep authored
+   pseudo-selector semantics intact.
+4. [ ] Sweep `Ampersand` template placement next. Replace
+   `toTrimmedString().includes(',')` and string splitting with selector-list
+   structure and placement state; only final CSS output may stringify.
+5. [ ] Sweep selector matching/extend equality. Replace hot `valueOf()` equality
+   predicates with structural/keyset checks where possible, keeping
+   `valueOf()` only as a measured, cached fast-path when it wins.
+6. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
    materialization so routine eval replacement does not imply `.inherit(...)`.
-3. [ ] Replace `StyleImport` first-use placement copies with placement state
+7. [ ] Replace `StyleImport` first-use placement copies with placement state
    that points at canonical source children and preserves import visibility.
-4. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
+8. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
    is source/visibility/placement bookkeeping.
-5. [ ] Replace remaining `Rules` merge output copies with direct merge
+9. [ ] Replace remaining `Rules` merge output copies with direct merge
    placement/render state or a narrow owned-item copier proven by merge tests.
-6. [ ] Convert registration-prep expected misses away from routine `try/catch`
+10. [ ] Convert registration-prep expected misses away from routine `try/catch`
    only after adding tests for unresolved declaration/identity behavior.
-7. [ ] Continue selector/extend factory cuts separately; do not hide selector
+11. [ ] Continue selector/extend factory cuts separately; do not hide selector
    placement copies inside another generic copy helper.
-8. [ ] Replace callable binding copies for static containers with explicit
+12. [ ] Replace callable binding copies for static containers with explicit
    binding/placement state. Static containers should not be copied merely
    because they contain child nodes; `F_HAS_NODE_CHILD` is only a cheap current
    ownership boundary, not a final architecture.
-9. [ ] Attack the measured copy stack next: `copyChild`,
+13. [ ] Attack the measured copy stack next: `copyChild`,
    `copyWithReusableLeaves`, `copyCallableRulesValue`, `constructCopy`, and
    `.inherit(...)`. CPU evidence says these are mostly registration derivation,
    selector header rendering, JS function argument ownership, reference value
    eval, and binding clone debt; do not justify them as render output copying.
-10. [ ] Audit repeated callable/mixin evaluation from the profile before making
+14. [ ] Audit repeated callable/mixin evaluation from the profile before making
    more local helper cuts. If a mixin candidate or output body is evaluated
    more than the semantic call count requires, carry placement/binding state or
    cache the cold public materialization boundary instead of copying/evaluating
@@ -145,34 +165,23 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
-- New traversal: none. This pass deleted the child loops in
-  `canReturnSourceFreeReferenceContainer(...)` and
-  `canRenderReferenceContainerText(...)` instead of adding another scan.
-- New node/materialization: none added. The pass removes copy pressure by
-  letting static non-rules-like reference values return/render directly through
-  `canReturnReferenceValue(...)`; rules-like values still stay on the owned
-  output path because callable/public materialization semantics are not solved
-  by handing out the canonical rules surface. The remaining
-  `copyWithReusableLeaves(...)` import in `reference.ts` is pre-existing
-  dynamic fallback/public materialization debt, not a new copy path.
-- Render path: improved shape. Rendering a static referenced container now
-  renders the canonical static value directly instead of proving every child is
-  a source-free reusable leaf before avoiding a copy. Dynamic fallback and
-  public materialization paths remain separate.
-- Helper/API surface: deleted two helper functions and simplified
-  `canReturnReferenceValueWithoutCopy(...)` and
-  `canRenderReferenceValueTextOnly(...)` to the same static non-rules-like
-  predicate. No new helper or public method was added.
+- New traversal: none. `PseudoSelector.renderPseudoSyntax(...)` replaced
+  `!out.includes(',')` with a structural decision:
+  `!isNode(arg, N.SelectorList) || arg.value.length === 1`.
+- New node/materialization: none. No new `Node`, copy, wrapper `Rules`,
+  `.inherit(...)`, `.adopt(...)`, or `frozen` path was added.
+- Render path: improved shape. The generated `:is(...)` path still renders the
+  selected output string, but it no longer renders selector text first to decide
+  whether the wrapper should exist. Wrapper omission is now decided from AST
+  shape before output inspection.
+- Helper/API surface: none added. The change is inline straight-line render
+  logic inside the existing method.
 - Metadata mutations: none. No parent restoration, `frozen`, `.inherit(...)`,
   source metadata mutation, `Reflect.*`, or `Object.hasOwn(...)` was added.
-- Evidence: before this reference cut, CPU profile
-  `profiling/core-architecture/CPU.20260605.175415.48626.0.001.cpuprofile`
-  showed `Reference.evalNode` at `146 / 1234` samples (`11.8%`), with
-  copy/result ownership at `47` samples and `copyChild` at `26` leaf samples.
-  After the static reference cut and rebuild, CPU profile
-  `profiling/core-architecture/CPU.20260605.180616.3382.0.001.cpuprofile`
-  shows `Reference.evalNode` at `133 / 1183` samples (`11.2%`), copy/result
-  ownership at `26` samples, and `copyChild` at `15` leaf samples. The real
-  hot-path benchmark was mixed/noisy, so this is accepted as measured copy
-  machinery deletion, not as an end-to-end speed win.
+- Evidence: focused selector output tests passed after the rewrite:
+  `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/selector-pseudo.test.ts
+  src/tree/__tests__/selector.test.ts
+  src/tree/__tests__/ampersand.test.ts --run` (`53` tests). This is accepted
+  as method-level machinery deletion, not as a speed claim.
 - Verdict: accepted.
