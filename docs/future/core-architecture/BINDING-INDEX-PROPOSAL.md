@@ -71,6 +71,14 @@ then operates on that binding.
 
 ## Binding Concepts
 
+The interfaces below are the semantic contract. They are not permission to put
+one object per binding or one object per lookup on the hot path.
+
+The hot implementation target is `frame + slot`, where the slot is an integer
+index into compact tables. A `BindingRecord` object may be materialized for
+debugging, compatibility, tests, or cold fallback paths, but ordinary
+registration and reference lookup should not require it.
+
 ### BindingRecord
 
 One registered binding. Static declarations, live params, loop vars, mixins,
@@ -103,6 +111,19 @@ Important flags:
 - `B_CACHE_LOOKUP_SAFE`: binding identity can be cached for the plan.
 - `B_CACHE_VALUE_SAFE`: evaluated value can be reused under a version key.
 
+Hot storage should treat this as a virtual record:
+
+```ts
+record.kind      -> frame.slotKind[slot]
+record.key       -> key table entry
+record.source    -> frame.slotSource[slot]
+record.order     -> frame.slotOrder[slot]
+record.flags     -> frame.slotFlags[slot]
+record.cell      -> frame slot value/version arrays
+```
+
+The fast lookup result is not `{ record }`; it is a slot id or sentinel.
+
 ### BindingCell
 
 The cell is the value carrier. A Less declaration and a live Sass-style binding
@@ -122,6 +143,11 @@ interface BindingCell {
 
 Live binding is not a separate lookup mode. It is a binding record whose cell
 can change. Reads always go through the cell.
+
+Static immutable declarations do not need full cell objects if split arrays are
+faster. Live bindings need mutable value/version storage; static declarations
+can use direct `slotValue`, `slotSource`, `slotFlags`, and `slotVersion`
+entries.
 
 ### BindingFrame
 
@@ -147,6 +173,122 @@ Internally, `records` may be:
   clear.
 
 Externally, it is one lookup system.
+
+## Hot Layout Hypotheses
+
+The prototype should refine these hypotheses with numbers. The spec requires
+the constraints; the harness decides which representation V8 actually likes.
+
+### H1: Slot Tables Beat Record Objects
+
+Expected fastest shape:
+
+```ts
+type BindingSlot = number;
+
+interface BindingFrameHot {
+  parent: BindingFrameHot | undefined;
+  fallbackFrame?: BindingFrameHot | undefined;
+  lookupVersion: number;
+  slotCount: number;
+
+  variableSlots: BindingNameTable;
+  callableSlots: BindingNameTable;
+  functionSlots: BindingNameTable;
+
+  slotKind: number[];
+  slotFlags: number[];
+  slotOrder: number[];
+  slotVersion: number[];
+  slotValue: unknown[];
+  slotSource: unknown[];
+
+  liveValue: unknown[];
+  livePrepare: unknown[];
+  liveVersion: number[];
+}
+```
+
+The covered hot read should be:
+
+```ts
+const slot = lookupVariableSlot(frame, key, startOrder);
+if (slot >= 0) return frame.slotValue[slot];
+```
+
+No `{ frame, slot }`, `{ result }`, `BindingRecord`, or `BindingCell` object is
+allocated for a normal read.
+
+### H2: Writes Are Append-Only Slot Writes
+
+Static registration should do only:
+
+1. normalize kind/key once;
+2. allocate `slot = slotCount++`;
+3. write parallel slot arrays;
+4. append the slot id to the key table;
+5. increment `lookupVersion` only when lookup identity changes.
+
+Live value updates should increment the slot/cell version, not the whole frame
+lookup version, unless the binding appears, disappears, or changes precedence.
+This keeps lookup caches valid across ordinary live value writes while still
+invalidating evaluated-value caches.
+
+### H3: Explicit Scope Loops Beat Prototype Scope Magic
+
+Parent and fallback lookup should be simple loops over frames:
+
+```ts
+let f: BindingFrameHot | undefined = startFrame;
+let start = startOrder;
+while (f) {
+  const slot = lookupLocalVariableSlot(f, key, start);
+  if (slot >= 0) return readSlotValue(f, slot);
+  start = NO_START_LIMIT;
+  f = f.parent;
+}
+```
+
+Prototype-chain storage may be tested later, but explicit frame walking is the
+first hypothesis because it keeps Less source-order boundaries, import
+visibility, fallback frames, and live binding invalidation legible.
+
+### H4: Name Tables Must Be Measured
+
+The prototype should compare:
+
+1. `Map<string, number | number[]>`;
+2. `Object.create(null)` string tables;
+3. numeric key ids into arrays;
+4. hybrid numeric ids for parser-known static keys plus object tables for cold
+   dynamic keys.
+
+The likely winner may differ by scope size. The implementation may use one
+layout for small frames and another for broad benchmark/global frames, but only
+if the branch to choose layout does not become its own hot-path tax.
+
+### H5: Encoded Cache Results Beat Cache Entry Objects
+
+Lookup cache entries should try to encode hit/miss state as integers:
+
+```ts
+const MISS = -1;
+const UNCACHEABLE = -2;
+const encoded = (frameId << SLOT_BITS) | slot;
+```
+
+Use object cache entries only for cold complex callable arrays or debug paths.
+
+### Shape Rules
+
+Prototype and implementation should avoid:
+
+- adding optional properties after frame construction;
+- mixing numbers and objects in the same hot array;
+- returning different shapes from the same lookup function;
+- allocating closures in lookup/read/write loops;
+- `try/catch` for expected misses;
+- `Set`, spread, `filter`, `sort`, or array materialization for ordinary reads.
 
 ## ReferencePlan
 
@@ -351,8 +493,30 @@ The design must pass these before prototype expansion:
 
 ### Prototype 1: Variable Binding Facade
 
-Create a `BindingFrame` facade over existing `ScopeFrame` for ordinary static
-variable lookup only.
+Before touching production lookup, run the standalone hot-layout harness:
+
+```sh
+pnpm run prototype:binding-frame-layout
+```
+
+The harness compares:
+
+- slot arrays behind `Map<string, slot | slot[]>`;
+- slot arrays behind `Object.create(null)`;
+- slot arrays behind numeric key ids;
+- record objects behind `Map<string, record | record[]>`.
+
+It simulates:
+
+- append-only static registration writes;
+- live slot registration and live value updates;
+- same-key Less source-order lookup;
+- explicit parent-frame scope walks;
+- repeated reads across a leaf frame.
+
+Prototype 1 for production should then create a `BindingFrame` facade over
+existing `ScopeFrame` for ordinary static variable lookup only, using the
+winning hot-layout direction from the harness as the target shape.
 
 Scope:
 
@@ -396,6 +560,68 @@ Success:
 Move simple static `mixinsByName` lookup into binding records. Keep namespace
 and complex callable lookup behind fallback until a separate prototype proves
 those paths.
+
+### Prototype 1A: Initial Hot Layout Harness Result
+
+First harness results on Node `v24.11.1` / Darwin arm64:
+
+Default shape:
+
+```text
+frames=6 keys=192 declarations/frame=768 reads=1000000 writes=100000
+map-slot-arrays          read median=11.00ms write+read median=1.52ms
+null-proto-slot-arrays   read median=17.13ms write+read median=2.40ms
+numeric-key-from-string  read median=33.00ms write+read median=5.66ms
+numeric-key-planned-id   read median=13.52ms write+read median=1.95ms
+record-objects-map       read median=14.87ms write+read median=2.25ms
+```
+
+Small-frame shape:
+
+```text
+frames=3 keys=48 declarations/frame=192 reads=1000000 writes=100000
+map-slot-arrays          read median=11.46ms write+read median=1.57ms
+null-proto-slot-arrays   read median=17.46ms write+read median=2.46ms
+numeric-key-from-string  read median=32.95ms write+read median=5.42ms
+numeric-key-planned-id   read median=14.73ms write+read median=2.09ms
+record-objects-map       read median=17.42ms write+read median=2.17ms
+```
+
+Large-frame shape:
+
+```text
+frames=10 keys=512 declarations/frame=2048 reads=1000000 writes=100000
+map-slot-arrays          read median=12.79ms write+read median=2.14ms
+null-proto-slot-arrays   read median=17.49ms write+read median=2.86ms
+numeric-key-from-string  read median=34.36ms write+read median=5.95ms
+numeric-key-planned-id   read median=12.63ms write+read median=2.07ms
+record-objects-map       read median=17.55ms write+read median=2.83ms
+```
+
+Initial conclusions:
+
+- slot arrays beat record objects in all measured shapes;
+- null-prototype tables did not win this harness;
+- numeric ids are only viable if the reference already carries the id;
+  converting string keys on every read is catastrophic;
+- `Map` slot arrays are the safest first production prototype target;
+- planned numeric ids are worth a later parser/registration prototype for
+  large frames, but not as a prerequisite for the first binding facade.
+
+These are prototype numbers, not production Jess speed claims.
+
+Prototype self-prosecution:
+
+- New traversal: the harness uses explicit loops to model candidate scope walks
+  and slot scans. It does not add traversal to production eval/render.
+- New maps/arrays/objects: the harness intentionally compares `Map`,
+  null-prototype objects, numeric key arrays, slot arrays, and record objects.
+  These are measured candidates, not accepted runtime machinery.
+- Render path: untouched. The prototype does not evaluate or stringify nodes.
+- Metadata mutations: none in production. Live writes in the harness mutate
+  numeric/value slots only to model Jess/Sass-style live binding.
+- Evidence boundary: harness numbers only rank prototype storage shapes. They
+  do not claim Jess benchmark improvement.
 
 ### Prototype 4: Evaluated Value Cache
 
