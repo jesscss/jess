@@ -110,6 +110,14 @@ export interface ScopeFrame {
   declarationBucketsByName: Map<string, BindingEntry[]>;
 
   /**
+   * True when declarationBucketsByName represents every static declaration on
+   * this frame's Rules surface. Runtime live-slot-only frames leave this false
+   * so variable lookup can fall back to the older declaration surface instead
+   * of treating an empty bucket as a covered miss.
+   */
+  declarationsCovered: boolean;
+
+  /**
    * VarDeclarations whose name is a computed expression (Interpolated,
    * variable-variable, etc.).  Resolved lazily at first lookup.
    *
@@ -144,20 +152,25 @@ export function buildScopeFrame(
   rulesNode: object,
   parent: ScopeFrame | undefined,
   liveSlots?: Map<string, BindingCell>,
-  pendingDeclarationNames?: VarDeclaration[]
+  pendingDeclarationNames?: VarDeclaration[],
+  declarationsCovered = varsByName !== undefined
 ): ScopeFrame {
   const declarationBucketsByName = new Map<string, BindingEntry[]>();
 
   if (varsByName) {
     for (const [name, decls] of varsByName) {
-      const entries: BindingEntry[] = decls.map(decl => ({
-        cell: {
-          value: decl.value.value,
-          sourceNode: decl,
-          readonly: decl.options?.readonly
-        },
-        sourceNode: decl
-      }));
+      const entries: BindingEntry[] = [];
+      for (let i = 0; i < decls.length; i++) {
+        const decl = decls[i]!;
+        entries[i] = {
+          cell: {
+            value: decl.value.value,
+            sourceNode: decl,
+            readonly: decl.options?.readonly
+          },
+          sourceNode: decl
+        };
+      }
       declarationBucketsByName.set(name, entries);
     }
   }
@@ -167,6 +180,7 @@ export function buildScopeFrame(
     fallbackFrame: undefined,
     liveSlotsByName: liveSlots ?? new Map(),
     declarationBucketsByName,
+    declarationsCovered,
     pendingDeclarationNames: pendingDeclarationNames ?? [],
     rulesNode
   };
@@ -232,6 +246,10 @@ export function lookupScopeFrameVariable(
           sourceNode
         };
       }
+    }
+
+    if (options?.includeDeclarations !== false && !f.declarationsCovered) {
+      return { kind: 'uncovered' };
     }
 
     if (

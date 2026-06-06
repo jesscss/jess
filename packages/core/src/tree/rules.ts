@@ -507,6 +507,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this.registerNode(node);
       }
       this.rulesIndexed = length;
+      if (this.scopeFrame) {
+        this.scopeFrame.declarationsCovered = true;
+      }
     } finally {
       this._indexing = false;
     }
@@ -2389,7 +2392,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.register('declaration', node);
       if (isNode(node, N.VarDeclaration)) {
         if (this._hasStaticName(node)) {
-          if (this.scopeFrame && !this._indexing) {
+          if (this.scopeFrame) {
             const sourceIdentity = node.sourceNode ?? node;
             const pending = this.scopeFrame.pendingDeclarationNames;
             let write = 0;
@@ -2414,7 +2417,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             map.set(name, arr = []);
           }
           arr.push(node as VarDeclaration);
-          if (this.scopeFrame && !this._indexing) {
+          if (this.scopeFrame) {
             let bucket = this.scopeFrame.declarationBucketsByName.get(name);
             if (!bucket) {
               this.scopeFrame.declarationBucketsByName.set(name, bucket = []);
@@ -2437,7 +2440,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               });
             }
           }
-        } else if (this.scopeFrame && !this._indexing) {
+        } else if (this.scopeFrame) {
           let hasPendingDeclaration = false;
           for (let i = 0; i < this.scopeFrame.pendingDeclarationNames.length; i++) {
             if (this.scopeFrame.pendingDeclarationNames[i] === node) {

@@ -2,6 +2,7 @@ import { any, vardecl, rules } from '../index.js';
 import { Context } from '../../context.js';
 import {
   assignScopeFrameVariable,
+  buildScopeFrame,
   lookupScopeFrameVariable
 } from '../scope-frame.js';
 
@@ -100,6 +101,28 @@ describe('ScopeFrame variable facade', () => {
     frame.pendingDeclarationNames.push(vardecl({ name: 'dynamic', value: any('red') }));
 
     const hit = lookupScopeFrameVariable(frame, 'missing', {
+      bailOnPendingDeclarations: true
+    });
+
+    expect(hit.kind).toBe('uncovered');
+  });
+
+  it('does not walk to parent declarations through an uncovered child declaration surface', async () => {
+    const parentRules = rules([
+      vardecl({ name: 'x', value: any('red') })
+    ]);
+    await parentRules.eval(new Context());
+    const childRules = rules([
+      vardecl({ name: 'x', value: any('blue') })
+    ]);
+    const childFrame = buildScopeFrame(
+      undefined,
+      childRules,
+      parentRules.getScopeFrame(),
+      new Map()
+    );
+
+    const hit = lookupScopeFrameVariable(childFrame, 'x', {
       bailOnPendingDeclarations: true
     });
 

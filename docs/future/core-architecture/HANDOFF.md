@@ -385,10 +385,68 @@ next step starts.
      visible through `lookupScopeFrameVariable(...)` after lookup.
    - Remaining uncovered bridges: explicit targets, interpolated variable keys,
      non-snapshot contextual `start`, still-dynamic or async pending
-     declaration names, prebuilt/manual unindexed frames, and fallback-frame
-     lookup ownership.
+     declaration names, manual frames before declaration coverage is known, and
+     fallback-frame lookup ownership.
 
-8. [ ] Lookup cache prototype.
+8. [x] Carry manual-frame declaration coverage on the binding frame.
+   Delete the `Reference`-level `varsByName/rulesIndexed/value.length` guard
+   by making declaration coverage an explicit `ScopeFrame` fact. Runtime frames
+   whose declaration buckets do not yet represent the owned `Rules` surface
+   return `uncovered` from the frame facade instead of making each reference
+   rediscover indexing state.
+
+   Scope:
+   - static string `type: variable` reads only
+   - no explicit target
+   - no interpolation/dynamic key
+   - preserve `$!` source-position reads and ordinary current/live reads
+   - no evaluated-value cache
+
+   Completion gate:
+   - manual/prebuilt frames do not walk to parent declarations when their own
+     declaration surface is uncovered
+   - `Rules` indexing updates any existing frame buckets/pending list and marks
+     declaration coverage when indexing reaches the current value length
+   - snapshot reads never fall through to runtime live-slot lookup after an
+     uncovered facade result
+   - focused scope-frame, reference, declaration, mixin, and control tests pass
+   - no new node creation, copying, `.inherit(...)`, `.adopt(...)`, or
+     render-time materialization
+   - benchmark/profile/node-creation leash recorded
+
+   Status:
+   - `ScopeFrame` now carries `declarationsCovered`. The frame lookup owns the
+     covered vs uncovered decision, so `Reference.lookupScopeFrameVariableBinding(...)`
+     no longer checks `targetRules.scopeFrame`, `varsByName`, `rulesIndexed`, or
+     `value.length` on every static variable lookup.
+   - `Rules._indexRules()` and `Rules.registerNode(...)` now keep an existing
+     frame's declaration buckets and pending dynamic-name list aligned while
+     indexing, then mark the frame covered. This reuses the registration edge
+     that already sees each node; no lookup-time node traversal was added.
+   - `buildScopeFrame(...)` now uses a simple indexed loop instead of
+     `decls.map(...)` when creating declaration entries.
+   - Snapshot (`$!`) variable fallback now skips `lookupRuntimeVarBinding(...)`
+     entirely, preserving the live/current vs source-position split proven by
+     the `$for` binding test.
+   - Remaining uncovered bridges: explicit targets, interpolated variable keys,
+     non-snapshot contextual `start`, still-dynamic or async pending
+     declaration names, manual frames before declaration coverage is known, and
+     fallback-frame lookup ownership.
+
+9. [ ] Fallback-frame lookup ownership.
+   Move fallback-frame variable lookup into the binding facade only if it
+   deletes the equivalent old live-slot/`findVarDeclarationFast(...)` fallback
+   walk for covered static variable reads. Do not add a second fallback chain
+   traversal beside the existing one.
+
+   Completion gate:
+   - leaky mixin/default-param/detached-ruleset behavior remains proven
+   - fallback live-slot hits and fallback declaration hits have one owner
+   - covered fallback misses stop without registry/search fallback
+   - no new traversal unless the old traversal is deleted for that path
+   - benchmark/profile leash recorded
+
+10. [ ] Lookup cache prototype.
    Add a frame-local lookup-identity cache only after the facade behavior is
    proven. Cache binding identity, not evaluated values.
 
@@ -400,7 +458,7 @@ next step starts.
    - no evaluated-node reuse
    - focused behavior tests plus benchmark before/after
 
-9. [ ] Callable records prototype.
+11. [ ] Callable records prototype.
    Move only simple static callable lookup into binding records. Namespace,
    guard matching, candidate evaluation, import visibility, and callable output
    stay out of the facade until separately proven.
@@ -412,7 +470,7 @@ next step starts.
    - benchmark/profile evidence shows whether this attacks the measured
      `Reference.evalNode`/callable lookup bucket
 
-10. [ ] Evaluated-value cache.
+12. [ ] Evaluated-value cache.
    Only after lookup identity is correct, consider effect-gated evaluated-value
    caching on binding cells.
 
@@ -577,6 +635,41 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Manual-frame declaration coverage pass: accepted as binding-bridge deletion,
+  not as a speed claim. `packages/core/src/tree/scope-frame.ts` now carries
+  `declarationsCovered`, and `lookupScopeFrameVariable(...)` returns
+  `uncovered` before walking parent declarations when a runtime frame has not
+  proven its own declaration buckets represent the owned `Rules` surface.
+  `packages/core/src/tree/reference.ts` deleted the per-static-variable
+  `targetRules.scopeFrame`/`varsByName`/`rulesIndexed`/`value.length` guard, so
+  coverage ownership lives on the frame instead of every reference lookup.
+  New traversal: no new lookup-time traversal; `Rules.registerNode(...)` now
+  updates an existing frame's declaration buckets/deferred list on the indexing
+  edge that already visits each node, and `Rules._indexRules()` flips the
+  coverage bit when indexing reaches the current value length. `buildScopeFrame(...)`
+  replaced one `decls.map(...)` callback with a simple indexed loop while
+  constructing declaration entries. No child scan, source walk, generator, side
+  map, or recursive AST walk was added to render/eval lookup. New
+  node/materialization: none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, frozen/source/parent metadata mutation, or render-time array
+  materialization was added. Render path: unchanged; render still stringifies
+  evaluated values. Helper/API surface: no helper or public API added; one
+  frame field was added to delete the hotter reference-side branch. Metadata
+  mutations: `declarationsCovered`, declaration buckets, and deferred-name list
+  are binding index state, not parent/source metadata. Rejected/fixed variant:
+  leaving snapshot reads on the old live-slot fallback after an uncovered frame
+  made `$for` `$!value` read the current loop value; `lookupVariableReference(...)`
+  now skips `lookupRuntimeVarBinding(...)` for `readMode: 'snapshot'`. Evidence:
+  focused `scope-frame/reference/declaration/mixin/control` tests passed (`360`
+  tests), including a new uncovered-child-frame test and the `$for` snapshot/live
+  split; eslint for touched files passed; `@jesscss/core` build passed. Post-patch
+  profiler status on `benchmark-v39.less`: `Reference.evalNode` `482` calls /
+  `5.93ms`, `Rules.find` `68` calls / `0.36ms`, still only function keys for
+  that fixture. Static node-creation audit status: `reference.ts` `21`, global
+  `new-node` `321`, `with-surface` `34`, `copy-leaves` `31`, `derive` `30`.
+  Stable hot-path sanity was usable for all five tracked fixtures: `functions`
+  `12.85ms`, `import-reference` `20.19ms`, `mixins-guards` `17.86ms`,
+  `extend-chaining` `5.47ms`, and `media` `6.33ms`.
 - Deferred declaration-name promotion pass: accepted as an `UNCOVERED` bridge
   deletion, not as a speed claim. `packages/core/src/tree/reference.ts` now
   runs the existing `promoteResolvedPendingVarDecls(...)` before

@@ -625,6 +625,44 @@ Keep criteria:
 
 ## Recent Benchmark Sanity Notes
 
+### Manual-Frame Declaration Coverage
+
+Date: 2026-06-06.
+
+Change: `ScopeFrame` now carries declaration-coverage state so
+`Reference.lookupScopeFrameVariableBinding(...)` no longer checks
+`targetRules.scopeFrame`, `varsByName`, `rulesIndexed`, and `value.length` on
+every covered static variable lookup. `Rules` registration/indexing keeps an
+existing frame's declaration buckets/pending list aligned and marks coverage
+when indexing reaches the current rules length. Snapshot reads now skip
+runtime live-slot fallback after an uncovered facade result.
+
+Sanity command:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result status:
+
+- `functions`: usable, median `12.85ms`;
+- `import-reference`: usable, median `20.19ms`;
+- `mixins-guards`: usable, median `17.86ms`;
+- `extend-chaining`: usable, median `5.47ms`;
+- `media`: usable, median `6.33ms`.
+
+Additional status:
+
+- `node scripts/profile-less-benchmark.mjs --file=benchmark-v39.less` reported
+  `Reference.evalNode` `482` calls / `5.93ms`, `Rules.find` `68` calls /
+  `0.36ms`, and `Rules.find` still only on function keys for this fixture.
+- `pnpm run audit:node-creation` reported `reference.ts` `21`, global
+  `new-node` `321`, `with-surface` `34`, `copy-leaves` `31`, `derive` `30`.
+
+Interpretation: status only. This pass deleted a reference-side branch and
+fixed snapshot fallback ownership; it did not capture a clean before/after
+benchmark pair and makes no speed claim.
+
 ### Production Binding Facade Step 2
 
 Date: 2026-06-06.

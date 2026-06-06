@@ -800,13 +800,6 @@ function lookupScopeFrameVariableBinding(
     return undefined;
   }
   const frame = targetRules.getScopeFrame();
-  if (
-    targetRules.scopeFrame === frame
-    && targetRules.varsByName === undefined
-    && targetRules.rulesIndexed < targetRules.value.length
-  ) {
-    return undefined;
-  }
   promoteResolvedPendingVarDecls(targetRules, frame);
   const hit = lookupScopeFrameVariable(frame, key, {
     start: opts.start,
@@ -876,9 +869,11 @@ function lookupVariableReference(
       return frameHit;
     }
   }
-  const live = lookupRuntimeVarBinding(targetRules, keyStr, env.context);
-  if (live) {
-    return live;
+  if (env.readMode !== 'snapshot') {
+    const live = lookupRuntimeVarBinding(targetRules, keyStr, env.context);
+    if (live) {
+      return live;
+    }
   }
   const fast = findVarDeclarationFast(targetRules, keyStr, env.filter, {
     start: opts.start,
