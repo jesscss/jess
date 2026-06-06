@@ -318,6 +318,54 @@ Next measured target:
   candidate/output eval work and keep cutting copy/materialization pressure
   around the looked-up value path.
 
+### 2026-06-05 Reference Class Surface Cut
+
+Hypothesis: `Reference` still had method-level cruft that could be deleted
+without changing semantics: alias predicate wrappers, a useless Promise identity
+wrapper, and nested render closures allocated before the direct raw lookup
+could decide whether a static referenced value can render immediately.
+
+Patch kept:
+
+- `packages/core/src/tree/reference.ts` deleted
+  `canReturnReferenceValueWithoutCopy(...)` and
+  `canRenderReferenceValueTextOnly(...)`, both of which only called
+  `canReturnReferenceValue(...)`;
+- `Reference.evalNode(...)` now returns the `MaybePromise<Node>` from
+  `evaluateReferenceNode(...)` directly instead of wrapping thenables in an
+  identity `.then(...)`;
+- `Reference.render(...)` keeps the direct raw static-reference path in
+  straight-line code instead of allocating `renderResolved`, `renderRaw`, and
+  `renderThroughEvaluator` closures first;
+- rules lookup options are filled directly on one `FindOptions` object instead
+  of building spread fragments through `getContextualReferenceLookupStart(...)`
+  and `getLiveReferenceLookupStart(...)`;
+- leaky rules lookup no longer builds a temporary scope array or recursive
+  local walker for `[resolvedTarget, rulesParent, sourceRulesParent]`;
+- `Reference.renderReferenceSyntax(...)` moved its syntax-key emitter out of a
+  per-call nested closure. The array-key loop already existed; no new traversal
+  or node creation was introduced.
+
+Evidence:
+
+- focused Reference-family tests passed: `410` tests across
+  `reference`, `mixin`, `declaration`, `ruleset`, `list`, `sequence`,
+  `condition`, and `operation`;
+- hot-path sanity benchmark after this patch:
+  `functions` median `12.99ms`, `import-reference` median `19.67ms`,
+  `mixins-guards` median `17.17ms`, `extend-chaining` median `5.09ms`
+  (`unstable`), and `media` median `6.18ms`;
+- this is not a speed claim because the pass did not capture a clean
+  before/after pair. Treat it as a benchmark leash status line only.
+
+Next measured target:
+
+- Continue `Reference` before moving to the next node. The remaining target is
+  the lookup/finalization/copy helper cluster, especially
+  `findVarDeclarationFast`, key evaluation/conversion, declaration
+  finalization, rules-like reference value surfaces, and
+  `evaluateReferenceValueNode(...)` copy pressure.
+
 ## Parked Measured Targets
 
 Keep these targets visible when performance rounds reactivate:

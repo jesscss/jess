@@ -643,43 +643,6 @@ function shouldUseLocalReferenceLookup(args: {
   return !args.target && blocksAmbientMixinOutputLookup(args.targetRules);
 }
 
-function getContextualReferenceLookupStart(args: {
-  referenceNode: Reference;
-  target: ReferenceValue['target'];
-  isInterpolatedVariable: boolean;
-  adapter: RulesLookupAdapter;
-}): Pick<FindOptions, 'start' | 'ignoreParentScopeStart'> {
-  const { referenceNode, target, isInterpolatedVariable, adapter } = args;
-  if (target || isInterpolatedVariable || !adapter.applyContextualStart) {
-    return {};
-  }
-  const startIndex = getLookupStartIndex(referenceNode);
-  if (startIndex === undefined) {
-    return {};
-  }
-  return {
-    start: startIndex,
-    ignoreParentScopeStart: true
-  };
-}
-
-function getLiveReferenceLookupStart(args: {
-  referenceNode: Reference;
-  resolution: ReferenceOptions['resolution'];
-  isInterpolatedVariable: boolean;
-  context: Context;
-}): Pick<FindOptions, 'start'> {
-  const { referenceNode, resolution, isInterpolatedVariable, context } = args;
-  if (resolution !== 'live' || isInterpolatedVariable) {
-    return {};
-  }
-  if (context.rulesContext !== undefined) {
-    return { start: context.rulesContext.index };
-  }
-  const startIndex = getLookupStartIndex(referenceNode);
-  return startIndex === undefined ? {} : { start: startIndex };
-}
-
 function buildReferenceLookupOptions(args: {
   referenceNode: Reference;
   target: ReferenceValue['target'];
@@ -702,24 +665,36 @@ function buildReferenceLookupOptions(args: {
     hasTarget,
     adapter
   } = args;
-  return {
+  const opts: FindOptions = {
     filter,
     context,
-    hasTarget,
-    ...(shouldUseLocalReferenceLookup({ target, targetRules }) ? { local: true } : {}),
-    ...getContextualReferenceLookupStart({
-      referenceNode,
-      target,
-      isInterpolatedVariable,
-      adapter
-    }),
-    ...getLiveReferenceLookupStart({
-      referenceNode,
-      resolution,
-      isInterpolatedVariable,
-      context
-    })
+    hasTarget
   };
+
+  if (shouldUseLocalReferenceLookup({ target, targetRules })) {
+    opts.local = true;
+  }
+
+  if (!isInterpolatedVariable) {
+    if (resolution === 'live') {
+      if (context.rulesContext !== undefined) {
+        opts.start = context.rulesContext.index;
+      } else {
+        const startIndex = getLookupStartIndex(referenceNode);
+        if (startIndex !== undefined) {
+          opts.start = startIndex;
+        }
+      }
+    } else if (!target && adapter.applyContextualStart) {
+      const startIndex = getLookupStartIndex(referenceNode);
+      if (startIndex !== undefined) {
+        opts.start = startIndex;
+        opts.ignoreParentScopeStart = true;
+      }
+    }
+  }
+
+  return opts;
 }
 
 function prepareReferenceLookup(args: {
@@ -926,47 +901,6 @@ const RULES_LOOKUP_ADAPTERS: Record<LookupType, RulesLookupAdapter> = {
   ['mixin-ruleset']: createCallableLookupAdapter()
 };
 
-function lookupAcrossRulesScopes(
-  scopes: Array<Rules | Node | undefined>,
-  performLookup: (scope: Rules) => RulesLookupResult
-): MaybePromise<RulesLookupResult> {
-  const walk = (index: number): MaybePromise<RulesLookupResult> => {
-    for (let i = index; i < scopes.length; i++) {
-      const scope = scopes[i];
-      if (!isNode(scope, N.Rules)) {
-        continue;
-      }
-      const result = performLookup(scope);
-      if (isThenable(result)) {
-        return Promise.resolve(result).then((resolved) => {
-          if (isRulesLookupResult(resolved)) {
-            return resolved;
-          }
-          return walk(i + 1);
-        });
-      }
-      if (result !== undefined) {
-        return result;
-      }
-    }
-    return undefined;
-  };
-
-  return walk(0);
-}
-
-function getReferenceLookupScopes(args: {
-  resolvedTarget: Rules;
-  context: Context;
-  rulesParent: Rules | undefined;
-  sourceRulesParent: Rules | undefined;
-}): Array<Rules | Node | undefined> {
-  const { resolvedTarget, context, rulesParent, sourceRulesParent } = args;
-  return context.leakyRules
-    ? [resolvedTarget, rulesParent, sourceRulesParent]
-    : [resolvedTarget];
-}
-
 function lookupRulesReferenceTarget(args: {
   resolvedTarget: Rules;
   context: Context;
@@ -974,10 +908,49 @@ function lookupRulesReferenceTarget(args: {
   sourceRulesParent: Rules | undefined;
   performRulesLookup: (scope: Rules) => RulesLookupResult;
 }): MaybePromise<RulesLookupResult> {
-  return lookupAcrossRulesScopes(
-    getReferenceLookupScopes(args),
-    args.performRulesLookup
-  );
+  const first = args.performRulesLookup(args.resolvedTarget);
+  if (isThenable(first)) {
+    return Promise.resolve(first).then((resolved) => {
+      if (isRulesLookupResult(resolved) || !args.context.leakyRules) {
+        return resolved;
+      }
+      return lookupLeakyRulesReferenceTargets(args);
+    });
+  }
+  if (first !== undefined || !args.context.leakyRules) {
+    return first;
+  }
+  return lookupLeakyRulesReferenceTargets(args);
+}
+
+function lookupLeakyRulesReferenceTargets(args: {
+  rulesParent: Rules | undefined;
+  sourceRulesParent: Rules | undefined;
+  performRulesLookup: (scope: Rules) => RulesLookupResult;
+}): MaybePromise<RulesLookupResult> {
+  const rulesParent = args.rulesParent;
+  if (isNode(rulesParent, N.Rules)) {
+    const result = args.performRulesLookup(rulesParent);
+    if (isThenable(result)) {
+      return Promise.resolve(result).then((resolved) => {
+        if (isRulesLookupResult(resolved)) {
+          return resolved;
+        }
+        const sourceRulesParent = args.sourceRulesParent;
+        return isNode(sourceRulesParent, N.Rules)
+          ? args.performRulesLookup(sourceRulesParent)
+          : undefined;
+      });
+    }
+    if (result !== undefined) {
+      return result;
+    }
+  }
+
+  const sourceRulesParent = args.sourceRulesParent;
+  return isNode(sourceRulesParent, N.Rules)
+    ? args.performRulesLookup(sourceRulesParent)
+    : undefined;
 }
 
 function lookupReferenceTarget(args: {
@@ -1403,14 +1376,6 @@ function canReturnReferenceValue(node: Node): boolean {
   return node.hasFlag(F_STATIC) && !isRulesLikeReferenceValue(node);
 }
 
-function canReturnReferenceValueWithoutCopy(node: Node): boolean {
-  return canReturnReferenceValue(node);
-}
-
-function canRenderReferenceValueTextOnly(node: Node): boolean {
-  return canReturnReferenceValue(node);
-}
-
 function isRulesLikeReferenceValue(node: Node): boolean {
   return isNode(node, N.Rules | N.Collection | N.Mixin | N.Ruleset);
 }
@@ -1453,7 +1418,7 @@ function canUseDynamicFallbackScalarDirectly(node: Node): boolean {
 
 function canReuseFallbackValue(node: Node): boolean {
   return node.hasFlag(F_STATIC)
-    && canReturnReferenceValueWithoutCopy(node);
+    && canReturnReferenceValue(node);
 }
 
 function evaluateFallbackValue(
@@ -1465,7 +1430,7 @@ function evaluateFallbackValue(
   if (
     options.textOnly === true
     && fallbackValue.hasFlag(F_STATIC)
-    && canRenderReferenceValueTextOnly(fallbackValue)
+    && canReturnReferenceValue(fallbackValue)
   ) {
     context.popReference();
     return fallbackValue;
@@ -1588,7 +1553,7 @@ function finalizeDirectNodeReferenceResult(
   options: { textOnly?: boolean } = {}
 ): Node {
   context.popReference();
-  if (options.textOnly === true && canRenderReferenceValueTextOnly(result)) {
+  if (options.textOnly === true && canReturnReferenceValue(result)) {
     return result;
   }
   if (
@@ -1615,7 +1580,7 @@ function finalizeRuntimeVarBindingResult(
       context.popReference();
       return evald;
     }
-    if (options.textOnly === true && canRenderReferenceValueTextOnly(evald)) {
+    if (options.textOnly === true && canReturnReferenceValue(evald)) {
       context.popReference();
       return evald;
     }
@@ -1710,7 +1675,7 @@ function finalizeEvaluatedDeclarationReference(
   isMergedAssign: boolean,
   options: { textOnly?: boolean } = {}
 ): Node {
-  if (options.textOnly === true && !isMergedAssign && canRenderReferenceValueTextOnly(evaluatedNode)) {
+  if (options.textOnly === true && !isMergedAssign && canReturnReferenceValue(evaluatedNode)) {
     return evaluatedNode;
   }
   const resultNode = isMergedAssign
@@ -1735,7 +1700,7 @@ function finalizeDeclarationReferenceResult(
     options.textOnly === true
     && !hasImportantDeclarationValue(declaration)
     && !isMergedAssign
-    && canRenderReferenceValueTextOnly(declarationValue)
+    && canReturnReferenceValue(declarationValue)
   ) {
     context.popReference();
     return declarationValue;
@@ -1851,10 +1816,10 @@ function evaluateReferenceValueNode(
     if (isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset') {
       return declValue;
     }
-    if (options.reuseRenderTextContainers === true && canRenderReferenceValueTextOnly(declValue)) {
+    if (options.reuseRenderTextContainers === true && canReturnReferenceValue(declValue)) {
       return declValue;
     }
-    if (options.reuseSourceFreeLeaves === true && canReturnReferenceValueWithoutCopy(declValue)) {
+    if (options.reuseSourceFreeLeaves === true && canReturnReferenceValue(declValue)) {
       return declValue;
     }
     if (options.reuseSourceFreeLeaves === true) {
@@ -2078,6 +2043,31 @@ function finalizeDirectRawRenderValue(
   return target;
 }
 
+function emitReferenceSyntaxKey(
+  referenceNode: Reference,
+  key: unknown,
+  options: ReturnType<typeof getPrintOptions>
+): void {
+  const w = options.writer!;
+  if (typeof key === 'string' || typeof key === 'number') {
+    w.add(String(key), referenceNode);
+    return;
+  }
+  if (key instanceof Node) {
+    key.toString(options);
+    return;
+  }
+  if (Array.isArray(key)) {
+    let out = '';
+    for (let i = 0; i < key.length; i++) {
+      out += String(key[i]);
+    }
+    w.add(out);
+    return;
+  }
+  w.add(String(key));
+}
+
 function evaluateReferenceNode(args: {
   referenceNode: Reference;
   target: ReferenceValue['target'];
@@ -2201,21 +2191,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     const mark = w.mark();
     let { type = 'variable', resolution, fallbackValue } = this.options;
     let { target, key, rawKey } = this.value;
-    const emitKey = (k: any) => {
-      if (typeof k === 'string' || typeof k === 'number') {
-        w.add(String(k), this);
-      } else if (k instanceof Node) {
-        k.toString(options);
-      } else if (Array.isArray(k)) {
-        let out = '';
-        for (let i = 0; i < k.length; i++) {
-          out += String(k[i]);
-        }
-        w.add(out);
-      } else {
-        w.add(String(k));
-      }
-    };
     const printableKey = rawKey ?? key;
     if (target) {
       target.toString(options);
@@ -2228,36 +2203,36 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     switch (type) {
       case 'index':
         w.add('[');
-        emitKey(printableKey);
+        emitReferenceSyntaxKey(this, printableKey, options);
         w.add(']');
         break;
       case 'variable':
         if (target) {
           w.add('.$');
         }
-        emitKey(printableKey);
+        emitReferenceSyntaxKey(this, printableKey, options);
         break;
       case 'declaration':
         w.add('.');
-        emitKey(printableKey);
+        emitReferenceSyntaxKey(this, printableKey, options);
         break;
       case 'property':
         if (target) {
           w.add('[');
-          emitKey(printableKey);
+          emitReferenceSyntaxKey(this, printableKey, options);
           w.add(']');
         } else {
           w.add('.');
-          emitKey(printableKey);
+          emitReferenceSyntaxKey(this, printableKey, options);
         }
         break;
       case 'mixin':
         w.add(' > ');
-        emitKey(printableKey);
+        emitReferenceSyntaxKey(this, printableKey, options);
         break;
       case 'mixin-ruleset':
         w.add(' > *');
-        emitKey(printableKey);
+        emitReferenceSyntaxKey(this, printableKey, options);
         break;
     }
     if (fallbackValue === true) {
@@ -2276,53 +2251,75 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    const renderResolved = (node: Node) => isRenderBuffer(bufferOrOptions)
-      ? writeRenderTextResult(bufferOrOptions, node.render(context, options))
-      : node.render(context, bufferOrOptions);
-    const renderThroughEvaluator = () => {
-      const evaluated = evaluateReferenceNode({
-        referenceNode: this,
-        target: this.value.target,
-        key: this.value.key,
-        lookupType: (this.options.type ?? 'variable') as LookupType,
-        fallbackValue: this.options.fallbackValue,
-        originalFilter: this.options.filter,
-        context,
-        textOnly: true,
-        directStaticRender: true
-      });
-      return isThenable(evaluated)
-        ? Promise.resolve(evaluated).then(renderResolved)
-        : renderResolved(evaluated);
-    };
-    const renderRaw = (value: unknown): string | undefined => {
-      if (
-        value === RAW_REFERENCE_TARGET_NOT_FOUND
-        || !isNode(value)
-        || isRulesLikeReferenceValue(value)
-        || !canRenderReferenceValueTextOnly(value)
-      ) {
-        return undefined;
-      }
-      return renderResolved(value);
-    };
+    const renderBuffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const renderOptions = renderBuffer ? options : bufferOrOptions;
     if (canRenderRawVariableReferenceDirectly(this) && this.options.fallbackValue === undefined) {
       const rawValue = resolveRawReferenceLookupTarget(this, context);
       if (isThenable(rawValue)) {
         return Promise.resolve(rawValue).then((value) => {
-          const rendered = renderRaw(value);
-          if (rendered !== undefined) {
-            return rendered;
+          if (
+            value !== RAW_REFERENCE_TARGET_NOT_FOUND
+            && isNode(value)
+            && !isRulesLikeReferenceValue(value)
+            && canReturnReferenceValue(value)
+          ) {
+            return renderBuffer
+              ? writeRenderTextResult(renderBuffer, value.render(context, options))
+              : value.render(context, renderOptions);
           }
-          return renderThroughEvaluator();
+          const evaluated = evaluateReferenceNode({
+            referenceNode: this,
+            target: this.value.target,
+            key: this.value.key,
+            lookupType: (this.options.type ?? 'variable') as LookupType,
+            fallbackValue: this.options.fallbackValue,
+            originalFilter: this.options.filter,
+            context,
+            textOnly: true,
+            directStaticRender: true
+          });
+          return isThenable(evaluated)
+            ? Promise.resolve(evaluated).then((node) => {
+                return renderBuffer
+                  ? writeRenderTextResult(renderBuffer, node.render(context, options))
+                  : node.render(context, renderOptions);
+              })
+            : renderBuffer
+              ? writeRenderTextResult(renderBuffer, evaluated.render(context, options))
+              : evaluated.render(context, renderOptions);
         });
       }
-      const rendered = renderRaw(rawValue);
-      if (rendered !== undefined) {
-        return rendered;
+      if (
+        rawValue !== RAW_REFERENCE_TARGET_NOT_FOUND
+        && isNode(rawValue)
+        && !isRulesLikeReferenceValue(rawValue)
+        && canReturnReferenceValue(rawValue)
+      ) {
+        return renderBuffer
+          ? writeRenderTextResult(renderBuffer, rawValue.render(context, options))
+          : rawValue.render(context, renderOptions);
       }
     }
-    return renderThroughEvaluator();
+    const evaluated = evaluateReferenceNode({
+      referenceNode: this,
+      target: this.value.target,
+      key: this.value.key,
+      lookupType: (this.options.type ?? 'variable') as LookupType,
+      fallbackValue: this.options.fallbackValue,
+      originalFilter: this.options.filter,
+      context,
+      textOnly: true,
+      directStaticRender: true
+    });
+    return isThenable(evaluated)
+      ? Promise.resolve(evaluated).then((node) => {
+          return renderBuffer
+            ? writeRenderTextResult(renderBuffer, node.render(context, options))
+            : node.render(context, renderOptions);
+        })
+      : renderBuffer
+        ? writeRenderTextResult(renderBuffer, evaluated.render(context, options))
+        : evaluated.render(context, renderOptions);
   }
 
   /**
@@ -2342,15 +2339,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       originalFilter,
       context
     });
-    if (isThenable(result)) {
-      return (result as Promise<Node>).then(
-        res => res,
-        (err) => {
-          throw err;
-        }
-      );
-    }
-    return result as Node;
+    return result;
   }
 
   override resolve(context: Context): MaybePromise<Node> {

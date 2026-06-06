@@ -88,34 +88,44 @@ Next deep-cut queue:
    generated render-state helper/object allocation, removed the render-text
    comma predicate, skipped wrapper capture when structurally unwrapping, and
    deleted a dead commented keys experiment.
-4. [ ] Sweep `Ampersand` template placement next. Replace
+4. [x] Start the `Reference` node rewrite pass with the class render/eval
+   surface. Deleted two alias predicate wrappers, removed the useless Promise
+   identity wrapper in `evalNode(...)`, and flattened `render(...)` so the
+   synchronous direct static-reference path no longer allocates local render
+   closures before doing the raw lookup. Also deleted the option-fragment spread
+   helpers and the scope-array recursive walker from rules lookup.
+5. [ ] Continue `Reference` before moving to the next node. Audit and cut the
+   remaining lookup/finalization/copy helper cluster: `findVarDeclarationFast`,
+   key evaluation/conversion, declaration finalization, rules-like value
+   surfaces, and `evaluateReferenceValueNode(...)` copy pressure.
+6. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
-5. [ ] Sweep selector matching/extend equality. Replace hot `valueOf()` equality
+7. [ ] Sweep selector matching/extend equality. Replace hot `valueOf()` equality
    predicates with structural/keyset checks where possible, keeping
    `valueOf()` only as a measured, cached fast-path when it wins.
-6. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
+8. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
    materialization so routine eval replacement does not imply `.inherit(...)`.
-7. [ ] Replace `StyleImport` first-use placement copies with placement state
+9. [ ] Replace `StyleImport` first-use placement copies with placement state
    that points at canonical source children and preserves import visibility.
-8. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
+10. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
    is source/visibility/placement bookkeeping.
-9. [ ] Replace remaining `Rules` merge output copies with direct merge
+11. [ ] Replace remaining `Rules` merge output copies with direct merge
    placement/render state or a narrow owned-item copier proven by merge tests.
-10. [ ] Convert registration-prep expected misses away from routine `try/catch`
+12. [ ] Convert registration-prep expected misses away from routine `try/catch`
    only after adding tests for unresolved declaration/identity behavior.
-11. [ ] Continue selector/extend factory cuts separately; do not hide selector
+13. [ ] Continue selector/extend factory cuts separately; do not hide selector
    placement copies inside another generic copy helper.
-12. [ ] Replace callable binding copies for static containers with explicit
+14. [ ] Replace callable binding copies for static containers with explicit
    binding/placement state. Static containers should not be copied merely
    because they contain child nodes; `F_HAS_NODE_CHILD` is only a cheap current
    ownership boundary, not a final architecture.
-13. [ ] Attack the measured copy stack next: `copyChild`,
+15. [ ] Attack the measured copy stack next: `copyChild`,
    `copyWithReusableLeaves`, `copyCallableRulesValue`, `constructCopy`, and
    `.inherit(...)`. CPU evidence says these are mostly registration derivation,
    selector header rendering, JS function argument ownership, reference value
    eval, and binding clone debt; do not justify them as render output copying.
-14. [ ] Audit repeated callable/mixin evaluation from the profile before making
+16. [ ] Audit repeated callable/mixin evaluation from the profile before making
    more local helper cuts. If a mixin candidate or output body is evaluated
    more than the semantic call count requires, carry placement/binding state or
    cache the cold public materialization boundary instead of copying/evaluating
@@ -167,25 +177,50 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
-- New traversal: none. `PseudoSelector.renderPseudoSyntax(...)` uses the
-  existing `SelectorList.value.length` structural fact for generated wrapper
-  omission and does not add any loop or scan.
+- New traversal: none added. `Reference.renderReferenceSyntax(...)` already had
+  an array-key loop inside a per-call local closure; the same loop now lives in
+  `emitReferenceSyntaxKey(...)` so syntax rendering stops allocating the local
+  closure. Rules lookup now avoids building a `[resolvedTarget, rulesParent,
+  sourceRulesParent]` array and avoids the recursive local walker previously
+  used to scan it. No parent/source walk, side-map lookup, recursive scan,
+  `map`, `filter`, `sort`, generator, or new object/array scan was added.
 - New node/materialization: none. No new `Node`, copy, wrapper `Rules`,
-  `.inherit(...)`, `.adopt(...)`, or `frozen` path was added.
-- Render path: improved shape. The generated `:is(...)` path still renders the
-  selected output string, but it no longer renders selector text first to decide
-  whether the wrapper should exist. When wrapper omission is structurally known,
-  the method now renders the argument directly and skips the temporary
-  mark/getSince/restore path.
-- Helper/API surface: deleted `getGeneratedPseudoPlacementState(...)` and the
-  temporary `GeneratedPseudoPlacementState` object. The remaining logic is
-  inline straight-line render code inside the existing method.
-- Metadata mutations: none. No parent restoration, `frozen`, `.inherit(...)`,
-  source metadata mutation, `Reflect.*`, or `Object.hasOwn(...)` was added.
-- Evidence: focused selector output tests passed after the rewrite:
+  `.inherit(...)`, `.adopt(...)`, `copyWithReusableLeaves(...)`, `frozen`, or
+  parent/source metadata mutation was added. The remaining `FindOptions` object
+  is the required lookup payload that already existed; this pass removed the
+  additional spread-fragment objects around it.
+- Render path: improved shape, still partial. `Reference.render(...)` now keeps
+  the direct raw static-reference render path in straight-line code and avoids
+  allocating `renderResolved`, `renderRaw`, and `renderThroughEvaluator` local
+  closures before lookup. It still calls `evaluateReferenceNode(...)` on the
+  fallback path; the remaining helper/finalization/copy cluster stays queued
+  for the next Reference pass.
+- Helper/API surface: deleted `canReturnReferenceValueWithoutCopy(...)` and
+  `canRenderReferenceValueTextOnly(...)`, which were alias wrappers around
+  `canReturnReferenceValue(...)`. Deleted
+  `getContextualReferenceLookupStart(...)`,
+  `getLiveReferenceLookupStart(...)`, `lookupAcrossRulesScopes(...)`, and
+  `getReferenceLookupScopes(...)`. Added only private
+  `emitReferenceSyntaxKey(...)` and `lookupLeakyRulesReferenceTargets(...)`:
+  the former removes a per-call nested closure from syntax rendering, and the
+  latter preserves the async leaky-scope continuation without allocating the old
+  scope array or recursive walker. No public API was added.
+- Metadata mutations: none. No parent restoration, `frozen`, inherited
+  location/source metadata, lazy options/context creation, `Reflect.*`, or
+  `Object.hasOwn(...)` was added.
+- Evidence: focused Reference-family output tests passed after the rewrite:
   `pnpm --filter @jesscss/core exec vitest
-  src/tree/__tests__/selector-pseudo.test.ts
-  src/tree/__tests__/selector.test.ts
-  src/tree/__tests__/ampersand.test.ts --run` (`53` tests). This is accepted
-  as method-level machinery deletion, not as a speed claim.
-- Verdict: accepted.
+  src/tree/__tests__/reference.test.ts src/tree/__tests__/mixin.test.ts
+  src/tree/__tests__/declaration.test.ts src/tree/__tests__/ruleset.test.ts
+  src/tree/__tests__/list.test.ts src/tree/__tests__/sequence.test.ts
+  src/tree/__tests__/condition.test.ts src/tree/__tests__/operation.test.ts
+  --run` (`410` tests). `pnpm --filter @jesscss/core build` also passed. This
+  is accepted as method-level machinery deletion, not as a speed claim.
+  `pnpm run measure:less:hotpath -- --stable` was run as a leash sanity check:
+  `functions` median `12.99ms`, `import-reference` `19.67ms`,
+  `mixins-guards` `17.17ms`, `extend-chaining` `5.09ms` (`unstable`), and
+  `media` `6.18ms`. Because this pass did not capture a clean before/after
+  pair, that benchmark is status only.
+- Verdict: accepted as `Reference` pass 1 only. Do not mark `Reference`
+  complete until the remaining lookup/finalization/copy helpers are audited and
+  either cut or explicitly isolated as cold/public materialization.
