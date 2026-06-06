@@ -15,9 +15,9 @@ Use the four-doc split:
 
 Design proposals that are not yet active implementation plans:
 
-- `BINDING-INDEX-PROPOSAL.md`: coherent lookup/binding/cache model for
-  reference lookup, Less contextual semantics, and Jess/Sass-style live
-  bindings.
+- `BINDING-INDEX-PROPOSAL.md`: binding-index implementation spec for
+  reference lookup, Less contextual semantics, Jess/Sass-style live bindings,
+  and removal of transitional fallback bridges.
 
 ## How To Work
 
@@ -94,6 +94,10 @@ Binding prototype status:
   variable references and static `:=` writes. This is not the full binding
   index yet; declaration-bucket `Reference` hits still return source
   declaration nodes, and callable lookup still uses the existing registry path.
+- Fallback bridges are temporary debt. Covered simple paths must return hit or
+  miss from the binding frame and stop. Only unmodeled cold/complex cases may
+  route to old registry/search/materialization paths, and every such bridge
+  needs a deletion condition in `BINDING-INDEX-PROPOSAL.md` or this handoff.
 - Next binding step, when selected: make declaration-bucket variable hits
   return binding/value identity directly so assignment and reference
   finalization can stop bouncing through source declaration nodes. Do not start
@@ -149,6 +153,10 @@ next step starts.
    - `Reference` uses it only for static string variable keys with no explicit
      target, no interpolation, and no contextual `start` boundary.
    - Pending dynamic declaration names bail to the existing lookup path.
+   - Bridge cleanup rule: when a static-key case is covered by the facade, a
+     facade miss must mean miss for that case, not "try every old lookup just
+     in case." The old fallback remains only for unmodeled cases explicitly
+     outside this step.
    - A failed first attempt proved that applying the facade to contextual
      control-loop lookups changes stateful output (`tick: 1, 1, 2` became
      `tick: 1, 2, 3`), so source-order/current hardening remains step 3.
@@ -239,6 +247,10 @@ next step starts.
    Completion gate:
    - reference render/eval tests prove source declarations remain canonical
    - `:=`/`setDefined` writes mutate only the resolved binding cell where safe
+   - covered static variable hits and misses do not fall through the old
+     live-slot/`findVarDeclarationFast(...)`/registry ladder
+   - any remaining fallback branch is labeled as `UNCOVERED`/unmodeled cold
+     scope, with a deletion condition
    - no new node creation, copying, `.inherit(...)`, or source-parent mutation
    - no new traversal beyond the existing frame-chain/bucket scan
    - focused reference, scope-frame, mixin, control, declaration tests pass
@@ -433,6 +445,14 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Binding bridge cleanup doctrine: accepted as documentation/spec tightening
+  only. It turns fallback bridges into named temporary debt and requires
+  deletion conditions before any covered static-key path may keep old
+  registry/search/materialization branches. New traversal: none. New
+  node/materialization: none. Render path: unchanged. Helper/API surface: none.
+  Metadata mutations: none. Evidence: spec and handoff now require covered
+  binding-frame paths to return hit/miss directly, with old fallback allowed
+  only for explicitly unmodeled cold/complex cases.
 - Binding lane status correction: accepted as documentation-only. It marks the
   already-landed source-order/current-read facade hardening complete and adds
   the next production binding step: declaration-bucket hits must return

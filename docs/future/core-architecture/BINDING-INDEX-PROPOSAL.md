@@ -1,8 +1,10 @@
-# Binding Index Proposal
+# Binding Index Implementation Spec
 
-This is a proposal for a coherent reference lookup, binding, and cache model.
-It is design-only until a focused prototype proves the shape against reference
-tests and real Less benchmarks.
+This is the implementation spec for a coherent reference lookup, binding, and
+cache model. Early sections still record prototype hypotheses and measurements,
+but the direction is no longer "maybe add another helper beside the old
+systems." The end state is one binding system with hot simple paths that do not
+fall through a ladder of adjacent lookup mechanisms.
 
 ## Problem
 
@@ -24,6 +26,42 @@ frame.
 The target is one coherent binding system, not three adjacent systems glued
 together.
 
+## End-State Rule
+
+Transitional bridges are allowed only to land behavior safely. They are not
+architecture.
+
+Every bridge to the old lookup shape must have:
+
+- a named scope, such as dynamic names, complex callable namespace lookup,
+  import/reference visibility, or unmodeled public materialization;
+- a deletion condition that says which binding-frame capability replaces it;
+- focused tests proving the covered simple path no longer enters the bridge;
+- a benchmark/profile note when the bridge is still on a measured hot path.
+
+By the end of this binding-index lane, ordinary static-key reads and writes
+must not execute fallback ladders. The desired hot path is:
+
+```ts
+const slot = frame.lookupVariableSlot(plan);
+if (slot >= 0) return frame.readSlot(slot);
+```
+
+Not:
+
+```ts
+lookup frame
+  ?? lookup live slots
+  ?? scan declaration buckets
+  ?? search Rules.find
+  ?? search registry
+  ?? materialize source declaration
+```
+
+Fallback is acceptable only for cases the binding frame has not modeled yet.
+Once a case is modeled, the fallback branch for that case is deleted, not left
+as a "safe" second chance.
+
 ## Goals
 
 - Make ordinary Less variable/property/callable lookup as close as possible to:
@@ -39,6 +77,8 @@ together.
 - Keep one canonical source tree. Do not solve lookup speed by copying nodes.
 - Avoid new hot-path objects, `Set`s, array conversions, sorts, closures,
   recursive rediscovery, and generic registries for ordinary static-key reads.
+- Remove transitional fallback branches from every simple path once its
+  binding-frame replacement lands.
 
 ## Non-Goals
 
@@ -48,6 +88,8 @@ together.
   generic side map.
 - Do not pick `Map` vs null-prototype object by taste. That is a measured
   storage decision after the semantic model is correct.
+- Do not keep dual lookup systems permanently in the name of compatibility.
+  Compatibility bridges must shrink as the binding frame gains coverage.
 
 ## Core Hypothesis
 
@@ -69,6 +111,11 @@ const hit = frame.lookup(referencePlan, context);
 
 The frame returns a binding hit, miss, or uncacheable result. Evaluation/render
 then operates on that binding.
+
+During migration, a frame lookup may return `UNCOVERED` for a cold/complex
+case. That sentinel may route to an old registry path temporarily. A covered
+simple miss must return `MISS` and stop. It must not try broad fallback search
+just in case.
 
 ## Binding Concepts
 
@@ -520,10 +567,21 @@ cached evaluated value is legal.
 
 Becomes static variable records in `BindingFrame.records`.
 
+Deletion condition: once variable records carry occurrence order, current-cell
+identity, source-position reads, and assignment targets, `Reference` must stop
+returning source `VarDeclaration` nodes for covered static variable reads.
+`varsByName` may remain as construction input only if it is not queried by hot
+reference lookup.
+
 ### Current `mixinsByName`
 
 Becomes callable records in the same frame. Fast callable keys and namespace
 paths use the same lookup-cache mechanism.
+
+Deletion condition: once simple callable records are modeled, static simple
+mixin/function lookup must not fall through `MixinRegistry`/`Rules.find(...)`.
+Namespace, guards, and callable ambiguity may stay behind an explicit
+`UNCOVERED` bridge until modeled.
 
 ### Current `ScopeFrame.liveSlotsByName`
 
@@ -532,16 +590,40 @@ path is not special. This is broader than today's named live-slot surface:
 ordinary same-frame declarations also need current-cell behavior for Jess live
 reads, while `$!` and Less contextual lookup use occurrence/source-order lookup.
 
+Deletion condition: live slots stop being a separate pre-check once live/current
+records and static declaration current pointers share the same slot lookup.
+
 ### Current `DeclarationRegistry`
 
 Becomes a cold compatibility/fallback surface. Ordinary variable/property
 lookup should not call it. Its remaining responsibilities should be narrowed to
 complex search modes that the binding frame does not yet model.
 
+Deletion condition: every time a complex declaration lookup mode is represented
+in `BindingFrame`, delete the corresponding registry fallback branch from
+`Reference`/`Rules.find(...)` for that mode. Do not keep both paths active for
+covered inputs.
+
 ### Current `MixinRegistry`
 
 Same direction: keep it only for complex callable searches until the binding
 frame handles them. Do not let ordinary static callable lookup fall through.
+
+Deletion condition: modeled callable paths return hit/miss from the binding
+frame. Only unmodeled callable ambiguity returns `UNCOVERED` and reaches the
+registry bridge.
+
+## Transitional Bridge Ledger
+
+The bridge ledger is part of the implementation contract. Any production
+fallback must appear here or in `HANDOFF.md` before it is accepted.
+
+| Bridge | Allowed Scope | Deletion Condition |
+| --- | --- | --- |
+| `Reference.lookupVariableReference(...)` facade miss to `lookupRuntimeVarBinding(...)` / `findVarDeclarationFast(...)` | static variable reads not yet represented as binding identity, pending dynamic names, unmodeled contextual/current split | delete for covered static variable reads once declaration-bucket hits return binding identity and current/live records share one slot path |
+| `Rules.find('declaration', ...)` / `DeclarationRegistry` | declaration/property modes, dynamic names, import/reference visibility, complex source-order modes not yet encoded in frame lookup | delete per mode as soon as frame lookup encodes that mode and tests prove covered hits/misses do not enter registry search |
+| `Rules.find('mixin'/'function', ...)` / `MixinRegistry` | callable namespace, guard ambiguity, import visibility, candidate collection not yet encoded in callable records | delete simple static callable fallback once callable records cover exact static keys |
+| Public materialization from source declaration nodes | cold public `eval/resolve` API compatibility and unmodeled ownership boundaries | delete from render/eval hot paths once binding values can render directly and public materialization is isolated |
 
 ## Mental Test Matrix
 
@@ -579,9 +661,9 @@ The design must pass these before prototype expansion:
 - Mixin output:
   lookup may cache callable identity; output is not cached unless effect-safe.
 
-## Prototype Plan
+## Implementation Plan
 
-### Prototype 1: Variable Binding Facade
+### Step 1: Variable Binding Facade
 
 Before touching production lookup, run the standalone hot-layout harness:
 
@@ -607,9 +689,9 @@ It simulates:
 - explicit parent-frame scope walks;
 - repeated reads across a leaf frame.
 
-Prototype 1 for production should then create a `BindingFrame` facade over
-existing `ScopeFrame` for ordinary static variable lookup only, using the
-winning hot-layout direction from the harness as the target shape.
+Step 1 for production creates a `BindingFrame` facade over existing
+`ScopeFrame` for ordinary static variable lookup only, using the winning
+hot-layout direction from the harness as the target shape.
 
 Scope:
 
@@ -626,18 +708,37 @@ Scope:
 Keep:
 
 - existing tests as the behavior oracle;
-- existing registries as fallback;
+- existing registries as temporary bridges for unmodeled cases only;
 - no evaluated-value cache.
 
 Success:
 
 - ordinary static variable reference can call one lookup method;
 - no `DeclarationRegistry.find(...)` on covered hot cases;
+- covered simple misses stop at the binding frame instead of falling through
+  broad fallback search;
 - no new node creation or traversal beyond what it deletes;
 - focused reference/mixin/control/import tests pass;
 - hot-path benchmark does not regress.
 
-### Prototype 2: Lookup Cache
+### Step 2: Declaration-Bucket Binding Identity
+
+Make declaration-bucket variable hits return binding/value identity directly.
+This removes the current bridge where `Reference` receives a source
+`VarDeclaration` node and then re-enters declaration finalization.
+
+Success:
+
+- covered static variable hits return binding identity, not source declaration
+  nodes;
+- `:=` writes mutate the resolved binding cell without also mutating the source
+  declaration except where a cold compatibility API explicitly requires it;
+- render/eval of covered variable reads does not call declaration registry or
+  declaration-node finalization;
+- source declarations remain canonical and un-reparented;
+- old fallback branches are deleted for the covered path in the same pass.
+
+### Step 3: Lookup Cache
 
 Add a frame-local lookup cache for covered static variable lookups.
 
@@ -650,13 +751,19 @@ Success:
 - dynamic-name promotion and live-slot registration invalidate correctly;
 - no evaluated node reuse yet.
 
-### Prototype 3: Callable Records
+### Step 4: Callable Records
 
 Move simple static `mixinsByName` lookup into binding records. Keep namespace
 and complex callable lookup behind fallback until a separate prototype proves
 those paths.
 
-### Prototype 1A: Current Hot Layout Harness Result
+Success:
+
+- simple static callable lookup returns hit/miss from binding records;
+- exact static misses do not fall through `MixinRegistry`;
+- complex namespace/guard/import ambiguity returns `UNCOVERED` until modeled.
+
+### Step 1A: Current Hot Layout Harness Result
 
 The harness now asserts the semantic split before timing any layout variant:
 
@@ -736,7 +843,7 @@ Prototype self-prosecution:
 - Evidence boundary: harness numbers only rank prototype storage shapes. They
   do not claim Jess benchmark improvement.
 
-### Prototype 4: Evaluated Value Cache
+### Step 5: Evaluated Value Cache
 
 Only after lookup caching is correct, add effect-gated evaluated-value caching
 on `BindingCell` for static values.
