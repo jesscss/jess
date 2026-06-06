@@ -807,6 +807,7 @@ function lookupScopeFrameVariableBinding(
   ) {
     return undefined;
   }
+  promoteResolvedPendingVarDecls(targetRules, frame);
   const hit = lookupScopeFrameVariable(frame, key, {
     start: opts.start,
     filter: env.filter,

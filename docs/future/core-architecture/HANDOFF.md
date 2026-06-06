@@ -91,19 +91,19 @@ Binding prototype status:
   rejected.
 - Production integration status: the first `ScopeFrame` variable facade,
   source-order/current-read hardening, declaration-bucket binding identity,
-  explicit miss/uncovered states, and on-demand parent-frame coverage are in
-  production for covered static variable references and static `:=` writes.
-  This is not the full binding index yet; callable lookup still uses the
-  existing registry path.
+  explicit miss/uncovered states, on-demand parent-frame coverage, and
+  already-static pending declaration-name promotion are in production for
+  covered static variable references and static `:=` writes. This is not the
+  full binding index yet; callable lookup still uses the existing registry
+  path.
 - Fallback bridges are temporary debt. Covered simple paths must return hit or
   miss from the binding frame and stop. Only unmodeled cold/complex cases may
   route to old registry/search/materialization paths, and every such bridge
   needs a deletion condition in `BINDING-INDEX-PROPOSAL.md` or this handoff.
 - Next binding step, when selected: delete the remaining `UNCOVERED` bridges
   one by one by carrying the missing facts at construction/adoption time:
-  manual-frame indexing state, fallback-frame lookup ownership, and pending
-  dynamic-name promotion state. Do not start lookup caching until those bridge
-  boundaries are narrower.
+  manual-frame indexing state and fallback-frame lookup ownership. Do not start
+  lookup caching until those bridge boundaries are narrower.
 
 ## Active Binding Implementation Lane
 
@@ -353,7 +353,42 @@ next step starts.
      non-snapshot contextual `start`, pending dynamic declaration names,
      prebuilt/manual unindexed frames, and fallback-frame lookup ownership.
 
-7. [ ] Lookup cache prototype.
+7. [x] Promote already-static pending declaration names before facade lookup.
+   Move the existing pending-name promotion step before
+   `lookupScopeFrameVariable(...)` so a dynamic declaration name that has
+   already become static is covered by the binding frame rather than old
+   fallback lookup.
+
+   Scope:
+   - static string `type: variable` reads only
+   - no explicit target
+   - no interpolation/dynamic key
+   - no evaluation of still-dynamic names during lookup
+   - no evaluated-value cache
+
+   Completion gate:
+   - already-static pending dynamic names are promoted before the facade
+     lookup
+   - still-dynamic and async pending names remain `uncovered`
+   - focused pending-name, reference, mixin, control, and declaration tests pass
+   - no new traversal beyond the existing pending-name promotion loop
+   - benchmark/profile leash recorded
+
+   Status:
+   - `Reference.lookupScopeFrameVariableBinding(...)` now calls the existing
+     `promoteResolvedPendingVarDecls(...)` before
+     `lookupScopeFrameVariable(...)`.
+   - The existing promotion routine remains the only pending-name scan; this
+     pass moves it earlier for the covered facade path instead of adding a new
+     scan or cache.
+   - Focused reference coverage now asserts that the promoted declaration is
+     visible through `lookupScopeFrameVariable(...)` after lookup.
+   - Remaining uncovered bridges: explicit targets, interpolated variable keys,
+     non-snapshot contextual `start`, still-dynamic or async pending
+     declaration names, prebuilt/manual unindexed frames, and fallback-frame
+     lookup ownership.
+
+8. [ ] Lookup cache prototype.
    Add a frame-local lookup-identity cache only after the facade behavior is
    proven. Cache binding identity, not evaluated values.
 
@@ -365,7 +400,7 @@ next step starts.
    - no evaluated-node reuse
    - focused behavior tests plus benchmark before/after
 
-8. [ ] Callable records prototype.
+9. [ ] Callable records prototype.
    Move only simple static callable lookup into binding records. Namespace,
    guard matching, candidate evaluation, import visibility, and callable output
    stay out of the facade until separately proven.
@@ -377,7 +412,7 @@ next step starts.
    - benchmark/profile evidence shows whether this attacks the measured
      `Reference.evalNode`/callable lookup bucket
 
-9. [ ] Evaluated-value cache.
+10. [ ] Evaluated-value cache.
    Only after lookup identity is correct, consider effect-gated evaluated-value
    caching on binding cells.
 
@@ -542,6 +577,37 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Deferred declaration-name promotion pass: accepted as an `UNCOVERED` bridge
+  deletion, not as a speed claim. `packages/core/src/tree/reference.ts` now
+  runs the existing `promoteResolvedPendingVarDecls(...)` before
+  `lookupScopeFrameVariable(...)`, so already-static deferred declaration
+  names become covered binding-frame hits instead of routing through the old
+  `findVarDeclarationFast(...)` fallback first. New traversal: no new traversal
+  shape; this reuses the existing deferred-name promotion loop that already
+  ran in the fallback path and moves it earlier for the facade path. No child
+  scan, source walk, `map/filter/sort`, generator, side map, or recursive AST
+  walk was added. New node/materialization: none; no `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  metadata mutation, or array materialization was added. Render path:
+  unchanged. Helper/API surface: no new helper or public API added. Metadata
+  mutations: the existing promotion mutates `pendingDeclarationNames` and
+  `declarationBucketsByName` as binding index state; this pass does not add a
+  new metadata mutation shape. Evidence: focused
+  `scope-frame/reference/declaration/mixin/control` tests passed (`359`
+  tests), including still-dynamic and async deferred-name cases; eslint for
+  touched files passed; `@jesscss/core` build passed. Post-patch profiler
+  status on `benchmark-v39.less`: `Reference.evalNode` `482` calls / `5.77ms`,
+  `Rules.find` `68` calls / `0.37ms`, still only function keys for that
+  fixture. Static node-creation audit remained `reference.ts` `21`, global
+  `new-node` `321`, `with-surface` `34`, `copy-leaves` `31`, `derive` `30`.
+  Stable hot-path sanity was usable for all five tracked fixtures:
+  `functions` `12.67ms`, `import-reference` `18.16ms`, `mixins-guards`
+  `16.43ms`, `extend-chaining` `5.11ms`, and `media` `6.30ms`. Danger-token
+  prosecution: the `.inherit(...)`/`.adopt(...)` text appears only in the
+  forbidden-machinery checklist; this pass adds no such calls. The
+  `sourceNode` assertion added in `reference.test.ts` is test-only identity
+  proof that the promoted binding entry points at the canonical declaration; it
+  does not mutate parent/source metadata.
 - Parent-frame coverage pass: accepted as an `UNCOVERED` bridge deletion, not
   as a speed claim. `packages/core/src/tree/rules.ts` now wires a frame parent
   by building/returning the nearest ancestor `Rules` frame on demand, and

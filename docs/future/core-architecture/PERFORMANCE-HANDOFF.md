@@ -1123,6 +1123,55 @@ Result status:
 - `extend-chaining`: usable, median `5.10ms`;
 - `media`: usable, median `6.25ms`.
 
+### Binding Step 7 Pending Declaration-Name Promotion
+
+Date: 2026-06-06.
+
+Change: already-static pending dynamic declaration names are promoted before
+`lookupScopeFrameVariable(...)`, so they can resolve through the binding facade
+instead of reaching old fast-var fallback first.
+
+Pre-edit CPU/counter status:
+
+- `benchmark-v39.less` profiler status: `Reference.evalNode` `482` calls /
+  `5.44ms`, `Rules.find` `68` calls / `0.36ms`;
+- top reference keys were repeated variable reads: `value` `230`, `val` `68`,
+  `size` `40`, `hue` `36`, `idx` `32`;
+- static node-creation audit showed `reference.ts` at `21` creation or copy
+  surfaces and global totals `new-node` `321`, `with-surface` `34`,
+  `copy-leaves` `31`, `derive` `30`.
+
+Post-edit CPU/counter status:
+
+- `benchmark-v39.less` profiler status: `Reference.evalNode` `482` calls /
+  `5.77ms`, `Rules.find` `68` calls / `0.37ms`;
+- `Rules.find` stayed only function lookup for this fixture:
+  `function:hsl` `36`, `function:percentage` `24`, `function:range` `8`;
+- top reference keys stayed `value` `230`, `val` `68`, `size` `40`,
+  `hue` `36`, `idx` `32`;
+- static node-creation audit stayed `reference.ts` `21`, global totals
+  `new-node` `321`, `with-surface` `34`, `copy-leaves` `31`, `derive` `30`.
+
+Interpretation: status only, not speed proof. The code-path proof is that the
+existing pending-name promotion loop now runs before the facade lookup. The
+focused pending-name test asserts the promoted declaration is visible through
+`lookupScopeFrameVariable(...)`; still-dynamic and async pending-name tests
+remain covered and continue to avoid registry fallback.
+
+Sanity command:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result status:
+
+- `functions`: usable, median `12.67ms`;
+- `import-reference`: usable, median `18.16ms`;
+- `mixins-guards`: usable, median `16.43ms`;
+- `extend-chaining`: usable, median `5.11ms`;
+- `media`: usable, median `6.30ms`.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

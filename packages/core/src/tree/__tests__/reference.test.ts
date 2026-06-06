@@ -4,7 +4,7 @@ import { JsExpression } from '../js-expr.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
-import { buildScopeFrame } from '../scope-frame.js';
+import { buildScopeFrame, lookupScopeFrameVariable } from '../scope-frame.js';
 let context: Context;
 let expectedAsyncRulesContext: RulesClass | undefined;
 
@@ -2742,6 +2742,11 @@ describe('reference', () => {
         expect(declarationHits).toHaveLength(0);
         expect(frame.pendingDeclarationNames).toHaveLength(0);
         expect(frame.declarationBucketsByName.get('x')?.at(-1)?.sourceNode).toBe(dynamicDecl);
+        const promotedHit = lookupScopeFrameVariable(frame, 'x', {
+          bailOnPendingDeclarations: true
+        });
+        expect(promotedHit.kind).toBe('declaration');
+        expect(promotedHit.kind === 'declaration' && promotedHit.entry.sourceNode).toBe(dynamicDecl);
       } finally {
         RulesClass.prototype.find = originalFind;
       }
