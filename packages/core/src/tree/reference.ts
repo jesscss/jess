@@ -1500,10 +1500,6 @@ function finalizeRuntimeVarBindingResult(
       context.popReference();
       return evald;
     }
-    if (options.textOnly === true && canReturnReferenceValue(evald)) {
-      context.popReference();
-      return evald;
-    }
     if (canReturnReferenceValue(evald)) {
       context.popReference();
       return evald;
@@ -1737,10 +1733,13 @@ function evaluateReferenceValueNode(
     if (isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset') {
       return declValue;
     }
-    if (options.reuseRenderTextContainers === true && canReturnReferenceValue(declValue)) {
-      return declValue;
-    }
-    if (options.reuseSourceFreeLeaves === true && canReturnReferenceValue(declValue)) {
+    if (
+      (
+        options.reuseRenderTextContainers === true
+        || options.reuseSourceFreeLeaves === true
+      )
+      && canReturnReferenceValue(declValue)
+    ) {
       return declValue;
     }
     return copyWithReusableLeaves(declValue).eval(context);
@@ -2032,56 +2031,78 @@ function evaluateReferenceNode(args: {
     directStaticRender
   } = args;
   context.pushReference();
-  const finishLookup = ({ returnVal, valueKey }: {
-    returnVal: RulesLookupResult | unknown;
-    valueKey: NormalizedLookupKey;
-  }): MaybePromise<Node> => {
-    const directRenderValue = directStaticRender === true
-      ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
-      : undefined;
-    if (directRenderValue) {
-      return directRenderValue;
-    }
-    return finalizeReferenceLookupResult({
-      referenceNode,
-      returnVal,
-      valueKey: valueKey as NormalizedLookupKey,
-      lookupType,
-      fallbackValue,
-      context,
-      textOnly
-    });
-  };
-  const runLookup = ([resolvedTarget, valueKey]: [unknown, NormalizedLookupKey]) => lookupResolvedReference({
-    referenceNode,
-    resolvedTarget,
-    lookupType,
-    valueKey: valueKey as NormalizedLookupKey,
-    target,
-    originalFilter,
-    context
-  });
-  const resolveTargetValue = ([resolvedTarget, valueKey]: [unknown, NormalizedLookupKey]) => resolveReferenceTargetValue({
-    referenceNode,
-    resolvedTarget,
-    valueKey,
-    context
-  });
-  const evaluateKey = (resolved: unknown) => evaluateReferenceKey(key, resolved, context);
   const initialTarget = resolveInitialReferenceTarget(referenceNode, context);
   if (isThenable(initialTarget)) {
     return Promise.resolve(initialTarget)
-      .then(evaluateKey)
-      .then(resolveTargetValue)
-      .then(runLookup)
-      .then(finishLookup);
+      .then(resolved => evaluateReferenceKey(key, resolved, context))
+      .then(([resolvedTarget, valueKey]) => resolveReferenceTargetValue({
+        referenceNode,
+        resolvedTarget,
+        valueKey,
+        context
+      }))
+      .then(([resolvedTarget, valueKey]) => lookupResolvedReference({
+        referenceNode,
+        resolvedTarget,
+        lookupType,
+        valueKey,
+        target,
+        originalFilter,
+        context
+      }))
+      .then(({ returnVal, valueKey }) => {
+        const directRenderValue = directStaticRender === true
+          ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
+          : undefined;
+        if (directRenderValue) {
+          return directRenderValue;
+        }
+        return finalizeReferenceLookupResult({
+          referenceNode,
+          returnVal,
+          valueKey,
+          lookupType,
+          fallbackValue,
+          context,
+          textOnly
+        });
+      });
   }
-  const evaluatedKey = evaluateKey(initialTarget);
+  const evaluatedKey = evaluateReferenceKey(key, initialTarget, context);
   if (isThenable(evaluatedKey)) {
     return Promise.resolve(evaluatedKey)
-      .then(resolveTargetValue)
-      .then(runLookup)
-      .then(finishLookup);
+      .then(([resolvedTarget, valueKey]) => resolveReferenceTargetValue({
+        referenceNode,
+        resolvedTarget,
+        valueKey,
+        context
+      }))
+      .then(([resolvedTarget, valueKey]) => lookupResolvedReference({
+        referenceNode,
+        resolvedTarget,
+        lookupType,
+        valueKey,
+        target,
+        originalFilter,
+        context
+      }))
+      .then(({ returnVal, valueKey }) => {
+        const directRenderValue = directStaticRender === true
+          ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
+          : undefined;
+        if (directRenderValue) {
+          return directRenderValue;
+        }
+        return finalizeReferenceLookupResult({
+          referenceNode,
+          returnVal,
+          valueKey,
+          lookupType,
+          fallbackValue,
+          context,
+          textOnly
+        });
+      });
   }
   const resolvedValue = resolveReferenceTargetValue({
     referenceNode,
@@ -2091,21 +2112,78 @@ function evaluateReferenceNode(args: {
   });
   if (isThenable(resolvedValue)) {
     return Promise.resolve(resolvedValue)
-      .then(runLookup)
-      .then(finishLookup);
+      .then(([resolvedTarget, valueKey]) => lookupResolvedReference({
+        referenceNode,
+        resolvedTarget,
+        lookupType,
+        valueKey,
+        target,
+        originalFilter,
+        context
+      }))
+      .then(({ returnVal, valueKey }) => {
+        const directRenderValue = directStaticRender === true
+          ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
+          : undefined;
+        if (directRenderValue) {
+          return directRenderValue;
+        }
+        return finalizeReferenceLookupResult({
+          referenceNode,
+          returnVal,
+          valueKey,
+          lookupType,
+          fallbackValue,
+          context,
+          textOnly
+        });
+      });
   }
   const lookup = lookupResolvedReference({
     referenceNode,
     resolvedTarget: resolvedValue[0],
     lookupType,
-    valueKey: resolvedValue[1] as NormalizedLookupKey,
+    valueKey: resolvedValue[1],
     target,
     originalFilter,
     context
   });
-  return isThenable(lookup)
-    ? Promise.resolve(lookup).then(finishLookup)
-    : finishLookup(lookup);
+  if (isThenable(lookup)) {
+    return Promise.resolve(lookup)
+      .then(({ returnVal, valueKey }) => {
+        const directRenderValue = directStaticRender === true
+          ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
+          : undefined;
+        if (directRenderValue) {
+          return directRenderValue;
+        }
+        return finalizeReferenceLookupResult({
+          referenceNode,
+          returnVal,
+          valueKey,
+          lookupType,
+          fallbackValue,
+          context,
+          textOnly
+        });
+      });
+  }
+
+  const directRenderValue = directStaticRender === true
+    ? finalizeDirectRawRenderValue(referenceNode, lookup.returnVal, context)
+    : undefined;
+  if (directRenderValue) {
+    return directRenderValue;
+  }
+  return finalizeReferenceLookupResult({
+    referenceNode,
+    returnVal: lookup.returnVal,
+    valueKey: lookup.valueKey,
+    lookupType,
+    fallbackValue,
+    context,
+    textOnly
+  });
 }
 
 /**

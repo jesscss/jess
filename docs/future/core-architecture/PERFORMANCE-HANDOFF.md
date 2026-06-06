@@ -365,6 +365,40 @@ Next measured target:
   value surfaces, `evaluateReferenceValueNode(...)` copy pressure, declaration
   finalization, merged assign normalization, and key evaluation/conversion.
 
+### 2026-06-06 Reference Main Eval Lookup Surface Cut
+
+Hypothesis: the raw render path was no longer paying eager lookup/finalizer
+closures, but the main `Reference` eval/render path still allocated the same
+kind of closures before ordinary synchronous lookup. This pass deletes that
+setup work without changing lookup semantics or claiming a measured speed win.
+
+Patch kept:
+
+- `evaluateReferenceNode(...)` no longer allocates local `finishLookup`,
+  `runLookup`, `resolveTargetValue`, or `evaluateKey` closures before the sync
+  path can run;
+- the direct static-render check is preserved for sync and async lookup
+  results;
+- `finalizeRuntimeVarBindingResult(...)` no longer checks
+  `canReturnReferenceValue(...)` twice for the same evaluated binding;
+- `evaluateReferenceValueNode(...)` folds the two source-reuse static-return
+  branches into one condition.
+
+Evidence:
+
+- `pnpm exec eslint packages/core/src/tree/reference.ts` passed;
+- `pnpm --filter @jesscss/core build` passed with the existing `js-expr.ts`
+  direct-eval bundler warning;
+- focused Reference/mixin tests passed after build: `226` tests;
+- broader affected tests passed: `410` tests across `reference`, `mixin`,
+  `declaration`, `ruleset`, `list`, `sequence`, `condition`, and `operation`;
+- hot-path sanity benchmark after this patch:
+  `functions` median `13.70ms`, `import-reference` median `20.68ms`,
+  `mixins-guards` median `17.58ms`, `extend-chaining` median `5.69ms`, and
+  `media` median `6.68ms`; all five signals were usable;
+- no speed claim. This pass did not capture a clean before/after benchmark
+  pair, so the benchmark is a leash sanity line only.
+
 ### 2026-06-05 Reference Raw Lookup Surface Cut
 
 Hypothesis: `Reference` still had obvious sync-path setup work that could be
