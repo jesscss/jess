@@ -30,8 +30,9 @@ together.
   `binding = frame.lookup(plan)`.
 - Preserve both supported semantics:
   - Less contextual lookup: source-order aware, last matching declaration wins.
-  - Jess/Sass-style live binding: reads see the current cell value, not a copied
-    declaration snapshot.
+  - Jess/Sass-style live binding: ordinary reads see the current binding cell,
+    including later same-rules declarations and assignment writes, while
+    explicit snapshot/contextual reads keep source-order behavior.
 - Cache lookup identity before caching evaluated values.
 - Treat evaluated-value caching as a narrow optimization gated by effect and
   dependency facts.
@@ -105,6 +106,10 @@ Important flags:
 - `B_STATIC_KEY`: key is stable and can be indexed directly.
 - `B_DYNAMIC_KEY_PENDING`: key cannot be indexed yet.
 - `B_LIVE`: value is read from a live cell.
+- `B_CONTEXTUAL_READ`: lookup must use source-order occurrence position instead
+  of the key's current cell pointer.
+- `B_ASSIGNMENT_TARGET`: write mutates an existing scoped binding instead of
+  appending a shadow declaration.
 - `B_LESS_CONTEXTUAL`: source-order/start boundary matters.
 - `B_EFFECTS_SCOPE`: evaluating may emit rules/declarations/mixins/functions.
 - `B_EFFECTS_VALUE`: evaluating may depend on live/dynamic values.
@@ -143,6 +148,33 @@ interface BindingCell {
 
 Live binding is not a separate lookup mode. It is a binding record whose cell
 can change. Reads always go through the cell.
+
+Important correction: "live" is not only for loop vars, mixin params, or
+`@arguments`. Jess also supports same-rules live reads:
+
+```scss
+$x: red;
+a: $x;  // blue
+b: $!x; // red
+$x: blue;
+```
+
+That requires binding identity to be separate from declaration occurrence:
+
+- `$x` is a current-cell read. It resolves to the key's current binding cell in
+  the active frame chain.
+- `$!x` is a contextual/snapshot read. It resolves by declaration occurrence and
+  source position, so later same-frame writes/declarations do not change it.
+- `:` appends a declaration occurrence. In the same frame, it also updates the
+  key's current-cell pointer for ordinary live reads in that frame.
+- `:=` does not append a shadow occurrence. It resolves the current scoped
+  binding target and mutates that target cell.
+
+So a frame needs two cheap views of the same slots:
+
+- ordered occurrence slots for source-order/contextual lookup;
+- current-cell slot per key for live/current lookup and assignment target
+  resolution.
 
 Static immutable declarations do not need full cell objects if split arrays are
 faster. Live bindings need mutable value/version storage; static declarations
@@ -227,12 +259,20 @@ Static registration should do only:
 2. allocate `slot = slotCount++`;
 3. write parallel slot arrays;
 4. append the slot id to the key table;
-5. increment `lookupVersion` only when lookup identity changes.
+5. update the key's current-cell pointer when the declaration participates in
+   live/current reads for that frame;
+6. increment `lookupVersion` only when lookup identity changes.
 
 Live value updates should increment the slot/cell version, not the whole frame
 lookup version, unless the binding appears, disappears, or changes precedence.
 This keeps lookup caches valid across ordinary live value writes while still
 invalidating evaluated-value caches.
+
+Assignment writes (`:=`) are value updates to an existing resolved cell. They
+increment that cell's value version, but not the frame lookup version unless the
+write also changes binding identity. Shadow declarations (`:`) append an
+occurrence and can change the frame/key current pointer, so they invalidate the
+frame/key lookup identity for current reads.
 
 ### H3: Explicit Scope Loops Beat Prototype Scope Magic
 
@@ -338,12 +378,23 @@ profile justifies it.
 
 ### Jess/Sass-Style Live Binding
 
-Live binding means a reference resolves to a cell, not a copied value. If the
-cell changes, later reads see the new value.
+Live binding means an ordinary reference resolves to a current cell, not a
+copied value or source-order snapshot. If the current cell changes, reads that
+point at that cell see the new value.
 
 Rules:
 
-- Live slots shadow static records according to frame topology.
+- Live/current reads (`$x`) use the current-cell pointer for the key in the
+  active frame chain.
+- Contextual/snapshot reads (`$!x`) use source-order occurrence lookup and
+  ignore later same-frame current-cell changes.
+- Same-frame `:` declarations append an occurrence and update the frame/key
+  current-cell pointer for ordinary live reads.
+- Nested `:` declarations shadow in the child frame only.
+- `:=` resolves the current scoped binding target and mutates that target cell;
+  it does not create a child-frame shadow.
+- Live slots shadow static records according to frame topology because they are
+  current-cell records, not a separate lookup path.
 - A cached lookup hit may stay valid if it points at the same live cell and the
   frame lookup version has not changed.
 - Cached evaluated values must include the cell version or be rejected.
@@ -352,6 +403,30 @@ Rules:
 
 This avoids treating Sass-style behavior as an exception layered on top of Less
 lookup.
+
+Example:
+
+```scss
+$x: red;
+$y: black;
+& {
+  $x := blue; // mutate currently scoped $x
+  $y: white; // shadow only inside this nested frame
+}
+a: $x; // blue
+b: $y; // black
+```
+
+The binding frame must therefore support three operations without branching
+through unrelated registries:
+
+1. `lookupCurrent(key, kind)`: read the current cell for `$x`.
+2. `lookupOccurrence(key, kind, start)`: read the source-order occurrence for
+   `$!x` and Less contextual lookup.
+3. `lookupAssignmentTarget(key, kind)`: find the cell that `:=` mutates.
+
+The prototype must define the miss behavior for `:=` explicitly from Jess/Sass
+semantics instead of inventing it in `Reference`.
 
 ### Dynamic Names
 
@@ -395,7 +470,7 @@ interface LookupCacheEntry {
 
 Good cache candidates:
 
-- static variable key in stable frame;
+- static variable key in stable frame when the read mode is part of the key;
 - parent-frame hit for an ordinary variable;
 - static function key;
 - static mixin key with no pending dynamic namespace ambiguity;
@@ -406,6 +481,8 @@ Bad cache candidates:
 - unresolved dynamic names for the same kind;
 - lookup that depends on child-surface visibility not represented in the key;
 - lookup that depends on source-order `start` but has no stable start bucket;
+- current-cell lookup whose frame/key current pointer can change without an
+  encoded version;
 - recursive lookup currently inside the same source node.
 
 ### Evaluated Value Cache
@@ -417,6 +494,10 @@ Safe candidates:
 - static scalar/list/sequence value whose dependency graph is static;
 - live cell value after `prepareValue` has settled and cell version is part of
   the cache key;
+- current-cell reads where both binding identity version and cell value version
+  are represented in the cache key;
+- snapshot/contextual reads where the occurrence slot and source-order start
+  bucket are represented in the cache key;
 - declaration value proven not to emit declarations/rules/mixins/functions.
 
 Unsafe candidates:
@@ -424,6 +505,8 @@ Unsafe candidates:
 - mixin or callable output;
 - rules/ruleset values that can emit or register nodes;
 - declaration values with same-key dependencies;
+- live/current reads after same-frame `:` changes unless the current-pointer
+  version is part of the key;
 - dynamic JS functions or plugin visitors with side effects;
 - values requiring parent/source metadata for public materialization.
 
@@ -444,8 +527,10 @@ paths use the same lookup-cache mechanism.
 
 ### Current `ScopeFrame.liveSlotsByName`
 
-Becomes live binding records in the same frame. The cell is mutable; the lookup
-path is not special.
+Becomes current-cell records in the same frame. The cell is mutable; the lookup
+path is not special. This is broader than today's named live-slot surface:
+ordinary same-frame declarations also need current-cell behavior for Jess live
+reads, while `$!` and Less contextual lookup use occurrence/source-order lookup.
 
 ### Current `DeclarationRegistry`
 
@@ -473,6 +558,11 @@ The design must pass these before prototype expansion:
 - Less contextual plus live binding:
   a live param named `x` shadows static `@x`, but static same-scope declarations
   still obey source order where no live slot exists.
+- Jess same-rules current read:
+  `$x: red; a: $x; b: $!x; $x: blue;` renders `a` from blue and `b` from red.
+- Jess assignment versus shadow:
+  `$x: red; $y: black; & { $x := blue; $y: white; } a: $x; b: $y;` renders
+  outer `a` from blue and outer `b` from black.
 - Dynamic declaration names:
   pending names do not cause repeated hot crawling; promotion invalidates the
   relevant frame version.
@@ -510,6 +600,9 @@ It simulates:
 
 - append-only static registration writes;
 - live slot registration and live value updates;
+- same-frame current-cell pointer updates;
+- contextual/snapshot occurrence reads;
+- assignment-target writes that mutate an existing scoped cell;
 - same-key Less source-order lookup;
 - explicit parent-frame scope walks;
 - repeated reads across a leaf frame.
@@ -526,7 +619,9 @@ Scope:
 - no dynamic key;
 - no callable lookup;
 - preserve Less start/source-order semantics;
-- preserve live cell shadowing.
+- preserve same-frame current-cell reads;
+- preserve `$!` snapshot/contextual reads;
+- preserve `:=` assignment target mutation versus `:` shadowing.
 
 Keep:
 
@@ -607,6 +702,8 @@ Initial conclusions:
 - `Map` slot arrays are the safest first production prototype target;
 - planned numeric ids are worth a later parser/registration prototype for
   large frames, but not as a prerequisite for the first binding facade.
+- the harness so far is a layout benchmark, not a semantic proof for same-rules
+  current reads, `$!` snapshot reads, or `:=` assignment mutation.
 
 These are prototype numbers, not production Jess speed claims.
 
