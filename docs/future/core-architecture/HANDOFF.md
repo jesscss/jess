@@ -77,6 +77,20 @@ Benchmark leash:
 
 Immediate benchmark commands are defined in `PERFORMANCE-HANDOFF.md`.
 
+Binding prototype status:
+
+- `scripts/prototype-binding-frame-layout.mjs` now proves the semantic split
+  required by `BINDING-INDEX-PROPOSAL.md` before timing any layout variant:
+  same-frame current reads, `$!`/occurrence reads, `:=` parent-cell mutation,
+  and child `:` shadowing.
+- Current harness evidence still favors `Map` slot arrays for the first
+  string-key production facade. Planned numeric ids are promising only when the
+  reference already carries the id; string-to-id conversion on each read remains
+  rejected.
+- Next binding step, when selected: prototype a production `BindingFrame`
+  facade for ordinary static variable references and run it against focused
+  reference tests before touching broader callable lookup.
+
 Next deep-cut queue:
 
 0. [x] Move callable `default()` guard classification out of
@@ -199,6 +213,28 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Current binding prototype pass: accepted as design/harness work only, not
+  production eval/render machinery. The script adds one current-slot pointer
+  table per prototype frame so current reads and `:=` assignment do not scan
+  occurrence arrays. It adds no AST nodes, copies, `.inherit(...)`, production
+  traversal, parent/source metadata mutation, or render materialization. The
+  explicit parent-frame loops are prototype lookup semantics and are not wired
+  into production. Evidence: `pnpm run prototype:binding-frame-layout`,
+  small-frame `node scripts/prototype-binding-frame-layout.mjs --frames 3
+  --keys 48 --declarations 192 --reads 1000000 --writes 100000`, large-frame
+  `node scripts/prototype-binding-frame-layout.mjs --frames 10 --keys 512
+  --declarations 2048 --reads 1000000 --writes 100000`, plus
+  `pnpm run verify:aggressive-cutting-review` and `git diff --check`.
+  Performance remains prototype-layout evidence, not Jess runtime evidence.
+- Current binding prototype danger-token prosecution: the added `for` loop only
+  runs variant semantic assertions before timing starts; the added `while (f)`
+  loops model the exact parent-frame lookup shape required for current reads
+  and `:=` assignment, and are not production traversal. The added `Map`, array,
+  and record-object allocations are measured harness variants, not accepted
+  runtime machinery. The added `throw new Error(...)` is assertion failure for
+  invalid prototype semantics, not expected-miss runtime control flow. The
+  `.inherit(...)` text appears only in this prosecution sentence as a forbidden
+  production mechanism; this pass adds none.
 - New traversal: none added. Pass 4 kept the existing lookup sequence but
   removed eagerly allocated lookup/finalizer closures from
   `evaluateReferenceNode(...)`. No parent/source walk, side-map lookup,

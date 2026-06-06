@@ -656,41 +656,48 @@ Move simple static `mixinsByName` lookup into binding records. Keep namespace
 and complex callable lookup behind fallback until a separate prototype proves
 those paths.
 
-### Prototype 1A: Initial Hot Layout Harness Result
+### Prototype 1A: Current Hot Layout Harness Result
 
-First harness results on Node `v24.11.1` / Darwin arm64:
+The harness now asserts the semantic split before timing any layout variant:
+
+- current-cell read sees the latest same-frame declaration;
+- occurrence/snapshot read sees the source-order prior declaration;
+- assignment write mutates the currently scoped parent cell;
+- child `:` declaration shadows locally without mutating the parent cell.
+
+Current harness results on Node `v24.11.1` / Darwin arm64:
 
 Default shape:
 
 ```text
 frames=6 keys=192 declarations/frame=768 reads=1000000 writes=100000
-map-slot-arrays          read median=11.00ms write+read median=1.52ms
-null-proto-slot-arrays   read median=17.13ms write+read median=2.40ms
-numeric-key-from-string  read median=33.00ms write+read median=5.66ms
-numeric-key-planned-id   read median=13.52ms write+read median=1.95ms
-record-objects-map       read median=14.87ms write+read median=2.25ms
+map-slot-arrays          read median=11.04ms write+read median=1.77ms
+null-proto-slot-arrays   read median=16.49ms write+read median=2.74ms
+numeric-key-from-string  read median=32.09ms write+read median=5.81ms
+numeric-key-planned-id   read median=13.58ms write+read median=2.34ms
+record-objects-map       read median=14.97ms write+read median=2.17ms
 ```
 
 Small-frame shape:
 
 ```text
 frames=3 keys=48 declarations/frame=192 reads=1000000 writes=100000
-map-slot-arrays          read median=11.46ms write+read median=1.57ms
-null-proto-slot-arrays   read median=17.46ms write+read median=2.46ms
-numeric-key-from-string  read median=32.95ms write+read median=5.42ms
-numeric-key-planned-id   read median=14.73ms write+read median=2.09ms
-record-objects-map       read median=17.42ms write+read median=2.17ms
+map-slot-arrays          read median=13.13ms write+read median=1.76ms
+null-proto-slot-arrays   read median=17.74ms write+read median=2.85ms
+numeric-key-from-string  read median=32.82ms write+read median=5.54ms
+numeric-key-planned-id   read median=17.21ms write+read median=2.47ms
+record-objects-map       read median=15.56ms write+read median=1.90ms
 ```
 
 Large-frame shape:
 
 ```text
 frames=10 keys=512 declarations/frame=2048 reads=1000000 writes=100000
-map-slot-arrays          read median=12.79ms write+read median=2.14ms
-null-proto-slot-arrays   read median=17.49ms write+read median=2.86ms
-numeric-key-from-string  read median=34.36ms write+read median=5.95ms
-numeric-key-planned-id   read median=12.63ms write+read median=2.07ms
-record-objects-map       read median=17.55ms write+read median=2.83ms
+map-slot-arrays          read median=16.77ms write+read median=2.49ms
+null-proto-slot-arrays   read median=17.21ms write+read median=3.39ms
+numeric-key-from-string  read median=34.60ms write+read median=7.15ms
+numeric-key-planned-id   read median=12.87ms write+read median=2.47ms
+record-objects-map       read median=17.41ms write+read median=2.65ms
 ```
 
 Initial conclusions:
@@ -699,24 +706,33 @@ Initial conclusions:
 - null-prototype tables did not win this harness;
 - numeric ids are only viable if the reference already carries the id;
   converting string keys on every read is catastrophic;
-- `Map` slot arrays are the safest first production prototype target;
-- planned numeric ids are worth a later parser/registration prototype for
-  large frames, but not as a prerequisite for the first binding facade.
-- the harness so far is a layout benchmark, not a semantic proof for same-rules
-  current reads, `$!` snapshot reads, or `:=` assignment mutation.
+- `Map` slot arrays are the safest first production prototype target for
+  string-key references;
+- planned numeric ids win the large-frame read shape only when the reference
+  already carries the numeric id;
+- converting string keys to numeric ids on every read remains catastrophic;
+- planned numeric ids are worth a later parser/registration prototype, but not
+  as a prerequisite for the first binding facade.
+- the harness now proves the core current/occurrence/assignment split, but it
+  is still not production Jess behavior proof until a facade runs against real
+  reference tests.
 
 These are prototype numbers, not production Jess speed claims.
 
 Prototype self-prosecution:
 
 - New traversal: the harness uses explicit loops to model candidate scope walks
-  and slot scans. It does not add traversal to production eval/render.
+  and slot scans. Assignment lookup adds the same parent-frame loop shape as
+  current reads. It does not add traversal to production eval/render.
 - New maps/arrays/objects: the harness intentionally compares `Map`,
   null-prototype objects, numeric key arrays, slot arrays, and record objects.
-  These are measured candidates, not accepted runtime machinery.
+  It now adds one current-slot pointer table per frame so live/current lookup
+  does not scan occurrence arrays. These are measured candidates, not accepted
+  runtime machinery.
 - Render path: untouched. The prototype does not evaluate or stringify nodes.
 - Metadata mutations: none in production. Live writes in the harness mutate
-  numeric/value slots only to model Jess/Sass-style live binding.
+  numeric/value slots only to model Jess/Sass-style live binding and `:=`
+  assignment.
 - Evidence boundary: harness numbers only rank prototype storage shapes. They
   do not claim Jess benchmark improvement.
 

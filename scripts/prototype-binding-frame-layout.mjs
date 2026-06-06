@@ -63,6 +63,11 @@ console.log(`node=${process.version} platform=${process.platform}/${process.arch
 console.log(`frames=${config.frames} keys=${config.keys} declarations/frame=${config.declarationsPerFrame} reads=${config.reads} writes=${config.writes}`);
 
 for (const variant of variants) {
+  assertVariantSemantics(variant);
+}
+console.log(`semantic assertions=passed`);
+
+for (const variant of variants) {
   for (let i = 0; i < config.warmup; i++) {
     runVariant(variant);
   }
@@ -105,6 +110,33 @@ function runVariant(variant) {
   return { readMs, writeMs, checksum, writeChecksum };
 }
 
+function assertVariantSemantics(variant) {
+  const k1 = variant.plannedNumericKey === true ? keyToId('k1') : 'k1';
+  const k2 = variant.plannedNumericKey === true ? keyToId('k2') : 'k2';
+  const frame = variant.createFrame(undefined, 0);
+  variant.registerStatic(frame, 'k1', 'red', 0);
+  variant.registerStatic(frame, 'k1', 'blue', 2);
+  assertEqual(variant.readCurrent(frame, k1), 'blue', `${variant.name} current read sees same-frame latest`);
+  assertEqual(variant.readOccurrence(frame, k1, 1), 'red', `${variant.name} snapshot read sees source-order prior`);
+  assertEqual(variant.readOccurrence(frame, k1, NO_START_LIMIT), 'blue', `${variant.name} occurrence read sees latest before unbounded start`);
+
+  const parent = variant.createFrame(undefined, 10);
+  variant.registerStatic(parent, 'k1', 'red', 0);
+  variant.registerStatic(parent, 'k2', 'black', 1);
+  const child = variant.createFrame(parent, 11);
+  variant.writeAssignment(child, k1, 'blue');
+  variant.registerStatic(child, 'k2', 'white', 0);
+  assertEqual(variant.readCurrent(parent, k1), 'blue', `${variant.name} assignment mutates parent binding`);
+  assertEqual(variant.readCurrent(parent, k2), 'black', `${variant.name} child declaration does not mutate parent binding`);
+  assertEqual(variant.readCurrent(child, k2), 'white', `${variant.name} child declaration shadows locally`);
+}
+
+function assertEqual(actual, expected, label) {
+  if (actual !== expected) {
+    throw new Error(`${label}: expected ${expected}, got ${actual}`);
+  }
+}
+
 function buildFrameChain(variant) {
   let parent;
   let first;
@@ -130,26 +162,33 @@ function makeMapSlotVariant() {
   return {
     name: 'map-slot-arrays',
     createFrame(parent, frameId) {
-      return createBaseFrame(parent, frameId, new Map());
+      return createBaseFrame(parent, frameId, new Map(), new Map());
     },
     registerStatic(frame, key, value, order) {
       const slot = addSlot(frame, SLOT_KIND_VARIABLE, value, order, 0);
       appendMapSlot(frame.variableSlots, key, slot);
+      frame.currentVariableSlots.set(key, slot);
     },
     registerLive(frame, key, value, order) {
       const slot = addSlot(frame, SLOT_KIND_VARIABLE, value, order, 1);
       frame.liveVersion[slot] = 0;
       appendMapSlot(frame.variableSlots, key, slot);
+      frame.currentVariableSlots.set(key, slot);
     },
     writeLive(frame, key, value) {
-      const slot = lookupLocalSlotMap(frame, key, NO_START_LIMIT);
-      if (slot >= 0 && frame.slotFlags[slot] === 1) {
-        frame.slotValue[slot] = value;
-        frame.liveVersion[slot]++;
-      }
+      writeAssignmentSlot(frame, key, value, lookupCurrentSlotMap);
     },
     read(frame, key, startOrder) {
       return readFromFrameChain(frame, key, startOrder, lookupLocalSlotMap);
+    },
+    readCurrent(frame, key) {
+      return readCurrentFromFrameChain(frame, key, lookupCurrentSlotMap);
+    },
+    readOccurrence(frame, key, startOrder) {
+      return readFromFrameChain(frame, key, startOrder, lookupLocalSlotMap);
+    },
+    writeAssignment(frame, key, value) {
+      writeAssignmentSlot(frame, key, value, lookupCurrentSlotMap);
     }
   };
 }
@@ -158,26 +197,33 @@ function makeNullProtoSlotVariant() {
   return {
     name: 'null-proto-slot-arrays',
     createFrame(parent, frameId) {
-      return createBaseFrame(parent, frameId, Object.create(null));
+      return createBaseFrame(parent, frameId, Object.create(null), Object.create(null));
     },
     registerStatic(frame, key, value, order) {
       const slot = addSlot(frame, SLOT_KIND_VARIABLE, value, order, 0);
       appendObjectSlot(frame.variableSlots, key, slot);
+      frame.currentVariableSlots[key] = slot;
     },
     registerLive(frame, key, value, order) {
       const slot = addSlot(frame, SLOT_KIND_VARIABLE, value, order, 1);
       frame.liveVersion[slot] = 0;
       appendObjectSlot(frame.variableSlots, key, slot);
+      frame.currentVariableSlots[key] = slot;
     },
     writeLive(frame, key, value) {
-      const slot = lookupLocalSlotObject(frame, key, NO_START_LIMIT);
-      if (slot >= 0 && frame.slotFlags[slot] === 1) {
-        frame.slotValue[slot] = value;
-        frame.liveVersion[slot]++;
-      }
+      writeAssignmentSlot(frame, key, value, lookupCurrentSlotObject);
     },
     read(frame, key, startOrder) {
       return readFromFrameChain(frame, key, startOrder, lookupLocalSlotObject);
+    },
+    readCurrent(frame, key) {
+      return readCurrentFromFrameChain(frame, key, lookupCurrentSlotObject);
+    },
+    readOccurrence(frame, key, startOrder) {
+      return readFromFrameChain(frame, key, startOrder, lookupLocalSlotObject);
+    },
+    writeAssignment(frame, key, value) {
+      writeAssignmentSlot(frame, key, value, lookupCurrentSlotObject);
     }
   };
 }
@@ -187,29 +233,36 @@ function makeNumericSlotVariant(name, plannedNumericKey) {
     name,
     plannedNumericKey,
     createFrame(parent, frameId) {
-      const frame = createBaseFrame(parent, frameId, new Array(config.keys));
+      const frame = createBaseFrame(parent, frameId, new Array(config.keys), new Array(config.keys));
       return frame;
     },
     registerStatic(frame, key, value, order) {
       const slot = addSlot(frame, SLOT_KIND_VARIABLE, value, order, 0);
-      appendArraySlot(frame.variableSlots, keyToId(key), slot);
+      const keyId = keyToId(key);
+      appendArraySlot(frame.variableSlots, keyId, slot);
+      frame.currentVariableSlots[keyId] = slot;
     },
     registerLive(frame, key, value, order) {
       const slot = addSlot(frame, SLOT_KIND_VARIABLE, value, order, 1);
       frame.liveVersion[slot] = 0;
-      appendArraySlot(frame.variableSlots, keyToId(key), slot);
+      const keyId = keyToId(key);
+      appendArraySlot(frame.variableSlots, keyId, slot);
+      frame.currentVariableSlots[keyId] = slot;
     },
     writeLive(frame, key, value) {
-      const slot = plannedNumericKey
-        ? lookupLocalSlotArrayById(frame, key, NO_START_LIMIT)
-        : lookupLocalSlotArray(frame, key, NO_START_LIMIT);
-      if (slot >= 0 && frame.slotFlags[slot] === 1) {
-        frame.slotValue[slot] = value;
-        frame.liveVersion[slot]++;
-      }
+      writeAssignmentSlot(frame, key, value, plannedNumericKey ? lookupCurrentSlotArrayById : lookupCurrentSlotArray);
     },
     read(frame, key, startOrder) {
       return readFromFrameChain(frame, key, startOrder, plannedNumericKey ? lookupLocalSlotArrayById : lookupLocalSlotArray);
+    },
+    readCurrent(frame, key) {
+      return readCurrentFromFrameChain(frame, key, plannedNumericKey ? lookupCurrentSlotArrayById : lookupCurrentSlotArray);
+    },
+    readOccurrence(frame, key, startOrder) {
+      return readFromFrameChain(frame, key, startOrder, plannedNumericKey ? lookupLocalSlotArrayById : lookupLocalSlotArray);
+    },
+    writeAssignment(frame, key, value) {
+      writeAssignmentSlot(frame, key, value, plannedNumericKey ? lookupCurrentSlotArrayById : lookupCurrentSlotArray);
     }
   };
 }
@@ -222,33 +275,34 @@ function makeRecordObjectVariant() {
         parent,
         frameId,
         lookupVersion: 0,
-        variableRecords: new Map()
+        variableRecords: new Map(),
+        currentVariableRecords: new Map()
       };
     },
     registerStatic(frame, key, value, order) {
-      appendRecord(frame, key, {
+      const record = {
         kind: SLOT_KIND_VARIABLE,
         value,
         order,
         live: false,
         version: 0
-      });
+      };
+      appendRecord(frame, key, record);
+      frame.currentVariableRecords.set(key, record);
     },
     registerLive(frame, key, value, order) {
-      appendRecord(frame, key, {
+      const record = {
         kind: SLOT_KIND_VARIABLE,
         value,
         order,
         live: true,
         version: 0
-      });
+      };
+      appendRecord(frame, key, record);
+      frame.currentVariableRecords.set(key, record);
     },
     writeLive(frame, key, value) {
-      const record = lookupLocalRecord(frame, key, NO_START_LIMIT);
-      if (record?.live) {
-        record.value = value;
-        record.version++;
-      }
+      writeAssignmentRecord(frame, key, value);
     },
     read(frame, key, startOrder) {
       let f = frame;
@@ -262,17 +316,35 @@ function makeRecordObjectVariant() {
         f = f.parent;
       }
       return undefined;
+    },
+    readCurrent(frame, key) {
+      let f = frame;
+      while (f) {
+        const record = f.currentVariableRecords.get(key);
+        if (record !== undefined) {
+          return record.value;
+        }
+        f = f.parent;
+      }
+      return undefined;
+    },
+    readOccurrence(frame, key, startOrder) {
+      return this.read(frame, key, startOrder);
+    },
+    writeAssignment(frame, key, value) {
+      writeAssignmentRecord(frame, key, value);
     }
   };
 }
 
-function createBaseFrame(parent, frameId, variableSlots) {
+function createBaseFrame(parent, frameId, variableSlots, currentVariableSlots) {
   return {
     parent,
     frameId,
     lookupVersion: 0,
     slotCount: 0,
     variableSlots,
+    currentVariableSlots,
     slotKind: [],
     slotFlags: [],
     slotOrder: [],
@@ -344,6 +416,26 @@ function lookupLocalSlotArrayById(frame, keyId, startOrder) {
   return pickSlot(frame, frame.variableSlots[keyId], startOrder);
 }
 
+function lookupCurrentSlotMap(frame, key) {
+  const slot = frame.currentVariableSlots.get(key);
+  return slot === undefined ? MISS : slot;
+}
+
+function lookupCurrentSlotObject(frame, key) {
+  const slot = frame.currentVariableSlots[key];
+  return slot === undefined ? MISS : slot;
+}
+
+function lookupCurrentSlotArray(frame, key) {
+  const slot = frame.currentVariableSlots[keyToId(key)];
+  return slot === undefined ? MISS : slot;
+}
+
+function lookupCurrentSlotArrayById(frame, keyId) {
+  const slot = frame.currentVariableSlots[keyId];
+  return slot === undefined ? MISS : slot;
+}
+
 function pickSlot(frame, slots, startOrder) {
   if (slots === undefined) {
     return MISS;
@@ -372,6 +464,35 @@ function readFromFrameChain(frame, key, startOrder, lookupLocalSlot) {
     f = f.parent;
   }
   return undefined;
+}
+
+function readCurrentFromFrameChain(frame, key, lookupCurrentSlot) {
+  let f = frame;
+  while (f) {
+    const slot = lookupCurrentSlot(f, key);
+    if (slot >= 0) {
+      return f.slotValue[slot];
+    }
+    f = f.parent;
+  }
+  return undefined;
+}
+
+function writeAssignmentSlot(frame, key, value, lookupCurrentSlot) {
+  let f = frame;
+  while (f) {
+    const slot = lookupCurrentSlot(f, key);
+    if (slot >= 0) {
+      f.slotValue[slot] = value;
+      f.slotVersion[slot]++;
+      if (f.slotFlags[slot] === 1) {
+        f.liveVersion[slot]++;
+      }
+      return true;
+    }
+    f = f.parent;
+  }
+  return false;
 }
 
 function appendRecord(frame, key, record) {
@@ -403,6 +524,20 @@ function lookupLocalRecord(frame, key, startOrder) {
   return undefined;
 }
 
+function writeAssignmentRecord(frame, key, value) {
+  let f = frame;
+  while (f) {
+    const record = f.currentVariableRecords.get(key);
+    if (record !== undefined) {
+      record.value = value;
+      record.version++;
+      return true;
+    }
+    f = f.parent;
+  }
+  return false;
+}
+
 function keyToId(key) {
   return Number(key.slice(1));
 }
@@ -428,6 +563,9 @@ function parseArgs(raw) {
   const parsed = new Map();
   for (let i = 0; i < raw.length; i++) {
     const arg = raw[i];
+    if (arg === '--') {
+      continue;
+    }
     if (arg.startsWith('--')) {
       parsed.set(arg, raw[i + 1]);
       i++;
