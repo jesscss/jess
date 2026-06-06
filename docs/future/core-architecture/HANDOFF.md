@@ -13,6 +13,12 @@ Use the four-doc split:
 4. `NODE-REWRITE-TRACKER.md`: node-by-node rewrite table and completion
    status.
 
+Design proposals that are not yet active implementation plans:
+
+- `BINDING-INDEX-PROPOSAL.md`: coherent lookup/binding/cache model for
+  reference lookup, Less contextual semantics, and Jess/Sass-style live
+  bindings.
+
 ## How To Work
 
 1. Read this handoff first.
