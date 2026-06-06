@@ -681,6 +681,35 @@ experiment, so it makes no speed claim. The important proof for the slice is
 behavioral: explicit `$!` source-position reads can use the facade without
 breaking ordinary current/live `$while` reads.
 
+### Static `:=` VarDeclaration Placement-Copy Cut
+
+Date: 2026-06-06.
+
+Change: static `VarDeclaration` `:=`/`setDefined` now updates the resolved
+declaration value and scope-frame cell directly instead of deriving a placement
+declaration, adopting it into the found `Rules`, splicing/unshifting the rules
+array, and re-registering the new node. Non-variable `setDefined` remains on
+the older placement path.
+
+Sanity command:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result status:
+
+- `functions`: usable, median `14.01ms`;
+- `import-reference`: usable, median `21.61ms`;
+- `mixins-guards`: usable, median `18.09ms`;
+- `extend-chaining`: usable, median `5.63ms`;
+- `media`: usable, median `6.84ms`.
+
+Interpretation: status only. This was not a clean before/after benchmark
+experiment, so it makes no speed claim. The behavioral proof is the focused
+`Rules` `setDefined`/readonly test set plus the new assertion that static
+`setDefined` does not call `deriveWithOptions(...)`.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

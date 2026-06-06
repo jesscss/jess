@@ -40,7 +40,7 @@ import {
 } from './util/serialize-helper.js';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
-import { type ScopeFrame, buildScopeFrame } from './scope-frame.js';
+import { assignScopeFrameVariable, type ScopeFrame, buildScopeFrame } from './scope-frame.js';
 import { consumeTriviaText } from './util/trivia.js';
 import {
   isRenderBuffer,
@@ -2317,9 +2317,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // evaluation completes, when the surrounding tree/root context is available.
     } else if (isNode(node, N.Declaration)) {
       /**
-       * setDefined works like Sass's !default flag - it finds the original variable
-       * declaration and inserts a new declaration at the same rules level as the
-       * found variable, but before the current nested node.
+       * setDefined assigns through the resolved variable binding. Static
+       * VarDeclaration writes stay in place; the fallback below still handles
+       * older non-variable declaration placement behavior.
        */
       if (node.options?.setDefined) {
         // Skip setDefined logic if we're currently indexing to avoid recursive calls
@@ -2340,6 +2340,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (result) {
           if (result.options?.readonly || opts.readonly) {
             throw new ReferenceError(`"${key}" is readonly`);
+          }
+          if (isNode(node, N.VarDeclaration) && isNode(result, N.VarDeclaration)) {
+            result.value.value = node.value.value;
+            if (isNode(result.parent, N.Rules)) {
+              assignScopeFrameVariable(result.parent.getScopeFrame(), key, node.value.value);
+            }
+            return;
           }
 
           // Find the Rules node that contains the found declaration

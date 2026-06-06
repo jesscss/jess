@@ -174,7 +174,16 @@ next step starts.
    - `lookupScopeFrameVariable(...)` now has `includeLive: false` for snapshot
      reads.
    - `assignScopeFrameVariable(...)` exists as the narrow binding-cell write
-     operation, but is not yet wired into production declaration eval.
+     operation. Static `VarDeclaration` `:=`/`setDefined` is now wired through
+     production `Rules.registerNode(...)`: it updates the resolved declaration
+     value plus the matching frame cell and skips `deriveWithOptions`, adopt,
+     array splice/unshift, and re-registration. Non-variable `setDefined`
+     declaration placement still uses the old path and remains queued.
+   - Remaining production debt: declaration-bucket `Reference` hits still
+     return source declaration nodes. That is why the static `:=` cut still
+     updates the resolved declaration value as well as the frame cell. The
+     target model is for declaration-bucket hits to return binding/value
+     identity directly, so assignment can be a pure binding-cell mutation.
    - `$!name` is now the current syntax for explicit source-position reads in
      the live-binding model. Do not revive historical `$^` or `$~` lookup
      syntax. Parser work should carry this as a cheap `Reference` fact, not
@@ -446,6 +455,25 @@ the gate passed.
   `17.15ms`, `mixins-guards` usable median `16.32ms`, `extend-chaining` usable
   median `4.62ms`, and `media` unstable median `5.74ms`. This is status only,
   not a before/after speed claim.
+- Static `:=` VarDeclaration production route: accepted as a node-creation cut,
+  not as completion of the pure live-binding model. New traversal: none beyond
+  the existing `Rules.find(...)` lookup and the existing scope-frame lookup
+  inside `assignScopeFrameVariable(...)`; no AST walk, parent/source walk,
+  child scan, side-map lookup, `map`, `filter`, `sort`, or generator was added.
+  New node/materialization: none. This deletes the static variable path through
+  `deriveWithOptions`, `.adopt(...)`, `Rules.value.splice(...)`/`unshift(...)`,
+  and `registerNode(...)` re-entry instead of wrapping it in another copy
+  helper. Render path: unchanged; the evaluated tree is still stringified
+  normally and no array/node is produced just to render. Helper/API surface: no
+  helper added; this reuses existing `assignScopeFrameVariable(...)`. Metadata
+  mutations: no parent restoration, `frozen`, inherited source/location, lazy
+  context/options allocation, `Reflect.*`, or `Object.hasOwn(...)` was added.
+  The pass deliberately still mutates the resolved declaration value because
+  current declaration-bucket `Reference` hits return source declaration nodes;
+  that source-node return is named remaining debt, not defended as the final
+  model. Evidence: focused `Rules` `setDefined`/readonly tests pass, including
+  a new assertion that static `setDefined` does not call
+  `deriveWithOptions(...)`.
 - New traversal: none added. Pass 4 kept the existing lookup sequence but
   removed eagerly allocated lookup/finalizer closures from
   `evaluateReferenceNode(...)`. No parent/source walk, side-map lookup,

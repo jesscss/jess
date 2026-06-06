@@ -1444,6 +1444,32 @@ describe('Rules', () => {
         }
       });
 
+      it('updates static setDefined variables without deriving placement declarations', async () => {
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        let deriveCalls = 0;
+        assignment.deriveWithOptions = function countDerive(
+          ...args: Parameters<typeof assignment.deriveWithOptions>
+        ): ReturnType<typeof assignment.deriveWithOptions> {
+          deriveCalls++;
+          return VarDeclaration.prototype.deriveWithOptions.apply(this, args);
+        };
+        const node = rules([
+          vardecl({ name: 'one', value: any('one') }),
+          rules([assignment]),
+          decl({ name: 'seen', value: ref({ key: 'one' }, { type: 'variable' }) })
+        ]);
+
+        const evald = await node.eval(context);
+
+        expect(await renderNodeToString(evald, context)).toBeString(`
+          seen: three;
+        `);
+        expect(deriveCalls).toBe(0);
+      });
+
       // @todo: Fix nested readonly rules inheritance - variables in nested readonly Rules aren't being found
       it.skip('fails to set if existing variable is in readonly rules', async () => {
         let node = rules([
