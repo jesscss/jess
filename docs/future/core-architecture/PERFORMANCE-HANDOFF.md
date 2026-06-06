@@ -365,6 +365,47 @@ Next measured target:
   value surfaces, `evaluateReferenceValueNode(...)` copy pressure, declaration
   finalization, merged assign normalization, and key evaluation/conversion.
 
+### 2026-06-05 Reference Raw Lookup Surface Cut
+
+Hypothesis: `Reference` still had obvious sync-path setup work that could be
+deleted before the next measured copy/materialization pass. The target was
+machinery, not a measured performance claim.
+
+Patch kept:
+
+- `evaluateFallbackValue(...)` now relies on `canReturnReferenceValue(...)`
+  directly instead of checking the same static condition in a narrower first
+  branch;
+- `finalizeDeclarationReferenceResult(...)` computes
+  `hasImportantDeclarationValue(...)` once and reuses the value for the
+  text-only return branch and declaration-value evaluation;
+- `evaluateReferenceValueNode(...)` no longer contains two adjacent branches
+  that both called `copyWithReusableLeaves(declValue).eval(context)`;
+- rules-like callable candidates no longer re-run `isNode(...)` checks after
+  the loop has already validated `Mixin | Ruleset`; overloads preserve the
+  type contract without runtime classification;
+- `resolveRawReferenceLookupTarget(...)` no longer allocates
+  `finishLookup`, `runLookup`, `resolveTargetValue`, `evaluateKey`, or a sync
+  IIFE before a normal raw lookup. The sync path is straight-line through
+  initial target, key evaluation, target-value resolution, lookup, pop, and
+  finalization. Async branches remain explicit.
+
+Evidence:
+
+- `pnpm exec eslint packages/core/src/tree/reference.ts` passed;
+- `pnpm --filter @jesscss/core build` passed with the existing `js-expr.ts`
+  direct-eval bundler warning;
+- focused Reference/mixin tests passed after build: `226` tests;
+- broader affected tests passed: `410` tests across `reference`, `mixin`,
+  `declaration`, `ruleset`, `list`, `sequence`, `condition`, and `operation`;
+- hot-path sanity benchmark after this patch:
+  `functions` median `12.84ms` usable, `import-reference` median `37.76ms`
+  noisy, `mixins-guards` median `18.41ms` unstable, `extend-chaining` median
+  `5.43ms` usable, and `media` median `6.38ms` usable;
+- no speed claim. This pass did not capture a clean before/after benchmark
+  pair, and two benchmark signals were not usable, so the benchmark is a leash
+  sanity line only.
+
 ### 2026-06-05 Reference Helper Surface Cut
 
 Hypothesis: after the class-surface pass, `Reference` still had one-call

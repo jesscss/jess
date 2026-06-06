@@ -1336,6 +1336,8 @@ function isRulesLikeReferenceValue(node: Node): boolean {
  * surface so callers can carry lookup, parent, and source-node state without
  * mutating the source tree.
  */
+function createRulesLikeReferenceSurface(directValue: MixinEntry): MixinEntry;
+function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeValue;
 function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeValue {
   const options = directValue.options;
   const nodeConstructor = directValue.constructor;
@@ -1364,14 +1366,6 @@ function evaluateFallbackValue(
   context: Context,
   options: { textOnly?: boolean } = {}
 ): MaybePromise<Node> {
-  if (
-    options.textOnly === true
-    && fallbackValue.hasFlag(F_STATIC)
-    && canReturnReferenceValue(fallbackValue)
-  ) {
-    context.popReference();
-    return fallbackValue;
-  }
   if (canReturnReferenceValue(fallbackValue)) {
     context.popReference();
     return fallbackValue;
@@ -1464,23 +1458,12 @@ function createDirectCallableReferenceResult(
     }
     const callableItem = item;
     if (referenceNode.options?.type === 'mixin-ruleset') {
-      const preserved = createRulesLikeReferenceSurface(callableItem);
-      if (isNode(preserved, N.Mixin)) {
-        callableItems.push(preserved);
-        continue;
-      }
-      if (isNode(preserved, N.Ruleset)) {
-        callableItems.push(preserved);
-        continue;
-      }
-      {
-        return cast(undefined);
-      }
+      callableItems.push(createRulesLikeReferenceSurface(callableItem));
+      continue;
     }
     callableItems.push(callableItem);
   }
-  const collection = new MixinCollection(callableItems);
-  return collection;
+  return new MixinCollection(callableItems);
 }
 
 function finalizeDirectNodeReferenceResult(
@@ -1633,9 +1616,10 @@ function finalizeDeclarationReferenceResult(
 ): MaybePromise<Node> {
   const declarationValue = declaration.value.value;
   const isMergedAssign = isMergedAssignDeclaration(declaration);
+  const hasImportant = hasImportantDeclarationValue(declaration);
   if (
     options.textOnly === true
-    && !hasImportantDeclarationValue(declaration)
+    && !hasImportant
     && !isMergedAssign
     && canReturnReferenceValue(declarationValue)
   ) {
@@ -1653,7 +1637,7 @@ function finalizeDeclarationReferenceResult(
   return withReferenceSearchScope(context, declaration, () => {
     const evaluated = evaluateDeclarationReferenceValue({
       declValue: declarationValue,
-      hasImportant: hasImportantDeclarationValue(declaration),
+      hasImportant,
       context
     });
     const finalize = (evaluatedNode: Node): Node => {
@@ -1759,9 +1743,6 @@ function evaluateReferenceValueNode(
     if (options.reuseSourceFreeLeaves === true && canReturnReferenceValue(declValue)) {
       return declValue;
     }
-    if (options.reuseSourceFreeLeaves === true) {
-      return copyWithReusableLeaves(declValue).eval(context);
-    }
     return copyWithReusableLeaves(declValue).eval(context);
   } finally {
     context.calcFrames = savedCalcFrames;
@@ -1865,76 +1846,114 @@ function resolveRawReferenceLookupTarget(
   const { target, key } = referenceNode.value;
   const lookupType = referenceNode.options.type;
   context.pushReference();
+  const initialTarget = resolveInitialReferenceTarget(referenceNode, context);
 
-  const finishLookup = ({ returnVal }: {
-    returnVal: RulesLookupResult | unknown;
-  }): unknown => {
-    context.popReference();
-    return finalizeRawReferenceLookupTarget(returnVal);
-  };
-  const runLookup = ([resolvedTarget, valueKey]: [unknown, NormalizedLookupKey]) => lookupResolvedReference({
+  if (isThenable(initialTarget)) {
+    return Promise.resolve(initialTarget)
+      .then(resolved => evaluateReferenceKey(key, resolved, context))
+      .then(([resolvedTarget, valueKey]) => resolveReferenceTargetValue({
+        referenceNode,
+        resolvedTarget,
+        valueKey,
+        context
+      }))
+      .then(([resolvedTarget, valueKey]) => lookupResolvedReference({
+        referenceNode,
+        resolvedTarget,
+        lookupType,
+        valueKey,
+        target,
+        originalFilter: referenceNode.options.filter,
+        context
+      }))
+      .then(({ returnVal }) => {
+        context.popReference();
+        return finalizeRawReferenceLookupTarget(returnVal);
+      })
+      .catch((error) => {
+        context.popReference();
+        throw error;
+      });
+  }
+
+  const evaluatedKey = evaluateReferenceKey(key, initialTarget, context);
+  if (isThenable(evaluatedKey)) {
+    return Promise.resolve(evaluatedKey)
+      .then(([resolvedTarget, valueKey]) => resolveReferenceTargetValue({
+        referenceNode,
+        resolvedTarget,
+        valueKey,
+        context
+      }))
+      .then(([resolvedTarget, valueKey]) => lookupResolvedReference({
+        referenceNode,
+        resolvedTarget,
+        lookupType,
+        valueKey,
+        target,
+        originalFilter: referenceNode.options.filter,
+        context
+      }))
+      .then(({ returnVal }) => {
+        context.popReference();
+        return finalizeRawReferenceLookupTarget(returnVal);
+      })
+      .catch((error) => {
+        context.popReference();
+        throw error;
+      });
+  }
+
+  const resolvedValue = resolveReferenceTargetValue({
     referenceNode,
-    resolvedTarget,
+    resolvedTarget: evaluatedKey[0],
+    valueKey: evaluatedKey[1],
+    context
+  });
+  if (isThenable(resolvedValue)) {
+    return Promise.resolve(resolvedValue)
+      .then(([resolvedTarget, valueKey]) => lookupResolvedReference({
+        referenceNode,
+        resolvedTarget,
+        lookupType,
+        valueKey,
+        target,
+        originalFilter: referenceNode.options.filter,
+        context
+      }))
+      .then(({ returnVal }) => {
+        context.popReference();
+        return finalizeRawReferenceLookupTarget(returnVal);
+      })
+      .catch((error) => {
+        context.popReference();
+        throw error;
+      });
+  }
+
+  const lookup = lookupResolvedReference({
+    referenceNode,
+    resolvedTarget: resolvedValue[0],
     lookupType,
-    valueKey: valueKey as NormalizedLookupKey,
+    valueKey: resolvedValue[1],
     target,
     originalFilter: referenceNode.options.filter,
     context
   });
-  const resolveTargetValue = ([resolvedTarget, valueKey]: [unknown, NormalizedLookupKey]) => resolveReferenceTargetValue({
-    referenceNode,
-    resolvedTarget,
-    valueKey,
-    context
-  });
-  const evaluateKey = (resolved: unknown) => evaluateReferenceKey(key, resolved, context);
-  const initialTarget = resolveInitialReferenceTarget(referenceNode, context);
-  const rawResult = isThenable(initialTarget)
-    ? Promise.resolve(initialTarget)
-        .then(evaluateKey)
-        .then(resolveTargetValue)
-        .then(runLookup)
-        .then(finishLookup)
-    : (() => {
-        const evaluatedKey = evaluateKey(initialTarget);
-        if (isThenable(evaluatedKey)) {
-          return Promise.resolve(evaluatedKey)
-            .then(resolveTargetValue)
-            .then(runLookup)
-            .then(finishLookup);
-        }
-        const resolvedValue = resolveReferenceTargetValue({
-          referenceNode,
-          resolvedTarget: evaluatedKey[0],
-          valueKey: evaluatedKey[1],
-          context
-        });
-        if (isThenable(resolvedValue)) {
-          return Promise.resolve(resolvedValue)
-            .then(runLookup)
-            .then(finishLookup);
-        }
-        const lookup = lookupResolvedReference({
-          referenceNode,
-          resolvedTarget: resolvedValue[0],
-          lookupType,
-          valueKey: resolvedValue[1] as NormalizedLookupKey,
-          target,
-          originalFilter: referenceNode.options.filter,
-          context
-        });
-        return isThenable(lookup)
-          ? Promise.resolve(lookup).then(finishLookup)
-          : finishLookup(lookup);
-      })();
-
-  if (isThenable(rawResult)) {
-    return Promise.resolve(rawResult).catch((error) => {
-      context.popReference();
-      throw error;
-    });
+  if (isThenable(lookup)) {
+    return Promise.resolve(lookup)
+      .then(({ returnVal }) => {
+        context.popReference();
+        return finalizeRawReferenceLookupTarget(returnVal);
+      })
+      .catch((error) => {
+        context.popReference();
+        throw error;
+      });
   }
-  return rawResult;
+
+  context.popReference();
+  return finalizeRawReferenceLookupTarget(lookup.returnVal);
 }
 
 function canRenderRawVariableReferenceDirectly(referenceNode: Reference): boolean {
