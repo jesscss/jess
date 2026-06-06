@@ -522,6 +522,31 @@ next step starts.
    - benchmark/profile evidence shows whether this attacks the measured
      `Reference.evalNode`/callable lookup bucket
 
+   Status:
+   - Static callable **hits** with an already-built frame now enter `ScopeFrame` before
+     `Rules.findMixinsFast(...)`: `ScopeFrame.callableBucketsByName` points at
+     the existing `Rules.mixinsByName` bucket arrays, so this slice adds no
+     per-callable wrapper record, no node copy, no output cache, and no new
+     child traversal.
+   - Focused tests prove direct `Rules.find(...)` for both static `Mixin` and
+     simple `Ruleset`-as-mixin hits skips `Rules.findMixinsFast(...)` when a
+     frame already exists.
+   - Static callable **misses** remain a bridge to `Rules.findMixinsFast(...)`
+     until child-surface/import visibility is represented in frame state. Do
+     not call step 11 complete until the frame can return covered miss for the
+     modeled static cases without losing nested/visibility semantics.
+   - Pre-pass leash: clean `benchmark-v39.less` profile showed
+     `Reference.evalNode` `482` calls / `5.27ms`; `Rules.find` was only
+     function lookup (`68` calls / `0.42ms`). This proves the slice is not
+     expected to move `benchmark-v39.less`; use callable/mixin fixtures for
+     behavior proof and broad profiles only as status.
+   - Post-pass status: clean `benchmark-v39.less` profile showed
+     `Reference.evalNode` `482` calls / `5.09ms`; `Rules.find` remained only
+     function lookup (`68` calls / `0.40ms`). Quick hotpath leash was mixed but
+     not a claimed win: `functions` `15.15ms` unstable,
+     `import-reference` `20.57ms` usable, `mixins-guards` `18.96ms` usable,
+     `extend-chaining` `5.62ms` usable, `media` `6.83ms` usable.
+
 12. [ ] Binding handle reuse model.
    Design and prototype one coherent binding/index system for repeated
    references. Do not add a separate "lookup cache" layer. A reference should
@@ -753,6 +778,64 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- ScopeFrame callable-hit prototype: accepted as a narrow binding-lane bridge
+  reduction, not a speed claim and not completion of callable records. Files:
+  `packages/core/src/tree/scope-frame.ts`,
+  `packages/core/src/tree/rules.ts`, and
+  `packages/core/src/tree/__tests__/mixin.test.ts`.
+  New traversal: one existing-frame discovery walk up the node parent chain
+  when the current `Rules` object has no `scopeFrame`, plus one frame-chain walk in
+  `lookupScopeFrameCallable(...)` for `Rules.find('mixin', staticKey, ...)`
+  before the older recursive `findMixinsFast(...)`; no child traversal, no
+  source node walk, no `Set`, no array helper, no side map, and no registry
+  lookup was added. This does not call `getScopeFrame(...)`; it refuses to
+  allocate declaration buckets just to try a callable hit. The bucket
+  reverse-scan is the minimum needed to ignore `Ruleset` entries for
+  `type: mixin`; it replaces the broader `findMixinsFast(...)` surface walk for
+  covered hits. The same callable bucket
+  arrays already created by registration are reused as the frame record
+  surface. New node/materialization: none; no new `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, callable output cache,
+  frozen/source/parent mutation, or public materialization. New arrays/objects:
+  the only production result array is the `MixinEntry[]` required by the
+  existing public `Rules.find(...)` return shape; previously the older fast
+  path allocated an equivalent result after a broader recursive search.
+  `EMPTY_CALLABLE_BUCKETS` avoids allocating an empty callable map per
+  live-slot-only frame. The diff still shows the existing live-slot clone
+  `new Map(source.scopeFrame.liveSlotsByName)` because this call gained
+  explicit callable coverage arguments; that clone already existed and is not a
+  new callable-index object. Test-only objects are the two `TreeContext`
+  fixtures and two `fastPathHits` arrays used to prove the old fast path is not
+  entered; the tests explicitly prebuild the root frame to prove the shortcut
+  without adding lazy frame allocation to `Rules.find(...)`. Render path:
+  unchanged; callable output still evaluates/renders
+  through the existing path and is not cached. Helper/API surface: one
+  binding-lane function,
+  `lookupScopeFrameCallable(...)`, added to move covered static callable hits
+  into `ScopeFrame`; it does not add a parallel cache or callable wrapper
+  object. Metadata mutations: `ScopeFrame.callablesCovered` is indexing state
+  on the existing frame; no node metadata mutation. Routine error/control:
+  test `try/finally` blocks restore monkey-patched methods only; production
+  lookup does not throw/catch for ordinary misses. Evidence: pre-edit
+  `benchmark-v39.less` profile was `Reference.evalNode` `482` calls /
+  `5.27ms`, `Rules.find` `68` calls / `0.42ms`, with `Rules.find` only for JS
+  functions, so this slice is not expected to affect that fixture. Focused
+  `mixin.test.ts` + `scope-frame.test.ts` passed (`137` tests), and the final
+  focused callable/import gate passed (`160` tests; `78` skipped by filter),
+  proving direct `Rules.find(...)` static Mixin and simple Ruleset-as-mixin
+  hits skip `Rules.findMixinsFast` when a frame already exists.
+  `@jesscss/core` build passed; the parallel
+  build/test attempt failed only because the build cleaned `packages/core/lib`
+  while Vite was resolving `@jesscss/core`, and the same tests passed when run
+  after the build. Post-edit `benchmark-v39.less` profile was
+  `Reference.evalNode` `482` calls / `5.09ms`, `Rules.find` `68` calls /
+  `0.40ms`; status only, not a speed claim. Quick hotpath leash was mixed:
+  `functions` `15.15ms` unstable, `import-reference` `20.57ms` usable,
+  `mixins-guards` `18.96ms` usable, `extend-chaining` `5.62ms` usable, and
+  `media` `6.83ms` usable. Remaining bridge: static callable misses and
+  complex namespace/import
+  visibility still fall through to `findMixinsFast(...)` until frame state
+  carries enough surface facts to return a covered miss safely.
 - Reference declaration-finalization helper pass: accepted as helper/API
   surface deletion, not as a speed claim and not as completion of the Reference
   materialization audit. `packages/core/src/tree/reference.ts` deleted four

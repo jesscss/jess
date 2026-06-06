@@ -1432,6 +1432,7 @@ describe('Mixin', () => {
           })
         ]);
         context.root = root;
+        root.getScopeFrame();
 
         const css = await renderNodeToString(root, context);
         expect(css).toContain('marker: red;');
@@ -1472,6 +1473,7 @@ describe('Mixin', () => {
           })
         ]);
         context.root = root;
+        root.getScopeFrame();
 
         const css = await renderNodeToString(root, context);
         expect(css).toBe('');
@@ -2243,6 +2245,106 @@ describe('Mixin', () => {
       } finally {
         MixinRegistry.prototype.find = originalFind;
       }
+    });
+
+    it('ScopeFrame callable buckets: static Mixin hit skips Rules.findMixinsFast', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.frame-mixin') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      let root: RulesClass | undefined;
+      try {
+        const mixinDef = mixin({
+          name: any('.frame-mixin'),
+          rules: rules([decl({ name: 'color', value: any('rebeccapurple') })])
+        });
+        root = rules([
+          mixinDef,
+          ruleset({
+            selector: el('.a'),
+            rules: rules([call({ name: ref({ key: '.frame-mixin' }, { type: 'mixin' }) })])
+          }),
+          ruleset({
+            selector: el('.b'),
+            rules: rules([call({ name: ref({ key: '.frame-mixin' }, { type: 'mixin' }) })])
+          })
+        ]);
+        context.root = root;
+        root.getScopeFrame();
+
+        expect(root.find('mixin', '.frame-mixin', 'Mixin')).toEqual([mixinDef]);
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+
+      const css = await renderNodeToString(root!, context);
+      expect(css).toBeString(`
+        .a {
+          color: rebeccapurple;
+        }
+        .b {
+          color: rebeccapurple;
+        }
+      `);
+    });
+
+    it('ScopeFrame callable buckets: static Ruleset-as-mixin hit skips Rules.findMixinsFast', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.frame-ruleset') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      let root: RulesClass | undefined;
+      try {
+        const frameRuleset = ruleset({
+          selector: el('.frame-ruleset'),
+          rules: rules([decl({ name: 'color', value: any('teal') })])
+        });
+        root = rules([
+          frameRuleset,
+          ruleset({
+            selector: el('.a'),
+            rules: rules([call({ name: ref({ key: '.frame-ruleset' }, { type: 'mixin-ruleset' }) })])
+          })
+        ]);
+        context.root = root;
+        root.getScopeFrame();
+
+        expect(root.find('mixin', '.frame-ruleset', undefined)).toEqual([frameRuleset]);
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+
+      const css = await renderNodeToString(root!, context);
+      expect(css).toBeString(`
+        .frame-ruleset {
+          color: teal;
+        }
+        .a {
+          color: teal;
+        }
+      `);
     });
 
     it('mixinsByName fast path: type=mixin-ruleset static Mixin hit skips MixinRegistry.find', async () => {

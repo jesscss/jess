@@ -40,7 +40,12 @@ import {
 } from './util/serialize-helper.js';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
-import { assignScopeFrameVariable, type ScopeFrame, buildScopeFrame } from './scope-frame.js';
+import {
+  assignScopeFrameVariable,
+  buildScopeFrame,
+  lookupScopeFrameCallable,
+  type ScopeFrame
+} from './scope-frame.js';
 import { consumeTriviaText } from './util/trivia.js';
 import {
   isRenderBuffer,
@@ -509,6 +514,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.rulesIndexed = length;
       if (this.scopeFrame) {
         this.scopeFrame.declarationsCovered = true;
+        this.scopeFrame.callablesCovered = true;
       }
     } finally {
       this._indexing = false;
@@ -576,7 +582,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         undefined,
         this,
         source.scopeFrame.parent,
-        new Map(source.scopeFrame.liveSlotsByName)
+        new Map(source.scopeFrame.liveSlotsByName),
+        undefined,
+        false,
+        undefined,
+        false
       );
       this.scopeFrame.fallbackFrame = source.scopeFrame.fallbackFrame;
     } else {
@@ -617,7 +627,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           pendingDeclarationNames.push(node);
         }
       }
-      this.scopeFrame = buildScopeFrame(this.varsByName, this, resolvedParent, undefined, pendingDeclarationNames);
+      this.scopeFrame = buildScopeFrame(
+        this.varsByName,
+        this,
+        resolvedParent,
+        undefined,
+        pendingDeclarationNames,
+        undefined,
+        this.mixinsByName
+      );
     }
     return this.scopeFrame;
   }
@@ -1549,6 +1567,37 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): ReturnType<Registries.DeclarationRegistry['find']> | MixinEntry[] | ReturnType<Registries.FunctionRegistry['find']> | undefined {
     if (type === 'mixin' && typeof keys === 'string') {
       const includeRulesets = filterType !== 'Mixin';
+      let callableFrame = this.scopeFrame;
+      if (!callableFrame) {
+        let cursor = this.parent;
+        while (cursor) {
+          if (isNode(cursor, N.Rules) && (cursor as Rules).scopeFrame) {
+            callableFrame = (cursor as Rules).scopeFrame;
+            break;
+          }
+          cursor = cursor.parent;
+        }
+      }
+      if (callableFrame) {
+        const frameHit = lookupScopeFrameCallable(callableFrame, keys, {
+          includeRulesets,
+          searchParents: options.searchParents
+        });
+        if (frameHit.kind === 'hit') {
+          const bucket = frameHit.bucket;
+          const results: MixinEntry[] = [];
+          for (let i = bucket.length - 1; i >= 0; i--) {
+            const candidate = bucket[i]!;
+            if (!includeRulesets && isNode(candidate, N.Ruleset)) {
+              continue;
+            }
+            results.push(candidate);
+          }
+          if (results.length > 0) {
+            return results;
+          }
+        }
+      }
       const fast = this.findMixinsFast(keys, {
         context: options.context,
         hasTarget: options.hasTarget,

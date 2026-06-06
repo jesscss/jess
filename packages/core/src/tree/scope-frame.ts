@@ -18,6 +18,9 @@
 
 import type { Node } from './node.js';
 import type { VarDeclaration } from './declaration-var.js';
+import type { MixinEntry } from './util/callable-entry.js';
+
+const EMPTY_CALLABLE_BUCKETS = new Map<string, MixinEntry[]>();
 
 /**
  * One live binding slot.  Value is updated in place for loop counters and
@@ -73,6 +76,18 @@ export type ScopeFrameVariableLookupResult =
     kind: 'uncovered';
   };
 
+export type ScopeFrameCallableLookupResult =
+  | {
+    kind: 'hit';
+    bucket: MixinEntry[];
+  }
+  | {
+    kind: 'miss';
+  }
+  | {
+    kind: 'uncovered';
+  };
+
 /**
  * One scope frame.  Holds all bindings visible at one lexical scope boundary.
  *
@@ -110,12 +125,26 @@ export interface ScopeFrame {
   declarationBucketsByName: Map<string, BindingEntry[]>;
 
   /**
+   * Static callable buckets for this scope. This intentionally reuses the
+   * Rules.mixinsByName arrays instead of wrapping every callable in another
+   * binding object during this migration slice.
+   */
+  callableBucketsByName: Map<string, MixinEntry[]>;
+
+  /**
    * True when declarationBucketsByName represents every static declaration on
    * this frame's Rules surface. Runtime live-slot-only frames leave this false
    * so variable lookup can fall back to the older declaration surface instead
    * of treating an empty bucket as a covered miss.
    */
   declarationsCovered: boolean;
+
+  /**
+   * True when callableBucketsByName represents the static callable entries on
+   * this frame's Rules surface. Runtime live-slot-only frames leave this false
+   * so callable lookup can route complex/unmodeled cases to the old path.
+   */
+  callablesCovered: boolean;
 
   /**
    * VarDeclarations whose name is a computed expression (Interpolated,
@@ -153,7 +182,9 @@ export function buildScopeFrame(
   parent: ScopeFrame | undefined,
   liveSlots?: Map<string, BindingCell>,
   pendingDeclarationNames?: VarDeclaration[],
-  declarationsCovered = varsByName !== undefined
+  declarationsCovered = varsByName !== undefined,
+  callablesByName?: Map<string, MixinEntry[]>,
+  callablesCovered = callablesByName !== undefined
 ): ScopeFrame {
   const declarationBucketsByName = new Map<string, BindingEntry[]>();
 
@@ -180,7 +211,9 @@ export function buildScopeFrame(
     fallbackFrame: undefined,
     liveSlotsByName: liveSlots ?? new Map(),
     declarationBucketsByName,
+    callableBucketsByName: callablesByName ?? EMPTY_CALLABLE_BUCKETS,
     declarationsCovered,
+    callablesCovered,
     pendingDeclarationNames: pendingDeclarationNames ?? [],
     rulesNode
   };
@@ -292,6 +325,40 @@ export function lookupScopeFrameVariable(
     fallbackFrame = fallbackFrame.fallbackFrame;
     start = undefined;
   }
+}
+
+export function lookupScopeFrameCallable(
+  frame: ScopeFrame | undefined,
+  name: string,
+  options?: {
+    includeRulesets?: boolean;
+    searchParents?: boolean;
+  }
+): ScopeFrameCallableLookupResult {
+  let f = frame;
+  while (f) {
+    if (!f.callablesCovered) {
+      return { kind: 'uncovered' };
+    }
+
+    const bucket = f.callableBucketsByName.get(name);
+    if (bucket?.length) {
+      if (options?.includeRulesets !== false) {
+        return { kind: 'hit', bucket };
+      }
+      for (let i = bucket.length - 1; i >= 0; i--) {
+        if (bucket[i]!.type !== 'Ruleset') {
+          return { kind: 'hit', bucket };
+        }
+      }
+    }
+
+    if (options?.searchParents === false) {
+      break;
+    }
+    f = f.parent;
+  }
+  return { kind: 'miss' };
 }
 
 export function assignScopeFrameVariable(

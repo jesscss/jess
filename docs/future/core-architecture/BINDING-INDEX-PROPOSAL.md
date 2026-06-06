@@ -583,6 +583,27 @@ mixin/function lookup must not fall through `MixinRegistry`/`Rules.find(...)`.
 Namespace, guards, and callable ambiguity may stay behind an explicit
 `UNCOVERED` bridge until modeled.
 
+Current implementation note:
+
+- Static callable hit prototype is in production for already-built frames:
+  `ScopeFrame` carries `callableBucketsByName`, pointing at the already-built
+  `Rules.mixinsByName` arrays. Covered static `Mixin` and simple
+  `Ruleset`-as-mixin hits skip `Rules.findMixinsFast(...)` when lookup already
+  has a frame chain to ask.
+- This is intentionally not a new wrapper-record allocation. The bucket entry
+  is the record surface for this slice.
+- Static callable misses are not complete. They still route to
+  `Rules.findMixinsFast(...)` because child-surface and import/reference
+  visibility are not yet represented in frame state. The next callable binding
+  pass must carry those surface facts on the frame or an attached placement
+  surface so a modeled miss can return `MISS` and stop.
+- Do not call `getScopeFrame(...)` inside callable lookup just to try this
+  shortcut. That creates declaration bucket state for a speculative callable
+  lookup. The next step is construction/adoption-time callable surface coverage,
+  not lazy allocation in `Rules.find(...)`.
+- Do not add a lookup cache to paper over that bridge. Delete the reason for
+  rediscovery by making the frame know which callable surfaces it covers.
+
 ### Current `ScopeFrame.liveSlotsByName`
 
 Becomes current-cell records in the same frame. The cell is mutable; the lookup

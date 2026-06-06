@@ -192,6 +192,65 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-06 ScopeFrame Callable-Hit Prototype
+
+Hypothesis: simple static callable hits should be represented by the active
+binding frame before the older recursive callable lookup path. This should be
+proved with callable/mixin fixtures, not by claiming a broad benchmark win,
+because the current `benchmark-v39.less` diagnostic profile is dominated by
+variables and JS function calls.
+
+Before patch:
+
+- `node scripts/profile-less-benchmark.mjs --file=benchmark-v39.less` reported
+  `Reference.evalNode` `482` calls / `5.27ms` and `Rules.find` `68` calls /
+  `0.42ms`;
+- `lookupStats.rulesFindByType` was `{ "function": 68 }`, so there were no
+  measured mixin/ruleset `Rules.find` calls in that fixture;
+- quick hot-path leash
+  `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5` was mixed:
+  `functions` `15.31ms` unstable, `import-reference` `22.16ms` usable,
+  `mixins-guards` `18.23ms` usable, `extend-chaining` `5.91ms` unstable,
+  `media` `6.63ms` unstable.
+
+Patch shape:
+
+- `ScopeFrame.callableBucketsByName` now reuses the existing
+  `Rules.mixinsByName` arrays; no per-callable wrapper object, output cache, or
+  node copy was added;
+- `Rules.find('mixin', staticKey, ...)` checks an already-built frame chain
+  first and returns covered static hits without entering
+  `Rules.findMixinsFast(...)`; it does not call `getScopeFrame(...)` just to
+  attempt the shortcut;
+- static misses remain a bridge to `Rules.findMixinsFast(...)` until
+  child-surface/import visibility is encoded in frame state.
+
+Evidence:
+
+- focused `mixin.test.ts` and `scope-frame.test.ts` passed (`137` tests);
+- new focused tests prove direct `Rules.find(...)` static `Mixin` and simple
+  `Ruleset`-as-mixin hits skip `Rules.findMixinsFast(...)` when a frame
+  already exists.
+- final focused callable/import gate passed (`160` tests; `78` skipped by
+  filter) after the build completed; a parallel build/test attempt failed only
+  because the build cleaned `packages/core/lib` while Vite was resolving
+  `@jesscss/core`;
+- `@jesscss/core` build passed;
+- post-patch `node scripts/profile-less-benchmark.mjs --file=benchmark-v39.less`
+  reported `Reference.evalNode` `482` calls / `5.09ms` and `Rules.find` `68`
+  calls / `0.40ms`; `Rules.find` remained only function lookup in this
+  fixture;
+- post-patch quick hot-path leash
+  `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5` was mixed:
+  `functions` `15.15ms` unstable, `import-reference` `20.57ms` usable,
+  `mixins-guards` `18.96ms` usable, `extend-chaining` `5.62ms` usable,
+  `media` `6.83ms` usable.
+
+Verdict: keep as binding integration progress only. Do not claim a broad speed
+win from this slice. The next callable binding target is covered static misses:
+carry the callable surface/visibility facts needed for a frame miss to stop
+without rediscovering child surfaces through `findMixinsFast(...)`.
+
 ### 2026-06-05 Callable Default-Guard Classification
 
 Hypothesis: `prepareCallableEvalCandidates(...)` should not recursively inspect
