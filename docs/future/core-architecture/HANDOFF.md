@@ -1,16 +1,21 @@
 # Core Architecture Handoff
 
-This is the live **cut aggressively** handoff for getting Jess back to a
-credible alpha. Keep it short, current, and operational. Do not store detailed
+This is the live **integration handoff** for getting Jess back to a credible
+alpha. Keep it short, current, and operational. Do not store detailed
 completed-pass summaries here.
 
-Use this file for the active reduction queue: deleting unnecessary node
-creation, materialization, wrappers, helper arrays, iterator/generator state,
-promise scaffolding, copied ownership, and hot-path function-call ladders.
+Core architecture work now has three separate docs:
 
-Use `docs/future/core-architecture/PERFORMANCE-HANDOFF.md` for parked
-benchmark/profile protocol, historical performance evidence, reactivation
-thresholds, and performance-specific target lists.
+1. `HANDOFF.md`: active mode, queue integration, current benchmark leash, and
+   the next concrete pass.
+2. `AGGRESSIVE-CUTTING-REVIEW.md`: the hardline doctrine for what kinds of
+   eval/render/lookup/node changes are allowed.
+3. `PERFORMANCE-HANDOFF.md`: benchmark/profile protocol, evidence log,
+   measured targets, rejected experiments, and performance-specific queues.
+
+Do not merge those roles. The handoff decides what is active now; the cutting
+doc prosecutes the shape of a patch; the performance doc decides whether a
+patch is actually faster.
 
 ## Current Reality
 
@@ -31,13 +36,18 @@ work now has two priorities, in this order:
 Static node/object counts are only supporting evidence. The release goal is
 faster real Less eval/render first, lower memory pressure second.
 
-Performance work is temporarily in **sanity-check mode**, not abandoned. Preserve
-parked benchmark/profile protocol, measured targets, rejected experiments, and
-reactivation thresholds in
-`docs/future/core-architecture/PERFORMANCE-HANDOFF.md`. Bring full
-performance rounds back when that file's threshold trips; until then, queue
-passes may keep cutting obvious hot-path waste, but must not claim speed wins
-without real benchmark evidence.
+Performance is no longer merely parked. The reactivation threshold in
+`PERFORMANCE-HANDOFF.md` has tripped: recent queue passes touched callable
+output/body placement, selector containers, copied ownership, traversal, and
+hot eval/render dispatch. Work is now in **benchmark-leashed aggressive
+cutting** mode.
+
+That means every non-correctness queue pass starts from a benchmark/profile
+target recorded in `PERFORMANCE-HANDOFF.md`, then applies the hardline cut
+rules from `AGGRESSIVE-CUTTING-REVIEW.md`. Obvious machinery deletion is still
+welcome, but any kept change that claims runtime value needs real benchmark
+evidence. If the benchmark says the cut moved cost elsewhere, reject or reshape
+it.
 
 The controlling product goal is the fastest credible path from parsed Less to
 CSS output. Every other goal is secondary unless it preserves real Less/Jess
@@ -1000,8 +1010,9 @@ public `tree.treeContext` getter on arbitrary nodes.
    binding/placement state. Static containers should not be copied merely
    because they contain child nodes; `F_HAS_NODE_CHILD` is only a cheap current
    ownership boundary, not a final architecture.
-8. [ ] Reactivate performance profiling when the next proposed change is not an
-   obvious deletion of metadata/API/copy machinery.
+8. [ ] Start the next queue pass from the benchmark leash below before choosing
+   a cut target. Do not treat another broad hot-path edit as benchmark-shelved
+   cleanup.
 
 ## Active Correctness Queue
 
@@ -1013,158 +1024,40 @@ this queue as a focused core repro before changing expected output. If `.less`
 renders but CSS differs, review expected behavior manually before changing
 tests or semantics.
 
-## Performance Round Protocol
+## Benchmark Leash
 
-See `docs/future/core-architecture/PERFORMANCE-HANDOFF.md` for the parked
-performance protocol and reactivation threshold. Keep this section only as the
-short active reminder; do not expand it with completed experiment history.
+The active mode is **benchmark-leashed aggressive cutting**.
 
-After the correctness queue is clear enough for benchmarks to run, every handoff
-run should do at least one full performance round. For the current phase, choose
-rounds from the render-first reduction queue above before trying another local
-serializer/cache micro-optimization. Do not make speculative cleanup changes
-without before/after evidence.
+Use `PERFORMANCE-HANDOFF.md` for:
 
-1. Capture a baseline profile and benchmark snapshot.
-2. Identify the top concrete cost from the profile: object allocation surface,
-   lookup path, recursive walk, helper array, state graph, side-map lookup, or
-   function-call ladder.
-3. Ask why the cost exists at all. Prefer deleting the semantic reason for the
-   hot object/string/control-flow work over making the helper cheaper.
-4. State the hypothesis in one sentence in this handoff before editing.
-5. Make the smallest behavior-preserving change that removes the cost-bearing
-   architecture. "Replace one copy helper with a slightly cheaper copy helper"
-   is not enough unless it is a temporary checkpoint toward deleting that path.
-6. If the change touches expected misses or candidate classification, add or
-   update tests proving the hot path does not allocate or return real `Error`
-   objects for control-flow results.
-7. Run focused tests and the same profile/benchmark again.
-8. Keep the change only if it improves real runtime cost, removes measurable
-   memory/object pressure without slowing runtime, or fixes correctness.
-9. Revert or reshape the change if it only moves cost elsewhere, preserves the
-   bad owned-tree invariant, or adds broad state machinery to avoid deleting a
-   copy path.
-10. Update the active snapshot below with a one-paragraph result and the next
-   profile target.
+- exact benchmark/profile commands;
+- real benchmark vs profiler vs CPU-profile evidence rules;
+- multi-agent performance coordination;
+- historical benchmark evidence and rejected experiments;
+- performance target queues.
 
-## Multi-Agent Optimization Loop
+Use `AGGRESSIVE-CUTTING-REVIEW.md` for:
 
-When sub-agents are available, run performance work as a coordinator loop:
+- what counts as an acceptable cut;
+- the self-prosecution checklist;
+- rejection rules for new traversal, materialization, helper/API growth, and
+  metadata mutation.
 
-- Keep `dev`, this handoff, final benchmark truth, commits, and pushes under
-  the coordinator.
-- Dispatch workers only to independent lanes with disjoint write scopes.
-- Good lanes: reference render/eval split by reference kind, copied callable
-  output deletion, copied guard-eval deletion, `.copy()`/`.clone()`/`.inherit()`
-  API removal or cold-boundary isolation, writer preview/capture removal,
-  lookup/live-binding profiling by reference kind, parser or Less alpha facade
-  overhead, and extend/selector classification.
-- Workers must not edit this handoff, commit, push, or report
-  `profile-less-benchmark.mjs` `elapsedMs`.
-- Workers should make one bounded hypothesis, run focused tests, and report
-  changed files plus evidence.
-- The coordinator accepts a worker patch only after local review, focused tests,
-  package build, and same real benchmark comparison.
-- Reject and revert patches that are neutral, noisy, or slower, even when they
-  reduce a local object allocation.
-- After each round, restock workers from the latest rejected/accepted evidence,
-  not from old completed history.
+The next non-correctness pass must:
 
-### Required User Performance Report
+1. capture or reuse a current stable benchmark/profile target from
+   `PERFORMANCE-HANDOFF.md`;
+2. state one hypothesis in this handoff before editing;
+3. make an aggressive cut that removes the measured reason for work, not a
+   local helper polish;
+4. rerun the same benchmark/profile and focused tests;
+5. keep, reshape, or revert based on the benchmark leash and the cutting
+   self-prosecution.
 
-At the end of every handoff run, report performance to the user in plain terms:
-
-- **Real benchmark** numbers for the files touched or measured. These are the
-  only numbers that count as "Jess got faster/slower" and the only numbers to
-  compare against Less 4.x;
-- historical Less 4.x real benchmark comparison and rough slowdown ratio where
-  available;
-- **Instrumented profiler** results only as diagnostic support. Label them
-  explicitly as profiler/counter runs. Report call counts and per-method totals
-  only; do not report `profile-less-benchmark.mjs` `elapsedMs` in user-facing
-  summaries unless the task is specifically profiler-overhead debugging;
-- **CPU profile** evidence only as sampled hotspot/call-stack evidence. Label
-  CPU sample counts separately from benchmark timings;
-- whether the run improved, regressed, or only clarified the next target;
-- which optimization was kept, rejected, or deferred and why;
-- the next profile target.
-
-Do not hide behind proxy metrics. If a code change was rejected because the real
-benchmark slowed down, say that.
-
-### Required Profile Inputs
-
-Use the existing instrumentation before choosing a performance edit:
-
-```sh
-pnpm --filter @jesscss/core build
-pnpm --filter @jesscss/less-parser build
-pnpm --filter @jesscss/plugin-less build
-pnpm --filter @jesscss/plugin-less-compat build
-pnpm --filter jess build
-
-node scripts/profile-less-benchmark.mjs --file=benchmark-v37.less
-node scripts/profile-less-benchmark.mjs --file=benchmark-v39.less
-```
-
-For recursive mixin/color work, also profile the smallest extracted stress file
-or the broad benchmark once it is bounded:
-
-```sh
-node scripts/profile-less-benchmark.mjs --file=benchmark-color-stress.less
-node scripts/profile-less-benchmark.mjs --file=benchmark.less
-```
-
-Use CPU profiles for focused tests when call stacks are unclear:
-
-```sh
-./scripts/profile-test.sh core "<test-file-or-filter>"
-./scripts/profile-test.sh jess "<test-file-or-filter>"
-```
-
-Use `JESS_PROFILE=1` when phase timing matters:
-
-```sh
-JESS_PROFILE=1 node scripts/profile-less-benchmark.mjs --file=benchmark-v37.less
-```
-
-### Required Benchmark Inputs
-
-Record Jess alpha hot-path snapshots, not only historical Less comparisons:
-
-```sh
-pnpm run measure:less:hotpath -- --stable
-```
-
-Use the printed `signal=` field as the trust gate. `usable` can support a
-keep/revert decision, `unstable` needs another run or corroborating profile
-evidence, and `noisy` is not a decision-quality benchmark result.
-
-For quick smoke checks while cutting, the cheaper bounded run is still useful
-as a regression tripwire:
-
-```sh
-pnpm run measure:less:hotpath -- --iterations 15 --warmup 5
-```
-
-Use the saved hot-path fixture set for package-local comparisons:
-
-```sh
-pnpm run measure:less:hotpath:record -- --stable --note "<short hypothesis/result>"
-```
-
-The legacy broad Less benchmark fixture can still be inspected through the
-profiler/counter script when `/Users/matthew/git/oss/less.js` is available:
-
-```sh
-node scripts/profile-less-benchmark.mjs --file=benchmark.less
-```
-
-Use static audits only to support profile decisions:
-
-```sh
-pnpm run audit:node-creation
-```
+Immediate benchmark target: record a post-selector/callable-cut stable
+hot-path snapshot, then profile broad `benchmark.less` before picking the next
+deep cut. Do not run another broad callable/reference/rules/render edit as
+benchmark-shelved cleanup.
 
 ## Active Performance Snapshot
 

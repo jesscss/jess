@@ -1,12 +1,17 @@
 # Core Architecture Performance Handoff
 
-This file preserves performance work that is temporarily shelved while the
-active queue guts unnecessary node creation, materialization, helper arrays,
-promise/generator scaffolding, and copied ownership.
+This file is the benchmark/profile doctrine and evidence log for Jess core
+architecture work.
 
-Use `HANDOFF.md` for the active queue. Use this file for parked performance
-protocol, measured targets, rejected experiments, historical evidence, and
-reactivation thresholds.
+Use `HANDOFF.md` for active integration: current mode, next pass, and the
+specific benchmark leash applied to the queue. Use
+`AGGRESSIVE-CUTTING-REVIEW.md` for the hardline cutting doctrine. Use this file
+for benchmark protocol, measured targets, rejected experiments, historical
+evidence, active performance queues, and reactivation thresholds.
+
+Current mode: **benchmark-leashed aggressive cutting**. Performance is no
+longer merely parked. The active handoff decides the next target, but the
+target must be tied back to this file's benchmark/profile evidence rules.
 
 ## Preserved Lesson
 
@@ -65,24 +70,28 @@ Carry this forward as the performance thesis:
 
 ## Current Policy
 
-Performance is not abandoned. It is in **sanity-check mode** while architecture
-cuts are still removing obvious work from hot eval/render paths.
+Performance is active again as a leash on aggressive cutting. The next broad
+eval/render/lookup/copy/rules/render-buffer change must start from a current
+benchmark or profile target and end with the same benchmark/profile rerun.
 
-In sanity-check mode:
+In benchmark-leashed cutting mode:
 
-- keep cutting structural waste when evidence is local and behavior-preserving;
-- run focused tests and full gates before claiming progress;
-- run `pnpm run measure:less:hotpath` periodically, especially after broad
-  traversal, lookup, render-buffer, callable, reference, ruleset, or at-rule
-  changes;
+- keep the aggressive-cutting posture: delete machinery and semantic reasons
+  for work rather than polishing helpers;
+- run focused tests and full gates before claiming behavior progress;
+- run stable hot-path benchmarks before and after non-trivial hot-path edits;
+- use profiler/counter/CPU-profile evidence to choose targets, not to claim
+  "Jess got faster";
 - do not claim speed wins without real benchmark evidence;
-- do not keep a change that clearly regresses real benchmarks unless it fixes
-  correctness or deletes a CPU-profiled invariant that we explicitly accept as
-  architectural debt removal.
+- reject or reshape changes that reduce local object counts but slow or fail
+  to improve the real benchmark, unless the change fixes correctness and the
+  regression is explicitly accepted as debt.
 
 ## Reactivation Threshold
 
-Bring full performance rounds back as active work when any one of these is true:
+Full performance rounds are currently active. If future work parks performance
+again, bring full performance rounds back as active work when any one of these
+is true:
 
 1. A broad architecture batch touches one of the measured hot surfaces:
    reference lookup/render, callable output/body placement, rules/ruleset body

@@ -7,6 +7,19 @@ Use it before committing changes that touch AST nodes, eval/render, lookup,
 copying, inheritance, traversal, source/root metadata, output writing, or the
 core architecture handoff.
 
+This is one of three core-architecture docs:
+
+- `HANDOFF.md` integrates the active mode, current queue, and next pass.
+- `PERFORMANCE-HANDOFF.md` owns benchmark/profile protocol and performance
+  evidence.
+- This file owns patch-shape review: whether a proposed edit adds machinery,
+  materialization, traversal, metadata mutation, or helper/API surface that the
+  hot path should not pay for.
+
+When performance work is active, this checklist still applies. A benchmark may
+choose the target, but it does not excuse adding generic copy/traversal/helper
+machinery unless the measured runtime result and semantic boundary justify it.
+
 ## Hard Rules
 
 1. No new traversal unless it deletes worse traversal.
