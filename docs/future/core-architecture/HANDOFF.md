@@ -179,6 +179,18 @@ next step starts.
      through the facade. The earlier control-loop failure remains the evidence:
      widening that path without placement/eval hardening changed stateful loop
      output from `tick: 1, 1, 2` to `tick: 1, 2, 3`.
+   - A second production widening attempt proved the mode split more sharply:
+     routing every `opts.start` read through
+     `lookupScopeFrameVariable(..., { includeLive: false })` preserves one
+     source-order shape but breaks `$while` current reads; the loop condition no
+     longer sees the live `i` cell and hits the iteration guard. Ordinary
+     Jess/Less contextual refs are current/lazy (`seen` after a later same-name
+     binding is `blue`, not `red`), while snapshot/occurrence reads must be
+     explicit.
+   - Next production step is not cache work. It is to carry a cheap read-mode
+     fact into `Reference` lookup (`current` vs `snapshot/occurrence`) and only
+     allow facade `start` routing for the explicit snapshot/occurrence mode.
+     Do not infer this mode by crawling parents or probing node shapes.
    - Do not start step 4 lookup caching until production contextual-start
      routing is either safely widened or explicitly split into a later
      production milestone.
@@ -398,6 +410,19 @@ the gate passed.
   passed (`370` passed, `1` skipped) after rebuilding. A parallel build/test
   attempt failed while `@jesscss/core/lib` was being cleaned, so it was a
   build-race artifact; the sequential rerun passed.
+- Production start-route attempt: rejected and reverted. The attempted route
+  reused `lookupScopeFrameVariable(...)` with `start` and `includeLive: false`
+  under narrow no-target/no-interpolation/no-local/no-child-surface guards, but
+  focused control evidence showed that this still breaks `$while` current reads
+  by hiding the live loop binding from the condition. A separate attempted
+  source-order render assertion was also rejected because ordinary contextual
+  refs are current/lazy and correctly see later same-frame bindings. New
+  traversal/materialization after revert: none. New helper/API surface after
+  revert: none. Metadata mutations: none. Evidence: reference focused test
+  passed before the revert only for the unsafe route; control focused test
+  failed with `$while exceeded 10000 iterations`; after revert the focused
+  control guard passed again. Verdict: step 3 needs an explicit carried
+  read-mode fact before production `start` facade routing.
 - New traversal: none added. Pass 4 kept the existing lookup sequence but
   removed eagerly allocated lookup/finalizer closures from
   `evaluateReferenceNode(...)`. No parent/source walk, side-map lookup,
