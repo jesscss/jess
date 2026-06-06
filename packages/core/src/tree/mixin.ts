@@ -8,6 +8,7 @@ import type { Context } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import { callableGuardContainsDefault } from './util/callable-entry.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -77,6 +78,9 @@ export type MixinOptions = {
  */
 export class Mixin extends Node<MixinValue, MixinOptions> {
   constructor(value: MixinValue, options?: MixinOptions, location?: LocationInfo) {
+    if (options?.hasDefault === undefined && value.guard && callableGuardContainsDefault(value.guard)) {
+      options = { ...options, hasDefault: true };
+    }
     super(value, options, location);
     this.removeFlag(F_VISIBLE);
   }

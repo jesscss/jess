@@ -1203,7 +1203,14 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
           }
         }
       }
-      let node = new Ruleset({ selector, rules, guard }, undefined, undefined, $.context);
+      const hasDefault = Boolean(ctx.hasDefault);
+      let node = new Ruleset(
+        { selector, rules, guard },
+        guard ? { hasDefault } : undefined,
+        undefined,
+        $.context
+      );
+      ctx.hasDefault = false;
       let [startOffset, startLine, startColumn] = selector.location!;
       let { endOffset, endLine, endColumn } = end;
       node._location = [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!];
@@ -1473,7 +1480,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                   const hasDefault = Boolean(ctx.hasDefault) || guardContainsDefaultCall(guard) || guardText.includes('??()');
                   const node = new Mixin(
                     { name: new Any(selector.valueOf(), { role: 'name' }), params: args, rules, guard },
-                    hasDefault ? { hasDefault: true } : undefined,
+                    guard ? { hasDefault } : undefined,
                     $.endRule(),
                     $.context
                   );

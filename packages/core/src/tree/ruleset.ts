@@ -32,6 +32,7 @@ import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
 import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
+import { callableGuardContainsDefault } from './util/callable-entry.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -77,6 +78,7 @@ type RulesetOptions = NodeOptions & {
   parentSelector?: Selector | Nil;
   /** Own selector before parent resolution (getImplicitSelector); used by extend so nested rulesets extend .replace,.c not the resolved form. */
   ownSelector?: Selector | Nil;
+  hasDefault?: boolean;
 };
 
 /**
@@ -99,6 +101,14 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   declare _composedSelector?: Selector;
   /** Canonical selector-cache owner for derived registration-prep wrappers. */
   declare _selectorCacheOwner?: Ruleset;
+
+  constructor(value: RulesetValue, options?: RulesetOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
+    if (options?.hasDefault === undefined && value.guard && callableGuardContainsDefault(value.guard)) {
+      options = { ...options, hasDefault: true };
+    }
+    super(value, options, location);
+    this._treeContext = treeContext;
+  }
 
   private ownSelector(value: RulesetValue['selector']): RulesetValue['selector'] {
     if (value instanceof Nil) {

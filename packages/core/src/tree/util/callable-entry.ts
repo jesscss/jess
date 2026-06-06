@@ -24,16 +24,69 @@ export type CallableRulesEntry = {
 export type CallableEntry = Mixin | CallableRulesEntry;
 export type MixinEntry = CallableEntry | Ruleset;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
+export function callableGuardContainsDefault(node: Node | undefined, seen?: Set<Node>): boolean {
+  if (!node) {
+    return false;
+  }
+  if (seen?.has(node)) {
+    return false;
+  }
+  (seen ??= new Set()).add(node);
+  if (node.type === 'DefaultGuard') {
+    return true;
+  }
+  if (isNode(node, N.Call)) {
+    const name = node.value.name;
+    const callName = String(typeof name === 'string' ? name : name.valueOf());
+    if (callName === 'default') {
+      return true;
+    }
+  }
+  const value = node.value;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i];
+      if (isNode(item) && callableGuardContainsDefault(item, seen)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  if (isRecord(value)) {
+    for (const key in value) {
+      const item = value[key];
+      if (isNode(item) && callableGuardContainsDefault(item, seen)) {
+        return true;
+      }
+      if (Array.isArray(item)) {
+        for (let i = 0; i < item.length; i++) {
+          const child = item[i];
+          if (isNode(child) && callableGuardContainsDefault(child, seen)) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
 export function callableRulesEntry(
   value: CallableEntryValue,
   parent?: Node,
   index?: number
 ): CallableRulesEntry {
+  const hasDefault = callableGuardContainsDefault(value.guard);
   return {
     kind: 'callable-rules',
     value,
     parent,
-    index
+    index,
+    ...(hasDefault && { options: { hasDefault: true } })
   };
 }
 

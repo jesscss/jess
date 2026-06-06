@@ -190,6 +190,74 @@ JESS_PROFILE=1 node scripts/profile-less-benchmark.mjs --file=benchmark-v37.less
 If a patch reduces local object counts but slows real benchmarks, reject or
 reshape it.
 
+## Current Evidence Log
+
+### 2026-06-05 Callable Default-Guard Classification
+
+Hypothesis: `prepareCallableEvalCandidates(...)` should not recursively inspect
+candidate guards to rediscover `default()`. The parser already knows whether a
+guard contains `default()` while parsing Less guard syntax, so parsed Less must
+carry explicit `hasDefault: true | false`; direct API construction can infer
+the flag once at construction/entry creation when the option is omitted.
+
+Before patch:
+
+- stable hot-path baseline on commit `9d3ea09467ca480fb18fe7d17418459e346b04fa`:
+  `functions` median `13.74ms`, `import-reference` median `22.04ms`,
+  `mixins-guards` median `74.84ms`;
+- broad instrumented `benchmark.less`: `Reference.evalNode` `3619` calls /
+  `94.12ms`, `Rules.find` `1013` calls / `30.26ms`, `OutputWriter.getSince`
+  `149331` calls / `5.45ms`;
+- CPU profile top frames included `guardContainsDefault` `313` samples,
+  `copyChild` `148`, `Node` `43`, `copyCallableRulesValue` `25`,
+  `findWithinScopeSurface` `19`, `findVarWithinScopeSurface` `15`,
+  `copyWithReusableLeaves` `12`, and `inherit` `11`;
+- node-creation audit stayed broad: `new-node` `321`, `with-surface` `36`,
+  `copy-leaves` `31`, `derive` `30`.
+
+Patch kept:
+
+- `packages/less-parser/src/productions/root.ts` passes `hasDefault: true` or
+  `hasDefault: false` for guarded Less mixins/rulesets;
+- `packages/core/src/tree/util/callable-candidate.ts` trusts
+  `candidate.options?.hasDefault === true` and no longer scans guard trees or
+  rewrites candidate metadata in the candidate loop;
+- `Mixin`/`Ruleset` constructors and `callableRulesEntry(...)` infer the flag
+  only for direct/synthetic construction when the caller did not provide it.
+
+After patch:
+
+- stable hot-path benchmark: `functions` median `12.86ms`,
+  `import-reference` median `19.78ms`, `mixins-guards` median `18.74ms`,
+  `extend-chaining` median `5.30ms`, `media` median `6.46ms`; all five
+  signals were `usable`;
+- final CPU profile
+  `profiling/core-architecture/CPU.20260605.174243.84124.0.001.cpuprofile`
+  showed `guardContainsDefault = 0` samples and
+  `callableGuardContainsDefault = 0` samples;
+- final broad instrumented `benchmark.less`: `Reference.evalNode` `3619` calls
+  / `92.71ms`, `Rules.find` `1013` calls / `30.31ms`,
+  `OutputWriter.getSince` `149331` calls / `5.51ms`;
+- final CPU top frames shifted to copy/ownership and lookup:
+  `copyChild` `144`, `Node` `35`, `copyCallableRulesValue` `24`,
+  `findVarWithinScopeSurface` `23`, `findWithinScopeSurface` `14`,
+  `copyWithReusableLeaves` `11`, `constructCopy` `10`, `inherit` `9`.
+
+Next measured target:
+
+- Copy/ownership is now the hottest concrete stack, not guard detection.
+  `copyChild` samples group under `copyValueForDerived` (`45`),
+  `getHeaderString` (`42`), `callWithContext` (`28`), `ownSelector` (`28`),
+  `createRegistrationState` (`22`), `evaluateReferenceValueNode` (`20`), and
+  `cloneBoundValue` (`9`). Treat this as evidence of registration derivation,
+  selector header rendering, JS function argument ownership, reference value
+  eval, and binding clone debt, not as evidence that final CSS rendering needs
+  child copying.
+- Repeated callable/mixin eval is suspicious. Before more helper polish, count
+  semantic mixin calls versus candidate/output evals and decide whether live
+  placement/binding state can avoid repeated body evaluation or copied public
+  materialization.
+
 ## Parked Measured Targets
 
 Keep these targets visible when performance rounds reactivate:

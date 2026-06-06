@@ -3,7 +3,7 @@ import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { isNode } from './is-node.js';
 import type { Rules } from '../rules.js';
-import { type MixinEntry, getCallableEntryGuard, getMixinEntryRules } from './callable-entry.js';
+import { type MixinEntry, getMixinEntryRules } from './callable-entry.js';
 
 export type CallableEvalCandidatePreparation = {
   evalCandidates: MixinEntry[];
@@ -18,51 +18,6 @@ type CallableEvalCandidatePreparationOptions = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
-}
-
-function guardContainsDefault(node: Node | undefined, seen?: Set<Node>): boolean {
-  if (!node) {
-    return false;
-  }
-  if (seen?.has(node)) {
-    return false;
-  }
-  (seen ??= new Set()).add(node);
-  if (node.type === 'DefaultGuard') {
-    return true;
-  }
-  if (isNode(node, N.Call)) {
-    const name = node.value.name;
-    const callName = String(typeof name === 'string' ? name : name.valueOf());
-    if (callName === 'default') {
-      return true;
-    }
-  }
-  const value = node.value;
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      if (isNode(item) && guardContainsDefault(item, seen)) {
-        return true;
-      }
-    }
-    return false;
-  }
-  if (isRecord(value)) {
-    for (const key in value) {
-      const item = value[key];
-      if (isNode(item) && guardContainsDefault(item, seen)) {
-        return true;
-      }
-      if (Array.isArray(item)) {
-        for (const child of item) {
-          if (isNode(child) && guardContainsDefault(child, seen)) {
-            return true;
-          }
-        }
-      }
-    }
-  }
-  return false;
 }
 
 function hasFailedGuardAncestor(node: Node): boolean {
@@ -221,10 +176,7 @@ export function prepareCallableEvalCandidates({
     }
     seenCandidateIdentities.add(identity);
 
-    const hasDefaultGuard = Boolean(candidate.options?.hasDefault) || guardContainsDefault(getCallableEntryGuard(candidate));
-    if (hasDefaultGuard) {
-      candidate.options ??= {};
-      candidate.options.hasDefault = true;
+    if (candidate.options?.hasDefault === true) {
       hasDefault = true;
     }
     evalCandidates.push(candidate);
