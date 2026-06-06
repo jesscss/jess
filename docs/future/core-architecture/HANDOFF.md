@@ -460,17 +460,35 @@ next step starts.
      declaration names, manual frames before declaration coverage is known, and
      fallback frames whose declaration surface is not covered.
 
-10. [ ] Lookup cache prototype.
-   Add a frame-local lookup-identity cache only after the facade behavior is
-   proven. Cache binding identity, not evaluated values.
+10. [x] Standalone bare-variable cache rejected.
+   A frame-local lookup-identity cache was implemented two ways and then cut:
+   first with a `Map` cache, then with single-entry primitive fields on
+   `ScopeFrame`. Both cached binding identity only and never evaluated values,
+   but neither survived the benchmark leash. This is a local rejection of a
+   bolt-on cache, not a rejection of binding reuse.
 
    Completion gate:
-   - cache key includes read mode, key, lookup mode, start bucket, and frame
-     lookup/current-pointer version
-   - dynamic-name promotion and live-slot/current-pointer changes invalidate
-     correctly
-   - no evaluated-node reuse
-   - focused behavior tests plus benchmark before/after
+   - no cache code remains in the runtime
+   - no evaluated-node reuse was introduced
+   - object audit returns to the prior `new-node` count
+   - performance handoff records the failed measurements
+
+   Status:
+   - The `Map` version increased static node/object audit count from
+     `new-node` `321` to `322`, so it was rejected immediately.
+   - The single-entry field version avoided new cache containers but still did
+     not improve the clean `benchmark-v39.less` profile: `Reference.evalNode`
+     was `482` calls / `5.59ms` after the field-key cache vs `482` calls /
+     `5.43ms` at the start of the pass.
+   - Stable hotpath sanity was mixed and not a win: `functions` `12.79ms`,
+     `import-reference` `20.41ms`, `mixins-guards` `17.44ms`,
+     `extend-chaining` `5.29ms`, `media` `6.74ms`.
+   - Verdict: do not bolt a separate cache onto
+     `lookupScopeFrameVariable(...)`. The right target is a coherent binding
+     handle system where references stop rediscovering binding facts. Repeated
+     lookup reuse should fall out of binding handles, frame/surface versions,
+     path identity, and static/effect facts, not from ad hoc function-level
+     caches.
 
 11. [ ] Callable records prototype.
    Move only simple static callable lookup into binding records. Namespace,
@@ -484,14 +502,26 @@ next step starts.
    - benchmark/profile evidence shows whether this attacks the measured
      `Reference.evalNode`/callable lookup bucket
 
-12. [ ] Evaluated-value cache.
-   Only after lookup identity is correct, consider effect-gated evaluated-value
-   caching on binding cells.
+12. [ ] Binding handle reuse model.
+   Design and prototype one coherent binding/index system for repeated
+   references. Do not add a separate "lookup cache" layer. A reference should
+   ask for a binding handle that already carries scope/version, reference
+   shape, resolved declaration/callable/property identity, static/dynamic/live
+   facts, and whether evaluated value or rendered scalar text can be reused.
+   Example target: repeated `.a.b.c[@color-1]` in the same evaluated scope
+   should not rediscover the `.a.b.c` callable/ruleset path and declaration
+   binding twice.
 
    Completion gate:
-   - dependency/effect facts are explicit
+   - no separate cache layer beside binding/index state
+   - binding handles carry identity from existing reference/path/scope state,
+     not rebuilt string joins or arrays on every lookup
+   - repeated compound-reference fixture proves the same binding facts are not
+     rediscovered
    - no rules/mixin output caching
    - no public materialization cache on the hot render path
+   - evaluated value/text reuse requires explicit static/effect facts on the
+     binding handle
    - benchmark before/after proves value
 
 Next deep-cut queue:
@@ -649,6 +679,23 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Lookup cache rejection pass: rejected as unproven machinery. A frame-local
+  static-variable lookup cache was implemented and removed in the same pass.
+  First attempt used a frame `Map` keyed by lookup identity; static audit rose
+  from `new-node` `321` to `322`, so the cache container was guilty. Second
+  attempt used single-entry primitive fields on `ScopeFrame` to avoid the
+  cache `Map` and key string allocation; behavior tests passed, but clean
+  `benchmark-v39.less` profile still reported `Reference.evalNode` `482` calls
+  / `5.59ms`, worse than the pass baseline `482` / `5.43ms`. Stable hotpath
+  sanity was mixed, not a win. New traversal in final code: none. New
+  node/materialization in final code: none. Render path in final code:
+  unchanged. Helper/API surface in final code: none. Metadata mutations in
+  final code: none. Evidence: focused scope-frame/reference/mixin/control/call/
+  import-style tests passed after the cache was removed; object audit returned
+  to `new-node` `321`, `with-surface` `34`, `copy-leaves` `31`, `derive` `30`.
+  Verdict: do not add standalone lookup caches. Continue toward one
+  binding/index system where repeated references reuse binding handles and
+  static/effect facts instead of rediscovering the same binding facts.
 - Fallback-frame lookup ownership pass: accepted as binding-bridge deletion,
   not as a speed claim. `packages/core/src/tree/scope-frame.ts` now searches the
   primary frame chain and then the fallback frame chain inside

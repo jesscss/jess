@@ -625,6 +625,50 @@ Keep criteria:
 
 ## Recent Benchmark Sanity Notes
 
+### Standalone Bare-Variable Cache Rejection
+
+Date: 2026-06-06.
+
+Change attempted and rejected: frame-local static-variable lookup identity
+caching inside `lookupScopeFrameVariable(...)` as a standalone cache layer.
+
+Two implementations were tried:
+
+- a `Map` cache keyed by lookup identity;
+- a single-entry primitive-field cache on `ScopeFrame`.
+
+Both cached binding identity only, not evaluated values. Both were removed from
+runtime code because the evidence did not justify the machinery.
+
+Evidence:
+
+- Initial pass status after fallback-frame ownership: `benchmark-v39.less`
+  profile showed `Reference.evalNode` `482` calls / `5.43ms`, `Rules.find`
+  `68` calls / `0.38ms`, and static audit showed global `new-node` `321`.
+- The `Map` cache raised the static audit to `new-node` `322`, so it was cut.
+- The single-entry primitive-field cache restored the audit to `new-node`
+  `321`, but a clean profile still showed `Reference.evalNode` `482` calls /
+  `5.59ms`.
+- Stable hotpath sanity with the primitive-field cache was mixed, not a win:
+  `functions` `12.79ms`, `import-reference` `20.41ms`,
+  `mixins-guards` `17.44ms`, `extend-chaining` `5.29ms`, `media` `6.74ms`.
+
+Interpretation: reject a bolt-on bare static-variable cache for this path. The
+failed prototype cached only binding identity for an already-cheap lookup, so
+it reasoned about the cache in isolation instead of asking why reference
+evaluation had to rediscover the same binding facts.
+
+This does not reject reuse. The next model should be one binding/index system:
+a reference asks for a binding handle, and the handle carries scope/version,
+reference shape, resolved declaration/callable/property identity, live/static/
+effect facts, and value/text reusability. A repeated path such as
+`.a.b.c[@color-1]` should not rediscover the `.a.b.c` ruleset/callable path and
+the `@color-1` declaration binding twice.
+
+Future experiments should target repeated compound reference fixtures and prove
+that reuse falls out of binding handles and frame/surface versions, not a
+separate side cache with newly rebuilt strings, arrays, or lookup containers.
+
 ### Fallback-Frame Lookup Ownership
 
 Date: 2026-06-06.
