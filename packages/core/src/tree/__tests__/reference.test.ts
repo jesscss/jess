@@ -866,6 +866,48 @@ describe('reference', () => {
       }
     });
 
+    it('renders dynamic runtime-binding containers without post-eval reference ownership copies', async () => {
+      const sourceValue = list([new AsyncNativeRenderAny('red')]);
+      const paramDecl = vardecl({ name: any('palette'), value: sourceValue }, { paramVar: true });
+      const runtimeScope = rules([]);
+      runtimeScope.scopeFrame = buildScopeFrame(
+        undefined,
+        runtimeScope,
+        undefined,
+        new Map([
+          ['palette', {
+            value: sourceValue,
+            sourceNode: paramDecl
+          }]
+        ])
+      );
+      context.rulesContext = runtimeScope;
+      const refNode = ref({ key: 'palette' }, { type: 'variable' });
+      const buffer = createRenderBuffer('segmented');
+      const originalInherit = List.prototype.inherit;
+      let inheritedFromReference = 0;
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === refNode) {
+          inheritedFromReference++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        expect(await Promise.resolve(refNode.render(context))).toBe('red');
+        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red');
+        expect(buffer.segments).toEqual(['red']);
+        expect(inheritedFromReference).toBe(0);
+        expect(sourceValue.parent).toBe(paramDecl);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
     it('renders source-backed static declaration reference containers as text without container copies', async () => {
       const sourceValue = list([any('red'), any('blue')]);
       sourceValue._location = [10, 1, 11, 20, 1, 21];
@@ -912,6 +954,42 @@ describe('reference', () => {
         expect(context.referenceStack).toBe(0);
       } finally {
         List.prototype.copy = originalCopy;
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
+    it('renders dynamic declaration reference containers without post-eval reference ownership copies', async () => {
+      const sourceValue = list([ref({ key: 'tone' }, { type: 'variable' })]);
+      const node = rules([
+        vardecl({ name: any('tone'), value: any('red') }),
+        decl({
+          name: any('src'),
+          value: sourceValue
+        })
+      ]);
+      setRulesContext(await node.eval(context));
+      const refNode = ref({ key: 'src' }, { type: 'declaration' });
+      const buffer = createRenderBuffer('segmented');
+      const originalInherit = List.prototype.inherit;
+      let inheritedFromReference = 0;
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === refNode) {
+          inheritedFromReference++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        expect(await Promise.resolve(refNode.render(context))).toBe('red');
+        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red');
+        expect(buffer.segments).toEqual(['red']);
+        expect(inheritedFromReference).toBe(0);
+        expect(sourceValue.parent?.type).toBe('Declaration');
+        expect(context.referenceStack).toBe(0);
+      } finally {
         List.prototype.inherit = originalInherit;
       }
     });

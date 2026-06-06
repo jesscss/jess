@@ -317,39 +317,44 @@ Next deep-cut queue:
    `createRulesReferenceLookupExecutor(...)` and its returned per-lookup
    `performRulesLookup(scope)` closure. Leaky rules lookup now carries the same
    lookup data as state and calls a module-local lookup function directly.
-13. [ ] Continue `Reference` before moving to the next node. Audit and cut the
+13. [x] Continue `Reference` pass 10. Render-only declaration and runtime
+   binding finalization now returns the evaluated node directly for non-merged
+   values instead of applying a post-eval `copyWithReusableLeaves(...)` plus
+   `.inherit(reference)`. Focused tests prove dynamic container renders do not
+   stamp reference ownership after eval.
+14. [ ] Continue `Reference` before moving to the next node. Audit and cut the
    remaining copy/materialization pressure: `createRulesLikeReferenceSurface`,
-   `evaluateReferenceValueNode(...)`, declaration finalization, merged assign
-   normalization, and the remaining `.inherit(...)`/`copyWithReusableLeaves(...)`
-   ownership boundaries.
-14. [ ] Sweep `Ampersand` template placement next. Replace
+   public `evaluateReferenceValueNode(...)` materialization, merged assign
+   normalization, and remaining non-render `.inherit(...)`/
+   `copyWithReusableLeaves(...)` ownership boundaries.
+15. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
-15. [ ] Sweep selector matching/extend equality. Replace hot `valueOf()` equality
+16. [ ] Sweep selector matching/extend equality. Replace hot `valueOf()` equality
    predicates with structural/keyset checks where possible, keeping
    `valueOf()` only as a measured, cached fast-path when it wins.
-16. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
+17. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
    materialization so routine eval replacement does not imply `.inherit(...)`.
-17. [ ] Replace `StyleImport` first-use placement copies with placement state
+18. [ ] Replace `StyleImport` first-use placement copies with placement state
    that points at canonical source children and preserves import visibility.
-18. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
+19. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
    is source/visibility/placement bookkeeping.
-19. [ ] Replace remaining `Rules` merge output copies with direct merge
+20. [ ] Replace remaining `Rules` merge output copies with direct merge
    placement/render state or a narrow owned-item copier proven by merge tests.
-20. [ ] Convert registration-prep expected misses away from routine `try/catch`
+21. [ ] Convert registration-prep expected misses away from routine `try/catch`
    only after adding tests for unresolved declaration/identity behavior.
-21. [ ] Continue selector/extend factory cuts separately; do not hide selector
+22. [ ] Continue selector/extend factory cuts separately; do not hide selector
    placement copies inside another generic copy helper.
-22. [ ] Replace callable binding copies for static containers with explicit
+23. [ ] Replace callable binding copies for static containers with explicit
    binding/placement state. Static containers should not be copied merely
    because they contain child nodes; `F_HAS_NODE_CHILD` is only a cheap current
    ownership boundary, not a final architecture.
-23. [ ] Attack the measured copy stack next: `copyChild`,
+24. [ ] Attack the measured copy stack next: `copyChild`,
    `copyWithReusableLeaves`, `copyCallableRulesValue`, `constructCopy`, and
    `.inherit(...)`. CPU evidence says these are mostly registration derivation,
    selector header rendering, JS function argument ownership, reference value
    eval, and binding clone debt; do not justify them as render output copying.
-24. [ ] Audit repeated callable/mixin evaluation from the profile before making
+25. [ ] Audit repeated callable/mixin evaluation from the profile before making
    more local helper cuts. If a mixin candidate or output body is evaluated
    more than the semantic call count requires, carry placement/binding state or
    cache the cold public materialization boundary instead of copying/evaluating
@@ -629,6 +634,27 @@ the gate passed.
   alias replace `createRulesReferenceLookupExecutor(...)` plus its returned
   per-lookup closure. Metadata mutations: none. Evidence: focused
   `reference/declaration/mixin/ruleset/operation` tests passed (`341` tests).
+- Reference pass 10 render-only finalization cut: accepted as a direct
+  render-path ownership deletion. Pre-edit profile status showed
+  `Reference.evalNode` at `482` calls / `5.27ms`, `Rules.find` at `68` calls /
+  `0.37ms`, with repeated variable reads dominating; post-edit status showed
+  `Reference.evalNode` at `482` calls / `6.36ms`, `Rules.find` at `68` calls /
+  `0.48ms`. This is profiler status, not speed proof. Static audit remained
+  unchanged (`reference.ts` `21`; global `new-node` `321`, `with-surface` `34`,
+  `copy-leaves` `31`, `derive` `30`) because this pass deletes conditional
+  runtime calls, not static source lines. New traversal: none. New
+  node/materialization: none added; render-only dynamic declaration/runtime
+  binding values now skip an existing post-eval `copyWithReusableLeaves(...)`
+  and `.inherit(reference)` when no merged assign normalization is required.
+  Render path: narrower; already evaluated values stringify directly instead
+  of becoming public result surfaces. Helper/API surface: none added. Metadata
+  mutations: deleted render-only reference metadata stamping for this branch.
+  Test-only danger tokens: `new AsyncNativeRenderAny`, `new Map`, `sourceNode`,
+  and `try/finally` appear only in focused assertions that restore monkey
+  patches and construct runtime-binding fixtures; they add no production
+  traversal, node creation, side map, or metadata mutation. Evidence: focused
+  `reference.test.ts` passed (`108` tests), and the
+  `reference/declaration/mixin/ruleset/operation` set passed (`343` tests).
 - New traversal: none added. Pass 4 kept the existing lookup sequence but
   removed eagerly allocated lookup/finalizer closures from
   `evaluateReferenceNode(...)`. No parent/source walk, side-map lookup,

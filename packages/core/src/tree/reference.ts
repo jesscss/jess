@@ -1556,6 +1556,10 @@ function finalizeRuntimeVarBindingResult(
       context.popReference();
       return evald;
     }
+    if (options.textOnly === true) {
+      context.popReference();
+      return evald;
+    }
     context.popReference();
     const resultNode = copyWithReusableLeaves(evald);
     return resultNode.inherit(referenceNode);
@@ -1701,7 +1705,7 @@ function finalizeEvaluatedDeclarationReference(
   isMergedAssign: boolean,
   options: { textOnly?: boolean } = {}
 ): Node {
-  if (options.textOnly === true && !isMergedAssign && canReturnReferenceValue(evaluatedNode)) {
+  if (options.textOnly === true && !isMergedAssign) {
     return evaluatedNode;
   }
   const resultNode = isMergedAssign

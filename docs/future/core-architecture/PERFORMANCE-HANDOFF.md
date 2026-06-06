@@ -923,6 +923,55 @@ Result status:
 - `extend-chaining`: usable, median `5.40ms`;
 - `media`: usable, median `6.77ms`.
 
+### Reference Pass 10 Render-Only Finalization Copy Cut
+
+Date: 2026-06-06.
+
+Change: render-only declaration and runtime binding finalization now returns
+the evaluated node directly for non-merged values. It no longer applies a
+post-eval `copyWithReusableLeaves(...)` and `.inherit(reference)` only to stamp
+public result metadata before immediate string rendering.
+
+Pre-edit CPU/counter status:
+
+- `benchmark-v39.less` profiler status: `Reference.evalNode` `482` calls /
+  `5.27ms`, `Rules.find` `68` calls / `0.37ms`;
+- top reference keys were repeated variable reads: `value` `230`, `val` `68`,
+  `size` `40`, `hue` `36`, `idx` `32`;
+- static node-creation audit showed `reference.ts` at `21` creation or copy
+  surfaces and global totals `new-node` `321`, `with-surface` `34`,
+  `copy-leaves` `31`, `derive` `30`.
+
+Post-edit CPU/counter status:
+
+- `benchmark-v39.less` profiler status: `Reference.evalNode` `482` calls /
+  `6.36ms`, `Rules.find` `68` calls / `0.48ms`;
+- top reference keys remained repeated variable reads: `value` `230`,
+  `val` `68`, `size` `40`, `hue` `36`, `idx` `32`;
+- static node-creation audit remained unchanged: `reference.ts` `21`,
+  global totals `new-node` `321`, `with-surface` `34`, `copy-leaves` `31`,
+  `derive` `30`.
+
+Interpretation: status only, not speed proof. The code-path proof is narrower:
+dynamic values that were already evaluated for render no longer pay a second
+ownership copy/inherit just before stringification. The static audit does not
+move because the deleted work was conditional runtime execution, not a removed
+source line containing a creation token.
+
+Sanity command:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result status:
+
+- `functions`: usable, median `13.58ms`;
+- `import-reference`: usable, median `21.79ms`;
+- `mixins-guards`: usable, median `17.61ms`;
+- `extend-chaining`: usable, median `5.37ms`;
+- `media`: usable, median `6.52ms`.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
