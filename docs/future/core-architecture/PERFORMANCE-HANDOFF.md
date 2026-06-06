@@ -741,6 +741,36 @@ failure and fix: `$for` live-slot RHS assignment failed with `'value' is not
 defined` before the write-boundary eval and passed after gating context use to
 live-slot registration surfaces.
 
+### Reference Pass 5 Static Declaration Resolve Cut
+
+Date: 2026-06-06.
+
+Change: public declaration references now return static, non-important,
+non-merged declaration values directly when outside calc frames. This deletes
+the remaining public resolve path that copied, froze, and inherited already
+static declaration containers.
+
+Sanity command:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result status:
+
+- `functions`: usable, median `13.77ms`;
+- `import-reference`: unstable, median `21.87ms`;
+- `mixins-guards`: usable, median `17.59ms`;
+- `extend-chaining`: usable, median `5.47ms`;
+- `media`: usable, median `6.80ms`.
+
+Interpretation: status only. This was not a clean before/after benchmark
+experiment, so it makes no speed claim. The behavioral/code-path proof is that
+the focused declaration-reference resolve test failed before the patch because
+it returned a copied/frozen `List`; it now asserts source identity and zero
+`copy(...)`/`.inherit(...)`. Calc slash-list tests rejected a broader direct
+return, so the kept cut is explicitly bounded by `context.calcFrames === 0`.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

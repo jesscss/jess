@@ -1925,7 +1925,7 @@ describe('reference', () => {
       }
     });
 
-    it('does not clone source-free declaration reference containers before resolving them', async () => {
+    it('reuses source-free static declaration reference containers during public resolve', async () => {
       const sourceValue = list([any('red')]);
       const node = rules([
         decl({
@@ -1935,24 +1935,40 @@ describe('reference', () => {
       ]);
       const evaldRoot = setRulesContext(await node.eval(context));
 
-      const originalClone = List.prototype.clone;
-      let listClones = 0;
-      List.prototype.clone = function cloneForCounting(
+      const originalCopy = List.prototype.copy;
+      const originalInherit = List.prototype.inherit;
+      let listCopies = 0;
+      let listInherits = 0;
+      List.prototype.copy = function copyForCounting(
         this: List,
-        ...args: Parameters<typeof originalClone>
-      ): ReturnType<typeof originalClone> {
-        listClones++;
-        return originalClone.apply(this, args);
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this === sourceValue) {
+          listCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === sourceValue || args[0]?.type === 'Reference') {
+          listInherits++;
+        }
+        return originalInherit.apply(this, args);
       };
 
       try {
         const resolved = await ref({ key: 'src' }, { type: 'declaration' }).resolve(context);
 
+        expect(resolved).toBe(sourceValue);
         expect(resolved.toTrimmedString()).toBe('red');
-        expect(listClones).toBe(0);
+        expect(listCopies).toBe(0);
+        expect(listInherits).toBe(0);
         expect(sourceValue.toTrimmedString()).toBe('red');
       } finally {
-        List.prototype.clone = originalClone;
+        List.prototype.copy = originalCopy;
+        List.prototype.inherit = originalInherit;
       }
     });
 

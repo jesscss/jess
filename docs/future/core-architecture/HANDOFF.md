@@ -289,39 +289,44 @@ Next deep-cut queue:
    `runLookup`, `resolveTargetValue`, or `evaluateKey` closures before ordinary
    synchronous reference lookup. Also removed duplicate static-return branches
    in runtime binding finalization and reference value evaluation.
-8. [ ] Continue `Reference` before moving to the next node. Audit and cut the
+8. [x] Continue `Reference` pass 5. Public declaration references now return
+   static, non-important, non-merged source values directly instead of copying,
+   freezing, and inheriting a declaration container that is already safe to
+   reuse. Focused test now asserts identity plus no `copy(...)`/`.inherit(...)`
+   for source-free static declaration containers.
+9. [ ] Continue `Reference` before moving to the next node. Audit and cut the
    remaining copy/materialization pressure: `createRulesLikeReferenceSurface`,
    `evaluateReferenceValueNode(...)`, declaration finalization, merged assign
    normalization, and the remaining `.inherit(...)`/`copyWithReusableLeaves(...)`
    ownership boundaries.
-9. [ ] Sweep `Ampersand` template placement next. Replace
+10. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
-10. [ ] Sweep selector matching/extend equality. Replace hot `valueOf()` equality
+11. [ ] Sweep selector matching/extend equality. Replace hot `valueOf()` equality
    predicates with structural/keyset checks where possible, keeping
    `valueOf()` only as a measured, cached fast-path when it wins.
-11. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
+12. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
    materialization so routine eval replacement does not imply `.inherit(...)`.
-12. [ ] Replace `StyleImport` first-use placement copies with placement state
+13. [ ] Replace `StyleImport` first-use placement copies with placement state
    that points at canonical source children and preserves import visibility.
-13. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
+14. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
    is source/visibility/placement bookkeeping.
-14. [ ] Replace remaining `Rules` merge output copies with direct merge
+15. [ ] Replace remaining `Rules` merge output copies with direct merge
    placement/render state or a narrow owned-item copier proven by merge tests.
-15. [ ] Convert registration-prep expected misses away from routine `try/catch`
+16. [ ] Convert registration-prep expected misses away from routine `try/catch`
    only after adding tests for unresolved declaration/identity behavior.
-16. [ ] Continue selector/extend factory cuts separately; do not hide selector
+17. [ ] Continue selector/extend factory cuts separately; do not hide selector
    placement copies inside another generic copy helper.
-17. [ ] Replace callable binding copies for static containers with explicit
+18. [ ] Replace callable binding copies for static containers with explicit
    binding/placement state. Static containers should not be copied merely
    because they contain child nodes; `F_HAS_NODE_CHILD` is only a cheap current
    ownership boundary, not a final architecture.
-18. [ ] Attack the measured copy stack next: `copyChild`,
+19. [ ] Attack the measured copy stack next: `copyChild`,
    `copyWithReusableLeaves`, `copyCallableRulesValue`, `constructCopy`, and
    `.inherit(...)`. CPU evidence says these are mostly registration derivation,
    selector header rendering, JS function argument ownership, reference value
    eval, and binding clone debt; do not justify them as render output copying.
-19. [ ] Audit repeated callable/mixin evaluation from the profile before making
+20. [ ] Audit repeated callable/mixin evaluation from the profile before making
    more local helper cuts. If a mixin candidate or output body is evaluated
    more than the semantic call count requires, carry placement/binding state or
    cache the cold public materialization boundary instead of copying/evaluating
@@ -504,6 +509,26 @@ the gate passed.
   failed before the write-boundary eval fix with `'value' is not defined` and
   passed after it; `reference.test.ts` also passes after rejecting the broader
   context route.
+- Reference pass 5 static declaration public-resolve cut: accepted as a narrow
+  copy/materialization deletion. New traversal: none; no loop, recursion,
+  parent/source walk, side map, generator, sort/filter/map, or child scan was
+  added. New node/materialization: none; the pass deletes the public
+  declaration-reference path that copied, froze, and inherited a static
+  non-important, non-merged container. Render path: unchanged; the existing
+  text-only direct static path is widened to public resolve/eval only when the
+  source value is already `F_STATIC`, not rules-like, and not inside a calc
+  frame. Helper/API surface: no helper or public API added; no options-object
+  spread was kept in the hot finalizer. Metadata mutations: no
+  parent/source/frozen/lazy context/options, `Reflect.*`, or
+  `Object.hasOwn(...)` added. Important declarations, merged assignments, and
+  calc slash-list normalization stay on the existing evaluated/materialized
+  paths. Evidence: a focused `reference.test.ts` assertion failed before the
+  patch because resolve returned a copied/frozen `List`; it now asserts
+  identity plus zero `copy(...)`/`.inherit(...)`. The broader
+  `operation.test.ts` calc cases failed when the direct return was too broad,
+  then passed with the explicit `context.calcFrames === 0` boundary; the full
+  focused reference/declaration/list/sequence/condition/operation family
+  passes.
 - New traversal: none added. Pass 4 kept the existing lookup sequence but
   removed eagerly allocated lookup/finalizer closures from
   `evaluateReferenceNode(...)`. No parent/source walk, side-map lookup,

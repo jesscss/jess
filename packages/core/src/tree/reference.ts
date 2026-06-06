@@ -1660,7 +1660,7 @@ function finalizeDeclarationReferenceResult(
   const isMergedAssign = isMergedAssignDeclaration(declaration);
   const hasImportant = hasImportantDeclarationValue(declaration);
   if (
-    options.textOnly === true
+    context.calcFrames === 0
     && !hasImportant
     && !isMergedAssign
     && canReturnReferenceValue(declarationValue)
