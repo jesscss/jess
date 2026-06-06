@@ -89,19 +89,20 @@ Binding prototype status:
   string-key production facade. Planned numeric ids are promising only when the
   reference already carries the id; string-to-id conversion on each read remains
   rejected.
-- Production integration status: the first `ScopeFrame` variable facade and
-  source-order/current-read hardening are in production for covered static
-  variable references and static `:=` writes. This is not the full binding
-  index yet; declaration-bucket `Reference` hits still return source
-  declaration nodes, and callable lookup still uses the existing registry path.
+- Production integration status: the first `ScopeFrame` variable facade,
+  source-order/current-read hardening, and declaration-bucket binding identity
+  are in production for covered static variable references and static `:=`
+  writes. This is not the full binding index yet; covered miss vs uncovered
+  fallback still needs an explicit result shape, and callable lookup still uses
+  the existing registry path.
 - Fallback bridges are temporary debt. Covered simple paths must return hit or
   miss from the binding frame and stop. Only unmodeled cold/complex cases may
   route to old registry/search/materialization paths, and every such bridge
   needs a deletion condition in `BINDING-INDEX-PROPOSAL.md` or this handoff.
-- Next binding step, when selected: make declaration-bucket variable hits
-  return binding/value identity directly so assignment and reference
-  finalization can stop bouncing through source declaration nodes. Do not start
-  lookup caching until that identity boundary is clean.
+- Next binding step, when selected: split covered `MISS` from `UNCOVERED`
+  lookup results so covered static variable reads stop falling through old
+  fallback ladders by construction. Do not start lookup caching until that
+  bridge is gone.
 
 ## Active Binding Implementation Lane
 
@@ -231,7 +232,7 @@ next step starts.
      identity cleanly enough that the cache can cache binding identity instead
      of source declaration nodes.
 
-4. [ ] Declaration-bucket binding identity.
+4. [x] Declaration-bucket binding identity.
    Make covered static variable declaration hits return binding/value identity
    directly from the `ScopeFrame` facade instead of returning source
    `VarDeclaration` nodes.
@@ -256,7 +257,44 @@ next step starts.
    - focused reference, scope-frame, mixin, control, declaration tests pass
    - benchmark leash recorded as status unless a clean before/after is run
 
-5. [ ] Lookup cache prototype.
+   Status:
+   - `Reference.lookupScopeFrameVariableBinding(...)` now converts both live
+     hits and declaration-bucket hits into the same `RuntimeVarBinding` result
+     shape. Covered static variable declaration reads no longer bounce through
+     source `VarDeclaration` nodes before finalization.
+   - The public rules-like preserve boundary remains intentionally cold:
+     non-param rules-like declaration references still return the shallow
+     owned surface required by existing public-reference tests. That is
+     materialization for public ownership, not render-only copying.
+   - Focused tests now prove a covered static variable hit does not call
+     `Rules.find(...)`, matching the existing miss/snapshot coverage.
+   - Remaining bridge debt: the facade still returns `undefined` for both
+     covered misses and unmodeled cases. The next step must make that state
+     explicit and delete fallback routing for covered static hit/miss paths.
+
+5. [ ] Split covered `MISS` from `UNCOVERED` fallback.
+   Replace ambiguous `undefined` facade results with an explicit covered-miss
+   or uncovered result so `Reference` can stop trying old live-slot,
+   `findVarDeclarationFast(...)`, and registry/search ladders for paths the
+   binding frame already owns.
+
+   Scope:
+   - static string `type: variable` reads only
+   - no explicit target
+   - no interpolation/dynamic key
+   - preserve `$!` source-position reads and ordinary current reads
+   - no evaluated-value cache
+
+   Completion gate:
+   - covered static variable hits return binding identity
+   - covered static variable misses return miss and stop
+   - only explicitly unmodeled cases return uncovered and may fallback
+   - focused hit, miss, snapshot, dynamic-name, mixin, and loop tests pass
+   - no new traversal, node creation, copy, `.inherit(...)`, or metadata
+     mutation
+   - benchmark/profile leash recorded
+
+6. [ ] Lookup cache prototype.
    Add a frame-local lookup-identity cache only after the facade behavior is
    proven. Cache binding identity, not evaluated values.
 
@@ -268,7 +306,7 @@ next step starts.
    - no evaluated-node reuse
    - focused behavior tests plus benchmark before/after
 
-6. [ ] Callable records prototype.
+7. [ ] Callable records prototype.
    Move only simple static callable lookup into binding records. Namespace,
    guard matching, candidate evaluation, import visibility, and callable output
    stay out of the facade until separately proven.
@@ -280,7 +318,7 @@ next step starts.
    - benchmark/profile evidence shows whether this attacks the measured
      `Reference.evalNode`/callable lookup bucket
 
-7. [ ] Evaluated-value cache.
+8. [ ] Evaluated-value cache.
    Only after lookup identity is correct, consider effect-gated evaluated-value
    caching on binding cells.
 
@@ -445,6 +483,41 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Declaration-bucket binding identity pass: accepted as binding-bridge
+  deletion, not as a speed claim. `packages/core/src/tree/reference.ts` now
+  returns the existing `RuntimeVarBinding` shape for declaration-bucket hits
+  from `lookupScopeFrameVariableBinding(...)`, so covered static variable
+  reads finalize from binding cell/value identity instead of first returning a
+  source `VarDeclaration`. New traversal: none; it reuses the existing
+  frame-chain/bucket lookup and adds no loop, recursion, parent/source walk,
+  side map, generator, `map/filter/sort`, or child scan. New
+  node/materialization: no new `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, frozen/source/parent metadata, or array materialization was
+  added. The existing public `preserveRulesLike` shallow surface remains only
+  for non-param rules-like declaration references that tests prove require
+  owned public materialization; render-only paths are not routed through it as
+  a new copy tax. Render path: unchanged except covered static variable hits
+  avoid `Rules.find(...)` and source-declaration finalization. Helper/API
+  surface: no new helper or public API added. Metadata mutations: none.
+  Evidence: focused `reference/scope-frame/declaration/mixin/control` tests
+  passed (`356` tests); eslint for `reference.ts` and `reference.test.ts`
+  passed; `@jesscss/core` build passed. Post-patch profiler status on
+  `benchmark-v39.less`: `Reference.evalNode` `482` calls / `5.62ms`,
+  `Rules.find` `68` calls / `0.37ms`, with `Rules.find` now only function keys
+  (`hsl`, `percentage`, `range`) for that fixture. Static node-creation audit
+  remained `reference.ts` `21`, global `new-node` `321`, `with-surface` `34`,
+  `copy-leaves` `31`, `derive` `30`. Stable hot-path sanity was usable for
+  all five tracked fixtures: `functions` `12.69ms`, `import-reference`
+  `20.95ms`, `mixins-guards` `17.33ms`, `extend-chaining` `5.74ms`, and
+  `media` `6.46ms`.
+  Danger-token prosecution: the `sourceNode` reads in `reference.ts` only carry
+  existing binding source identity into the existing result shape; they do not
+  mutate parent/source metadata. The `evald.sourceNode` check is a public
+  rules-like surface guard that avoids creating a second surface when one
+  already exists. The added `try/finally` is test-only monkey-patch cleanup for
+  restoring `Rules.find(...)`, not runtime expected-miss or branch control.
+  The `.inherit(...)`/`.adopt(...)` text is only in this prosecution/doc
+  checklist as forbidden machinery; this pass adds no such calls.
 - Binding bridge cleanup doctrine: accepted as documentation/spec tightening
   only. It turns fallback bridges into named temporary debt and requires
   deletion conditions before any covered static-key path may keep old

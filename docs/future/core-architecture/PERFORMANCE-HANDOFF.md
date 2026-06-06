@@ -972,6 +972,56 @@ Result status:
 - `extend-chaining`: usable, median `5.37ms`;
 - `media`: usable, median `6.52ms`.
 
+### Binding Step 4 Declaration-Bucket Binding Identity
+
+Date: 2026-06-06.
+
+Change: covered static variable declaration hits now return binding cell/value
+identity through `RuntimeVarBinding` instead of returning a source
+`VarDeclaration` and then bouncing through declaration-node finalization.
+
+Pre-edit CPU/counter status:
+
+- `benchmark-v39.less` profiler status: `Reference.evalNode` `482` calls /
+  `5.54ms`, `Rules.find` `68` calls / `0.40ms`;
+- top reference keys were repeated variable reads: `value` `230`, `val` `68`,
+  `size` `40`, `hue` `36`, `idx` `32`;
+- static node-creation audit showed `reference.ts` at `21` creation or copy
+  surfaces and global totals `new-node` `321`, `with-surface` `34`,
+  `copy-leaves` `31`, `derive` `30`.
+
+Post-edit CPU/counter status:
+
+- `benchmark-v39.less` profiler status: `Reference.evalNode` `482` calls /
+  `5.62ms`, `Rules.find` `68` calls / `0.37ms`;
+- `Rules.find` for this fixture is now only function lookup:
+  `function:hsl` `36`, `function:percentage` `24`, `function:range` `8`;
+- top reference keys stayed `value` `230`, `val` `68`, `size` `40`,
+  `hue` `36`, `idx` `32`;
+- static node-creation audit stayed `reference.ts` `21`, global totals
+  `new-node` `321`, `with-surface` `34`, `copy-leaves` `31`, `derive` `30`.
+
+Interpretation: status only, not speed proof. The code-path proof is the
+focused reference test that instruments `Rules.find(...)`: a covered static
+variable hit for `color` renders `seen: red;` with zero declaration
+`Rules.find(...)` calls. The remaining binding bridge is now more exposed:
+facade `undefined` still conflates covered miss and unmodeled fallback, so the
+next lookup cut is explicit `MISS` vs `UNCOVERED`, not lookup caching.
+
+Sanity command:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result status:
+
+- `functions`: usable, median `12.69ms`;
+- `import-reference`: usable, median `20.95ms`;
+- `mixins-guards`: usable, median `17.33ms`;
+- `extend-chaining`: usable, median `5.74ms`;
+- `media`: usable, median `6.46ms`.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

@@ -807,16 +807,15 @@ function lookupScopeFrameVariableBinding(
   if (!hit) {
     return undefined;
   }
-  if (hit.kind === 'declaration') {
-    return hit.entry.sourceNode;
-  }
-  const value = getBindingCellValue(hit.cell);
+  const cell = hit.kind === 'declaration' ? hit.entry.cell : hit.cell;
+  const sourceNode = hit.kind === 'declaration' ? hit.entry.sourceNode : hit.sourceNode;
+  const value = getBindingCellValue(cell);
   return {
     kind: 'runtime-var-binding',
     value,
-    readonly: hit.cell.readonly,
-    sourceNode: hit.sourceNode,
-    rulesContext: isNode(hit.cell.rulesContext, N.Rules) ? hit.cell.rulesContext : undefined
+    readonly: cell.readonly,
+    sourceNode,
+    rulesContext: isNode(cell.rulesContext, N.Rules) ? cell.rulesContext : undefined
   } satisfies RuntimeVarBinding;
 }
 
@@ -1550,7 +1549,13 @@ function finalizeRuntimeVarBindingResult(
       && isRulesLikeReferenceValue(evald)
     ) {
       context.popReference();
-      return evald;
+      return (
+        isNode(bindingSource, N.VarDeclaration)
+        && !bindingSource.options?.paramVar
+        && evald.sourceNode === undefined
+      )
+        ? createRulesLikeReferenceSurface(evald)
+        : evald;
     }
     if (canReturnReferenceValue(evald)) {
       context.popReference();
@@ -1573,7 +1578,14 @@ function finalizeRuntimeVarBindingResult(
   );
 
   let evalFlags = REF_EVAL_REUSE_SOURCE_FREE;
-  if (referenceNode.options?.type === 'mixin-ruleset') {
+  if (
+    referenceNode.options?.type === 'mixin-ruleset'
+    || (
+      referenceNode.options?.preserveRulesLike === true
+      && isNode(bindingSource, N.VarDeclaration)
+      && !bindingSource.options?.paramVar
+    )
+  ) {
     evalFlags |= REF_EVAL_PRESERVE_RULES_LIKE;
   }
   if (options.textOnly === true) {

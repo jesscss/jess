@@ -2341,6 +2341,37 @@ describe('reference', () => {
       expect(declarationHits).toBe(0);
     });
 
+    it('static variable hits avoid Rules.find for covered binding-frame lookup', async () => {
+      const originalFind = RulesClass.prototype.find;
+      let declarationHits = 0;
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'color') {
+          declarationHits++;
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({ name: 'color', value: any('red') }),
+          decl({
+            name: any('seen'),
+            value: ref({ key: 'color' }, { type: 'variable' })
+          })
+        ]);
+
+        const css = await renderNodeToString(node, context);
+
+        expect(css).toBeString(`
+          seen: red;
+        `);
+        expect(declarationHits).toBe(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
     it('plain lexical misses do not fall back when only later child rules could match', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];
