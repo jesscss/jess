@@ -800,13 +800,6 @@ function lookupScopeFrameVariableBinding(
     return undefined;
   }
   const frame = targetRules.getScopeFrame();
-  const rulesParent = targetRules.rulesParent;
-  if (
-    frame.parent === undefined
-    && rulesParent !== undefined
-  ) {
-    return undefined;
-  }
   if (
     targetRules.scopeFrame === frame
     && targetRules.varsByName === undefined

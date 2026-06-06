@@ -2372,6 +2372,46 @@ describe('reference', () => {
       }
     });
 
+    it('nested static variable hits build parent scope frames without Rules.find fallback', async () => {
+      const originalFind = RulesClass.prototype.find;
+      let declarationHits = 0;
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'color') {
+          declarationHits++;
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const childRules = rules([
+          decl({
+            name: any('seen'),
+            value: ref({ key: 'color' }, { type: 'variable' })
+          })
+        ]);
+        const root = rules([
+          vardecl({ name: 'color', value: any('red') }),
+          ruleset({
+            selector: el('.scope'),
+            rules: childRules
+          })
+        ]);
+        context.root = root;
+        context.rulesContext = childRules;
+
+        const evald = await childRules.eval(context);
+        const css = await renderNodeToString(evald, context);
+
+        expect(css).toBeString(`
+          seen: red;
+        `);
+        expect(declarationHits).toBe(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
     it('plain lexical misses do not fall back when only later child rules could match', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];

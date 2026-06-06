@@ -1074,6 +1074,55 @@ Result status:
 - `extend-chaining`: usable, median `5.09ms`;
 - `media`: usable, median `6.35ms`.
 
+### Binding Step 6 Parent-Frame Coverage
+
+Date: 2026-06-06.
+
+Change: nested `Rules` frames now build/attach their nearest ancestor
+`Rules` frame on demand. Static variable lookup no longer marks a child frame
+as `uncovered` just because the parent frame had not already been built.
+
+Pre-edit CPU/counter status:
+
+- `benchmark-v39.less` profiler status: `Reference.evalNode` `482` calls /
+  `5.10ms`, `Rules.find` `68` calls / `0.36ms`;
+- top reference keys were repeated variable reads: `value` `230`, `val` `68`,
+  `size` `40`, `hue` `36`, `idx` `32`;
+- static node-creation audit showed `reference.ts` at `21` creation or copy
+  surfaces and global totals `new-node` `321`, `with-surface` `34`,
+  `copy-leaves` `31`, `derive` `30`.
+
+Post-edit CPU/counter status:
+
+- `benchmark-v39.less` profiler status: `Reference.evalNode` `482` calls /
+  `5.61ms`, `Rules.find` `68` calls / `0.38ms`;
+- `Rules.find` stayed only function lookup for this fixture:
+  `function:hsl` `36`, `function:percentage` `24`, `function:range` `8`;
+- top reference keys stayed `value` `230`, `val` `68`, `size` `40`,
+  `hue` `36`, `idx` `32`;
+- static node-creation audit stayed `reference.ts` `21`, global totals
+  `new-node` `321`, `with-surface` `34`, `copy-leaves` `31`, `derive` `30`.
+
+Interpretation: status only, not speed proof. The code-path proof is the
+focused nested reference test: a child `Rules` surface resolves a static parent
+variable with the parent frame initially unbuilt and records zero declaration
+`Rules.find(...)` calls. This deletes one `uncovered` bridge by representing
+the parent frame chain directly.
+
+Sanity command:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result status:
+
+- `functions`: usable, median `12.35ms`;
+- `import-reference`: usable, median `18.18ms`;
+- `mixins-guards`: usable, median `16.53ms`;
+- `extend-chaining`: usable, median `5.10ms`;
+- `media`: usable, median `6.25ms`.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

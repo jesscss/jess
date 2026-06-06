@@ -90,21 +90,20 @@ Binding prototype status:
   reference already carries the id; string-to-id conversion on each read remains
   rejected.
 - Production integration status: the first `ScopeFrame` variable facade,
-  source-order/current-read hardening, and declaration-bucket binding identity
-  are in production for covered static variable references and static `:=`
-  writes. This is not the full binding index yet; covered miss vs uncovered
-  fallback still needs an explicit result shape, and callable lookup still uses
-  the existing registry path.
+  source-order/current-read hardening, declaration-bucket binding identity,
+  explicit miss/uncovered states, and on-demand parent-frame coverage are in
+  production for covered static variable references and static `:=` writes.
+  This is not the full binding index yet; callable lookup still uses the
+  existing registry path.
 - Fallback bridges are temporary debt. Covered simple paths must return hit or
   miss from the binding frame and stop. Only unmodeled cold/complex cases may
   route to old registry/search/materialization paths, and every such bridge
   needs a deletion condition in `BINDING-INDEX-PROPOSAL.md` or this handoff.
 - Next binding step, when selected: delete the remaining `UNCOVERED` bridges
   one by one by carrying the missing facts at construction/adoption time:
-  parent-frame coverage for detached/caller scopes, manual-frame indexing
-  state, fallback-frame lookup ownership, and pending dynamic-name promotion
-  state. Do not start lookup caching until those bridge boundaries are
-  narrower.
+  manual-frame indexing state, fallback-frame lookup ownership, and pending
+  dynamic-name promotion state. Do not start lookup caching until those bridge
+  boundaries are narrower.
 
 ## Active Binding Implementation Lane
 
@@ -321,7 +320,40 @@ next step starts.
      facts so more `uncovered` cases become covered hit/miss without old
      lookup.
 
-6. [ ] Lookup cache prototype.
+6. [x] Parent-frame coverage for nested static variable lookup.
+   Build/attach the nearest ancestor `Rules` scope frame on demand instead of
+   treating a child frame with an unbuilt parent as `UNCOVERED`.
+
+   Scope:
+   - static string `type: variable` reads only
+   - no explicit target
+   - no interpolation/dynamic key
+   - preserve `$!` source-position reads and ordinary current reads
+   - no evaluated-value cache
+
+   Completion gate:
+   - nested child rules can resolve static parent variables when the parent
+     frame was not prebuilt
+   - covered nested hits do not call `Rules.find(...)`
+   - detached ruleset and mixin fallback behavior remains covered
+   - no new child traversal, node creation, copy, `.inherit(...)`, or metadata
+     mutation
+   - benchmark/profile leash recorded
+
+   Status:
+   - `Rules.getScopeFrame(...)` now builds/returns the nearest ancestor
+     `Rules` frame when wiring a frame parent, instead of only reusing an
+     already-built ancestor frame.
+   - `Reference.lookupScopeFrameVariableBinding(...)` no longer has to mark
+     `frame.parent === undefined && rulesParent !== undefined` as uncovered.
+     The frame chain now represents the parent in the covered nested case.
+   - Focused reference coverage proves a nested static variable hit builds the
+     parent frame and avoids declaration `Rules.find(...)` fallback.
+   - Remaining uncovered bridges: explicit targets, interpolated variable keys,
+     non-snapshot contextual `start`, pending dynamic declaration names,
+     prebuilt/manual unindexed frames, and fallback-frame lookup ownership.
+
+7. [ ] Lookup cache prototype.
    Add a frame-local lookup-identity cache only after the facade behavior is
    proven. Cache binding identity, not evaluated values.
 
@@ -333,7 +365,7 @@ next step starts.
    - no evaluated-node reuse
    - focused behavior tests plus benchmark before/after
 
-7. [ ] Callable records prototype.
+8. [ ] Callable records prototype.
    Move only simple static callable lookup into binding records. Namespace,
    guard matching, candidate evaluation, import visibility, and callable output
    stay out of the facade until separately proven.
@@ -345,7 +377,7 @@ next step starts.
    - benchmark/profile evidence shows whether this attacks the measured
      `Reference.evalNode`/callable lookup bucket
 
-8. [ ] Evaluated-value cache.
+9. [ ] Evaluated-value cache.
    Only after lookup identity is correct, consider effect-gated evaluated-value
    caching on binding cells.
 
@@ -510,6 +542,38 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Parent-frame coverage pass: accepted as an `UNCOVERED` bridge deletion, not
+  as a speed claim. `packages/core/src/tree/rules.ts` now wires a frame parent
+  by building/returning the nearest ancestor `Rules` frame on demand, and
+  `packages/core/src/tree/reference.ts` deletes the guard that marked child
+  frames with an unbuilt parent as uncovered. New traversal: no new traversal
+  shape; this reuses the existing parent walk in `Rules.getScopeFrame(...)`
+  and replaces "only use already-built parent frame" with "build the first
+  ancestor frame." It adds no child scan, source walk, `map/filter/sort`,
+  generator, side map, or recursive AST walk. New node/materialization: none;
+  no `Node`, copy, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`,
+  frozen/source/parent metadata mutation, or array materialization was added.
+  Render path: unchanged; render still stringifies evaluated values. Helper/API
+  surface: no new helper or public API added. Metadata mutations: one existing
+  `scopeFrame` cache can now be created on an ancestor earlier, which is the
+  intended binding state rather than parent/source metadata mutation. Evidence:
+  focused `scope-frame/reference/declaration/mixin/control` tests passed
+  (`359` tests), including a new nested static variable test proving parent
+  frame construction avoids declaration `Rules.find(...)`; eslint for touched
+  files passed; `@jesscss/core` build passed. Post-patch profiler status on
+  `benchmark-v39.less`: `Reference.evalNode` `482` calls / `5.61ms`,
+  `Rules.find` `68` calls / `0.38ms`, still only function keys for that
+  fixture. Static node-creation audit remained `reference.ts` `21`, global
+  `new-node` `321`, `with-surface` `34`, `copy-leaves` `31`, `derive` `30`.
+  Stable hot-path sanity was usable for all five tracked fixtures:
+  `functions` `12.35ms`, `import-reference` `18.18ms`, `mixins-guards`
+  `16.53ms`, `extend-chaining` `5.10ms`, and `media` `6.25ms`.
+  Danger-token prosecution: the `.inherit(...)`/`.adopt(...)` text appears
+  only in the forbidden-machinery checklist; this pass adds no such calls. The
+  `frame.parent` text describes a deleted read-only guard and does not mutate
+  parent/source metadata. The added `try/finally` is test-only cleanup for a
+  temporary `Rules.find(...)` monkey patch, not production expected-miss or
+  branch control.
 - Covered miss vs uncovered pass: accepted as binding-bridge deletion, not as
   a speed claim. `packages/core/src/tree/scope-frame.ts` now returns explicit
   `miss` and `uncovered` states from `lookupScopeFrameVariable(...)`;

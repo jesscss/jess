@@ -586,11 +586,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Requires _indexRules() to have run so varsByName is populated.
    *
    * Parent frame: if the caller supplies one it is used directly (mixin
-   * call sites do this to wire the call-site lexical chain).  Otherwise
-   * the nearest ancestor Rules node with an already-built scopeFrame is
-   * used, so inner rules nodes within a mixin body automatically inherit
-   * outerRules.scopeFrame as their parent without needing an explicit
-   * argument.
+   * call sites do this to wire the call-site lexical chain). Otherwise the
+   * nearest ancestor Rules node builds/returns its scopeFrame, so inner rules
+   * nodes inherit the represented parent frame even when the ancestor frame
+   * was not accessed first.
    */
   getScopeFrame(parent?: ScopeFrame): ScopeFrame {
     if (!this.scopeFrame) {
@@ -602,11 +601,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         let cursor = this.parent;
         while (cursor) {
           if (isNode(cursor, N.Rules)) {
-            const frame = (cursor as Rules).scopeFrame;
-            if (frame) {
-              resolvedParent = frame;
-              break;
-            }
+            resolvedParent = (cursor as Rules).getScopeFrame();
+            break;
           }
           cursor = cursor.parent;
         }
