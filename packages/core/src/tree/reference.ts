@@ -23,7 +23,7 @@ import { JsExpression } from './js-expr.js';
 import { List } from './list.js';
 import { Nil } from './nil.js';
 import { comparePosition } from './util/compare.js';
-import { getBindingCellValue, type BindingEntry, type ScopeFrame } from './scope-frame.js';
+import { getBindingCellValue, lookupScopeFrameVariable, type BindingEntry, type ScopeFrame } from './scope-frame.js';
 import type { VarDeclaration } from './declaration-var.js';
 import { getOrderedSelectorKeys, isNonClassicImportBoundary } from './util/registry-utils.js';
 import {
@@ -763,6 +763,36 @@ function lookupRuntimeVarBinding(
   return undefined;
 }
 
+function lookupScopeFrameVariableBinding(
+  targetRules: Rules,
+  key: string,
+  opts: FindOptions,
+  env: RulesLookupAdapterEnv
+): RulesLookupResult {
+  if (env.hasTarget || env.isInterpolatedVariable || opts.start !== undefined) {
+    return undefined;
+  }
+  const hit = lookupScopeFrameVariable(targetRules.getScopeFrame(), key, {
+    filter: env.filter,
+    blockedSource: node => env.context.searchScope.has(node),
+    bailOnPendingDeclarations: true
+  });
+  if (!hit) {
+    return undefined;
+  }
+  if (hit.kind === 'declaration') {
+    return hit.entry.sourceNode;
+  }
+  const value = getBindingCellValue(hit.cell);
+  return {
+    kind: 'runtime-var-binding',
+    value,
+    readonly: hit.cell.readonly,
+    sourceNode: hit.sourceNode,
+    rulesContext: isNode(hit.cell.rulesContext, N.Rules) ? hit.cell.rulesContext : undefined
+  } satisfies RuntimeVarBinding;
+}
+
 function lookupIndexReference(
   targetRules: Rules,
   valueKey: NormalizedLookupKey,
@@ -797,6 +827,12 @@ function lookupVariableReference(
   env: RulesLookupAdapterEnv
 ): RulesLookupResult {
   const keyStr = getLookupKeyString(valueKey);
+  if (typeof valueKey === 'string') {
+    const frameHit = lookupScopeFrameVariableBinding(targetRules, keyStr, opts, env);
+    if (frameHit) {
+      return frameHit;
+    }
+  }
   const live = lookupRuntimeVarBinding(targetRules, keyStr, env.context);
   if (live) {
     return live;

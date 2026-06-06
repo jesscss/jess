@@ -110,7 +110,7 @@ next step starts.
      `BINDING-INDEX-PROPOSAL.md`
    - no production eval/render code changed
 
-2. [ ] Production facade, static variable only.
+2. [x] Production facade, static variable only.
    Add one `ScopeFrame`/BindingFrame facade method for ordinary static variable
    lookup. It may unify live-slot lookup and declaration-bucket lookup, but it
    must leave existing registry/`Rules.find(...)` fallback in place.
@@ -123,6 +123,8 @@ next step starts.
    - no callable/mixin lookup
    - no evaluated-value cache
    - no node copy/materialization
+   - no source-position/contextual `start` boundary yet; those stay on the
+     existing lookup until step 3
 
    Completion gate:
    - focused reference variable tests pass
@@ -134,6 +136,16 @@ next step starts.
    - `git diff --check`
    - one hot-path benchmark sanity run is recorded as status, not as a speed
      claim unless there is a clean before/after pair
+
+   Status:
+   - `lookupScopeFrameVariable(...)` now lives in `scope-frame.ts` and returns
+     either a live cell or declaration entry from the frame chain.
+   - `Reference` uses it only for static string variable keys with no explicit
+     target, no interpolation, and no contextual `start` boundary.
+   - Pending dynamic declaration names bail to the existing lookup path.
+   - A failed first attempt proved that applying the facade to contextual
+     control-loop lookups changes stateful output (`tick: 1, 1, 2` became
+     `tick: 1, 2, 3`), so source-order/current hardening remains step 3.
 
 3. [ ] Facade source-order/current-read hardening.
    Prove the production facade preserves Less contextual lookup and Jess current
@@ -331,6 +343,26 @@ the gate passed.
   invalid prototype semantics, not expected-miss runtime control flow. The
   `.inherit(...)` text appears only in this prosecution sentence as a forbidden
   production mechanism; this pass adds none.
+- Production binding facade pass: accepted for step 2 only. Added
+  `lookupScopeFrameVariable(...)` in
+  `packages/core/src/tree/scope-frame.ts` and a narrow
+  `lookupScopeFrameVariableBinding(...)` call site in
+  `packages/core/src/tree/reference.ts`. New traversal is the existing
+  frame-chain walk moved behind a facade; no AST walk, child-surface walk, map
+  conversion, sort, generator, or side-cache was added. New materialization:
+  none; the returned runtime binding object already existed as the
+  `Reference` live-binding result shape, and no `Node`, copy, wrapper `Rules`,
+  `.inherit(...)`, `.adopt(...)`, or metadata mutation was added. Render path:
+  unchanged except covered static variable lookup can return through the facade
+  before the old live/static lookup fallback. Helper/API surface: one exported
+  facade and one local adapter were added to retire scattered lookup logic in
+  future steps; this pass does not claim deletion yet. Metadata mutations:
+  none. Evidence: focused reference/mixin/control/import-style tests passed
+  (`366` passed, `1` skipped), `pnpm --filter @jesscss/core build` passed,
+  `pnpm --filter @jesscss/core exec eslint src/tree/reference.ts
+  src/tree/scope-frame.ts` passed, and hot-path benchmark sanity completed with
+  usable signals except unstable `functions`. This is behavior-gated facade
+  progress, not a speed claim.
 - New traversal: none added. Pass 4 kept the existing lookup sequence but
   removed eagerly allocated lookup/finalizer closures from
   `evaluateReferenceNode(...)`. No parent/source walk, side-map lookup,

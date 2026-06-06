@@ -623,6 +623,36 @@ Keep criteria:
 - if it wins, use the result to inform the interpreter shape: direct emission,
   lexical binding cells, static templates, and fewer generic node dispatches.
 
+## Recent Benchmark Sanity Notes
+
+### Production Binding Facade Step 2
+
+Date: 2026-06-06.
+
+Change: added the first production `ScopeFrame` variable lookup facade for
+static string variable references with no explicit target, no interpolation, no
+contextual `start` boundary, and pending-declaration bailout. Existing
+`findVarDeclarationFast(...)`/registry fallback remains for broader cases.
+
+Sanity command:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result status:
+
+- `functions`: unstable, median `12.31ms`;
+- `import-reference`: usable, median `19.55ms`;
+- `mixins-guards`: usable, median `17.60ms`;
+- `extend-chaining`: usable, median `5.19ms`;
+- `media`: usable, median `6.10ms`.
+
+Interpretation: status only. This pass did not capture a clean before/after
+pair, so it makes no speed claim. The benchmark remains useful as a leash: the
+facade slice stayed behavior-gated and did not obviously break the hot-path
+runner.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

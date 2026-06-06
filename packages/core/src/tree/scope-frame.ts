@@ -56,6 +56,17 @@ export interface BindingEntry {
   sourceNode: Node;
 }
 
+export type ScopeFrameVariableLookupResult =
+  | {
+    kind: 'live';
+    cell: BindingCell;
+    sourceNode?: Node;
+  }
+  | {
+    kind: 'declaration';
+    entry: BindingEntry;
+  };
+
 /**
  * One scope frame.  Holds all bindings visible at one lexical scope boundary.
  *
@@ -181,6 +192,66 @@ export function resolveFrameCell(
     }
 
     // 3. Walk parent
+    f = f.parent;
+  }
+  return undefined;
+}
+
+export function lookupScopeFrameVariable(
+  frame: ScopeFrame | undefined,
+  name: string,
+  options?: {
+    start?: number;
+    filter?: (node: Node) => boolean;
+    blockedSource?: (node: Node) => boolean;
+    includeDeclarations?: boolean;
+    bailOnPendingDeclarations?: boolean;
+  }
+): ScopeFrameVariableLookupResult | undefined {
+  let f = frame;
+  let start = options?.start;
+  while (f) {
+    const live = f.liveSlotsByName.get(name);
+    if (live) {
+      const sourceNode = live.sourceNode;
+      if (!sourceNode || !options?.blockedSource?.(sourceNode)) {
+        return {
+          kind: 'live',
+          cell: live,
+          sourceNode
+        };
+      }
+    }
+
+    if (
+      options?.bailOnPendingDeclarations
+      && f.pendingDeclarationNames.length > 0
+    ) {
+      return undefined;
+    }
+
+    const bucket = options?.includeDeclarations === false
+      ? undefined
+      : f.declarationBucketsByName.get(name);
+    if (bucket?.length) {
+      for (let i = bucket.length - 1; i >= 0; i--) {
+        const entry = bucket[i]!;
+        if (
+          start !== undefined
+          && !(entry.sourceNode.index !== undefined && entry.sourceNode.index < start)
+        ) {
+          continue;
+        }
+        if (!options?.filter || options.filter(entry.sourceNode)) {
+          return {
+            kind: 'declaration',
+            entry
+          };
+        }
+      }
+    }
+
+    start = undefined;
     f = f.parent;
   }
   return undefined;
