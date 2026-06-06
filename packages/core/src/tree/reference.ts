@@ -1470,7 +1470,7 @@ function evaluateFallbackValue(
     context.popReference();
     return out;
   }
-  const out = copyWithReusableLeaves(fallbackValue).eval(context);
+  const out = fallbackValue.eval(context);
   if (isThenable(out)) {
     return Promise.resolve(out).then((node) => {
       context.popReference();

@@ -633,6 +633,15 @@ Next deep-cut queue:
    `evaluateReferenceValueNode(...)` already produced the evaluated owned
    result. Merged declaration references still keep their explicit
    normalization/inherit boundary.
+   Fourth partial status: fallback public resolve no longer pre-copies the
+   fallback source container before eval. Dynamic container fallback still may
+   materialize an owned public `List`/`Sequence` result inside the container's
+   own `eval(...)` path, so this is a deletion of Reference's extra
+   pre-copy only, not completion of fallback ownership. The exposed next cut is
+   shared `List.eval(...)`/`Sequence.eval(...)` public materialization: render
+   already stringifies directly, but public value materialization still creates
+   owned containers via `withResolvedValue(...)`/`withValue(...)` when children
+   change.
 15. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -801,6 +810,34 @@ the gate passed.
   `0.35ms`; status only, not speed proof. Verdict: keep the deletion; continue
   item 14 on remaining fallback/evaluateReferenceValueNode/merged/callable
   materialization boundaries.
+- Reference fallback pre-copy pass: accepted as actual Reference-local
+  `copyWithReusableLeaves(...)` deletion, not as completion of fallback public
+  materialization. `packages/core/src/tree/reference.ts` now evaluates
+  non-static fallback containers directly instead of first copying the fallback
+  source node. New traversal: none. New node/materialization: none; one
+  fallback `copyWithReusableLeaves(fallbackValue)` call was removed. Render
+  path: unchanged; render fallback containers were already direct-text paths
+  and the focused render test still proves no fallback copy or fallback
+  `.inherit(...)` happens there. Public resolve path: now skips the Reference
+  pre-copy, but dynamic container eval can still create an owned public
+  `List`/`Sequence` result through `List.eval(...)`/`Sequence.eval(...)`;
+  that shared ownership tax is exposed and remains queued, not hidden.
+  Helper/API surface: no helper or public API added. Metadata mutations:
+  removed the pre-copy ownership boundary; no parent restoration, frozen state,
+  source-root mutation, side map, cache, or defensive probe was added.
+  Test-only materialization/control: the new focused public-resolve fallback
+  test uses a tiny root scope and monkey-patches `List.copy` in `try/finally`
+  solely to prove the source fallback container is not copied; no runtime code
+  gained instrumentation. Evidence: `reference.test.ts` passed (`115` tests),
+  focused eslint passed, static node-creation audit dropped `reference.ts`
+  from `18` to `17` and global `copy-leaves` from `29` to `28` while
+  `new-node` stayed `321`, `with-surface` stayed `33`, and `derive` stayed
+  `30`. Clean `benchmark-v39.less` profiler sanity after the patch was
+  `Reference.evalNode` `482` calls / `6.00ms`, `Rules.find` `68` calls /
+  `0.42ms`; status only, not speed proof. Verdict: keep the deletion; next
+  target should be the shared `List.eval(...)`/`Sequence.eval(...)` owned
+  container boundary if tests prove public materialization can be separated
+  from render/eval-to-immediate-string.
 - Static compound reference path identity pass: accepted as path-fact
   preservation, not as a speed claim. `packages/core/src/tree/reference.ts`
   now returns the original static string-array lookup key when the evaluated

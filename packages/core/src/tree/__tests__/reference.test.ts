@@ -1860,6 +1860,47 @@ describe('reference', () => {
       }
     });
 
+    it('resolves dynamic fallback containers without pre-copying the source container', async () => {
+      const fallback = list([ref('tone', { type: 'variable' })]);
+      fallback._location = [10, 1, 11, 20, 1, 21];
+      const fallbackParent = fallback.parent;
+      const originalCopy = List.prototype.copy;
+      let fallbackCopies = 0;
+      List.prototype.copy = function copyForCounting(
+        this: List,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this === fallback) {
+          fallbackCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+      const root = rules([
+        vardecl({ name: 'tone', value: any('red') })
+      ]);
+      context.root = root;
+      context.rulesContext = root;
+
+      try {
+        const refNode = ref(
+          { key: 'missing' },
+          {
+            type: 'variable',
+            fallbackValue: fallback
+          }
+        );
+
+        const resolved = await refNode.resolve(context);
+
+        expect(resolved.toTrimmedString()).toBe('red');
+        expect(fallbackCopies).toBe(0);
+        expect(fallback.parent).toBe(fallbackParent);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        List.prototype.copy = originalCopy;
+      }
+    });
+
     it('restores reference stack after async fallback render', async () => {
       const fallback = new AsyncNativeRenderAny('red');
       const refNode = ref(

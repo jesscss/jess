@@ -1433,6 +1433,45 @@ post-eval public-resolve ownership copies are gone, with focused tests proving
 dynamic runtime-binding and dynamic declaration containers no longer inherit
 from the reference while canonical source parents remain intact.
 
+### Reference Step 14 Fallback Pre-Copy Cut
+
+Date: 2026-06-06.
+
+Change: fallback public resolve no longer pre-copies the fallback source
+container before eval. This removes one Reference-local
+`copyWithReusableLeaves(fallbackValue)` boundary. It does not claim that dynamic
+fallback public materialization is solved, because `List.eval(...)`/
+`Sequence.eval(...)` can still create owned public containers when evaluated
+children differ.
+
+Pre-edit CPU/counter status:
+
+- `benchmark-v39.less` profiler status before this pass: `Reference.evalNode`
+  `482` calls / `5.61ms`, `Rules.find` `68` calls / `0.41ms`;
+- `Rules.find` was only function lookup for this fixture:
+  `function:hsl` `36`, `function:percentage` `24`, `function:range` `8`;
+- static node-creation audit showed `reference.ts` at `18` creation or copy
+  surfaces and global totals `new-node` `321`, `with-surface` `33`,
+  `copy-leaves` `29`, `derive` `30`.
+
+Post-edit CPU/counter status:
+
+- clean `benchmark-v39.less` profiler sanity after the patch:
+  `Reference.evalNode` `482` calls / `6.00ms`, `Rules.find` `68` calls /
+  `0.42ms`;
+- top repeated reference keys stayed `value` `230`, `val` `68`, `size` `40`,
+  `hue` `36`, `idx` `32`;
+- static node-creation audit dropped `reference.ts` from `18` to `17` and
+  global `copy-leaves` from `29` to `28`; `new-node` stayed `321`,
+  `with-surface` stayed `33`, and `derive` stayed `30`.
+
+Interpretation: status only, not speed proof. The code-path proof is one
+Reference-local fallback pre-copy deletion plus focused tests proving dynamic
+fallback render and public resolve do not call `List.copy` on the fallback
+source container. The exposed next target is shared public container
+materialization in `List.eval(...)`/`Sequence.eval(...)`, not another Reference
+wrapper.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
