@@ -524,6 +524,18 @@ next step starts.
      binding handle
    - benchmark before/after proves value
 
+   Current status:
+   - Static compound reference key arrays now keep their original array
+     identity when they already contain strings. This is a binding-handle
+     adjacent cut, not the finished handle system: it stops rebuilding a path
+     fact the reference already owns.
+   - Callable namespace lookup now walks static path arrays by offset instead
+     of allocating `[segment, ...rest]` at every namespace hop.
+   - A focused reference test proves the mixin array-path lookup receives the
+     original static key array instance.
+   - No cache, evaluated-value reuse, side map, materialized node, output
+     wrapper, or render-path change was added.
+
 Next deep-cut queue:
 
 0. [x] Move callable `default()` guard classification out of
@@ -679,6 +691,36 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Static compound reference path identity pass: accepted as path-fact
+  preservation, not as a speed claim. `packages/core/src/tree/reference.ts`
+  now returns the original static string-array lookup key when the evaluated
+  reference key is already `string[]`, instead of allocating a normalized copy.
+  `packages/core/src/tree/rules.ts` now walks callable namespace paths with an
+  offset into the original path array instead of recursively allocating
+  `[segment, ...rest]` arrays. New traversal: one tiny string-array type guard
+  loop over an already-existing key array; it replaces the old allocation and
+  full normalization loop for the all-string case. New recursion: no new
+  recursive search was added; the existing namespace recursion now carries an
+  offset instead of allocating rest arrays. New node/materialization: none; no
+  `Node`, copy, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/
+  parent metadata mutation, render-time array materialization, side map, or
+  cache was added. New test-only materialization/control: one `path` array is
+  the deliberate identity token under test, one `boolean[]` records whether
+  intercepted `Rules.find(...)` calls preserve that identity, and `try/finally`
+  restores the monkey-patched prototype; none of these exist in runtime code.
+  Render path: unchanged; this pass does not resolve into arrays/nodes to
+  stringify and does not cache callable output. Helper/API surface: one private
+  type guard was added solely to avoid cloning already string-only path arrays;
+  no public API or method was added. Metadata mutations: none. Evidence:
+  focused `reference/mixin/call/import-style` tests passed (`397` passed,
+  `1` skipped); focused eslint passed; static node-creation audit stayed
+  `reference.ts` `21`, global `new-node` `321`, `with-surface` `34`,
+  `copy-leaves` `31`, `derive` `30`. Clean
+  `benchmark-v39.less` profiler status was `Reference.evalNode` `482` calls /
+  `5.11ms`, `Rules.find` `68` calls / `0.37ms`, with `Rules.find` still only
+  function lookups. Verdict: keep cutting toward binding handles; this pass
+  preserves path identity and deletes per-hop/per-eval array rebuilding, but it
+  does not prove evaluated-value reuse or finish the binding/index system.
 - Lookup cache rejection pass: rejected as unproven machinery. A frame-local
   static-variable lookup cache was implemented and removed in the same pass.
   First attempt used a frame `Map` keyed by lookup identity; static audit rose

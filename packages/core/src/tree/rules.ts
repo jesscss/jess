@@ -1271,14 +1271,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const walk = (
       scope: Rules,
       path: string[],
+      offset: number,
       searchParents: boolean
     ): NamespaceFastResult => {
-      const [segment, ...rest] = path;
+      const segment = path[offset];
+      const restLength = path.length - offset - 1;
       const allowRulesetAmbiguity = filterType !== 'Mixin';
       if (!segment) {
         return DEFINITE_MISS;
       }
-      if (allowRulesetAmbiguity && rest.length > 0 && scope.hasVisibleCompoundPrefixRulesetPath(path, {
+      if (allowRulesetAmbiguity && restLength > 0 && scope.hasVisibleCompoundPrefixRulesetPath(path, {
         hasTarget: options.hasTarget,
         local: options.local,
         searchParents
@@ -1290,7 +1292,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         context: options.context,
         hasTarget: options.hasTarget,
         local: options.local,
-        includeRulesets: rest.length === 0 && filterType !== 'Mixin',
+        includeRulesets: restLength === 0 && filterType !== 'Mixin',
         searchParents
       });
 
@@ -1304,7 +1306,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         return DEFINITE_MISS;
       }
-      if (rest.length === 0) {
+      if (restLength === 0) {
         return matches;
       }
 
@@ -1318,7 +1320,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           sawDefiniteMiss = true;
           continue;
         }
-        const resolved = walk(match.value.rules, rest, false);
+        const resolved = walk(match.value.rules, path, offset + 1, false);
         if (resolved === undefined) {
           return undefined;
         }
@@ -1337,7 +1339,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return sawDefiniteMiss ? DEFINITE_MISS : undefined;
     };
 
-    const result = walk(this, keys, true);
+    const result = walk(this, keys, 0, true);
     return result === DEFINITE_MISS ? [] : result;
   }
 

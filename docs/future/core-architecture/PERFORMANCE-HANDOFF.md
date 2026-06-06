@@ -1290,6 +1290,43 @@ Result status:
 - `extend-chaining`: usable, median `5.11ms`;
 - `media`: usable, median `6.30ms`.
 
+### Binding Step 8 Static Compound Path Identity
+
+Date: 2026-06-06.
+
+Change: static compound reference keys keep their original `string[]` identity
+when possible, and callable namespace lookup walks path arrays by offset instead
+of allocating recursive rest arrays. This is path-fact preservation inside the
+binding/index direction, not a standalone cache and not evaluated-value reuse.
+
+Pre-edit CPU/counter status:
+
+- `benchmark-v39.less` profiler status before this pass: `Reference.evalNode`
+  `482` calls / `5.69ms`, `Rules.find` `68` calls / `0.42ms`;
+- `Rules.find` was only function lookup for this fixture:
+  `function:hsl` `36`, `function:percentage` `24`, `function:range` `8`;
+- static node-creation audit showed `reference.ts` at `21` creation or copy
+  surfaces and global totals `new-node` `321`, `with-surface` `34`,
+  `copy-leaves` `31`, `derive` `30`.
+
+Post-edit CPU/counter status:
+
+- clean `benchmark-v39.less` profiler status: `Reference.evalNode` `482`
+  calls / `5.11ms`, `Rules.find` `68` calls / `0.37ms`;
+- top repeated reference keys stayed `value` `230`, `val` `68`, `size` `40`,
+  `hue` `36`, `idx` `32`;
+- `Rules.find` stayed only function lookup for this fixture:
+  `function:hsl` `36`, `function:percentage` `24`, `function:range` `8`;
+- static node-creation audit stayed `reference.ts` `21`, global totals
+  `new-node` `321`, `with-surface` `34`, `copy-leaves` `31`, `derive` `30`.
+
+Interpretation: status only, not speed proof. The code-path proof is a focused
+reference test that monkey-patches `Rules.find(...)` and proves a static
+mixin-ruleset array-path lookup receives the original key array instance. The
+remaining binding-handle work is still to stop rediscovering binding facts
+across repeated lookups, and any evaluated value/text reuse still needs explicit
+static/effect facts plus benchmark proof.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

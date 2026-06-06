@@ -589,6 +589,15 @@ function getLookupKeyDisplay(valueKey: NormalizedLookupKey): string {
   return out;
 }
 
+function isStringArray(value: unknown[]): value is string[] {
+  for (let i = 0; i < value.length; i++) {
+    if (typeof value[i] !== 'string') {
+      return false;
+    }
+  }
+  return true;
+}
+
 function isWithinReferenceParamVarScope(
   paramParent: Node | undefined,
   activeRules: Node | undefined
@@ -1208,6 +1217,9 @@ function evaluateReferenceKey(
       return [resolvedTarget, normalizeSelectorReferenceKey(resolvedKey)];
     }
     if (Array.isArray(resolvedKey)) {
+      if (isStringArray(resolvedKey)) {
+        return [resolvedTarget, resolvedKey];
+      }
       const normalized = new Array<string>(resolvedKey.length);
       for (let i = 0; i < resolvedKey.length; i++) {
         normalized[i] = String(resolvedKey[i]);

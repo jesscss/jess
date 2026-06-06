@@ -3426,6 +3426,58 @@ describe('reference', () => {
       }
     });
 
+    it('keeps static compound reference path arrays as binding identity', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const path = ['.a', '.b', '.c'];
+      const pathIdentityHits: boolean[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key] = args;
+        if (
+          type === 'mixin'
+          && Array.isArray(key)
+          && key.length === path.length
+          && key[0] === path[0]
+        ) {
+          pathIdentityHits.push(key === path);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          ruleset({
+            selector: compound([el('.a'), el('.b'), el('.c')]),
+            rules: rules([
+              decl({ name: 'color', value: any('blue') })
+            ])
+          }),
+          ruleset({
+            selector: el('.out'),
+            rules: rules([
+              call({
+                name: ref({ key: path }, { type: 'mixin-ruleset' })
+              })
+            ])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+
+        expect(await renderNodeToString(evald, context)).toBeString(`
+          .a.b.c {
+            color: blue;
+          }
+          .out {
+            color: blue;
+          }
+        `);
+        expect(pathIdentityHits).toContain(true);
+        expect(pathIdentityHits).not.toContain(false);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
     it('should resolve a mixin-ruleset call keyed by a complex selector while ignoring namespace separators', async () => {
       const node = rules([
         ruleset({
