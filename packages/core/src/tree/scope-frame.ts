@@ -20,8 +20,6 @@ import type { Node } from './node.js';
 import type { VarDeclaration } from './declaration-var.js';
 import type { MixinEntry } from './util/callable-entry.js';
 
-const EMPTY_CALLABLE_BUCKETS = new Map<string, MixinEntry[]>();
-
 /**
  * One live binding slot.  Value is updated in place for loop counters and
  * mixin params — no copy, no fork.
@@ -129,7 +127,7 @@ export interface ScopeFrame {
    * Rules.mixinsByName arrays instead of wrapping every callable in another
    * binding object during this migration slice.
    */
-  callableBucketsByName: Map<string, MixinEntry[]>;
+  callableBucketsByName: Map<string, MixinEntry[]> | undefined;
 
   /**
    * True when declarationBucketsByName represents every static declaration on
@@ -145,6 +143,13 @@ export interface ScopeFrame {
    * so callable lookup can route complex/unmodeled cases to the old path.
    */
   callablesCovered: boolean;
+
+  /**
+   * True when a simple static callable miss can stop at this frame. Frames with
+   * child lookup surfaces keep this false until those surfaces are represented
+   * in binding state.
+   */
+  callableMissesCovered: boolean;
 
   /**
    * VarDeclarations whose name is a computed expression (Interpolated,
@@ -184,7 +189,8 @@ export function buildScopeFrame(
   pendingDeclarationNames?: VarDeclaration[],
   declarationsCovered = varsByName !== undefined,
   callablesByName?: Map<string, MixinEntry[]>,
-  callablesCovered = callablesByName !== undefined
+  callablesCovered = callablesByName !== undefined,
+  callableMissesCovered = callablesCovered
 ): ScopeFrame {
   const declarationBucketsByName = new Map<string, BindingEntry[]>();
 
@@ -211,9 +217,10 @@ export function buildScopeFrame(
     fallbackFrame: undefined,
     liveSlotsByName: liveSlots ?? new Map(),
     declarationBucketsByName,
-    callableBucketsByName: callablesByName ?? EMPTY_CALLABLE_BUCKETS,
+    callableBucketsByName: callablesByName,
     declarationsCovered,
     callablesCovered,
+    callableMissesCovered,
     pendingDeclarationNames: pendingDeclarationNames ?? [],
     rulesNode
   };
@@ -341,7 +348,7 @@ export function lookupScopeFrameCallable(
       return { kind: 'uncovered' };
     }
 
-    const bucket = f.callableBucketsByName.get(name);
+    const bucket = f.callableBucketsByName?.get(name);
     if (bucket?.length) {
       if (options?.includeRulesets !== false) {
         return { kind: 'hit', bucket };
@@ -351,6 +358,10 @@ export function lookupScopeFrameCallable(
           return { kind: 'hit', bucket };
         }
       }
+    }
+
+    if (!f.callableMissesCovered) {
+      return { kind: 'uncovered' };
     }
 
     if (options?.searchParents === false) {

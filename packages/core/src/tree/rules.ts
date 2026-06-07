@@ -515,6 +515,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (this.scopeFrame) {
         this.scopeFrame.declarationsCovered = true;
         this.scopeFrame.callablesCovered = true;
+        this.scopeFrame.callableMissesCovered = !this._rulesSet?.length && !this._hasReferenceImports;
       }
     } finally {
       this._indexing = false;
@@ -634,7 +635,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         undefined,
         pendingDeclarationNames,
         undefined,
-        this.mixinsByName
+        this.mixinsByName,
+        undefined,
+        !this._rulesSet?.length && !this._hasReferenceImports
       );
     }
     return this.scopeFrame;
@@ -1567,22 +1570,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): ReturnType<Registries.DeclarationRegistry['find']> | MixinEntry[] | ReturnType<Registries.FunctionRegistry['find']> | undefined {
     if (type === 'mixin' && typeof keys === 'string') {
       const includeRulesets = filterType !== 'Mixin';
-      let callableFrame = this.scopeFrame;
-      if (!callableFrame) {
-        let cursor = this.parent;
-        while (cursor) {
-          if (isNode(cursor, N.Rules) && (cursor as Rules).scopeFrame) {
-            callableFrame = (cursor as Rules).scopeFrame;
-            break;
-          }
-          cursor = cursor.parent;
-        }
-      }
-      if (callableFrame) {
+      const callableFrame = this.scopeFrame;
+      if (callableFrame && !options.hasTarget && !options.local) {
         const frameHit = lookupScopeFrameCallable(callableFrame, keys, {
           includeRulesets,
           searchParents: options.searchParents
         });
+        if (frameHit.kind === 'miss') {
+          return undefined;
+        }
         if (frameHit.kind === 'hit') {
           const bucket = frameHit.bucket;
           const results: MixinEntry[] = [];
@@ -2326,6 +2322,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         : undefined;
       if (importOptions?.reference === true || importOptions?._dedupe === true) {
         this._hasReferenceImports = true;
+        if (this.scopeFrame) {
+          this.scopeFrame.callableMissesCovered = false;
+        }
       }
     }
     if (isNode(node, N.Rules)) {
@@ -2356,6 +2355,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         rulesVisibility,
         readonly
       });
+      if (this.scopeFrame) {
+        this.scopeFrame.callableMissesCovered = false;
+      }
       if (node._hasExtends) {
         this._hasExtends = true;
       }

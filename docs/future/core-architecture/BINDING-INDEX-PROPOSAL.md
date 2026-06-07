@@ -761,16 +761,20 @@ Success:
 
 ### Step 3: Lookup Cache
 
-Add a frame-local lookup cache for covered static variable lookups.
+Rejected as a standalone layer for now. The failed prototype cached binding
+identity after the lookup had already reached a cheap binding facade, so it
+added branch/object work without removing the real rediscovery problem.
 
-Cache only binding hits/misses. Include frame version, key, kind, lookup mode,
-and start bucket.
+The next cache-like work must be part of binding handles, not a second
+`Reference` or `ScopeFrame` side cache. A repeated reference should carry or
+recover a binding handle that already knows frame/version, reference shape, key
+kind, and resolved identity.
 
 Success:
 
-- repeated same-key lookups hit cache;
+- repeated same-key/path lookups do not rediscover binding facts;
 - dynamic-name promotion and live-slot registration invalidate correctly;
-- no evaluated node reuse yet.
+- no evaluated node reuse until effect flags prove it is safe.
 
 ### Step 4: Callable Records
 
@@ -780,9 +784,17 @@ those paths.
 
 Success:
 
-- simple static callable lookup returns hit/miss from binding records;
-- exact static misses do not fall through `MixinRegistry`;
-- complex namespace/guard/import ambiguity returns `UNCOVERED` until modeled.
+- simple direct static callable hits return from the current binding frame when
+  that frame already exists;
+- simple direct static callable misses stop only when the current frame can
+  prove it has no child callable surfaces and no reference-import callable
+  surfaces;
+- targeted, namespace, local/import-visibility, child-surface, and guard
+  ambiguity paths return `UNCOVERED` until those facts are represented in
+  binding state;
+- the shortcut must not call `getScopeFrame(...)`, allocate empty bucket
+  sentinels, allocate wrapper callable records, cache callable output, or walk
+  ancestor nodes just to attempt a hit/miss.
 
 ### Step 1A: Current Hot Layout Harness Result
 

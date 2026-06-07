@@ -192,11 +192,12 @@ reshape it.
 
 ## Current Evidence Log
 
-### 2026-06-06 ScopeFrame Callable-Hit Prototype
+### 2026-06-06 ScopeFrame Callable Hit/Miss Prototype
 
-Hypothesis: simple static callable hits should be represented by the active
-binding frame before the older recursive callable lookup path. This should be
-proved with callable/mixin fixtures, not by claiming a broad benchmark win,
+Hypothesis: simple static callable hits, and the subset of simple misses whose
+surface coverage is already known, should be represented by the active binding
+frame before the older recursive callable lookup path. This should be proved
+with callable/mixin/import fixtures, not by claiming a broad benchmark win,
 because the current `benchmark-v39.less` diagnostic profile is dominated by
 variables and JS function calls.
 
@@ -216,40 +217,54 @@ Before patch:
 Patch shape:
 
 - `ScopeFrame.callableBucketsByName` now reuses the existing
-  `Rules.mixinsByName` arrays; no per-callable wrapper object, output cache, or
-  node copy was added;
-- `Rules.find('mixin', staticKey, ...)` checks an already-built frame chain
-  first and returns covered static hits without entering
-  `Rules.findMixinsFast(...)`; it does not call `getScopeFrame(...)` just to
-  attempt the shortcut;
-- static misses remain a bridge to `Rules.findMixinsFast(...)` until
-  child-surface/import visibility is encoded in frame state.
+  `Rules.mixinsByName` arrays when present; no per-callable wrapper object,
+  output cache, or node copy was added;
+- an empty `Map` sentinel was rejected after `audit:node-creation` showed it
+  raised the static `new-node` count from `321` to `322`; the field is optional
+  instead;
+- `Rules.find('mixin', staticKey, ...)` checks only the current already-built
+  frame for direct, non-targeted, non-local lookups. It returns covered static
+  hits without entering `Rules.findMixinsFast(...)`; it does not call
+  `getScopeFrame(...)` just to attempt the shortcut;
+- simple static misses stop only when `callableMissesCovered` proves the
+  current frame has no child callable surfaces and no reference-import callable
+  surfaces;
+- targeted, namespace, local/import-visibility, child-surface, and guard
+  ambiguity paths remain on the bridge until those facts are encoded in binding
+  state.
 
 Evidence:
 
-- focused `mixin.test.ts` and `scope-frame.test.ts` passed (`137` tests);
+- focused `mixin.test.ts` and `scope-frame.test.ts` passed for the initial hit
+  slice (`137` tests);
 - new focused tests prove direct `Rules.find(...)` static `Mixin` and simple
   `Ruleset`-as-mixin hits skip `Rules.findMixinsFast(...)` when a frame
-  already exists.
-- final focused callable/import gate passed (`160` tests; `78` skipped by
-  filter) after the build completed; a parallel build/test attempt failed only
-  because the build cleaned `packages/core/lib` while Vite was resolving
-  `@jesscss/core`;
+  already exists;
+- new miss tests prove a direct static miss skips `Rules.findMixinsFast(...)`
+  only when no child callable surfaces exist, and keeps the bridge when child
+  surfaces exist;
+- regression caught: a parent-frame discovery attempt caused bad `.mixin`
+  misses in import-reference namespace behavior; the shortcut now refuses
+  ancestor discovery and targeted/local lookup;
+- final focused callable/import gate passed (`162` tests; `78` skipped by
+  filter);
 - `@jesscss/core` build passed;
-- post-patch `node scripts/profile-less-benchmark.mjs --file=benchmark-v39.less`
-  reported `Reference.evalNode` `482` calls / `5.09ms` and `Rules.find` `68`
-  calls / `0.40ms`; `Rules.find` remained only function lookup in this
-  fixture;
-- post-patch quick hot-path leash
-  `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5` was mixed:
-  `functions` `15.15ms` unstable, `import-reference` `20.57ms` usable,
-  `mixins-guards` `18.96ms` usable, `extend-chaining` `5.62ms` usable,
-  `media` `6.83ms` usable.
+- post-miss `node scripts/profile-less-benchmark.mjs --file=benchmark-v39.less`
+  reported `Reference.evalNode` `482` calls / `4.80ms` and `Rules.find` `68`
+  calls / `0.34ms`; `Rules.find` remained only function lookup in this
+  fixture, so this is diagnostic status, not a broad speed claim;
+- post-miss quick hot-path leash
+  `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5` reported
+  `functions` `12.91ms` usable, `import-reference` `17.56ms` usable,
+  `mixins-guards` `15.43ms` usable, `extend-chaining` `5.07ms` unstable, and
+  `media` `5.34ms` usable;
+- post-miss `pnpm run audit:node-creation` reported `new-node: 321`,
+  `with-surface: 33`, `derive: 30`, `copy-leaves: 28`.
 
 Verdict: keep as binding integration progress only. Do not claim a broad speed
-win from this slice. The next callable binding target is covered static misses:
-carry the callable surface/visibility facts needed for a frame miss to stop
-without rediscovering child surfaces through `findMixinsFast(...)`.
+win from this slice. The next callable binding target is representing
+targeted/namespace/import/child-surface callable facts in binding state so those
+bridges can be deleted without ancestor walks or generic registry rediscovery.
 
 ### 2026-06-05 Callable Default-Guard Classification
 
