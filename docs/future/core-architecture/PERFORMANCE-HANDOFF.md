@@ -1970,6 +1970,47 @@ Follow-up exact-callable child-crawl evidence:
   "this child surface can contain callable hits for this shape" fact instead of
   probing every reachable surface.
 
+Next architecture theories to test:
+
+1. Carry child-surface capability bits on the `ScopeFrame`, not a side registry.
+   Exact simple-name lookup should be able to answer three questions without
+   scanning children: this frame has exact callable buckets; this frame has no
+   child callable surfaces for simple exact names; this frame has child surfaces
+   that might contain simple callables. A miss can stop only in the first two
+   cases. The bit should be set during existing registration/adoption work, not
+   rediscovered by a helper per lookup.
+2. Split child-surface facts by lookup shape. A nested `Ruleset`/`AtRule` may
+   matter for exact simple names, namespace paths, declarations, or output
+   leakage differently. One broad `hasDirectChildRuleSurface` forces too many
+   defensive crawls. Prefer narrow booleans/counters such as
+   `hasExactCallableChildSurface`, `hasNamespaceCallableChildSurface`, and
+   declaration visibility facts if they can be carried at the same point
+   `registerNode(...)` already sees the child.
+3. Cache misses at the frame/local-surface level only when the frame has a
+   stable version and coverage proof. Avoid broad result caches that allocate a
+   map entry per transient option shape. A useful cache key should be simple:
+   exact key plus include-rulesets/filter shape, invalidated by the existing
+   registration mutation that already clears direct callable caches.
+4. Prefer negative capability over positive result caching. The broad fixture
+   regressed because the candidate path repeatedly proved "nothing in this
+   child surface" after the fact. A cheap carried "cannot contain simple exact
+   callable hits" fact avoids both array allocation and recursive function-call
+   ladders.
+5. Keep parent walking outside child recursion. Child traversal should stay
+   `searchParents: false`; otherwise a missing child immediately re-searches
+   the parent chain and multiplies exact-bucket probes. Parent ascent belongs
+   to the outer `Rules.find(...)` loop or frame chain.
+6. Reuse existing direct buckets before building alternate structures. If
+   `mixinsByName` exists, exact lookup should read it directly. If it does not,
+   build direct buckets once and mark the frame covered. Do not build a
+   parallel callable table unless it replaces `mixinsByName` and deletes work.
+7. Benchmark both the stress win and ordinary Less fixtures before keeping a
+   change. The acceptance bar for the next patch is: preserve the
+   `scope-lookup-stress.less` win, avoid regressing `mixins-guards.less`, and
+   show counter evidence that exact-bucket probes or child collector builds
+   dropped. A patch that only moves time between helper calls should be
+   reverted.
+
 Interpretation: the first measured real-render win is not from the direct
 callable tree crawl alone; it is from treating the `ScopeFrame` as the shared
 live-binding/cache layer and using direct current-body crawl only when that
