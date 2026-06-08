@@ -779,6 +779,33 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Registryless one-entry cache prototype: accepted as an opt-in prototype for
+  repeated exact callable lookup, not enabled by default and not a broad speed
+  claim. File: `packages/core/src/tree/rules.ts`. New traversal: none. New
+  node/materialization: no `Node`, copy, `copyWithReusableLeaves(...)`,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, materialized AST, or
+  evaluated output cache. New state/object surface: two scalar fields on
+  `Rules`, `registrylessLastMixinLookupKey` and
+  `registrylessLastMixinLookupValue`, plus an env-gated cache-access wrapper
+  returned from `getRegistrylessMixinCache(...)` when
+  `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=1`. The wrapper is deliberately called out
+  as remaining overhead; the next refinement should inline the last-key check
+  before default enablement. Render path: unchanged. Helper/API surface: no
+  public API; the existing private cache helper now supports Map mode and
+  one-entry mode. Metadata mutations: no parent/source/frozen mutation; the
+  new scalar cache fields are reset with the existing registryless lookup cache
+  invalidation in `resetDerivedState(...)` and `registerNode(...)`. Routine
+  error/control: no throw/catch/Error path was added. Evidence: focused eslint
+  passed; all-flags focused behavior passed with
+  `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=1` (`304` tests, `8` skipped);
+  `@jesscss/core` build passed. The existing Map cache had zero hits on
+  `mixins-guards.less` and was slightly worse/noisy there, while it helped the
+  recursive stress fixture. The one-entry cache was neutral on
+  `mixins-guards.less` (`wins 29/60`, `t=-0.89`) and helped
+  `scope-lookup-stress.less` (`wins 79/100`, `t=-4.81`) when compared against
+  registryless without cache. Combined registryless plus one-entry cache versus
+  old baseline stayed neutral on `mixins-guards.less` (`wins 37/60`, `t=0.26`)
+  and improved `scope-lookup-stress.less` (`wins 92/100`, `t=-10.38`).
 - Frame exact-callable miss coverage pass: accepted as a predicate-precision
   cleanup for registryless lookup, not as a standalone speed win. Files:
   `packages/core/src/tree/rules.ts` and

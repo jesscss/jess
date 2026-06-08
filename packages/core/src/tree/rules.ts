@@ -78,6 +78,14 @@ type DirectCallableEntry = {
   value: MixinEntry;
   match: string[];
 };
+type RegistrylessMixinCacheAccess = {
+  key: string;
+  cache: {
+    has(key: string): boolean;
+    get(key: string): MixinEntry[] | undefined;
+    set(key: string, value: MixinEntry[] | undefined): unknown;
+  };
+};
 type RulesRenderContextSnapshot = {
   rulesContext: Context['rulesContext'];
   treeContext: Context['treeContext'];
@@ -536,6 +544,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }> | undefined;
 
   registrylessMixinLookupCache: Map<string, MixinEntry[] | undefined> | undefined;
+  registrylessLastMixinLookupKey: string | undefined;
+  registrylessLastMixinLookupValue: MixinEntry[] | undefined;
   /** ScopeFrame for lexical variable lookup, built lazily by getScopeFrame(). */
   scopeFrame: ScopeFrame | undefined;
   /**
@@ -647,6 +657,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
     this.registrylessMixinLookupCache = undefined;
+    this.registrylessLastMixinLookupKey = undefined;
+    this.registrylessLastMixinLookupValue = undefined;
     this._hasExtends = false;
     this._hasReferenceImports = false;
     // Preserve only runtime live-slot bindings (mixin params / loop vars) across clones.
@@ -1299,21 +1311,43 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     keys: string | string[],
     filterType: string | undefined,
     options: Registries.FindOptions
-  ): { cache: Map<string, MixinEntry[] | undefined>; key: string } | undefined {
-    if (process.env.JESS_REGISTRYLESS_MIXIN_CACHE !== '1') {
+  ): RegistrylessMixinCacheAccess | undefined {
+    const mapCache = process.env.JESS_REGISTRYLESS_MIXIN_CACHE === '1';
+    const lastCache = process.env.JESS_REGISTRYLESS_MIXIN_LAST_CACHE === '1';
+    if (!mapCache && !lastCache) {
       return undefined;
     }
     if (options.hasTarget || options.local || options.context?.rulesContext === this) {
       return undefined;
     }
     const lookupKey = isArray(keys) ? keys.join('\u001f') : keys;
+    const cacheKey = [
+      lookupKey,
+      filterType ?? '',
+      options.searchParents === false ? 's0' : 's1'
+    ].join('\u001e');
+    if (lastCache) {
+      const owner = this;
+      return {
+        key: cacheKey,
+        cache: {
+          has(key: string): boolean {
+            return owner.registrylessLastMixinLookupKey === key;
+          },
+          get(): MixinEntry[] | undefined {
+            return owner.registrylessLastMixinLookupValue;
+          },
+          set(key: string, value: MixinEntry[] | undefined): unknown {
+            owner.registrylessLastMixinLookupKey = key;
+            owner.registrylessLastMixinLookupValue = value;
+            return owner;
+          }
+        }
+      };
+    }
     return {
       cache: (this.registrylessMixinLookupCache ??= new Map()),
-      key: [
-        lookupKey,
-        filterType ?? '',
-        options.searchParents === false ? 's0' : 's1'
-      ].join('\u001e')
+      key: cacheKey
     };
   }
 
@@ -2937,6 +2971,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
     this.registrylessMixinLookupCache = undefined;
+    this.registrylessLastMixinLookupKey = undefined;
+    this.registrylessLastMixinLookupValue = undefined;
     const directChildRules = childCallableRulesOf(node);
     if (directChildRules && !isNode(node, N.Rules)) {
       this.addDirectChildRuleEntry(directChildRules);

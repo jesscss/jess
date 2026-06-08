@@ -2022,6 +2022,44 @@ Follow-up frame exact-miss coverage evidence:
   `-1.18%`, wins `76/100`, `t=-3.19`, preserving the registryless stress
   signal.
 
+Follow-up registryless result-cache evidence:
+
+- the existing Map-backed result cache is opt-in through
+  `JESS_REGISTRYLESS_MIXIN_CACHE=1`. With registryless lookup already enabled,
+  it was not worth enabling globally: `mixins-guards.less` with `--warmup 8
+  --pairs 60 --batch-size 5` reported baseline median `68.52ms`, candidate
+  median `69.39ms`, mean ratio `1.89%`, wins `28/60`, `t=0.75`;
+- the same Map cache does help the recursive stress shape:
+  `JESS_REGISTRYLESS_MIXIN_LOOKUP=1 node scripts/compare-less-parse-render-env.mjs --env JESS_REGISTRYLESS_MIXIN_CACHE --fixture scripts/fixtures/less-hotpath/scope-lookup-stress.less --phase render --warmup 10 --pairs 100`
+  reported baseline median `56.76ms`, candidate median `55.20ms`, mean ratio
+  `-3.67%`, wins `91/100`, `t=-8.49`;
+- one-render cache instrumentation explained the split. On `mixins-guards.less`,
+  Map cache mode had `7` eligible cache checks, `0` hits, and `4` sets. On
+  `scope-lookup-stress.less`, it had `364` eligible checks, `358` hits, and
+  `6` sets;
+- a cheaper one-entry cache prototype now exists behind
+  `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=1`. It stores only the last registryless
+  mixin lookup key/result on the owning `Rules`, invalidated with the existing
+  registryless lookup cache state. Focused all-flags behavior and lint passed
+  with the flag enabled:
+  `pnpm exec eslint packages/core/src/tree/rules.ts`, and
+  `JESS_DIRECT_DECLARATION_LOOKUP=1 JESS_DIRECT_CALLABLE_LOOKUP=1 JESS_REGISTRYLESS_MIXIN_LOOKUP=1 JESS_REGISTRYLESS_MIXIN_LAST_CACHE=1 pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts --run`
+  (`304` tests, `8` skipped);
+- with registryless already enabled, the one-entry cache was neutral on the
+  broad fixture and cleanly positive on stress:
+  `mixins-guards.less` `--warmup 8 --pairs 60 --batch-size 5` reported baseline
+  median `70.07ms`, candidate median `69.60ms`, mean ratio `-0.67%`, wins
+  `29/60`, `t=-0.89`; `scope-lookup-stress.less` render with `--warmup 10
+  --pairs 100` reported baseline median `56.29ms`, candidate median `55.16ms`,
+  mean ratio `-1.92%`, wins `79/100`, `t=-4.81`;
+- combined baseline-vs-registryless evidence with the one-entry cache flag
+  enabled kept the broad fixture neutral and strengthened the recursive stress
+  win: `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=1 node scripts/compare-less-hotpath-env.mjs --env JESS_REGISTRYLESS_MIXIN_LOOKUP --fixture tests-unit/mixins-guards/mixins-guards.less --warmup 8 --pairs 60 --batch-size 5`
+  reported baseline median `68.67ms`, candidate median `68.66ms`, mean ratio
+  `0.60%`, wins `37/60`, `t=0.26`; `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=1 node scripts/compare-less-parse-render-env.mjs --env JESS_REGISTRYLESS_MIXIN_LOOKUP --fixture scripts/fixtures/less-hotpath/scope-lookup-stress.less --phase render --warmup 10 --pairs 100`
+  reported baseline median `57.55ms`, candidate median `55.48ms`, mean ratio
+  `-3.70%`, wins `92/100`, `t=-10.38`.
+
 Next architecture theories to test:
 
 1. Promote exact child-surface capability to the `ScopeFrame` once the frame
@@ -2043,6 +2081,11 @@ Next architecture theories to test:
    map entry per transient option shape. A useful cache key should be simple:
    exact key plus include-rulesets/filter shape, invalidated by the existing
    registration mutation that already clears direct callable caches.
+   The one-entry cache prototype supports this direction for repeated recursive
+   exact lookups, but its current env-gated helper still allocates a small
+   cache-access wrapper per eligible lookup. The next refinement should inline
+   the last-key check into the string-key registryless path before considering
+   default enablement.
 4. Prefer negative capability over positive result caching. The broad fixture
    regressed because the candidate path repeatedly proved "nothing in this
    child surface" after the fact. A cheap carried "cannot contain simple exact
