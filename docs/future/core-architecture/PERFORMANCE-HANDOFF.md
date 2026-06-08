@@ -1947,6 +1947,29 @@ comparison with `--warmup 8 --pairs 50`:
 - all three flags versus all flags off: baseline median `59.18ms`, candidate
   median `57.74ms`, median ratio `-1.75%`, wins `37/50`, `t=-2.70`.
 
+Follow-up exact-callable child-crawl evidence:
+
+- exact string callable lookup now treats mixin definitions in the current
+  `Rules.value` as direct bucket entries, not as child surfaces to recursively
+  crawl. Child crawling remains for direct `Rules`, `Ruleset`, and `AtRule`
+  surfaces, and document-order/depth traversal still uses the broader
+  `childRulesOf(...)` helper;
+- all-flags focused behavior still passed:
+  `JESS_DIRECT_DECLARATION_LOOKUP=1 JESS_DIRECT_CALLABLE_LOOKUP=1 JESS_REGISTRYLESS_MIXIN_LOOKUP=1 pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts --run`
+  (`303` tests, `8` skipped);
+- after rebuilding `@jesscss/core`, `mixins-guards.less` improved from a clear
+  registryless regression to roughly neutral/noisy: baseline median `20.15ms`,
+  candidate median `19.56ms`, median ratio `0.68%`, wins `15/30`, `t=0.54`;
+- the recursive stress fixture retained a registryless win after the same
+  change: baseline median `57.35ms`, candidate median `56.67ms`, median ratio
+  `-1.67%`, wins `37/50`, `t=-1.94`;
+- one-render counters on `mixins-guards.less` changed from `93` direct callable
+  entry builds / `4455` exact-bucket probes to `4` direct callable entry builds
+  / `3143` exact-bucket probes. Remaining overhead is still many bucket probes
+  across child/parent traversal, so the next target is carrying a stronger
+  "this child surface can contain callable hits for this shape" fact instead of
+  probing every reachable surface.
+
 Interpretation: the first measured real-render win is not from the direct
 callable tree crawl alone; it is from treating the `ScopeFrame` as the shared
 live-binding/cache layer and using direct current-body crawl only when that

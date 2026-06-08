@@ -328,6 +328,16 @@ function childRulesOf(node: Node): Rules | undefined {
   return undefined;
 }
 
+function childCallableRulesOf(node: Node): Rules | undefined {
+  if (isNode(node, N.Rules)) {
+    return node;
+  }
+  if (isNode(node, N.Ruleset) || isNode(node, N.AtRule)) {
+    return node.value.rules;
+  }
+  return undefined;
+}
+
 function sourceRulesOf(rules: Rules): Rules {
   return isNode(rules.sourceNode, N.Rules) ? rules.sourceNode : rules;
 }
@@ -1024,7 +1034,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let out: Array<{ node: Rules; rulesVisibility?: RulesOptions['rulesVisibility'] }> | undefined;
     const value = this.value;
     for (let i = 0; i < value.length; i++) {
-      const child = childRulesOf(value[i]!);
+      const child = childCallableRulesOf(value[i]!);
       if (!child) {
         continue;
       }
@@ -2906,7 +2916,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
     this.registrylessMixinLookupCache = undefined;
-    const directChildRules = childRulesOf(node);
+    const directChildRules = childCallableRulesOf(node);
     if (directChildRules && !isNode(node, N.Rules)) {
       this.addDirectChildRuleEntry(directChildRules);
     }
