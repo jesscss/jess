@@ -779,6 +779,36 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Exact callable child-surface capability pass: accepted as a narrow
+  registryless lookup cut with a measured stress-path win and broad-fixture
+  neutral status, not as a broad Less speed claim. File:
+  `packages/core/src/tree/rules.ts`. New traversal: one helper,
+  `rulesMayContainExactCallableSurface(...)`, scans a child `Rules.value` at
+  indexing/child-entry collection time to decide whether that child can contain
+  direct exact callable hits. This replaces repeated recursive exact-bucket
+  probes on child surfaces that cannot answer simple exact-name callable
+  lookup. It does not walk parents, source nodes, registries, `_rulesSet`, or
+  `rulesSet`; parent ascent stays in the outer lookup and child recursion stays
+  parentless. New node/materialization: none; no `Node`, copy,
+  `copyWithReusableLeaves(...)`, `.inherit(...)`, `.adopt(...)`, wrapper
+  `Rules`, side map, result object, or evaluated output cache was added. Render
+  path: unchanged; callable candidates still evaluate through the existing
+  output path. Helper/API surface: one private helper plus one `Rules` boolean,
+  `hasExactCallableChildSurface`; the boolean is reset with the existing
+  derived-state/cache resets and updated when `addDirectChildRuleEntry(...)`
+  already sees a child surface. Metadata mutations: no parent/source/frozen
+  metadata mutation; the new boolean is lookup coverage state on the existing
+  `Rules` runtime surface. Routine error/control: no throw/catch/Error path was
+  added. Evidence: focused eslint passed; all-flags focused behavior passed
+  (`303` tests, `8` skipped); `@jesscss/core` build passed. One-render
+  `mixins-guards.less` counters under `JESS_REGISTRYLESS_MIXIN_LOOKUP=1`
+  dropped exact-bucket probes from `3143` to `371` and child collector
+  calls/builds from `107` to `28`. Paired broad `mixins-guards.less` runs were
+  neutral/no decision-quality regression (`pairs=100 batch=1`: wins `48/100`,
+  `t=0.42`; `pairs=60 batch=5`: wins `31/60`, `t=0.83`). Paired
+  `scope-lookup-stress.less` render improved with a clean longer signal:
+  baseline median `56.04ms`, candidate median `55.14ms`, wins `85/100`,
+  `t=-4.46`.
 - Parentless callable candidate benchmark fix: accepted as a correctness fix
   for broad `benchmark.less`, not a speed claim and not a new ownership model.
   Files: `packages/core/src/tree/util/callable-candidate-state.ts`,

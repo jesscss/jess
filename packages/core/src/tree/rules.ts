@@ -338,6 +338,17 @@ function childCallableRulesOf(node: Node): Rules | undefined {
   return undefined;
 }
 
+function rulesMayContainExactCallableSurface(rules: Rules): boolean {
+  const value = rules.value;
+  for (let i = 0; i < value.length; i++) {
+    const node = value[i]!;
+    if (isNode(node, N.Mixin | N.Ruleset | N.AtRule | N.Rules)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function sourceRulesOf(rules: Rules): Rules {
   return isNode(rules.sourceNode, N.Rules) ? rules.sourceNode : rules;
 }
@@ -516,6 +527,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   directCallableLookupCache: Map<string, MixinEntry[]> | undefined;
   directChildRuleEntries: Array<{ node: Rules; rulesVisibility?: RulesOptions['rulesVisibility'] }> | null | undefined;
   hasDirectChildRuleSurface = false;
+  hasExactCallableChildSurface = false;
   directDeclarationsByName: Map<string, Declaration[]> | undefined;
   directDeclarationLookupCache: Map<string, {
     optionalMatch: Declaration | undefined;
@@ -552,6 +564,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this._hasExtends = false;
         this._hasReferenceImports = (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
         this.hasDirectChildRuleSurface = false;
+        this.hasExactCallableChildSurface = false;
         this.directChildRuleEntries = undefined;
       }
       // Initialize fast maps so the hot-path can distinguish
@@ -630,6 +643,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.directCallableLookupCache = undefined;
     this.directChildRuleEntries = undefined;
     this.hasDirectChildRuleSurface = false;
+    this.hasExactCallableChildSurface = false;
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
     this.registrylessMixinLookupCache = undefined;
@@ -837,7 +851,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ? (
             scope.directChildRuleEntries !== undefined
               ? (scope.directChildRuleEntries ?? undefined)
-              : scope.rulesIndexed >= scope.value.length && !scope.hasDirectChildRuleSurface
+              : scope.rulesIndexed >= scope.value.length && !scope.hasExactCallableChildSurface
                 ? undefined
                 : scope.collectDirectChildRulesEntries()
           )
@@ -1027,7 +1041,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (this.directChildRuleEntries !== undefined) {
       return this.directChildRuleEntries ?? undefined;
     }
-    if (this.rulesIndexed >= this.value.length && !this.hasDirectChildRuleSurface) {
+    if (this.rulesIndexed >= this.value.length && !this.hasExactCallableChildSurface) {
       this.directChildRuleEntries = null;
       return undefined;
     }
@@ -1036,6 +1050,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     for (let i = 0; i < value.length; i++) {
       const child = childCallableRulesOf(value[i]!);
       if (!child) {
+        continue;
+      }
+      if (!rulesMayContainExactCallableSurface(child)) {
         continue;
       }
       const rulesVisibility: RulesOptions['rulesVisibility'] = {
@@ -1058,6 +1075,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     rulesVisibility?: RulesOptions['rulesVisibility']
   ): void {
     this.hasDirectChildRuleSurface = true;
+    if (rulesMayContainExactCallableSurface(child)) {
+      this.hasExactCallableChildSurface = true;
+    }
     const visibility: RulesOptions['rulesVisibility'] = {
       ...child.options.rulesVisibility,
       ...rulesVisibility

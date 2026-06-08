@@ -1970,15 +1970,43 @@ Follow-up exact-callable child-crawl evidence:
   "this child surface can contain callable hits for this shape" fact instead of
   probing every reachable surface.
 
+Follow-up exact-callable child-surface capability evidence:
+
+- exact string callable lookup now keeps a narrower carried fact,
+  `Rules.hasExactCallableChildSurface`, beside the existing direct child-surface
+  state. A child `Rules` surface is added to recursive exact-callable traversal
+  only if its body can contain direct `Mixin`, `Ruleset`, `AtRule`, or nested
+  `Rules` callable surfaces. The fact is updated during indexing/cache reset and
+  when `addDirectChildRuleEntry(...)` already sees a new child surface;
+- focused all-flags behavior and lint still passed:
+  `pnpm exec eslint packages/core/src/tree/rules.ts`, and
+  `JESS_DIRECT_DECLARATION_LOOKUP=1 JESS_DIRECT_CALLABLE_LOOKUP=1 JESS_REGISTRYLESS_MIXIN_LOOKUP=1 pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts --run`
+  (`303` tests, `8` skipped);
+- after rebuilding `@jesscss/core`, one-render counters on `mixins-guards.less`
+  under `JESS_REGISTRYLESS_MIXIN_LOOKUP=1` dropped again: exact-bucket probes
+  `3143` -> `371`, child collector calls/builds `107` -> `28`, and
+  direct callable entry builds stayed at `4`;
+- broad `mixins-guards.less` did not produce a speed win, but the longer runs
+  also did not show a decision-quality regression:
+  `--warmup 8 --pairs 100 --batch-size 1` reported baseline median `13.65ms`,
+  candidate median `13.58ms`, mean ratio `1.43%`, wins `48/100`, `t=0.42`;
+  `--warmup 8 --pairs 60 --batch-size 5` reported baseline median `69.02ms`,
+  candidate median `68.47ms`, mean ratio `1.23%`, wins `31/60`, `t=0.83`;
+- recursive `scope-lookup-stress.less` render kept the real signal with a
+  longer paired run:
+  `node scripts/compare-less-parse-render-env.mjs --env JESS_REGISTRYLESS_MIXIN_LOOKUP --fixture scripts/fixtures/less-hotpath/scope-lookup-stress.less --phase render --warmup 10 --pairs 100`
+  reported baseline median `56.04ms`, candidate median `55.14ms`, mean ratio
+  `-1.64%`, wins `85/100`, `t=-4.46`.
+
 Next architecture theories to test:
 
-1. Carry child-surface capability bits on the `ScopeFrame`, not a side registry.
-   Exact simple-name lookup should be able to answer three questions without
-   scanning children: this frame has exact callable buckets; this frame has no
-   child callable surfaces for simple exact names; this frame has child surfaces
-   that might contain simple callables. A miss can stop only in the first two
-   cases. The bit should be set during existing registration/adoption work, not
-   rediscovered by a helper per lookup.
+1. Promote exact child-surface capability to the `ScopeFrame` once the frame
+   already receives callable coverage facts. The current `Rules` bit proved the
+   counter cut; the next version should let exact simple-name lookup answer
+   three questions from the frame without touching child arrays: this frame has
+   exact callable buckets; this frame has no child callable surfaces for simple
+   exact names; this frame has child surfaces that might contain simple
+   callables. A miss can stop only in the first two cases.
 2. Split child-surface facts by lookup shape. A nested `Ruleset`/`AtRule` may
    matter for exact simple names, namespace paths, declarations, or output
    leakage differently. One broad `hasDirectChildRuleSurface` forces too many
