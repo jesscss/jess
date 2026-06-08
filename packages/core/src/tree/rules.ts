@@ -1305,7 +1305,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     options: Registries.FindOptions
   ): string | undefined {
     const mapCache = process.env.JESS_REGISTRYLESS_MIXIN_CACHE === '1';
-    const lastCache = process.env.JESS_REGISTRYLESS_MIXIN_LAST_CACHE === '1';
+    const lastCache = process.env.JESS_REGISTRYLESS_MIXIN_LAST_CACHE !== '0';
     if (!mapCache && !lastCache) {
       return undefined;
     }
@@ -1322,14 +1322,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private hasRegistrylessMixinCacheResult(key: string): boolean {
-    if (process.env.JESS_REGISTRYLESS_MIXIN_LAST_CACHE === '1') {
+    if (process.env.JESS_REGISTRYLESS_MIXIN_CACHE !== '1') {
       return this.registrylessLastMixinLookupKey === key;
     }
     return this.registrylessMixinLookupCache?.has(key) ?? false;
   }
 
   private getRegistrylessMixinCacheResult(key: string): MixinEntry[] | undefined {
-    if (process.env.JESS_REGISTRYLESS_MIXIN_LAST_CACHE === '1') {
+    if (process.env.JESS_REGISTRYLESS_MIXIN_CACHE !== '1') {
       return this.registrylessLastMixinLookupValue;
     }
     return this.registrylessMixinLookupCache?.get(key);
@@ -1339,7 +1339,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (key === undefined) {
       return;
     }
-    if (process.env.JESS_REGISTRYLESS_MIXIN_LAST_CACHE === '1') {
+    if (process.env.JESS_REGISTRYLESS_MIXIN_CACHE !== '1') {
       this.registrylessLastMixinLookupKey = key;
       this.registrylessLastMixinLookupValue = value;
       return;

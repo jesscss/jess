@@ -805,6 +805,25 @@ the gate passed.
   registryless without cache. Combined registryless plus one-entry cache versus
   old baseline stayed neutral on `mixins-guards.less` (`wins 32/60`, `t=-0.23`)
   and improved `scope-lookup-stress.less` (`wins 85/100`, `t=-5.97`).
+- Registryless default one-entry cache pass: accepted as enabling the inlined
+  one-entry cache inside the env-gated registryless prototype. File:
+  `packages/core/src/tree/rules.ts`. New traversal: none. New
+  node/materialization: none beyond the scalar cache fields from the prior
+  pass; no AST node, wrapper `Rules`, side registry, or output cache was added.
+  Helper/API surface: no public API; `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=0`
+  now explicitly disables the last cache for measurement, while
+  `JESS_REGISTRYLESS_MIXIN_CACHE=1` still selects Map mode. Metadata mutations:
+  unchanged; cache fields are reset with existing registryless invalidation.
+  Evidence: focused eslint passed; all-flags focused behavior passed with
+  default cache mode (`304` tests, `8` skipped); `@jesscss/core` build passed.
+  Default registryless versus old baseline stayed neutral/favorable on
+  `mixins-guards.less` (`wins 33/60`, `t=-1.48`) and improved
+  `scope-lookup-stress.less` (`wins 92/100`, `t=-9.27`). Cache off/on under
+  registryless showed stress still benefits (`wins 79/100`, `t=-5.57`) while
+  `mixins-guards.less` remains neutral (`wins 29/60`, `t=0.04`). Extra default
+  hot-path checks did not show a regression: `import-reference.less`
+  (`wins 28/40`, `t=-1.94`), `media.less` (`wins 20/40`, `t=0.50`), and
+  `extend-chaining.less` (`wins 22/40`, `t=-0.44`).
 - Frame exact-callable miss coverage pass: accepted as a predicate-precision
   cleanup for registryless lookup, not as a standalone speed win. Files:
   `packages/core/src/tree/rules.ts` and

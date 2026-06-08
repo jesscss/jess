@@ -2063,6 +2063,38 @@ Follow-up registryless result-cache evidence:
   reported baseline median `56.86ms`, candidate median `55.12ms`, mean ratio
   `-3.00%`, wins `85/100`, `t=-5.97`.
 
+Follow-up default one-entry cache evidence:
+
+- the inlined one-entry cache is now the default cache mode when
+  `JESS_REGISTRYLESS_MIXIN_LOOKUP=1`. Set
+  `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=0` to measure registryless without it, or
+  `JESS_REGISTRYLESS_MIXIN_CACHE=1` to force the older Map cache experiment;
+- focused all-flags behavior and lint still passed with default cache mode:
+  `pnpm exec eslint packages/core/src/tree/rules.ts`, and
+  `JESS_DIRECT_DECLARATION_LOOKUP=1 JESS_DIRECT_CALLABLE_LOOKUP=1 JESS_REGISTRYLESS_MIXIN_LOOKUP=1 pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts --run`
+  (`304` tests, `8` skipped);
+- paired default registryless comparisons against old baseline:
+  `mixins-guards.less` `--warmup 8 --pairs 60 --batch-size 5` reported
+  baseline median `66.31ms`, candidate median `65.76ms`, mean ratio `-1.32%`,
+  wins `33/60`, `t=-1.48`; `scope-lookup-stress.less` render with `--warmup 10
+  --pairs 100` reported baseline median `56.54ms`, candidate median `54.42ms`,
+  mean ratio `-3.02%`, wins `92/100`, `t=-9.27`;
+- paired cache off/on under registryless confirmed the default cache still
+  earns its keep on the recursive shape and stays broad-neutral:
+  `scope-lookup-stress.less` render with `JESS_REGISTRYLESS_MIXIN_LOOKUP=1
+  --env JESS_REGISTRYLESS_MIXIN_LAST_CACHE --warmup 10 --pairs 100` reported
+  baseline median `56.22ms`, candidate median `55.16ms`, mean ratio `-2.25%`,
+  wins `79/100`, `t=-5.57`; `mixins-guards.less` with `--warmup 8 --pairs 60
+  --batch-size 5` reported baseline median `68.16ms`, candidate median
+  `67.55ms`, mean ratio `0.40%`, wins `29/60`, `t=0.04`;
+- extra default hot-path fixture checks did not show a broad regression:
+  `import-reference.less` with `--warmup 6 --pairs 40 --batch-size 3` reported
+  baseline median `43.46ms`, candidate median `42.57ms`, mean ratio `-3.19%`,
+  wins `28/40`, `t=-1.94`; `media.less` reported baseline median `16.05ms`,
+  candidate median `16.11ms`, mean ratio `1.48%`, wins `20/40`, `t=0.50`;
+  `extend-chaining.less` reported baseline median `12.75ms`, candidate median
+  `12.76ms`, mean ratio `-0.27%`, wins `22/40`, `t=-0.44`.
+
 Next architecture theories to test:
 
 1. Promote exact child-surface capability to the `ScopeFrame` once the frame
@@ -2085,10 +2117,10 @@ Next architecture theories to test:
    exact key plus include-rulesets/filter shape, invalidated by the existing
    registration mutation that already clears direct callable caches.
    The one-entry cache prototype supports this direction for repeated recursive
-   exact lookups. The wrapper allocation has been removed; the next refinement
-   should decide whether the inlined last-key cache can be enabled by default
-   for registryless exact lookup or whether it still needs a carried
-   repeat-likelihood bit.
+   exact lookups. The wrapper allocation has been removed and the inlined cache
+   is now default inside the registryless prototype. The next refinement should
+   reduce cache-key construction itself, likely by caching the static lookup
+   key/fingerprint when the `Reference` already carries a stable string or path.
 4. Prefer negative capability over positive result caching. The broad fixture
    regressed because the candidate path repeatedly proved "nothing in this
    child surface" after the fact. A cheap carried "cannot contain simple exact
