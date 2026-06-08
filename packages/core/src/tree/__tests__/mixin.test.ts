@@ -2470,6 +2470,32 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when child surfaces cannot contain exact callables', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.frame-child-declaration-missing') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          rules([
+            decl({ name: 'color', value: any('green') })
+          ])
+        ]);
+        root.getScopeFrame();
+
+        expect(root.find('mixin', '.frame-child-declaration-missing', 'Mixin')).toBeUndefined();
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('mixinsByName fast path: type=mixin-ruleset static Mixin hit skips MixinRegistry.find', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }

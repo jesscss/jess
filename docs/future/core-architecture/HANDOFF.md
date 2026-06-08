@@ -779,6 +779,30 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Frame exact-callable miss coverage pass: accepted as a predicate-precision
+  cleanup for registryless lookup, not as a standalone speed win. Files:
+  `packages/core/src/tree/rules.ts` and
+  `packages/core/src/tree/__tests__/mixin.test.ts`. New traversal: none beyond
+  the existing exact child-surface helper introduced in the prior pass;
+  `hasDirectLookupChildSurface()` now checks `_hasReferenceImports`,
+  `hasExactCallableChildSurface`, and any not-yet-indexed child surfaces that
+  can contain exact callable hits instead of treating any `_rulesSet` child as
+  an uncovered simple exact-name miss. This narrows fallback to child surfaces
+  that can actually affect the lookup. New node/materialization: none; no
+  `Node`, copy, `copyWithReusableLeaves(...)`, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, side map, result object, or evaluated output cache was
+  added. Render path: unchanged. Helper/API surface: no new production helper
+  or public API; one focused test was added. Metadata mutations: no
+  parent/source/frozen mutation; existing scope-frame coverage booleans are set
+  with a narrower predicate. Routine error/control: no throw/catch/Error path
+  was added. Evidence: focused eslint passed; all-flags focused behavior passed
+  (`304` tests, `8` skipped); `@jesscss/core` build passed. One-render
+  `mixins-guards.less` counters moved only slightly from the prior patch
+  (`371` -> `370` exact-bucket probes; `46` -> `45` `findMixinsFast` calls),
+  so this is not a standalone speed claim. Paired `mixins-guards.less`
+  remained neutral (`pairs=60 batch=5`: wins `36/60`, `t=-0.94`), and paired
+  `scope-lookup-stress.less` preserved the registryless win (`wins 76/100`,
+  `t=-3.19`).
 - Exact callable child-surface capability pass: accepted as a narrow
   registryless lookup cut with a measured stress-path win and broad-fixture
   neutral status, not as a broad Less speed claim. File:

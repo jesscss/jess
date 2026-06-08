@@ -719,12 +719,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private hasDirectLookupChildSurface(): boolean {
-    if (this._hasReferenceImports || this._rulesSet?.length) {
+    if (this._hasReferenceImports || this.hasExactCallableChildSurface) {
       return true;
     }
     const value = this.value;
-    for (let i = 0; i < value.length; i++) {
-      if (isNode(value[i]!, N.Rules | N.Ruleset | N.AtRule)) {
+    for (let i = this.rulesIndexed; i < value.length; i++) {
+      const child = childCallableRulesOf(value[i]!);
+      if (child && rulesMayContainExactCallableSurface(child)) {
         return true;
       }
     }

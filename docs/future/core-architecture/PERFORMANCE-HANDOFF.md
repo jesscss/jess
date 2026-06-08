@@ -1998,6 +1998,30 @@ Follow-up exact-callable child-surface capability evidence:
   reported baseline median `56.04ms`, candidate median `55.14ms`, mean ratio
   `-1.64%`, wins `85/100`, `t=-4.46`.
 
+Follow-up frame exact-miss coverage evidence:
+
+- `ScopeFrame.callableMissesCovered` now uses the exact callable child-surface
+  fact instead of the broader `_rulesSet`/any-child-surface predicate. A focused
+  test proves a declaration-only child `Rules` surface no longer forces the
+  `Rules.findMixinsFast(...)` bridge for a simple exact callable miss, while a
+  child surface with a callable still keeps the bridge;
+- focused all-flags behavior and lint still passed:
+  `pnpm exec eslint packages/core/src/tree/rules.ts packages/core/src/tree/__tests__/mixin.test.ts`, and
+  `JESS_DIRECT_DECLARATION_LOOKUP=1 JESS_DIRECT_CALLABLE_LOOKUP=1 JESS_REGISTRYLESS_MIXIN_LOOKUP=1 pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts --run`
+  (`304` tests, `8` skipped);
+- one-render `mixins-guards.less` counters barely moved from the prior
+  child-surface patch: exact-bucket probes `371` -> `370`,
+  `findMixinsFast` calls `46` -> `45`, and child collector builds stayed `28`.
+  This is useful predicate precision, not a standalone broad speed win;
+- paired `mixins-guards.less` with `--warmup 8 --pairs 60 --batch-size 5`
+  reported baseline median `68.72ms`, candidate median `69.13ms`, mean ratio
+  `-0.67%`, wins `36/60`, `t=-0.94`; still neutral/no decision-quality broad
+  regression;
+- paired `scope-lookup-stress.less` render with `--warmup 10 --pairs 100`
+  reported baseline median `57.04ms`, candidate median `56.17ms`, mean ratio
+  `-1.18%`, wins `76/100`, `t=-3.19`, preserving the registryless stress
+  signal.
+
 Next architecture theories to test:
 
 1. Promote exact child-surface capability to the `ScopeFrame` once the frame
