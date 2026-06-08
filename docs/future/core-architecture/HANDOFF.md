@@ -779,6 +779,37 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Parentless callable candidate benchmark fix: accepted as a correctness fix
+  for broad `benchmark.less`, not a speed claim and not a new ownership model.
+  Files: `packages/core/src/tree/util/callable-candidate-state.ts`,
+  `packages/core/src/tree/util/callable-candidate-execution.ts`,
+  `packages/core/src/tree/util/callable-special-case.ts`, and focused helper
+  tests. New traversal: none; the fix uses `candidate.parent` or the already
+  supplied `callSiteRules`, with no parent walk, child walk, registry lookup,
+  side map, or array helper. New node/materialization: none. The diff still
+  contains `candidateParent.adopt(...)`, but that replaces the previous
+  `candidate.parent!.adopt(...)`; it does not add a second adoption or move
+  canonical source children. The ownership boundary is the same callable-output
+  placement rules surface that already existed. Helper/API surface: one field,
+  `PreparedCallableCandidateState.candidateParent`, carries the placement
+  parent once so downstream guard/output code no longer reaches back through a
+  nullable candidate parent. Metadata mutations: no new parent restoration,
+  source mutation, `inherit`, `frozen`, `Reflect`, `Object.hasOwn`, or lazy
+  context/options creation. Routine error/control: the new `TypeError`s guard
+  an impossible callable setup with neither definition parent nor call-site
+  rules; they are not used for ordinary lookup miss/branch control. Test-only
+  objects are the new helper fixtures only. Render path: unchanged; callable
+  output still evaluates through the existing path and no evaluated output is
+  cached. Evidence: `benchmark.less` previously failed through the Less facade
+  with `Cannot read properties of undefined (reading 'adopt')`; debugger/stack
+  evidence mapped it to
+  `prepareCallableCandidateState(...)` calling `candidate.parent!.adopt(rules)`.
+  Focused helper tests now cover parentless ordinary and special-case callable
+  entries. After the fix, `node scripts/profile-less-benchmark.mjs
+  --file=benchmark.less` completes through the Less-compatible path:
+  elapsed `502.96ms`; `Reference.evalNode` `3619` calls / `59.40ms`;
+  `Rules.find` `1013` calls / `22.31ms`; `OutputWriter.getSince` `149331`;
+  `OutputWriter.mark` `154363`.
 - ScopeFrame callable hit/miss prototype: accepted as a narrow binding-lane bridge
   reduction, not a speed claim and not completion of callable records. Files:
   `packages/core/src/tree/scope-frame.ts`,

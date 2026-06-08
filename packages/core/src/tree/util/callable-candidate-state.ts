@@ -10,6 +10,7 @@ import { isNode } from './is-node.js';
 export type PreparedCallableCandidateState = {
   sourceRules: Rules;
   rules: Rules;
+  candidateParent: Node;
   paramBindings: CallableParamBindingRecord[];
   signatureKey: string | undefined;
   parentFrame?: ScopeFrame;
@@ -43,6 +44,11 @@ export function prepareCallableCandidateState({
   const rules = canUseUnlockedRules
     ? createUnlockedRules(candidateRules)
     : createOwnedRules(candidateRules);
+  const candidateParent = candidate.parent ?? callSiteRules;
+  const definitionParent = candidate.parent ?? candidateRules.parent;
+  if (!candidateParent) {
+    throw new TypeError('Callable candidate setup requires a parent or call-site rules');
+  }
 
   if (isNode(candidate, N.Mixin)) {
     rules.parent = candidateRules.parent;
@@ -50,13 +56,13 @@ export function prepareCallableCandidateState({
 
   rules.options.rulesVisibility ??= {};
   rules.options.rulesVisibility.VarDeclaration = leakyRules ? 'public' : 'private';
-  candidate.parent!.adopt(rules);
+  candidateParent.adopt(rules);
 
   const parentFrame: ScopeFrame | undefined = isNode(callSiteRules, N.Rules)
     ? callSiteRules.getScopeFrame()
     : undefined;
-  const definitionFrame: ScopeFrame | undefined = isNode(candidate.parent, N.Rules)
-    ? candidate.parent.getScopeFrame()
+  const definitionFrame: ScopeFrame | undefined = isNode(definitionParent, N.Rules)
+    ? definitionParent.getScopeFrame()
     : undefined;
   const lexicalScopeFrame = definitionFrame ?? parentFrame;
   const fallbackScopeFrame = (
@@ -70,6 +76,7 @@ export function prepareCallableCandidateState({
   return {
     sourceRules,
     rules,
+    candidateParent,
     paramBindings: resolvedBindingInfo?.bindings ?? [],
     signatureKey: resolvedBindingInfo?.signatureKey,
     parentFrame,

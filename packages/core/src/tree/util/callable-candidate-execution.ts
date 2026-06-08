@@ -55,6 +55,7 @@ export async function executeCallableCandidate({
   const {
     sourceRules,
     rules,
+    candidateParent,
     paramBindings,
     signatureKey,
     parentFrame,
@@ -72,7 +73,7 @@ export async function executeCallableCandidate({
       outerRules = ensureCallableOuterRulesSurface({
         currentOuterRules: outerRules,
         rules,
-        parent: candidate.parent!,
+        parent: candidateParent,
         candidateIndex: candidate.index,
         createOuterRules,
         options: {
@@ -121,7 +122,7 @@ export async function executeCallableCandidate({
     paramBindingsLength: paramBindings.length,
     outerRules,
     rules,
-    parent: candidate.parent!,
+    parent: candidateParent,
     rulesContextParent: context.rulesContext,
     candidateIndex: candidate.index,
     parentFrame,
@@ -138,7 +139,7 @@ export async function executeCallableCandidate({
     usesPreboundParamGuardOuterRules,
     outerRules,
     rules,
-    parent: candidate.parent!,
+    parent: candidateParent,
     candidateIndex: candidate.index,
     createOuterRules
   });
@@ -154,7 +155,7 @@ export async function executeCallableCandidate({
     guardResult,
     rules,
     sourceRules,
-    candidateParent: candidate.parent,
+    candidateParent,
     candidateIndex: candidate.index,
     params: getParamsSignature()
   });
@@ -168,7 +169,7 @@ export async function executeCallableCandidate({
     context,
     currentCall: context.callStack.at(-1),
     getParamsSignature,
-    candidateParent: candidate.parent!,
+    candidateParent,
     candidateIndex: candidate.index,
     rules,
     sourceRules,

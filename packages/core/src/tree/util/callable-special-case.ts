@@ -79,8 +79,12 @@ export async function evaluateCallableSpecialCaseCandidate({
     const parentFrame = isNode(callSiteRules, N.Rules)
       ? callSiteRules.getScopeFrame()
       : undefined;
+    const candidateParent = candidate.parent ?? callSiteRules;
+    if (!candidateParent) {
+      throw new TypeError('Callable special-case setup requires a parent or call-site rules');
+    }
 
-    candidate.parent!.adopt(unlocked);
+    candidateParent.adopt(unlocked);
     attachMixinOutputSlot(unlocked, sourceRules, restrictMixinOutputLookup, {
       fallbackFrame: context.leakyRules === true ? parentFrame : undefined
     });

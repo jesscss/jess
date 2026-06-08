@@ -79,6 +79,28 @@ describe('callable candidate state helper', () => {
     expect(state.signatureKey).toBeUndefined();
   });
 
+  it('uses call-site rules as placement parent for parentless callable-rules candidates', () => {
+    const callSiteRules = rules([]);
+    const sourceDecl = decl({ name: 'color', value: any('red') });
+    const sourceRules = rules([sourceDecl]);
+    const candidate = callableRulesEntry({ name: undefined, params: undefined, rules: sourceRules });
+
+    const state = prepareCallableCandidateState({
+      candidate,
+      callSiteRules,
+      leakyRules: false,
+      createOwnedRules: createOwnedCallableRulesSurface,
+      createUnlockedRules: createUnlockedCallableRulesSurface,
+      getRootSourceRules: rulesNode => rulesNode
+    });
+
+    expect(candidate.parent).toBeUndefined();
+    expect(state.candidateParent).toBe(callSiteRules);
+    expect(state.rules.parent).toBe(callSiteRules);
+    expect(state.parentFrame).toBe(callSiteRules.getScopeFrame());
+    expect(state.definitionFrame).toBeUndefined();
+  });
+
   it('keeps childless static callable-rules candidates on the unlocked rules path', () => {
     const definitionParent = rules([]);
     const sourceRules = rules([]);

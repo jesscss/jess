@@ -106,6 +106,37 @@ describe('callable special-case helper', () => {
     expect(result.output?.options.mixinOutputSlot?.fallbackFrame).toBe(callerRules.getScopeFrame());
   });
 
+  it('uses call-site rules for parentless anonymous callable-rules output', async () => {
+    const context = new Context({ leakyRules: true });
+    context.depth = 2;
+
+    const detachedBody = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const callerRules = rules([]);
+    const candidate = callableRulesEntry({ rules: detachedBody });
+    context.rulesContext = callerRules;
+
+    const result = await evaluateCallableSpecialCaseCandidate({
+      candidate,
+      context,
+      caller: undefined,
+      callSiteRules: context.rulesContext,
+      restrictMixinOutputLookup: true,
+      candidateName: undefined,
+      candidateParams: undefined,
+      candidateGuard: undefined,
+      createOwnedRules: createOwnedCallableRulesSurface,
+      createUnlockedRules: createUnlockedCallableRulesSurface,
+      getRootSourceRules
+    });
+
+    expect(candidate.parent).toBeUndefined();
+    expect(result.handled).toBe(true);
+    expect(result.output?.parent).toBe(callerRules);
+    expect(result.output?.toString()).toContain('color: red;');
+  });
+
   it('leaves ordinary mixin candidates on the main eval path', async () => {
     const context = new Context({ leakyRules: true });
     const candidate = mixin({
