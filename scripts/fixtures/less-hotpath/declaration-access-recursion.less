@@ -1,0 +1,20 @@
+.mk-map() {
+  text: white;
+  background: black;
+  primary: red;
+  border-color: blue;
+}
+
+.declaration-access-loop(@n) when (@n <= 0) {}
+.declaration-access-loop(@n) when (@n > 0) {
+  @map: .mk-map();
+  color-@{n}: @map[text];
+  background-@{n}: @map[background];
+  accent-@{n}: @map[primary];
+  border-@{n}: @map[border-color];
+  .declaration-access-loop((@n - 1));
+}
+
+.declaration-access-recursion {
+  .declaration-access-loop(1000);
+}

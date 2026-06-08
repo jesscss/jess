@@ -1,0 +1,30 @@
+.noop() {}
+
+.lookup-burst(@n) when (@n <= 0) {}
+.lookup-burst(@n) when (@n > 0) {
+  .noop();
+  .noop();
+  .noop();
+  .noop();
+  .noop();
+  .noop();
+  .noop();
+  .noop();
+  .noop();
+  .noop();
+  .noop();
+  .noop();
+  .noop();
+  .noop();
+  .noop();
+  .noop();
+  .noop();
+  .noop();
+  .noop();
+  .noop();
+  .lookup-burst((@n - 1));
+}
+
+.simple-mixin-recursion {
+  .lookup-burst(1000);
+}

@@ -594,6 +594,59 @@ describe('Mixin', () => {
       `);
     });
 
+    it('keeps nested callable buckets visible on live parameter scope frames', async () => {
+      const previousRegistryless = process.env.JESS_REGISTRYLESS_MIXIN_LOOKUP;
+      process.env.JESS_REGISTRYLESS_MIXIN_LOOKUP = '1';
+      try {
+        const mixinDef = mixin({
+          name: any('.outer'),
+          params: list([
+            vardecl({ name: 'value', value: any('blue') }, { paramVar: true })
+          ]),
+          rules: rules([
+            mixin({
+              name: any('.inner'),
+              params: list([
+                vardecl({ name: 'tone', value: ref({ key: 'value' }, { type: 'variable' }) }, { paramVar: true })
+              ]),
+              rules: rules([
+                mixin({
+                  name: any('.leaf'),
+                  rules: rules([
+                    decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
+                  ])
+                }),
+                call({ name: ref({ key: '.leaf' }, { type: 'mixin' }) })
+              ])
+            }),
+            call({ name: ref({ key: '.inner' }, { type: 'mixin' }) })
+          ])
+        });
+        const testRuleset = ruleset({
+          selector: el('.test'),
+          rules: rules([
+            call({ name: ref({ key: '.outer' }, { type: 'mixin' }) })
+          ])
+        });
+        const root = rules([mixinDef, testRuleset]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+
+        expect(css).toBeString(`
+          .test {
+            color: blue;
+          }
+        `);
+      } finally {
+        if (previousRegistryless === undefined) {
+          delete process.env.JESS_REGISTRYLESS_MIXIN_LOOKUP;
+        } else {
+          process.env.JESS_REGISTRYLESS_MIXIN_LOOKUP = previousRegistryless;
+        }
+      }
+    });
+
     it('evaluates default params against earlier parameter bindings', async () => {
       const mixinDef = mixin({
         name: any('.button-variant'),
@@ -2349,6 +2402,10 @@ describe('Mixin', () => {
 
     it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when no child surfaces exist', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const previousRegistryless = process.env.JESS_REGISTRYLESS_MIXIN_LOOKUP;
+      const previousDirectCallable = process.env.JESS_DIRECT_CALLABLE_LOOKUP;
+      delete process.env.JESS_REGISTRYLESS_MIXIN_LOOKUP;
+      delete process.env.JESS_DIRECT_CALLABLE_LOOKUP;
       const fastPathHits: string[] = [];
       RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
@@ -2371,6 +2428,16 @@ describe('Mixin', () => {
         expect(fastPathHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        if (previousRegistryless === undefined) {
+          delete process.env.JESS_REGISTRYLESS_MIXIN_LOOKUP;
+        } else {
+          process.env.JESS_REGISTRYLESS_MIXIN_LOOKUP = previousRegistryless;
+        }
+        if (previousDirectCallable === undefined) {
+          delete process.env.JESS_DIRECT_CALLABLE_LOOKUP;
+        } else {
+          process.env.JESS_DIRECT_CALLABLE_LOOKUP = previousDirectCallable;
+        }
       }
     });
 

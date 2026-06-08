@@ -1,0 +1,9 @@
+.guarded-loop(@n) when (@n <= 0) {}
+.guarded-loop(@n) when (@n > 0) {
+  step: @n;
+  .guarded-loop((@n - 1));
+}
+
+.guarded-mixin-recursion {
+  .guarded-loop(4);
+}

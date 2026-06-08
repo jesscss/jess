@@ -30,6 +30,7 @@ const DEFAULT_STABLE_WARMUP = 20;
 
 function parseArgs(argv) {
   const options = {
+    batchSize: 1,
     compare: undefined,
     compareLatest: false,
     fixtures: [],
@@ -49,6 +50,9 @@ function parseArgs(argv) {
     const arg = argv[i];
     switch (arg) {
       case '--':
+        break;
+      case '--batch-size':
+        options.batchSize = readNumber(readValue(argv, ++i, arg), arg);
         break;
       case '--compare':
         options.compare = readValue(argv, ++i, arg);
@@ -105,6 +109,9 @@ function parseArgs(argv) {
   }
   if (options.iterations < 1) {
     throw new TypeError('--iterations must be greater than zero');
+  }
+  if (options.batchSize < 1) {
+    throw new TypeError('--batch-size must be greater than zero');
   }
   if (options.repeat < 1) {
     throw new TypeError('--repeat must be greater than zero');
@@ -292,6 +299,7 @@ function makeRunMeta(options) {
     repeat: options.repeat,
     trim: options.trim,
     warmup: options.warmup,
+    batchSize: options.batchSize,
     note: options.note || undefined
   };
 }
@@ -309,6 +317,7 @@ function toRecord(run, fixture, result, times, rounds) {
     repeat: run.repeat,
     trim: run.trim,
     warmup: run.warmup,
+    batchSize: run.batchSize,
     note: run.note,
     summary: result,
     times,
@@ -401,7 +410,7 @@ const compiler = new Compiler({
 
 const records = [];
 for (const rel of fixtures) {
-  const file = path.join(testDataRoot, rel);
+  const file = resolveFixturePath(testDataRoot, rel);
   const rounds = [];
   for (let round = 0; round < options.repeat; round++) {
     for (let i = 0; i < options.warmup; i++) {
@@ -410,7 +419,9 @@ for (const rel of fixtures) {
     const times = [];
     for (let i = 0; i < options.iterations; i++) {
       const start = performance.now();
-      await compiler.render(file);
+      for (let batch = 0; batch < options.batchSize; batch++) {
+        await compiler.render(file);
+      }
       times.push(performance.now() - start);
     }
     rounds.push({
@@ -422,6 +433,17 @@ for (const rel of fixtures) {
   const result = summarizeRounds(rounds, options.trim);
   const times = rounds.flatMap(round => round.times);
   records.push(toRecord(run, rel, result, times, rounds));
+}
+
+function resolveFixturePath(testDataRoot, fixture) {
+  if (path.isAbsolute(fixture)) {
+    return fixture;
+  }
+  const repoFixture = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', fixture);
+  if (fs.existsSync(repoFixture)) {
+    return repoFixture;
+  }
+  return path.join(testDataRoot, fixture);
 }
 
 let comparison = [];
@@ -441,7 +463,7 @@ if (options.json) {
     console.log(JSON.stringify(record));
   }
 } else {
-  console.log(`Less hot-path measurement (${options.iterations} iterations, ${options.warmup} warmup, ${options.repeat} repeat, ${formatPercent(options.trim)} trim)`);
+  console.log(`Less hot-path measurement (${options.iterations} iterations, ${options.warmup} warmup, ${options.repeat} repeat, batch ${options.batchSize}, ${formatPercent(options.trim)} trim)`);
   console.log(`commit=${run.commit ?? 'unknown'} node=${run.node} platform=${run.platform}/${run.arch}`);
   for (const record of records) {
     const result = record.summary;

@@ -949,6 +949,8 @@ export abstract class Node<
           value[k] = cloneFn(v);
         } else if (isArray(v)) {
           this._deepCloneChildren(v, cloneFn);
+        } else if (isPlainObject(v)) {
+          this._deepCloneChildren(v, cloneFn);
         }
       }
     }

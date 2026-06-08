@@ -575,6 +575,147 @@ These are not active cut-queue items. Start one only after the reactivation
 threshold trips, or when a focused profile says the named surface is the next
 real bottleneck.
 
+### Registryless Static Namespace Lookup
+
+Experiment: compare static mixin/ruleset namespace lookup using a direct
+source-tree walk or purpose-built namespace table against the current
+`Rules.find(...)` / `MixinRegistry` path.
+
+Hypothesis:
+
+- hot static namespace paths such as `#theme > .colors > .primary` may be
+  faster as direct structural lookup than as registry lookup plus recursive
+  fallback/search machinery;
+- reducing `Rules.find(...)` call count is not enough proof, because replacing
+  one registry call with several helper traversals can still be slower;
+- the first valid experiment must bypass the registry machinery for the tested
+  family, not add another cache or branch around it.
+
+Candidate variants:
+
+1. Direct source-tree walk over visible `Ruleset` / no-required-param `Mixin`
+   namespace segments, no `Rules.find(...)`, no `MixinRegistry.find(...)`, and
+   no `indexPendingItems()` on the tested path.
+2. Static namespace table built during existing registration prep, keyed by
+   ordered selector/mixin segments and returning stable callable entries.
+3. Hybrid direct walk for simple local/source-owned namespaces with explicit
+   fallback to the current registry path only for imports, reference-import
+   visibility, dynamic selector/mixin names, guards, required params, or leaky
+   deprecated semantics.
+
+Required proof before keeping any patch:
+
+- focused namespace lookup tests covering nested rulesets, nested no-param
+  mixins, guarded/required-param mixins, imports/reference imports, compound
+  selectors, ambiguous prefix rulesets, and local/private visibility;
+- profiler evidence showing the tested path does not call `Rules.find(...)` or
+  `MixinRegistry.find(...)` for the intended static cases;
+- paired real benchmark before/after on a namespace-heavy fixture plus the
+  default Less hot-path suite;
+- rejected micro-optimizations around the registry path must stay reverted
+  unless this direct-structure experiment first proves the family is worth
+  replacing.
+
+June 2026 static namespace table trial: rejected for now. A lazy
+`staticNamespacePaths` table cut the namespace stress fixture's instrumented
+`Rules.find(...)` count from `1981` to `901` on the small fixture and to `5281`
+on the large fixture, but same-process paired parse+render timing on
+`scope-lookup-stress-large.less` did not show a wall-clock win. The decisive
+160-pair run with table off/on alternated per sample produced `73` wins and
+`87` losses for the table, median ratio `+2.49%`, trimmed mean ratio `+3.55%`,
+and `t=1.03`. The table removed lookup calls but added enough setup/shape cost
+that the real eval/render path did not get faster. Keep the paired benchmark
+scripts and large fixture; do not reintroduce this table without changing the
+underlying cost model.
+
+June 2026 direct simple-mixin lookup trial: inconclusive but more promising
+than namespace tables. The env-gated prototype
+`JESS_DIRECT_MIXIN_LOOKUP=1` bypasses `Rules.find('mixin', string, ...)` for
+simple string callable references and calls an accumulator-based
+`Rules.findMixinsDirect(...)` path over `mixinsByName`, preserving collection
+semantics. It passed focused mixin/reference lookup tests, but the broad
+namespace/lexical stress fixture did not improve: 50 paired parse+render
+samples on `scope-lookup-stress-large.less` showed candidate median
+`+1.68%`, mean `+3.10%`, wins `22/50`, `t=0.35`. An isolated recursive simple
+mixin fixture with about 20,000 `.noop()` lookups per sample did show a
+candidate win in one 50-pair parse+render run: median `-9.38%`, mean `-8.08%`,
+wins `36/50`, `t=-2.40`. Confirmation was weaker: 80-pair parse+render median
+`-0.78%`, mean `-1.81%`, wins `41/80`, `t=-1.56`; a 30-pair render-only run
+had median `-5.02%`, mean `+0.14%`, wins `18/30`, `t=-0.49`. Treat this as
+evidence that direct callable lookup can help only when simple recursive
+mixin lookup dominates. The next experiment should move more of the callable
+runtime onto a direct frame/table structure, not just bypass the generic
+wrapper.
+
+June 2026 callable-frame trial: rejected. A `CallableFrame` chain parallel to
+`ScopeFrame` was prototyped behind `JESS_CALLABLE_FRAME_LOOKUP=1` to resolve
+static callable names via per-scope `mixinsByName` maps and parent frame
+links, falling back when child surfaces were present. Focused lookup tests
+passed after parent frames were built on demand, but timing did not improve.
+On `simple-mixin-recursion.less`, 50 paired parse+render samples produced
+median `-0.80%`, mean `+1.17%`, wins `27/50`, `t=0.70`. On
+`scope-lookup-stress-large.less`, 40 paired parse+render samples produced
+median `+2.33%`, mean `+3.17%`, wins `15/40`, `t=1.88`. The extra frame
+construction/shape checks did not pay for themselves. Reverted; do not
+reintroduce a callable frame unless it replaces more call/eval placement
+machinery than simple name lookup.
+
+June 2026 direct simple-mixin result-cache trial: rejected. An env-gated
+`JESS_DIRECT_MIXIN_CACHE=1` prototype cached
+`Rules.findMixinsDirect(...)` results per `Rules` node and lookup option shape,
+with broad invalidation on `registerNode(...)`. Focused lookup tests passed,
+but the best-case repeated-lookup fixture still did not produce a clear win:
+50 paired parse+render samples on `simple-mixin-recursion.less` produced
+median `-1.07%`, mean `-1.20%`, wins `26/50`, `t=-1.19`. Since this fixture
+was intentionally dominated by repeated identical simple mixin lookups, the
+result is not strong enough to justify carrying extra cache storage or
+invalidation. Reverted.
+
+June 2026 registryless architecture prototype: promising, but synthetic. A
+standalone prototype in `scripts/prototype-no-registry-lookup.mjs` compares a
+current-style registry wrapper (pending items, lazy index, per-lookup searched
+set, parent traversal) with a registryless direct frame chain
+(`Map<string, entry[]>` per frame plus parent pointers). Both sides validate
+the same hit count before timing. On an 80-deep, 12-name, 200k-lookup
+build+lookup workload, the direct frame model was about `83.5%` faster:
+registry median `456.84ms`, frame median `75.45ms`, frame wins `80/80`,
+`t=-169.76`. The win survived smaller workloads: 20-deep/50k lookups was
+about `82.5%` faster, and 8-deep/10k lookups was about `79.0%` faster. It also
+survived allocation controls: registry-count mode, which avoids materializing
+result arrays on the registry side, still showed `-82.82%` median ratio; and
+frame-materialize mode, which materializes result arrays on the frame side,
+still showed `-80.98%` median ratio. This is not proof that Jess runtime will
+speed up by the same amount, but it finally tests the user's actual question:
+a no-registry hot lookup structure can be much faster than a registry-shaped
+one in a controlled model. Next runtime experiment should replace one complete
+hot family with direct frames end-to-end, probably simple mixin call lookup or
+variable lookup, instead of adding caches around `Rules.find(...)`.
+
+June 2026 registryless mixin runtime prototype: partial and not yet shippable.
+After merging local `dev` into the experiment worktree, an env-gated
+`JESS_REGISTRYLESS_MIXIN_LOOKUP=1` path was added for the mixin lookup family.
+For simple static callable names it forces `ScopeFrame` construction and uses
+callable buckets/direct `findMixinsFast(...)` child-surface traversal instead
+of falling through to `MixinRegistry`. Array and compound string namespace
+paths also stop before `getRegistry('mixin').find(...)` and use direct ruleset
+namespace helpers. Repeated same-key lookup caching is separate behind
+`JESS_REGISTRYLESS_MIXIN_CACHE=1` so cache behavior can be measured apart from
+the registryless cut. Focused mixin/reference lookup tests passed with
+`JESS_REGISTRYLESS_MIXIN_LOOKUP=1` (`38` tests), including static callable
+buckets, namespace fast paths, and nested mixin-ruleset references. Runtime
+timing on `simple-mixin-recursion.less` was only a weak win without cache:
+50 paired parse+render samples produced median `-0.75%`, mean `-0.54%`, wins
+`30/50`, `t=-1.07`. With `JESS_REGISTRYLESS_MIXIN_CACHE=1`, the same fixture
+improved slightly: median `-1.07%`, mean `-1.36%`, wins `37/50`, `t=-2.95`.
+Small guarded recursion and default-param recursion fixtures passed, but the
+broader `scope-lookup-stress.less`/large fixture still fails semantically at
+`.lexical-stack`, indicating an unresolved interaction among nested lexical
+body frames, default parameters, and recursive callable lookup. Do not present
+this runtime prototype as a win yet: the controlled model says registryless
+frames can be much faster, but the real runtime still needs an end-to-end
+callable binding/candidate path that removes enough surrounding call/eval
+machinery for that lookup win to surface.
+
 ### Null-Proto Lookup Slots
 
 Experiment: compare hot variable-reference lookup using null-prototype string
@@ -1582,6 +1723,236 @@ Interpretation: status only, not speed proof. The code-path proof is that
 `evaluateItems`, `evaluateValues`, and `.every(...)` are gone from
 `list.ts`/`sequence.ts`. The remaining target is still the owned public
 container materialization boundary, not another local wrapper.
+
+### Direct Declaration Tree-Crawl Prototype
+
+Date: 2026-06-08.
+
+Hypothesis: `Rules.find('declaration', ...)` can preserve the old declaration
+registry semantics while replacing declaration-registry indexing/searching with
+a direct crawl over `Rules.value` and child `Rules` bodies whose visibility
+admits the requested declaration type.
+
+Prototype shape:
+
+- env-gated through `JESS_DIRECT_DECLARATION_LOOKUP=1`;
+- parent-scope movement mirrors `DeclarationRegistry.find(...)`'s containing
+  node walk and `ignoreParentScopeStart` / linear-start behavior;
+- local declaration lookup scans `Rules.value` directly and skips in-flight
+  `setDefined` assignments, matching the fact that those assignments have not
+  been registered yet on the old path;
+- child lookup derives child `Rules` bodies from direct tree children
+  (`Rules`, `Ruleset`, `Mixin`, `AtRule`) instead of reading `_rulesSet`,
+  `rulesSet`, or declaration registries;
+- unsupported mutating/aggregate options (`findAll`, explicit candidate sets,
+  caller-provided searched-rules sets) fall back to the registry path.
+
+Behavior evidence:
+
+- `pnpm --filter @jesscss/core build` passed;
+- `JESS_DIRECT_DECLARATION_LOOKUP=1 pnpm --filter @jesscss/core exec vitest src/tree/__tests__/rules.test.ts src/tree/__tests__/reference.test.ts --run`
+  passed (`173` tests, `8` skipped);
+- the direct helper has no `_rulesSet`, `rulesSet`, or `getRegistry(...)` reads;
+  its only `registry-utils` dependency is the shared option type.
+
+Benchmark evidence:
+
+- real-ish Less property-access recursion, parse+render:
+  `node scripts/compare-less-parse-render-env.mjs --env JESS_DIRECT_DECLARATION_LOOKUP --fixture scripts/fixtures/less-hotpath/declaration-access-recursion.less --warmup 8 --pairs 50`
+  reported baseline median `1227.24ms`, candidate median `1218.99ms`, median
+  ratio `-0.96%`, wins `30/50`, `t=-1.51`; not a clear speed signal;
+- same fixture, render-timed phase:
+  `node scripts/compare-less-parse-render-env.mjs --phase render --env JESS_DIRECT_DECLARATION_LOOKUP --fixture scripts/fixtures/less-hotpath/declaration-access-recursion.less --warmup 8 --pairs 80`
+  reported baseline median `1229.59ms`, candidate median `1230.06ms`, median
+  ratio `-0.27%`, wins `44/80`, `t=-0.82`; not a clear speed signal;
+- synthetic direct lookup, small declaration surfaces:
+  `node scripts/prototype-direct-declaration-lookup.mjs --child-rules 4 --declarations 8 --lookups 200000 --warmup 8 --pairs 60`
+  reported baseline median `337.37ms`, candidate median `176.71ms`, wins
+  `60/60`;
+- synthetic direct lookup, many child surfaces but small declaration surfaces:
+  `node scripts/prototype-direct-declaration-lookup.mjs --child-rules 16 --declarations 8 --lookups 200000 --warmup 6 --pairs 40`
+  reported baseline median `903.36ms`, candidate median `726.72ms`, wins
+  `40/40`;
+- synthetic direct lookup, larger declaration surfaces before direct caches:
+  `node scripts/prototype-direct-declaration-lookup.mjs --child-rules 4 --declarations 64 --lookups 200000 --warmup 6 --pairs 40`
+  reported baseline median `353.16ms`, candidate median `410.03ms`, wins
+  `0/40`;
+- synthetic direct lookup, many child and larger declaration surfaces:
+  `node scripts/prototype-direct-declaration-lookup.mjs --child-rules 16 --declarations 64 --lookups 200000 --warmup 8 --pairs 60`
+  reported baseline median `1036.72ms`, candidate median `1369.28ms`, wins
+  `0/60`.
+
+Follow-up direct-cache evidence:
+
+- added a `Rules`-owned local declaration-name bucket and a conservative
+  recursive lookup cache for no-filter/no-start declaration lookups. The direct
+  path still discovers children by reverse-recursing through `Rules.value`; it
+  does not read `_rulesSet`, `rulesSet`, or declaration registries;
+- focused behavior gate still passed under `JESS_DIRECT_DECLARATION_LOOKUP=1`:
+  `pnpm --filter @jesscss/core exec vitest src/tree/__tests__/rules.test.ts src/tree/__tests__/reference.test.ts --run`
+  (`173` tests, `8` skipped);
+- with scope frames prebuilt, synthetic var-only lookup on larger declaration
+  surfaces:
+  `node scripts/prototype-direct-declaration-lookup.mjs --scope-frame 1 --key-mode vars --child-rules 4 --declarations 64 --lookups 200000 --warmup 6 --pairs 40`
+  reported baseline median `358.02ms`, candidate median `270.56ms`, wins
+  `40/40`;
+- with direct declaration-name caches, synthetic property-only lookup on larger
+  declaration surfaces:
+  `node scripts/prototype-direct-declaration-lookup.mjs --scope-frame 1 --key-mode properties --child-rules 4 --declarations 64 --lookups 200000 --warmup 6 --pairs 40`
+  reported baseline median `347.31ms`, candidate median `250.04ms`, wins
+  `40/40`;
+- with both cache surfaces, synthetic mixed lookup on larger declaration
+  surfaces:
+  `node scripts/prototype-direct-declaration-lookup.mjs --scope-frame 1 --key-mode mixed --child-rules 4 --declarations 64 --lookups 200000 --warmup 6 --pairs 40`
+  reported baseline median `343.92ms`, candidate median `259.36ms`, wins
+  `40/40`;
+- real-ish Less property-access recursion after direct caches:
+  `node scripts/compare-less-parse-render-env.mjs --env JESS_DIRECT_DECLARATION_LOOKUP --fixture scripts/fixtures/less-hotpath/declaration-access-recursion.less --warmup 6 --pairs 30`
+  reported baseline median `1232.26ms`, candidate median `1227.71ms`, median
+  ratio `-0.39%`, wins `16/30`, `t=-1.19`; still not a decisive real
+  parse/render speed signal.
+
+Follow-up traversal-order merge evidence:
+
+- removed `comparePosition` from the direct declaration helper. Same-surface
+  ties now use numeric source index; cross-surface ties preserve direct
+  traversal order instead of sorting arbitrary nodes after lookup;
+- focused behavior gate still passed under `JESS_DIRECT_DECLARATION_LOOKUP=1`:
+  `pnpm --filter @jesscss/core exec vitest src/tree/__tests__/rules.test.ts src/tree/__tests__/reference.test.ts --run`
+  (`173` tests, `8` skipped);
+- real-ish Less property-access recursion, render phase:
+  `node scripts/compare-less-parse-render-env.mjs --phase render --env JESS_DIRECT_DECLARATION_LOOKUP --fixture scripts/fixtures/less-hotpath/declaration-access-recursion.less --warmup 8 --pairs 50`
+  reported baseline median `1211.08ms`, candidate median `1203.91ms`, median
+  ratio `-0.19%`, wins `25/50`, `t=0.03`; behavior-safe simplification, not a
+  speed win.
+
+Interpretation: registryless declaration lookup with `Rules`-owned caches now
+has a clear mechanical win in direct lookup loops, including larger declaration
+bodies. The remaining gap is translating that into broad eval/render wins: the
+current property-access fixture is dominated enough by parse/render/output work
+that the lookup win is diluted. The next full-find experiment should apply the
+same model to callable candidates end-to-end: per-`Rules` direct name/path
+caches plus reverse recursive visible-child traversal, with registry fallback
+only for explicitly unsupported option shapes.
+
+### Direct Callable Tree-Crawl Prototype
+
+Date: 2026-06-08.
+
+Hypothesis: simple callable lookup should be able to replace the registry child
+surface walk with a direct `Rules`-owned lookup surface: exact callable buckets,
+reverse recursive child traversal, and parent ascent only in the outer loop.
+Child recursion must not immediately search parents.
+
+Prototype shape:
+
+- env-gated through `JESS_DIRECT_CALLABLE_LOOKUP=1`;
+- `findMixinsFast(...)` switches its local-bucket/child-surface implementation
+  under the env flag instead of doing a duplicate pre-check before the old path;
+- direct child recursion walks direct `Rules.value` surfaces (`Rules`, `Ruleset`,
+  `Mixin`, `AtRule`) and passes control through the existing visibility helper;
+- direct `Rules` children are included explicitly so imported root-like child
+  surfaces are visible without reading `_rulesSet`;
+- `Rules.directChildRuleEntries` carries direct child lookup surfaces once built
+  and is appended when a new child `Rules` surface is registered, avoiding
+  repeated `Rules.value` rescans on recursive mixin output;
+- exact local callable hits reuse already-carried `mixinsByName` when available.
+
+Behavior evidence:
+
+- `pnpm --filter @jesscss/core build` passed;
+- `JESS_DIRECT_DECLARATION_LOOKUP=1 JESS_DIRECT_CALLABLE_LOOKUP=1 pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts --run`
+  passed (`302` tests, `8` skipped).
+
+Diagnostic counter evidence on
+`scripts/fixtures/less-hotpath/simple-mixin-recursion.less`:
+
+- baseline and candidate both called `findMixinsFast` `21001` times and
+  `_indexRules` `1002` times for one render;
+- naive direct replacement added `42002` direct child collector calls and about
+  `21003` actual child-list builds;
+- carrying direct child surfaces reduced collector calls to `2003`, all
+  first-time builds, with cached property reads for the remaining hot lookups.
+
+Benchmark evidence:
+
+- duplicate direct pre-check before the old fast path was rejected: render-only
+  paired comparison on `simple-mixin-recursion.less` reported baseline median
+  `398.24ms`, candidate median `413.89ms`, median ratio `3.78%`, wins `5/50`,
+  `t=6.88`;
+- replacement-style direct traversal before carrying child surfaces was also
+  slower: baseline median `397.00ms`, candidate median `407.64ms`, median ratio
+  `2.77%`, wins `8/50`, `t=5.36`;
+- after carrying direct child surfaces and inlining cached property reads:
+  `node scripts/compare-less-parse-render-env.mjs --env JESS_DIRECT_CALLABLE_LOOKUP --fixture scripts/fixtures/less-hotpath/simple-mixin-recursion.less --phase render --warmup 8 --pairs 50`
+  reported baseline median `397.00ms`, candidate median `401.38ms`, median
+  ratio `0.59%`, wins `22/50`, `t=1.80`.
+- the callable namespace helper no longer insertion-sorts namespace mixin
+  candidates with `comparePosition`; it preserves the lookup traversal order.
+  Focused behavior still passed with both direct flags enabled (`302` tests,
+  `8` skipped);
+- the broader `scope-lookup-stress.less` fixture exposed a frame coverage bug:
+  live-parameter `ScopeFrame`s were marked `callablesCovered`/miss-covered after
+  indexing without receiving the actual `callableBucketsByName` pointer. A
+  nested `.leaf()` lookup inside a parameterized `.inner()` body could therefore
+  return a false frame miss before crawling the body. The fix hydrates the frame
+  bucket pointer when indexing completes and when callable registration creates
+  the bucket map after a frame already exists. A focused regression was added:
+  `keeps nested callable buckets visible on live parameter scope frames`;
+- after that fix, `scope-lookup-stress.less` renders in baseline, direct
+  declaration, direct callable, registryless, and combined modes.
+
+Interpretation: direct callable traversal is now mechanically close to the old
+fast path and avoids the worst rescans, but it is not a measured speed win on
+the hit-heavy recursive mixin fixture. Keep the semantic lessons: carry direct
+child surfaces at registration/mutation time, include direct `Rules` children,
+and keep child recursion parentless. Do not claim callable registry removal is
+faster until the broader callable binding/candidate path is replaced enough to
+delete old registry work instead of approximating it beside existing fast maps.
+
+### Registryless Callable Frame/Tree Hybrid
+
+Date: 2026-06-08.
+
+Hypothesis: callable lookup should use one scope-frame layer for live bindings
+and stable exact-name buckets, then direct-crawl the current `Rules` body when a
+frame is not fully covered. Parent walking stays in the outer lookup; recursive
+child crawling uses `searchParents: false` so it does not immediately re-enter
+the parent chain.
+
+Current behavior evidence:
+
+- `pnpm --filter @jesscss/core build` passed;
+- `pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts --run`
+  passed (`130` tests);
+- `JESS_DIRECT_DECLARATION_LOOKUP=1 JESS_DIRECT_CALLABLE_LOOKUP=1 JESS_REGISTRYLESS_MIXIN_LOOKUP=1 pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts --run`
+  passed (`303` tests, `8` skipped);
+- a one-off flag matrix on `scripts/fixtures/less-hotpath/scope-lookup-stress.less`
+  rendered successfully for baseline, `JESS_DIRECT_DECLARATION_LOOKUP=1`,
+  `JESS_DIRECT_CALLABLE_LOOKUP=1`, `JESS_REGISTRYLESS_MIXIN_LOOKUP=1`,
+  declaration+callable direct mode, and all three flags together.
+
+Benchmark evidence on `scope-lookup-stress.less`, render phase, paired
+comparison with `--warmup 8 --pairs 50`:
+
+- `JESS_REGISTRYLESS_MIXIN_LOOKUP`: baseline median `59.00ms`, candidate median
+  `57.97ms`, median ratio `-1.37%`, wins `33/50`, `t=-2.69`;
+- `JESS_DIRECT_CALLABLE_LOOKUP`: baseline median `58.43ms`, candidate median
+  `58.81ms`, median ratio `0.37%`, wins `21/50`, `t=1.56`;
+- `JESS_DIRECT_DECLARATION_LOOKUP`: baseline median `57.32ms`, candidate median
+  `57.02ms`, median ratio `-0.04%`, wins `26/50`, `t=0.73`;
+- with declaration+callable direct modes already enabled, toggling
+  `JESS_REGISTRYLESS_MIXIN_LOOKUP` still won: baseline median `59.40ms`,
+  candidate median `58.56ms`, median ratio `-1.39%`, wins `37/50`, `t=-3.37`;
+- all three flags versus all flags off: baseline median `59.18ms`, candidate
+  median `57.74ms`, median ratio `-1.75%`, wins `37/50`, `t=-2.70`.
+
+Interpretation: the first measured real-render win is not from the direct
+callable tree crawl alone; it is from treating the `ScopeFrame` as the shared
+live-binding/cache layer and using direct current-body crawl only when that
+frame cannot honestly cover the lookup. Keep pursuing registry removal through
+this architecture, but continue rejecting direct-callable-only work until it
+deletes enough old candidate/registry machinery to beat the current fast path.
 
 ## Parked Lessons
 
