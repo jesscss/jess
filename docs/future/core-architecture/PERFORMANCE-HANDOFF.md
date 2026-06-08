@@ -2040,25 +2040,28 @@ Follow-up registryless result-cache evidence:
 - a cheaper one-entry cache prototype now exists behind
   `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=1`. It stores only the last registryless
   mixin lookup key/result on the owning `Rules`, invalidated with the existing
-  registryless lookup cache state. Focused all-flags behavior and lint passed
-  with the flag enabled:
+  registryless lookup cache state. The first version returned a small
+  cache-access wrapper per eligible lookup; the follow-up inlined the last-key
+  `has`/`get`/`set` operations into private `Rules` helpers so the env-gated
+  one-entry path no longer allocates that wrapper. Focused all-flags behavior
+  and lint passed with the flag enabled:
   `pnpm exec eslint packages/core/src/tree/rules.ts`, and
   `JESS_DIRECT_DECLARATION_LOOKUP=1 JESS_DIRECT_CALLABLE_LOOKUP=1 JESS_REGISTRYLESS_MIXIN_LOOKUP=1 JESS_REGISTRYLESS_MIXIN_LAST_CACHE=1 pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts --run`
   (`304` tests, `8` skipped);
-- with registryless already enabled, the one-entry cache was neutral on the
-  broad fixture and cleanly positive on stress:
+- after inlining the cache access, with registryless already enabled, the
+  one-entry cache stayed neutral on the broad fixture and positive on stress:
   `mixins-guards.less` `--warmup 8 --pairs 60 --batch-size 5` reported baseline
-  median `70.07ms`, candidate median `69.60ms`, mean ratio `-0.67%`, wins
-  `29/60`, `t=-0.89`; `scope-lookup-stress.less` render with `--warmup 10
-  --pairs 100` reported baseline median `56.29ms`, candidate median `55.16ms`,
-  mean ratio `-1.92%`, wins `79/100`, `t=-4.81`;
-- combined baseline-vs-registryless evidence with the one-entry cache flag
-  enabled kept the broad fixture neutral and strengthened the recursive stress
+  median `66.29ms`, candidate median `66.61ms`, mean ratio `0.30%`, wins
+  `32/60`, `t=-0.24`; `scope-lookup-stress.less` render with `--warmup 10
+  --pairs 100` reported baseline median `55.43ms`, candidate median `54.28ms`,
+  mean ratio `-1.36%`, wins `75/100`, `t=-3.70`;
+- combined baseline-vs-registryless evidence with the inlined one-entry cache
+  flag enabled kept the broad fixture neutral and preserved the recursive stress
   win: `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=1 node scripts/compare-less-hotpath-env.mjs --env JESS_REGISTRYLESS_MIXIN_LOOKUP --fixture tests-unit/mixins-guards/mixins-guards.less --warmup 8 --pairs 60 --batch-size 5`
-  reported baseline median `68.67ms`, candidate median `68.66ms`, mean ratio
-  `0.60%`, wins `37/60`, `t=0.26`; `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=1 node scripts/compare-less-parse-render-env.mjs --env JESS_REGISTRYLESS_MIXIN_LOOKUP --fixture scripts/fixtures/less-hotpath/scope-lookup-stress.less --phase render --warmup 10 --pairs 100`
-  reported baseline median `57.55ms`, candidate median `55.48ms`, mean ratio
-  `-3.70%`, wins `92/100`, `t=-10.38`.
+  reported baseline median `67.45ms`, candidate median `67.25ms`, mean ratio
+  `0.08%`, wins `32/60`, `t=-0.23`; `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=1 node scripts/compare-less-parse-render-env.mjs --env JESS_REGISTRYLESS_MIXIN_LOOKUP --fixture scripts/fixtures/less-hotpath/scope-lookup-stress.less --phase render --warmup 10 --pairs 100`
+  reported baseline median `56.86ms`, candidate median `55.12ms`, mean ratio
+  `-3.00%`, wins `85/100`, `t=-5.97`.
 
 Next architecture theories to test:
 
@@ -2082,10 +2085,10 @@ Next architecture theories to test:
    exact key plus include-rulesets/filter shape, invalidated by the existing
    registration mutation that already clears direct callable caches.
    The one-entry cache prototype supports this direction for repeated recursive
-   exact lookups, but its current env-gated helper still allocates a small
-   cache-access wrapper per eligible lookup. The next refinement should inline
-   the last-key check into the string-key registryless path before considering
-   default enablement.
+   exact lookups. The wrapper allocation has been removed; the next refinement
+   should decide whether the inlined last-key cache can be enabled by default
+   for registryless exact lookup or whether it still needs a carried
+   repeat-likelihood bit.
 4. Prefer negative capability over positive result caching. The broad fixture
    regressed because the candidate path repeatedly proved "nothing in this
    child surface" after the fact. A cheap carried "cannot contain simple exact

@@ -78,14 +78,6 @@ type DirectCallableEntry = {
   value: MixinEntry;
   match: string[];
 };
-type RegistrylessMixinCacheAccess = {
-  key: string;
-  cache: {
-    has(key: string): boolean;
-    get(key: string): MixinEntry[] | undefined;
-    set(key: string, value: MixinEntry[] | undefined): unknown;
-  };
-};
 type RulesRenderContextSnapshot = {
   rulesContext: Context['rulesContext'];
   treeContext: Context['treeContext'];
@@ -1307,11 +1299,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return results;
   }
 
-  private getRegistrylessMixinCache(
+  private getRegistrylessMixinCacheKey(
     keys: string | string[],
     filterType: string | undefined,
     options: Registries.FindOptions
-  ): RegistrylessMixinCacheAccess | undefined {
+  ): string | undefined {
     const mapCache = process.env.JESS_REGISTRYLESS_MIXIN_CACHE === '1';
     const lastCache = process.env.JESS_REGISTRYLESS_MIXIN_LAST_CACHE === '1';
     if (!mapCache && !lastCache) {
@@ -1326,29 +1318,35 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       filterType ?? '',
       options.searchParents === false ? 's0' : 's1'
     ].join('\u001e');
-    if (lastCache) {
-      const owner = this;
-      return {
-        key: cacheKey,
-        cache: {
-          has(key: string): boolean {
-            return owner.registrylessLastMixinLookupKey === key;
-          },
-          get(): MixinEntry[] | undefined {
-            return owner.registrylessLastMixinLookupValue;
-          },
-          set(key: string, value: MixinEntry[] | undefined): unknown {
-            owner.registrylessLastMixinLookupKey = key;
-            owner.registrylessLastMixinLookupValue = value;
-            return owner;
-          }
-        }
-      };
+    return cacheKey;
+  }
+
+  private hasRegistrylessMixinCacheResult(key: string): boolean {
+    if (process.env.JESS_REGISTRYLESS_MIXIN_LAST_CACHE === '1') {
+      return this.registrylessLastMixinLookupKey === key;
     }
-    return {
-      cache: (this.registrylessMixinLookupCache ??= new Map()),
-      key: cacheKey
-    };
+    return this.registrylessMixinLookupCache?.has(key) ?? false;
+  }
+
+  private getRegistrylessMixinCacheResult(key: string): MixinEntry[] | undefined {
+    if (process.env.JESS_REGISTRYLESS_MIXIN_LAST_CACHE === '1') {
+      return this.registrylessLastMixinLookupValue;
+    }
+    return this.registrylessMixinLookupCache?.get(key);
+  }
+
+  private setRegistrylessMixinCacheResult(key: string | undefined, value: MixinEntry[] | undefined): void {
+    if (key === undefined) {
+      return;
+    }
+    if (process.env.JESS_REGISTRYLESS_MIXIN_LAST_CACHE === '1') {
+      this.registrylessLastMixinLookupKey = key;
+      this.registrylessLastMixinLookupValue = value;
+      return;
+    }
+    if (process.env.JESS_REGISTRYLESS_MIXIN_CACHE === '1') {
+      (this.registrylessMixinLookupCache ??= new Map()).set(key, value);
+    }
   }
 
   private findIndexedCallableStartMatches(
@@ -2104,11 +2102,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (type === 'mixin' && typeof keys === 'string') {
       const includeRulesets = filterType !== 'Mixin';
       const registryless = process.env.JESS_REGISTRYLESS_MIXIN_LOOKUP === '1';
-      const cached = registryless
-        ? this.getRegistrylessMixinCache(keys, filterType, options)
+      const cacheKey = registryless
+        ? this.getRegistrylessMixinCacheKey(keys, filterType, options)
         : undefined;
-      if (cached?.cache.has(cached.key)) {
-        return cached.cache.get(cached.key);
+      if (cacheKey !== undefined && this.hasRegistrylessMixinCacheResult(cacheKey)) {
+        return this.getRegistrylessMixinCacheResult(cacheKey);
       }
       const callableFrame = registryless ? this.getScopeFrame() : this.scopeFrame;
       if (callableFrame && !options.hasTarget && !options.local) {
@@ -2120,10 +2118,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           const pathKeys = splitStaticCallablePathKey(keys);
           if (registryless && pathKeys) {
             const result = this.find('mixin', pathKeys, filterType, options) as MixinEntry[] | undefined;
-            cached?.cache.set(cached.key, result);
+            this.setRegistrylessMixinCacheResult(cacheKey, result);
             return result;
           }
-          cached?.cache.set(cached.key, undefined);
+          this.setRegistrylessMixinCacheResult(cacheKey, undefined);
           return undefined;
         }
         if (frameHit.kind === 'hit') {
@@ -2137,7 +2135,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             results.push(candidate);
           }
           if (results.length > 0) {
-            cached?.cache.set(cached.key, results);
+            this.setRegistrylessMixinCacheResult(cacheKey, results);
             return results;
           }
         }
@@ -2150,7 +2148,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             searchParents: false
           });
           if (direct.length > 0) {
-            cached?.cache.set(cached.key, direct);
+            this.setRegistrylessMixinCacheResult(cacheKey, direct);
             return direct;
           }
           let retryFrame = callableFrame.parent ?? callableFrame.fallbackFrame;
@@ -2160,7 +2158,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               searchParents: options.searchParents
             });
             if (retryHit.kind === 'miss') {
-              cached?.cache.set(cached.key, undefined);
+              this.setRegistrylessMixinCacheResult(cacheKey, undefined);
               return undefined;
             }
             if (retryHit.kind === 'hit') {
@@ -2174,7 +2172,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 results.push(candidate);
               }
               if (results.length > 0) {
-                cached?.cache.set(cached.key, results);
+                this.setRegistrylessMixinCacheResult(cacheKey, results);
                 return results;
               }
             }
@@ -2187,7 +2185,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 searchParents: options.searchParents
               });
               if (direct.length > 0) {
-                cached?.cache.set(cached.key, direct);
+                this.setRegistrylessMixinCacheResult(cacheKey, direct);
                 return direct;
               }
             }
@@ -2201,7 +2199,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const pathKeys = splitStaticCallablePathKey(keys);
         if (pathKeys) {
           const result = this.find('mixin', pathKeys, filterType, options) as MixinEntry[] | undefined;
-          cached?.cache.set(cached.key, result);
+          this.setRegistrylessMixinCacheResult(cacheKey, result);
           return result;
         }
         const direct = this.findMixinsFast(keys, {
@@ -2212,7 +2210,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           searchParents: options.searchParents
         });
         const result = direct.length > 0 ? direct : undefined;
-        cached?.cache.set(cached.key, result);
+        this.setRegistrylessMixinCacheResult(cacheKey, result);
         return result;
       }
       const fast = this.findMixinsFast(keys, {
@@ -2256,11 +2254,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return combined;
     } else if (type === 'mixin' && isArray(keys) && keys.length > 1) {
       const registryless = process.env.JESS_REGISTRYLESS_MIXIN_LOOKUP === '1';
-      const cached = registryless
-        ? this.getRegistrylessMixinCache(keys, filterType, options)
+      const cacheKey = registryless
+        ? this.getRegistrylessMixinCacheKey(keys, filterType, options)
         : undefined;
-      if (cached?.cache.has(cached.key)) {
-        return cached.cache.get(cached.key);
+      if (cacheKey !== undefined && this.hasRegistrylessMixinCacheResult(cacheKey)) {
+        return this.getRegistrylessMixinCacheResult(cacheKey);
       }
       const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
       let compoundPrefixFast: MixinEntry[] | undefined;
@@ -2270,7 +2268,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
           if (rulesetNamespaceFast !== undefined) {
             const result = rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
-            cached?.cache.set(cached.key, result);
+            this.setRegistrylessMixinCacheResult(cacheKey, result);
             return result;
           }
         }
@@ -2334,11 +2332,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       if (fast !== undefined) {
         const result = fast.length > 0 ? fast : undefined;
-        cached?.cache.set(cached.key, result);
+        this.setRegistrylessMixinCacheResult(cacheKey, result);
         return result;
       }
       if (registryless) {
-        cached?.cache.set(cached.key, undefined);
+        this.setRegistrylessMixinCacheResult(cacheKey, undefined);
         return undefined;
       }
     }

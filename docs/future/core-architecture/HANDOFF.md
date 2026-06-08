@@ -786,26 +786,25 @@ the gate passed.
   `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, materialized AST, or
   evaluated output cache. New state/object surface: two scalar fields on
   `Rules`, `registrylessLastMixinLookupKey` and
-  `registrylessLastMixinLookupValue`, plus an env-gated cache-access wrapper
-  returned from `getRegistrylessMixinCache(...)` when
-  `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=1`. The wrapper is deliberately called out
-  as remaining overhead; the next refinement should inline the last-key check
-  before default enablement. Render path: unchanged. Helper/API surface: no
-  public API; the existing private cache helper now supports Map mode and
-  one-entry mode. Metadata mutations: no parent/source/frozen mutation; the
-  new scalar cache fields are reset with the existing registryless lookup cache
-  invalidation in `resetDerivedState(...)` and `registerNode(...)`. Routine
-  error/control: no throw/catch/Error path was added. Evidence: focused eslint
-  passed; all-flags focused behavior passed with
+  `registrylessLastMixinLookupValue`. The first env-gated prototype returned a
+  cache-access wrapper object per eligible lookup; the follow-up deleted that
+  wrapper and uses scalar private helpers for key creation, `has`, `get`, and
+  `set`. Render path: unchanged. Helper/API surface: no public API; the
+  existing private cache helper split into private scalar helpers and still
+  supports Map mode plus one-entry mode. Metadata mutations: no
+  parent/source/frozen mutation; the new scalar cache fields are reset with the
+  existing registryless lookup cache invalidation in `resetDerivedState(...)`
+  and `registerNode(...)`. Routine error/control: no throw/catch/Error path was
+  added. Evidence: focused eslint passed; all-flags focused behavior passed with
   `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=1` (`304` tests, `8` skipped);
   `@jesscss/core` build passed. The existing Map cache had zero hits on
   `mixins-guards.less` and was slightly worse/noisy there, while it helped the
-  recursive stress fixture. The one-entry cache was neutral on
-  `mixins-guards.less` (`wins 29/60`, `t=-0.89`) and helped
-  `scope-lookup-stress.less` (`wins 79/100`, `t=-4.81`) when compared against
+  recursive stress fixture. After wrapper removal, the one-entry cache was
+  neutral on `mixins-guards.less` (`wins 32/60`, `t=-0.24`) and helped
+  `scope-lookup-stress.less` (`wins 75/100`, `t=-3.70`) when compared against
   registryless without cache. Combined registryless plus one-entry cache versus
-  old baseline stayed neutral on `mixins-guards.less` (`wins 37/60`, `t=0.26`)
-  and improved `scope-lookup-stress.less` (`wins 92/100`, `t=-10.38`).
+  old baseline stayed neutral on `mixins-guards.less` (`wins 32/60`, `t=-0.23`)
+  and improved `scope-lookup-stress.less` (`wins 85/100`, `t=-5.97`).
 - Frame exact-callable miss coverage pass: accepted as a predicate-precision
   cleanup for registryless lookup, not as a standalone speed win. Files:
   `packages/core/src/tree/rules.ts` and
