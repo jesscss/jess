@@ -2392,8 +2392,6 @@ describe('Mixin', () => {
 
     it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when no child surfaces exist', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const previousDirectCallable = process.env.JESS_DIRECT_CALLABLE_LOOKUP;
-      delete process.env.JESS_DIRECT_CALLABLE_LOOKUP;
       const fastPathHits: string[] = [];
       RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
@@ -2416,11 +2414,6 @@ describe('Mixin', () => {
         expect(fastPathHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        if (previousDirectCallable === undefined) {
-          delete process.env.JESS_DIRECT_CALLABLE_LOOKUP;
-        } else {
-          process.env.JESS_DIRECT_CALLABLE_LOOKUP = previousDirectCallable;
-        }
       }
     });
 

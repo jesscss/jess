@@ -821,8 +821,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       searchParents?: boolean;
     }
   ): MixinEntry[] {
-    const directCallableLookup = process.env.JESS_DIRECT_CALLABLE_LOOKUP === '1'
-      || process.env.JESS_LEGACY_MIXIN_LOOKUP !== '1';
     const findWithinScopeSurface = (
       scope: Rules,
       localContext: boolean | undefined,
@@ -833,17 +831,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       visited.add(scope);
 
-      if (!directCallableLookup && scope.rulesIndexed < scope.value.length) {
-        scope._indexRules();
-      }
-      if (!directCallableLookup) {
-        scope.mixinsByName ??= new Map();
-      }
-
       const results: MixinEntry[] = [];
-      const candidates = directCallableLookup
-        ? scope.getDirectCallableExactBucket(key)
-        : scope.mixinsByName?.get(key);
+      const candidates = scope.getDirectCallableExactBucket(key);
       if (candidates) {
         for (let i = candidates.length - 1; i >= 0; i--) {
           const candidate = candidates[i]!;
@@ -854,18 +843,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
 
-      const childEntries = directCallableLookup
-        ? (
-            scope.directChildRuleEntries !== undefined
-              ? (scope.directChildRuleEntries ?? undefined)
-              : scope.rulesIndexed >= scope.value.length && !scope.hasExactCallableChildSurface
-                ? undefined
-                : scope.collectDirectChildRulesEntries()
-          )
-        : scope._rulesSet as Array<{
-          node: Rules;
-          rulesVisibility?: RulesOptions['rulesVisibility'];
-        }> | undefined;
+      const childEntries = scope.directChildRuleEntries !== undefined
+        ? (scope.directChildRuleEntries ?? undefined)
+        : scope.rulesIndexed >= scope.value.length && !scope.hasExactCallableChildSurface
+          ? undefined
+          : scope.collectDirectChildRulesEntries();
       if (!childEntries?.length) {
         return results;
       }
@@ -2210,10 +2192,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.setRegistrylessMixinCacheResult(cacheKey, result);
       return result;
     } else if (type === 'mixin' && isArray(keys) && keys.length > 1) {
-      const registryless = process.env.JESS_LEGACY_MIXIN_LOOKUP !== '1';
-      const cacheKey = registryless
-        ? this.getRegistrylessMixinCacheKey(keys, filterType, options)
-        : undefined;
+      const cacheKey = this.getRegistrylessMixinCacheKey(keys, filterType, options);
       if (cacheKey !== undefined && this.hasRegistrylessMixinCacheResult(cacheKey)) {
         return this.getRegistrylessMixinCacheResult(cacheKey);
       }
@@ -2221,13 +2200,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let compoundPrefixFast: MixinEntry[] | undefined;
       let mixinNamespaceFast: MixinEntry[] | undefined;
       if (mixinFilterType !== 'Mixin') {
-        if (registryless) {
-          const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
-          if (rulesetNamespaceFast !== undefined) {
-            const result = rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
-            this.setRegistrylessMixinCacheResult(cacheKey, result);
-            return result;
-          }
+        const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
+        if (rulesetNamespaceFast !== undefined) {
+          const result = rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
+          this.setRegistrylessMixinCacheResult(cacheKey, result);
+          return result;
         }
         const namespaceMixins = this.findMixinsFast(keys[0]!, {
           context: options.context,
@@ -2292,10 +2269,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this.setRegistrylessMixinCacheResult(cacheKey, result);
         return result;
       }
-      if (registryless) {
-        this.setRegistrylessMixinCacheResult(cacheKey, undefined);
-        return undefined;
-      }
+      this.setRegistrylessMixinCacheResult(cacheKey, undefined);
+      return undefined;
     }
     switch (type) {
       case 'declaration':

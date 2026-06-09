@@ -113,9 +113,12 @@ Binding prototype status:
   source-order/current-read hardening, declaration-bucket binding identity,
   explicit miss/uncovered states, on-demand parent-frame coverage, and
   already-static pending declaration-name promotion are in production for
-  covered static variable references and static `:=` writes. This is not the
-  full binding index yet; callable lookup still uses the existing registry
-  path.
+  covered static variable references and static `:=` writes. Registryless
+  mixin/callable lookup is now the default for covered string and namespace
+  paths, with the former `JESS_LEGACY_MIXIN_LOOKUP` and
+  `JESS_DIRECT_CALLABLE_LOOKUP` runtime opt-outs removed. This is not the full
+  binding index yet; non-callable registries and explicitly uncovered lookup
+  shapes still need separate deletion gates.
 - Fallback bridges are temporary debt. Covered simple paths must return hit or
   miss from the binding frame and stop. Only unmodeled cold/complex cases may
   route to old registry/search/materialization paths, and every such bridge
@@ -864,12 +867,35 @@ the gate passed.
   `findIndexedCallableStartMatches(...)`; string-key mixin lookup now always
   uses the registryless frame/direct-crawl path. The temporary
   `JESS_LEGACY_MIXIN_LOOKUP=1` opt-out remains only for the array/namespace
-  branch. Metadata mutations: none. Routine error/control: none. Evidence:
+  branch at this point in the log; the following array/namespace deletion pass
+  supersedes that temporary state. Metadata mutations: none. Routine
+  error/control: none. Evidence:
   focused eslint passed; focused default-path behavior passed (`304` tests, `8`
   skipped); `@jesscss/core` build passed. The stress fixture remained a clean
   win (`wins 84/100`, `t=-8.89`). `mixins-guards.less` was mixed/noisy after
   this deletion (`wins 46/100`, `t=1.20`), so this is kept for branch deletion
   and migration direction, not as an incremental speed win.
+- Array/namespace legacy branch deletion: accepted as completing the temporary
+  callable legacy opt-out removal for covered mixin lookup paths, not as a
+  standalone speed claim. Files: `packages/core/src/tree/rules.ts` and
+  `packages/core/src/tree/__tests__/mixin.test.ts`. New traversal: none. New
+  node/materialization: none; no `Node`, copy,
+  `copyWithReusableLeaves(...)`, `.inherit(...)`, `.adopt(...)`, wrapper
+  `Rules`, side registry, or evaluated output cache was added. Render path:
+  unchanged. Helper/API surface: no public API; deleted runtime reads of
+  `JESS_LEGACY_MIXIN_LOOKUP` and `JESS_DIRECT_CALLABLE_LOOKUP` from callable
+  lookup, removed the legacy `_rulesSet` fallback branch inside
+  `findMixinsFast(...)`, and removed the old direct-callable env toggle from a
+  focused miss test. Cache measurement flags remain:
+  `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=0` disables the one-entry cache and
+  `JESS_REGISTRYLESS_MIXIN_CACHE=1` selects the older Map-cache experiment.
+  Metadata mutations: none. Routine error/control: none. Evidence: focused
+  eslint passed; focused default-path behavior passed (`304` tests, `8`
+  skipped); `@jesscss/core` build passed. Post-delete benchmarks are regression
+  sanity because the legacy comparator is gone: cache off/on stayed
+  neutral/slightly worse on `mixins-guards.less` (`wins 29/60`, `t=0.80`) and
+  preserved the recursive stress benefit on `scope-lookup-stress.less`
+  (`wins 71/100`, `t=-3.09`).
 - Frame exact-callable miss coverage pass: accepted as a predicate-precision
   cleanup for registryless lookup, not as a standalone speed win. Files:
   `packages/core/src/tree/rules.ts` and

@@ -2146,7 +2146,8 @@ Follow-up string-key legacy branch deletion:
 - string-key `Rules.find('mixin', string, ...)` now always uses the
   registryless/frame/direct-crawl path. The temporary `JESS_LEGACY_MIXIN_LOOKUP`
   opt-out now only affects the array/namespace branch while that path is
-  staged for deletion;
+  staged for deletion; the following array/namespace deletion pass supersedes
+  this temporary state;
 - focused default-path behavior and lint still passed:
   `pnpm exec eslint packages/core/src/tree/rules.ts`, and
   `pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts --run`
@@ -2159,6 +2160,31 @@ Follow-up string-key legacy branch deletion:
   `t=-8.89`. `mixins-guards.less` was mixed/noisy: `--warmup 10 --pairs 100
   --batch-size 5` reported baseline median `67.37ms`, candidate median
   `67.92ms`, mean ratio `1.32%`, wins `46/100`, `t=1.20`.
+
+Follow-up array/namespace legacy branch deletion:
+
+- array/namespace `Rules.find('mixin', string[], ...)` with more than one
+  segment now always uses the registryless namespace/direct-crawl path. Runtime
+  callable lookup no longer reads `JESS_LEGACY_MIXIN_LOOKUP` or
+  `JESS_DIRECT_CALLABLE_LOOKUP`; the old direct-callable env toggle was also
+  removed from the focused miss test. `JESS_REGISTRYLESS_MIXIN_LAST_CACHE`
+  remains available for cache off/on measurement, and
+  `JESS_REGISTRYLESS_MIXIN_CACHE` still selects the older Map-cache experiment;
+- this is a permanentization/deletion pass, not a fresh standalone speed claim:
+  the old legacy env comparator has intentionally been deleted from runtime
+  code, so post-delete benchmarking used cache off/on regression sanity rather
+  than pretending the legacy path still exists;
+- focused default-path behavior, lint, and build passed:
+  `pnpm exec eslint packages/core/src/tree/rules.ts packages/core/src/tree/__tests__/mixin.test.ts`,
+  `pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts --run`
+  (`304` tests, `8` skipped), and `pnpm --filter @jesscss/core build`;
+- paired last-cache off/on sanity after deletion:
+  `mixins-guards.less` with `--warmup 8 --pairs 60 --batch-size 5` reported
+  baseline median `85.67ms`, candidate median `86.16ms`, mean ratio `1.38%`,
+  wins `29/60`, `t=0.80` and remains neutral/slightly worse/noisy;
+  `scope-lookup-stress.less` render with `--warmup 10 --pairs 100` reported
+  baseline median `62.27ms`, candidate median `61.52ms`, mean ratio `-1.56%`,
+  wins `71/100`, `t=-3.09`, preserving the recursive cache/stress signal.
 
 Next architecture theories to test:
 
@@ -2184,10 +2210,10 @@ Next architecture theories to test:
    The one-entry cache prototype supports this direction for repeated recursive
    exact lookups. The wrapper allocation has been removed and the inlined cache
    is now default inside the registryless prototype. Registryless callable
-   lookup is now also the default runtime path. The next refinement should
-   delete the remaining array/namespace legacy opt-out by proving the direct
-   namespace path has enough parity coverage, then remove
-   `JESS_LEGACY_MIXIN_LOOKUP` entirely.
+   lookup is now also the default runtime path, and the temporary
+   `JESS_LEGACY_MIXIN_LOOKUP` comparator has been removed from runtime code.
+   The next refinement should delete remaining registry callable plumbing only
+   where a direct/frame path has explicit parity coverage.
 4. Prefer negative capability over positive result caching. The broad fixture
    regressed because the candidate path repeatedly proved "nothing in this
    child surface" after the fact. A cheap carried "cannot contain simple exact
