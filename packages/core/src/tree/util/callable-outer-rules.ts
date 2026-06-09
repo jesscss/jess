@@ -21,8 +21,8 @@ export function ensureCallableOuterRulesSurface({
   syncScopeFrame = true
 }: EnsureCallableOuterRulesSurfaceOptions): Rules {
   const outerRules = currentOuterRules ?? createOuterRules(rules, options);
-  if (syncScopeFrame && rules.scopeFrame) {
-    outerRules.scopeFrame = rules.scopeFrame;
+  if (syncScopeFrame && rules._scopeFrame) {
+    outerRules.scopeFrame = rules._scopeFrame;
   }
   outerRules.index = candidateIndex;
   parent.adopt(outerRules);

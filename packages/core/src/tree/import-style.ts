@@ -726,7 +726,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 
   private attachConfiguredVarBindings(targetRules: Rules, variableNodes: Node[]): void {
-    const liveSlots = new Map(targetRules.scopeFrame?.liveSlotsByName ?? []);
+    const liveSlots = new Map(targetRules._scopeFrame?.liveSlotsByName ?? []);
     let didAdd = false;
     for (const node of variableNodes) {
       if (!isNode(node, N.VarDeclaration)) {
@@ -749,9 +749,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     targetRules.scopeFrame = buildScopeFrame(
       undefined,
       targetRules,
-      targetRules.scopeFrame?.parent,
+      targetRules._scopeFrame?.parent,
       liveSlots,
-      targetRules.scopeFrame?.pendingDeclarationNames
+      targetRules._scopeFrame?.pendingDeclarationNames
     );
   }
 

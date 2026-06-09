@@ -541,8 +541,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   registrylessMixinLookupCache: Map<string, MixinEntry[] | undefined> | undefined;
   registrylessLastMixinLookupKey: string | undefined;
   registrylessLastMixinLookupValue: MixinEntry[] | undefined;
-  /** ScopeFrame for lexical variable lookup, built lazily by getScopeFrame(). */
-  scopeFrame: ScopeFrame | undefined;
+  /** ScopeFrame storage; check this when lookup must not lazily build a frame. */
+  _scopeFrame: ScopeFrame | undefined;
   /**
    * Track whether this Rules subtree contains extend instructions.
    * Prep work for Track 5 segmented render selection.
@@ -582,11 +582,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this.registerNode(node);
       }
       this.rulesIndexed = length;
-      if (this.scopeFrame) {
-        this.scopeFrame.declarationsCovered = true;
-        this.scopeFrame.callableBucketsByName = this.callableLookupCache;
-        this.scopeFrame.callablesCovered = this.callableLookupCache !== undefined;
-        this.scopeFrame.callableMissesCovered = !this.hasDirectLookupChildSurface();
+      if (this._scopeFrame) {
+        this._scopeFrame.declarationsCovered = true;
+        this._scopeFrame.callableBucketsByName = this.callableLookupCache;
+        this._scopeFrame.callablesCovered = this.callableLookupCache !== undefined;
+        this._scopeFrame.callableMissesCovered = !this.hasDirectLookupChildSurface();
       }
     } finally {
       this._indexing = false;
@@ -657,18 +657,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Ordinary declaration-only ScopeFrames should be rebuilt lazily on the clone so they
     // re-wire against the clone's actual parent chain. Reusing an empty frame from the
     // source tree can shadow a live wrapper frame that actually carries live slots.
-    if (source.scopeFrame?.liveSlotsByName.size || source.scopeFrame?.fallbackFrame) {
+    if (source._scopeFrame?.liveSlotsByName.size || source._scopeFrame?.fallbackFrame) {
       this.scopeFrame = buildScopeFrame(
         undefined,
         this,
-        source.scopeFrame.parent,
-        new Map(source.scopeFrame.liveSlotsByName),
+        source._scopeFrame.parent,
+        new Map(source._scopeFrame.liveSlotsByName),
         undefined,
         false,
         undefined,
         false
       );
-      this.scopeFrame.fallbackFrame = source.scopeFrame.fallbackFrame;
+      this._scopeFrame!.fallbackFrame = source._scopeFrame.fallbackFrame;
     } else {
       this.scopeFrame = undefined;
     }
@@ -684,8 +684,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * nodes inherit the represented parent frame even when the ancestor frame
    * was not accessed first.
    */
+  get scopeFrame(): ScopeFrame {
+    return this.getScopeFrame();
+  }
+
+  set scopeFrame(frame: ScopeFrame | undefined) {
+    this._scopeFrame = frame;
+  }
+
   getScopeFrame(parent?: ScopeFrame): ScopeFrame {
-    if (!this.scopeFrame) {
+    if (!this._scopeFrame) {
       if (this.varsByName === undefined) {
         this._indexRules();
       }
@@ -707,7 +715,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           pendingDeclarationNames.push(node);
         }
       }
-      this.scopeFrame = buildScopeFrame(
+      this._scopeFrame = buildScopeFrame(
         this.varsByName,
         this,
         resolvedParent,
@@ -719,7 +727,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         !this.hasDirectLookupChildSurface()
       );
     }
-    return this.scopeFrame;
+    return this._scopeFrame;
   }
 
   private hasDirectLookupChildSurface(): boolean {
@@ -1011,10 +1019,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (bucket.length === 0 && sourceRules !== this) {
       this.collectCallableEntriesForKeyFrom(sourceRules, lookupKey, bucket);
     }
-    if (this.scopeFrame) {
-      this.scopeFrame.callableBucketsByName = entries;
-      this.scopeFrame.callablesCovered = true;
-      this.scopeFrame.callableMissesCovered = !this.hasDirectLookupChildSurface();
+    if (this._scopeFrame) {
+      this._scopeFrame.callableBucketsByName = entries;
+      this._scopeFrame.callablesCovered = true;
+      this._scopeFrame.callableMissesCovered = !this.hasDirectLookupChildSurface();
     }
     return bucket;
   }
@@ -1646,7 +1654,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (cacheKey !== undefined && this.hasRegistrylessMixinCacheResult(cacheKey)) {
         return this.getRegistrylessMixinCacheResult(cacheKey);
       }
-      const callableFrame = this.scopeFrame;
+      const callableFrame = this._scopeFrame;
       if (callableFrame && !options.hasTarget && !options.local) {
         this.prepareCallableLookupFrame(callableFrame, keys, options.searchParents);
         const frameHit = lookupScopeFrameCallable(callableFrame, keys, {
@@ -2522,12 +2530,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   registerNode(node: Node, options?: Record<string, any>, context?: Context) {
-    const rebuildCallableCache = this.callableLookupCache !== undefined || this.scopeFrame !== undefined;
+    const rebuildCallableCache = this.callableLookupCache !== undefined || this._scopeFrame !== undefined;
     this.callableLookupCache = undefined;
-    if (this.scopeFrame) {
-      this.scopeFrame.callableBucketsByName = undefined;
-      this.scopeFrame.callablesCovered = false;
-      this.scopeFrame.callableMissesCovered = false;
+    if (this._scopeFrame) {
+      this._scopeFrame.callableBucketsByName = undefined;
+      this._scopeFrame.callablesCovered = false;
+      this._scopeFrame.callableMissesCovered = false;
     }
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
@@ -2547,8 +2555,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         : undefined;
       if (importOptions?.reference === true || importOptions?._dedupe === true) {
         this._hasReferenceImports = true;
-        if (this.scopeFrame) {
-          this.scopeFrame.callableMissesCovered = false;
+        if (this._scopeFrame) {
+          this._scopeFrame.callableMissesCovered = false;
         }
       }
     }
@@ -2581,8 +2589,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         readonly
       });
       this.addDirectChildRuleEntry(node, rulesVisibility);
-      if (this.scopeFrame) {
-        this.scopeFrame.callableMissesCovered = false;
+      if (this._scopeFrame) {
+        this._scopeFrame.callableMissesCovered = false;
       }
       if (node._hasExtends) {
         this._hasExtends = true;
@@ -2670,9 +2678,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.register('declaration', node);
       if (isNode(node, N.VarDeclaration)) {
         if (this._hasStaticName(node)) {
-          if (this.scopeFrame) {
+          if (this._scopeFrame) {
             const sourceIdentity = node.sourceNode ?? node;
-            const pending = this.scopeFrame.pendingDeclarationNames;
+            const pending = this._scopeFrame.pendingDeclarationNames;
             let write = 0;
             for (let i = 0; i < pending.length; i++) {
               const entry = pending[i]!;
@@ -2695,10 +2703,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             map.set(name, arr = []);
           }
           arr.push(node as VarDeclaration);
-          if (this.scopeFrame) {
-            let bucket = this.scopeFrame.declarationBucketsByName.get(name);
+          if (this._scopeFrame) {
+            let bucket = this._scopeFrame.declarationBucketsByName.get(name);
             if (!bucket) {
-              this.scopeFrame.declarationBucketsByName.set(name, bucket = []);
+              this._scopeFrame.declarationBucketsByName.set(name, bucket = []);
             }
             let hasBucketEntry = false;
             for (let i = 0; i < bucket.length; i++) {
@@ -2718,16 +2726,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               });
             }
           }
-        } else if (this.scopeFrame) {
+        } else if (this._scopeFrame) {
           let hasPendingDeclaration = false;
-          for (let i = 0; i < this.scopeFrame.pendingDeclarationNames.length; i++) {
-            if (this.scopeFrame.pendingDeclarationNames[i] === node) {
+          for (let i = 0; i < this._scopeFrame.pendingDeclarationNames.length; i++) {
+            if (this._scopeFrame.pendingDeclarationNames[i] === node) {
               hasPendingDeclaration = true;
               break;
             }
           }
           if (!hasPendingDeclaration) {
-            this.scopeFrame.pendingDeclarationNames.push(node as VarDeclaration);
+            this._scopeFrame.pendingDeclarationNames.push(node as VarDeclaration);
           }
         }
       }
@@ -2737,8 +2745,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     } else if (isNode(node, N.Func)) {
       this.register('function', node);
     }
-    if (rebuildCallableCache && !this._indexing && this.scopeFrame) {
-      this.scopeFrame.callableBucketsByName = this.callableLookupCache;
+    if (rebuildCallableCache && !this._indexing && this._scopeFrame) {
+      this._scopeFrame.callableBucketsByName = this.callableLookupCache;
     }
   }
 
@@ -3040,7 +3048,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     node.index = nodeIndex;
     // After prep, check if it still has a static name.
     if (this._hasStaticName(node)) {
-      const registrationContext = rules.scopeFrame?.liveSlotsByName.size
+      const registrationContext = rules._scopeFrame?.liveSlotsByName.size
         ? context
         : undefined;
       this._registerNodeIfEligible(rules, node, registrationContext);

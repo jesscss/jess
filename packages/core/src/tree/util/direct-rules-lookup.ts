@@ -304,7 +304,7 @@ function findScopeBindingDeclaration(
   filter: DeclarationFindOptions['filter'] | undefined,
   start: number | undefined
 ): Declaration | undefined {
-  const frame = scope.scopeFrame;
+  const frame = scope._scopeFrame;
   if (!frame?.declarationsCovered) {
     return undefined;
   }
@@ -352,7 +352,7 @@ function findWithinScopeSurface(
 
   const state = createEmptyState(readonly || Boolean(scope.options.readonly));
   if (filterType !== 'Declaration') {
-    const live = scope.scopeFrame?.liveSlotsByName.get(key);
+    const live = scope._scopeFrame?.liveSlotsByName.get(key);
     const liveSource = live?.sourceNode;
     if (
       liveSource

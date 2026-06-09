@@ -592,7 +592,7 @@ export abstract class Node<
 
   get sourceRulesParent(): Rules | undefined {
     const directRulesParent = this.rulesParent;
-    const frameFallbackNode = directRulesParent?.scopeFrame?.fallbackFrame?.rulesNode;
+    const frameFallbackNode = directRulesParent?._scopeFrame?.fallbackFrame?.rulesNode;
     if (isRulesNode(frameFallbackNode)) {
       return frameFallbackNode;
     }

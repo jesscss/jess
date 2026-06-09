@@ -787,17 +787,26 @@ the gate passed.
 
 - Callable frame shortcut allocation cut: accepted as removal of speculative
   frame construction, not a speed claim. Files:
-  `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/rules.ts`, lookup helpers that check frame presence,
   `packages/core/src/tree/__tests__/mixin.test.ts`, and this handoff. New
   traversal: none; `Rules.findMixin(...)` now consults the callable
-  `ScopeFrame` shortcut only when `this.scopeFrame` already exists instead of
+  `ScopeFrame` shortcut only when `this._scopeFrame` already exists instead of
   calling `getScopeFrame(...)` just to try the shortcut. Existing direct
-  lookup remains the fallback for unframed callers. New node/materialization:
-  none in production; the new test builds ordinary mixin fixture nodes only.
-  Render path: unchanged. Helper/API surface: none. Metadata mutations: no new
+  lookup remains the fallback for unframed callers. The public `scopeFrame`
+  accessor is now the lazy creation surface backed by `_scopeFrame`; presence
+  checks use `_scopeFrame` so optional reads do not allocate a frame. The
+  touched dynamic-declaration list loop, live-slot map copies, and declaration
+  bucket writes are pre-existing frame-maintenance work whose receiver changed
+  from `scopeFrame` to `_scopeFrame`; this pass adds no new loop, side map, or
+  materialized collection. New node/materialization: none in production; the
+  new test builds ordinary mixin fixture nodes only. Render path: unchanged.
+  Helper/API surface: no new helper; this replaces the field with the existing
+  Jess getter-backed storage pattern. Metadata mutations: no new
   parent/source/frozen mutations; this removes lazy scope-frame assignment from
   speculative callable lookup. Routine error/control: no new throw/catch/Error
-  path. Evidence: focused mixin tests passed (`136` tests).
+  path. Evidence: focused mixin tests passed (`136` tests); expanded
+  scope/callable/control/reference/import focused suite passed (`549` tests,
+  `9` skipped); `@jesscss/core` build passed.
 - Mixin-ruleset arg-call terminal filter pass: accepted as terminal candidate
   narrowing, not a speed claim. Files: `packages/core/src/tree/call.ts`,
   `packages/core/src/tree/reference.ts`, `packages/core/src/tree/rules.ts`,

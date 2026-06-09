@@ -278,7 +278,7 @@ describe('Control Nodes', () => {
     }
     expect(resolved.location).toHaveLength(0);
     expect(resolved._treeContext).toBeUndefined();
-    expect(resolved.scopeFrame).toBeUndefined();
+    expect(resolved._scopeFrame).toBeUndefined();
     expect(resolved.parent).toBeUndefined();
     expect(resolved.toTrimmedString()).toBe('');
     expect(node.evaluated).toBe(false);
@@ -469,7 +469,7 @@ describe('Control Nodes', () => {
     }
     expect(resolved.location).toHaveLength(0);
     expect(resolved._treeContext).toBeUndefined();
-    expect(resolved.scopeFrame).toBeUndefined();
+    expect(resolved._scopeFrame).toBeUndefined();
     expect(resolved.toTrimmedString()).toBe('');
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
@@ -1088,7 +1088,7 @@ describe('Control Nodes', () => {
     expect(loopOutput.value).toEqual([]);
     expect(loopOutput.location).toHaveLength(0);
     expect(loopOutput.options.local).toBeUndefined();
-    expect(loopOutput.scopeFrame).toBeUndefined();
+    expect(loopOutput._scopeFrame).toBeUndefined();
     expect(await renderNodeToString(root, new Context())).toBe('');
   });
 
@@ -1183,7 +1183,7 @@ describe('Control Nodes', () => {
     if (!(loopOutput instanceof Rules)) {
       throw new Error('Expected loop output to be Rules');
     }
-    expect(loopOutput.scopeFrame).toBeUndefined();
+    expect(loopOutput._scopeFrame).toBeUndefined();
     expect(firstChild).not.toBeInstanceOf(Rules);
     expect(await renderNodeToString(root, new Context())).toContain('item: a');
   });
@@ -1240,7 +1240,7 @@ describe('Control Nodes', () => {
     expect(loopOutput.value).toHaveLength(2);
     expect(loopOutput.location).toHaveLength(0);
     expect(loopOutput.options.local).toBeUndefined();
-    expect(loopOutput.scopeFrame).toBeUndefined();
+    expect(loopOutput._scopeFrame).toBeUndefined();
     const css = await renderNodeToString(root, new Context());
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');

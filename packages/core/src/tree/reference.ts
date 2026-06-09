@@ -410,7 +410,7 @@ function findVarDeclarationFast(
     }
     cursor = cursor.parent;
   }
-  const fallbackFrame = startRules.scopeFrame?.fallbackFrame;
+  const fallbackFrame = startRules._scopeFrame?.fallbackFrame;
   const fallbackRules = fallbackFrame?.rulesNode;
   if (publicMatch === undefined && optionalMatch === undefined && isNode(fallbackRules, N.Rules)) {
     cursor = fallbackRules as Rules;
@@ -440,7 +440,7 @@ function findVarDeclarationFast(
         optionalMatch = laterVarMatch(optionalMatch, result.optionalMatch);
       }
       const fallbackCandidate: unknown = isNode(cursor, N.Rules)
-        ? cursor.scopeFrame?.fallbackFrame?.rulesNode
+        ? cursor._scopeFrame?.fallbackFrame?.rulesNode
         : undefined;
       const nextFallbackRules: Rules | undefined = isNode(fallbackCandidate, N.Rules)
         ? fallbackCandidate as Rules
@@ -1282,7 +1282,7 @@ function resolveInitialReferenceTarget(
     runtimeLiveSlotKey = String(runtimeKey);
   }
   const runtimeParentHasLiveSlot = runtimeLiveSlotKey !== undefined
-    && runtimeRulesParent?.scopeFrame?.liveSlotsByName.has(runtimeLiveSlotKey);
+    && runtimeRulesParent?._scopeFrame?.liveSlotsByName.has(runtimeLiveSlotKey);
   const resolvedTarget = target
     ? target.eval(context)
     : runtimeParentHasLiveSlot

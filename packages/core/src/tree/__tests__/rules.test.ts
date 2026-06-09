@@ -265,7 +265,7 @@ describe('Rules', () => {
     expect(emptyFrame.rulesNode).toBe(source);
 
     const emptyDerived = source.derive([]);
-    expect(emptyDerived.scopeFrame).toBeUndefined();
+    expect(emptyDerived._scopeFrame).toBeUndefined();
 
     const fallbackRules = rules([]);
     source.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();

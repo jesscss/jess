@@ -2527,9 +2527,9 @@ describe('Mixin', () => {
       });
       const root = rules([mixinDef]);
 
-      expect(root.scopeFrame).toBeUndefined();
+      expect(root._scopeFrame).toBeUndefined();
       expect(root.find('mixin', '.lazy-frame-mixin', 'Mixin')).toEqual([mixinDef]);
-      expect(root.scopeFrame).toBeUndefined();
+      expect(root._scopeFrame).toBeUndefined();
     });
 
     it('callable cache fast path: type=mixin-ruleset static Mixin hit skips MixinRegistry.find', async () => {

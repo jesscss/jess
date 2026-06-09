@@ -666,7 +666,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
       let currentReadonly = options?.readonly || rules.options.readonly;
       newReadonly = currentReadonly;
       if (filterType !== 'Declaration') {
-        const live = rules.scopeFrame?.liveSlotsByName.get(key);
+        const live = rules._scopeFrame?.liveSlotsByName.get(key);
         const liveSource = live?.sourceNode;
         if (liveSource && isNode(liveSource, N.VarDeclaration)) {
           const passesFilter = !options?.filter || options.filter(liveSource);
