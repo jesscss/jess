@@ -770,7 +770,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!isNode(node, N.Mixin) && !isNode(node, N.Ruleset)) {
           throw new TypeError(`Expected mixin registry node, got ${node.type}`);
         }
-        this._ensureMixinRegistry().add(node);
+        // Callable lookup is registryless. Keep the public overload as a
+        // compatibility no-op instead of constructing/populating MixinRegistry.
         return;
       case 'function':
         if (!isNode(node, N.Func) && !isNode(node, N.JsFunction)) {

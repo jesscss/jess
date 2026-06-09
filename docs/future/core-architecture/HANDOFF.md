@@ -785,6 +785,20 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- `Rules.register('mixin')` registry-population cut: accepted as cold
+  compatibility side-effect deletion, not a speed claim. File:
+  `packages/core/src/tree/rules.ts`. New traversal: none. New
+  node/materialization: none; no `Node`, copy, wrapper `Rules`, side map, or
+  output cache was added. Render path: unchanged; this only removes mixin
+  registry population from explicit registration. Helper/API surface: public
+  overload shape is preserved, including node-type validation, but the mixin
+  branch no longer constructs or populates `MixinRegistry`; production callable
+  lookup remains on `Rules.findMixin(...)` direct crawl/cache/frame paths.
+  Metadata mutations: none. Routine error/control: no new throw/catch/Error
+  path; the existing wrong-node `TypeError` remains for compatibility. Evidence:
+  focused mixin/reference/import-style/rules/call tests passed (`466` tests,
+  `9` skipped); `@jesscss/core` build passed; `git diff --check` passed;
+  `pnpm run verify:aggressive-cutting-review` passed.
 - Typed `Rules.find*` production routing pass: accepted as hot-path branch
   deletion and clearer lookup surface, not a speed claim. Files:
   `packages/core/src/tree/rules.ts`, `packages/core/src/tree/reference.ts`,
