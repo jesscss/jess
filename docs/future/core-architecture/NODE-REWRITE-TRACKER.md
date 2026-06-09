@@ -87,7 +87,8 @@ first measured offenders after the selector pass.
 - [x] `Range`: direct range writer.
 - [x] `Rest`: direct rest writer.
 - [x] `DefaultGuard`: direct guard writer.
-- [x] `Condition`: direct guard/comparison writer and eval result path.
+- [x] `Condition`: direct guard/comparison writer, operand writer, and eval
+  result path.
 - [x] `Extend`: direct extend writer; audit selector comparison/string keys.
 
 Current hard leftovers after the broad hook sweep:
@@ -169,7 +170,7 @@ Current hard leftovers after the broad hook sweep:
 | Comment | `packages/core/src/tree/comment.ts` | `Node` | writeSyntax hook complete | Comment text writes directly; visibility/render behavior remains the inherited direct scalar path. |
 | ComplexSelector | `packages/core/src/tree/selector-complex.ts` | `Selector` | writeSyntax complete | Selector component emission uses `writeSyntax`; broader valueOf, malformed repair, and metadata audit remains. |
 | CompoundSelector | `packages/core/src/tree/selector-compound.ts` | `Selector` | writeSyntax complete | Component emission uses `writeSyntax`; broader valueOf classification and allocation-array audit remains. |
-| Condition | `packages/core/src/tree/condition.ts` | `Node` | writeSyntax hook complete | Source condition syntax writes directly; bool result materialization audit remains. |
+| Condition | `packages/core/src/tree/condition.ts` | `Node` | direct operand writer complete | Source condition syntax writes directly through operand `writeSyntax(...)`; bool result materialization audit remains. |
 | CustomDeclaration | `packages/core/src/tree/declaration-custom.ts` | `Declaration` | queued | Audit custom-property eval/render after `Declaration`. |
 | Declaration | `packages/core/src/tree/declaration.ts` | `Node` | queued | High priority: custom property branches, merge state, materialization. |
 | DefaultGuard | `packages/core/src/tree/default-guard.ts` | `Node` | writeSyntax hook complete | Scalar guard writer complete. |

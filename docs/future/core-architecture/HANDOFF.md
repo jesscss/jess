@@ -1923,3 +1923,19 @@ the gate passed.
   passed (`65` tests), and `pnpm --filter @jesscss/core build` passed with
   only the pre-existing direct `eval` warning in `js-expr.ts`. This is not a
   speed claim.
+- Condition operand writer pass: accepted as a direct source-syntax child
+  transport cut. New traversal: none; no loop, recursion, parent/source walk,
+  side-map lookup, generator, object scan, or array helper was added. New
+  node/materialization: none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, frozen/source/parent mutation, or placement state was added.
+  Render path: unchanged for evaluated boolean output; this pass only changes
+  authored condition operand source syntax from public `toString(...)` to
+  operand `writeSyntax(...)`. Public `toTrimmedString(...)` remains the cold
+  capture boundary. Helper/API surface: none added. Metadata mutations: none.
+  Evidence: pre-pass hotpath sanity at commit `da99ba8c` reported `functions`
+  `9.76ms` usable, `import-reference` `15.85ms` usable, `mixins-guards`
+  `14.35ms` usable, `extend-chaining` `4.46ms` usable, and `media`
+  `4.47ms` unstable. Focused condition/default-guard/mixin/render-buffer tests
+  passed (`180` tests), and `pnpm --filter @jesscss/core build` passed with
+  only the pre-existing direct `eval` warning in `js-expr.ts`. This is not a
+  speed claim.

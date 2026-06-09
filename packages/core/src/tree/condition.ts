@@ -49,12 +49,12 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     if (needsParens) {
       w.add('(');
     }
-    left.toString(options);
+    left.writeSyntax(options);
     if (op && right) {
       w.add(' ');
       w.add(String(op));
       w.add(' ');
-      right.toString(options);
+      right.writeSyntax(options);
     }
     if (needsParens) {
       w.add(')');
