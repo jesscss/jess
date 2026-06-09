@@ -21,7 +21,7 @@ import { isPlainObject } from './util/collections.js';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
-  writeRenderText,
+  writePreparedRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -1275,11 +1275,12 @@ export abstract class Node<
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const printOptions = isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions;
     const prepared = buffer
-      ? prepareBufferPrintState(context, options)
+      ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, printOptions);
+    const mark = buffer ? prepared.writer.mark() : 0;
     const out = this.toTrimmedString(prepared);
     return buffer
-      ? writeRenderText(buffer, out)
+      ? writePreparedRenderText(buffer, prepared, mark, out)
       : out;
   }
 

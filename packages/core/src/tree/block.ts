@@ -6,7 +6,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
-  writeRenderText,
+  writePreparedRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -69,20 +69,21 @@ export class Block extends Node<Node, BlockOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
-      ? prepareBufferPrintState(context, options)
+      ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
+    const mark = buffer ? prepared.writer.mark() : 0;
     const value = this.hasFlag(F_STATIC) ? this.value : this.value.eval(context);
     if (isThenable(value)) {
       return (value as Promise<Node>).then((resolved) => {
         const out = this.renderBlockSyntax(resolved, prepared);
         return buffer
-          ? writeRenderText(buffer, out)
+          ? writePreparedRenderText(buffer, prepared, mark, out)
           : out;
       });
     }
     const out = this.renderBlockSyntax(value as Node, prepared);
     return buffer
-      ? writeRenderText(buffer, out)
+      ? writePreparedRenderText(buffer, prepared, mark, out)
       : out;
   }
 

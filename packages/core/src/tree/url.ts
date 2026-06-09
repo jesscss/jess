@@ -4,7 +4,7 @@ import { type FinalPrintOptions, getPrintOptions, type PrintOptions } from './ut
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
+import { isRenderBuffer, prepareBufferPrintState, writePreparedRenderText, type RenderBuffer } from './util/render-buffer.js';
 import { prepareRenderPrintState } from './util/print.js';
 
 /**
@@ -70,20 +70,21 @@ export class Url extends Node<Node> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
-      ? prepareBufferPrintState(context, options)
+      ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
+    const mark = buffer ? prepared.writer.mark() : 0;
     const value = this.hasFlag(F_STATIC) ? this.value : this.value.eval(context);
     if (isThenable(value)) {
       return (value as Promise<Node>).then((resolved) => {
         const out = this.renderUrlSyntax(resolved, prepared);
         return buffer
-          ? writeRenderText(buffer, out)
+          ? writePreparedRenderText(buffer, prepared, mark, out)
           : out;
       });
     }
     const out = this.renderUrlSyntax(value as Node, prepared);
     return buffer
-      ? writeRenderText(buffer, out)
+      ? writePreparedRenderText(buffer, prepared, mark, out)
       : out;
   }
 

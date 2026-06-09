@@ -7,7 +7,8 @@ import {
   isRenderBuffer,
   prepareBufferPrintState,
   type RenderBuffer,
-  writeRenderText
+  writePreparedRenderTextResult,
+  writePreparedRenderText
 } from './util/render-buffer.js';
 
 /**
@@ -131,18 +132,19 @@ export class QueryCondition extends Sequence {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const printOptions = buffer ? options : bufferOrOptions;
     const prepared = buffer
-      ? prepareBufferPrintState(context, options)
+      ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, printOptions);
+    const mark = buffer ? prepared.writer.mark() : 0;
     const rendered = this.hasFlag(F_STATIC)
       ? this.renderQueryConditionSyntax(this.value, prepared)
       : this.renderQueryConditionValue(this.value, prepared, context);
     if (isThenable(rendered)) {
       return buffer
-        ? (rendered as Promise<string>).then(out => writeRenderText(buffer, out))
+        ? writePreparedRenderTextResult(buffer, prepared, mark, rendered as Promise<string>)
         : rendered;
     }
     return buffer
-      ? writeRenderText(buffer, rendered as string)
+      ? writePreparedRenderText(buffer, prepared, mark, rendered as string)
       : rendered as string;
   }
 }

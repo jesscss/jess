@@ -1718,3 +1718,39 @@ the gate passed.
   `10.23ms` unstable, `import-reference` `16.10ms` usable, `mixins-guards`
   `14.46ms` usable, `extend-chaining` `4.45ms` usable, and `media` `4.37ms`
   usable.
+- Flat render-buffer / `OutputWriter` sharing pass: accepted as a focused
+  output-transport cut, not a speed claim. New traversal: none added. The new
+  mark checks are chunk-index checks on the active writer/buffer, not child or
+  source walks. New node/materialization: none; no new `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, side map, semantic segment object, or helper array was added.
+  The `new OutputWriter(false, buffer.parts)` site is not a new render-output
+  object boundary; it replaces the writer instance that flat string rendering
+  already created, with the same string chunk array as the internally owned
+  flat buffer. The active shared writer is reused when already present so the
+  code does not repeatedly wrap a growing `parts` array.
+  Render path: internally owned `renderNodeToString(...)` flat buffers can now
+  lend their `parts` array to `OutputWriter`, so flat string rendering can use
+  one chunk array instead of writing into an `OutputWriter` chunk array and then
+  pushing the same rendered string into `buffer.parts`. Explicit caller-owned
+  flat buffers keep the old observable `parts` grouping; an attempted broader
+  share changed `buffer.parts` from one rendered chunk to writer-token chunks
+  (`{foo}` became `{`, `foo`, `}`), so it was narrowed. Segmented buffers are
+  intentionally not shared with `OutputWriter`; they preserve semantic
+  `ruleset`/`hoist`/`merge`/deferred-reference chunks for extend/finalization.
+  Helper/API surface: `OutputWriter` now accepts an optional backing string
+  array and exposes `writesTo(...)`; this is an identity check against an
+  existing string array, not a new scan. `render-buffer.ts` adds the shared
+  flat internal buffer and two finish helpers that skip `writeRenderText(...)`
+  only when the active writer actually wrote since the mark. Those helpers
+  replaced repeated node-local prepare/write glue in `Node`, `List`,
+  `Sequence`, `Declaration`, `Block`, `Url`, `Quoted`, and `QueryCondition`.
+  Metadata mutations: none; no parent/source/tree metadata is touched.
+  Evidence:
+  focused render-buffer/value/declaration tests passed (`180` tests), and
+  `pnpm --filter @jesscss/core build` passed with only the pre-existing direct
+  `eval` warning in `js-expr.ts`. Hotpath leash status:
+  `pnpm run measure:less:hotpath -- --stable` reported `functions`
+  `9.88ms` usable, `import-reference` `15.79ms` usable, `mixins-guards`
+  `14.26ms` usable, `extend-chaining` `4.31ms` usable, and `media`
+  `4.38ms` unstable. This is status only, not a speed claim.

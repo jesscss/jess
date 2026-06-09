@@ -8,6 +8,7 @@ import {
   isRenderBuffer,
   prepareBufferPrintState,
   writeRenderText,
+  writePreparedRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -109,11 +110,12 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
-      ? prepareBufferPrintState(context, options)
+      ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
+    const mark = buffer ? prepared.writer.mark() : 0;
     const out = this.renderQuotedSyntax(value, prepared);
     return buffer
-      ? writeRenderText(buffer, out)
+      ? writePreparedRenderText(buffer, prepared, mark, out)
       : out;
   }
 

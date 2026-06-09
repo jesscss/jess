@@ -1639,6 +1639,32 @@ comments/query conditions, static query-condition probe removal, and rejection
 of invented source writers for JS host wrappers whose tests define no source
 syntax contract.
 
+### Flat RenderBuffer / OutputWriter Sharing Leash
+
+Date: 2026-06-09.
+
+Change: internally owned `renderNodeToString(...)` flat buffers can lend their
+`parts` array to `OutputWriter`, so flat string rendering can share one chunk
+array instead of writing to a writer chunk array and then pushing the same
+rendered text into a separate flat buffer. Explicit caller-owned flat buffers
+keep their old observable `parts` grouping; segmented render buffers remain
+semantic segment buffers and do not share with `OutputWriter`.
+
+Hotpath status:
+
+- `pnpm run measure:less:hotpath -- --stable` reported:
+  `functions` median `9.88ms` usable, `import-reference` median `15.79ms`
+  usable, `mixins-guards` median `14.26ms` usable,
+  `extend-chaining` median `4.31ms` usable, and `media` median `4.38ms`
+  unstable.
+
+Interpretation: status only, not speed proof. The code-path proof is shared
+flat writer chunks for internally owned string renders plus converted
+prepare/write boundaries in `Node`, `List`, `Sequence`, `Declaration`,
+`Block`, `Url`, `Quoted`, and `QueryCondition`. The rejected broader version
+changed caller-visible `buffer.parts` chunk shape, so it was narrowed before
+keeping the patch.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

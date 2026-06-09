@@ -12,7 +12,8 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
-  writeRenderText,
+  writePreparedRenderText,
+  writePreparedRenderTextResult,
   type RenderBuffer
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
@@ -354,11 +355,12 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   ): string {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
-      ? prepareBufferPrintState(context, options)
+      ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
+    const mark = buffer ? prepared.writer.mark() : 0;
     const out = this.renderListSyntax(value, prepared);
     return buffer
-      ? writeRenderText(buffer, out)
+      ? writePreparedRenderText(buffer, prepared, mark, out)
       : out;
   }
 
@@ -369,11 +371,12 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   ): string {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
-      ? prepareBufferPrintState(context, options)
+      ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
+    const mark = buffer ? prepared.writer.mark() : 0;
     const out = renderListValueDirect(context, this.value, prepared, this._options?.sep ?? ',');
     return buffer
-      ? writeRenderText(buffer, out)
+      ? writePreparedRenderText(buffer, prepared, mark, out)
       : out;
   }
 
@@ -384,14 +387,17 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   ): MaybePromise<string> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
-      ? prepareBufferPrintState(context, options)
+      ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
+    const mark = buffer ? prepared.writer.mark() : 0;
     const out = renderListValueDirectMaybe(context, this.value, prepared, this._options?.sep ?? ',');
     if (isThenable(out)) {
-      return (out as Promise<string>).then(rendered => buffer ? writeRenderText(buffer, rendered) : rendered);
+      return buffer
+        ? writePreparedRenderTextResult(buffer, prepared, mark, out as Promise<string>)
+        : out;
     }
     return buffer
-      ? writeRenderText(buffer, out as string)
+      ? writePreparedRenderText(buffer, prepared, mark, out as string)
       : out;
   }
 

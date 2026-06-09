@@ -26,7 +26,7 @@ import {
 import {
   isRenderBuffer,
   prepareBufferPrintState,
-  writeRenderText,
+  writePreparedRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -583,8 +583,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
-      ? prepareBufferPrintState(context, options)
+      ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
+    const mark = buffer ? prepared.writer.mark() : 0;
     const out = state.value
       ? this.declValueTrimmedString({
           name: state.name ?? state.output.value.name,
@@ -593,7 +594,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }, prepared)
       : state.output.declTrimmedString(prepared);
     return buffer
-      ? writeRenderText(buffer, out)
+      ? writePreparedRenderText(buffer, prepared, mark, out)
       : out;
   }
 
@@ -611,8 +612,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
-      ? prepareBufferPrintState(context, options)
+      ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
+    const mark = buffer ? prepared.writer.mark() : 0;
     const out = this.declValueTrimmedString({
       name: state.name,
       value: state.value,
@@ -624,7 +626,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       normalizedFromAssign: state.normalizedFromAssign
     });
     return buffer
-      ? writeRenderText(buffer, out)
+      ? writePreparedRenderText(buffer, prepared, mark, out)
       : out;
   }
 
