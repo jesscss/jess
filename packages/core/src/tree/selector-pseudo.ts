@@ -74,11 +74,11 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       const omitGeneratedWrapper = generatedOverride.omitWrapperForSingleSelectorList === true
         && (!isNode(arg, N.SelectorList) || arg.value.length === 1);
       if (omitGeneratedWrapper) {
-        arg.toString(options);
+        arg.writeSyntax(options);
         return;
       }
       const argMark = w.mark();
-      arg.toString(options);
+      arg.writeSyntax(options);
       w.replaceSince(argMark, normalizeSelectorArg, arg);
       const out = w.getSince(argMark);
       w.restore(argMark);
@@ -93,10 +93,10 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       w.add('(');
       if (isNode(arg, N.SelectorList)) {
         const argMark = w.mark();
-        arg.toString(options);
+        arg.writeSyntax(options);
         w.replaceSince(argMark, normalizeSelectorArg, arg);
       } else {
-        arg.toString(options);
+        arg.writeSyntax(options);
       }
       w.add(')');
     }
