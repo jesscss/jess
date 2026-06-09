@@ -1218,7 +1218,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     const writer = options.writer;
     const mark = writer.mark();
     try {
-      renderSelector.writeSyntax(options);
+      renderSelector.toString(options);
       selOut = writer.getSince(mark);
     } finally {
       writer.restore(mark);

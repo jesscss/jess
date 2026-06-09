@@ -78,10 +78,10 @@ generic fallback ladders over adding new cache layers or helper surfaces.
 Correctness queue: no active lookup correctness blockers. If a `.less` fixture
 fails to parse/evaluate in the lookup lane, add a focused repro before changing
 expected output. If CSS differs, review semantics manually before changing
-tests. The current `origin/dev` serialization failure in
-`Ruleset.getHeaderString(...)` / selector `writeSyntax` is out of scope for
-this registryless worktree unless the user explicitly redirects us to
-serialization.
+tests. The merged selector `writeSyntax` lane is out of scope for this
+registryless worktree unless the user explicitly redirects us to serialization;
+this branch keeps `Ruleset.getHeaderString(...)` on the older selector string
+fallback so lookup tests can run while registryless work continues.
 
 Performance leash:
 
