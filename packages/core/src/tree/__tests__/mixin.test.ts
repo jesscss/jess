@@ -2234,7 +2234,7 @@ describe('Mixin', () => {
       expect(resolveFrameCell('unknown', frame)).toBeUndefined();
     });
 
-    it('mixinsByName fast path: type=mixin static-name lookup skips MixinRegistry.find', async () => {
+    it('callable cache fast path: type=mixin static-name lookup skips MixinRegistry.find', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -2520,7 +2520,7 @@ describe('Mixin', () => {
       }
     });
 
-    it('mixinsByName fast path: type=mixin-ruleset static Mixin hit skips MixinRegistry.find', async () => {
+    it('callable cache fast path: type=mixin-ruleset static Mixin hit skips MixinRegistry.find', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -2577,7 +2577,7 @@ describe('Mixin', () => {
       }
     });
 
-    it('mixinsByName fast path: type=mixin-ruleset simple Ruleset hit skips MixinRegistry.find', async () => {
+    it('callable cache fast path: type=mixin-ruleset simple Ruleset hit skips MixinRegistry.find', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -2628,7 +2628,7 @@ describe('Mixin', () => {
       }
     });
 
-    it('mixinsByName fast path: type=mixin resolved interpolated name skips MixinRegistry.find', async () => {
+    it('callable cache fast path: type=mixin resolved interpolated name skips MixinRegistry.find', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -2673,7 +2673,7 @@ describe('Mixin', () => {
       }
     });
 
-    it('mixinsByName fast path: type=mixin-ruleset resolved interpolated simple name skips MixinRegistry.find', async () => {
+    it('callable cache fast path: type=mixin-ruleset resolved interpolated simple name skips MixinRegistry.find', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -2726,7 +2726,7 @@ describe('Mixin', () => {
       }
     });
 
-    it('mixinsByName fast path: type=mixin static-name miss skips MixinRegistry.find once scopes are indexed', async () => {
+    it('callable cache fast path: type=mixin static-name miss skips MixinRegistry.find once scopes are indexed', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -2771,7 +2771,7 @@ describe('Mixin', () => {
       }
     });
 
-    it('mixinsByName fast path: type=mixin-ruleset simple-name miss skips MixinRegistry.find once scopes are indexed', async () => {
+    it('callable cache fast path: type=mixin-ruleset simple-name miss skips MixinRegistry.find once scopes are indexed', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -2816,7 +2816,7 @@ describe('Mixin', () => {
       }
     });
 
-    it('mixinsByName fast path: unresolved dynamic simple-name candidates do not trigger MixinRegistry.find', () => {
+    it('callable cache fast path: unresolved dynamic simple-name candidates do not trigger MixinRegistry.find', () => {
       const originalFind = MixinRegistry.prototype.find;
       const mixinRegistryHits: string[] = [];
       MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {

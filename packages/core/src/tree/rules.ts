@@ -60,7 +60,7 @@ import {
 } from './util/mixin-output-slot.js';
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
-import type { MixinEntry } from './util/callable-entry.js';
+import type { CallableLookupEntry, MixinEntry } from './util/callable-entry.js';
 import { isIndexedRuleChild } from './util/callable-surface.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
@@ -76,10 +76,6 @@ type StyleImportRegistrationNode = Node<{ path: unknown }>;
 type PathResolutionError = Error & { _isPathResolutionError?: boolean };
 type FlagLikeNode = { hasFlag(flag: number): boolean };
 type PendingPrepHandler = (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean;
-type DirectCallableEntry = {
-  value: MixinEntry;
-  match: string[];
-};
 type RulesRenderContextSnapshot = {
   rulesContext: Context['rulesContext'];
   treeContext: Context['treeContext'];
@@ -134,6 +130,25 @@ function collectKeyRemainder(keys: readonly string[], start: number): string[] {
 function splitStaticCallablePathKey(key: string): string[] | undefined {
   const matches = key.match(/[#.][^#.]+/g);
   return matches && matches.length > 1 ? matches : undefined;
+}
+
+function getCallableRulesetKeyPaths(ruleset: Ruleset): string[][] {
+  const selector = ruleset.value.selector;
+  if (isNode(selector, N.Nil)) {
+    return [];
+  }
+  if (isNode(selector, N.SelectorList)) {
+    const out: string[][] = [];
+    for (let i = 0; i < selector.value.length; i++) {
+      const keys = Registries.getOrderedSelectorKeys(selector.value[i]!);
+      if (keys.length > 0) {
+        out.push(keys);
+      }
+    }
+    return out;
+  }
+  const keys = Registries.getOrderedSelectorKeys(selector);
+  return keys.length > 0 ? [keys] : [];
 }
 
 function isSelectorLikeNode(node: unknown): node is Selector {
@@ -512,16 +527,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   functionRegistry: Registries.FunctionRegistry | undefined;
   /** Fast map: var name → ordered list of VarDeclarations registered in this scope. */
   varsByName: Map<string, VarDeclaration[]> | undefined;
-  /**
-   * Fast map: callable mixin start-key → ordered list of callable entries with that plain name.
-   * Covers Mixin nodes with static (non-interpolated) Any names plus Rulesets whose
-   * selector is a simple static selector key.
-   * undefined means not yet indexed; an empty Map means indexed with no static mixins.
-   * Compound / array-path and interpolated-namespace cases still go through the
-   * full MixinRegistry.
-   */
-  mixinsByName: Map<string, MixinEntry[]> | undefined;
-  directCallablesByName: Map<string, DirectCallableEntry[]> | undefined;
+  /** Per-request cache: callable start-key -> ordered entries with remaining path keys. */
+  callableLookupCache: Map<string, CallableLookupEntry[]> | undefined;
   directChildRuleEntries: Array<{ node: Rules; rulesVisibility?: RulesOptions['rulesVisibility'] }> | null | undefined;
   hasDirectChildRuleSurface = false;
   hasExactCallableChildSurface = false;
@@ -569,7 +576,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Initialize fast maps so the hot-path can distinguish
       // "indexed (nothing found)" from "not yet indexed" (undefined).
       this.varsByName ??= new Map();
-      this.mixinsByName ??= new Map();
       let value = this.value;
       let length = value.length;
       for (let i = this.rulesIndexed; i < length; i++) {
@@ -579,8 +585,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.rulesIndexed = length;
       if (this.scopeFrame) {
         this.scopeFrame.declarationsCovered = true;
-        this.scopeFrame.callableBucketsByName = this.mixinsByName;
-        this.scopeFrame.callablesCovered = true;
+        this.scopeFrame.callableBucketsByName = this.callableLookupCache;
+        this.scopeFrame.callablesCovered = this.callableLookupCache !== undefined;
         this.scopeFrame.callableMissesCovered = !this.hasDirectLookupChildSurface();
       }
     } finally {
@@ -637,8 +643,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this._indexing = false;
     this._rulesSet = undefined;
     this.varsByName = undefined;
-    this.mixinsByName = undefined;
-    this.directCallablesByName = undefined;
+    this.callableLookupCache = undefined;
     this.directChildRuleEntries = undefined;
     this.hasDirectChildRuleSurface = false;
     this.hasExactCallableChildSurface = false;
@@ -710,7 +715,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         undefined,
         pendingDeclarationNames,
         undefined,
-        this.mixinsByName,
+        this.callableLookupCache,
         undefined,
         !this.hasDirectLookupChildSurface()
       );
@@ -792,7 +797,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // fast maps are defined so the hot-path can distinguish an indexed scope
       // from one that has never been accessed via getRegistry at all.
       this.varsByName ??= new Map();
-      this.mixinsByName ??= new Map();
     }
     return registry;
   }
@@ -800,8 +804,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /**
    * Fast parent-chain walk for static-named callable mixin lookup.
    *
-   * Covers callable entries indexed into `mixinsByName`:
-   * static Mixins plus simple static Ruleset-as-mixin keys.
+   * Covers callable entries from the lazy callable cache:
+   * static Mixins plus static Ruleset-as-mixin keys.
    * Compound / namespace cases use the registryless namespace path in
    * `find(...)`.
    */
@@ -896,54 +900,51 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return results;
   }
 
-  private addDirectCallableEntry(
-    entries: Map<string, DirectCallableEntry[]>,
+  private addCallableEntry(
+    lookupKey: string,
     key: string | undefined,
     value: MixinEntry,
-    match: string[]
+    match: string[],
+    bucket: CallableLookupEntry[]
   ): void {
-    if (!key || key.startsWith(':')) {
+    if (!key || key !== lookupKey || key.startsWith(':')) {
       return;
-    }
-    let bucket = entries.get(key);
-    if (!bucket) {
-      entries.set(key, bucket = []);
     }
     bucket.push({ value, match });
   }
 
   private addDirectCallableSelectorEntries(
-    entries: Map<string, DirectCallableEntry[]>,
+    lookupKey: string,
     ruleset: Ruleset,
-    keys: string[]
+    keys: string[],
+    bucket: CallableLookupEntry[]
   ): void {
     const candidateKeys = keys.filter(key => typeof key === 'string' && !key.startsWith(':'));
     const startIndex = candidateKeys.findIndex(key => !key.startsWith('*'));
     if (startIndex === -1) {
       return;
     }
-    this.addDirectCallableEntry(
-      entries,
+    this.addCallableEntry(
+      lookupKey,
       candidateKeys[startIndex],
       ruleset,
-      candidateKeys.slice(startIndex + 1)
+      candidateKeys.slice(startIndex + 1),
+      bucket
     );
   }
 
-  private getDirectCallableEntries(): Map<string, DirectCallableEntry[]> {
-    let entries = this.directCallablesByName;
-    if (entries) {
-      return entries;
-    }
-
-    entries = new Map();
-    const value = this.value;
+  private collectCallableEntriesForKeyFrom(
+    rules: Rules,
+    lookupKey: string,
+    bucket: CallableLookupEntry[]
+  ): void {
+    const value = rules.value;
     for (let i = 0; i < value.length; i++) {
       const node = value[i]!;
       if (isNode(node, N.Mixin)) {
         const name = node.value.name;
         if (name && name.type !== 'Interpolated') {
-          this.addDirectCallableEntry(entries, String(name.valueOf()), node, []);
+          this.addCallableEntry(lookupKey, String(name.valueOf()), node, [], bucket);
         }
         continue;
       }
@@ -972,9 +973,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isNode(selector, N.SelectorList)) {
         for (let selectorIndex = 0; selectorIndex < selector.value.length; selectorIndex++) {
           this.addDirectCallableSelectorEntries(
-            entries,
+            lookupKey,
             node,
-            Registries.getOrderedSelectorKeys(selector.value[selectorIndex]!)
+            Registries.getOrderedSelectorKeys(selector.value[selectorIndex]!),
+            bucket
           );
         }
         continue;
@@ -995,18 +997,34 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           keys = keys.slice(parentKeys.length);
         }
       }
-      this.addDirectCallableSelectorEntries(entries, node, keys);
+      this.addDirectCallableSelectorEntries(lookupKey, node, keys, bucket);
+    }
+  }
+
+  private getCallableEntriesForKey(lookupKey: string): CallableLookupEntry[] {
+    const entries = (this.callableLookupCache ??= new Map());
+    const cached = entries.get(lookupKey);
+    if (cached) {
+      return cached;
     }
 
-    this.directCallablesByName = entries;
-    return entries;
+    const bucket: CallableLookupEntry[] = [];
+    entries.set(lookupKey, bucket);
+    this.collectCallableEntriesForKeyFrom(this, lookupKey, bucket);
+    const sourceRules = sourceRulesOf(this);
+    if (bucket.length === 0 && sourceRules !== this) {
+      this.collectCallableEntriesForKeyFrom(sourceRules, lookupKey, bucket);
+    }
+    if (this.scopeFrame) {
+      this.scopeFrame.callableBucketsByName = entries;
+      this.scopeFrame.callablesCovered = true;
+      this.scopeFrame.callableMissesCovered = !this.hasDirectLookupChildSurface();
+    }
+    return bucket;
   }
 
   private getDirectCallableExactBucket(key: string): MixinEntry[] | undefined {
-    if (this.mixinsByName !== undefined) {
-      return this.mixinsByName.get(key);
-    }
-    const entries = this.getDirectCallableEntries().get(key);
+    const entries = this.getCallableEntriesForKey(key);
     if (!entries?.length) {
       return undefined;
     }
@@ -1018,6 +1036,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     }
     return out;
+  }
+
+  private prepareCallableLookupFrame(frame: ScopeFrame, key: string, searchParents?: boolean): void {
+    let cursor: ScopeFrame | undefined = frame;
+    while (cursor) {
+      if (isNode(cursor.rulesNode, N.Rules)) {
+        const rules = cursor.rulesNode;
+        rules.getCallableEntriesForKey(key);
+        cursor.callableBucketsByName = rules.callableLookupCache;
+        cursor.callablesCovered = true;
+        cursor.callableMissesCovered = !rules.hasDirectLookupChildSurface();
+      }
+      if (searchParents === false) {
+        break;
+      }
+      cursor = cursor.parent;
+    }
   }
 
   private collectDirectChildRulesEntries(): Array<{ node: Rules; rulesVisibility?: RulesOptions['rulesVisibility'] }> | undefined {
@@ -1148,192 +1183,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  private hasVisibleCompoundPrefixRulesetPath(
-    path: string[],
-    options?: {
-      hasTarget?: boolean;
-      local?: boolean;
-      searchParents?: boolean;
-      context?: Context;
-    }
-  ): boolean {
-    const searchSurface = (
-      scope: Rules,
-      localContext: boolean | undefined,
-      visited: Set<Rules>
-    ): boolean => {
-      if (visited.has(scope)) {
-        return false;
-      }
-      visited.add(scope);
-
-      if (scope.rulesIndexed < scope.value.length) {
-        scope._indexRules();
-      }
-
-      for (let i = scope.value.length - 1; i >= 0; i--) {
-        const candidate = scope.value[i]!;
-        if (!isNode(candidate, N.Ruleset)) {
-          continue;
-        }
-        const keys = Registries.getOrderedSelectorKeys(candidate.value.selector);
-        if (keys.length <= 1 || keys.length > path.length) {
-          continue;
-        }
-        let isPrefix = true;
-        for (let j = 0; j < keys.length; j++) {
-          if (keys[j] !== path[j]) {
-            isPrefix = false;
-            break;
-          }
-        }
-        if (isPrefix) {
-          return true;
-        }
-      }
-
-      const childEntries = scope._rulesSet as Array<{
-        node: Rules;
-        rulesVisibility?: RulesOptions['rulesVisibility'];
-      }> | undefined;
-      if (!childEntries?.length) {
-        return false;
-      }
-
-      for (let i = childEntries.length - 1; i >= 0; i--) {
-        const entry = childEntries[i]!;
-        if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
-          continue;
-        }
-        if (options?.context?.rulesContext === scope && entry.node.options?.forward) {
-          continue;
-        }
-        if (localContext && entry.node.options?.local) {
-          continue;
-        }
-        if (searchSurface(
-          entry.node,
-          localContext || Boolean(entry.node.options?.local),
-          visited
-        )) {
-          return true;
-        }
-      }
-
-      return false;
-    };
-
-    let cursor: Node | undefined = this;
-    let first = true;
-    while (cursor) {
-      if (isNode(cursor, N.Rules)) {
-        const scope = cursor as Rules;
-        if (!first) {
-          if (Registries.isNonClassicImportBoundary(scope)) {
-            break;
-          }
-        }
-        first = false;
-        if (searchSurface(scope, options?.local, new Set<Rules>())) {
-          return true;
-        }
-      }
-      if (options?.searchParents === false) {
-        break;
-      }
-      cursor = cursor.parent;
-    }
-    return false;
-  }
-
-  private hasVisibleCallableRulesetStart(
-    segment: string,
-    options?: {
-      hasTarget?: boolean;
-      local?: boolean;
-      searchParents?: boolean;
-      context?: Context;
-    }
-  ): boolean {
-    const searchSurface = (
-      scope: Rules,
-      localContext: boolean | undefined,
-      visited: Set<Rules>
-    ): boolean => {
-      if (visited.has(scope)) {
-        return false;
-      }
-      visited.add(scope);
-
-      if (scope.rulesIndexed < scope.value.length) {
-        scope._indexRules();
-      }
-
-      for (let i = scope.value.length - 1; i >= 0; i--) {
-        const candidate = scope.value[i]!;
-        if (!isNode(candidate, N.Ruleset)) {
-          continue;
-        }
-        const keys = Registries.getOrderedSelectorKeys(candidate.value.selector);
-        if (keys[0] === segment) {
-          return true;
-        }
-      }
-
-      const childEntries = scope._rulesSet as Array<{
-        node: Rules;
-        rulesVisibility?: RulesOptions['rulesVisibility'];
-      }> | undefined;
-      if (!childEntries?.length) {
-        return false;
-      }
-
-      for (let i = childEntries.length - 1; i >= 0; i--) {
-        const entry = childEntries[i]!;
-        if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
-          continue;
-        }
-        if (options?.context?.rulesContext === scope && entry.node.options?.forward) {
-          continue;
-        }
-        if (localContext && entry.node.options?.local) {
-          continue;
-        }
-        if (searchSurface(
-          entry.node,
-          localContext || Boolean(entry.node.options?.local),
-          visited
-        )) {
-          return true;
-        }
-      }
-
-      return false;
-    };
-
-    let cursor: Node | undefined = this;
-    let first = true;
-    while (cursor) {
-      if (isNode(cursor, N.Rules)) {
-        const scope = cursor as Rules;
-        if (!first) {
-          if (Registries.isNonClassicImportBoundary(scope)) {
-            break;
-          }
-        }
-        first = false;
-        if (searchSurface(scope, options?.local, new Set<Rules>())) {
-          return true;
-        }
-      }
-      if (options?.searchParents === false) {
-        break;
-      }
-      cursor = cursor.parent;
-    }
-    return false;
-  }
-
   private findVisibleExactCallableRulesetPath(
     path: string[],
     options?: {
@@ -1362,12 +1211,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!isNode(candidate, N.Ruleset)) {
           continue;
         }
-        const keys = Registries.getOrderedSelectorKeys(candidate.value.selector);
-        if (
-          keys.length === path.length
-          && keysStartWith(keys, path)
-        ) {
-          results.push(candidate);
+        const keyPaths = getCallableRulesetKeyPaths(candidate);
+        for (let keyPathIndex = 0; keyPathIndex < keyPaths.length; keyPathIndex++) {
+          const keys = keyPaths[keyPathIndex]!;
+          if (
+            keys.length === path.length
+            && keysStartWith(keys, path)
+          ) {
+            results.push(candidate);
+            break;
+          }
         }
       }
 
@@ -1456,13 +1309,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!isNode(candidate, N.Ruleset)) {
           continue;
         }
-        const keys = Registries.getOrderedSelectorKeys(candidate.value.selector);
-        if (
-          keys.length > 0
-          && keys.length < path.length
-          && keysStartWith(keys, path)
-        ) {
-          results.push({ ruleset: candidate, consumed: keys });
+        const keyPaths = getCallableRulesetKeyPaths(candidate);
+        for (let keyPathIndex = 0; keyPathIndex < keyPaths.length; keyPathIndex++) {
+          const keys = keyPaths[keyPathIndex]!;
+          if (
+            keys.length > 0
+            && keys.length < path.length
+            && keysStartWith(keys, path)
+          ) {
+            results.push({ ruleset: candidate, consumed: keys });
+          }
         }
       }
 
@@ -1543,16 +1399,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     ): NamespaceFastResult => {
       const segment = path[offset];
       const restLength = path.length - offset - 1;
-      const allowRulesetAmbiguity = filterType !== 'Mixin';
       if (!segment) {
         return DEFINITE_MISS;
-      }
-      if (allowRulesetAmbiguity && restLength > 0 && scope.hasVisibleCompoundPrefixRulesetPath(path, {
-        hasTarget: options.hasTarget,
-        local: options.local,
-        searchParents
-      })) {
-        return undefined;
       }
 
       const matches = scope.findMixinsFast(segment, {
@@ -1564,13 +1412,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       });
 
       if (matches.length === 0) {
-        if (allowRulesetAmbiguity && scope.hasVisibleCallableRulesetStart(segment, {
-          hasTarget: options.hasTarget,
-          local: options.local,
-          searchParents
-        })) {
-          return undefined;
-        }
         return DEFINITE_MISS;
       }
       if (restLength === 0) {
@@ -1815,6 +1656,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       const callableFrame = this.getScopeFrame();
       if (callableFrame && !options.hasTarget && !options.local) {
+        this.prepareCallableLookupFrame(callableFrame, keys, options.searchParents);
         const frameHit = lookupScopeFrameCallable(callableFrame, keys, {
           includeRulesets,
           searchParents: options.searchParents
@@ -1833,7 +1675,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           const bucket = frameHit.bucket;
           const results: MixinEntry[] = [];
           for (let i = bucket.length - 1; i >= 0; i--) {
-            const candidate = bucket[i]!;
+            const entry = bucket[i]!;
+            if (entry.match.length !== 0) {
+              continue;
+            }
+            const candidate = entry.value;
             if (!includeRulesets && isNode(candidate, N.Ruleset)) {
               continue;
             }
@@ -1870,7 +1716,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               const bucket = retryHit.bucket;
               const results: MixinEntry[] = [];
               for (let i = bucket.length - 1; i >= 0; i--) {
-                const candidate = bucket[i]!;
+                const entry = bucket[i]!;
+                if (entry.match.length !== 0) {
+                  continue;
+                }
+                const candidate = entry.value;
                 if (!includeRulesets && isNode(candidate, N.Ruleset)) {
                   continue;
                 }
@@ -1882,6 +1732,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               }
             }
             if (retryHit.kind === 'uncovered' && isNode(retryFrame.rulesNode, N.Rules)) {
+              retryFrame.rulesNode.getCallableEntriesForKey(keys);
+              retryFrame.callableBucketsByName = retryFrame.rulesNode.callableLookupCache;
+              retryFrame.callablesCovered = true;
+              retryFrame.callableMissesCovered = !retryFrame.rulesNode.hasDirectLookupChildSurface();
               const direct = retryFrame.rulesNode.findMixinsFast(keys, {
                 context: options.context,
                 hasTarget: options.hasTarget,
@@ -2625,7 +2479,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   registerNode(node: Node, options?: Record<string, any>, context?: Context) {
-    this.directCallablesByName = undefined;
+    const rebuildCallableCache = this.callableLookupCache !== undefined || this.scopeFrame !== undefined;
+    this.callableLookupCache = undefined;
+    if (this.scopeFrame) {
+      this.scopeFrame.callableBucketsByName = undefined;
+      this.scopeFrame.callablesCovered = false;
+      this.scopeFrame.callableMissesCovered = false;
+    }
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
     this.registrylessMixinLookupCache = undefined;
@@ -2756,9 +2616,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             foundRules.value.unshift(newDeclaration);
           }
 
-          // Register it via registerNode to ensure it's properly indexed
-          // Note: registerNode will call register('declaration', ...) which adds to registry
-          // We skip setDefined processing since we already removed the flag
+          // Re-run child bookkeeping for the inserted declaration. We skip
+          // setDefined processing since we already removed the flag.
           foundRules.registerNode(newDeclaration);
         } else {
           throw new ReferenceError(`"${key}" is not defined`);
@@ -2829,60 +2688,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
       }
-    } else if (isNode(node, N.Ruleset)) {
-      // Register to 'mixin' for mixin calls.
-      // Always register - guard filtering happens at call time in MixinCollection.evalCall.
-      // Note: extend processing keeps its own per-root Ruleset sets during ruleset registration prep.
-      this.register('mixin', node);
-      const rulesetKey = getSimpleCallableRulesetKey(node as Ruleset);
-      if (rulesetKey) {
-        const mm = (this.mixinsByName ??= new Map());
-        let arr = mm.get(rulesetKey);
-        if (!arr) {
-          mm.set(rulesetKey, arr = []);
-        }
-        if (this.scopeFrame) {
-          this.scopeFrame.callableBucketsByName = mm;
-        }
-        let hasRuleset = false;
-        for (let i = 0; i < arr.length; i++) {
-          if (arr[i] === node) {
-            hasRuleset = true;
-            break;
-          }
-        }
-        if (!hasRuleset) {
-          arr.push(node as Ruleset);
-        }
-      }
-    } else if (isNode(node, N.Mixin)) {
-      this.register('mixin', node);
-      // Fast map: only static (non-interpolated) names get an O(1) entry.
-      // Interpolated mixin names fall through to the full MixinRegistry.
-      const mixinName = (node as Mixin).value.name;
-      if (mixinName && mixinName.type !== 'Interpolated') {
-        const key = mixinName.valueOf() as string;
-        const mm = (this.mixinsByName ??= new Map());
-        let arr = mm.get(key);
-        if (!arr) {
-          mm.set(key, arr = []);
-        }
-        if (this.scopeFrame) {
-          this.scopeFrame.callableBucketsByName = mm;
-        }
-        let hasMixin = false;
-        for (let i = 0; i < arr.length; i++) {
-          if (arr[i] === node) {
-            hasMixin = true;
-            break;
-          }
-        }
-        if (!hasMixin) {
-          arr.push(node as Mixin);
-        }
-      }
+    } else if (isNode(node, N.Ruleset) || isNode(node, N.Mixin)) {
+      // Callable lookup is registryless: the lazy callable cache crawls
+      // Rules.value directly and filters candidates at lookup/call time.
     } else if (isNode(node, N.Func)) {
       this.register('function', node);
+    }
+    if (rebuildCallableCache && !this._indexing && this.scopeFrame) {
+      this.scopeFrame.callableBucketsByName = this.callableLookupCache;
     }
   }
 
@@ -3116,7 +2929,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Let fast lookup distinguish "registration prep completed with nothing
     // registerable" from "scope never processed at all".
     rules.varsByName ??= new Map();
-    rules.mixinsByName ??= new Map();
   }
 
   private _prepareRegisterableNode(
@@ -3241,7 +3053,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
-   * Register a node if it's eligible for registration
+   * Apply child bookkeeping for nodes that can affect lookup/eval state.
    */
   private _registerNodeIfEligible(rules: Rules, node: Node, context?: Context) {
     if (isNode(node, N.Declaration)) {
@@ -3249,7 +3061,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     } else if (isNode(node, N.Mixin)) {
       rules.registerNode(node, undefined, context);
     } else if (isNode(node, N.Ruleset)) {
-      // registerNode handles rulesets and mixins on the callable mixin surface
       rules.registerNode(node, undefined, context);
     }
   }
@@ -4300,18 +4111,4 @@ function mixinHasNoRequiredParams(mixinNode: Mixin): boolean {
     return false;
   }
   return true;
-}
-
-function getSimpleCallableSelectorKey(selector: Selector | Nil | undefined): string | undefined {
-  if (!selector || isNode(selector, N.Nil)) {
-    return undefined;
-  }
-  if (isNode(selector, N.BasicSelector) || selector.type === 'InterpolatedSelector') {
-    return selector.valueOf();
-  }
-  return undefined;
-}
-
-function getSimpleCallableRulesetKey(ruleset: Ruleset): string | undefined {
-  return getSimpleCallableSelectorKey(ruleset.value.selector);
 }

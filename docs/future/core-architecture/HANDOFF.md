@@ -785,6 +785,43 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Callable lookup cache de-registry pass: accepted as registry plumbing
+  deletion and correctness tightening, not a standalone speed claim. Files:
+  `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/scope-frame.ts`,
+  `packages/core/src/tree/util/callable-entry.ts`, and
+  `packages/core/src/tree/__tests__/mixin.test.ts`. New traversal: simple
+  exact callable lookup now crawls the current `Rules.value` only for the
+  requested start key and stores only that requested bucket/miss; it no longer
+  builds a whole-scope `mixinsByName`/`directCallablesByName` index during
+  `_indexRules()` or `registerNode(...)`. The new loops are: selector-list key
+  path extraction for selector-list callable rulesets; per-selector-list branch
+  checks in exact/path ruleset matching; a parent-frame walk that prepares only
+  the requested key; and exact-entry filtering over a returned bucket. The
+  loops replace broader pre-flight helper scans and eager whole-scope callable
+  indexing. Runtime wrappers with no local hit may crawl their canonical source
+  `Rules` for the same requested key. New node/materialization: no `Node`,
+  copy, wrapper `Rules`, or output cache was added. New state/object surface:
+  one per-`Rules` `Map` memo table remains, but it is no longer a populated
+  registry; it only records identifiers that were actually requested, including
+  empty buckets for repeated misses. The `candidateKeys.slice(...)` allocation
+  carries the remaining selector path for prefix consumers; simple exact
+  lookup ignores entries where that remaining path is non-empty. Helper/API
+  surface: no public API; one shared callable lookup entry shape with `value`
+  and `match` replaced separate exact and path callable bucket shapes.
+  Metadata mutations: `registerNode(...)` now invalidates callable lookup
+  cache/frame coverage but no longer calls `register('mixin', ...)` or appends
+  callable nodes to a registry-side map. Routine error/control: no
+  throw/catch/Error path was added; the review-script match on
+  `CallableLookupEntry` is a token false positive. Filtering proof: simple
+  string lookup now consumes only exact entries (`match.length === 0`), so a
+  request for `#theme` cannot accidentally return the prefix ruleset
+  `#theme.dark.navbar`; array/path lookup remains the path-prefix consumer.
+  Evidence: focused eslint passed; the nested mixin-ruleset reference
+  regression repro passed; focused mixin/reference/import-style/rules tests
+  passed (`390` tests, `9` skipped); `@jesscss/core` build passed. Benchmark
+  status: not measured yet after this cache-shape change, so make no speed
+  claim until the usual lookup fixtures are compared.
 - Registryless one-entry cache prototype: accepted as an opt-in prototype for
   repeated exact callable lookup, not enabled by default and not a broad speed
   claim. File: `packages/core/src/tree/rules.ts`. New traversal: none. New

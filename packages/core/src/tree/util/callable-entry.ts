@@ -23,6 +23,10 @@ export type CallableRulesEntry = {
 
 export type CallableEntry = Mixin | CallableRulesEntry;
 export type MixinEntry = CallableEntry | Ruleset;
+export type CallableLookupEntry = {
+  value: MixinEntry;
+  match: string[];
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';

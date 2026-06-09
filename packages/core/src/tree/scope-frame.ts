@@ -18,7 +18,7 @@
 
 import type { Node } from './node.js';
 import type { VarDeclaration } from './declaration-var.js';
-import type { MixinEntry } from './util/callable-entry.js';
+import type { CallableLookupEntry } from './util/callable-entry.js';
 
 /**
  * One live binding slot.  Value is updated in place for loop counters and
@@ -77,7 +77,7 @@ export type ScopeFrameVariableLookupResult =
 export type ScopeFrameCallableLookupResult =
   | {
     kind: 'hit';
-    bucket: MixinEntry[];
+    bucket: CallableLookupEntry[];
   }
   | {
     kind: 'miss';
@@ -123,11 +123,9 @@ export interface ScopeFrame {
   declarationBucketsByName: Map<string, BindingEntry[]>;
 
   /**
-   * Static callable buckets for this scope. This intentionally reuses the
-   * Rules.mixinsByName arrays instead of wrapping every callable in another
-   * binding object during this migration slice.
+   * Static callable buckets for this scope.
    */
-  callableBucketsByName: Map<string, MixinEntry[]> | undefined;
+  callableBucketsByName: Map<string, CallableLookupEntry[]> | undefined;
 
   /**
    * True when declarationBucketsByName represents every static declaration on
@@ -188,8 +186,8 @@ export function buildScopeFrame(
   liveSlots?: Map<string, BindingCell>,
   pendingDeclarationNames?: VarDeclaration[],
   declarationsCovered = varsByName !== undefined,
-  callablesByName?: Map<string, MixinEntry[]>,
-  callablesCovered = callablesByName !== undefined,
+  callableEntriesByName?: Map<string, CallableLookupEntry[]>,
+  callablesCovered = callableEntriesByName !== undefined,
   callableMissesCovered = callablesCovered
 ): ScopeFrame {
   const declarationBucketsByName = new Map<string, BindingEntry[]>();
@@ -217,7 +215,7 @@ export function buildScopeFrame(
     fallbackFrame: undefined,
     liveSlotsByName: liveSlots ?? new Map(),
     declarationBucketsByName,
-    callableBucketsByName: callablesByName,
+    callableBucketsByName: callableEntriesByName,
     declarationsCovered,
     callablesCovered,
     callableMissesCovered,
@@ -351,10 +349,14 @@ export function lookupScopeFrameCallable(
     const bucket = f.callableBucketsByName?.get(name);
     if (bucket?.length) {
       if (options?.includeRulesets !== false) {
-        return { kind: 'hit', bucket };
+        for (let i = bucket.length - 1; i >= 0; i--) {
+          if (bucket[i]!.match.length === 0) {
+            return { kind: 'hit', bucket };
+          }
+        }
       }
       for (let i = bucket.length - 1; i >= 0; i--) {
-        if (bucket[i]!.type !== 'Ruleset') {
+        if (bucket[i]!.match.length === 0 && bucket[i]!.value.type !== 'Ruleset') {
           return { kind: 'hit', bucket };
         }
       }
