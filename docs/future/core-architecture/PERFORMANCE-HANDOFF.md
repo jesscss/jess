@@ -2141,6 +2141,25 @@ Follow-up default registryless callable lookup:
   ratio `-1.62%`, wins `29/40`, `t=-1.47`; `media.less` reported mean ratio
   `2.58%`, wins `19/40`, `t=0.41` and remains neutral/noisy.
 
+Follow-up string-key legacy branch deletion:
+
+- string-key `Rules.find('mixin', string, ...)` now always uses the
+  registryless/frame/direct-crawl path. The temporary `JESS_LEGACY_MIXIN_LOOKUP`
+  opt-out now only affects the array/namespace branch while that path is
+  staged for deletion;
+- focused default-path behavior and lint still passed:
+  `pnpm exec eslint packages/core/src/tree/rules.ts`, and
+  `pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts --run`
+  (`304` tests, `8` skipped);
+- paired `JESS_LEGACY_MIXIN_LOOKUP` comparisons are now partly measuring only
+  the remaining array/namespace opt-out, so treat them as regression checks
+  rather than pure string-key before/after evidence. `scope-lookup-stress.less`
+  render with `--warmup 10 --pairs 100` still won cleanly: baseline median
+  `55.85ms`, candidate median `54.03ms`, mean ratio `-3.14%`, wins `84/100`,
+  `t=-8.89`. `mixins-guards.less` was mixed/noisy: `--warmup 10 --pairs 100
+  --batch-size 5` reported baseline median `67.37ms`, candidate median
+  `67.92ms`, mean ratio `1.32%`, wins `46/100`, `t=1.20`.
+
 Next architecture theories to test:
 
 1. Promote exact child-surface capability to the `ScopeFrame` once the frame
@@ -2166,9 +2185,9 @@ Next architecture theories to test:
    exact lookups. The wrapper allocation has been removed and the inlined cache
    is now default inside the registryless prototype. Registryless callable
    lookup is now also the default runtime path. The next refinement should
-   delete legacy-only branches one unsupported/cold case at a time, starting
-   with the string-key `find(...)` branch that now immediately goes through
-   registryless.
+   delete the remaining array/namespace legacy opt-out by proving the direct
+   namespace path has enough parity coverage, then remove
+   `JESS_LEGACY_MIXIN_LOOKUP` entirely.
 4. Prefer negative capability over positive result caching. The broad fixture
    regressed because the candidate path repeatedly proved "nothing in this
    child surface" after the fact. A cheap carried "cannot contain simple exact

@@ -2102,14 +2102,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): ReturnType<Registries.DeclarationRegistry['find']> | MixinEntry[] | ReturnType<Registries.FunctionRegistry['find']> | undefined {
     if (type === 'mixin' && typeof keys === 'string') {
       const includeRulesets = filterType !== 'Mixin';
-      const registryless = process.env.JESS_LEGACY_MIXIN_LOOKUP !== '1';
-      const cacheKey = registryless
-        ? this.getRegistrylessMixinCacheKey(keys, filterType, options)
-        : undefined;
+      const cacheKey = this.getRegistrylessMixinCacheKey(keys, filterType, options);
       if (cacheKey !== undefined && this.hasRegistrylessMixinCacheResult(cacheKey)) {
         return this.getRegistrylessMixinCacheResult(cacheKey);
       }
-      const callableFrame = registryless ? this.getScopeFrame() : this.scopeFrame;
+      const callableFrame = this.getScopeFrame();
       if (callableFrame && !options.hasTarget && !options.local) {
         const frameHit = lookupScopeFrameCallable(callableFrame, keys, {
           includeRulesets,
@@ -2117,7 +2114,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         });
         if (frameHit.kind === 'miss') {
           const pathKeys = splitStaticCallablePathKey(keys);
-          if (registryless && pathKeys) {
+          if (pathKeys) {
             const result = this.find('mixin', pathKeys, filterType, options) as MixinEntry[] | undefined;
             this.setRegistrylessMixinCacheResult(cacheKey, result);
             return result;
@@ -2140,7 +2137,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             return results;
           }
         }
-        if (registryless && frameHit.kind === 'uncovered') {
+        if (frameHit.kind === 'uncovered') {
           const direct = this.findMixinsFast(keys, {
             context: options.context,
             hasTarget: options.hasTarget,
@@ -2196,63 +2193,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
       }
-      if (registryless) {
-        const pathKeys = splitStaticCallablePathKey(keys);
-        if (pathKeys) {
-          const result = this.find('mixin', pathKeys, filterType, options) as MixinEntry[] | undefined;
-          this.setRegistrylessMixinCacheResult(cacheKey, result);
-          return result;
-        }
-        const direct = this.findMixinsFast(keys, {
-          context: options.context,
-          hasTarget: options.hasTarget,
-          local: options.local,
-          includeRulesets,
-          searchParents: options.searchParents
-        });
-        const result = direct.length > 0 ? direct : undefined;
+      const pathKeys = splitStaticCallablePathKey(keys);
+      if (pathKeys) {
+        const result = this.find('mixin', pathKeys, filterType, options) as MixinEntry[] | undefined;
         this.setRegistrylessMixinCacheResult(cacheKey, result);
         return result;
       }
-      const fast = this.findMixinsFast(keys, {
+      const direct = this.findMixinsFast(keys, {
         context: options.context,
-        hasTarget: options.hasTarget,
-        local: options.local,
-        includeRulesets
-      });
-      if (!includeRulesets) {
-        return fast.length > 0 ? fast : undefined;
-      }
-      const indexed = this.findIndexedCallableStartMatches(keys, {
         hasTarget: options.hasTarget,
         local: options.local,
         includeRulesets,
         searchParents: options.searchParents
       });
-      if (fast.length === 0) {
-        return indexed.length > 0 ? indexed : undefined;
-      }
-      if (indexed.length === 0) {
-        return fast;
-      }
-      const combined = new Array<MixinEntry>();
-      for (let i = 0; i < fast.length; i++) {
-        combined.push(fast[i]!);
-      }
-      for (let i = 0; i < indexed.length; i++) {
-        const node = indexed[i]!;
-        let found = false;
-        for (let existing = 0; existing < combined.length; existing++) {
-          if (combined[existing] === node) {
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
-          combined.push(node);
-        }
-      }
-      return combined;
+      const result = direct.length > 0 ? direct : undefined;
+      this.setRegistrylessMixinCacheResult(cacheKey, result);
+      return result;
     } else if (type === 'mixin' && isArray(keys) && keys.length > 1) {
       const registryless = process.env.JESS_LEGACY_MIXIN_LOOKUP !== '1';
       const cacheKey = registryless

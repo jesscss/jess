@@ -856,6 +856,20 @@ the gate passed.
   `import-reference.less` (`wins 29/40`, `t=-1.47`), and remains neutral/noisy
   on `media.less` (`wins 19/40`, `t=0.41`). Verdict: keep and continue deleting
   legacy-only branches behind the temporary opt-out.
+- String-key legacy branch deletion: accepted as architecture cleanup toward
+  permanent registryless callable lookup, not a standalone speed claim. File:
+  `packages/core/src/tree/rules.ts`. New traversal: none. New
+  node/materialization: none. Helper/API surface: deleted the string-key-only
+  legacy branch that combined `findMixinsFast(...)` with
+  `findIndexedCallableStartMatches(...)`; string-key mixin lookup now always
+  uses the registryless frame/direct-crawl path. The temporary
+  `JESS_LEGACY_MIXIN_LOOKUP=1` opt-out remains only for the array/namespace
+  branch. Metadata mutations: none. Routine error/control: none. Evidence:
+  focused eslint passed; focused default-path behavior passed (`304` tests, `8`
+  skipped); `@jesscss/core` build passed. The stress fixture remained a clean
+  win (`wins 84/100`, `t=-8.89`). `mixins-guards.less` was mixed/noisy after
+  this deletion (`wins 46/100`, `t=1.20`), so this is kept for branch deletion
+  and migration direction, not as an incremental speed win.
 - Frame exact-callable miss coverage pass: accepted as a predicate-precision
   cleanup for registryless lookup, not as a standalone speed win. Files:
   `packages/core/src/tree/rules.ts` and
