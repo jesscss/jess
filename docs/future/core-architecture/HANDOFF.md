@@ -1980,3 +1980,27 @@ the gate passed.
   pre-existing direct `eval` warning in `js-expr.ts`. This is not a speed
   claim. Remaining queue: Call evaluated-argument/content emission, dynamic
   callable output, and optional fallback syntax still need structural cuts.
+- Sequence custom raw writer pass: accepted as a narrow source-syntax child
+  transport cut plus a rejected broad cut. New traversal: none added; the
+  custom-property branch kept its existing child loop but changed from
+  `for...of` iterator syntax to an indexed loop, and emits child raw syntax
+  through `writeSyntax(...)` instead of public `toString(...)`. New
+  node/materialization: none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, frozen/source/parent mutation, or placement state was
+  added. Render path: unchanged for non-custom and evaluated sequence output.
+  The attempted general `Sequence` source-child swap to `writeSyntax(...)` was
+  rejected because focused tests proved it dropped consumed source whitespace:
+  `emits consumed trivia map whitespace between source-backed sequence nodes`
+  and `emits source trivia between sequence nodes while rendering through
+  context` both produced `10 20` instead of `10  20`. That means boundary
+  trivia is still a real dependency of `Node.toString(...)` in general sequence
+  source emission, and any future cut must carry boundary trivia explicitly
+  before deleting those public string calls. Helper/API surface: none added.
+  Metadata mutations: none. Evidence: pre-pass hotpath sanity at commit
+  `4d34aca` reported `functions` `10.42ms` usable, `import-reference`
+  `16.40ms` usable, `mixins-guards` `14.64ms` usable, `extend-chaining`
+  `4.27ms` noisy, and `media` `4.50ms` unstable. Focused
+  sequence/list/declaration/render-buffer tests passed after narrowing (`133`
+  tests), and `pnpm --filter @jesscss/core build` passed with only the
+  pre-existing direct `eval` warning in `js-expr.ts`. This is not a speed
+  claim.

@@ -158,8 +158,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
   private writeSequenceSyntax(value: Node[], printOptions: FinalPrintOptions): void {
     if (printOptions.inCustom) {
-      for (const node of value) {
-        node.toString(printOptions);
+      for (let i = 0; i < value.length; i++) {
+        value[i]!.writeSyntax(printOptions);
       }
       return;
     }

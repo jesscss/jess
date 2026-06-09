@@ -66,8 +66,9 @@ first measured offenders after the selector pass.
 - [ ] `PseudoSelector`: direct writer hook and child writer exist; generated
   selector-list normalization still uses a local capture/restore and remains
   queued.
-- [ ] `Sequence`: direct writer hook exists; render and child-boundary emission
-  still have `toString(...)`/capture transport to cut.
+- [ ] `Sequence`: direct writer hook exists and custom-property raw source
+  children use `writeSyntax(...)`; general child-boundary emission still uses
+  `toString(...)` until boundary trivia is carried explicitly.
 - [x] `Quoted`: direct quoted/interpolated emission; isolate escaping and
   compare string path.
 - [ ] `List`: direct item writer exists; render still captures string output
@@ -100,7 +101,9 @@ Current hard leftovers after the broad hook sweep:
 - `Sequence` and `List` have writer hooks, but are not complete until resolved
   render paths stop capturing strings before writing buffers and child emission
   stops routing through public `toString(...)` where direct hooks preserve
-  semantics.
+  semantics. `Sequence` general source children cannot blindly use
+  `writeSyntax(...)` yet because boundary trivia currently lives in
+  `Node.toString(...)`; a focused test caught the dropped source whitespace.
 - `PseudoSelector` has a writer hook and child writer, but generated
   selector-list normalization still uses capture/restore. The same pass fixed
   generated `:is(...)` required-key metadata to match single-selector-list
@@ -213,7 +216,7 @@ Current hard leftovers after the broad hook sweep:
 | Selector | `packages/core/src/tree/selector.ts` | `Node` | writeSyntax complete | Selector-family writer hook exists; broader metadata and keyset invalidation audit remains. |
 | SelectorCapture | `packages/core/src/tree/selector-capture.ts` | `Node` | child/buffer staging complete | Capture syntax writes directly through child `writeSyntax(...)`, and resolved buffer render delegates to the child buffer renderer instead of rendering to string then writing that string. Audit whether capture node should exist after render rewrite. |
 | SelectorList | `packages/core/src/tree/selector-list.ts` | `Selector` | writeSyntax complete | List item emission uses `writeSyntax`; flattening, temporary arrays, and valueOf joins remain queued. |
-| Sequence | `packages/core/src/tree/sequence.ts` | `Node` | partial | Direct sequence writer exists; render still captures and child `toString` transport remains. |
+| Sequence | `packages/core/src/tree/sequence.ts` | `Node` | partial | Direct sequence writer exists; custom-property raw source children use `writeSyntax(...)`, but general child `toString` transport remains until boundary-trivia emission is made explicit. Render still captures. |
 | SimpleSelector | `packages/core/src/tree/selector-simple.ts` | `Selector` | queued | Audit base class necessity and branches. |
 | StyleImport | `packages/core/src/tree/import-style.ts` | `Node` | queued | High priority: first-use placement copies and derived rules surfaces. |
 | Url | `packages/core/src/tree/url.ts` | `Node` | writeSyntax hook complete | URL syntax writes directly; normalization capture remains. |
