@@ -1958,3 +1958,25 @@ the gate passed.
   pre-existing direct `eval` warning in `js-expr.ts`. This is not a speed
   claim. Remaining queue: generated selector-list normalization still uses
   mark/replaceSince/getSince/restore and needs a separate structural cut.
+- Call source writer pass: accepted as a direct source-syntax child transport
+  cut, not as completion of callable eval/render output. New traversal: none;
+  no loop, recursion, parent/source walk, side-map lookup, generator, object
+  scan, or array helper was added. Existing argument/content emission remains
+  exactly the same source-structure write, just routed through child
+  `writeSyntax(...)` instead of public string APIs. New node/materialization:
+  none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`,
+  frozen/source/parent mutation, or placement state was added. Render path:
+  unchanged for evaluated call output; `renderPlainFunctionCall(...)`,
+  `serializeRenderedArgs(...)`, and dynamic callable output paths remain queued
+  because they still own evaluated-argument/content capture/string transport.
+  Helper/API surface: one node-local `writeSyntax(...)` override added to
+  replace the former public `toTrimmedString(...)` implementation body; no
+  exported helper or cross-node API was added. Metadata mutations: none.
+  Evidence: pre-pass hotpath sanity at commit `a1ad158b` reported `functions`
+  `10.15ms` usable, `import-reference` `15.63ms` usable, `mixins-guards`
+  `14.03ms` usable, `extend-chaining` `4.17ms` usable, and `media`
+  `4.25ms` unstable. Focused call/render-buffer/list/sequence tests passed
+  (`150` tests), and `pnpm --filter @jesscss/core build` passed with only the
+  pre-existing direct `eval` warning in `js-expr.ts`. This is not a speed
+  claim. Remaining queue: Call evaluated-argument/content emission, dynamic
+  callable output, and optional fallback syntax still need structural cuts.

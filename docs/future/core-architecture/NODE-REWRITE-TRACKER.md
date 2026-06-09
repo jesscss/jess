@@ -118,8 +118,9 @@ Current hard leftovers after the broad hook sweep:
 - [ ] `InterpolatedSelector`: direct selector writer and kind flags.
 - [x] `Reference`: direct unresolved reference writer; keep eval/render result
   emission out of public string APIs.
-- [ ] `Call`: direct fallback call writer; split callable output value
-  selection from emission.
+- [ ] `Call`: direct source syntax writer exists; split callable output value
+  selection and evaluated-argument/content emission from capture/string
+  transport.
 - [x] `Func`: direct function signature/body writer, including name/params, if
   public syntax remains necessary.
 - [ ] `Mixin`: direct mixin syntax/guard writer; audit guard/default/body copy
@@ -165,7 +166,7 @@ Current hard leftovers after the broad hook sweep:
 | BasicSelector | `packages/core/src/tree/selector-basic.ts` | `SimpleSelector` | writeSyntax complete | Direct source spelling emits authored `value`; `valueOf()` remains normalized key text, and standalone eval now carries the existing selector-bit library from context. |
 | Block | `packages/core/src/tree/block.ts` | `Node` | writeSyntax hook complete | Bracket emission writes directly; render still captures for string/buffer return. |
 | Bool | `packages/core/src/tree/bool.ts` | `Node` | writeSyntax hook complete | Scalar writer complete. |
-| Call | `packages/core/src/tree/call.ts` | `Node` | queued | High priority: callable output, async path, helper ladders, repeated eval. |
+| Call | `packages/core/src/tree/call.ts` | `Node` | partial | Source syntax writer exists and public call source stringification uses child `writeSyntax(...)`; high priority remains for callable output, evaluated arg/content capture, async path, helper ladders, and repeated eval. |
 | Collection | `packages/core/src/tree/collection.ts` | `Rules` | queued | Audit wrapper necessity after `Rules`. |
 | Color | `packages/core/src/tree/color.ts` | `Node` | writeSyntax hook complete | Color emission writes directly; conversion/string-format internals remain. |
 | Combinator | `packages/core/src/tree/combinator.ts` | `Selector` | writeSyntax hook complete | Scalar selector writer avoids selector base punt. |

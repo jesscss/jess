@@ -4,7 +4,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { cast } from './util/cast.js';
 import { callWithContext, getRawArgsPlacement, setRawArgsPlacement } from '../define-function.js';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Rules } from './rules.js';
@@ -877,16 +877,22 @@ export class Call extends Node<CallValue, CallOptions> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    const silentFail = this._options?.silentFail;
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    this.writeSyntax(options);
+    return w.getSince(mark);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    const silentFail = this._options?.silentFail;
+    const w = options.writer;
     const { name, contentNode } = this.value;
     const args = this.value.args;
     if (typeof name === 'string') {
       w.add(name, this);
     } else {
-      name.toString(options);
+      name.writeSyntax(options);
     }
     if (silentFail) {
       w.add('?');
@@ -894,7 +900,7 @@ export class Call extends Node<CallValue, CallOptions> {
     w.add('(');
     if (args) {
       const argsMark = w.mark();
-      args.toTrimmedString(options);
+      args.writeSyntax(options);
       w.trimHorizontalStartSince(argsMark);
       w.trimHorizontalEndSince(argsMark);
     }
@@ -904,9 +910,8 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     if (contentNode) {
       w.add(': ');
-      contentNode.toString(options);
+      contentNode.writeSyntax(options);
     }
-    return w.getSince(mark);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
