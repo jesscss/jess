@@ -923,6 +923,26 @@ the gate passed.
   existing shape: `mixins-guards.less` neutral (`wins 31/60`, `t=-0.64`) and
   `scope-lookup-stress.less` positive (`wins 78/100`, `t=-6.09`). This is
   dispatch parity cleanup, not a standalone speed claim.
+- Obsolete direct mixin env prototype deletion: accepted as removing an old
+  duplicate callable lookup experiment now that registryless callable lookup is
+  the default. Files: `packages/core/src/tree/reference.ts` and
+  `packages/core/src/tree/rules.ts`. New traversal: none; deleted the
+  `JESS_DIRECT_MIXIN_LOOKUP` branch from reference lookup, deleted
+  `findMixinsDirectTree(...)`, deleted `directCallableLookupCache`, and deleted
+  the old direct callable cache-key helper. New node/materialization: none.
+  Render path: unchanged; callable references now go straight to the permanent
+  `Rules.find('mixin', ...)` path. Helper/API surface: net deletion. Because
+  `Rules` is exported by `@jesscss/core`, `findMixinsDirect(...)` remains as a
+  compatibility wrapper over `Rules.find('mixin', string, ...)` instead of
+  being removed from the public class type. Metadata mutations: deleted the
+  stale direct-callable cache invalidation in `resetDerivedState(...)` and
+  `registerNode(...)`. Routine error/control: no new throw/catch/Error path.
+  Evidence: `rg` found no runtime references to `JESS_DIRECT_MIXIN_LOOKUP`,
+  `findMixinsDirectTree(...)`, `directCallableLookupCache`, or the deleted
+  cache-key helper; focused eslint passed; focused default-path behavior passed
+  (`306` tests, `8` skipped); `@jesscss/core` build passed. No benchmark claim:
+  this removes inactive env-gated machinery while preserving the exported
+  method shape.
 - Frame exact-callable miss coverage pass: accepted as a predicate-precision
   cleanup for registryless lookup, not as a standalone speed win. Files:
   `packages/core/src/tree/rules.ts` and

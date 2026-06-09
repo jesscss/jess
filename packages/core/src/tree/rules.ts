@@ -526,7 +526,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   mixinsByName: Map<string, MixinEntry[]> | undefined;
   directCallablesByName: Map<string, DirectCallableEntry[]> | undefined;
-  directCallableLookupCache: Map<string, MixinEntry[]> | undefined;
   directChildRuleEntries: Array<{ node: Rules; rulesVisibility?: RulesOptions['rulesVisibility'] }> | null | undefined;
   hasDirectChildRuleSurface = false;
   hasExactCallableChildSurface = false;
@@ -644,7 +643,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.varsByName = undefined;
     this.mixinsByName = undefined;
     this.directCallablesByName = undefined;
-    this.directCallableLookupCache = undefined;
     this.directChildRuleEntries = undefined;
     this.hasDirectChildRuleSurface = false;
     this.hasExactCallableChildSurface = false;
@@ -1085,118 +1083,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     });
   }
 
-  private getDirectCallableCacheKey(
-    key: string,
-    options?: {
-      hasTarget?: boolean;
-      includeRulesets?: boolean;
-      local?: boolean;
-      searchParents?: boolean;
-    }
-  ): string {
-    return [
-      key,
-      options?.includeRulesets === false ? 'r0' : 'r1',
-      options?.hasTarget ? 't1' : 't0',
-      options?.local ? 'l1' : 'l0',
-      options?.searchParents === false ? 'p0' : 'p1'
-    ].join('\u001f');
-  }
-
-  private findMixinsDirectTree(
-    key: string,
-    options?: {
-      context?: Context;
-      hasTarget?: boolean;
-      local?: boolean;
-      includeRulesets?: boolean;
-      searchParents?: boolean;
-    }
-  ): MixinEntry[] {
-    const cacheKey = this.getDirectCallableCacheKey(key, options);
-    const cached = this.directCallableLookupCache?.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    const searchSurface = (
-      scope: Rules,
-      localContext: boolean | undefined,
-      visited: Set<Rules>
-    ): MixinEntry[] => {
-      if (visited.has(scope)) {
-        return [];
-      }
-      visited.add(scope);
-
-      const results: MixinEntry[] = [];
-      const entries = scope.getDirectCallableExactBucket(key);
-      if (entries?.length) {
-        for (let i = entries.length - 1; i >= 0; i--) {
-          const entry = entries[i]!;
-          if (!options?.includeRulesets && isNode(entry, N.Ruleset)) {
-            continue;
-          }
-          results.push(entry);
-        }
-      }
-
-      const childEntries = scope.collectDirectChildRulesEntries();
-      if (!childEntries?.length) {
-        return results;
-      }
-
-      for (let i = childEntries.length - 1; i >= 0; i--) {
-        const entry = childEntries[i]!;
-        if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
-          continue;
-        }
-        if (options?.context?.rulesContext === scope && entry.node.options.forward) {
-          continue;
-        }
-        if (localContext && entry.node.options.local) {
-          continue;
-        }
-
-        const nested = searchSurface(
-          entry.node,
-          localContext || Boolean(entry.node.options.local),
-          visited
-        );
-        for (let nestedIndex = 0; nestedIndex < nested.length; nestedIndex++) {
-          results.push(nested[nestedIndex]!);
-        }
-      }
-
-      return results;
-    };
-
-    const results: MixinEntry[] = [];
-    let cursor: Node | undefined = this;
-    let first = true;
-    while (cursor) {
-      if (isNode(cursor, N.Rules)) {
-        const scope = cursor as Rules;
-        if (!first && Registries.isNonClassicImportBoundary(scope)) {
-          break;
-        }
-        first = false;
-        const surfaceResults = searchSurface(scope, options?.local, new Set<Rules>());
-        for (let resultIndex = 0; resultIndex < surfaceResults.length; resultIndex++) {
-          results.push(surfaceResults[resultIndex]!);
-        }
-      }
-      if (options?.searchParents === false) {
-        break;
-      }
-      cursor = cursor.parent;
-    }
-
-    this.directCallableLookupCache ??= new Map();
-    this.directCallableLookupCache.set(cacheKey, results);
-    return results;
-  }
-
   findMixinsDirect(
     key: string,
     options?: {
@@ -1207,80 +1093,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       searchParents?: boolean;
     }
   ): MixinEntry[] {
-    const results: MixinEntry[] = [];
-    const visited = new Set<Rules>();
-
-    const collectSurface = (
-      scope: Rules,
-      localContext: boolean | undefined
-    ): void => {
-      if (visited.has(scope)) {
-        return;
-      }
-      visited.add(scope);
-
-      if (scope.rulesIndexed < scope.value.length) {
-        scope._indexRules();
-      }
-      scope.mixinsByName ??= new Map();
-
-      const candidates = scope.mixinsByName.get(key);
-      if (candidates) {
-        for (let i = candidates.length - 1; i >= 0; i--) {
-          const candidate = candidates[i]!;
-          if (!options?.includeRulesets && isNode(candidate, N.Ruleset)) {
-            continue;
-          }
-          results.push(candidate);
-        }
-      }
-
-      const childEntries = scope._rulesSet as Array<{
-        node: Rules;
-        rulesVisibility?: RulesOptions['rulesVisibility'];
-      }> | undefined;
-      if (!childEntries?.length) {
-        return;
-      }
-
-      for (let i = childEntries.length - 1; i >= 0; i--) {
-        const entry = childEntries[i]!;
-        if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
-          continue;
-        }
-        if (entry.node.options?.forward) {
-          continue;
-        }
-        if (localContext && entry.node.options?.local) {
-          continue;
-        }
-
-        collectSurface(
-          entry.node,
-          localContext || Boolean(entry.node.options?.local)
-        );
-      }
-    };
-
-    let cursor: Node | undefined = this;
-    let first = true;
-    while (cursor) {
-      if (isNode(cursor, N.Rules)) {
-        const scope = cursor as Rules;
-        if (!first && Registries.isNonClassicImportBoundary(scope)) {
-          break;
-        }
-        first = false;
-        visited.clear();
-        collectSurface(scope, options?.local);
-      }
-      cursor = cursor.parent;
-      if (options?.searchParents === false) {
-        break;
-      }
-    }
-
-    return results;
+    return (
+      this.find(
+        'mixin',
+        key,
+        options?.includeRulesets === false ? 'Mixin' : undefined,
+        options
+      ) as MixinEntry[] | undefined
+    ) ?? [];
   }
 
   private getRegistrylessMixinCacheKey(
@@ -2810,7 +2630,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   registerNode(node: Node, options?: Record<string, any>, context?: Context) {
     this.directCallablesByName = undefined;
-    this.directCallableLookupCache = undefined;
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
     this.registrylessMixinLookupCache = undefined;

@@ -928,27 +928,6 @@ function lookupCallableReference(
   filterType?: 'Mixin'
 ): RulesLookupResult {
   const callableKey = Array.isArray(valueKey) ? valueKey : getLookupKeyString(valueKey);
-  if (
-    process.env.JESS_DIRECT_MIXIN_LOOKUP === '1'
-    && typeof callableKey === 'string'
-  ) {
-    const callable = targetRules.findMixinsDirect(callableKey, {
-      context: env.context,
-      hasTarget: env.hasTarget,
-      local: opts.local,
-      includeRulesets: filterType !== 'Mixin',
-      searchParents: opts.searchParents
-    });
-    if (callable.length > 0) {
-      return callable;
-    }
-    if (filterType === 'Mixin') {
-      if (env.inCall) {
-        return targetRules.find('function', getLookupKeyString(valueKey), undefined, opts);
-      }
-      return undefined;
-    }
-  }
   const callable = targetRules.find('mixin', callableKey, filterType, opts);
   if (callable) {
     return callable;
