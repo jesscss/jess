@@ -8,7 +8,13 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
-import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
+import {
+  isRenderBuffer,
+  prepareBufferPrintState,
+  writePreparedRenderText,
+  writeRenderText,
+  type RenderBuffer
+} from './util/render-buffer.js';
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
 import { createTriviaMap, emitCommentTriviaAfterNode } from './util/trivia.js';
@@ -693,9 +699,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       runtimeHoist?: boolean,
       runtimeFrames?: (Ruleset | AtRule)[]
     ): string => {
-      const printState = isRenderBuffer(bufferOrOptions)
-        ? prepareBufferPrintState(context, options)
+      const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+      const printState = buffer
+        ? prepareBufferPrintState(context, options, buffer)
         : prepareRenderPrintState(context, bufferOrOptions);
+      const mark = buffer ? printState.writer.mark() : 0;
       const priorHeaderNode = printState.atRuleHeaderNode;
       const priorHeaderPrelude = printState.atRuleHeaderPrelude;
       const priorBodyNode = printState.atRuleBodyNode;
@@ -722,8 +730,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
       try {
         const rendered = serializeRulesContainer(node, printState);
-        return isRenderBuffer(bufferOrOptions)
-          ? writeRenderText(bufferOrOptions, rendered)
+        return buffer
+          ? writePreparedRenderText(buffer, printState, mark, rendered)
           : rendered;
       } finally {
         printState.atRuleHeaderNode = priorHeaderNode;

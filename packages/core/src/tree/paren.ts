@@ -11,6 +11,7 @@ import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
+  writePreparedRenderText,
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
@@ -218,11 +219,12 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   ): string {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
-      ? prepareBufferPrintState(context, options)
+      ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
+    const mark = buffer ? prepared.writer.mark() : 0;
     const out = renderListValueSyntax(value.value, prepared, ',');
     return buffer
-      ? writeRenderText(buffer, out)
+      ? writePreparedRenderText(buffer, prepared, mark, out)
       : out;
   }
 

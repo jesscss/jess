@@ -12,7 +12,7 @@ import {
   isRenderBuffer,
   prepareBufferPrintState,
   type RenderBuffer,
-  writeRenderText
+  writePreparedRenderText
 } from './util/render-buffer.js';
 
 export type AttributeSelectorValue = {
@@ -204,12 +204,12 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     const value = this.resolveAttributeValue(context);
     const finalize = (resolvedName: string | Node, resolvedValue: Node | undefined): string => {
       const prepared = buffer
-        ? prepareBufferPrintState(context, options)
+        ? prepareBufferPrintState(context, options, buffer)
         : prepareRenderPrintState(context, printOptions);
       const mark = prepared.writer.mark();
       this.renderAttributeParts(resolvedName, resolvedValue, prepared);
       const out = prepared.writer.getSince(mark);
-      return buffer ? writeRenderText(buffer, out) : out;
+      return buffer ? writePreparedRenderText(buffer, prepared, mark, out) : out;
     };
     if (isThenable(name)) {
       return (name as Promise<string | Node>).then((resolvedName) => {

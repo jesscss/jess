@@ -1665,6 +1665,30 @@ prepare/write boundaries in `Node`, `List`, `Sequence`, `Declaration`,
 changed caller-visible `buffer.parts` chunk shape, so it was narrowed before
 keeping the patch.
 
+### Output Writer / RenderBuffer Finishing Leash
+
+Date: 2026-06-09.
+
+Change: extended the shared flat writer finish path to
+`AttributeSelector`, escaped-list `Paren`, `Interpolated`, plain `Call`,
+evaluated `Ruleset`, and evaluated/body `AtRule` container serialization.
+`Rules.writeRulesRenderOutput(...)` was tried and rejected because its writer
+output and returned fragment string intentionally differ around body
+separators/newlines.
+
+Hotpath status:
+
+- `pnpm run measure:less:hotpath -- --stable` reported:
+  `functions` median `9.89ms` usable, `import-reference` median `16.28ms`
+  usable, `mixins-guards` median `14.77ms` usable,
+  `extend-chaining` median `4.32ms` usable, and `media` median `4.36ms`
+  unstable.
+
+Interpretation: status only, not speed proof. The code-path proof is more
+node-local prepare/write pairs using the already introduced shared flat writer
+finish path. The remaining `Rules` bridge needs a staging-separation pass,
+not a blind shared-writer conversion.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

@@ -12,7 +12,8 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
-  writeRenderText,
+  writePreparedRenderText,
+  writePreparedRenderTextResult,
   type RenderBuffer
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
@@ -186,13 +187,13 @@ export class Interpolated<
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
-      ? prepareBufferPrintState(context, options)
+      ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
+    const mark = buffer ? prepared.writer.mark() : 0;
     const out = this.renderEvaluatedReplacementText(context, prepared);
-    const finish = (rendered: string): string => buffer ? writeRenderText(buffer, rendered) : rendered;
-    return isThenable(out)
-      ? (out as Promise<string>).then(finish)
-      : finish(out as string);
+    return buffer
+      ? writePreparedRenderTextResult(buffer, prepared, mark, out)
+      : out;
   }
 
   /**

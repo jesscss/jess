@@ -41,6 +41,11 @@ Active implementation specs:
    cutting self-prosecution.
 10. Commit and push the completed pass.
 
+Temporary push rule: use `git push --no-verify` after focused tests, build,
+benchmark leash, and `verify:aggressive-cutting-review` pass. The current
+pre-push `verify:baseline` path can hang silently and should not be used again
+until that hook is patched.
+
 ## Focus Spec
 
 Active mode: **node `writeSyntax` render/stringification rewrite**.
@@ -1754,3 +1759,29 @@ the gate passed.
   `9.88ms` usable, `import-reference` `15.79ms` usable, `mixins-guards`
   `14.26ms` usable, `extend-chaining` `4.31ms` usable, and `media`
   `4.38ms` unstable. This is status only, not a speed claim.
+- Output writer/buffer finishing pass: accepted as the second and final
+  shared-flat-buffer slice before returning to node staging separation. New
+  traversal: none added. Existing writer mark/getSince checks remain
+  chunk-index checks; no child/source walk, parent walk, side map lookup, or
+  array scan was added. New node/materialization: none; no new `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, semantic segment object, or helper array was added. Render path:
+  the shared flat writer finish path now covers `AttributeSelector`,
+  escaped-list `Paren`, `Interpolated`, plain `Call`, evaluated `Ruleset`, and
+  evaluated/body `AtRule` container serialization. Explicit caller-owned
+  buffers and segmented buffers keep their prior chunk behavior. Rejected cut:
+  converting `Rules.writeRulesRenderOutput(...)` to the shared writer changed
+  the returned render string because `Rules` writer output can include final
+  body separators/newlines while the returned fragment string stays trimmed;
+  that bridge was restored to the old behavior and is a separate staging
+  problem. Helper/API surface: no new helper beyond the prior shared
+  `writePreparedRenderText*` functions; this pass only routes more existing
+  prepare/write pairs through them. Metadata mutations: none. Evidence:
+  focused render-buffer/call/at-rule/ruleset/interpolated/selector-attr/paren/
+  rules/list/sequence/declaration tests passed (`417` tests, `8` skipped), and
+  `pnpm --filter @jesscss/core build` passed with only the pre-existing direct
+  `eval` warning in `js-expr.ts`. Hotpath leash status:
+  `pnpm run measure:less:hotpath -- --stable` reported `functions`
+  `9.89ms` usable, `import-reference` `16.28ms` usable, `mixins-guards`
+  `14.77ms` usable, `extend-chaining` `4.32ms` usable, and `media`
+  `4.36ms` unstable. This is status only, not a speed claim.

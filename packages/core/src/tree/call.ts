@@ -17,6 +17,7 @@ import {
   isRenderBuffer,
   prepareBufferPrintState,
   type RenderBuffer,
+  writePreparedRenderTextResult,
   writeRenderTextResult
 } from './util/render-buffer.js';
 import { emitCommentTriviaBetweenNodes } from './util/trivia.js';
@@ -913,23 +914,19 @@ export class Call extends Node<CallValue, CallOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       if (this.evaluated) {
-        const prepared = prepareBufferPrintState(context, options);
-        return writeRenderTextResult(
-          bufferOrOptions,
-          this.renderPlainFunctionCall(this, context, prepared)
-        );
+        const prepared = prepareBufferPrintState(context, options, bufferOrOptions);
+        const mark = prepared.writer.mark();
+        return writePreparedRenderTextResult(bufferOrOptions, prepared, mark, this.renderPlainFunctionCall(this, context, prepared));
       }
       if (typeof this.value.name !== 'string') {
-        const prepared = prepareBufferPrintState(context, options);
+        const prepared = prepareBufferPrintState(context, options, bufferOrOptions);
         return this.renderDynamicFunctionOutput(context, prepared, bufferOrOptions, options);
       }
       // Plain CSS calls render args/content explicitly so async child failures
       // keep calc-frame cleanup instead of falling back to source text.
-      const prepared = prepareBufferPrintState(context, options);
-      return writeRenderTextResult(
-        bufferOrOptions,
-        this.renderPlainFunctionCall(this, context, prepared)
-      );
+      const prepared = prepareBufferPrintState(context, options, bufferOrOptions);
+      const mark = prepared.writer.mark();
+      return writePreparedRenderTextResult(bufferOrOptions, prepared, mark, this.renderPlainFunctionCall(this, context, prepared));
     }
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
     if (this.evaluated) {
