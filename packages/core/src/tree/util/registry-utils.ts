@@ -104,6 +104,8 @@ export type FindOptions = DeclarationFindOptions & {
   searchedRules?: Set<Rules>;
   /** Whether this lookup has an explicit target, e.g. #ns[@foo]. */
   hasTarget?: boolean;
+  /** For mixin-ruleset calls with args, namespace containers may be rulesets but terminal hits must be mixins. */
+  terminalMixinOnly?: boolean;
 };
 
 export abstract class Registry<

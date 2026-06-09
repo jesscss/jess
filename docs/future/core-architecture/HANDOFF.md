@@ -785,6 +785,29 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Mixin-ruleset arg-call terminal filter pass: accepted as terminal candidate
+  narrowing, not a speed claim. Files: `packages/core/src/tree/call.ts`,
+  `packages/core/src/tree/reference.ts`, `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/util/registry-utils.ts`, and
+  `packages/core/src/tree/__tests__/mixin.test.ts`. New traversal: none; the
+  existing direct crawl/cache paths run with a call-site hint that excludes
+  rulesets only as the terminal callable when a mixin-ruleset call has
+  arguments. Namespace containers still allow rulesets. New
+  node/materialization: one production shallow owned `Reference` surface is
+  created only when an evaluated mixin-ruleset call name has non-empty args and
+  lacks the hint; this carries an already-known call fact to lookup and avoids
+  mutating the canonical source reference. The `new Parser()` construction is
+  test-only coverage for parsed namespace syntax. Render path: unchanged; no
+  array/node result is built just to stringify. Helper/API surface: one private
+  `Call` helper and one internal lookup option; the cache key includes the
+  terminal-only bit so ordinary mixin-ruleset lookups do not share narrowed
+  misses. The `terminalHints` array and `try/finally` monkeypatch restore are
+  test-only instrumentation. The `[]` and `[ruleset]` returns stay inside the
+  existing `MixinEntry[]` lookup contract and replace terminal ruleset hits
+  with the existing miss shape when the terminal-only bit is set. Metadata
+  mutations: none. Routine error/control: no new production
+  throw/catch/Error path. Evidence: focused mixin, reference, import-style,
+  rules, and call tests passed (`468` tests, `9` skipped).
 - Legacy `MixinRegistry` body deletion: accepted as dead recursive registry
   search/indexing removal, not a speed claim. File:
   `packages/core/src/tree/util/registry-utils.ts`. New traversal: none; this

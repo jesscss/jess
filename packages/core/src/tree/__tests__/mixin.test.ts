@@ -3051,6 +3051,87 @@ describe('Mixin', () => {
       expect(css).toContain('guarded: with default;');
     });
 
+    it('mixin-ruleset calls with args mark terminal lookup mixin-only', async () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const terminalHints: boolean[] = [];
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        const [key, , options] = args;
+        if (key === '.parameterized') {
+          terminalHints.push(options?.terminalMixinOnly === true);
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          ruleset({
+            selector: el('.parameterized'),
+            rules: rules([decl({ name: 'color', value: any('ruleset') })])
+          }),
+          mixin({
+            name: any('.parameterized'),
+            params: list([any('color', { role: 'property' })]),
+            rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+          }),
+          ruleset({
+            selector: el('.a'),
+            rules: rules([
+              call({
+                name: ref({ key: '.parameterized' }, { type: 'mixin-ruleset' }),
+                args: list([any('red')])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+        expect(css).toBeString(`
+          .parameterized {
+            color: ruleset;
+          }
+          .a {
+            color: red;
+          }
+        `);
+        expect(terminalHints).toContain(true);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('mixin-ruleset calls with args still use rulesets as namespace containers', async () => {
+      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const parser = new Parser();
+      const tree = parser.parse(`
+        #theme {
+          .button {
+            color: ruleset;
+          }
+          .button(@color) {
+            color: @color;
+          }
+        }
+
+        .a {
+          #theme > .button(red);
+        }
+      `).tree;
+      context.root = tree;
+
+      const css = await renderNodeToString(tree, context, { context });
+      expect(css).toBeString(`
+        #theme {
+          .button {
+            color: ruleset;
+          }
+        }
+        .a {
+          color: red;
+        }
+      `);
+    });
+
     it('ScopeFrame live slots resolve param and @arguments via frame chain', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }

@@ -37,6 +37,27 @@ function createImportantFlag(): Any<'flag'> {
   return new Any<'flag'>('!important', { role: 'flag' });
 }
 
+function withMixinRulesetCallArgsHint(name: string | Node, args?: List<Node>): string | Node;
+function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<Node>): T | Reference;
+function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<Node>): T | Reference {
+  if (
+    args?.value.length
+    && isNode(name, N.Reference)
+    && name.options?.type === 'mixin-ruleset'
+    && name.options.mixinRulesetCallHasArgs !== true
+  ) {
+    return new Reference(
+      name.value,
+      {
+        ...name.options,
+        mixinRulesetCallHasArgs: true
+      },
+      name.location.length === 0 ? undefined : name.location
+    );
+  }
+  return name;
+}
+
 export type CallValue = {
   /**
    * Can be an identifier or something like a mixin or variable lookup
@@ -168,6 +189,7 @@ export class Call extends Node<CallValue, CallOptions> {
         name.location.length === 0 ? undefined : name.location
       );
     }
+    name = withMixinRulesetCallArgsHint(name, this.value.args);
     return {
       source: this,
       name,
@@ -309,6 +331,7 @@ export class Call extends Node<CallValue, CallOptions> {
     const ownOutput = !renderFailureWith;
     return this.runInCallFrame(context, {}, async () => {
       let evaluatedName: unknown = await name.eval(context);
+      evaluatedName = withMixinRulesetCallArgsHint(evaluatedName, state.args);
       if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
         evaluatedName = await evaluatedName.eval(context);
       }
@@ -657,6 +680,7 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     return this.runInCallFrame(context, {}, async () => {
       let evaluatedName: unknown = await name.eval(context);
+      evaluatedName = withMixinRulesetCallArgsHint(evaluatedName, state.args);
       if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
         evaluatedName = await evaluatedName.eval(context);
       }
@@ -686,6 +710,7 @@ export class Call extends Node<CallValue, CallOptions> {
       const { name } = state;
       if (typeof name !== 'string') {
         let evaluatedName: unknown = await name.eval(context);
+        evaluatedName = withMixinRulesetCallArgsHint(evaluatedName, state.args);
         if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
           evaluatedName = await evaluatedName.eval(context);
         }
@@ -1008,6 +1033,7 @@ export class Call extends Node<CallValue, CallOptions> {
       n = await name.eval(context);
     }
     // Resolve mixin reference only at call time (same as variable refs: evaluate when used, not when stored).
+    n = withMixinRulesetCallArgsHint(n, args);
     if (isNode(n, N.Reference) && n.options?.type === 'mixin-ruleset') {
       n = await n.eval(context);
     }

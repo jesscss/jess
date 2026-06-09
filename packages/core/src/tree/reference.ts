@@ -105,6 +105,8 @@ export type ReferenceOptions = {
   filter?: (node: Node) => boolean;
   role?: AnyRole;
   preserveRulesLike?: boolean;
+  /** Internal call-site hint: terminal mixin-ruleset lookup cannot use rulesets when args are present. */
+  mixinRulesetCallHasArgs?: boolean;
 };
 
 // `sourceNode` stays on the public shallow-owned surface for compatibility and
@@ -540,6 +542,7 @@ type RulesLookupAdapterEnv = {
   readMode: ReferenceOptions['readMode'];
   hasTarget: boolean;
   inCall: boolean;
+  mixinRulesetCallHasArgs: boolean;
   isInterpolatedVariable: boolean;
   filter: (n: Node) => boolean;
 };
@@ -743,6 +746,7 @@ function prepareReferenceLookup(args: {
       readMode: referenceNode.options.readMode,
       hasTarget,
       inCall: isNode(referenceNode.parent, N.Call),
+      mixinRulesetCallHasArgs: referenceNode.options.mixinRulesetCallHasArgs === true,
       isInterpolatedVariable,
       filter
     }
@@ -928,7 +932,10 @@ function lookupCallableReference(
   filterType?: 'Mixin'
 ): RulesLookupResult {
   const callableKey = Array.isArray(valueKey) ? valueKey : getLookupKeyString(valueKey);
-  const callable = targetRules.findMixin(callableKey, filterType, opts);
+  const lookupOptions = env.mixinRulesetCallHasArgs
+    ? { ...opts, terminalMixinOnly: true }
+    : opts;
+  const callable = targetRules.findMixin(callableKey, filterType, lookupOptions);
   if (callable) {
     return callable;
   }

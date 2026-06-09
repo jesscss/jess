@@ -1148,6 +1148,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       + REGISTRYLESS_MIXIN_CACHE_KEY_SEPARATOR
       + (filterType ?? '')
       + REGISTRYLESS_MIXIN_CACHE_KEY_SEPARATOR
+      + (options.terminalMixinOnly === true ? 't1' : 't0')
+      + REGISTRYLESS_MIXIN_CACHE_KEY_SEPARATOR
       + (options.searchParents === false ? 's0' : 's1');
   }
 
@@ -1403,7 +1405,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         context: options.context,
         hasTarget: options.hasTarget,
         local: options.local,
-        includeRulesets: restLength === 0 && filterType !== 'Mixin',
+        includeRulesets: restLength === 0 && filterType !== 'Mixin' && options.terminalMixinOnly !== true,
         searchParents
       });
 
@@ -1504,7 +1506,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         const remainderLength = path.length - consumed.length;
         if (remainderLength === 0) {
-          return [ruleset];
+          return options.terminalMixinOnly === true ? DEFINITE_MISS : [ruleset];
         }
         const resolved = remainderLength === 1
           ? (() => {
@@ -1513,11 +1515,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 context: options.context,
                 hasTarget: options.hasTarget,
                 local: options.local,
-                includeRulesets: true,
+                includeRulesets: options.terminalMixinOnly !== true,
                 searchParents: false
               });
               if (simpleCallableMatches.length > 0) {
                 return simpleCallableMatches;
+              }
+              if (options.terminalMixinOnly === true) {
+                return undefined;
               }
               const simpleCallableRulesets = ruleset.value.rules.findVisibleExactCallableRulesetPath([segment], {
                 hasTarget: options.hasTarget,
@@ -1573,7 +1578,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     for (const { ruleset, consumed } of prefixMatches) {
       const remainderLength = keys.length - consumed.length;
       if (remainderLength === 0) {
-        return [ruleset];
+        return options.terminalMixinOnly === true ? [] : [ruleset];
       }
       const resolved = ruleset.value.rules.find(
         'mixin',
@@ -1636,7 +1641,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     options: Registries.FindOptions = {}
   ): MixinEntry[] | undefined {
     if (typeof keys === 'string') {
-      const includeRulesets = filterType !== 'Mixin';
+      const includeRulesets = filterType !== 'Mixin' && options.terminalMixinOnly !== true;
       const cacheKey = this.getRegistrylessMixinCacheKey(keys, filterType, options);
       if (cacheKey !== undefined && this.hasRegistrylessMixinCacheResult(cacheKey)) {
         return this.getRegistrylessMixinCacheResult(cacheKey);
@@ -1771,7 +1776,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let mixinNamespaceFast: MixinEntry[] | undefined;
       if (mixinFilterType !== 'Mixin') {
         const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
-        if (rulesetNamespaceFast !== undefined) {
+        if (rulesetNamespaceFast !== undefined && (rulesetNamespaceFast.length > 0 || options.terminalMixinOnly !== true)) {
           const result = rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
           this.setRegistrylessMixinCacheResult(cacheKey, result);
           return result;
@@ -1787,17 +1792,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           local: options.local
         });
         if (namespaceMixins.length === 0 && namespaceRulesets.length === 0) {
-          const exactRulesetPath = this.findVisibleExactCallableRulesetPath(keys, {
-            hasTarget: options.hasTarget,
-            local: options.local
-          });
-          if (exactRulesetPath.length > 0) {
-            return exactRulesetPath;
+          if (options.terminalMixinOnly !== true) {
+            const exactRulesetPath = this.findVisibleExactCallableRulesetPath(keys, {
+              hasTarget: options.hasTarget,
+              local: options.local
+            });
+            if (exactRulesetPath.length > 0) {
+              return exactRulesetPath;
+            }
           }
         }
         if (namespaceMixins.length === 0 && namespaceRulesets.length > 0) {
           const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
-          if (rulesetNamespaceFast !== undefined) {
+          if (rulesetNamespaceFast !== undefined && (rulesetNamespaceFast.length > 0 || options.terminalMixinOnly !== true)) {
             return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
           }
         }
