@@ -896,6 +896,18 @@ the gate passed.
   neutral/slightly worse on `mixins-guards.less` (`wins 29/60`, `t=0.80`) and
   preserved the recursive stress benefit on `scope-lookup-stress.less`
   (`wins 71/100`, `t=-3.09`).
+- Dead indexed-callable registry helper deletion: accepted as dead registry
+  plumbing removal after the permanent registryless callable lookup cuts. File:
+  `packages/core/src/tree/rules.ts`. New traversal: none; deleted the unused
+  private `findIndexedCallableStartMatches(...)` method, which previously
+  indexed `MixinRegistry`, read registry `index` buckets, recursively walked
+  `_rulesSet`, and then walked parents. New node/materialization: none. Render
+  path: unchanged. Helper/API surface: one private helper deleted; no public API
+  added. Metadata mutations: none. Routine error/control: none. Evidence:
+  `rg` showed no remaining call sites; focused eslint passed; focused
+  default-path behavior passed (`304` tests, `8` skipped);
+  `@jesscss/core` build passed. No benchmark claim: this removes unreachable
+  code and stale guidance only.
 - Frame exact-callable miss coverage pass: accepted as a predicate-precision
   cleanup for registryless lookup, not as a standalone speed win. Files:
   `packages/core/src/tree/rules.ts` and
