@@ -8,7 +8,7 @@ import { createPublicNil, Nil } from './nil.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import { canReuseLeaf, copyWithReusableLeaves, ownCollapsedSourceChild, reuseLeaf } from './util/cloning.js';
 
@@ -36,7 +36,7 @@ function emitCompoundPart(
   const saved = options.suppressBoundaryTrivia;
   options.suppressBoundaryTrivia = 'pre';
   try {
-    part.toString(options);
+    part.writeSyntax(options);
   } finally {
     options.suppressBoundaryTrivia = saved;
   }
@@ -97,17 +97,21 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return owned;
   }
 
-  private renderCompoundSyntax(options?: PrintOptions): string {
-    const printOptions = getPrintOptions(options);
+  override writeSyntax(printOptions: FinalPrintOptions): void {
     const value = this.value;
-    const w = printOptions.writer;
-    const mark = w.mark();
     const saved = savePrintState(printOptions, ['ampersandFirst']);
     for (let i = 0; i < value.length; i++) {
       printOptions.ampersandFirst = (i === 0);
       emitCompoundPart(value[i]!, printOptions, i > 0);
     }
     restorePrintState(printOptions, saved);
+  }
+
+  private renderCompoundSyntax(options?: PrintOptions): string {
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer;
+    const mark = w.mark();
+    this.writeSyntax(printOptions);
     return w.getSince(mark);
   }
 

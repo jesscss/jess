@@ -13,7 +13,7 @@ import { attachSelectorBitLibrary, Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
 
-import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { consumeTriviaBetween, emitTriviaTokens } from './util/trivia.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { WARN, toDiagnostic } from '../jess-error.js';
@@ -110,22 +110,20 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return owned;
   }
 
-  private renderComplexSyntax(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer!;
     let { value } = this;
     let length = value.length;
-    const mark = w.mark();
     let isFirstSelector = true;
     const saved = savePrintState(options, ['ampersandFirst']);
     const emitComponent = (component: ComplexSelectorComponent) => {
       const savedBoundaryTrivia = options.suppressBoundaryTrivia;
       options.suppressBoundaryTrivia = 'pre';
       try {
-        if (options.context) {
-          component.toTrimmedString(options);
+        if (component instanceof Selector) {
+          component.writeSyntax(options);
         } else {
-          component.toString(options);
+          component.toTrimmedString(options);
         }
       } finally {
         options.suppressBoundaryTrivia = savedBoundaryTrivia;
@@ -171,6 +169,13 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       }
     }
     restorePrintState(options, saved);
+  }
+
+  private renderComplexSyntax(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    this.writeSyntax(options);
     return w.getSince(mark);
   }
 

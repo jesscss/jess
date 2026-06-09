@@ -1051,13 +1051,22 @@ describe('Rule', () => {
     });
     const options = getPrintOptions({ writer });
     const originalSelectorToString = selector.toString;
+    const originalWriteSyntax = selector.writeSyntax;
+    let selectorToStringCalls = 0;
     let selectorUsedActiveWriter = false;
     selector.toString = function toStringWithWriterCheck(
       this: typeof selector,
       nextOptions?: Parameters<typeof originalSelectorToString>[0]
     ): string {
-      selectorUsedActiveWriter = nextOptions?.writer === writer;
+      selectorToStringCalls++;
       return originalSelectorToString.call(this, nextOptions);
+    };
+    selector.writeSyntax = function writeSyntaxWithWriterCheck(
+      this: typeof selector,
+      nextOptions: Parameters<typeof originalWriteSyntax>[0]
+    ): void {
+      selectorUsedActiveWriter = nextOptions.writer === writer;
+      return originalWriteSyntax.call(this, nextOptions);
     };
 
     try {
@@ -1065,9 +1074,11 @@ describe('Rule', () => {
       expect(writer.toString()).toBe('');
       expect(writer.captures).toBe(0);
       expect(writer.previews).toBe(0);
+      expect(selectorToStringCalls).toBe(0);
       expect(selectorUsedActiveWriter).toBe(true);
     } finally {
       selector.toString = originalSelectorToString;
+      selector.writeSyntax = originalWriteSyntax;
     }
   });
 

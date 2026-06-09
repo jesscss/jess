@@ -49,6 +49,7 @@ export type PrintOptions = {
   trivia?: TriviaMap;
   emittedTrivia?: Set<IToken[]>;
   suppressBoundaryTrivia?: 'pre' | 'post' | 'both';
+  sourceMap?: boolean;
 };
 
 export type FinalPrintOptions = PrintOptions & {
@@ -71,6 +72,7 @@ type RestorablePrintStateKey =
   | 'referenceFilterTargets'
   | 'referenceMode'
   | 'referenceRenderEnabled'
+  | 'sourceMap'
   | 'suppressBoundaryTrivia'
   | 'writer';
 
@@ -96,7 +98,10 @@ function isTriviaMap(value: unknown): value is TriviaMap {
 
 function ensureFinalPrintOptions(options: PrintOptions): asserts options is FinalPrintOptions {
   options.depth ??= 0;
-  options.writer ??= new OutputWriter();
+  if (options.sourceMap === undefined && options.context?.opts?.sourceMap !== undefined) {
+    options.sourceMap = Boolean(options.context.opts.sourceMap);
+  }
+  options.writer ??= new OutputWriter(options.sourceMap === true);
   options.inFrames ??= [];
   options.frameHeaders ??= [];
   options.treeFrames ??= [];
@@ -240,7 +245,8 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.lastRenderedFrames = [];
   state.frameHeaders = [];
   state.depth = 0;
-  state.writer = seed?.writer ?? new OutputWriter();
+  state.sourceMap = seed?.sourceMap ?? Boolean(context.opts.sourceMap);
+  state.writer = seed?.writer ?? new OutputWriter(state.sourceMap === true);
   state.compress = seed?.compress;
   state.collapseNesting = seed?.collapseNesting;
   state.inCustom = seed?.inCustom;
@@ -358,6 +364,8 @@ export class OutputWriter implements OutputWriter {
   private _queuedSpacerText = '';
   private _queuedSpacerShouldAdd: ((nextText: string) => boolean) | undefined;
 
+  constructor(private readonly tracksSources = true) {}
+
   get line() {
     return this._line;
   }
@@ -367,6 +375,9 @@ export class OutputWriter implements OutputWriter {
   }
 
   markSource(originParam?: unknown): void {
+    if (!this.tracksSources) {
+      return;
+    }
     const segment = sourceSegmentFor(originParam, this._line, this._column);
     if (segment) {
       this._segments.push(segment);
@@ -388,6 +399,13 @@ export class OutputWriter implements OutputWriter {
     const chunkIndex = this.chunks.length;
     this.chunks.push(text);
     this._length += text.length;
+    if (!this.tracksSources) {
+      this.recordPosition(chunkIndex);
+      if (!originParam) {
+        this._capturedSegments = null;
+      }
+      return;
+    }
 
     const currentLine = this._line;
     const currentColumn = this._column;
@@ -656,6 +674,15 @@ export class OutputWriter implements OutputWriter {
     }
     this.chunks.length = mark;
     const posIndex = mark - 1;
+    if (!this.tracksSources) {
+      this._length = posIndex >= 0 ? (this._posLength[posIndex] ?? 0) : 0;
+      this._line = 0;
+      this._column = 0;
+      this._segments.length = 0;
+      this.truncatePositions(mark);
+      this.clearQueuedSpacer();
+      return;
+    }
     if (posIndex >= 0 && posIndex < this._posLine.length) {
       this._line = this._posLine[posIndex] ?? 0;
       this._column = this._posColumn[posIndex] ?? 0;
@@ -672,6 +699,21 @@ export class OutputWriter implements OutputWriter {
   }
 
   private refreshPositions(): void {
+    if (!this.tracksSources) {
+      this._posLength.length = 0;
+      this._length = 0;
+      for (let i = 0; i < this.chunks.length; i++) {
+        this._length += this.chunks[i]!.length;
+        this._posLength[i] = this._length;
+      }
+      this._posLine.length = 0;
+      this._posColumn.length = 0;
+      this._posSegments.length = 0;
+      this._line = 0;
+      this._column = 0;
+      this._segments.length = 0;
+      return;
+    }
     this._posLine.length = 0;
     this._posColumn.length = 0;
     this._posLength.length = 0;
@@ -708,6 +750,10 @@ export class OutputWriter implements OutputWriter {
   }
 
   private recordPosition(index: number): void {
+    if (!this.tracksSources) {
+      this._posLength[index] = this._length;
+      return;
+    }
     this._posLine[index] = this._line;
     this._posColumn[index] = this._column;
     this._posSegments[index] = this._segments.length;
@@ -715,9 +761,11 @@ export class OutputWriter implements OutputWriter {
   }
 
   private truncatePositions(length: number): void {
-    this._posLine.length = length;
-    this._posColumn.length = length;
-    this._posSegments.length = length;
+    if (this.tracksSources) {
+      this._posLine.length = length;
+      this._posColumn.length = length;
+      this._posSegments.length = length;
+    }
     this._posLength.length = length;
   }
 
