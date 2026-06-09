@@ -113,7 +113,7 @@ Current hard leftovers after the broad hook sweep:
   longer uses regex callback scaffolding, but replacement `toTrimmedString`
   assembly remains where structural emission is possible.
 - [ ] `InterpolatedSelector`: direct selector writer and kind flags.
-- [ ] `Reference`: direct unresolved reference writer; keep eval/render result
+- [x] `Reference`: direct unresolved reference writer; keep eval/render result
   emission out of public string APIs.
 - [ ] `Call`: direct fallback call writer; split callable output value
   selection from emission.
@@ -139,7 +139,7 @@ Current hard leftovers after the broad hook sweep:
   public syntax contract.
 - [ ] `JsFunction`: host wrapper audited; no invented source writer without a
   public syntax contract.
-- [ ] `Expression`: direct child writer; audit wrapper necessity.
+- [x] `Expression`: direct child writer; audit wrapper necessity remains.
 - [ ] `CustomDeclaration`: audit after `Declaration`.
 - [x] `VarDeclaration`: local writer probe removed; preserve binding semantics.
   Broader declaration body staging remains on `Declaration`.
@@ -174,7 +174,7 @@ Current hard leftovers after the broad hook sweep:
 | Declaration | `packages/core/src/tree/declaration.ts` | `Node` | queued | High priority: custom property branches, merge state, materialization. |
 | DefaultGuard | `packages/core/src/tree/default-guard.ts` | `Node` | writeSyntax hook complete | Scalar guard writer complete. |
 | Dimension | `packages/core/src/tree/dimension.ts` | `Node` | writeSyntax hook complete | Number/unit emission writes directly; regex/unit conversion and operation paths remain. |
-| Expression | `packages/core/src/tree/expression.ts` | `Node` | writeSyntax hook complete | Wrapper syntax writes directly; child render/eval audit remains. |
+| Expression | `packages/core/src/tree/expression.ts` | `Node` | direct child writer complete | Wrapper syntax writes directly and now calls child `writeSyntax(...)` instead of public `toString(...)`; child render/eval audit remains. |
 | Extend | `packages/core/src/tree/extend.ts` | `Node` | writeSyntax hook complete | Extend syntax writes directly; selector valueOf and resolved selector state remain. |
 | ExtendList | `packages/core/src/tree/extend-list.ts` | `Node` | writeSyntax hook complete | List wrapper writes through base child writer plus semicolon; public wrapper existence remains. |
 | For | `packages/core/src/tree/control.ts` | `Node` | queued | Audit loop state, body materialization, and async branches. |
@@ -202,7 +202,7 @@ Current hard leftovers after the broad hook sweep:
 | Quoted | `packages/core/src/tree/quoted.ts` | `Node` | writeSyntax hook complete | Quote syntax writes directly; interpolation/replacement audit remains. |
 | Range | `packages/core/src/tree/range.ts` | `Node` | writeSyntax hook complete | Range syntax writes directly. |
 | RawRules | `packages/core/src/tree/rules-raw.ts` | `Rules` | writeSyntax hook complete | Raw children and braced output have direct writer hooks; broader Rules audit remains. |
-| Reference | `packages/core/src/tree/reference.ts` | `Node` | in progress | Passes 1-10 deleted alias predicates, result/fallback/materialization wrapper helpers, the useless `evalNode(...)` Promise wrapper, direct render closures, option spread helpers, scope-array walker, runtime-key IIFE, small `findVarDeclarationFast(...)` result/IIFE allocations, duplicate fallback/copy/static-return branches, callable surface rechecks, raw lookup sync-path closure/IIFE setup, main eval lookup closure setup, static declaration public-resolve copy/inherit for non-important/non-merged containers, per-call `findVarDeclarationFast(...)` helper closure allocation for bucket selection/candidate ordering/deferred dynamic-name promotion, reference-value evaluator options-object allocation, the declaration evaluator argument-object wrapper, runtime-binding sync evaluator closure setup, the rules-reference lookup executor closure, and render-only dynamic declaration/runtime binding post-eval copy+inherit. Remaining: rules-like surfaces, public value materialization, merged assign normalization, and key conversion. |
+| Reference | `packages/core/src/tree/reference.ts` | `Node` | in progress | Passes 1-10 deleted alias predicates, result/fallback/materialization wrapper helpers, the useless `evalNode(...)` Promise wrapper, direct render closures, option spread helpers, scope-array walker, runtime-key IIFE, small `findVarDeclarationFast(...)` result/IIFE allocations, duplicate fallback/copy/static-return branches, callable surface rechecks, raw lookup sync-path closure/IIFE setup, main eval lookup closure setup, static declaration public-resolve copy/inherit for non-important/non-merged containers, per-call `findVarDeclarationFast(...)` helper closure allocation for bucket selection/candidate ordering/deferred dynamic-name promotion, reference-value evaluator options-object allocation, the declaration evaluator argument-object wrapper, runtime-binding sync evaluator closure setup, the rules-reference lookup executor closure, render-only dynamic declaration/runtime binding post-eval copy+inherit, and unresolved reference source serialization now has a direct `writeSyntax(...)` path. Remaining: rules-like surfaces, public value materialization, merged assign normalization, and key conversion. |
 | Rest | `packages/core/src/tree/rest.ts` | `Node` | writeSyntax hook complete | Rest syntax writes directly; wrapper necessity remains. |
 | Rules | `packages/core/src/tree/rules.ts` | `Node` | queued | High priority: body eval/render, imports, placement state, merge output. |
 | Ruleset | `packages/core/src/tree/ruleset.ts` | `Node` | queued | High priority: selector composition, body prep, wrappers, render branches. |

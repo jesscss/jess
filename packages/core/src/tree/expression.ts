@@ -75,7 +75,7 @@ export class Expression extends Node<Node> {
     const w = options.writer;
     w.add('$', this);
     w.add('(');
-    this.value.toString(options);
+    this.value.writeSyntax(options);
     w.add(')');
   }
 

@@ -1836,3 +1836,24 @@ the gate passed.
   (`36` tests), and `pnpm --filter @jesscss/core build` passed with only the
   pre-existing direct `eval` warning in `js-expr.ts`. Performance remains
   status-only from the prior hotpath leash; no speed claim is made.
+- Reference/Expression source writer pass: accepted as a direct source-syntax
+  transport cut. New traversal: none; no loop, recursion, parent/source walk,
+  side-map lookup, generator, object scan, or array helper was added. New
+  node/materialization: none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, frozen/source/parent mutation, or placement state was added.
+  Render path: unchanged for evaluated reference output; this pass only moves
+  unresolved reference source syntax into `Reference.writeSyntax(...)` and then
+  lets `Expression.writeSyntax(...)` call child `writeSyntax(...)` instead of
+  child public `toString(...)`. Public `toTrimmedString(...)` remains the cold
+  capture boundary. Helper/API surface: one override was added at the existing
+  `Node.writeSyntax(...)` hook point and the old private string-returning
+  reference syntax helper was deleted; no new public API was introduced.
+  Metadata mutations: none. Evidence: pre-pass hotpath sanity at commit
+  `181678fb` reported `functions` `10.03ms` usable, `import-reference`
+  `15.76ms` usable, `mixins-guards` `14.02ms` usable, `extend-chaining`
+  `4.14ms` usable, and `media` `4.12ms` usable. Focused expression/reference/
+  render-buffer/list/sequence tests passed (`198` tests), and `pnpm --filter
+  @jesscss/core build` passed with only the pre-existing direct `eval` warning
+  in `js-expr.ts`. This is not a speed claim. Remaining queue: nested reference
+  targets still use their existing public source serialization until `Call` and
+  target-chain source writers are cut.
