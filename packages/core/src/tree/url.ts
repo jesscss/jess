@@ -1,6 +1,6 @@
 import { Node, F_STATIC, defineType } from './node.js';
 import type { Context } from '../context.js';
-import { getPrintOptions, type PrintOptions } from './util/print.js';
+import { type FinalPrintOptions, getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -15,10 +15,8 @@ export class Url extends Node<Node> {
     return new Url(value).inherit(this);
   }
 
-  private renderUrlSyntax(value = this.value, options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+  private writeUrlSyntax(value: Node, options: FinalPrintOptions): void {
+    const w = options.writer;
     w.add('url(');
     if (options.context) {
       const valueMark = w.mark();
@@ -34,6 +32,13 @@ export class Url extends Node<Node> {
       value.toString(options);
     }
     w.add(')');
+  }
+
+  private renderUrlSyntax(value = this.value, options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeUrlSyntax(value, options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 
@@ -54,6 +59,10 @@ export class Url extends Node<Node> {
 
   override toTrimmedString(options?: PrintOptions) {
     return this.renderUrlSyntax(this.value, options);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    this.writeUrlSyntax(this.value, options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;

@@ -5,7 +5,7 @@
 import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from './node-base.js';
 import type { Context } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
-import type { PrintOptions } from './util/print.js';
+import type { FinalPrintOptions, PrintOptions } from './util/print.js';
 
 export type AnyRole =
   'ident'
@@ -68,6 +68,10 @@ export class Any<
     const out = this.value;
     options?.writer?.add(out, this);
     return out;
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    options.writer.add(this.value, this);
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {

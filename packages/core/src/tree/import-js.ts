@@ -1,7 +1,7 @@
 import type { Context } from '../context.js';
 import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType, type NodeLocation } from './node.js';
 import { type Quoted } from './quoted.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 
 /**
  * Imports of TS/JS ESM modules.
@@ -34,13 +34,11 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 
-  override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     const { path } = this.value;
-    const { namespace } = this.options;
-    const imports = this.value.imports ?? (Array.isArray(this.options.imports) ? this.options.imports : undefined);
+    const namespace = this._options?.namespace;
+    const imports = this.value.imports ?? (Array.isArray(this._options?.imports) ? this._options.imports : undefined);
 
     w.add('@-use ');
     path.toString(options);
@@ -65,6 +63,13 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
       w.add(` as ${explicitNamespace}`);
     }
     w.add(';');
+  }
+
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 

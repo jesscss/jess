@@ -10,7 +10,7 @@ import {
 import { type Operator, calculate } from './util/calculate.js';
 import { logger } from '../logger.js';
 import round from 'lodash-es/round.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { finalizeOperationMetadataResult, finalizePublicOperationResult } from './util/operation-result.js';
 
 // import type { Context } from '../context.js'
@@ -269,6 +269,12 @@ export class Dimension extends Node<DimensionValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    this.writeSyntax(options);
+    return w.getSince(mark);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     let { number, unit = '' } = this.value;
 
     // Check if unit is compound (contains '/', '*', or '±')
@@ -321,7 +327,6 @@ export class Dimension extends Node<DimensionValue> {
         w.add(unit);
       }
     }
-    return w.getSince(mark);
   }
 
   override resolve(_context: Context): this {

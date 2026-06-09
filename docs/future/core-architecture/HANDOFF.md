@@ -1633,3 +1633,43 @@ the gate passed.
   `replaceSince`), and leaf/value families (`Any.toString`, `Dimension`,
   `Num`, `Color`, `PseudoSelector`, `Sequence`, `Quoted`) still need
   `writeSyntax` cuts or cold-path isolation.
+- Broad node `writeSyntax` hook sweep: accepted as a syntax-boundary reduction
+  pass, not a full render-path completion. New traversal: none added for the
+  scalar/container hooks. Existing child loops in `List`, `Sequence`,
+  `RawRules`, `Range`, and selector wrappers were preserved and moved behind
+  void writer methods; no new parent/source walk, side map, recursive scan,
+  generator, `map/filter/sort`, or helper-object traversal was introduced.
+  New node/materialization: none; no new `Node`, copy, `.inherit(...)`,
+  `.adopt(...)`, wrapper `Rules`, frozen state, or source/parent metadata
+  mutation was added. Render path: narrowed only at the syntax boundary.
+  Public `toTrimmedString(...)` methods now mostly wrap `writeSyntax(...)` for
+  `Any`/`Keyword`/`Anonymous`, `Bool`, `DefaultGuard`, `Nil`, `Log`,
+  `Dimension`/`Num`, `Color`, `List`, `Sequence`, `Quoted`, `Block`, `Url`,
+  `Negative`, `Range`, `Rest`, `Condition`, `Operation`, `Paren`, `Func`,
+  `JsExpression`, `JsImport`, `RawRules`, `Extend`, `ExtendList`,
+  `VarDeclaration`, `SelectorCapture`, `AttributeSelector`, `PseudoSelector`,
+  and `Combinator`. The base `Node.writeSyntax(...)` hook exists, but base
+  `render(...)` still intentionally uses the old source serialization path
+  until every dependent override is present; an attempted global flip regressed
+  Paren/root output and was rejected. Helper/API surface: one shared node hook
+  was added to support deleting node-local `render*Syntax(...): string`
+  wrappers over time. It is accepted only as a migration hook; nodes whose
+  render paths still capture strings remain queued, not complete. Metadata
+  mutations: none added. The only semantic fix was in
+  `PseudoSelector.computeKeySets()`: generated `:is(...)` placement that omits
+  a single-selector-list wrapper now takes `requiredKeySet` from the unwrapped
+  selector item instead of from the selector-list wrapper, matching the emitted
+  placement text. Evidence: focused node suites passed for color/dimension
+  (`101` tests), list/sequence/quoted/block/negative (`100` tests),
+  url/range/rest/condition/operation (`77` tests),
+  paren/expression/func/js-import/js-expr/extend/declaration (`126` tests),
+  and selector/pseudo/capture/ampersand/extend/render-buffer (`88` tests).
+  `pnpm --filter @jesscss/core build` passed after the sweep, with only the
+  pre-existing direct-`eval` warning in `js-expr.ts`. This is code-path and
+  behavior evidence only; no new speed claim is made. Hard leftovers:
+  `Rules`, `Ruleset`, `Declaration`, `AtRule`, `Call`, `Reference`,
+  `QueryCondition`, `Interpolated`, `Mixin`, `Ampersand`, and control nodes
+  still own meaningful render/eval string transport or branch-heavy paths.
+  `List`, `Sequence`, and `PseudoSelector` have hooks but remain partially
+  dirty until render-to-buffer paths stop capturing strings and generated
+  pseudo argument normalization stops using local capture/restore.

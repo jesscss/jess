@@ -1,7 +1,7 @@
 import { type Context } from '../context.js';
 import { F_NON_STATIC, F_VISIBLE, Node, defineType, type NodeLocation } from './node.js';
 import { Bool, createPublicBool } from './bool.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -38,10 +38,8 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
-  override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     let [left, op, right] = this.value;
     const negate = this._options?.negate === true;
     const needsParens = Boolean(right || negate);
@@ -61,6 +59,13 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     if (needsParens) {
       w.add(')');
     }
+  }
+
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 

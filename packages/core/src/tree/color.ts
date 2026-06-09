@@ -4,7 +4,7 @@ import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import round from 'lodash-es/round.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { finalizePublicOperationResult } from './util/operation-result.js';
 type ColorValues = [number, number, number, number] | number[];
 type ChannelTuple = [number, string];
@@ -479,17 +479,24 @@ export class Color extends Node<ColorData, ColorOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    this.writeSyntax(options);
+    return w.getSince(mark);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     const compress = Boolean(options.compress);
 
     // If value has a node that's a Node, serialize it directly
     if (this.value.node && isNode(this.value.node)) {
-      return this.value.node.toTrimmedString(options);
+      this.value.node.toTrimmedString(options);
+      return;
     }
 
     // If value has a node that's a string, output it as-is
     if (this.value.node && typeof this.value.node === 'string') {
       w.add(this.value.node, this);
-      return w.getSince(mark);
+      return;
     }
 
     // Handle format-based serialization
@@ -519,7 +526,7 @@ export class Color extends Node<ColorData, ColorOptions> {
           w.add(')');
         }
       }
-      return w.getSince(mark);
+      return;
     } else if (format === ColorFormat.HSL) {
       const [h, s, l] = this.hsl;
       const hueSource = this.value.hsl?.[0];
@@ -553,12 +560,11 @@ export class Color extends Node<ColorData, ColorOptions> {
           w.add(')');
         }
       }
-      return w.getSince(mark);
+      return;
     }
 
     // Default to hex
     w.add(this.toHex(), this);
-    return w.getSince(mark);
   }
 
   override resolve(_context: Context): this {

@@ -2,6 +2,7 @@ import type { Context } from '../context.js';
 import { defineType, F_STATIC, type Node } from './node.js';
 import { Selector } from './selector.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import type { FinalPrintOptions } from './util/print.js';
 
 export type Combinators = ' ' | '>' | '+' | '~' | '|' | '||';
 
@@ -17,6 +18,10 @@ export class Combinator extends Selector<Combinators> {
 
   override resolve(context: Context): MaybePromise<Node> {
     return this.evalNode(context);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    options.writer.add(this.value, this);
   }
 
   /** @todo move to visitor */

@@ -18,7 +18,7 @@ import { ComplexSelector, type ComplexSelectorComponent } from './selector-compl
 import { Combinator } from './combinator.js';
 import { createGeneratedIsPseudo } from './selector-pseudo.js';
 import { SelectorList } from './selector-list.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -72,11 +72,9 @@ export class Extend extends Node<ExtendValue> {
     return `$extend ${this.value.target.valueOf()}`;
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     let { target, selector, flag, namespace } = this.value;
-    const mark = w.mark();
     const emitTrimmed = (node: Selector) => {
       const saved = options.suppressBoundaryTrivia;
       options.suppressBoundaryTrivia = 'pre';
@@ -101,6 +99,13 @@ export class Extend extends Node<ExtendValue> {
       w.add(' !exact');
     }
     w.add(';');
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 

@@ -3,7 +3,7 @@ import { Node, F_VISIBLE, defineType, type LocationInfo, type NodeOptions } from
 import { createPublicNil, Nil } from './nil.js';
 import { logger } from '../logger.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import type { PrintOptions } from './util/print.js';
+import type { FinalPrintOptions, PrintOptions } from './util/print.js';
 import {
   type RenderBuffer,
   renderInvisibleEffect
@@ -46,6 +46,8 @@ export class Log extends Node<LogValue, NodeOptions> {
   override toString() {
     return '';
   }
+
+  override writeSyntax(_options: FinalPrintOptions): void {}
 
   private runLogEffect(context: Context): MaybePromise<void> {
     const messageResult = this.value.message.eval(context);

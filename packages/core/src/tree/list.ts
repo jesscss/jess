@@ -1,6 +1,6 @@
 import { type Context } from '../context.js';
 import { defineType, F_MAY_ASYNC, F_STATIC, Node } from './node.js';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import {
@@ -89,26 +89,24 @@ function emitRenderedListItemMaybe<T extends Node>(
   options.suppressBoundaryTrivia = saved;
 }
 
-export function renderListValueSyntax<T extends Node>(
+export function writeListValueSyntax<T extends Node>(
   value: T[],
-  options: PrintOptions,
+  options: FinalPrintOptions,
   sep: ListOptions['sep'] = ','
-): string {
-  const printOptions = getPrintOptions(options);
-  const w = printOptions.writer;
+): void {
+  const w = options.writer;
   let length = value.length;
-  const mark = w.mark();
   if (value.length === 0) {
-    return '';
+    return;
   }
   let item = value[0]!;
-  emitListItem(item, printOptions);
+  emitListItem(item, options);
   for (let i = 1; i < length; i++) {
     const prev = item;
     item = value[i]!;
-    emitCommentTriviaBetweenNodes(prev, item, printOptions);
-    const leadingTrivia = printOptions.trivia
-      ? consumeTrivia(printOptions.trivia, item.location[0], 'before', printOptions)
+    emitCommentTriviaBetweenNodes(prev, item, options);
+    const leadingTrivia = options.trivia
+      ? consumeTrivia(options.trivia, item.location[0], 'before', options)
       : undefined;
     const leadingWhitespace = leadingTrivia?.[0]?.tokenType.name === 'WS'
       ? leadingTrivia[0].image
@@ -122,12 +120,23 @@ export function renderListValueSyntax<T extends Node>(
     if (leadingTrivia) {
       emitTriviaTokens(
         leadingTrivia,
-        printOptions,
+        options,
         { skipLeadingWhitespace: !preserveLeadingWhitespace }
       );
     }
-    emitListItem(item, printOptions, true);
+    emitListItem(item, options, true);
   }
+}
+
+export function renderListValueSyntax<T extends Node>(
+  value: T[],
+  options: PrintOptions,
+  sep: ListOptions['sep'] = ','
+): string {
+  const printOptions = getPrintOptions(options);
+  const mark = printOptions.writer.mark();
+  writeListValueSyntax(value, printOptions, sep);
+  const w = printOptions.writer;
   return w.getSince(mark);
 }
 
@@ -285,6 +294,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   override toTrimmedString(options?: PrintOptions) {
     return this.renderListSyntax(this.value, options);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    writeListValueSyntax(this.value, options, this._options?.sep ?? ',');
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;

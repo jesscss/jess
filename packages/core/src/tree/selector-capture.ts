@@ -1,7 +1,7 @@
 import { type Context } from '../context.js';
 import { Node, F_STATIC, defineType } from './node.js';
 import { Selector } from './selector.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -25,13 +25,18 @@ const isSelectorNode = (value: unknown): value is Selector => (
  * (e.g. Less `*[ ... ]`, Sass `selector.parse(\"...\")`).
  */
 export class SelectorCapture extends Node<Selector> {
-  private renderCaptureSyntax(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     w.add('*[', this);
     this.value.toString(options);
     w.add(']', this);
+  }
+
+  private renderCaptureSyntax(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 

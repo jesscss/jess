@@ -7,7 +7,7 @@ import { Any, type AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
 import { defineType, F_VISIBLE, type Node, type NodeLocation } from './node.js';
 import { Nil } from './nil.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type VarDeclarationOptions = DeclarationOptions & {
   paramVar?: boolean;
@@ -43,10 +43,8 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     }
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     // Vars always print with `$` prefix; setDefined affects the assignment token.
     //
     // Special-case parameter vars (used in mixin signatures) that have no default value:
@@ -55,7 +53,7 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
       w.add('$', this);
       const normalizedName = String(this.value.name).replace(/\s+$/, '');
       w.add(normalizedName, this.value.name);
-      return w.getSince(mark);
+      return;
     }
 
     w.add('$', this);
@@ -65,6 +63,13 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     if (!emitted && s) {
       w.add(s);
     }
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 }

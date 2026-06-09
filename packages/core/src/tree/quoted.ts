@@ -2,7 +2,7 @@ import { Interpolated } from './interpolated.js';
 import { Any } from './any.js';
 import { Node, F_STATIC, F_NON_STATIC, defineType, type NodeLocation } from './node.js';
 import type { Context } from '../context.js';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -33,10 +33,8 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     ).inherit(this);
   }
 
-  private renderQuotedSyntax(value = this.value, options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+  private writeQuotedSyntax(value: string | Any | Interpolated | Node, options: FinalPrintOptions): void {
+    const w = options.writer;
     const quote = this._options?.quote ?? '"';
     const escaped = this._options?.escaped;
     let escapeChar = escaped ? '~' : '';
@@ -50,6 +48,13 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
       w.add(value, this);
     }
     w.add(quote);
+  }
+
+  private renderQuotedSyntax(value = this.value, options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeQuotedSyntax(value, options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 
@@ -64,6 +69,10 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
 
   override toTrimmedString(options?: PrintOptions) {
     return this.renderQuotedSyntax(this.value, options);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    this.writeQuotedSyntax(this.value, options);
   }
 
   override valueOf(): string {

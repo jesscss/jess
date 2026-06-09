@@ -1,6 +1,6 @@
 import type { Context } from '../context.js';
 import { Node, F_STATIC, defineType } from './node.js';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { consumeTriviaText } from './util/trivia.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
@@ -34,10 +34,8 @@ export class Block extends Node<Node, BlockOptions> {
     ).inherit(this);
   }
 
-  private renderBlockSyntax(value = this.value, options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+  private writeBlockSyntax(value: Node, options: FinalPrintOptions): void {
+    const w = options.writer;
     const type = this._options?.type;
     let start = type === 'square' ? '[' : '{';
     let end = type === 'square' ? ']' : '}';
@@ -48,11 +46,22 @@ export class Block extends Node<Node, BlockOptions> {
       w.add(consumeTriviaText(trivia, this.location[3], 'before', options));
     }
     w.add(end);
+  }
+
+  private renderBlockSyntax(value = this.value, options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeBlockSyntax(value, options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 
   override toTrimmedString(options?: PrintOptions) {
     return this.renderBlockSyntax(this.value, options);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    this.writeBlockSyntax(this.value, options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;

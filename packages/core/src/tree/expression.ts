@@ -1,6 +1,6 @@
 import type { Context } from '../context.js';
 import { Node, F_MAY_ASYNC, F_NON_STATIC, defineType, type NodeLocation, type NodeOptions } from './node.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { List } from './list.js';
 import { Sequence } from './sequence.js';
@@ -71,14 +71,19 @@ export class Expression extends Node<Node> {
         : node.render(context, bufferOrOptions);
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     w.add('$', this);
     w.add('(');
     this.value.toString(options);
     w.add(')');
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 }

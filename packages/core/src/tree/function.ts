@@ -5,7 +5,7 @@ import { Interpolated } from './interpolated.js';
 import { Rules } from './rules.js';
 import { type List, list } from './list.js';
 import type { Declaration } from './declaration.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { callableRulesEntry } from './util/callable-entry.js';
 import { MixinCollection } from './util/callable-collection.js';
 
@@ -48,10 +48,8 @@ export class Func extends Node<FuncValue, FuncOptions> {
     return String(name.valueOf());
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     const { name, params, body } = this.value;
 
     w.add('$function', this);
@@ -64,7 +62,13 @@ export class Func extends Node<FuncValue, FuncOptions> {
     w.add(') ');
 
     body.toBraced(options);
+  }
 
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 

@@ -2,7 +2,7 @@ import { Node, defineType, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type LocationIn
 import type { Context } from '../context.js';
 import { Dimension } from './dimension.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { getPrintOptions, type PrintOptions } from './util/print.js';
+import { type FinalPrintOptions, getPrintOptions, type PrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
   writeRenderText,
@@ -13,12 +13,17 @@ import round from 'lodash-es/round.js';
 const NEGATIVE_ONE = new Dimension({ number: -1 });
 
 export class Negative extends Node<Node> {
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
+    w.add('-', this);
+    this.value.toString(options);
+  }
+
   private renderNegativeSyntax(options?: PrintOptions): string {
     options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    w.add('-');
-    this.value.toString(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 

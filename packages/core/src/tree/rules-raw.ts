@@ -2,7 +2,7 @@ import { defineType, Node } from './node.js';
 import type { Context } from '../context.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Rules } from './rules.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isRenderBuffer, type RenderBuffer } from './util/render-buffer.js';
 
 /**
@@ -15,25 +15,34 @@ export class RawRules extends Rules {
   // Do not add newlines/indent; emit children exactly as-is
   override toBraced(options?: PrintOptions) {
     options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+    const mark = options.writer.mark();
+    this.writeBracedSyntax(options);
+    const w = options.writer;
+    return w.getSince(mark);
+  }
+
+  private writeBracedSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     w.add('{');
     // Emit children using toString to preserve exact whitespace/comments
     for (const child of this.value) {
       child.toString(options);
     }
     w.add('}');
-    return w.getSince(mark);
   }
 
   // Keep trimmed output minimal – emit children verbatim without extras
-  override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+  override writeSyntax(options: FinalPrintOptions): void {
     for (const child of this.value) {
       child.toString(options);
     }
+  }
+
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 

@@ -1,6 +1,6 @@
 import type { Context } from '../context.js';
 import { Node, defineType } from './node.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 export type RangeValue = {
@@ -35,10 +35,8 @@ export class Range extends Node<RangeValue, RangeOptions> {
     return this.evalNode(context);
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     const { start, end, step } = this.value;
     const includeStart = this._options?.includeStart !== false;
     const includeEnd = this._options?.includeEnd !== false;
@@ -66,6 +64,13 @@ export class Range extends Node<RangeValue, RangeOptions> {
       w.add(' step ');
       emitTrimmed(step);
     }
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 }

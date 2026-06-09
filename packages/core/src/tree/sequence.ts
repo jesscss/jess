@@ -6,7 +6,7 @@ import { compareNodeArray } from './util/compare.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
@@ -154,22 +154,18 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return undefined;
   }
 
-  private renderSequenceSyntax(value = this.value, options?: PrintOptions): string {
-    const printOptions = getPrintOptions(options);
+  private writeSequenceSyntax(value: Node[], printOptions: FinalPrintOptions): void {
     if (printOptions.inCustom) {
-      const w = printOptions.writer!;
-      const mark = w.mark();
       for (const node of value) {
         node.toString(printOptions);
       }
-      return w.getSince(mark);
+      return;
     }
     const w = printOptions.writer;
-    const mark = w.mark();
     const length = value.length;
 
     if (length === 0) {
-      return '';
+      return;
     }
 
     value[0]!.toString(printOptions);
@@ -215,7 +211,13 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       }
       node.toString(printOptions);
     }
+  }
 
+  private renderSequenceSyntax(value = this.value, options?: PrintOptions): string {
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer;
+    const mark = w.mark();
+    this.writeSequenceSyntax(value, printOptions);
     return w.getSince(mark);
   }
 
@@ -393,6 +395,10 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
   override toTrimmedString(options?: PrintOptions): string {
     return this.renderSequenceSyntax(this.value, options);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    this.writeSequenceSyntax(this.value, options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;

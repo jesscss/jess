@@ -6,7 +6,7 @@ import { Node, defineType, F_MAY_ASYNC, F_NON_STATIC, type NodeLocation } from '
 import { Dimension } from './dimension.js';
 import { List, renderListValueSyntax } from './list.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import {
   isRenderBuffer,
@@ -72,10 +72,8 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     }
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    const printOptions = getPrintOptions(options);
+  override writeSyntax(printOptions: FinalPrintOptions): void {
     const w = printOptions.writer;
-    const mark = w.mark();
     const escapeChar = this._options?.escaped ? '~' : '';
     if (escapeChar) {
       w.add(escapeChar, this);
@@ -92,6 +90,13 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       }
     }
     w.add(close);
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    const printOptions = getPrintOptions(options);
+    const mark = printOptions.writer.mark();
+    this.writeSyntax(printOptions);
+    const w = printOptions.writer;
     return w.getSince(mark);
   }
 

@@ -1,7 +1,7 @@
 import { type Context } from '../context.js';
 import { Node, defineType } from './node.js';
 import { Bool, createPublicBool } from './bool.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
   writeRenderText,
@@ -18,8 +18,12 @@ export class DefaultGuard extends Node<string> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    w.add('default', this);
+    this.writeSyntax(options);
     return w.getSince(mark);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    options.writer.add('default', this);
   }
 
   override evalNode(context: Context): Bool {

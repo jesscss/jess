@@ -7,6 +7,7 @@ import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged } from 'type-fest';
 import {
+  type FinalPrintOptions,
   type PrintOptions,
   getPrintOptions,
   prepareRenderPrintState
@@ -1320,6 +1321,19 @@ export abstract class Node<
       }
     }, false);
     return w.getSince(mark);
+  }
+
+  writeSyntax(options: FinalPrintOptions): void {
+    this._visitValues((v) => {
+      if (v instanceof Node) {
+        v.toString(options);
+      } else {
+        const s = v === undefined ? '' : String(v);
+        if (s) {
+          options.writer.add(s, this);
+        }
+      }
+    }, false);
   }
 
   /**

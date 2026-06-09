@@ -1,6 +1,6 @@
 import type { Context } from '../context.js';
 import { Node, F_STATIC, defineType } from './node.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 
 export interface Bool extends Node<boolean> {
   eval(context: Context): Bool;
@@ -26,8 +26,12 @@ export class Bool extends Node<boolean> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    w.add(this.value ? 'true' : 'false', this);
+    this.writeSyntax(options);
     return w.getSince(mark);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    options.writer.add(this.value ? 'true' : 'false', this);
   }
 
   override resolve(_context: Context): this {

@@ -1,5 +1,5 @@
 import { Node, F_VISIBLE, defineType, type NodeLocation, type NodeOptions } from './node.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Extend } from './extend.js';
 import type { Context } from '../context.js';
 import { serialForEach, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -27,13 +27,17 @@ export class ExtendList extends Node<Extend[]> {
     this.removeFlag(F_VISIBLE);
   }
 
+  override writeSyntax(options: FinalPrintOptions): void {
+    super.writeSyntax(options);
+    // writeSyntax side effect is already emitted to writer. Add ';'.
+    options.writer.add(';');
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    void super.toTrimmedString(options);
-    // toTrimmedString side effect is already emitted to writer; getSince captures it. Add ';'
-    w.add(';');
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 

@@ -7,7 +7,7 @@ import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 function normalizeSelectorArg(text: string): string {
@@ -58,11 +58,9 @@ function createEvaluatedPseudoSelector(
  *   e.g. :hover, :focus, :active
 */
 export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
-  private renderPseudoSyntax(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     let { name, arg } = this.value;
-    const mark = w.mark();
     const generatedOverride = this.generated
       && name === ':is'
       && arg
@@ -77,7 +75,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         && (!isNode(arg, N.SelectorList) || arg.value.length === 1);
       if (omitGeneratedWrapper) {
         arg.toString(options);
-        return w.getSince(mark);
+        return;
       }
       const argMark = w.mark();
       arg.toString(options);
@@ -88,7 +86,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       w.add('(');
       w.add(out, arg);
       w.add(')');
-      return w.getSince(mark);
+      return;
     }
     w.add(name, this);
     if (arg) {
@@ -102,6 +100,13 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       }
       w.add(')');
     }
+  }
+
+  private renderPseudoSyntax(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 
@@ -116,7 +121,14 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       if (name === ':is') {
         this._keySet = arg.keySet;
         this._visibleKeySet = arg.visibleKeySet;
-        if (isNode(arg, N.SelectorList)) {
+        const omitGeneratedWrapper = this.generated
+          && this.value.generatedPseudoPlacementOverride?.omitWrapperForSingleSelectorList === true
+          && (!isNode(arg, N.SelectorList) || arg.value.length === 1);
+        if (omitGeneratedWrapper) {
+          this._requiredKeySet = isNode(arg, N.SelectorList)
+            ? arg.value[0]?.requiredKeySet ?? library.getBitset()
+            : arg.requiredKeySet;
+        } else if (isNode(arg, N.SelectorList)) {
           this._requiredKeySet = library.getBitset();
         } else {
           this._requiredKeySet = arg.requiredKeySet;

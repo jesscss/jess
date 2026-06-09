@@ -1,6 +1,6 @@
 import { defineType, type LocationInfo, type Node } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import type { Context } from '../context.js';
 import { Any } from './any.js';
 import { quoted } from './quoted.js';
@@ -74,11 +74,9 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   private renderAttributeParts(
     name: string | Node,
     value: Node | undefined,
-    options?: PrintOptions
-  ): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+    options: FinalPrintOptions
+  ): void {
+    const w = options.writer;
     const { op, mod } = this.value;
     w.add('[');
     if (typeof name === 'string') {
@@ -97,11 +95,14 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
       w.add(mod);
     }
     w.add(']');
-    return w.getSince(mark);
   }
 
   private renderAttributeSyntax(options?: PrintOptions): string {
-    return this.renderAttributeParts(this.value.name, this.value.value, options);
+    const printOptions = getPrintOptions(options);
+    const mark = printOptions.writer.mark();
+    this.renderAttributeParts(this.value.name, this.value.value, printOptions);
+    const w = printOptions.writer;
+    return w.getSince(mark);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
@@ -205,7 +206,9 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
       const prepared = buffer
         ? prepareBufferPrintState(context, options)
         : prepareRenderPrintState(context, printOptions);
-      const out = this.renderAttributeParts(resolvedName, resolvedValue, prepared);
+      const mark = prepared.writer.mark();
+      this.renderAttributeParts(resolvedName, resolvedValue, prepared);
+      const out = prepared.writer.getSince(mark);
       return buffer ? writeRenderText(buffer, out) : out;
     };
     if (isThenable(name)) {
@@ -224,6 +227,10 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
 
   override toTrimmedString(options?: PrintOptions) {
     return this.renderAttributeSyntax(options);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    this.renderAttributeParts(this.value.name, this.value.value, options);
   }
 
   override valueOf() {
