@@ -908,6 +908,21 @@ the gate passed.
   default-path behavior passed (`304` tests, `8` skipped);
   `@jesscss/core` build passed. No benchmark claim: this removes unreachable
   code and stale guidance only.
+- One-segment array dispatch normalization: accepted as a narrow callable
+  registry fallback cut for array key shapes that are equivalent to already
+  covered string lookup. Files: `packages/core/src/tree/rules.ts` and
+  `packages/core/src/tree/__tests__/mixin.test.ts`. New traversal: none;
+  `Rules.find('mixin', [], ...)` now returns `undefined`, and
+  `Rules.find('mixin', [key], ...)` delegates to the registryless string-key
+  path. New node/materialization: none. Render path: unchanged. Helper/API
+  surface: no new helper or public API; two focused tests added. Metadata
+  mutations: none. Routine error/control: none. Evidence: focused tests prove
+  empty and one-segment arrays skip `MixinRegistry.find(...)`; focused eslint
+  passed; focused default-path behavior passed (`306` tests, `8` skipped);
+  `@jesscss/core` build passed. Paired cache off/on checks stayed in the
+  existing shape: `mixins-guards.less` neutral (`wins 31/60`, `t=-0.64`) and
+  `scope-lookup-stress.less` positive (`wins 78/100`, `t=-6.09`). This is
+  dispatch parity cleanup, not a standalone speed claim.
 - Frame exact-callable miss coverage pass: accepted as a predicate-precision
   cleanup for registryless lookup, not as a standalone speed win. Files:
   `packages/core/src/tree/rules.ts` and

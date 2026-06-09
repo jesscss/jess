@@ -2290,6 +2290,54 @@ describe('Mixin', () => {
       }
     });
 
+    it('registryless fast path: one-segment array lookup skips MixinRegistry.find', () => {
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '.array-mixin') {
+          mixinRegistryHits.push(key[0]);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const mixinDef = mixin({
+          name: any('.array-mixin'),
+          rules: rules([decl({ name: 'color', value: any('purple') })])
+        });
+        const root = rules([mixinDef]);
+
+        expect(root.find('mixin', ['.array-mixin'], 'Mixin')).toEqual([mixinDef]);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('registryless fast path: empty array lookup misses without MixinRegistry.find', () => {
+      const originalFind = MixinRegistry.prototype.find;
+      let mixinRegistryHits = 0;
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        mixinRegistryHits++;
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.array-mixin'),
+            rules: rules([decl({ name: 'color', value: any('purple') })])
+          })
+        ]);
+
+        expect(root.find('mixin', [], 'Mixin')).toBeUndefined();
+        expect(mixinRegistryHits).toBe(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
     it('ScopeFrame callable buckets: static Mixin hit skips Rules.findMixinsFast', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }

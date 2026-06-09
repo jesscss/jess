@@ -2100,6 +2100,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const result = direct.length > 0 ? direct : undefined;
       this.setRegistrylessMixinCacheResult(cacheKey, result);
       return result;
+    } else if (type === 'mixin' && isArray(keys) && keys.length === 0) {
+      return undefined;
+    } else if (type === 'mixin' && isArray(keys) && keys.length === 1) {
+      return this.find('mixin', keys[0]!, filterType, options) as MixinEntry[] | undefined;
     } else if (type === 'mixin' && isArray(keys) && keys.length > 1) {
       const cacheKey = this.getRegistrylessMixinCacheKey(keys, filterType, options);
       if (cacheKey !== undefined && this.hasRegistrylessMixinCacheResult(cacheKey)) {

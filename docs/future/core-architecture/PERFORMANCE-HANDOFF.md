@@ -2186,6 +2186,25 @@ Follow-up array/namespace legacy branch deletion:
   baseline median `62.27ms`, candidate median `61.52ms`, mean ratio `-1.56%`,
   wins `71/100`, `t=-3.09`, preserving the recursive cache/stress signal.
 
+Follow-up one-segment array dispatch normalization:
+
+- `Rules.find('mixin', [], ...)` now returns a direct miss and
+  `Rules.find('mixin', [key], ...)` delegates to the already-covered
+  registryless string-key path instead of falling through to
+  `MixinRegistry.find(...)`;
+- focused tests prove both shapes skip `MixinRegistry.find(...)`. This is
+  dispatch parity cleanup, not a new speed claim;
+- focused default-path behavior, lint, and build passed:
+  `pnpm exec eslint packages/core/src/tree/rules.ts packages/core/src/tree/__tests__/mixin.test.ts`,
+  `pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts --run`
+  (`306` tests, `8` skipped), and `pnpm --filter @jesscss/core build`;
+- paired last-cache off/on sanity after the change stayed in the existing
+  shape: `mixins-guards.less` with `--warmup 8 --pairs 60 --batch-size 5`
+  reported baseline median `83.53ms`, candidate median `82.26ms`, mean ratio
+  `-0.30%`, wins `31/60`, `t=-0.64`; `scope-lookup-stress.less` render with
+  `--warmup 10 --pairs 100` reported baseline median `61.53ms`, candidate
+  median `60.12ms`, mean ratio `-3.23%`, wins `78/100`, `t=-6.09`.
+
 Next architecture theories to test:
 
 1. Promote exact child-surface capability to the `ScopeFrame` once the frame
