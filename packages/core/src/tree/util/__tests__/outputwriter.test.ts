@@ -499,7 +499,7 @@ describe('OutputWriter', () => {
       // Add content with origin that has location info
       const mockOrigin = {
         location: [0, 1, 1, 0, 1, 5], // [start, startLine, startColumn, end, endLine, endColumn]
-        treeContext: { file: { fullPath: 'test.css' } }
+        sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } }
       };
 
       w.add('content', mockOrigin);
@@ -514,7 +514,7 @@ describe('OutputWriter', () => {
 
       const mockOrigin = {
         location: [0, 1, 1, 0, 1, 5], // [start, startLine, startColumn, end, endLine, endColumn]
-        treeContext: { file: { fullPath: 'test.css' } }
+        sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } }
       };
 
       w.add('hello', mockOrigin);
@@ -535,7 +535,7 @@ describe('OutputWriter', () => {
 
       const mockOrigin = {
         location: [0, 1, 1, 0, 1, 5],
-        treeContext: { file: { fullPath: 'test.css' } }
+        sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } }
       };
 
       w.add('before');
@@ -555,7 +555,7 @@ describe('OutputWriter', () => {
 
       const mockOrigin = {
         location: [0, 1, 1, 0, 1, 5],
-        treeContext: { file: { fullPath: 'test.css' } }
+        sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } }
       };
 
       w.add('before');
@@ -574,7 +574,7 @@ describe('OutputWriter', () => {
 
       const mockOrigin = {
         location: [0, 1, 1, 0, 1, 5],
-        treeContext: { file: { fullPath: 'test.css' } }
+        sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } }
       };
 
       w.add('hello\nworld', mockOrigin);
@@ -590,12 +590,12 @@ describe('OutputWriter', () => {
 
       const origin1 = {
         location: [0, 1, 1, 0, 1, 5],
-        treeContext: { file: { fullPath: 'test1.css' } }
+        sourceRoot: { _treeContext: { file: { fullPath: 'test1.css' } } }
       };
 
       const origin2 = {
         location: [0, 2, 1, 0, 2, 5],
-        treeContext: { file: { fullPath: 'test2.css' } }
+        sourceRoot: { _treeContext: { file: { fullPath: 'test2.css' } } }
       };
 
       w.add('hello', origin1);
@@ -614,7 +614,7 @@ describe('OutputWriter', () => {
 
       const mockOrigin = {
         location: [0, 1, 1, 0, 1, 5],
-        treeContext: { file: { fullPath: 'test.css' } }
+        sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } }
       };
 
       w.add('line1\nline2', mockOrigin);
@@ -630,7 +630,7 @@ describe('OutputWriter', () => {
 
       const mockOrigin = {
         location: [0, 1, 1, 0, 1, 5],
-        treeContext: { file: { fullPath: 'test.css' } }
+        sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } }
       };
 
       w.add('before');

@@ -699,6 +699,38 @@ Keep criteria:
 
 ## Recent Benchmark Sanity Notes
 
+### Selector `writeSyntax` Render-Stringification Cut
+
+Date: 2026-06-08.
+
+Status: focused machinery deletion, not a real speed claim.
+
+Pre-pass broad `benchmark.less` status after the parentless callable fix had
+`OutputWriter.mark` `154363` and `OutputWriter.getSince` `149331`.
+Caller-stack profiling showed selector/header public string APIs as major
+illegal render transport: `BasicSelector`, `Ruleset.getHeaderString`,
+`CompoundSelector`, `ComplexSelector`, `SelectorList`, and `Any`.
+
+Patch shape: selector containers and `Ruleset.getHeaderString(...)` now use a
+direct `writeSyntax(options)` writer path instead of public
+`toString(...)`/`toTrimmedString(...)` as child transport. Public string APIs
+remain cold wrappers around direct writer emission.
+
+Post-pass broad `benchmark.less` profiler status:
+`OutputWriter.mark` `54534`, `OutputWriter.getSince` `49502`,
+`OutputWriter.restore` `26638`, `Reference.evalNode` `3619` calls /
+`69.29ms`, `Rules.find` `1013` calls / `25.68ms`, elapsed `540.89ms`.
+
+Interpretation: `mark/getSince` traffic moved sharply, but elapsed is
+profiler/noisy status only. Do not call this a runtime speed win without a
+clean real benchmark before/after.
+
+Remaining measured serialization targets from caller stacks:
+`Ruleset.getHeaderString` header-string capture (`21911`),
+declaration duplicate pre-rendering (`4129` repeated marks plus
+`replaceSince`), `Any.toString` (`6871`), `Dimension`/`Num`, `Color`,
+`PseudoSelector`, `Sequence`, and `Quoted`.
+
 ### Standalone Bare-Variable Cache Rejection
 
 Date: 2026-06-06.

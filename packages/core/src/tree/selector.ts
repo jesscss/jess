@@ -5,7 +5,7 @@ import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
 import { BitSetLibrary, BitSet } from './util/bitset.js';
 import type { RenderBuffer } from './util/render-buffer.js';
-import type { PrintOptions } from './util/print.js';
+import type { FinalPrintOptions, PrintOptions } from './util/print.js';
 
 const { isArray } = Array;
 
@@ -125,6 +125,10 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
 
   protected resolveForRender(context: Context): MaybePromise<Node> {
     return this.evalNode(context);
+  }
+
+  writeSyntax(options: FinalPrintOptions): void {
+    this.toTrimmedString(options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;

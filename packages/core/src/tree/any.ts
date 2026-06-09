@@ -5,6 +5,7 @@
 import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from './node-base.js';
 import type { Context } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
+import type { PrintOptions } from './util/print.js';
 
 export type AnyRole =
   'ident'
@@ -61,6 +62,12 @@ export class Any<
 
   override resolve(context: Context): MaybePromise<Node> {
     return this.evalNode(context);
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    const out = this.value;
+    options?.writer?.add(out, this);
+    return out;
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {

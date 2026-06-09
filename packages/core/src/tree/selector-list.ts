@@ -8,7 +8,7 @@ import {
 import { type Context } from '../context.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -22,13 +22,13 @@ import { canReuseLeaf, copyWithReusableLeaves, ownCollapsedSourceChild, reuseLea
 
 function emitSelectorListItem(
   item: Selector,
-  options: ReturnType<typeof getPrintOptions>,
+  options: FinalPrintOptions,
   suppressPre = false
 ): void {
   const saved = options.suppressBoundaryTrivia;
   options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
   try {
-    item.toString(options);
+    item.writeSyntax(options);
   } finally {
     options.suppressBoundaryTrivia = saved;
   }
@@ -83,8 +83,7 @@ export class SelectorList extends Selector<Selector[]> {
     return owned;
   }
 
-  private renderSelectorListSyntax(options?: PrintOptions): string {
-    const printOptions = getPrintOptions(options);
+  override writeSyntax(printOptions: FinalPrintOptions): void {
     const w = printOptions.writer;
     let depth = printOptions.depth;
     let space = ''.padStart(depth * 2);
@@ -137,9 +136,8 @@ export class SelectorList extends Selector<Selector[]> {
     }
     let length = value.length;
     if (length === 0) {
-      return '';
+      return;
     }
-    const mark = w.mark();
     let item = value[0]!;
 
     emitSelectorListItem(item, printOptions);
@@ -158,6 +156,13 @@ export class SelectorList extends Selector<Selector[]> {
       }
       emitSelectorListItem(item, printOptions, true);
     }
+  }
+
+  private renderSelectorListSyntax(options?: PrintOptions): string {
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer;
+    const mark = w.mark();
+    this.writeSyntax(printOptions);
     return w.getSince(mark);
   }
 
