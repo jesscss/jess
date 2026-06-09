@@ -1857,3 +1857,19 @@ the gate passed.
   in `js-expr.ts`. This is not a speed claim. Remaining queue: nested reference
   targets still use their existing public source serialization until `Call` and
   target-chain source writers are cut.
+- Negative child writer pass: accepted as a direct source-syntax child
+  transport cut. New traversal: none; no loop, recursion, parent/source walk,
+  side-map lookup, generator, object scan, or array helper was added. New
+  node/materialization: none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, frozen/source/parent mutation, or placement state was added.
+  Render path: unchanged for evaluated negative output; this pass only changes
+  authored negative source syntax from child public `toString(...)` to child
+  `writeSyntax(...)`. Public `toTrimmedString(...)` remains the cold capture
+  boundary. Helper/API surface: none added. Metadata mutations: none.
+  Evidence: pre-pass hotpath sanity at commit `e8123a5c` reported `functions`
+  `10.59ms` usable, `import-reference` `16.69ms` usable, `mixins-guards`
+  `13.99ms` usable, `extend-chaining` `4.17ms` usable, and `media`
+  `4.50ms` unstable. Focused negative/reference/render-buffer/dimension tests
+  passed (`182` tests), and `pnpm --filter @jesscss/core build` passed with
+  only the pre-existing direct `eval` warning in `js-expr.ts`. This is not a
+  speed claim.

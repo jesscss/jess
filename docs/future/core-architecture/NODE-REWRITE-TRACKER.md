@@ -80,7 +80,7 @@ first measured offenders after the selector pass.
 - [x] `Block`: direct `{...}` writer and render path.
 - [x] `Url`: direct `url(...)` writer; replace capture/replace path with direct
   normalized emission where possible.
-- [x] `Negative`: direct negative-prefix writer and render path.
+- [x] `Negative`: direct negative-prefix writer, child writer, and render path.
 - [x] `Bool`: scalar writer.
 - [x] `Nil`: confirm no writer/capture work remains; singleton/scalar audit.
 - [x] `Comment`: direct comment writer and visibility path.
@@ -192,7 +192,7 @@ Current hard leftovers after the broad hook sweep:
 | Log | `packages/core/src/tree/log.ts` | `Node` | writeSyntax hook complete | Empty source writer complete; side-effect eval/render path remains. |
 | Mixin | `packages/core/src/tree/mixin.ts` | `Node` | queued | High priority: guard/default/body copy and callable candidate output. |
 | MixinCollection | `packages/core/src/tree/util/callable-collection.ts` | `Node` | queued | Audit whether this public node wrapper is still necessary. |
-| Negative | `packages/core/src/tree/negative.ts` | `Node` | writeSyntax hook complete | Prefix syntax writes directly; unit/text classification remains. |
+| Negative | `packages/core/src/tree/negative.ts` | `Node` | direct child writer complete | Prefix syntax writes directly and now calls child `writeSyntax(...)` instead of public `toString(...)`; unit/text classification remains. |
 | Nil | `packages/core/src/tree/nil.ts` | `Node` | writeSyntax hook complete | Empty writer complete; singleton/scalar allocation remains. |
 | Num | `packages/core/src/tree/number.ts` | `Dimension` | writeSyntax hook complete | Inherits `Dimension.writeSyntax`; operation paths remain. |
 | Operation | `packages/core/src/tree/operation.ts` | `Node` | writeSyntax hook complete | Source operator syntax writes directly; arithmetic eval/calc fallback remains high priority. |
