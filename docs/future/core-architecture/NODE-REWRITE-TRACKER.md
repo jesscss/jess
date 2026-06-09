@@ -105,8 +105,8 @@ Current hard leftovers after the broad hook sweep:
 - [x] `ExtendList`: direct list writer; remove super-string wrapper.
 - [x] `SelectorCapture`: direct capture syntax writer, child writer, and direct
   resolved buffer render; audit whether node still needs to exist.
-- [x] `AttributeSelector`: direct attribute writer; avoid value/name
-  public-string transport in render.
+- [x] `AttributeSelector`: direct attribute writer and child writer; avoid
+  value/name public-string transport in render.
 - [ ] `Ampersand`: direct writer and structural selector replacement; remove
   `map(...toTrimmedString)` string assembly debt.
 - [ ] `Interpolated`: direct replacement writer; public `replace(...)` no
@@ -158,7 +158,7 @@ Current hard leftovers after the broad hook sweep:
 | Anonymous | `packages/core/src/tree/any.ts` | `Any` | writeSyntax hook complete | Scalar emission uses `Any.writeSyntax`; broader compare/string normalization remains. |
 | Any | `packages/core/src/tree/any.ts` | `Node` | writeSyntax hook complete | Scalar emission has a direct writer; compare/string conversion and numeric regex decisions remain. |
 | AtRule | `packages/core/src/tree/at-rule.ts` | `Node` | queued | High priority: reduce custom eval/import/render branches. |
-| AttributeSelector | `packages/core/src/tree/selector-attr.ts` | `SimpleSelector` | writeSyntax hook complete | Attribute parts write directly; interpolation eval, valueOf construction, and render capture remain. |
+| AttributeSelector | `packages/core/src/tree/selector-attr.ts` | `SimpleSelector` | direct child writer complete | Attribute parts write directly through child `writeSyntax(...)`; interpolation eval, valueOf construction, and render capture remain. |
 | BasicSelector | `packages/core/src/tree/selector-basic.ts` | `SimpleSelector` | writeSyntax complete | Direct source spelling emits authored `value`; `valueOf()` remains normalized key text, and standalone eval now carries the existing selector-bit library from context. |
 | Block | `packages/core/src/tree/block.ts` | `Node` | writeSyntax hook complete | Bracket emission writes directly; render still captures for string/buffer return. |
 | Bool | `packages/core/src/tree/bool.ts` | `Node` | writeSyntax hook complete | Scalar writer complete. |

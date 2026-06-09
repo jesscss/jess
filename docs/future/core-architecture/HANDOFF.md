@@ -1906,3 +1906,20 @@ the gate passed.
   func/call/render-buffer/list/interpolated tests passed (`136` tests), and
   `pnpm --filter @jesscss/core build` passed with only the pre-existing direct
   `eval` warning in `js-expr.ts`. This is not a speed claim.
+- AttributeSelector child writer pass: accepted as a direct source-syntax child
+  transport cut. New traversal: none; no loop, recursion, parent/source walk,
+  side-map lookup, generator, object scan, or array helper was added. New
+  node/materialization: none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, frozen/source/parent mutation, or placement state was added.
+  Render path: unchanged for evaluated attribute selector output; this pass
+  only changes authored attribute name/value source syntax from public
+  `toString(...)` to child `writeSyntax(...)`. Public `toTrimmedString(...)`
+  remains the cold capture boundary. Helper/API surface: none added. Metadata
+  mutations: none. Evidence: pre-pass hotpath sanity at commit `19389922`
+  reported `functions` `10.24ms` usable, `import-reference` `15.74ms` usable,
+  `mixins-guards` `14.63ms` usable, `extend-chaining` `4.37ms` usable, and
+  `media` `4.43ms` unstable. Focused selector-attr/selector-compound/
+  selector-list/selector-complex/selector-render-contract/render-buffer tests
+  passed (`65` tests), and `pnpm --filter @jesscss/core build` passed with
+  only the pre-existing direct `eval` warning in `js-expr.ts`. This is not a
+  speed claim.

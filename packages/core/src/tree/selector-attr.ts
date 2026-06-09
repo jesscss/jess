@@ -82,13 +82,13 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     if (typeof name === 'string') {
       w.add(name, this);
     } else {
-      name.toString(options);
+      name.writeSyntax(options);
     }
     if (op) {
       w.add(op);
     }
     if (value) {
-      value.toString(options);
+      value.writeSyntax(options);
     }
     if (mod) {
       w.add(' ');
