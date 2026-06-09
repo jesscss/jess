@@ -109,8 +109,9 @@ Current hard leftovers after the broad hook sweep:
   public-string transport in render.
 - [ ] `Ampersand`: direct writer and structural selector replacement; remove
   `map(...toTrimmedString)` string assembly debt.
-- [ ] `Interpolated`: direct replacement writer; eliminate replacement
-  `toTrimmedString` assembly where structural emission is possible.
+- [ ] `Interpolated`: direct replacement writer; public `replace(...)` no
+  longer uses regex callback scaffolding, but replacement `toTrimmedString`
+  assembly remains where structural emission is possible.
 - [ ] `InterpolatedSelector`: direct selector writer and kind flags.
 - [ ] `Reference`: direct unresolved reference writer; keep eval/render result
   emission out of public string APIs.
@@ -179,7 +180,7 @@ Current hard leftovers after the broad hook sweep:
 | For | `packages/core/src/tree/control.ts` | `Node` | queued | Audit loop state, body materialization, and async branches. |
 | Func | `packages/core/src/tree/function.ts` | `Node` | writeSyntax hook complete | Public function syntax writes directly; function call/eval machinery remains. |
 | If | `packages/core/src/tree/control.ts` | `Node` | queued | Audit condition/body materialization and branch count. |
-| Interpolated | `packages/core/src/tree/interpolated.ts` | `Node` | queued | High priority: string assembly, selector eval, and replacement arrays. |
+| Interpolated | `packages/core/src/tree/interpolated.ts` | `Node` | partial | Public `replace(...)` uses a plain placeholder loop instead of regex callback scaffolding; high-priority selector eval, generic materialization, replacement capture, and replacement arrays remain. |
 | InterpolatedSelector | `packages/core/src/tree/selector-interpolated.ts` | `SimpleSelector` | queued | Replace regex over `valueOf()` with carried selector kind when possible. |
 | JsArray | `packages/core/src/tree/js-array.ts` | `Node` | audited/deferred | Host wrapper tests cover identity/no eval stamping and render-buffer alignment, not source syntax. Do not add arbitrary writer output. |
 | JsExpression | `packages/core/src/tree/js-expr.ts` | `Node` | writeSyntax hook complete | Backtick syntax writes directly; JS eval path remains. |

@@ -20,7 +20,6 @@ import { copyWithReusableLeaves } from './util/cloning.js';
 // Placeholder that's very unlikely to appear in user strings
 // but is also easily typeable for tests
 export const INTERPOLATION_PLACEHOLDER = '%%';
-const INTERPOLATION_PLACEHOLDER_REGEXP = /%%/g;
 
 function shouldWrapSelectorInIs(replacement: Node): boolean {
   if (isNode(replacement, N.SelectorList)) {
@@ -116,26 +115,24 @@ export class Interpolated<
   }
 
   replace(replacements: Node[], options?: PrintOptions): string {
-    let { source } = this.value;
-    let output = source;
-    let i = 0;
-    let printOpts = getPrintOptions(options);
-    INTERPOLATION_PLACEHOLDER_REGEXP.lastIndex = 0;
-    output = output.replace(INTERPOLATION_PLACEHOLDER_REGEXP, () => {
-      let replacement: Node | undefined;
-      try {
-        replacement = replacements[i++];
-      } catch (error: unknown) {
-        throw error;
+    const { source } = this.value;
+    const printOpts = getPrintOptions(options);
+    let output = '';
+    let sourceOffset = 0;
+    let replacementIndex = 0;
+    while (sourceOffset < source.length) {
+      const next = source.indexOf(INTERPOLATION_PLACEHOLDER, sourceOffset);
+      if (next < 0) {
+        break;
       }
-      let result = '';
+      output += source.slice(sourceOffset, next);
+      const replacement = replacements[replacementIndex++];
       if (replacement) {
-        result = stringifyReplacement(replacement, printOpts, this.options.preserveQuotedSyntax);
+        output += stringifyReplacement(replacement, printOpts, this.options.preserveQuotedSyntax);
       }
-      return result;
-    });
-
-    return output;
+      sourceOffset = next + INTERPOLATION_PLACEHOLDER.length;
+    }
+    return output + source.slice(sourceOffset);
   }
 
   private writeReplacement(replacement: Node, options: PrintOptions): void {

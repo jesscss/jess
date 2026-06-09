@@ -1802,3 +1802,22 @@ the gate passed.
   `js-expr.ts`. Performance remained shelved for this micro-slice; no speed
   claim is made. Remaining queue: `Declaration` still owns the broader
   `declTrimmedString(...)`/value-body staging split.
+- Interpolated public replace loop pass: accepted as a narrow boring-JS string
+  utility cut, not an `Interpolated` completion. New traversal: no additional
+  traversal; the public `replace(...)` path already scanned placeholders via
+  `String.replace(...)` and now performs the same placeholder walk with an
+  explicit `indexOf(...)` loop. New node/materialization: none; no `Node`,
+  copy, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, side map, or replacement array was added. Render path: unchanged;
+  this pass does not route render through public replacement APIs and does not
+  resolve into arrays/nodes just to stringify. Helper/API surface: none added;
+  the dead interpolation placeholder regexp constant was removed. Metadata
+  mutations: none. Evidence: pre-pass hotpath sanity at commit `0e232a60`
+  reported `functions` `10.16ms` usable, `import-reference` `15.70ms` usable,
+  `mixins-guards` `14.03ms` usable, `extend-chaining` `4.16ms` usable, and
+  `media` `4.10ms` unstable. Focused interpolated/selector-interpolated/
+  render-buffer tests passed (`40` tests), and `pnpm --filter @jesscss/core
+  build` passed with only the pre-existing direct `eval` warning in
+  `js-expr.ts`. This is not a speed claim. Remaining queue:
+  `Interpolated.createSelector(...)`, `createGeneric(...)`, replacement
+  `toTrimmedString(...)` capture, and replacement array materialization remain.
