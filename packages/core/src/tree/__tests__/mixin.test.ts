@@ -2520,6 +2520,18 @@ describe('Mixin', () => {
       }
     });
 
+    it('callable lookup does not build a scope frame just to try the frame shortcut', () => {
+      const mixinDef = mixin({
+        name: any('.lazy-frame-mixin'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+      const root = rules([mixinDef]);
+
+      expect(root.scopeFrame).toBeUndefined();
+      expect(root.find('mixin', '.lazy-frame-mixin', 'Mixin')).toEqual([mixinDef]);
+      expect(root.scopeFrame).toBeUndefined();
+    });
+
     it('callable cache fast path: type=mixin-ruleset static Mixin hit skips MixinRegistry.find', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }

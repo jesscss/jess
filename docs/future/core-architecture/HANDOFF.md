@@ -785,6 +785,19 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Callable frame shortcut allocation cut: accepted as removal of speculative
+  frame construction, not a speed claim. Files:
+  `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/__tests__/mixin.test.ts`, and this handoff. New
+  traversal: none; `Rules.findMixin(...)` now consults the callable
+  `ScopeFrame` shortcut only when `this.scopeFrame` already exists instead of
+  calling `getScopeFrame(...)` just to try the shortcut. Existing direct
+  lookup remains the fallback for unframed callers. New node/materialization:
+  none in production; the new test builds ordinary mixin fixture nodes only.
+  Render path: unchanged. Helper/API surface: none. Metadata mutations: no new
+  parent/source/frozen mutations; this removes lazy scope-frame assignment from
+  speculative callable lookup. Routine error/control: no new throw/catch/Error
+  path. Evidence: focused mixin tests passed (`136` tests).
 - Mixin-ruleset arg-call terminal filter pass: accepted as terminal candidate
   narrowing, not a speed claim. Files: `packages/core/src/tree/call.ts`,
   `packages/core/src/tree/reference.ts`, `packages/core/src/tree/rules.ts`,

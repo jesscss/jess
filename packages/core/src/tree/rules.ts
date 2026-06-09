@@ -1646,7 +1646,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (cacheKey !== undefined && this.hasRegistrylessMixinCacheResult(cacheKey)) {
         return this.getRegistrylessMixinCacheResult(cacheKey);
       }
-      const callableFrame = this.getScopeFrame();
+      const callableFrame = this.scopeFrame;
       if (callableFrame && !options.hasTarget && !options.local) {
         this.prepareCallableLookupFrame(callableFrame, keys, options.searchParents);
         const frameHit = lookupScopeFrameCallable(callableFrame, keys, {
