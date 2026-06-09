@@ -522,7 +522,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override allowRuleRoot = true;
   override allowRoot = true;
 
-  mixinRegistry: Registries.MixinRegistry | undefined;
   declarationRegistry: Registries.DeclarationRegistry | undefined;
   functionRegistry: Registries.FunctionRegistry | undefined;
   /** Fast map: var name → ordered list of VarDeclarations registered in this scope. */
@@ -744,10 +743,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return (this.declarationRegistry ??= new Registries.DeclarationRegistry(this));
   }
 
-  private _ensureMixinRegistry(): Registries.MixinRegistry {
-    return (this.mixinRegistry ??= new Registries.MixinRegistry(this));
-  }
-
   private _ensureFunctionRegistry(): Registries.FunctionRegistry {
     return (this.functionRegistry ??= new Registries.FunctionRegistry(this));
   }
@@ -789,7 +784,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const registry = type === 'declaration'
       ? this._ensureDeclarationRegistry()
       : type === 'mixin'
-        ? this._ensureMixinRegistry()
+        ? new Registries.MixinRegistry(this)
         : this._ensureFunctionRegistry();
     if (this.rulesIndexed < this.value.length) {
       this._indexRules();

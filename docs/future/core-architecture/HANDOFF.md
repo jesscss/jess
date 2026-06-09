@@ -785,6 +785,21 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Rules-owned mixin registry storage cut: accepted as `Rules` instance
+  storage/helper deletion, not a speed claim. File:
+  `packages/core/src/tree/rules.ts`. New traversal: none. New
+  node/materialization: none; no `Node`, copy, wrapper `Rules`, side map, or
+  output cache was added. Render path: unchanged. Helper/API surface: deleted
+  the `mixinRegistry` field and private `_ensureMixinRegistry()` helper from
+  `Rules`; retained the existing `getRegistry('mixin')` compatibility overload
+  as a cold explicit request path that no longer stores a registry on the
+  `Rules` instance. Metadata mutations: none. Routine error/control: no new
+  throw/catch/Error path. Remaining debt: the internal legacy `MixinRegistry`
+  class still exists for now, but production lookup does not call its `find`
+  path and `Rules` no longer owns a cached instance. Evidence: focused eslint
+  passed; focused mixin/reference/import-style/rules/call tests passed (`466`
+  tests, `9` skipped); `@jesscss/core` build passed; `git diff --check`
+  passed; `pnpm run verify:aggressive-cutting-review` passed.
 - `Rules.register('mixin')` registry-population cut: accepted as cold
   compatibility side-effect deletion, not a speed claim. File:
   `packages/core/src/tree/rules.ts`. New traversal: none. New
