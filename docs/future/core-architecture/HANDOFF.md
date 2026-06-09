@@ -43,13 +43,15 @@ Active implementation specs:
 
 ## Focus Spec
 
-Active mode: **node `writeSyntax` render/stringification rewrite**.
+Active mode: **registryless lookup slimming/performance**.
 
-Temporary lane switch: the binding-index lane is paused by explicit
-user-direction until the `writeSyntax` node queue in
-`NODE-REWRITE-TRACKER.md` is complete or this handoff explicitly switches back.
-Do not let binding cleanup, generic smell sweeps, or unrelated performance
-experiments overrule the `writeSyntax` queue while this mode is active.
+Temporary branch-local lane switch: this worktree is explicitly focused on
+registryless lookup architecture, deleting registry plumbing, and improving the
+runtime around `Rules.find(...)`, callable lookup, and binding/frame lookup.
+The `writeSyntax` serialization lane merged from `origin/dev` is not the
+active direction for this branch. Do not choose serialization, selector
+stringification, or `OutputWriter` work from `NODE-REWRITE-TRACKER.md` here
+unless the user explicitly redirects this worktree to that lane.
 
 The goal is the fastest credible path from parsed Less to CSS output:
 
@@ -64,31 +66,37 @@ The goal is the fastest credible path from parsed Less to CSS output:
 Less is the optimizing path. Preserve SCSS-enabling seams only when they are
 concrete and cheap or isolated behind cold extension boundaries.
 
-Work shape while `writeSyntax` is active: take the next unchecked node or
-family from the tracker, split direct emission from public string capture,
-make render call the direct writer path after value selection, prove output
-with focused tests, run the aggressive cutting gate, record any benchmark/profile
-status if the node is hot, then commit and push. Reject changes that make
-`render(...)` call public `toString(...)`/`toTrimmedString(...)` as transport,
-or that add helper objects/arrays only to describe syntax.
+Work shape while registryless lookup is active: take the next registry or
+fallback bridge that is covered by direct/frame lookup, delete or narrow it,
+prove covered behavior with focused lookup tests, and benchmark the usual
+lookup fixtures before making any speed claim. Prefer deletion of stale
+env-gated experiments, registry-side caches, recursive `_rulesSet` walks, and
+generic fallback ladders over adding new cache layers or helper surfaces.
 
 ## Active Work
 
-Correctness queue: no active correctness blockers. If a `.less` fixture fails
-to parse/evaluate, add a focused repro before changing expected output. If CSS
-differs, review semantics manually before changing tests.
+Correctness queue: no active lookup correctness blockers. If a `.less` fixture
+fails to parse/evaluate in the lookup lane, add a focused repro before changing
+expected output. If CSS differs, review semantics manually before changing
+tests. The current `origin/dev` serialization failure in
+`Ruleset.getHeaderString(...)` / selector `writeSyntax` is out of scope for
+this registryless worktree unless the user explicitly redirects us to
+serialization.
 
 Performance leash:
 
-1. Start from the current selector `writeSyntax` baseline:
-   broad `benchmark.less` profiler status had `OutputWriter.mark` `54534` and
-   `OutputWriter.getSince` `49502`.
-2. Choose the next node from `NODE-REWRITE-TRACKER.md`; use caller-stack
-   evidence for priority when several unchecked nodes are available.
-3. Rerun focused tests and, for hot nodes, broad `benchmark.less` profiler
-   status after the patch.
-4. Keep the patch only if it improves real runtime cost, removes measured
-   object/memory pressure without slowing runtime, or fixes correctness.
+1. Keep registryless callable lookup as the default path and delete remaining
+   registry fallbacks only when focused tests prove direct/frame parity.
+2. Use `mixins-guards.less` and `scope-lookup-stress.less` as the immediate
+   paired sanity fixtures for callable lookup changes; include
+   `import-reference.less` or broader hot-path runs when import/reference
+   visibility changes.
+3. Treat cache on/off comparisons as regression sanity unless the patch itself
+   changes cache behavior. Do not claim speed without a clean before/after
+   benchmark for the changed path.
+4. Keep a patch only if it removes registry plumbing or measured lookup work
+   without broad-fixture regression, improves real runtime cost, or fixes a
+   lookup correctness issue.
 
 Immediate benchmark commands are defined in `PERFORMANCE-HANDOFF.md`.
 Performance evidence/history stays parked there; this handoff owns the active
