@@ -1890,3 +1890,19 @@ the gate passed.
   selector-complex/render-buffer tests passed (`66` tests), and `pnpm
   --filter @jesscss/core build` passed with only the pre-existing direct
   `eval` warning in `js-expr.ts`. This is not a speed claim.
+- Func child writer pass: accepted as a direct source-syntax child transport
+  cut. New traversal: none; no loop, recursion, parent/source walk, side-map
+  lookup, generator, object scan, or array helper was added. New
+  node/materialization: none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, frozen/source/parent mutation, or placement state was added.
+  Render path: unchanged; `Func` is invisible public source syntax, and this
+  pass only changes function name and params from template-string/public
+  `toString(...)` transport to direct `writeSyntax(...)` emission. Public
+  `toTrimmedString(...)` remains the cold capture boundary. Helper/API surface:
+  none added. Metadata mutations: none. Evidence: pre-pass hotpath sanity at
+  commit `32a8c2a9` reported `functions` `10.52ms` usable,
+  `import-reference` `15.37ms` usable, `mixins-guards` `14.07ms` usable,
+  `extend-chaining` `4.21ms` usable, and `media` `4.29ms` unstable. Focused
+  func/call/render-buffer/list/interpolated tests passed (`136` tests), and
+  `pnpm --filter @jesscss/core build` passed with only the pre-existing direct
+  `eval` warning in `js-expr.ts`. This is not a speed claim.

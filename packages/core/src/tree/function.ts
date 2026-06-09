@@ -54,10 +54,14 @@ export class Func extends Node<FuncValue, FuncOptions> {
 
     w.add('$function', this);
     w.add(' ');
-    w.add(name ? `${name}` : '@', this);
+    if (name) {
+      name.writeSyntax(options);
+    } else {
+      w.add('@', this);
+    }
     w.add('(');
     if (params) {
-      params.toString(options);
+      params.writeSyntax(options);
     }
     w.add(') ');
 

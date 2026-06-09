@@ -117,8 +117,8 @@ Current hard leftovers after the broad hook sweep:
   emission out of public string APIs.
 - [ ] `Call`: direct fallback call writer; split callable output value
   selection from emission.
-- [x] `Func`: direct function signature/body writer if public syntax remains
-  necessary.
+- [x] `Func`: direct function signature/body writer, including name/params, if
+  public syntax remains necessary.
 - [ ] `Mixin`: direct mixin syntax/guard writer; audit guard/default/body copy
   interactions.
 - [ ] `MixinCollection`: decide whether public wrapper survives; if yes, direct
@@ -178,7 +178,7 @@ Current hard leftovers after the broad hook sweep:
 | Extend | `packages/core/src/tree/extend.ts` | `Node` | writeSyntax hook complete | Extend syntax writes directly; selector valueOf and resolved selector state remain. |
 | ExtendList | `packages/core/src/tree/extend-list.ts` | `Node` | writeSyntax hook complete | List wrapper writes through base child writer plus semicolon; public wrapper existence remains. |
 | For | `packages/core/src/tree/control.ts` | `Node` | queued | Audit loop state, body materialization, and async branches. |
-| Func | `packages/core/src/tree/function.ts` | `Node` | writeSyntax hook complete | Public function syntax writes directly; function call/eval machinery remains. |
+| Func | `packages/core/src/tree/function.ts` | `Node` | direct child writer complete | Public function syntax writes directly through name/params/body writers; function call/eval machinery remains. |
 | If | `packages/core/src/tree/control.ts` | `Node` | queued | Audit condition/body materialization and branch count. |
 | Interpolated | `packages/core/src/tree/interpolated.ts` | `Node` | partial | Public `replace(...)` uses a plain placeholder loop instead of regex callback scaffolding; high-priority selector eval, generic materialization, replacement capture, and replacement arrays remain. |
 | InterpolatedSelector | `packages/core/src/tree/selector-interpolated.ts` | `SimpleSelector` | queued | Replace regex over `valueOf()` with carried selector kind when possible. |
