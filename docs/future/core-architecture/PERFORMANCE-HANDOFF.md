@@ -2095,6 +2095,29 @@ Follow-up default one-entry cache evidence:
   `extend-chaining.less` reported baseline median `12.75ms`, candidate median
   `12.76ms`, mean ratio `-0.27%`, wins `22/40`, `t=-0.44`.
 
+Follow-up cache-key construction cleanup:
+
+- cache-key tuple construction now uses named separators plus direct string
+  concatenation instead of allocating an array solely to `.join(...)` the exact
+  lookup key, filter type, and parent-search bit. Array/path lookup still joins
+  the path segments for the path component only;
+- pre-cleanup one-render instrumentation with default registryless mode showed
+  cache-key helper calls are mostly skipped but still frequent on the recursive
+  fixture: `mixins-guards.less` had `67` calls / `7` eligible;
+  `scope-lookup-stress.less` had `1263` calls / `362` eligible; and
+  `import-reference.less` had `11` calls / `0` eligible;
+- focused all-flags behavior and lint still passed:
+  `pnpm exec eslint packages/core/src/tree/rules.ts`, and
+  `JESS_DIRECT_DECLARATION_LOOKUP=1 JESS_DIRECT_CALLABLE_LOOKUP=1 JESS_REGISTRYLESS_MIXIN_LOOKUP=1 pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts --run`
+  (`304` tests, `8` skipped);
+- post-cleanup paired default registryless comparisons preserved the existing
+  shape but should not be treated as a standalone speed claim:
+  `mixins-guards.less` `--warmup 8 --pairs 60 --batch-size 5` reported
+  baseline median `67.42ms`, candidate median `67.69ms`, mean ratio `-0.57%`,
+  wins `33/60`, `t=-0.88`; `scope-lookup-stress.less` render with `--warmup
+  10 --pairs 100` reported baseline median `55.81ms`, candidate median
+  `53.99ms`, mean ratio `-2.74%`, wins `87/100`, `t=-5.19`.
+
 Next architecture theories to test:
 
 1. Promote exact child-surface capability to the `ScopeFrame` once the frame
@@ -2119,8 +2142,8 @@ Next architecture theories to test:
    The one-entry cache prototype supports this direction for repeated recursive
    exact lookups. The wrapper allocation has been removed and the inlined cache
    is now default inside the registryless prototype. The next refinement should
-   reduce cache-key construction itself, likely by caching the static lookup
-   key/fingerprint when the `Reference` already carries a stable string or path.
+   avoid repeated path-key joins by caching a stable lookup fingerprint when the
+   `Reference` already carries a static string or path.
 4. Prefer negative capability over positive result caching. The broad fixture
    regressed because the candidate path repeatedly proved "nothing in this
    child surface" after the fact. A cheap carried "cannot contain simple exact

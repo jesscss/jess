@@ -824,6 +824,22 @@ the gate passed.
   hot-path checks did not show a regression: `import-reference.less`
   (`wins 28/40`, `t=-1.94`), `media.less` (`wins 20/40`, `t=0.50`), and
   `extend-chaining.less` (`wins 22/40`, `t=-0.44`).
+- Registryless cache-key construction cleanup: accepted as hot-helper
+  allocation deletion, not a standalone speed claim. File:
+  `packages/core/src/tree/rules.ts`. New traversal: none. New
+  node/materialization: none. Helper/API surface: no public API; two private
+  separator constants were added, and `getRegistrylessMixinCacheKey(...)` now
+  builds the cache key by direct string concatenation instead of allocating an
+  array solely to `.join(...)` the lookup key, filter type, and parent-search
+  bit. Array/path lookup still joins path segments for the path component.
+  Metadata mutations: none. Routine error/control: none. Evidence: pre-cleanup
+  instrumentation showed `scope-lookup-stress.less` calls the key helper `1263`
+  times in one render with `362` eligible cache checks; focused eslint passed;
+  all-flags focused behavior passed (`304` tests, `8` skipped);
+  `@jesscss/core` build passed. Post-cleanup paired default registryless runs
+  preserved the established shape: `mixins-guards.less` stayed neutral
+  (`wins 33/60`, `t=-0.88`), and `scope-lookup-stress.less` retained a win
+  (`wins 87/100`, `t=-5.19`).
 - Frame exact-callable miss coverage pass: accepted as a predicate-precision
   cleanup for registryless lookup, not as a standalone speed win. Files:
   `packages/core/src/tree/rules.ts` and

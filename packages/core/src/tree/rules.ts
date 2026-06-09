@@ -70,6 +70,8 @@ import {
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
+const REGISTRYLESS_MIXIN_CACHE_KEY_SEPARATOR = '\u001e';
+const REGISTRYLESS_MIXIN_PATH_KEY_SEPARATOR = '\u001f';
 type StyleImportRegistrationNode = Node<{ path: unknown }>;
 type PathResolutionError = Error & { _isPathResolutionError?: boolean };
 type FlagLikeNode = { hasFlag(flag: number): boolean };
@@ -1312,13 +1314,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (options.hasTarget || options.local || options.context?.rulesContext === this) {
       return undefined;
     }
-    const lookupKey = isArray(keys) ? keys.join('\u001f') : keys;
-    const cacheKey = [
-      lookupKey,
-      filterType ?? '',
-      options.searchParents === false ? 's0' : 's1'
-    ].join('\u001e');
-    return cacheKey;
+    const lookupKey = isArray(keys) ? keys.join(REGISTRYLESS_MIXIN_PATH_KEY_SEPARATOR) : keys;
+    return lookupKey
+      + REGISTRYLESS_MIXIN_CACHE_KEY_SEPARATOR
+      + (filterType ?? '')
+      + REGISTRYLESS_MIXIN_CACHE_KEY_SEPARATOR
+      + (options.searchParents === false ? 's0' : 's1');
   }
 
   private hasRegistrylessMixinCacheResult(key: string): boolean {
