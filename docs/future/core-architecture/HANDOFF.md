@@ -785,6 +785,30 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Typed `Rules.find*` production routing pass: accepted as hot-path branch
+  deletion and clearer lookup surface, not a speed claim. Files:
+  `packages/core/src/tree/rules.ts`, `packages/core/src/tree/reference.ts`,
+  `packages/core/src/tree/selector-attr.ts`,
+  `packages/core/src/tree/function.ts`,
+  `packages/core/src/tree/util/registry-utils.ts`, and
+  `packages/core/src/tree/__tests__/reference.test.ts`. New traversal: none;
+  callable lookup code was moved from the stringly `Rules.find('mixin', ...)`
+  branch into `Rules.findMixin(...)`, and production call sites now call
+  `findMixin`, `findDeclaration`, `findVariable`, `findProperty`, or
+  `findFunction` directly. New node/materialization: none. Render path:
+  unchanged; this only changes lookup dispatch. Helper/API surface: public
+  additive methods on exported `Rules`; no package export or ESM specifier
+  changed, and the existing `Rules.find(...)` compatibility wrapper remains for
+  public/test callers. This adds method names but removes the production
+  string-type switch from the lookup sites. Metadata mutations: none. Routine
+  error/control: no new throw/catch/Error path beyond the existing
+  compatibility wrapper type checks. Evidence: `rg` found no remaining
+  production `find('mixin'|'declaration'|'function')` calls under
+  `packages/core/src/tree` outside tests; focused eslint passed; focused
+  mixin/reference/import-style/rules/call tests passed (`466` tests, `9`
+  skipped); `@jesscss/core` build passed. The first parallel test+build attempt
+  failed because build cleaned `lib` while Vitest imported generated parser
+  output; rerunning tests after build passed.
 - Callable lookup cache de-registry pass: accepted as registry plumbing
   deletion and correctness tightening, not a standalone speed claim. Files:
   `packages/core/src/tree/rules.ts`,

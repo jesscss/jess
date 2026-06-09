@@ -3546,20 +3546,19 @@ describe('reference', () => {
     });
 
     it('keeps static compound reference path arrays as binding identity', async () => {
-      const originalFind = RulesClass.prototype.find;
+      const originalFindMixin = RulesClass.prototype.findMixin;
       const path = ['.a', '.b', '.c'];
       const pathIdentityHits: boolean[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [type, key] = args;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        const [key] = args;
         if (
-          type === 'mixin'
-          && Array.isArray(key)
+          Array.isArray(key)
           && key.length === path.length
           && key[0] === path[0]
         ) {
           pathIdentityHits.push(key === path);
         }
-        return originalFind.apply(this, args);
+        return originalFindMixin.apply(this, args);
       };
 
       try {
@@ -3593,7 +3592,7 @@ describe('reference', () => {
         expect(pathIdentityHits).toContain(true);
         expect(pathIdentityHits).not.toContain(false);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        RulesClass.prototype.findMixin = originalFindMixin;
       }
     });
 

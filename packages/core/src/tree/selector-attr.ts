@@ -56,8 +56,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
         const key = m[1]!;
         const rules = this.rulesParent;
         if (rules) {
-          const found = rules.find('declaration', key, 'VarDeclaration');
-          const decl = Array.isArray(found) ? found[0] : found;
+          const decl = rules.findVariable(key);
           if (decl && isNode(decl, N.VarDeclaration)) {
             const out = decl.value.value.resolve(context);
             if (isThenable(out)) {
@@ -124,8 +123,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
         const key = m[1]!;
         const rules = this.rulesParent;
         if (rules) {
-          const found = rules.find('declaration', key, 'VarDeclaration');
-          const decl = Array.isArray(found) ? found[0] : found;
+          const decl = rules.findVariable(key);
           if (decl && isNode(decl, N.VarDeclaration)) {
             const out = decl.value.value.eval(context);
             if (isThenable(out)) {

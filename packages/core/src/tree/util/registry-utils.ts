@@ -755,7 +755,7 @@ export class MixinRegistry extends Registry<
             continue;
           }
           const varName = matchInterpolated[1]!;
-          const maybeVar = rules.find('declaration', varName, 'VarDeclaration', {
+          const maybeVar = rules.findVariable(varName, {
             context,
             hasTarget,
             filter: options?.filter

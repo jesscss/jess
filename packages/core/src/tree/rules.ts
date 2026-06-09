@@ -1620,7 +1620,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!mixinHasNoRequiredParams(entry)) {
         continue;
       }
-      const nested = entry.value.rules.find('mixin', remainder, undefined, {
+      const nested = entry.value.rules.findMixin(remainder, undefined, {
         ...options,
         searchParents: false
       });
@@ -1634,21 +1634,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return resolved;
   }
 
-  /**
-   * This wrapper is used so we don't prematurely create a registry
-   * just to search it.
-   */
-  find(type: 'declaration', keys: string, filterType?: string, options?: Registries.DeclarationFindOptions): ReturnType<Registries.DeclarationRegistry['find']> | undefined;
-  find(type: 'mixin', keys: string | string[], filterType?: string, options?: Registries.FindOptions): MixinEntry[] | undefined;
-  find(type: 'function', keys: string, filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.FunctionRegistry['find']> | undefined;
-  find(type: 'declaration' | 'mixin' | 'function', key: string, filterType: string, options?: Registries.FindOptions): ReturnType<Registries.DeclarationRegistry['find']> | MixinEntry[] | ReturnType<Registries.FunctionRegistry['find']> | undefined;
-  find(
-    type: 'declaration' | 'mixin' | 'function',
+  findMixin(
     keys: string | string[],
     filterType?: string,
     options: Registries.FindOptions = {}
-  ): ReturnType<Registries.DeclarationRegistry['find']> | MixinEntry[] | ReturnType<Registries.FunctionRegistry['find']> | undefined {
-    if (type === 'mixin' && typeof keys === 'string') {
+  ): MixinEntry[] | undefined {
+    if (typeof keys === 'string') {
       const includeRulesets = filterType !== 'Mixin';
       const cacheKey = this.getRegistrylessMixinCacheKey(keys, filterType, options);
       if (cacheKey !== undefined && this.hasRegistrylessMixinCacheResult(cacheKey)) {
@@ -1664,7 +1655,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (frameHit.kind === 'miss') {
           const pathKeys = splitStaticCallablePathKey(keys);
           if (pathKeys) {
-            const result = this.find('mixin', pathKeys, filterType, options) as MixinEntry[] | undefined;
+            const result = this.findMixin(pathKeys, filterType, options);
             this.setRegistrylessMixinCacheResult(cacheKey, result);
             return result;
           }
@@ -1756,7 +1747,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       const pathKeys = splitStaticCallablePathKey(keys);
       if (pathKeys) {
-        const result = this.find('mixin', pathKeys, filterType, options) as MixinEntry[] | undefined;
+        const result = this.findMixin(pathKeys, filterType, options);
         this.setRegistrylessMixinCacheResult(cacheKey, result);
         return result;
       }
@@ -1770,11 +1761,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const result = direct.length > 0 ? direct : undefined;
       this.setRegistrylessMixinCacheResult(cacheKey, result);
       return result;
-    } else if (type === 'mixin' && isArray(keys) && keys.length === 0) {
+    } else if (isArray(keys) && keys.length === 0) {
       return undefined;
-    } else if (type === 'mixin' && isArray(keys) && keys.length === 1) {
-      return this.find('mixin', keys[0]!, filterType, options) as MixinEntry[] | undefined;
-    } else if (type === 'mixin' && isArray(keys) && keys.length > 1) {
+    } else if (isArray(keys) && keys.length === 1) {
+      return this.findMixin(keys[0]!, filterType, options);
+    } else if (isArray(keys) && keys.length > 1) {
       const cacheKey = this.getRegistrylessMixinCacheKey(keys, filterType, options);
       if (cacheKey !== undefined && this.hasRegistrylessMixinCacheResult(cacheKey)) {
         return this.getRegistrylessMixinCacheResult(cacheKey);
@@ -1855,30 +1846,79 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.setRegistrylessMixinCacheResult(cacheKey, undefined);
       return undefined;
     }
+    return undefined;
+  }
+
+  findDeclaration(
+    keys: string,
+    filterType?: string,
+    options: Registries.DeclarationFindOptions = {}
+  ): ReturnType<Registries.DeclarationRegistry['find']> | undefined {
+    if (process.env.JESS_DIRECT_DECLARATION_LOOKUP === '1') {
+      const direct = findDeclarationDirect(
+        this,
+        keys,
+        normalizeDeclarationFilter(filterType),
+        options
+      );
+      if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
+        return direct;
+      }
+    }
+    return this.getRegistry('declaration').find(keys, normalizeDeclarationFilter(filterType), options);
+  }
+
+  findVariable(
+    keys: string,
+    options?: Registries.DeclarationFindOptions
+  ): VarDeclaration | undefined {
+    const found = this.findDeclaration(keys, 'VarDeclaration', options);
+    return isNode(found, N.VarDeclaration) ? found : undefined;
+  }
+
+  findProperty(
+    keys: string,
+    options?: Registries.DeclarationFindOptions
+  ): Declaration | undefined {
+    const found = this.findDeclaration(keys, 'Declaration', options);
+    return isNode(found, N.Declaration) ? found : undefined;
+  }
+
+  findFunction(
+    keys: string,
+    filterType?: string,
+    options?: Registries.FindOptions
+  ): ReturnType<Registries.FunctionRegistry['find']> | undefined {
+    return this.getRegistry('function').find(keys, filterType, options);
+  }
+
+  /**
+   * Compatibility wrapper for public callers. Production code should prefer the
+   * typed find* methods above so it does not route through a string type switch.
+   */
+  find(type: 'declaration', keys: string, filterType?: string, options?: Registries.DeclarationFindOptions): ReturnType<Registries.DeclarationRegistry['find']> | undefined;
+  find(type: 'mixin', keys: string | string[], filterType?: string, options?: Registries.FindOptions): MixinEntry[] | undefined;
+  find(type: 'function', keys: string, filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.FunctionRegistry['find']> | undefined;
+  find(type: 'declaration' | 'mixin' | 'function', key: string, filterType: string, options?: Registries.FindOptions): ReturnType<Registries.DeclarationRegistry['find']> | MixinEntry[] | ReturnType<Registries.FunctionRegistry['find']> | undefined;
+  find(
+    type: 'declaration' | 'mixin' | 'function',
+    keys: string | string[],
+    filterType?: string,
+    options: Registries.FindOptions = {}
+  ): ReturnType<Registries.DeclarationRegistry['find']> | MixinEntry[] | ReturnType<Registries.FunctionRegistry['find']> | undefined {
     switch (type) {
       case 'declaration':
         if (typeof keys !== 'string') {
           throw new TypeError('Declaration lookup keys must be a string');
         }
-        if (process.env.JESS_DIRECT_DECLARATION_LOOKUP === '1') {
-          const direct = findDeclarationDirect(
-            this,
-            keys,
-            normalizeDeclarationFilter(filterType),
-            options
-          );
-          if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
-            return direct;
-          }
-        }
-        return this.getRegistry('declaration').find(keys, normalizeDeclarationFilter(filterType), options);
+        return this.findDeclaration(keys, filterType, options);
       case 'mixin':
-        return undefined;
+        return this.findMixin(keys, filterType, options);
       case 'function':
         if (typeof keys !== 'string') {
           throw new TypeError('Function lookup keys must be a string');
         }
-        return this.getRegistry('function').find(keys, filterType, options);
+        return this.findFunction(keys, filterType, options);
     }
   }
 
@@ -2571,7 +2611,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // start is only relevant for finding variables before the current node in the same Rules
         opts.start = undefined;
         // node.type is 'VarDeclaration' or 'Declaration', use it directly as filterType
-        let result = this.find('declaration', key, normalizeDeclarationFilter(node.type), opts);
+        let result = this.findDeclaration(key, normalizeDeclarationFilter(node.type), opts);
         if (result) {
           if (result.options?.readonly || opts.readonly) {
             throw new ReferenceError(`"${key}" is readonly`);

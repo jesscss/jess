@@ -851,7 +851,7 @@ function lookupIndexReference(
     }
   }
   const keyStr = getLookupKeyString(valueKey);
-  return targetRules.find('declaration', keyStr, getIndexReferenceFilterType(env.keyNode), opts);
+  return targetRules.findDeclaration(keyStr, getIndexReferenceFilterType(env.keyNode), opts);
 }
 
 function lookupPropertyReference(
@@ -859,7 +859,7 @@ function lookupPropertyReference(
   valueKey: NormalizedLookupKey,
   opts: FindOptions
 ): RulesLookupResult {
-  return targetRules.find('declaration', getLookupKeyString(valueKey), 'Declaration', opts);
+  return targetRules.findProperty(getLookupKeyString(valueKey), opts);
 }
 
 function lookupVariableReference(
@@ -898,7 +898,7 @@ function lookupDeclarationReference(
   valueKey: NormalizedLookupKey,
   opts: FindOptions
 ): RulesLookupResult {
-  return targetRules.find('declaration', getLookupKeyString(valueKey), undefined, opts);
+  return targetRules.findDeclaration(getLookupKeyString(valueKey), undefined, opts);
 }
 
 function lookupFunctionReference(
@@ -910,13 +910,13 @@ function lookupFunctionReference(
   const keyStr = getLookupKeyString(valueKey);
   if (env.inCall) {
     return (
-      targetRules.find('function', keyStr, undefined, opts)
-      ?? targetRules.find('declaration', keyStr, undefined, opts)
+      targetRules.findFunction(keyStr, undefined, opts)
+      ?? targetRules.findDeclaration(keyStr, undefined, opts)
     );
   }
   return (
-    targetRules.find('declaration', keyStr, undefined, opts)
-    ?? targetRules.find('function', keyStr, undefined, opts)
+    targetRules.findDeclaration(keyStr, undefined, opts)
+    ?? targetRules.findFunction(keyStr, undefined, opts)
   );
 }
 
@@ -928,12 +928,12 @@ function lookupCallableReference(
   filterType?: 'Mixin'
 ): RulesLookupResult {
   const callableKey = Array.isArray(valueKey) ? valueKey : getLookupKeyString(valueKey);
-  const callable = targetRules.find('mixin', callableKey, filterType, opts);
+  const callable = targetRules.findMixin(callableKey, filterType, opts);
   if (callable) {
     return callable;
   }
   if (env.inCall) {
-    return targetRules.find('function', getLookupKeyString(valueKey), undefined, opts);
+    return targetRules.findFunction(getLookupKeyString(valueKey), undefined, opts);
   }
   return undefined;
 }
@@ -1181,7 +1181,7 @@ function lookupDirectRulesTarget(
   key: string,
   keyNode: ReferenceValue['key']
 ): RulesLookupResult {
-  return targetNode.find('declaration', key, getDirectRulesIndexFilterType(keyNode));
+  return targetNode.findDeclaration(key, getDirectRulesIndexFilterType(keyNode));
 }
 
 function lookupDirectNamedTarget(
