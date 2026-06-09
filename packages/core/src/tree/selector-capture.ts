@@ -27,7 +27,7 @@ export class SelectorCapture extends Node<Selector> {
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('*[', this);
-    this.value.toString(options);
+    this.value.writeSyntax(options);
     w.add(']', this);
   }
 
