@@ -1785,3 +1785,20 @@ the gate passed.
   `9.89ms` usable, `import-reference` `16.28ms` usable, `mixins-guards`
   `14.77ms` usable, `extend-chaining` `4.32ms` usable, and `media`
   `4.36ms` unstable. This is status only, not a speed claim.
+- VarDeclaration staging pass: accepted as a local render transport cut, not a
+  declaration-family completion. New traversal: none; this pass deletes a
+  local `mark/getSince` probe and adds no loop, recursion, parent/source walk,
+  side-map lookup, helper array, generator, or array helper. New
+  node/materialization: none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, frozen/source/parent mutation, or semantic placement object
+  was added. Render path: `VarDeclaration.writeSyntax(...)` still writes the
+  `$` prefix and delegates to `declTrimmedString(options)`, but no longer asks
+  the writer whether that known writer path emitted output and then falls back
+  to re-adding the returned string. This does not resolve into arrays or nodes
+  just to stringify. Helper/API surface: no helper or method was added.
+  Metadata mutations: none. Evidence: focused var-declaration/declaration/
+  render-buffer tests passed (`87` tests), and `pnpm --filter @jesscss/core
+  build` passed with only the pre-existing direct `eval` warning in
+  `js-expr.ts`. Performance remained shelved for this micro-slice; no speed
+  claim is made. Remaining queue: `Declaration` still owns the broader
+  `declTrimmedString(...)`/value-body staging split.

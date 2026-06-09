@@ -57,12 +57,7 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     }
 
     w.add('$', this);
-    const before = w.mark();
-    const s = this.declTrimmedString(options);
-    const emitted = w.getSince(before);
-    if (!emitted && s) {
-      w.add(s);
-    }
+    this.declTrimmedString(options);
   }
 
   override toTrimmedString(options?: PrintOptions): string {

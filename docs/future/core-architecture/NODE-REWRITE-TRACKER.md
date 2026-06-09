@@ -140,7 +140,8 @@ Current hard leftovers after the broad hook sweep:
   public syntax contract.
 - [ ] `Expression`: direct child writer; audit wrapper necessity.
 - [ ] `CustomDeclaration`: audit after `Declaration`.
-- [ ] `VarDeclaration`: audit after `Declaration`; preserve binding semantics.
+- [x] `VarDeclaration`: local writer probe removed; preserve binding semantics.
+  Broader declaration body staging remains on `Declaration`.
 - [ ] `For`: direct control syntax writer only for public source API; render
   path should emit body output directly.
 - [ ] `While`: direct control syntax writer only for public source API; render
@@ -211,5 +212,5 @@ Current hard leftovers after the broad hook sweep:
 | SimpleSelector | `packages/core/src/tree/selector-simple.ts` | `Selector` | queued | Audit base class necessity and branches. |
 | StyleImport | `packages/core/src/tree/import-style.ts` | `Node` | queued | High priority: first-use placement copies and derived rules surfaces. |
 | Url | `packages/core/src/tree/url.ts` | `Node` | writeSyntax hook complete | URL syntax writes directly; normalization capture remains. |
-| VarDeclaration | `packages/core/src/tree/declaration-var.ts` | `Declaration` | writeSyntax hook complete | Variable prefix syntax writes directly; Declaration body path remains. |
+| VarDeclaration | `packages/core/src/tree/declaration-var.ts` | `Declaration` | local probe removed | Variable prefix syntax writes directly and no longer wraps `declTrimmedString(...)` in a local `mark/getSince` fallback probe. Declaration body path remains. |
 | While | `packages/core/src/tree/control.ts` | `Node` | queued | Audit loop state, body materialization, and async branches. |
