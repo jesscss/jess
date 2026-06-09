@@ -33,6 +33,7 @@ export class BasicSelector extends SimpleSelector<string> {
 
   override evalNode(context: Context): BasicSelector {
     const node = this;
+    node.keySetLibrary ??= context.selectorBits;
     if (node.isClass) {
       context.hashClass(node.value);
     }
@@ -44,13 +45,13 @@ export class BasicSelector extends SimpleSelector<string> {
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    const out = this.valueOf();
+    const out = this.value;
     options?.writer?.add(out, this);
     return out;
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
-    options.writer.add(this.valueOf(), this);
+    options.writer.add(this.value, this);
   }
 
   /** @todo - move to visitors */

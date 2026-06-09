@@ -1673,3 +1673,48 @@ the gate passed.
   `List`, `Sequence`, and `PseudoSelector` have hooks but remain partially
   dirty until render-to-buffer paths stop capturing strings and generated
   pseudo argument normalization stops using local capture/restore.
+- Comment/QueryCondition/BasicSelector writer pass: accepted as a focused
+  continuation of the node `writeSyntax` lane, not a speed claim. New
+  traversal: none added. `Comment` is a scalar writer. `QueryCondition`
+  preserves its existing child loop over the `Sequence.value` array that the
+  node already owns; the loop is not a new child/source discovery pass, and it
+  replaced a local source-writer closure. The `try/finally` blocks are the
+  existing suppress-boundary-trivia restoration pattern moved into the direct
+  writer path, not routine control-flow error handling. The `Node[]`
+  signatures are the pre-existing `Sequence.value` shape, not a newly
+  materialized array. The pass narrows writer-mark probing to dynamic child
+  render only; static child syntax/render no longer probes writer position for
+  every token. New node/materialization: none; no new `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, side map, or helper array was added. Render path:
+  `Comment.writeSyntax(...)` writes the
+  comment token directly. `QueryCondition.writeSyntax(...)` writes source
+  condition tokens directly; static children keep authored reference spelling
+  through cold public string syntax, while dynamic children call
+  `node.render(context, options)` against the active prepared writer and use a
+  localized fallback only if the child returned text without writing. This
+  fallback remains queued because downstream child render methods still have a
+  dual write-or-return contract. Helper/API surface: one node-local writer hook
+  was added to `Comment`; `QueryCondition` gained a direct writer hook while
+  replacing the old combined source/render probe helper with separated source
+  and value paths. Metadata mutations: `BasicSelector.evalNode(...)` now fills
+  the existing `keySetLibrary` from `context.selectorBits` when missing; this
+  repairs standalone keyset-library carry after bypassing `Selector.evalNode`.
+  It does not change parent/source/tree metadata. `BasicSelector.writeSyntax`
+  and `toTrimmedString` now emit authored `value` instead of normalized
+  `valueOf()`, because `valueOf()` lowercases tag-like selectors for comparison
+  keys and must not drive source serialization. Rejected cut: `JsArray`,
+  `JsObject`, and `JsFunction` were audited and left without invented
+  `writeSyntax` output. Existing tests only prove host-wrapper resolve
+  identity/no eval stamping and render-buffer alignment; they do not define a
+  public source syntax contract. Evidence: focused
+  selector/comment/query-condition/render-buffer/at-rule tests passed
+  (`144` tests). Failed attempts were rejected by tests: using child
+  `writeSyntax(...)` in `QueryCondition` changed `$mode` source spelling to
+  `mode`, and rendering dynamic children without passing the active print
+  options swapped print state and dropped static output. No benchmark/profile
+  speed claim is made for this pass. Hotpath leash status:
+  `pnpm run measure:less:hotpath -- --stable` reported `functions`
+  `10.23ms` unstable, `import-reference` `16.10ms` usable, `mixins-guards`
+  `14.46ms` usable, `extend-chaining` `4.45ms` usable, and `media` `4.37ms`
+  usable.

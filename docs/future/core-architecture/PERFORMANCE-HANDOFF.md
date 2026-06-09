@@ -1615,6 +1615,30 @@ Interpretation: status only, not speed proof. The code-path proof is that
 `list.ts`/`sequence.ts`. The remaining target is still the owned public
 container materialization boundary, not another local wrapper.
 
+### Comment/QueryCondition Writer Pass Leash
+
+Date: 2026-06-08.
+
+Change: `Comment` gained a direct scalar `writeSyntax(...)`; `QueryCondition`
+split source syntax writing from dynamic value render, removed the source
+writer closure, and cut static child writer-mark probes. `BasicSelector`
+source serialization now emits authored `value` while keeping `valueOf()` as
+normalized key text.
+
+Hotpath status:
+
+- `pnpm run measure:less:hotpath -- --stable` reported:
+  `functions` median `10.23ms` unstable, `import-reference` median `16.10ms`
+  usable, `mixins-guards` median `14.46ms` usable,
+  `extend-chaining` median `4.45ms` usable, and `media` median `4.37ms`
+  usable.
+
+Interpretation: status only, not speed proof. This pass did not capture a
+clean before/after pair. The code-path proof is direct source writing for
+comments/query conditions, static query-condition probe removal, and rejection
+of invented source writers for JS host wrappers whose tests define no source
+syntax contract.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

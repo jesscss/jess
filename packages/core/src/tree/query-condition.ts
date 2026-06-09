@@ -1,6 +1,6 @@
 import type { Context } from '../context.js';
-import { getPrintOptions, prepareRenderPrintState, type PrintOptions } from './util/print.js';
-import { defineType, F_STATIC, type Node } from './node.js';
+import { type FinalPrintOptions, getPrintOptions, prepareRenderPrintState, type PrintOptions } from './util/print.js';
+import { defineType, F_MAY_ASYNC, F_STATIC, type Node } from './node.js';
 import { Sequence } from './sequence.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
@@ -19,9 +19,38 @@ import {
  * @todo - add more structure?
  */
 export class QueryCondition extends Sequence {
-  private renderQueryConditionSyntax(value: Node[], options?: PrintOptions, context?: Context): string | MaybePromise<string> {
-    options = getPrintOptions(options);
-    const w = options.writer!;
+  private writeQueryConditionSyntax(value: Node[], options: FinalPrintOptions): void {
+    const w = options.writer;
+    const length = value.length;
+
+    if (length === 0) {
+      return;
+    }
+
+    for (let i = 0; i < length; i++) {
+      if (i > 0) {
+        w.add(' ');
+      }
+      const saved = options.suppressBoundaryTrivia;
+      options.suppressBoundaryTrivia = 'pre';
+      try {
+        value[i]!.toString(options);
+      } finally {
+        options.suppressBoundaryTrivia = saved;
+      }
+    }
+  }
+
+  private renderQueryConditionSyntax(value: Node[], options?: PrintOptions): string {
+    const printOptions = getPrintOptions(options);
+    const mark = printOptions.writer.mark();
+    this.writeQueryConditionSyntax(value, printOptions);
+    const w = printOptions.writer;
+    return w.getSince(mark);
+  }
+
+  private renderQueryConditionValue(value: Node[], options: FinalPrintOptions, context: Context): MaybePromise<string> {
+    const w = options.writer;
     const mark = w.mark();
     const length = value.length;
 
@@ -29,24 +58,25 @@ export class QueryCondition extends Sequence {
       return '';
     }
 
-    const emitTrimmed = (node: Node): MaybePromise<string | void> => {
+    const emitRendered = (node: Node): MaybePromise<void> => {
       const saved = options.suppressBoundaryTrivia;
       options.suppressBoundaryTrivia = 'pre';
-      const before = w.mark();
       let asyncOut = false;
       try {
-        const out = context
-          ? node.render(context, options)
-          : node.toString(options);
-        if (isThenable(out)) {
+        if (node.hasFlag(F_STATIC) && !this.hasFlag(F_MAY_ASYNC)) {
+          node.toString(options);
+          return;
+        }
+        const before = w.mark();
+        const rendered = node.render(context, options);
+        if (isThenable(rendered)) {
           asyncOut = true;
-          return out.then(
-            (rendered) => {
+          return (rendered as Promise<string>).then(
+            (out) => {
               if (w.mark() === before) {
-                w.add(rendered);
+                w.add(out);
               }
               options.suppressBoundaryTrivia = saved;
-              return rendered;
             },
             (error) => {
               options.suppressBoundaryTrivia = saved;
@@ -54,11 +84,9 @@ export class QueryCondition extends Sequence {
             }
           );
         }
-        if (typeof out === 'string' && w.mark() === before) {
-          w.add(out);
+        if (w.mark() === before) {
+          w.add(rendered as string);
         }
-        options.suppressBoundaryTrivia = saved;
-        return out;
       } finally {
         if (!asyncOut) {
           options.suppressBoundaryTrivia = saved;
@@ -70,9 +98,9 @@ export class QueryCondition extends Sequence {
       if (i > 0) {
         w.add(' ');
       }
-      const rendered = emitTrimmed(value[i]!);
+      const rendered = emitRendered(value[i]!);
       if (isThenable(rendered)) {
-        return (rendered as Promise<string | void>).then(() => renderRest(i + 1));
+        return (rendered as Promise<void>).then(() => renderRest(i + 1));
       }
     }
 
@@ -83,7 +111,7 @@ export class QueryCondition extends Sequence {
         if (i > 0) {
           w.add(' ');
         }
-        await emitTrimmed(value[i]!);
+        await emitRendered(value[i]!);
       }
       return w.getSince(mark);
     }
@@ -91,6 +119,10 @@ export class QueryCondition extends Sequence {
 
   override toTrimmedString(options?: PrintOptions): string {
     return this.renderQueryConditionSyntax(this.value, options);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    this.writeQueryConditionSyntax(this.value, options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -103,7 +135,7 @@ export class QueryCondition extends Sequence {
       : prepareRenderPrintState(context, printOptions);
     const rendered = this.hasFlag(F_STATIC)
       ? this.renderQueryConditionSyntax(this.value, prepared)
-      : this.renderQueryConditionSyntax(this.value, prepared, context);
+      : this.renderQueryConditionValue(this.value, prepared, context);
     if (isThenable(rendered)) {
       return buffer
         ? (rendered as Promise<string>).then(out => writeRenderText(buffer, out))

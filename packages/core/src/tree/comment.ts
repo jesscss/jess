@@ -1,5 +1,6 @@
 import { type Context } from '../context.js';
 import { Node, F_VISIBLE, F_STATIC, defineType, type LocationInfo } from './node.js';
+import type { FinalPrintOptions } from './util/print.js';
 
 export type CommentOptions = {
   lineComment?: boolean;
@@ -26,6 +27,10 @@ export class Comment extends Node<string, CommentOptions> {
 
   override resolve(_context: Context): this {
     return this;
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    options.writer.add(this.value, this);
   }
 }
 export const comment = defineType(Comment, 'Comment');
