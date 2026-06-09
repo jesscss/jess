@@ -785,6 +785,23 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Legacy `MixinRegistry` body deletion: accepted as dead recursive registry
+  search/indexing removal, not a speed claim. File:
+  `packages/core/src/tree/util/registry-utils.ts`. New traversal: none; this
+  deletes the old mixin registry selector indexing, recursive child/parent
+  search, candidate filtering, subsequence matching, and compatibility helper
+  loops. New node/materialization: none; no `Node`, copy, wrapper `Rules`,
+  side map, output cache, or registry bucket population was added. Render path:
+  unchanged. Helper/API surface: the internal `MixinRegistry` symbol remains as
+  a cold no-hit shim so existing internal tests can still monkeypatch
+  `MixinRegistry.prototype.find` and prove production lookup does not call it;
+  the implementation no longer indexes queued mixin nodes or crawls rules. The
+  remaining widened key parameter is a compatibility type signature, not a
+  materialized runtime array. Metadata mutations: none. Routine
+  error/control: no new throw/catch/Error path. Evidence: focused eslint
+  passed; `@jesscss/core` build passed; focused
+  mixin/reference/import-style/rules/call tests passed (`466` tests, `9`
+  skipped).
 - Rules-owned mixin registry storage cut: accepted as `Rules` instance
   storage/helper deletion, not a speed claim. File:
   `packages/core/src/tree/rules.ts`. New traversal: none. New
