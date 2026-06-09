@@ -785,6 +785,20 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Callable empty-bucket sentinel cut: accepted as removal of miss-only cache
+  storage, not a speed claim. Files: `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/__tests__/mixin.test.ts`, and this handoff. New
+  traversal: none; `getCallableEntriesForKey(...)` still performs the existing
+  direct callable scan when a frame shortcut prepares a key, but it no longer
+  writes an empty `CallableLookupEntry[]` into `callableLookupCache` for a
+  covered miss. Covered miss identity remains on `ScopeFrame.callableMissesCovered`.
+  New node/materialization: no production node, wrapper, output cache, or
+  callable record was added. The callable cache map write remains only for
+  non-empty hit buckets; the prior empty miss bucket is no longer stored. One
+  temporary bucket array still exists during the existing scan and is returned
+  to the caller; this pass removes storage of empty miss buckets. Render path:
+  unchanged. Helper/API surface: none. Metadata mutations: none. Routine error/control: no new
+  throw/catch/Error path. Evidence: focused mixin tests passed (`136` tests).
 - Callable frame shortcut allocation cut: accepted as removal of speculative
   frame construction, not a speed claim. Files:
   `packages/core/src/tree/rules.ts`, lookup helpers that check frame presence,

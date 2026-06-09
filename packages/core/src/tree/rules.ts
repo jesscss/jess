@@ -1006,21 +1006,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private getCallableEntriesForKey(lookupKey: string): CallableLookupEntry[] {
-    const entries = (this.callableLookupCache ??= new Map());
-    const cached = entries.get(lookupKey);
+    const entries = this.callableLookupCache;
+    const cached = entries?.get(lookupKey);
     if (cached) {
       return cached;
     }
 
     const bucket: CallableLookupEntry[] = [];
-    entries.set(lookupKey, bucket);
     this.collectCallableEntriesForKeyFrom(this, lookupKey, bucket);
     const sourceRules = sourceRulesOf(this);
     if (bucket.length === 0 && sourceRules !== this) {
       this.collectCallableEntriesForKeyFrom(sourceRules, lookupKey, bucket);
     }
+    if (bucket.length > 0) {
+      (this.callableLookupCache ??= new Map()).set(lookupKey, bucket);
+    }
     if (this._scopeFrame) {
-      this._scopeFrame.callableBucketsByName = entries;
+      this._scopeFrame.callableBucketsByName = this.callableLookupCache;
       this._scopeFrame.callablesCovered = true;
       this._scopeFrame.callableMissesCovered = !this.hasDirectLookupChildSurface();
     }
