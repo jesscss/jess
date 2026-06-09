@@ -2390,6 +2390,26 @@ describe('Mixin', () => {
       `);
     });
 
+    it('ScopeFrame callable buckets: current frame hit does not prepare parent callable buckets', () => {
+      const mixinDef = mixin({
+        name: any('.child-frame-hit'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+      const childRules = rules([mixinDef]);
+      const root = rules([
+        mixin({
+          name: any('.parent-other'),
+          rules: rules([decl({ name: 'color', value: any('blue') })])
+        }),
+        childRules
+      ]);
+      root.getScopeFrame();
+      childRules.getScopeFrame();
+
+      expect(childRules.find('mixin', '.child-frame-hit', 'Mixin')).toEqual([mixinDef]);
+      expect(root.callableLookupCache?.has('.child-frame-hit')).not.toBe(true);
+    });
+
     it('ScopeFrame callable buckets: static Ruleset-as-mixin hit skips Rules.findMixinsFast', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }

@@ -1033,20 +1033,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return bucket;
   }
 
-  private prepareCallableLookupFrame(frame: ScopeFrame, key: string, searchParents?: boolean): void {
-    let cursor: ScopeFrame | undefined = frame;
-    while (cursor) {
-      if (isNode(cursor.rulesNode, N.Rules)) {
-        const rules = cursor.rulesNode;
-        rules.getCallableEntriesForKey(key);
-        cursor.callableBucketsByName = rules.callableLookupCache;
-        cursor.callablesCovered = true;
-        cursor.callableMissesCovered = !rules.hasDirectLookupChildSurface();
-      }
-      if (searchParents === false) {
-        break;
-      }
-      cursor = cursor.parent;
+  private prepareCallableLookupFrame(frame: ScopeFrame, key: string): void {
+    if (isNode(frame.rulesNode, N.Rules)) {
+      const rules = frame.rulesNode;
+      rules.getCallableEntriesForKey(key);
+      frame.callableBucketsByName = rules.callableLookupCache;
+      frame.callablesCovered = true;
+      frame.callableMissesCovered = !rules.hasDirectLookupChildSurface();
     }
   }
 
@@ -1647,12 +1640,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       const callableFrame = this._scopeFrame;
       if (callableFrame && !options.hasTarget && !options.local) {
-        this.prepareCallableLookupFrame(callableFrame, keys, options.searchParents);
+        this.prepareCallableLookupFrame(callableFrame, keys);
         const frameHit = lookupScopeFrameCallable(callableFrame, keys, {
           includeRulesets,
-          searchParents: options.searchParents
+          searchParents: false
         });
-        if (frameHit.kind === 'miss') {
+        if (frameHit.kind === 'miss' && options.searchParents === false) {
           const pathKeys = splitStaticCallablePathKey(keys);
           if (pathKeys) {
             const result = this.findMixin(pathKeys, filterType, options);
@@ -1693,15 +1686,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             this.setRegistrylessMixinCacheResult(cacheKey, direct);
             return direct;
           }
+        }
+        if (frameHit.kind === 'miss' || frameHit.kind === 'uncovered') {
           let retryFrame = callableFrame.parent ?? callableFrame.fallbackFrame;
           while (retryFrame) {
-            const retryHit = lookupScopeFrameCallable(retryFrame, keys, {
+            let retryHit = lookupScopeFrameCallable(retryFrame, keys, {
               includeRulesets,
-              searchParents: options.searchParents
+              searchParents: false
             });
-            if (retryHit.kind === 'miss') {
-              this.setRegistrylessMixinCacheResult(cacheKey, undefined);
-              return undefined;
+            if (retryHit.kind === 'uncovered' && isNode(retryFrame.rulesNode, N.Rules)) {
+              this.prepareCallableLookupFrame(retryFrame, keys);
+              retryHit = lookupScopeFrameCallable(retryFrame, keys, {
+                includeRulesets,
+                searchParents: false
+              });
             }
             if (retryHit.kind === 'hit') {
               const bucket = retryHit.bucket;
@@ -1723,25 +1721,29 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               }
             }
             if (retryHit.kind === 'uncovered' && isNode(retryFrame.rulesNode, N.Rules)) {
-              retryFrame.rulesNode.getCallableEntriesForKey(keys);
-              retryFrame.callableBucketsByName = retryFrame.rulesNode.callableLookupCache;
-              retryFrame.callablesCovered = true;
-              retryFrame.callableMissesCovered = !retryFrame.rulesNode.hasDirectLookupChildSurface();
               const direct = retryFrame.rulesNode.findMixinsFast(keys, {
                 context: options.context,
                 hasTarget: options.hasTarget,
                 local: options.local,
                 includeRulesets,
-                searchParents: options.searchParents
+                searchParents: false
               });
               if (direct.length > 0) {
                 this.setRegistrylessMixinCacheResult(cacheKey, direct);
                 return direct;
               }
             }
-            retryFrame = retryHit.kind === 'uncovered'
-              ? retryFrame.parent ?? retryFrame.fallbackFrame
-              : undefined;
+            retryFrame = retryFrame.parent ?? retryFrame.fallbackFrame;
+          }
+          if (frameHit.kind === 'miss' && this.parent === undefined) {
+            const pathKeys = splitStaticCallablePathKey(keys);
+            if (pathKeys) {
+              const result = this.findMixin(pathKeys, filterType, options);
+              this.setRegistrylessMixinCacheResult(cacheKey, result);
+              return result;
+            }
+            this.setRegistrylessMixinCacheResult(cacheKey, undefined);
+            return undefined;
           }
         }
       }

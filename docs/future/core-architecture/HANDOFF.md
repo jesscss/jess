@@ -785,6 +785,26 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Callable parent-frame lazy prep pass: accepted as lookup-state narrowing,
+  not a speed claim. Files: `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/__tests__/mixin.test.ts`, and this handoff. New
+  traversal: no new tree traversal; the existing parent/fallback frame retry
+  loop now prepares only the frame it has reached and probes it with
+  `searchParents: false`, instead of `prepareCallableLookupFrame(...)`
+  eagerly preparing every parent for the requested key. Current-frame covered
+  hits stop before touching parent callable buckets, proved by the new mixin
+  fixture. New node/materialization: none; no production node, wrapper, output
+  cache, callable record, side map, or stored miss bucket was added. Render
+  path: unchanged. Helper/API surface: no new helper; private
+  `prepareCallableLookupFrame(...)` lost its parent-walk/search option.
+  Metadata mutations: fewer parent-frame callable bucket mutations for
+  current-frame hits. The new `this.parent === undefined` read is not a parent
+  mutation or ownership repair; it gates only the root covered-miss fast return
+  so nested/body misses can keep the old `findMixinsFast(...)` bridge until
+  direct frame parent ownership is complete. Routine error/control: no new
+  throw/catch/Error path. Evidence: focused mixin tests passed (`137` tests);
+  expanded lookup-adjacent suite passed (`550` tests, `9` skipped).
+  Performance was not measured, so no speed claim is made.
 - Callable exact-bucket helper deletion: accepted as intermediate array/helper
   removal, not a speed claim. Files: `packages/core/src/tree/rules.ts` and
   this handoff. New traversal: none; `findMixinsFast(...)` now filters exact
