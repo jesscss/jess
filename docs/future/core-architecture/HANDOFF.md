@@ -785,6 +785,18 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Callable exact-bucket helper deletion: accepted as intermediate array/helper
+  removal, not a speed claim. Files: `packages/core/src/tree/rules.ts` and
+  this handoff. New traversal: none; `findMixinsFast(...)` now filters exact
+  callable entries directly from `getCallableEntriesForKey(...)` in the same
+  reverse order, instead of calling `getDirectCallableExactBucket(...)` to
+  allocate an intermediate `MixinEntry[]` and then looping it again. New
+  node/materialization: no production node, wrapper, side map, output cache, or
+  callable record was added; one intermediate array helper was deleted. Render
+  path: unchanged. Helper/API surface: deleted private
+  `getDirectCallableExactBucket(...)`. Metadata mutations: none. Routine
+  error/control: no new throw/catch/Error path. Evidence: focused mixin tests
+  passed (`136` tests).
 - Callable empty-bucket sentinel cut: accepted as removal of miss-only cache
   storage, not a speed claim. Files: `packages/core/src/tree/rules.ts`,
   `packages/core/src/tree/__tests__/mixin.test.ts`, and this handoff. New

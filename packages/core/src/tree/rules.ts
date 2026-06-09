@@ -834,10 +834,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       visited.add(scope);
 
       const results: MixinEntry[] = [];
-      const candidates = scope.getDirectCallableExactBucket(key);
-      if (candidates) {
+      const candidates = scope.getCallableEntriesForKey(key);
+      if (candidates.length > 0) {
         for (let i = candidates.length - 1; i >= 0; i--) {
-          const candidate = candidates[i]!;
+          const entry = candidates[i]!;
+          if (entry.match.length !== 0) {
+            continue;
+          }
+          const candidate = entry.value;
           if (!options?.includeRulesets && isNode(candidate, N.Ruleset)) {
             continue;
           }
@@ -1027,21 +1031,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this._scopeFrame.callableMissesCovered = !this.hasDirectLookupChildSurface();
     }
     return bucket;
-  }
-
-  private getDirectCallableExactBucket(key: string): MixinEntry[] | undefined {
-    const entries = this.getCallableEntriesForKey(key);
-    if (!entries?.length) {
-      return undefined;
-    }
-    let out: MixinEntry[] | undefined;
-    for (let i = 0; i < entries.length; i++) {
-      const entry = entries[i]!;
-      if (entry.match.length === 0) {
-        (out ??= []).push(entry.value);
-      }
-    }
-    return out;
   }
 
   private prepareCallableLookupFrame(frame: ScopeFrame, key: string, searchParents?: boolean): void {
