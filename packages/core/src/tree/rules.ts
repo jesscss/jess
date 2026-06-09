@@ -370,10 +370,6 @@ function normalizeDeclarationFilter(filterType: string | undefined): 'VarDeclara
   return filterType === 'VarDeclaration' || filterType === 'Declaration' ? filterType : undefined;
 }
 
-function normalizeMixinFilter(filterType: string | undefined): 'Mixin' | 'Ruleset' | undefined {
-  return filterType === 'Mixin' || filterType === 'Ruleset' ? filterType : undefined;
-}
-
 function consumeLeadingTrivia(node: Node, options: PrintOptions): string {
   const trivia = (options.trivia ?? node.sourceRoot?._treeContext?.opts?.trivia) as
     | TreeContext['opts']['trivia']
@@ -2023,7 +2019,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         return this.getRegistry('declaration').find(keys, normalizeDeclarationFilter(filterType), options);
       case 'mixin':
-        return this.getRegistry('mixin').find(keys, normalizeMixinFilter(filterType), options);
+        return undefined;
       case 'function':
         if (typeof keys !== 'string') {
           throw new TypeError('Function lookup keys must be a string');

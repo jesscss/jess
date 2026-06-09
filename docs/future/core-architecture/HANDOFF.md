@@ -946,6 +946,17 @@ the gate passed.
   (`306` tests, `8` skipped); `@jesscss/core` build passed. No benchmark claim:
   this removes inactive env-gated machinery while preserving the exported
   method shape.
+- Generic mixin switch fallback deletion: accepted as deleting the last
+  `Rules.find(..., type='mixin')` switch fallback to `MixinRegistry.find(...)`
+  after all declared mixin key shapes are handled before the switch. File:
+  `packages/core/src/tree/rules.ts`. New traversal: none. New
+  node/materialization: none. Render path: unchanged. Helper/API surface: no
+  new helper or public API. Metadata mutations: none. Routine error/control:
+  none. Evidence: string keys, empty arrays, one-segment arrays, and
+  multi-segment arrays are intercepted by the registryless branches before the
+  switch; focused lookup tests prove those shapes skip `MixinRegistry.find(...)`.
+  This is a branch deletion and unreachable fallback cleanup, not a standalone
+  speed claim.
 - Frame exact-callable miss coverage pass: accepted as a predicate-precision
   cleanup for registryless lookup, not as a standalone speed win. Files:
   `packages/core/src/tree/rules.ts` and
