@@ -823,17 +823,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       searchParents?: boolean;
     }
   ): MixinEntry[] {
-    const findWithinScopeSurface = (
+    const collectWithinScopeSurface = (
       scope: Rules,
       localContext: boolean | undefined,
-      visited: Set<Rules>
-    ): MixinEntry[] => {
-      if (visited.has(scope)) {
-        return [];
+      results: MixinEntry[],
+      visited?: Set<Rules>
+    ): Set<Rules> | undefined => {
+      if (visited?.has(scope)) {
+        return visited;
       }
-      visited.add(scope);
+      if (visited) {
+        visited.add(scope);
+      }
 
-      const results: MixinEntry[] = [];
       const candidates = scope.getCallableEntriesForKey(key);
       if (candidates.length > 0) {
         for (let i = candidates.length - 1; i >= 0; i--) {
@@ -855,9 +857,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           ? undefined
           : scope.collectDirectChildRulesEntries();
       if (!childEntries?.length) {
-        return results;
+        return visited;
       }
 
+      visited ??= new Set<Rules>([scope]);
       for (let i = childEntries.length - 1; i >= 0; i--) {
         const entry = childEntries[i]!;
         if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
@@ -870,17 +873,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           continue;
         }
 
-        const nested = findWithinScopeSurface(
+        visited = collectWithinScopeSurface(
           entry.node,
           localContext || Boolean(entry.node.options?.local),
+          results,
           visited
         );
-        for (let nestedIndex = 0; nestedIndex < nested.length; nestedIndex++) {
-          results.push(nested[nestedIndex]!);
-        }
       }
 
-      return results;
+      return visited;
     };
 
     const results: MixinEntry[] = [];
@@ -895,10 +896,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         first = false;
-        const surfaceResults = findWithinScopeSurface(scope, options?.local, new Set<Rules>());
-        for (let resultIndex = 0; resultIndex < surfaceResults.length; resultIndex++) {
-          results.push(surfaceResults[resultIndex]!);
-        }
+        collectWithinScopeSurface(scope, options?.local, results);
       }
       cursor = cursor.parent;
       if (options?.searchParents === false) {

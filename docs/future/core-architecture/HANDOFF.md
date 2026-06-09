@@ -785,6 +785,22 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Callable child-surface bridge accumulator pass: accepted as remaining-bridge
+  slimming, not a speed claim. File: `packages/core/src/tree/rules.ts` and
+  this handoff. New traversal: none; the existing reverse recursive
+  `findMixinsFast(...)` child-surface walk remains for still-unmodeled child
+  lookup surfaces, but it now appends into one caller-owned result array
+  instead of allocating a `MixinEntry[]` for each recursive scope and copying
+  nested results back into the parent array. The cycle guard `Set` is now
+  allocated only after the bridge actually sees child entries to recurse into,
+  instead of once per top-level surface probe. New node/materialization: none;
+  no production node, wrapper, side map, callable record, output cache, or miss
+  bucket was added. Render path: unchanged. Helper/API surface: no public API
+  and no new method; the local recursive closure was reshaped in place.
+  Metadata mutations: none. Routine error/control: no new throw/catch/Error
+  path. Evidence: focused mixin tests passed (`137` tests); expanded
+  lookup-adjacent suite passed (`550` tests, `9` skipped). Performance was not
+  measured, so no speed claim is made.
 - Callable parent-frame lazy prep pass: accepted as lookup-state narrowing,
   not a speed claim. Files: `packages/core/src/tree/rules.ts`,
   `packages/core/src/tree/__tests__/mixin.test.ts`, and this handoff. New
