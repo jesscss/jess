@@ -103,8 +103,8 @@ Current hard leftovers after the broad hook sweep:
   still uses capture/restore. The same pass fixed generated `:is(...)`
   required-key metadata to match single-selector-list wrapper omission.
 - [x] `ExtendList`: direct list writer; remove super-string wrapper.
-- [x] `SelectorCapture`: direct capture syntax writer; audit whether node still
-  needs to exist.
+- [x] `SelectorCapture`: direct capture syntax writer and direct resolved
+  buffer render; audit whether node still needs to exist.
 - [x] `AttributeSelector`: direct attribute writer; avoid value/name
   public-string transport in render.
 - [ ] `Ampersand`: direct writer and structural selector replacement; remove
@@ -207,7 +207,7 @@ Current hard leftovers after the broad hook sweep:
 | Rules | `packages/core/src/tree/rules.ts` | `Node` | queued | High priority: body eval/render, imports, placement state, merge output. |
 | Ruleset | `packages/core/src/tree/ruleset.ts` | `Node` | queued | High priority: selector composition, body prep, wrappers, render branches. |
 | Selector | `packages/core/src/tree/selector.ts` | `Node` | writeSyntax complete | Selector-family writer hook exists; broader metadata and keyset invalidation audit remains. |
-| SelectorCapture | `packages/core/src/tree/selector-capture.ts` | `Node` | writeSyntax hook complete | Capture syntax writes directly; audit whether capture node should exist after render rewrite. |
+| SelectorCapture | `packages/core/src/tree/selector-capture.ts` | `Node` | buffer staging complete | Capture syntax writes directly, and resolved buffer render now delegates to the child buffer renderer instead of rendering to string then writing that string. Audit whether capture node should exist after render rewrite. |
 | SelectorList | `packages/core/src/tree/selector-list.ts` | `Selector` | writeSyntax complete | List item emission uses `writeSyntax`; flattening, temporary arrays, and valueOf joins remain queued. |
 | Sequence | `packages/core/src/tree/sequence.ts` | `Node` | partial | Direct sequence writer exists; render still captures and child `toString` transport remains. |
 | SimpleSelector | `packages/core/src/tree/selector-simple.ts` | `Selector` | queued | Audit base class necessity and branches. |

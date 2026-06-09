@@ -5,8 +5,7 @@ import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './ut
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
-  type RenderBuffer,
-  writeRenderText
+  type RenderBuffer
 } from './util/render-buffer.js';
 
 export interface SelectorCapture extends Node<Selector> {
@@ -57,18 +56,9 @@ export class SelectorCapture extends Node<Selector> {
         ? node.then(resolved => resolved.render(context, bufferOrOptions))
         : node.render(context, bufferOrOptions);
     }
-    if (isThenable(node)) {
-      return node.then((resolved) => {
-        const rendered = resolved.render(context, options);
-        return isThenable(rendered)
-          ? rendered.then(out => writeRenderText(bufferOrOptions, out))
-          : writeRenderText(bufferOrOptions, rendered);
-      });
-    }
-    const rendered = node.render(context, options);
-    return isThenable(rendered)
-      ? rendered.then(out => writeRenderText(bufferOrOptions, out))
-      : writeRenderText(bufferOrOptions, rendered);
+    return isThenable(node)
+      ? node.then(resolved => resolved.render(context, bufferOrOptions, options))
+      : node.render(context, bufferOrOptions, options);
   }
 
   private requireSelector(value: unknown): Selector {

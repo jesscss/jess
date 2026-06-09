@@ -1821,3 +1821,18 @@ the gate passed.
   `js-expr.ts`. This is not a speed claim. Remaining queue:
   `Interpolated.createSelector(...)`, `createGeneric(...)`, replacement
   `toTrimmedString(...)` capture, and replacement array materialization remain.
+- SelectorCapture buffer staging pass: accepted as a direct render-buffer
+  transport cut. New traversal: none; no loop, recursion, parent/source walk,
+  side-map lookup, generator, or array helper was added. New
+  node/materialization: none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, frozen/source/parent mutation, or placement state was added.
+  Render path: narrower; when `render(context, buffer, options)` resolves the
+  selector payload, it now calls `resolved.render(context, buffer, options)`
+  directly instead of rendering the resolved selector to a string and then
+  calling `writeRenderText(...)`. Non-buffer render behavior is unchanged.
+  Helper/API surface: none added; the `writeRenderText` import and string
+  staging branch were deleted. Metadata mutations: none. Evidence: focused
+  selector-capture/selector-interpolated/render-buffer tests passed
+  (`36` tests), and `pnpm --filter @jesscss/core build` passed with only the
+  pre-existing direct `eval` warning in `js-expr.ts`. Performance remains
+  status-only from the prior hotpath leash; no speed claim is made.
