@@ -17,6 +17,122 @@ its public render/eval/resolve/value methods have been reviewed for:
 - branches that should be parser/adoption/eval flags or direct structural
   checks.
 
+## `writeSyntax` / Render / String Queue
+
+Audit snapshot: 2026-06-08 source scan after selector `writeSyntax` pass.
+Only selector-family syntax transport has been cut so far. A checkbox means the
+node has been reviewed specifically for this contract, not merely that one
+helper changed.
+
+Completion contract for each checkbox:
+
+- direct syntax emission lives in `writeSyntax(options): void` or an equivalent
+  node-local private writer method with no returned string;
+- public `toString(...)` / `toTrimmedString(...)` are cold wrappers only;
+- `render(...)` performs value selection/eval if needed, then writes directly;
+- no render-only `mark/getSince`, `capture`, `preview`, string join, temporary
+  array, or helper-object transport remains unless documented as a cold/public
+  materialization boundary;
+- focused tests prove direct render and public string output still match the
+  expected behavior for that node.
+
+Priority comes from the latest broad `benchmark.less` caller-stack evidence:
+`Ruleset.getHeaderString`, declaration duplicate pre-rendering, `Any.toString`,
+`Dimension`/`Num`, `Color`, `PseudoSelector`, `Sequence`, and `Quoted` are the
+first measured offenders after the selector pass.
+
+- [ ] `Node` base: add generic `writeSyntax(options): void` and make base
+  render use it instead of `toTrimmedString(...)` as transport.
+- [x] `Selector`: selector-family direct writer hook exists; remaining base
+  selector metadata/keyset cleanup is tracked separately.
+- [x] `BasicSelector`: direct scalar selector emission through `writeSyntax`.
+- [x] `CompoundSelector`: child selector emission uses `writeSyntax`, public
+  string wrapper owns capture.
+- [x] `ComplexSelector`: selector components use `writeSyntax`; raw
+  non-selector interpolation fallback remains explicit.
+- [x] `SelectorList`: list item emission uses `writeSyntax`, public string
+  wrapper owns capture.
+- [ ] `Ruleset`: eliminate or isolate `getHeaderString(...)` capture for hot
+  frame render/comparison paths.
+- [ ] `Declaration`: split `declValueTrimmedString(...)` into direct value
+  writer plus cold duplicate-comparison/materialization boundary.
+- [ ] `Any` / `Keyword` / `Anonymous`: move scalar token emission to generic
+  `writeSyntax`; audit `compare(...)` string normalization.
+- [ ] `Dimension` / `Num`: move numeric/unit emission to `writeSyntax`; audit
+  regex/unit formatting and operation paths.
+- [ ] `Color`: move color emission to `writeSyntax`; isolate formatting and
+  keyword/node value branches.
+- [ ] `PseudoSelector`: replace `renderPseudoSyntax(...): string` with direct
+  writer path and avoid selector-list normalize-by-capture where structural
+  emission can do it.
+- [ ] `Sequence`: split sequence/list emission from string wrappers; remove
+  render-time child `toString(...)` transport.
+- [ ] `Quoted`: direct quoted/interpolated emission; isolate escaping and
+  compare string path.
+- [ ] `List`: direct item writer and separator path; avoid resolve/render into
+  arrays just to stringify.
+- [ ] `QueryCondition`: direct condition syntax writer; delete mark comparisons
+  used as output probes where possible.
+- [ ] `Operation`: direct operand/operator writer; render operands without
+  public string transport.
+- [ ] `Paren`: direct wrapper writer and list path.
+- [ ] `Block`: direct `{...}` writer and render path.
+- [ ] `Url`: direct `url(...)` writer; replace capture/replace path with direct
+  normalized emission where possible.
+- [ ] `Negative`: direct negative-prefix writer and render path.
+- [ ] `Bool`: scalar writer.
+- [ ] `Nil`: confirm no writer/capture work remains; singleton/scalar audit.
+- [ ] `Comment`: direct comment writer and visibility path.
+- [ ] `Range`: direct range writer.
+- [ ] `Rest`: direct rest writer.
+- [ ] `DefaultGuard`: direct guard writer.
+- [ ] `Condition`: direct guard/comparison writer and eval result path.
+- [ ] `Extend`: direct extend writer; audit selector comparison/string keys.
+- [ ] `ExtendList`: direct list writer; remove super-string wrapper.
+- [ ] `SelectorCapture`: direct capture syntax writer; audit whether node still
+  needs to exist.
+- [ ] `AttributeSelector`: direct attribute writer; avoid value/name
+  public-string transport in render.
+- [ ] `Ampersand`: direct writer and structural selector replacement; remove
+  `map(...toTrimmedString)` string assembly debt.
+- [ ] `Interpolated`: direct replacement writer; eliminate replacement
+  `toTrimmedString` assembly where structural emission is possible.
+- [ ] `InterpolatedSelector`: direct selector writer and kind flags.
+- [ ] `Reference`: direct unresolved reference writer; keep eval/render result
+  emission out of public string APIs.
+- [ ] `Call`: direct fallback call writer; split callable output value
+  selection from emission.
+- [ ] `Func`: direct function signature/body writer if public syntax remains
+  necessary.
+- [ ] `Mixin`: direct mixin syntax/guard writer; audit guard/default/body copy
+  interactions.
+- [ ] `MixinCollection`: decide whether public wrapper survives; if yes, direct
+  writer only.
+- [ ] `Rules`: direct body/root writer; isolate root public source serializer,
+  frame header comparison, imports, and duplicate declaration materialization.
+- [ ] `RawRules`: direct raw body writer.
+- [ ] `Collection`: audit after `Rules`; direct writer only if wrapper remains.
+- [ ] `AtRule`: direct header/body writer; remove custom eval/render branch
+  ladders where state already carries kind.
+- [ ] `StyleImport`: direct import/render writer and placement state; no
+  first-use copied rules surfaces on render-only paths.
+- [ ] `JsImport`: direct JS import syntax writer if public node remains.
+- [ ] `JsExpression`: direct expression writer; eval path isolated.
+- [ ] `JsArray`: direct public wrapper writer or remove wrapper.
+- [ ] `JsObject`: direct public wrapper writer or remove wrapper.
+- [ ] `JsFunction`: direct public wrapper writer or remove wrapper.
+- [ ] `Expression`: direct child writer; audit wrapper necessity.
+- [ ] `CustomDeclaration`: audit after `Declaration`.
+- [ ] `VarDeclaration`: audit after `Declaration`; preserve binding semantics.
+- [ ] `For`: direct control syntax writer only for public source API; render
+  path should emit body output directly.
+- [ ] `While`: direct control syntax writer only for public source API; render
+  path should emit body output directly.
+- [ ] `If`: direct control syntax writer only for public source API; render path
+  should emit selected body output directly.
+- [ ] `Log`: confirm side-effect render path stays direct and public strings are
+  cold.
+
 | Node | File | Base/family | Status | Rewrite notes |
 | --- | --- | --- | --- | --- |
 | Ampersand | `packages/core/src/tree/ampersand.ts` | `SimpleSelector` | queued | Replace template text splitting with selector-list structure and placement state. |
@@ -24,7 +140,7 @@ its public render/eval/resolve/value methods have been reviewed for:
 | Any | `packages/core/src/tree/any.ts` | `Node` | queued | Audit compare/string conversion and numeric regex decisions. |
 | AtRule | `packages/core/src/tree/at-rule.ts` | `Node` | queued | High priority: reduce custom eval/import/render branches. |
 | AttributeSelector | `packages/core/src/tree/selector-attr.ts` | `SimpleSelector` | queued | Audit interpolation eval, valueOf construction, and attribute render capture. |
-| BasicSelector | `packages/core/src/tree/selector-basic.ts` | `SimpleSelector` | queued | Audit selector kind flags versus text prefix checks. |
+| BasicSelector | `packages/core/src/tree/selector-basic.ts` | `SimpleSelector` | writeSyntax complete | Direct scalar selector emission through `writeSyntax`; broader selector kind flag audit remains. |
 | Block | `packages/core/src/tree/block.ts` | `Node` | queued | Audit wrapper/render/eval paths. |
 | Bool | `packages/core/src/tree/bool.ts` | `Node` | queued | Audit scalar render/eval and allocation sites. |
 | Call | `packages/core/src/tree/call.ts` | `Node` | queued | High priority: callable output, async path, helper ladders, repeated eval. |
@@ -32,8 +148,8 @@ its public render/eval/resolve/value methods have been reviewed for:
 | Color | `packages/core/src/tree/color.ts` | `Node` | queued | Audit conversions, string formatting, and function-library paths. |
 | Combinator | `packages/core/src/tree/combinator.ts` | `Selector` | queued | Audit scalar selector rendering and keysets. |
 | Comment | `packages/core/src/tree/comment.ts` | `Node` | queued | Audit line/block branch and direct render. |
-| ComplexSelector | `packages/core/src/tree/selector-complex.ts` | `Selector` | queued | Audit valueOf caching, malformed repair, render loops, and selector metadata. |
-| CompoundSelector | `packages/core/src/tree/selector-compound.ts` | `Selector` | queued | Audit component valueOf classification and allocation arrays. |
+| ComplexSelector | `packages/core/src/tree/selector-complex.ts` | `Selector` | writeSyntax complete | Selector component emission uses `writeSyntax`; broader valueOf, malformed repair, and metadata audit remains. |
+| CompoundSelector | `packages/core/src/tree/selector-compound.ts` | `Selector` | writeSyntax complete | Component emission uses `writeSyntax`; broader valueOf classification and allocation-array audit remains. |
 | Condition | `packages/core/src/tree/condition.ts` | `Node` | queued | Audit bool result materialization and comparison render paths. |
 | CustomDeclaration | `packages/core/src/tree/declaration-custom.ts` | `Declaration` | queued | Audit custom-property eval/render after `Declaration`. |
 | Declaration | `packages/core/src/tree/declaration.ts` | `Node` | queued | High priority: custom property branches, merge state, materialization. |
@@ -71,9 +187,9 @@ its public render/eval/resolve/value methods have been reviewed for:
 | Rest | `packages/core/src/tree/rest.ts` | `Node` | queued | Audit scalar/rest wrapper paths. |
 | Rules | `packages/core/src/tree/rules.ts` | `Node` | queued | High priority: body eval/render, imports, placement state, merge output. |
 | Ruleset | `packages/core/src/tree/ruleset.ts` | `Node` | queued | High priority: selector composition, body prep, wrappers, render branches. |
-| Selector | `packages/core/src/tree/selector.ts` | `Node` | queued | Audit base selector metadata and keyset invalidation. |
+| Selector | `packages/core/src/tree/selector.ts` | `Node` | writeSyntax complete | Selector-family writer hook exists; broader metadata and keyset invalidation audit remains. |
 | SelectorCapture | `packages/core/src/tree/selector-capture.ts` | `Node` | queued | Audit whether capture node should exist after render rewrite. |
-| SelectorList | `packages/core/src/tree/selector-list.ts` | `Selector` | queued | High priority: render flattening, temporary arrays, valueOf joins. |
+| SelectorList | `packages/core/src/tree/selector-list.ts` | `Selector` | writeSyntax complete | List item emission uses `writeSyntax`; flattening, temporary arrays, and valueOf joins remain queued. |
 | Sequence | `packages/core/src/tree/sequence.ts` | `Node` | queued | High priority: eval/render item loops and array materialization. |
 | SimpleSelector | `packages/core/src/tree/selector-simple.ts` | `Selector` | queued | Audit base class necessity and branches. |
 | StyleImport | `packages/core/src/tree/import-style.ts` | `Node` | queued | High priority: first-use placement copies and derived rules surfaces. |

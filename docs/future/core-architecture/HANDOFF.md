@@ -43,18 +43,13 @@ Active implementation specs:
 
 ## Focus Spec
 
-Active mode: **binding-index integration**.
+Active mode: **node `writeSyntax` render/stringification rewrite**.
 
-Priority rule: finish the active binding implementation lane before returning
-to the deep-cut queue. `AGGRESSIVE-CUTTING-REVIEW.md` and the benchmark leash
-are patch-shape/evidence gates for binding work; they are not permission to
-select unrelated cutting work while binding steps remain unchecked. The only
-ways to leave the binding lane are:
-
-- all binding steps are complete;
-- a correctness blocker requires a focused detour;
-- this handoff explicitly marks the binding lane paused and names the temporary
-  replacement lane.
+Temporary lane switch: the binding-index lane is paused by explicit
+user-direction until the `writeSyntax` node queue in
+`NODE-REWRITE-TRACKER.md` is complete or this handoff explicitly switches back.
+Do not let binding cleanup, generic smell sweeps, or unrelated performance
+experiments overrule the `writeSyntax` queue while this mode is active.
 
 The goal is the fastest credible path from parsed Less to CSS output:
 
@@ -69,16 +64,13 @@ The goal is the fastest credible path from parsed Less to CSS output:
 Less is the optimizing path. Preserve SCSS-enabling seams only when they are
 concrete and cheap or isolated behind cold extension boundaries.
 
-Work shape while binding is active: take the next unchecked binding step,
-identify the bridge or fallback it deletes, prove the covered behavior with
-focused tests, then patch the smallest lookup/binding surface that moves that
-case from old lookup to the binding frame. Reject new cache layers, node
-materialization, helper ladders, and fallback "second chances" unless the case
-is explicitly unmodeled and labeled as a temporary bridge with a deletion
-condition.
-
-Node-by-node cleanup resumes only after the binding lane is complete or paused
-above. When it resumes, track completed nodes in `NODE-REWRITE-TRACKER.md`.
+Work shape while `writeSyntax` is active: take the next unchecked node or
+family from the tracker, split direct emission from public string capture,
+make render call the direct writer path after value selection, prove output
+with focused tests, run the aggressive cutting gate, record any benchmark/profile
+status if the node is hot, then commit and push. Reject changes that make
+`render(...)` call public `toString(...)`/`toTrimmedString(...)` as transport,
+or that add helper objects/arrays only to describe syntax.
 
 ## Active Work
 
@@ -88,11 +80,14 @@ differs, review semantics manually before changing tests.
 
 Performance leash:
 
-1. Record a post-selector/callable-cut stable hot-path snapshot.
-2. Profile broad `benchmark.less`.
-3. Choose the next deep cut from measured evidence, not smell alone.
-4. Rerun the same benchmark/profile after the patch.
-5. Keep the patch only if it improves real runtime cost, removes measured
+1. Start from the current selector `writeSyntax` baseline:
+   broad `benchmark.less` profiler status had `OutputWriter.mark` `54534` and
+   `OutputWriter.getSince` `49502`.
+2. Choose the next node from `NODE-REWRITE-TRACKER.md`; use caller-stack
+   evidence for priority when several unchecked nodes are available.
+3. Rerun focused tests and, for hot nodes, broad `benchmark.less` profiler
+   status after the patch.
+4. Keep the patch only if it improves real runtime cost, removes measured
    object/memory pressure without slowing runtime, or fixes correctness.
 
 Immediate benchmark commands are defined in `PERFORMANCE-HANDOFF.md`.
