@@ -12,7 +12,6 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
-  writePreparedRenderText,
   writePreparedRenderTextResult,
   type RenderBuffer
 } from './util/render-buffer.js';
