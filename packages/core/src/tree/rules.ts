@@ -822,7 +822,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   ): MixinEntry[] {
     const directCallableLookup = process.env.JESS_DIRECT_CALLABLE_LOOKUP === '1'
-      || process.env.JESS_REGISTRYLESS_MIXIN_LOOKUP === '1';
+      || process.env.JESS_LEGACY_MIXIN_LOOKUP !== '1';
     const findWithinScopeSurface = (
       scope: Rules,
       localContext: boolean | undefined,
@@ -2102,7 +2102,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): ReturnType<Registries.DeclarationRegistry['find']> | MixinEntry[] | ReturnType<Registries.FunctionRegistry['find']> | undefined {
     if (type === 'mixin' && typeof keys === 'string') {
       const includeRulesets = filterType !== 'Mixin';
-      const registryless = process.env.JESS_REGISTRYLESS_MIXIN_LOOKUP === '1';
+      const registryless = process.env.JESS_LEGACY_MIXIN_LOOKUP !== '1';
       const cacheKey = registryless
         ? this.getRegistrylessMixinCacheKey(keys, filterType, options)
         : undefined;
@@ -2254,7 +2254,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       return combined;
     } else if (type === 'mixin' && isArray(keys) && keys.length > 1) {
-      const registryless = process.env.JESS_REGISTRYLESS_MIXIN_LOOKUP === '1';
+      const registryless = process.env.JESS_LEGACY_MIXIN_LOOKUP !== '1';
       const cacheKey = registryless
         ? this.getRegistrylessMixinCacheKey(keys, filterType, options)
         : undefined;

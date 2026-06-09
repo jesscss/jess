@@ -840,6 +840,22 @@ the gate passed.
   preserved the established shape: `mixins-guards.less` stayed neutral
   (`wins 33/60`, `t=-0.88`), and `scope-lookup-stress.less` retained a win
   (`wins 87/100`, `t=-5.19`).
+- Default registryless callable lookup pass: accepted as the first permanent
+  registryless migration step. Files: `packages/core/src/tree/rules.ts` and
+  `packages/core/src/tree/__tests__/mixin.test.ts`. New traversal: none beyond
+  the registryless traversal already prosecuted in prior passes. New
+  node/materialization: none. Helper/API surface: no public API; the old
+  `JESS_REGISTRYLESS_MIXIN_LOOKUP=1` enable flag was replaced by a temporary
+  `JESS_LEGACY_MIXIN_LOOKUP=1` opt-out for comparison and bisecting. Metadata
+  mutations: unchanged. Routine error/control: none. Evidence: default-path
+  focused eslint passed; focused behavior passed without any registryless env
+  flag (`304` tests, `8` skipped); `@jesscss/core` build passed. Paired
+  comparisons against `JESS_LEGACY_MIXIN_LOOKUP=1` showed the permanent default
+  path stays neutral on `mixins-guards.less` (`wins 35/60`, `t=-1.20`), wins on
+  `scope-lookup-stress.less` (`wins 85/100`, `t=-6.06`), leans favorable on
+  `import-reference.less` (`wins 29/40`, `t=-1.47`), and remains neutral/noisy
+  on `media.less` (`wins 19/40`, `t=0.41`). Verdict: keep and continue deleting
+  legacy-only branches behind the temporary opt-out.
 - Frame exact-callable miss coverage pass: accepted as a predicate-precision
   cleanup for registryless lookup, not as a standalone speed win. Files:
   `packages/core/src/tree/rules.ts` and

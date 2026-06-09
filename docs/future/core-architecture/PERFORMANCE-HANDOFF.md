@@ -2118,6 +2118,29 @@ Follow-up cache-key construction cleanup:
   10 --pairs 100` reported baseline median `55.81ms`, candidate median
   `53.99ms`, mean ratio `-2.74%`, wins `87/100`, `t=-5.19`.
 
+Follow-up default registryless callable lookup:
+
+- registryless mixin/callable lookup is now the default path. The legacy path is
+  temporarily reachable through `JESS_LEGACY_MIXIN_LOOKUP=1` only for
+  comparison, bisecting, and deletion staging. The old
+  `JESS_REGISTRYLESS_MIXIN_LOOKUP=1` enable flag is no longer required for
+  ordinary focused tests or benchmarks;
+- focused default-path behavior and lint passed with no registryless env flag:
+  `pnpm exec eslint packages/core/src/tree/rules.ts packages/core/src/tree/__tests__/mixin.test.ts`, and
+  `pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts --run`
+  (`304` tests, `8` skipped);
+- paired legacy-vs-default comparisons used
+  `JESS_LEGACY_MIXIN_LOOKUP` with `--baseline 1 --candidate 0`. Results:
+  `mixins-guards.less` `--warmup 8 --pairs 60 --batch-size 5` reported legacy
+  baseline median `70.87ms`, default-registryless candidate median `71.30ms`,
+  mean ratio `-0.91%`, wins `35/60`, `t=-1.20`;
+  `scope-lookup-stress.less` render with `--warmup 10 --pairs 100` reported
+  legacy baseline median `56.16ms`, default-registryless candidate median
+  `54.08ms`, mean ratio `-2.65%`, wins `85/100`, `t=-6.06`;
+  `import-reference.less` `--warmup 6 --pairs 40 --batch-size 3` reported mean
+  ratio `-1.62%`, wins `29/40`, `t=-1.47`; `media.less` reported mean ratio
+  `2.58%`, wins `19/40`, `t=0.41` and remains neutral/noisy.
+
 Next architecture theories to test:
 
 1. Promote exact child-surface capability to the `ScopeFrame` once the frame
@@ -2141,9 +2164,11 @@ Next architecture theories to test:
    registration mutation that already clears direct callable caches.
    The one-entry cache prototype supports this direction for repeated recursive
    exact lookups. The wrapper allocation has been removed and the inlined cache
-   is now default inside the registryless prototype. The next refinement should
-   avoid repeated path-key joins by caching a stable lookup fingerprint when the
-   `Reference` already carries a static string or path.
+   is now default inside the registryless prototype. Registryless callable
+   lookup is now also the default runtime path. The next refinement should
+   delete legacy-only branches one unsupported/cold case at a time, starting
+   with the string-key `find(...)` branch that now immediately goes through
+   registryless.
 4. Prefer negative capability over positive result caching. The broad fixture
    regressed because the candidate path repeatedly proved "nothing in this
    child surface" after the fact. A cheap carried "cannot contain simple exact
