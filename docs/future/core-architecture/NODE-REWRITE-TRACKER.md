@@ -138,14 +138,19 @@ Current hard leftovers after the broad hook sweep:
   ladders where state already carries kind.
 - [ ] `StyleImport`: direct import/render writer and placement state; no
   first-use copied rules surfaces on render-only paths.
-- [ ] `JsImport`: direct JS import syntax writer if public node remains.
-- [ ] `JsExpression`: direct expression writer; eval path isolated.
-- [ ] `JsArray`: host wrapper audited; no invented source writer without a
-  public syntax contract.
-- [ ] `JsObject`: host wrapper audited; no invented source writer without a
-  public syntax contract.
-- [ ] `JsFunction`: host wrapper audited; no invented source writer without a
-  public syntax contract.
+- [x] `JsImport`: live parser-owned syntax node for Jess/SCSS JS module
+  imports; keep direct source writer.
+- [x] `JsExpression`: live explicit JS eval node; do not spend render/source
+  polish here unless the JS eval feature itself is redesigned.
+- [ ] `JsArray`: no Less/SCSS/Jess parser production and `cast([...])` creates
+  `List`, not `JsArray`; public explicit host wrapper only. Candidate for a
+  dedicated API-breaking removal pass, not a node-polish target.
+- [x] `JsObject`: live host-object/index wrapper because `cast(plainObject)`
+  creates `JsObject` and indexed references read properties from it. Keep cold;
+  do not invent source serialization.
+- [x] `JsFunction`: live function-registry host wrapper used by plugins,
+  language service, and call/reference execution. Keep cold; do not invent
+  source serialization.
 - [x] `Expression`: direct child writer; audit wrapper necessity remains.
 - [ ] `CustomDeclaration`: audit after `Declaration`.
 - [x] `VarDeclaration`: local writer probe removed; preserve binding semantics.
@@ -191,11 +196,11 @@ Current hard leftovers after the broad hook sweep:
 | If | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, condition children use direct writers, and branch serialization avoids rest-array allocation. Eval/body surface audit remains. |
 | Interpolated | `packages/core/src/tree/interpolated.ts` | `Node` | partial | Public `replace(...)` uses a plain placeholder loop instead of regex callback scaffolding; high-priority selector eval, generic materialization, replacement capture, and replacement arrays remain. |
 | InterpolatedSelector | `packages/core/src/tree/selector-interpolated.ts` | `SimpleSelector` | queued | Replace regex over `valueOf()` with carried selector kind when possible. |
-| JsArray | `packages/core/src/tree/js-array.ts` | `Node` | audited/deferred | Host wrapper tests cover identity/no eval stamping and render-buffer alignment, not source syntax. Do not add arbitrary writer output. |
-| JsExpression | `packages/core/src/tree/js-expr.ts` | `Node` | writeSyntax hook complete | Backtick syntax writes directly; JS eval path remains. |
-| JsFunction | `packages/core/src/tree/js-function.ts` | `Node` | audited/deferred | Host callable wrapper tests cover identity/no eval stamping and call integration, not source syntax. Do not add arbitrary writer output. |
-| JsImport | `packages/core/src/tree/import-js.ts` | `Node` | direct child writer complete | Import syntax writes directly, path child uses `writeSyntax(...)`, and the path avoids lazy `options` getter. |
-| JsObject | `packages/core/src/tree/js-object.ts` | `Node` | audited/deferred | Host wrapper tests cover identity/no eval stamping and render-buffer alignment, not source syntax. Do not add arbitrary writer output. |
+| JsArray | `packages/core/src/tree/js-array.ts` | `Node` | removal candidate | No Less/SCSS/Jess parser constructs it, `cast([...])` creates `List`, and only explicit public API/tests use it. Do not polish; remove only in a dedicated API-breaking host-wrapper pass. |
+| JsExpression | `packages/core/src/tree/js-expr.ts` | `Node` | live JS feature | Backtick syntax writes directly; JS eval path remains. Skip polish unless JS eval support is being redesigned. |
+| JsFunction | `packages/core/src/tree/js-function.ts` | `Node` | live host wrapper | Function registry/plugins/language service/call/reference paths consume it. Keep cold; no arbitrary source writer. |
+| JsImport | `packages/core/src/tree/import-js.ts` | `Node` | live parser node | Jess `@-use/@-from` and SCSS `@use "sass:*"` construct it; import syntax writes directly and path child uses `writeSyntax(...)`. |
+| JsObject | `packages/core/src/tree/js-object.ts` | `Node` | live host wrapper | `cast(plainObject)` creates it and indexed references read properties from it. Keep cold; no arbitrary source writer. |
 | Keyword | `packages/core/src/tree/any.ts` | `Any` | writeSyntax hook complete | Scalar emission uses `Any.writeSyntax`; broader compare/string normalization remains. |
 | List | `packages/core/src/tree/list.ts` | `Node` | partial | Direct item writer exists; render still captures string output before buffer writes and eval/render item-loop audit remains. |
 | Log | `packages/core/src/tree/log.ts` | `Node` | writeSyntax hook complete | Empty source writer complete; side-effect eval/render path remains. |

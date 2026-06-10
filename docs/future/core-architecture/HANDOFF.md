@@ -2115,3 +2115,29 @@ the gate passed.
   `$for` range-bound no-capture test, and `pnpm --filter @jesscss/core build`
   passed with only the pre-existing direct `eval` warning in `js-expr.ts`. This
   is not a speed claim.
+- JS-prefixed node liveness audit: accepted as a queue-prioritization and
+  deletion-candidate audit, not a render-polish pass. New traversal: no runtime
+  traversal added; repo evidence was gathered with static `rg` scans over
+  parser productions, tests, core runtime, plugins, and package consumers. New
+  node/materialization: none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, frozen/source/parent mutation, or placement state was added.
+  Render path: unchanged. Evidence: pre-pass hotpath sanity at commit
+  `812f0ff5` reported `functions` `11.55ms` usable, `import-reference`
+  `19.10ms` usable, `mixins-guards` `16.59ms` usable, `extend-chaining`
+  `4.89ms` usable, and `media` `5.34ms` usable. Parser/call-site audit found:
+  `JsImport` is live because Jess `@-use/@-from` and SCSS `@use "sass:*"`
+  parser productions construct it; `JsFunction` is live because function
+  registries, Less plugin registration, language-service color helpers,
+  `Call`, and `Reference` consume it; `JsExpression` is live as an explicit JS
+  eval node and reference fallback path; `JsObject` is live because
+  `cast(plainObject)` creates it and indexed references read properties from
+  it; `JsArray` is the only weak wrapper because no Less/SCSS/Jess parser
+  constructs it and `cast([...])` creates `List`, not `JsArray`. Do not spend
+  queue time polishing `JsArray`, `JsObject`, or `JsFunction` serialization.
+  `JsArray` is a candidate for a dedicated API-breaking removal pass, but not a
+  safe opportunistic deletion because it is exported from `@jesscss/core`,
+  appears in `NToNode`/node-type maps, and has explicit direct-index semantics
+  covered by `reference.test.ts`. Helper/API surface: no new helper or public
+  API added. Metadata mutations: none. Verification for this audit is static
+  repo evidence plus `pnpm run verify:aggressive-cutting-review`/diff checks;
+  this is not a speed claim.
