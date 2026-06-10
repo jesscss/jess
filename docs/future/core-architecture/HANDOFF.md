@@ -785,6 +785,30 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Callable path splitter regex removal: accepted as hot string-lookup
+  allocation deletion, not a speed claim. Files:
+  `packages/core/src/tree/rules.ts` and this handoff. New traversal: one small
+  manual scan replaces the previous `key.match(/[#.][^#.]+/g)` regex scan in
+  `splitStaticCallablePathKey(...)`. The scan runs in the same string-key
+  lookup branch that already probed for static namespace paths, but it now
+  carries only first-segment offsets until a second valid selector segment is
+  found, so ordinary one-segment callable names return without regex match
+  allocation or result-array allocation. New node/materialization: none; no AST
+  node, wrapper `Rules`, side map, result cache, or output object was added.
+  The only array allocation remains the real multi-segment static path result
+  that callers already consumed. Render path: unchanged. Helper/API surface: no
+  helper or public API was added. Metadata mutations: none. Routine
+  error/control: no throw/catch/Error path added. Evidence: focused
+  `mixin.test.ts` and `reference.test.ts` passed (`253` tests);
+  expanded lookup-adjacent suite passed (`551` tests, `9` skipped);
+  `pnpm exec eslint packages/core/src/tree/rules.ts`, `git diff --check`,
+  `pnpm --filter @jesscss/core build`, and
+  `pnpm run verify:aggressive-cutting-review` passed. The aggressive review
+  script flagged the scanner loop, `slice(...)` calls, `push(...)`, and lazy
+  `out` array as danger tokens; they are prosecuted here as replacement work
+  for the previous regex scan and regex-allocated match array, with the result
+  array delayed until the caller has a real multi-segment static path. No
+  runtime speed claim without benchmark/profile proof.
 - Ruleset namespace child-option reuse pass: accepted as per-candidate object
   setup deletion, not a speed claim. Files:
   `packages/core/src/tree/rules.ts` and this handoff. New traversal: none; this

@@ -128,8 +128,38 @@ function collectKeyRemainder(keys: readonly string[], start: number): string[] {
 }
 
 function splitStaticCallablePathKey(key: string): string[] | undefined {
-  const matches = key.match(/[#.][^#.]+/g);
-  return matches && matches.length > 1 ? matches : undefined;
+  let firstStart = -1;
+  let firstEnd = -1;
+  let out: string[] | undefined;
+  for (let i = 0; i < key.length; i++) {
+    const char = key.charCodeAt(i);
+    if (char !== 35 && char !== 46) {
+      continue;
+    }
+    const start = i;
+    i++;
+    while (i < key.length) {
+      const next = key.charCodeAt(i);
+      if (next === 35 || next === 46) {
+        break;
+      }
+      i++;
+    }
+    if (i === start + 1) {
+      i--;
+      continue;
+    }
+    if (firstStart < 0) {
+      firstStart = start;
+      firstEnd = i;
+      i--;
+      continue;
+    }
+    out ??= [key.slice(firstStart, firstEnd)];
+    out.push(key.slice(start, i));
+    i--;
+  }
+  return out;
 }
 
 function getCallableRulesetKeyPaths(ruleset: Ruleset): string[][] {
