@@ -31,20 +31,16 @@ export class SelectorCapture extends Node<Selector> {
     w.add(']', this);
   }
 
-  private renderCaptureSyntax(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const mark = options.writer.mark();
-    this.writeSyntax(options);
-    const w = options.writer;
-    return w.getSince(mark);
-  }
-
   override valueOf(): string {
     return String(this.value.valueOf());
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    return this.renderCaptureSyntax(options);
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
+    return w.getSince(mark);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;

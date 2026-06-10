@@ -97,14 +97,6 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     w.add(']');
   }
 
-  private renderAttributeSyntax(options?: PrintOptions): string {
-    const printOptions = getPrintOptions(options);
-    const mark = printOptions.writer.mark();
-    this.renderAttributeParts(this.value.name, this.value.value, printOptions);
-    const w = printOptions.writer;
-    return w.getSince(mark);
-  }
-
   override evalNode(context: Context): MaybePromise<Node> {
     const evaluated = super.evalNode(context);
     if (isThenable(evaluated)) {
@@ -226,7 +218,11 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    return this.renderAttributeSyntax(options);
+    const printOptions = getPrintOptions(options);
+    const mark = printOptions.writer.mark();
+    this.renderAttributeParts(this.value.name, this.value.value, printOptions);
+    const w = printOptions.writer;
+    return w.getSince(mark);
   }
 
   override writeSyntax(options: FinalPrintOptions): void {

@@ -7,7 +7,7 @@ import type { Selector } from './selector.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { OutputWriter, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -176,6 +176,10 @@ export class Interpolated<
     const mark = w.mark();
     this.writeInterpolated(this.value.replacements, options);
     return w.getSince(mark);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    this.writeInterpolated(this.value.replacements, options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;

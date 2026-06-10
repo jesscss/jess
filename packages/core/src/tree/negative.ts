@@ -19,14 +19,6 @@ export class Negative extends Node<Node> {
     this.value.writeSyntax(options);
   }
 
-  private renderNegativeSyntax(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const mark = options.writer.mark();
-    this.writeSyntax(options);
-    const w = options.writer;
-    return w.getSince(mark);
-  }
-
   constructor(value: Node, options?: NodeOptions, location?: LocationInfo) {
     super(value, options, location);
     // Negative operations are always non-static, but can inherit may_async from children
@@ -34,7 +26,11 @@ export class Negative extends Node<Node> {
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    return this.renderNegativeSyntax(options);
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
+    return w.getSince(mark);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;

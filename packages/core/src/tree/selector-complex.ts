@@ -171,14 +171,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     restorePrintState(options, saved);
   }
 
-  private renderComplexSyntax(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    this.writeSyntax(options);
-    return w.getSince(mark);
-  }
-
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
    * so we normalize groups and combinators
@@ -231,7 +223,11 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    return this.renderComplexSyntax(options);
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    this.writeSyntax(options);
+    return w.getSince(mark);
   }
 
   /**

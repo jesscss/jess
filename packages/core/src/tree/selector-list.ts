@@ -158,14 +158,6 @@ export class SelectorList extends Selector<Selector[]> {
     }
   }
 
-  private renderSelectorListSyntax(options?: PrintOptions): string {
-    const printOptions = getPrintOptions(options);
-    const w = printOptions.writer;
-    const mark = w.mark();
-    this.writeSyntax(printOptions);
-    return w.getSince(mark);
-  }
-
   protected override computeKeySets(): void {
     if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
       return;
@@ -188,7 +180,11 @@ export class SelectorList extends Selector<Selector[]> {
 
   /** Normalize selectors on separate lines with indentation */
   override toTrimmedString(options?: PrintOptions) {
-    return this.renderSelectorListSyntax(options);
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer;
+    const mark = w.mark();
+    this.writeSyntax(printOptions);
+    return w.getSince(mark);
   }
 
   override valueOf() {

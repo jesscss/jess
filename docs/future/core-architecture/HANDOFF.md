@@ -2186,3 +2186,32 @@ the gate passed.
   `import-reference` `19.24ms` usable, `mixins-guards` `16.25ms` usable,
   `extend-chaining` `4.92ms` unstable, and `media` `5.06ms` unstable. This is
   not a speed claim.
+- Selector/interpolation wrapper cleanup pass: accepted as a multi-node boring
+  JavaScript cut in the active `writeSyntax` lane. New traversal: none added.
+  The `List.valueOf()` path still walks its owned item array once, but now does
+  so with a plain loop instead of `map(...).join(...)`, deleting the temporary
+  array. No recursion, parent/source walk, side-map lookup, generator, object
+  scan, or array helper was added. New node/materialization: none; no `Node`,
+  copy, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, semantic placement state, side map, or helper array was added.
+  Render path: unchanged for evaluated output. `Interpolated.writeSyntax(...)`
+  lets authored interpolation source emit directly, and `InterpolatedSelector`
+  now delegates source syntax to that direct writer instead of falling through
+  selector/base public string machinery. `BasicSelector` and
+  `InterpolatedSelector` kind checks now read the first character instead of
+  running regexes. Cold private source-string wrappers were deleted from
+  `SelectorCapture`, `Negative`, `SelectorList`, `CompoundSelector`,
+  `ComplexSelector`, `AttributeSelector`, and `PseudoSelector`; public
+  `toTrimmedString(...)` remains the cold capture boundary. Helper/API surface:
+  one existing hook override was added on `Interpolated`; seven private wrapper
+  helpers were removed, so the helper surface shrank. Metadata mutations: none.
+  Evidence: starting leash from the prior pass reported `functions` `12.58ms`
+  usable, `import-reference` `19.24ms` usable, `mixins-guards` `16.25ms`
+  usable, `extend-chaining` `4.92ms` unstable, and `media` `5.06ms` unstable.
+  Focused selector/interpolated/list/negative/render-buffer tests passed
+  (`145` tests), and `pnpm --filter @jesscss/core build` passed with only the
+  pre-existing direct `eval` warning in `js-expr.ts`. Post-pass hotpath sanity
+  at commit `dcc619a1` reported `functions` `12.30ms` usable,
+  `import-reference` `17.86ms` usable, `mixins-guards` `16.03ms` usable,
+  `extend-chaining` `4.66ms` unstable, and `media` `4.74ms` usable. This is
+  not a speed claim.

@@ -290,7 +290,19 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   private _valueOf: string | undefined;
 
   override valueOf() {
-    return (this._valueOf ??= this.value.map(v => v.valueOf()).join(';'));
+    let valueOf = this._valueOf;
+    if (valueOf === undefined) {
+      if (this.value.length === 0) {
+        valueOf = '';
+      } else {
+        valueOf = this.value[0]!.valueOf();
+        for (let i = 1; i < this.value.length; i++) {
+          valueOf += `;${this.value[i]!.valueOf()}`;
+        }
+      }
+      this._valueOf = valueOf;
+    }
+    return valueOf;
   }
 
   override toTrimmedString(options?: PrintOptions) {

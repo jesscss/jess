@@ -102,14 +102,6 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     }
   }
 
-  private renderPseudoSyntax(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const mark = options.writer.mark();
-    this.writeSyntax(options);
-    const w = options.writer;
-    return w.getSince(mark);
-  }
-
   override computeKeySets(): void {
     if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
       return;
@@ -150,7 +142,11 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    return this.renderPseudoSyntax(options);
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
+    return w.getSince(mark);
   }
 
   override valueOf(): string {

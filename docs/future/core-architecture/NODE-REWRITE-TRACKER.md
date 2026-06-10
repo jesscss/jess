@@ -49,10 +49,11 @@ first measured offenders after the selector pass.
 - [x] `BasicSelector`: direct scalar selector emission through `writeSyntax`.
 - [x] `CompoundSelector`: child selector emission uses `writeSyntax`, public
   string wrapper owns capture.
-- [x] `ComplexSelector`: selector components use `writeSyntax`; raw
-  non-selector interpolation fallback remains explicit.
-- [x] `SelectorList`: list item emission uses `writeSyntax`, public string
-  wrapper owns capture.
+- [x] `ComplexSelector`: selector components use `writeSyntax`, cold private
+  source-string wrapper is gone, and raw non-selector interpolation fallback
+  remains explicit.
+- [x] `SelectorList`: list item emission uses `writeSyntax`, cold private
+  source-string wrapper is gone, and public string wrapper owns capture.
 - [ ] `Ruleset`: eliminate or isolate `getHeaderString(...)` capture for hot
   frame render/comparison paths.
 - [ ] `Declaration`: split `declValueTrimmedString(...)` into direct value
@@ -104,10 +105,10 @@ Current hard leftovers after the broad hook sweep:
   semantics. `Sequence` general source children cannot blindly use
   `writeSyntax(...)` yet because boundary trivia currently lives in
   `Node.toString(...)`; a focused test caught the dropped source whitespace.
-- `PseudoSelector` has a writer hook and child writer, but generated
-  selector-list normalization still uses capture/restore. The same pass fixed
-  generated `:is(...)` required-key metadata to match single-selector-list
-  wrapper omission.
+- `PseudoSelector` has a writer hook and child writer, and its cold private
+  source-string wrapper is gone, but generated selector-list normalization
+  still uses capture/restore. The same pass fixed generated `:is(...)`
+  required-key metadata to match single-selector-list wrapper omission.
 - [x] `ExtendList`: direct list writer; remove super-string wrapper.
 - [x] `SelectorCapture`: direct capture syntax writer, child writer, and direct
   resolved buffer render; audit whether node still needs to exist.
@@ -115,10 +116,10 @@ Current hard leftovers after the broad hook sweep:
   value/name public-string transport in render.
 - [ ] `Ampersand`: direct writer and structural selector replacement; remove
   `map(...toTrimmedString)` string assembly debt.
-- [ ] `Interpolated`: direct replacement writer; public `replace(...)` no
+- [ ] `Interpolated`: direct source writer exists and public `replace(...)` no
   longer uses regex callback scaffolding, but replacement `toTrimmedString`
   assembly remains where structural emission is possible.
-- [ ] `InterpolatedSelector`: direct selector writer and kind flags.
+- [x] `InterpolatedSelector`: direct selector writer and cheap kind checks.
 - [x] `Reference`: direct unresolved reference writer; keep eval/render result
   emission out of public string APIs.
 - [ ] `Call`: direct source syntax writer exists; split callable output value
@@ -175,8 +176,8 @@ Current hard leftovers after the broad hook sweep:
 | Anonymous | `packages/core/src/tree/any.ts` | `Any` | writeSyntax hook complete | Scalar emission uses `Any.writeSyntax`; broader compare/string normalization remains. |
 | Any | `packages/core/src/tree/any.ts` | `Node` | writeSyntax hook complete | Scalar emission has a direct writer; compare/string conversion and numeric regex decisions remain. |
 | AtRule | `packages/core/src/tree/at-rule.ts` | `Node` | queued | High priority: reduce custom eval/import/render branches. |
-| AttributeSelector | `packages/core/src/tree/selector-attr.ts` | `SimpleSelector` | direct child writer complete | Attribute parts write directly through child `writeSyntax(...)`; interpolation eval, valueOf construction, and render capture remain. |
-| BasicSelector | `packages/core/src/tree/selector-basic.ts` | `SimpleSelector` | writeSyntax complete | Direct source spelling emits authored `value`; `valueOf()` remains normalized key text, and standalone eval now carries the existing selector-bit library from context. |
+| AttributeSelector | `packages/core/src/tree/selector-attr.ts` | `SimpleSelector` | direct child writer complete | Attribute parts write directly through child `writeSyntax(...)`; cold private source-string wrapper removed. Interpolation eval, valueOf construction, and render capture remain. |
+| BasicSelector | `packages/core/src/tree/selector-basic.ts` | `SimpleSelector` | writeSyntax complete | Direct source spelling emits authored `value`; kind checks use first-character tests, `valueOf()` remains normalized key text, and standalone eval now carries the existing selector-bit library from context. |
 | Block | `packages/core/src/tree/block.ts` | `Node` | writeSyntax hook complete | Bracket emission writes directly; render still captures for string/buffer return. |
 | Bool | `packages/core/src/tree/bool.ts` | `Node` | writeSyntax hook complete | Scalar writer complete. |
 | Call | `packages/core/src/tree/call.ts` | `Node` | partial | Source syntax writer exists and public call source stringification uses child `writeSyntax(...)`; high priority remains for callable output, evaluated arg/content capture, async path, helper ladders, and repeated eval. |
@@ -184,8 +185,8 @@ Current hard leftovers after the broad hook sweep:
 | Color | `packages/core/src/tree/color.ts` | `Node` | writeSyntax hook complete | Color emission writes directly; conversion/string-format internals remain. |
 | Combinator | `packages/core/src/tree/combinator.ts` | `Selector` | writeSyntax hook complete | Scalar selector writer avoids selector base punt. |
 | Comment | `packages/core/src/tree/comment.ts` | `Node` | writeSyntax hook complete | Comment text writes directly; visibility/render behavior remains the inherited direct scalar path. |
-| ComplexSelector | `packages/core/src/tree/selector-complex.ts` | `Selector` | writeSyntax complete | Selector component emission uses `writeSyntax`; broader valueOf, malformed repair, and metadata audit remains. |
-| CompoundSelector | `packages/core/src/tree/selector-compound.ts` | `Selector` | writeSyntax complete | Component emission uses `writeSyntax`; broader valueOf classification and allocation-array audit remains. |
+| ComplexSelector | `packages/core/src/tree/selector-complex.ts` | `Selector` | writeSyntax complete | Selector component emission uses `writeSyntax` and cold private source-string wrapper is gone; broader valueOf, malformed repair, and metadata audit remains. |
+| CompoundSelector | `packages/core/src/tree/selector-compound.ts` | `Selector` | writeSyntax complete | Component emission uses `writeSyntax` and cold private source-string wrapper is gone; broader valueOf classification and allocation-array audit remains. |
 | Condition | `packages/core/src/tree/condition.ts` | `Node` | direct operand writer complete | Source condition syntax writes directly through operand `writeSyntax(...)`; bool result materialization audit remains. |
 | CustomDeclaration | `packages/core/src/tree/declaration-custom.ts` | `Declaration` | queued | Audit custom-property eval/render after `Declaration`. |
 | Declaration | `packages/core/src/tree/declaration.ts` | `Node` | queued | High priority: custom property branches, merge state, materialization. |
@@ -197,24 +198,24 @@ Current hard leftovers after the broad hook sweep:
 | For | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, pattern/iterable children use direct writers, and range-bound closure is gone. Loop state/body surface and async branch audit remain. |
 | Func | `packages/core/src/tree/function.ts` | `Node` | direct child writer complete | Public function syntax writes directly through name/params and body braced writer; function call/eval machinery remains. |
 | If | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, condition children use direct writers, and branch serialization avoids rest-array allocation. Eval/body surface audit remains. |
-| Interpolated | `packages/core/src/tree/interpolated.ts` | `Node` | partial | Public `replace(...)` uses a plain placeholder loop instead of regex callback scaffolding; high-priority selector eval, generic materialization, replacement capture, and replacement arrays remain. |
-| InterpolatedSelector | `packages/core/src/tree/selector-interpolated.ts` | `SimpleSelector` | queued | Replace regex over `valueOf()` with carried selector kind when possible. |
+| Interpolated | `packages/core/src/tree/interpolated.ts` | `Node` | partial | Direct source writer exists and public `replace(...)` uses a plain placeholder loop instead of regex callback scaffolding; high-priority selector eval, generic materialization, replacement capture, and replacement arrays remain. |
+| InterpolatedSelector | `packages/core/src/tree/selector-interpolated.ts` | `SimpleSelector` | direct writer/kind check complete | Source syntax writes directly through `Interpolated.writeSyntax(...)`; `isClass`/`isId`/`isTag` use first-character checks instead of regex. Eval/render still resolve selector output. |
 | JsArray | `packages/core/src/tree/js-array.ts` | `Node` | removal candidate | No Less/SCSS/Jess parser constructs it, `cast([...])` creates `List`, and only explicit public API/tests use it. Do not polish; remove only in a dedicated API-breaking host-wrapper pass. |
 | JsExpression | `packages/core/src/tree/js-expr.ts` | `Node` | live JS feature | Backtick syntax writes directly; JS eval path remains. Skip polish unless JS eval support is being redesigned. |
 | JsFunction | `packages/core/src/tree/js-function.ts` | `Node` | live host wrapper | Function registry/plugins/language service/call/reference paths consume it. Keep cold; no arbitrary source writer. |
 | JsImport | `packages/core/src/tree/import-js.ts` | `Node` | live parser node | Jess `@-use/@-from` and SCSS `@use "sass:*"` construct it; import syntax writes directly and path child uses `writeSyntax(...)`. |
 | JsObject | `packages/core/src/tree/js-object.ts` | `Node` | live host wrapper | `cast(plainObject)` creates it and indexed references read properties from it. Keep cold; no arbitrary source writer. |
 | Keyword | `packages/core/src/tree/any.ts` | `Any` | writeSyntax hook complete | Scalar emission uses `Any.writeSyntax`; broader compare/string normalization remains. |
-| List | `packages/core/src/tree/list.ts` | `Node` | partial | Direct item writer exists; render still captures string output before buffer writes and eval/render item-loop audit remains. |
+| List | `packages/core/src/tree/list.ts` | `Node` | partial | Direct item writer exists and cached `valueOf()` uses a plain loop instead of `map(...).join(...)`; render still captures string output before buffer writes and eval/render item-loop audit remains. |
 | Log | `packages/core/src/tree/log.ts` | `Node` | complete | Empty source writer complete, redundant `toString(...)` override removed, and side-effect eval/render path is direct. |
 | Mixin | `packages/core/src/tree/mixin.ts` | `Node` | partial | Source syntax writer exists and name/params/guard use direct child writers; high priority remains for guard/default/body copy and callable candidate output. |
 | MixinCollection | `packages/core/src/tree/util/callable-collection.ts` | `Node` | queued | Audit whether this public node wrapper is still necessary. |
-| Negative | `packages/core/src/tree/negative.ts` | `Node` | direct child writer complete | Prefix syntax writes directly and now calls child `writeSyntax(...)` instead of public `toString(...)`; unit/text classification remains. |
+| Negative | `packages/core/src/tree/negative.ts` | `Node` | direct child writer complete | Prefix syntax writes directly, calls child `writeSyntax(...)`, and cold private source-string wrapper is gone; unit/text classification remains. |
 | Nil | `packages/core/src/tree/nil.ts` | `Node` | writeSyntax hook complete | Empty writer complete; singleton/scalar allocation remains. |
 | Num | `packages/core/src/tree/number.ts` | `Dimension` | writeSyntax hook complete | Inherits `Dimension.writeSyntax`; operation paths remain. |
 | Operation | `packages/core/src/tree/operation.ts` | `Node` | writeSyntax hook complete | Source operator syntax writes directly; arithmetic eval/calc fallback remains high priority. |
 | Paren | `packages/core/src/tree/paren.ts` | `Node` | writeSyntax hook complete | Wrapper syntax writes directly; guard/string conversion render audit remains. |
-| PseudoSelector | `packages/core/src/tree/selector-pseudo.ts` | `SimpleSelector` | partial | Direct writer hook and child arg writer exist and generated keyset omission is fixed; generated arg normalization still captures/restores. |
+| PseudoSelector | `packages/core/src/tree/selector-pseudo.ts` | `SimpleSelector` | partial | Direct writer hook and child arg writer exist, generated keyset omission is fixed, and cold private source-string wrapper is gone; generated arg normalization still captures/restores. |
 | QueryCondition | `packages/core/src/tree/query-condition.ts` | `Sequence` | partial | Source syntax writes directly; static child render avoids writer-mark probes. Dynamic child render keeps one localized mark fallback because child render may write or return until downstream contracts are direct. |
 | Quoted | `packages/core/src/tree/quoted.ts` | `Node` | writeSyntax hook complete | Quote syntax writes directly; interpolation/replacement audit remains. |
 | Range | `packages/core/src/tree/range.ts` | `Node` | writeSyntax hook complete | Range syntax writes directly. |
@@ -224,8 +225,8 @@ Current hard leftovers after the broad hook sweep:
 | Rules | `packages/core/src/tree/rules.ts` | `Node` | partial | Direct braced source writer exists and public `toBraced(...)` is cold; high priority remains for body eval/render, imports, placement state, merge output, and root serializer capture. |
 | Ruleset | `packages/core/src/tree/ruleset.ts` | `Node` | queued | High priority: selector composition, body prep, wrappers, render branches. |
 | Selector | `packages/core/src/tree/selector.ts` | `Node` | writeSyntax complete | Selector-family writer hook exists; broader metadata and keyset invalidation audit remains. |
-| SelectorCapture | `packages/core/src/tree/selector-capture.ts` | `Node` | child/buffer staging complete | Capture syntax writes directly through child `writeSyntax(...)`, and resolved buffer render delegates to the child buffer renderer instead of rendering to string then writing that string. Audit whether capture node should exist after render rewrite. |
-| SelectorList | `packages/core/src/tree/selector-list.ts` | `Selector` | writeSyntax complete | List item emission uses `writeSyntax`; flattening, temporary arrays, and valueOf joins remain queued. |
+| SelectorCapture | `packages/core/src/tree/selector-capture.ts` | `Node` | child/buffer staging complete | Capture syntax writes directly through child `writeSyntax(...)`, cold private source-string wrapper is gone, and resolved buffer render delegates to the child buffer renderer instead of rendering to string then writing that string. Audit whether capture node should exist after render rewrite. |
+| SelectorList | `packages/core/src/tree/selector-list.ts` | `Selector` | writeSyntax complete | List item emission uses `writeSyntax` and cold private source-string wrapper is gone; flattening, temporary arrays, and valueOf joins remain queued. |
 | Sequence | `packages/core/src/tree/sequence.ts` | `Node` | partial | Direct sequence writer exists; custom-property raw source children use `writeSyntax(...)`, but general child `toString` transport remains until boundary-trivia emission is made explicit. Render still captures. |
 | SimpleSelector | `packages/core/src/tree/selector-simple.ts` | `Selector` | queued | Audit base class necessity and branches. |
 | StyleImport | `packages/core/src/tree/import-style.ts` | `Node` | queued | High priority: first-use placement copies and derived rules surfaces. |

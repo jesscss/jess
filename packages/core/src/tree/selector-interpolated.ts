@@ -4,7 +4,7 @@ import { SimpleSelector } from './selector-simple.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { Interpolated } from './interpolated.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import type { PrintOptions } from './util/print.js';
+import type { FinalPrintOptions, PrintOptions } from './util/print.js';
 import type { RenderBuffer } from './util/render-buffer.js';
 
 export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
@@ -17,15 +17,20 @@ export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
  */
 export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   get isClass() {
-    return /^\./.test(this.valueOf());
+    return this.valueOf()[0] === '.';
   }
 
   get isId() {
-    return /^#/.test(this.valueOf());
+    return this.valueOf()[0] === '#';
   }
 
   get isTag() {
-    return /^[^.#*]/.test(this.valueOf());
+    const first = this.valueOf()[0];
+    return first !== undefined && first !== '.' && first !== '#' && first !== '*';
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    this.value.writeSyntax(options);
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {

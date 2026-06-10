@@ -107,14 +107,6 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     restorePrintState(printOptions, saved);
   }
 
-  private renderCompoundSyntax(options?: PrintOptions): string {
-    const printOptions = getPrintOptions(options);
-    const w = printOptions.writer;
-    const mark = w.mark();
-    this.writeSyntax(printOptions);
-    return w.getSince(mark);
-  }
-
   protected override computeKeySets(): void {
     if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
       return;
@@ -165,7 +157,11 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    return this.renderCompoundSyntax(options);
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer;
+    const mark = w.mark();
+    this.writeSyntax(printOptions);
+    return w.getSince(mark);
   }
 
   override evalNode(context: Context): MaybePromise<CompoundSelector | Selector | Nil> {

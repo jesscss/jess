@@ -19,16 +19,17 @@ export class BasicSelector extends SimpleSelector<string> {
   }
 
   get isClass() {
-    return /^\./.test(this.value);
+    return this.value[0] === '.';
   }
 
   get isId() {
-    return /^#/.test(this.value);
+    return this.value[0] === '#';
   }
 
   /** A tag-type selector */
   get isTag() {
-    return /^[^.#*]/.test(this.value);
+    const first = this.value[0];
+    return first !== undefined && first !== '.' && first !== '#' && first !== '*';
   }
 
   override evalNode(context: Context): BasicSelector {
