@@ -785,14 +785,43 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Registryless cache permanentization cleanup: accepted as hot-helper branch
+  deletion and stale experiment-surface removal, not a speed claim. Files:
+  `packages/core/src/tree/rules.ts`,
+  `docs/future/core-architecture/HANDOFF.md`, and
+  `docs/future/core-architecture/PERFORMANCE-HANDOFF.md`. New traversal: none.
+  New node/materialization: none; no AST node, wrapper `Rules`, side registry,
+  output cache, or materialized result array was added. Deleted the
+  per-eligible-lookup `process.env.JESS_REGISTRYLESS_MIXIN_LAST_CACHE` read
+  from `getRegistrylessMixinCacheKey(...)`, so the accepted one-entry scalar
+  cache is now permanent runtime behavior instead of an env-gated experiment.
+  Also deleted the unused private `getRegistrylessMixinCacheResult(...)`
+  parameter left behind by the earlier Map-cache deletion. Render path:
+  unchanged. Helper/API surface: no public API and no helper added; one private
+  helper signature was narrowed. Metadata mutations: unchanged cache-field
+  invalidation only. Routine error/control: no throw/catch/Error path added.
+  Evidence: focused mixin tests passed (`138` tests); expanded
+  lookup-adjacent suite passed (`551` tests, `9` skipped); eslint passed.
+  Performance was not measured, so no speed claim is made.
+- Mixin namespace descendant intermediate-array deletion: accepted as
+  namespace lookup materialization removal, not a speed claim. Files:
+  `packages/core/src/tree/rules.ts` and this handoff. New traversal: none; the
+  existing forward loop over namespace mixin candidates now filters mixin nodes
+  and required params inline instead of building `orderedNamespaceMixins` and
+  looping it once. New node/materialization: none; one intermediate
+  `Mixin[]` array was deleted. Render path: unchanged. Helper/API surface: no
+  public API or helper added. Metadata mutations: none. Routine error/control:
+  no throw/catch/Error path added. Evidence: focused mixin tests passed (`138`
+  tests); expanded lookup-adjacent suite passed (`551` tests, `9` skipped);
+  eslint passed. Performance was not measured, so no speed claim is made.
 - Registryless mixin Map-cache experiment deletion: accepted as stale
   experiment removal, not a speed claim. Files:
   `packages/core/src/tree/rules.ts` and this handoff. New traversal: none.
   New node/materialization: none; deleted the `registrylessMixinLookupCache`
   `Map` field, its reset writes, and the `JESS_REGISTRYLESS_MIXIN_CACHE`
   branches in the cache helpers. The accepted one-entry scalar cache remains,
-  with `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=0` still available to disable it for
-  benchmark sanity. Render path: unchanged. Helper/API surface: no public API
+  and the later off-switch deletion pass removed its hot-path env read. Render
+  path: unchanged. Helper/API surface: no public API
   or helper added; old private experiment surface was removed. Metadata
   mutations: fewer cache-field resets during clone/register invalidation.
   Routine error/control: no new throw/catch/Error path. Evidence: focused
@@ -1094,7 +1123,8 @@ the gate passed.
   node/materialization: none beyond the scalar cache fields from the prior
   pass; no AST node, wrapper `Rules`, side registry, or output cache was added.
   Helper/API surface: no public API; `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=0`
-  now explicitly disables the last cache for measurement. Historical note:
+  briefly disabled the last cache for measurement before the permanent-cache
+  off-switch deletion pass removed that hot-path env read. Historical note:
   the older `JESS_REGISTRYLESS_MIXIN_CACHE=1` Map mode has since been deleted.
   Metadata mutations:
   unchanged; cache fields are reset with existing registryless invalidation.
@@ -1167,9 +1197,8 @@ the gate passed.
   `JESS_LEGACY_MIXIN_LOOKUP` and `JESS_DIRECT_CALLABLE_LOOKUP` from callable
   lookup, removed the legacy `_rulesSet` fallback branch inside
   `findMixinsFast(...)`, and removed the old direct-callable env toggle from a
-  focused miss test. Cache measurement flag remains:
-  `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=0` disables the one-entry cache; the
-  older Map-cache experiment has since been deleted.
+  focused miss test. The older cache measurement flag and Map-cache experiment
+  have since been deleted.
   Metadata mutations: none. Routine error/control: none. Evidence: focused
   eslint passed; focused default-path behavior passed (`304` tests, `8`
   skipped); `@jesscss/core` build passed. Post-delete benchmarks are regression

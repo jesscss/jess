@@ -1133,10 +1133,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     filterType: string | undefined,
     options: Registries.FindOptions
   ): string | undefined {
-    const lastCache = process.env.JESS_REGISTRYLESS_MIXIN_LAST_CACHE !== '0';
-    if (!lastCache) {
-      return undefined;
-    }
     if (options.hasTarget || options.local || options.context?.rulesContext === this) {
       return undefined;
     }
@@ -1154,7 +1150,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return this.registrylessLastMixinLookupKey === key;
   }
 
-  private getRegistrylessMixinCacheResult(_key: string): MixinEntry[] | undefined {
+  private getRegistrylessMixinCacheResult(): MixinEntry[] | undefined {
     return this.registrylessLastMixinLookupValue;
   }
 
@@ -1589,17 +1585,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
 
     const remainder = collectKeyRemainder(keys, 1);
-    const orderedNamespaceMixins: Mixin[] = [];
+    const resolved: MixinEntry[] = [];
     for (let i = 0; i < namespaceMixins.length; i++) {
       const entry = namespaceMixins[i]!;
       if (!isNode(entry, N.Mixin)) {
         continue;
       }
-      orderedNamespaceMixins.push(entry);
-    }
-
-    const resolved: MixinEntry[] = [];
-    for (const entry of orderedNamespaceMixins) {
       if (!mixinHasNoRequiredParams(entry)) {
         continue;
       }
@@ -1626,7 +1617,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const includeRulesets = filterType !== 'Mixin' && options.terminalMixinOnly !== true;
       const cacheKey = this.getRegistrylessMixinCacheKey(keys, filterType, options);
       if (cacheKey !== undefined && this.hasRegistrylessMixinCacheResult(cacheKey)) {
-        return this.getRegistrylessMixinCacheResult(cacheKey);
+        return this.getRegistrylessMixinCacheResult();
       }
       const callableFrame = this._scopeFrame;
       if (callableFrame && !options.hasTarget && !options.local) {
@@ -1764,7 +1755,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     } else if (isArray(keys) && keys.length > 1) {
       const cacheKey = this.getRegistrylessMixinCacheKey(keys, filterType, options);
       if (cacheKey !== undefined && this.hasRegistrylessMixinCacheResult(cacheKey)) {
-        return this.getRegistrylessMixinCacheResult(cacheKey);
+        return this.getRegistrylessMixinCacheResult();
       }
       const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
       let compoundPrefixFast: MixinEntry[] | undefined;

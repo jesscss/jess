@@ -699,8 +699,9 @@ callable buckets/direct `findMixinsFast(...)` child-surface traversal instead
 of falling through to `MixinRegistry`. Array and compound string namespace
 paths also stop before `getRegistry('mixin').find(...)` and use direct ruleset
 namespace helpers. Repeated same-key lookup caching is separate behind
-`JESS_REGISTRYLESS_MIXIN_CACHE=1` so cache behavior can be measured apart from
-the registryless cut. Focused mixin/reference lookup tests passed with
+`JESS_REGISTRYLESS_MIXIN_CACHE=1` in this historical prototype so cache behavior
+could be measured apart from the registryless cut; that Map-cache experiment
+has since been deleted. Focused mixin/reference lookup tests passed with
 `JESS_REGISTRYLESS_MIXIN_LOOKUP=1` (`38` tests), including static callable
 buckets, namespace fast paths, and nested mixin-ruleset references. Runtime
 timing on `simple-mixin-recursion.less` was only a weak win without cache:
@@ -2069,7 +2070,7 @@ Follow-up registryless result-cache evidence:
   Map cache mode had `7` eligible cache checks, `0` hits, and `4` sets. On
   `scope-lookup-stress.less`, it had `364` eligible checks, `358` hits, and
   `6` sets;
-- a cheaper one-entry cache prototype now exists behind
+- a cheaper one-entry cache prototype was first measured behind
   `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=1`. It stores only the last registryless
   mixin lookup key/result on the owning `Rules`, invalidated with the existing
   registryless lookup cache state. The first version returned a small
@@ -2088,7 +2089,7 @@ Follow-up registryless result-cache evidence:
   --pairs 100` reported baseline median `55.43ms`, candidate median `54.28ms`,
   mean ratio `-1.36%`, wins `75/100`, `t=-3.70`;
 - combined baseline-vs-registryless evidence with the inlined one-entry cache
-  flag enabled kept the broad fixture neutral and preserved the recursive stress
+  enabled kept the broad fixture neutral and preserved the recursive stress
   win: `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=1 node scripts/compare-less-hotpath-env.mjs --env JESS_REGISTRYLESS_MIXIN_LOOKUP --fixture tests-unit/mixins-guards/mixins-guards.less --warmup 8 --pairs 60 --batch-size 5`
   reported baseline median `67.45ms`, candidate median `67.25ms`, mean ratio
   `0.08%`, wins `32/60`, `t=-0.23`; `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=1 node scripts/compare-less-parse-render-env.mjs --env JESS_REGISTRYLESS_MIXIN_LOOKUP --fixture scripts/fixtures/less-hotpath/scope-lookup-stress.less --phase render --warmup 10 --pairs 100`
@@ -2097,10 +2098,11 @@ Follow-up registryless result-cache evidence:
 
 Follow-up default one-entry cache evidence:
 
-- the inlined one-entry cache is now the default cache mode when
-  `JESS_REGISTRYLESS_MIXIN_LOOKUP=1`. Set
-  `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=0` to measure registryless without it, or
-  `JESS_REGISTRYLESS_MIXIN_CACHE=1` to force the older Map cache experiment;
+- the inlined one-entry cache became the default cache mode when
+  `JESS_REGISTRYLESS_MIXIN_LOOKUP=1`. The temporary
+  `JESS_REGISTRYLESS_MIXIN_LAST_CACHE=0` measurement off-switch and older
+  `JESS_REGISTRYLESS_MIXIN_CACHE=1` Map-cache experiment have since been
+  removed;
 - focused all-flags behavior and lint still passed with default cache mode:
   `pnpm exec eslint packages/core/src/tree/rules.ts`, and
   `JESS_DIRECT_DECLARATION_LOOKUP=1 JESS_DIRECT_CALLABLE_LOOKUP=1 JESS_REGISTRYLESS_MIXIN_LOOKUP=1 pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts --run`
@@ -2199,9 +2201,9 @@ Follow-up array/namespace legacy branch deletion:
   segment now always uses the registryless namespace/direct-crawl path. Runtime
   callable lookup no longer reads `JESS_LEGACY_MIXIN_LOOKUP` or
   `JESS_DIRECT_CALLABLE_LOOKUP`; the old direct-callable env toggle was also
-  removed from the focused miss test. `JESS_REGISTRYLESS_MIXIN_LAST_CACHE`
-  remains available for cache off/on measurement, and
-  `JESS_REGISTRYLESS_MIXIN_CACHE` still selects the older Map-cache experiment;
+  removed from the focused miss test. The later cache cleanup passes also
+  removed `JESS_REGISTRYLESS_MIXIN_LAST_CACHE` and the older
+  `JESS_REGISTRYLESS_MIXIN_CACHE` Map-cache experiment from runtime code;
 - this is a permanentization/deletion pass, not a fresh standalone speed claim:
   the old legacy env comparator has intentionally been deleted from runtime
   code, so post-delete benchmarking used cache off/on regression sanity rather
