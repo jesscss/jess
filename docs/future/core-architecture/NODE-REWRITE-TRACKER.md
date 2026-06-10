@@ -154,8 +154,9 @@ Current hard leftovers after the broad hook sweep:
   path should emit body output directly.
 - [ ] `While`: direct control syntax writer only for public source API; render
   path should emit body output directly.
-- [ ] `If`: direct control syntax writer only for public source API; render path
-  should emit selected body output directly.
+- [ ] `If`: direct source syntax writer exists and branch serialization avoids
+  rest-array allocation; render path already emits selected body output
+  directly, but eval/body surface audit remains.
 - [ ] `Log`: confirm side-effect render path stays direct and public strings are
   cold.
 
@@ -186,7 +187,7 @@ Current hard leftovers after the broad hook sweep:
 | ExtendList | `packages/core/src/tree/extend-list.ts` | `Node` | writeSyntax hook complete | List wrapper writes through base child writer plus semicolon; public wrapper existence remains. |
 | For | `packages/core/src/tree/control.ts` | `Node` | queued | Audit loop state, body materialization, and async branches. |
 | Func | `packages/core/src/tree/function.ts` | `Node` | direct child writer complete | Public function syntax writes directly through name/params/body writers; function call/eval machinery remains. |
-| If | `packages/core/src/tree/control.ts` | `Node` | queued | Audit condition/body materialization and branch count. |
+| If | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, condition children use direct writers, and branch serialization avoids rest-array allocation. Eval/body surface audit remains. |
 | Interpolated | `packages/core/src/tree/interpolated.ts` | `Node` | partial | Public `replace(...)` uses a plain placeholder loop instead of regex callback scaffolding; high-priority selector eval, generic materialization, replacement capture, and replacement arrays remain. |
 | InterpolatedSelector | `packages/core/src/tree/selector-interpolated.ts` | `SimpleSelector` | queued | Replace regex over `valueOf()` with carried selector kind when possible. |
 | JsArray | `packages/core/src/tree/js-array.ts` | `Node` | audited/deferred | Host wrapper tests cover identity/no eval stamping and render-buffer alignment, not source syntax. Do not add arbitrary writer output. |

@@ -9,7 +9,7 @@ import { Condition } from './condition.js';
 import { VarDeclaration } from './declaration-var.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Range } from './range.js';
 import { buildScopeFrame, getBindingCellValue, type BindingCell, type ScopeFrame } from './scope-frame.js';
@@ -430,26 +430,31 @@ export class If extends Node<IfValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    this.writeSyntax(options);
+    return w.getSince(mark);
+  }
 
-    const [first, ...rest] = this.value.branches;
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
+    const branches = this.value.branches;
+    const first = branches[0];
     w.add('$if', this);
     w.add(' (');
-    first?.condition?.toString(options);
+    first?.condition?.writeSyntax(options);
     w.add(') ');
     first?.rules.toBraced(options);
 
-    for (const br of rest) {
+    for (let i = 1; i < branches.length; i++) {
+      const br = branches[i]!;
       if (br.condition) {
         w.add(' $else if (');
-        br.condition.toString(options);
+        br.condition.writeSyntax(options);
         w.add(') ');
       } else {
         w.add(' $else ');
       }
       br.rules.toBraced(options);
     }
-
-    return w.getSince(mark);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
