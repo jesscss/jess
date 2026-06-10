@@ -785,6 +785,17 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Callable fast lookup context-plumbing deletion: accepted as stale option
+  removal, not a speed claim. File: `packages/core/src/tree/rules.ts` and
+  this handoff. New traversal: none; `findMixinsFast(...)` already ignored
+  `context`, so this pass deletes the unused option from the method shape and
+  removes seven call-site forwards from string and namespace callable lookup.
+  New node/materialization: none. Render path: unchanged. Helper/API surface:
+  one private lookup option was deleted; no helper or public API was added.
+  Metadata mutations: none. Routine error/control: no new throw/catch/Error
+  path. Evidence: focused mixin tests passed (`138` tests); expanded
+  lookup-adjacent suite passed (`551` tests, `9` skipped). Performance was not
+  measured, so no speed claim is made.
 - Callable child-bridge current-surface skip pass: accepted as duplicate-work
   removal inside a remaining bridge, not a speed claim. Files:
   `packages/core/src/tree/rules.ts`,

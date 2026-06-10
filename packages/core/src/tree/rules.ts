@@ -816,7 +816,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   findMixinsFast(
     key: string,
     options?: {
-      context?: Context;
       hasTarget?: boolean;
       local?: boolean;
       includeRulesets?: boolean;
@@ -1403,7 +1402,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
 
       const matches = scope.findMixinsFast(segment, {
-        context: options.context,
         hasTarget: options.hasTarget,
         local: options.local,
         includeRulesets: restLength === 0 && filterType !== 'Mixin' && options.terminalMixinOnly !== true,
@@ -1474,7 +1472,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return DEFINITE_MISS;
       }
       if (scope.findMixinsFast(segment, {
-        context: options.context,
         hasTarget: options.hasTarget,
         local: options.local,
         includeRulesets: false,
@@ -1513,7 +1510,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           ? (() => {
               const segment = path[consumed.length]!;
               const simpleCallableMatches = ruleset.value.rules.findMixinsFast(segment, {
-                context: options.context,
                 hasTarget: options.hasTarget,
                 local: options.local,
                 includeRulesets: options.terminalMixinOnly !== true,
@@ -1685,7 +1681,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         if (frameHit.kind === 'uncovered') {
           const direct = this.findMixinsFast(keys, {
-            context: options.context,
             hasTarget: options.hasTarget,
             local: options.local,
             includeRulesets,
@@ -1733,7 +1728,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
             if (retryHit.kind === 'uncovered' && isNode(retryFrame.rulesNode, N.Rules)) {
               const direct = retryFrame.rulesNode.findMixinsFast(keys, {
-                context: options.context,
                 hasTarget: options.hasTarget,
                 local: options.local,
                 includeRulesets,
@@ -1770,7 +1764,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return result;
       }
       const direct = this.findMixinsFast(keys, {
-        context: options.context,
         hasTarget: options.hasTarget,
         local: options.local,
         includeRulesets,
@@ -1799,7 +1792,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           return result;
         }
         const namespaceMixins = this.findMixinsFast(keys[0]!, {
-          context: options.context,
           hasTarget: options.hasTarget,
           local: options.local,
           includeRulesets: false
