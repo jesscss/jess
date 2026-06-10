@@ -126,8 +126,8 @@ Current hard leftovers after the broad hook sweep:
   transport.
 - [x] `Func`: direct function signature/body writer, including name/params, if
   public syntax remains necessary.
-- [ ] `Mixin`: direct mixin syntax/guard writer; audit guard/default/body copy
-  interactions.
+- [ ] `Mixin`: direct source syntax/guard writer exists; audit
+  guard/default/body copy interactions and callable candidate output.
 - [ ] `MixinCollection`: decide whether public wrapper survives; if yes, direct
   writer only.
 - [ ] `Rules`: direct body/root writer; isolate root public source serializer,
@@ -197,7 +197,7 @@ Current hard leftovers after the broad hook sweep:
 | Keyword | `packages/core/src/tree/any.ts` | `Any` | writeSyntax hook complete | Scalar emission uses `Any.writeSyntax`; broader compare/string normalization remains. |
 | List | `packages/core/src/tree/list.ts` | `Node` | partial | Direct item writer exists; render still captures string output before buffer writes and eval/render item-loop audit remains. |
 | Log | `packages/core/src/tree/log.ts` | `Node` | writeSyntax hook complete | Empty source writer complete; side-effect eval/render path remains. |
-| Mixin | `packages/core/src/tree/mixin.ts` | `Node` | queued | High priority: guard/default/body copy and callable candidate output. |
+| Mixin | `packages/core/src/tree/mixin.ts` | `Node` | partial | Source syntax writer exists and name/params/guard use direct child writers; high priority remains for guard/default/body copy and callable candidate output. |
 | MixinCollection | `packages/core/src/tree/util/callable-collection.ts` | `Node` | queued | Audit whether this public node wrapper is still necessary. |
 | Negative | `packages/core/src/tree/negative.ts` | `Node` | direct child writer complete | Prefix syntax writes directly and now calls child `writeSyntax(...)` instead of public `toString(...)`; unit/text classification remains. |
 | Nil | `packages/core/src/tree/nil.ts` | `Node` | writeSyntax hook complete | Empty writer complete; singleton/scalar allocation remains. |

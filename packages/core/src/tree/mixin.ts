@@ -5,7 +5,7 @@ import { Any, type AnyRole } from './any.js';
 import { Rules } from './rules.js';
 import { Interpolated } from './interpolated.js';
 import type { Context } from '../context.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 import { callableGuardContainsDefault } from './util/callable-entry.js';
@@ -156,26 +156,35 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { name, rules, params, guard } = this.value;
     const mark = w.mark();
-    w.add(name ? `${name}` : '@');
+    this.writeSyntax(options);
+    return w.getSince(mark);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
+    let { name, rules, params, guard } = this.value;
+    if (name) {
+      name.writeSyntax(options);
+    } else {
+      w.add('@');
+    }
     if (name || params || guard) {
       w.add('(');
       if (params) {
-        params.toString(options);
+        params.writeSyntax(options);
       }
       w.add(')');
     }
     if (guard) {
       w.add(' when ');
-      w.add(`${guard}`);
+      guard.writeSyntax(options);
     }
     if (name || params || guard) {
       w.add(' ');
     }
     // Emit rules directly into shared writer; do not re-add return value
     rules.toBraced(options);
-    return w.getSince(mark);
   }
 
   override prepareRegistration(context: Context): MaybePromise<Mixin> {

@@ -2019,3 +2019,24 @@ the gate passed.
   tests), and `pnpm --filter @jesscss/core build` passed with only the
   pre-existing direct `eval` warning in `js-expr.ts`. This is not a speed
   claim.
+- Mixin source writer pass: accepted as a direct source-syntax child transport
+  cut, not as completion of mixin eval/callable output. New traversal: none;
+  no loop, recursion, parent/source walk, side-map lookup, generator, object
+  scan, or array helper was added. New node/materialization: none; no `Node`,
+  copy, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, or placement state was added. Render path: unchanged; mixin
+  definitions remain invisible until callable evaluation, and this pass only
+  moves public source serialization into `writeSyntax(...)` with direct
+  name/params/guard child writers instead of template-string/public
+  `toString(...)` transport. Helper/API surface: one node-local
+  `writeSyntax(...)` override added to replace the former public
+  `toTrimmedString(...)` body; no exported helper or cross-node API was added.
+  Metadata mutations: none. Evidence: pre-pass hotpath sanity at commit
+  `9eefe28` reported `functions` `12.04ms` usable, `import-reference`
+  `19.22ms` usable, `mixins-guards` `15.83ms` usable, `extend-chaining`
+  `4.78ms` usable, and `media` `4.93ms` usable. Focused
+  mixin/default-guard/condition/call/render-buffer tests passed (`256` tests),
+  and `pnpm --filter @jesscss/core build` passed with only the pre-existing
+  direct `eval` warning in `js-expr.ts`. This is not a speed claim. Remaining
+  queue: mixin guard/default/body copy interactions and callable candidate
+  output still need structural cuts.
