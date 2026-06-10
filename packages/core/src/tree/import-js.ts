@@ -41,7 +41,7 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
     const imports = this.value.imports ?? (Array.isArray(this._options?.imports) ? this._options.imports : undefined);
 
     w.add('@-use ');
-    path.toString(options);
+    path.writeSyntax(options);
     let explicitNamespace = namespace;
     if (!explicitNamespace && imports?.length) {
       const nsSpec = imports.find((specifier) => {

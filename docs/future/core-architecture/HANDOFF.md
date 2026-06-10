@@ -2004,3 +2004,18 @@ the gate passed.
   tests), and `pnpm --filter @jesscss/core build` passed with only the
   pre-existing direct `eval` warning in `js-expr.ts`. This is not a speed
   claim.
+- JsImport path child writer pass: accepted as a direct source-syntax child
+  transport cut. New traversal: none; no loop, recursion, parent/source walk,
+  side-map lookup, generator, object scan, or array helper was added. New
+  node/materialization: none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, frozen/source/parent mutation, or placement state was
+  added. Render path: unchanged; the existing import source writer now emits
+  its quoted path child through `writeSyntax(...)` instead of public
+  `toString(...)`. Helper/API surface: none added. Metadata mutations: none.
+  Evidence: pre-pass hotpath sanity at commit `198a6356` reported `functions`
+  `12.02ms` usable, `import-reference` `18.72ms` usable, `mixins-guards`
+  `16.81ms` usable, `extend-chaining` `5.08ms` usable, and `media`
+  `5.20ms` unstable. Focused import-js/quoted/render-buffer tests passed (`36`
+  tests), and `pnpm --filter @jesscss/core build` passed with only the
+  pre-existing direct `eval` warning in `js-expr.ts`. This is not a speed
+  claim.

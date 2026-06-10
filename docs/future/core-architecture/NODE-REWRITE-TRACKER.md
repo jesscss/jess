@@ -192,7 +192,7 @@ Current hard leftovers after the broad hook sweep:
 | JsArray | `packages/core/src/tree/js-array.ts` | `Node` | audited/deferred | Host wrapper tests cover identity/no eval stamping and render-buffer alignment, not source syntax. Do not add arbitrary writer output. |
 | JsExpression | `packages/core/src/tree/js-expr.ts` | `Node` | writeSyntax hook complete | Backtick syntax writes directly; JS eval path remains. |
 | JsFunction | `packages/core/src/tree/js-function.ts` | `Node` | audited/deferred | Host callable wrapper tests cover identity/no eval stamping and call integration, not source syntax. Do not add arbitrary writer output. |
-| JsImport | `packages/core/src/tree/import-js.ts` | `Node` | writeSyntax hook complete | Import syntax writes directly and avoids lazy `options` getter. |
+| JsImport | `packages/core/src/tree/import-js.ts` | `Node` | direct child writer complete | Import syntax writes directly, path child uses `writeSyntax(...)`, and the path avoids lazy `options` getter. |
 | JsObject | `packages/core/src/tree/js-object.ts` | `Node` | audited/deferred | Host wrapper tests cover identity/no eval stamping and render-buffer alignment, not source syntax. Do not add arbitrary writer output. |
 | Keyword | `packages/core/src/tree/any.ts` | `Any` | writeSyntax hook complete | Scalar emission uses `Any.writeSyntax`; broader compare/string normalization remains. |
 | List | `packages/core/src/tree/list.ts` | `Node` | partial | Direct item writer exists; render still captures string output before buffer writes and eval/render item-loop audit remains. |
