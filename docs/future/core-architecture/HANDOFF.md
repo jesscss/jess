@@ -785,6 +785,31 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Callable selector lookup preparation slimming pass: accepted as lookup-prep
+  array/function-call deletion, not a speed claim. Files:
+  `packages/core/src/tree/rules.ts` and this handoff. New traversal: none; the
+  existing selector-key walk in `addDirectCallableSelectorEntries(...)` now
+  loops the ordered keys once instead of allocating `candidateKeys` with
+  `.filter(...)`, finding an index, and allocating another tail array with
+  `.slice(...)`. Parent-prefix stripping now passes a start offset into the
+  same helper instead of slicing the key array. `collectCallableEntriesForKeyFrom(...)`
+  carries the first `getOrderedSelectorKeys(...)` result through to the caller
+  instead of recomputing it solely after a length probe. Namespace continuation
+  now calls `findMixin(...)` directly instead of routing through the generic
+  `find('mixin', ...)` switch, and the one-segment continuation branch no
+  longer allocates an inline IIFE closure. The two ruleset namespace child
+  searches now use `directChildRuleEntries`/`collectDirectChildRulesEntries()`
+  instead of raw `_rulesSet`, so scopes with no exact callable child surface can
+  avoid the child-recursion path. New node/materialization: none; deleted
+  temporary arrays and a closure, and did not add AST nodes, wrapper `Rules`,
+  side maps, result caches, or output objects. Render path: unchanged.
+  Helper/API surface: no public API and no helper added; one existing private
+  helper gained a start offset to remove array slicing at its call site.
+  Metadata mutations: unchanged; reused the existing direct child-surface cache
+  and visibility entries. Routine error/control: no throw/catch/Error path
+  added. Evidence: focused mixin tests passed (`138` tests); expanded
+  lookup-adjacent suite passed (`551` tests, `9` skipped); eslint passed.
+  Performance was not measured, so no speed claim is made.
 - Duplicate ruleset namespace retry deletion: accepted as redundant lookup
   deletion, not a speed claim. Files: `packages/core/src/tree/rules.ts` and
   this handoff. New traversal: none; deleted a second

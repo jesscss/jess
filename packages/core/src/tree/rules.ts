@@ -931,20 +931,28 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     lookupKey: string,
     ruleset: Ruleset,
     keys: string[],
-    bucket: CallableLookupEntry[]
+    bucket: CallableLookupEntry[],
+    startAt = 0
   ): void {
-    const candidateKeys = keys.filter(key => typeof key === 'string' && !key.startsWith(':'));
-    const startIndex = candidateKeys.findIndex(key => !key.startsWith('*'));
-    if (startIndex === -1) {
+    let key: string | undefined;
+    let match: string[] | undefined;
+    for (let i = startAt; i < keys.length; i++) {
+      const candidate = keys[i]!;
+      if (candidate.startsWith(':')) {
+        continue;
+      }
+      if (key === undefined) {
+        if (!candidate.startsWith('*')) {
+          key = candidate;
+        }
+        continue;
+      }
+      (match ??= []).push(candidate);
+    }
+    if (key === undefined) {
       return;
     }
-    this.addCallableEntry(
-      lookupKey,
-      candidateKeys[startIndex],
-      ruleset,
-      candidateKeys.slice(startIndex + 1),
-      bucket
-    );
+    this.addCallableEntry(lookupKey, key, ruleset, match ?? [], bucket);
   }
 
   private collectCallableEntriesForKeyFrom(
@@ -979,11 +987,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const sourceSelector = isSelectorLikeNode(selector.sourceNode)
         ? selector.sourceNode
         : undefined;
-      selector = (
-        Registries.getOrderedSelectorKeys(selector).length > 0
-          ? selector
-          : (sourceSelector && Registries.getOrderedSelectorKeys(sourceSelector).length > 0 ? sourceSelector : selector)
-      );
+      let keys = Registries.getOrderedSelectorKeys(selector);
+      if (keys.length === 0 && sourceSelector) {
+        const sourceKeys = Registries.getOrderedSelectorKeys(sourceSelector);
+        if (sourceKeys.length > 0) {
+          selector = sourceSelector;
+          keys = sourceKeys;
+        }
+      }
       if (isNode(selector, N.SelectorList)) {
         for (let selectorIndex = 0; selectorIndex < selector.value.length; selectorIndex++) {
           this.addDirectCallableSelectorEntries(
@@ -995,7 +1006,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         continue;
       }
-      let keys = Registries.getOrderedSelectorKeys(selector);
       if (keys.length > 0 && ownSelector && !isNode(ownSelector, N.Nil)) {
         const parentSelector = isNode(node.parent?.parent, N.Ruleset)
           ? (node.parent.parent as Ruleset).value.selector
@@ -1008,7 +1018,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           && keys.length > parentKeys.length
           && keysStartWith(keys, parentKeys)
         ) {
-          keys = keys.slice(parentKeys.length);
+          this.addDirectCallableSelectorEntries(lookupKey, node, keys, bucket, parentKeys.length);
+          continue;
         }
       }
       this.addDirectCallableSelectorEntries(lookupKey, node, keys, bucket);
@@ -1119,8 +1130,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   ): MixinEntry[] {
     return (
-      this.find(
-        'mixin',
+      this.findMixin(
         key,
         options?.includeRulesets === false ? 'Mixin' : undefined,
         options
@@ -1205,10 +1215,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
 
-      const childEntries = scope._rulesSet as Array<{
-        node: Rules;
-        rulesVisibility?: RulesOptions['rulesVisibility'];
-      }> | undefined;
+      const childEntries = scope.directChildRuleEntries !== undefined
+        ? (scope.directChildRuleEntries ?? undefined)
+        : scope.rulesIndexed >= scope.value.length && !scope.hasExactCallableChildSurface
+          ? undefined
+          : scope.collectDirectChildRulesEntries();
       if (!childEntries?.length) {
         return;
       }
@@ -1299,10 +1310,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
 
-      const childEntries = scope._rulesSet as Array<{
-        node: Rules;
-        rulesVisibility?: RulesOptions['rulesVisibility'];
-      }> | undefined;
+      const childEntries = scope.directChildRuleEntries !== undefined
+        ? (scope.directChildRuleEntries ?? undefined)
+        : scope.rulesIndexed >= scope.value.length && !scope.hasExactCallableChildSurface
+          ? undefined
+          : scope.collectDirectChildRulesEntries();
       if (!childEntries?.length) {
         return;
       }
@@ -1479,37 +1491,35 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (remainderLength === 0) {
           return options.terminalMixinOnly === true ? DEFINITE_MISS : [ruleset];
         }
-        const resolved = remainderLength === 1
-          ? (() => {
-              const segment = path[consumed.length]!;
-              const simpleCallableMatches = ruleset.value.rules.findMixinsFast(segment, {
-                hasTarget: options.hasTarget,
-                local: options.local,
-                includeRulesets: options.terminalMixinOnly !== true,
-                searchParents: false
-              });
-              if (simpleCallableMatches.length > 0) {
-                return simpleCallableMatches;
-              }
-              if (options.terminalMixinOnly === true) {
-                return undefined;
-              }
-              const simpleCallableRulesets = ruleset.value.rules.findVisibleExactCallableRulesetPath([segment], {
-                hasTarget: options.hasTarget,
-                local: options.local,
-                searchParents: false
-              });
-              return simpleCallableRulesets.length > 0 ? simpleCallableRulesets : undefined;
-            })()
-          : ruleset.value.rules.find(
-              'mixin',
-              collectKeyRemainder(path, consumed.length),
-              undefined,
-              {
-                ...options,
-                searchParents: false
-              }
-            );
+        let resolved: MixinEntry[] | undefined;
+        if (remainderLength === 1) {
+          const segment = path[consumed.length]!;
+          const simpleCallableMatches = ruleset.value.rules.findMixinsFast(segment, {
+            hasTarget: options.hasTarget,
+            local: options.local,
+            includeRulesets: options.terminalMixinOnly !== true,
+            searchParents: false
+          });
+          if (simpleCallableMatches.length > 0) {
+            resolved = simpleCallableMatches;
+          } else if (options.terminalMixinOnly !== true) {
+            const simpleCallableRulesets = ruleset.value.rules.findVisibleExactCallableRulesetPath([segment], {
+              hasTarget: options.hasTarget,
+              local: options.local,
+              searchParents: false
+            });
+            resolved = simpleCallableRulesets.length > 0 ? simpleCallableRulesets : undefined;
+          }
+        } else {
+          resolved = ruleset.value.rules.findMixin(
+            collectKeyRemainder(path, consumed.length),
+            undefined,
+            {
+              ...options,
+              searchParents: false
+            }
+          );
+        }
         if (resolved?.length) {
           return resolved;
         }
@@ -1550,8 +1560,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (remainderLength === 0) {
         return options.terminalMixinOnly === true ? [] : [ruleset];
       }
-      const resolved = ruleset.value.rules.find(
-        'mixin',
+      const resolved = ruleset.value.rules.findMixin(
         remainderLength === 1 ? keys[consumed.length]! : collectKeyRemainder(keys, consumed.length),
         undefined,
         {
