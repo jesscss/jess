@@ -785,6 +785,25 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Callable child-bridge current-surface skip pass: accepted as duplicate-work
+  removal inside a remaining bridge, not a speed claim. Files:
+  `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/__tests__/mixin.test.ts`, and this handoff. New
+  traversal: none; after `prepareCallableLookupFrame(...)` and
+  `lookupScopeFrameCallable(...)` already probe the current frame's direct
+  callable bucket, the `findMixinsFast(...)` bridge now enters with
+  `skipCurrentSurface: true` and crawls only child surfaces for that first
+  scope. Recursive child scopes still check their own direct callable surfaces
+  in reverse order. New node/materialization: none in production; the updated
+  test adds one boolean and reuses the existing spy hit array. No production
+  node, wrapper, output cache, callable record, side map, or stored miss bucket
+  was added. Render path: unchanged. Helper/API surface: no public API and no
+  new helper; one private `findMixinsFast(...)` option narrows work at the two
+  existing uncovered bridge call sites. Metadata mutations: none. Routine
+  error/control: no new production throw/catch/Error path; existing test
+  `try/finally` remains spy restoration. Evidence: focused mixin tests passed
+  (`138` tests); expanded lookup-adjacent suite passed (`551` tests, `9`
+  skipped). Performance was not measured, so no speed claim is made.
 - Callable fallback-frame retry ownership pass: accepted as frame-ownership
   narrowing, not a speed claim. Files: `packages/core/src/tree/rules.ts`,
   `packages/core/src/tree/__tests__/mixin.test.ts`, and this handoff. New

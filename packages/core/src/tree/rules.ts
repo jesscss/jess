@@ -821,13 +821,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       local?: boolean;
       includeRulesets?: boolean;
       searchParents?: boolean;
+      skipCurrentSurface?: boolean;
     }
   ): MixinEntry[] {
     const collectWithinScopeSurface = (
       scope: Rules,
       localContext: boolean | undefined,
       results: MixinEntry[],
-      visited?: Set<Rules>
+      visited?: Set<Rules>,
+      includeCurrentSurface = true
     ): Set<Rules> | undefined => {
       if (visited?.has(scope)) {
         return visited;
@@ -836,18 +838,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         visited.add(scope);
       }
 
-      const candidates = scope.getCallableEntriesForKey(key);
-      if (candidates.length > 0) {
-        for (let i = candidates.length - 1; i >= 0; i--) {
-          const entry = candidates[i]!;
-          if (entry.match.length !== 0) {
-            continue;
+      if (includeCurrentSurface) {
+        const candidates = scope.getCallableEntriesForKey(key);
+        if (candidates.length > 0) {
+          for (let i = candidates.length - 1; i >= 0; i--) {
+            const entry = candidates[i]!;
+            if (entry.match.length !== 0) {
+              continue;
+            }
+            const candidate = entry.value;
+            if (!options?.includeRulesets && isNode(candidate, N.Ruleset)) {
+              continue;
+            }
+            results.push(candidate);
           }
-          const candidate = entry.value;
-          if (!options?.includeRulesets && isNode(candidate, N.Ruleset)) {
-            continue;
-          }
-          results.push(candidate);
         }
       }
 
@@ -877,7 +881,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           entry.node,
           localContext || Boolean(entry.node.options?.local),
           results,
-          visited
+          visited,
+          true
         );
       }
 
@@ -896,7 +901,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         first = false;
-        collectWithinScopeSurface(scope, options?.local, results);
+        collectWithinScopeSurface(
+          scope,
+          options?.local,
+          results,
+          undefined,
+          options?.skipCurrentSurface !== true
+        );
       }
       cursor = cursor.parent;
       if (options?.searchParents === false) {
@@ -1678,7 +1689,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             hasTarget: options.hasTarget,
             local: options.local,
             includeRulesets,
-            searchParents: false
+            searchParents: false,
+            skipCurrentSurface: true
           });
           if (direct.length > 0) {
             this.setRegistrylessMixinCacheResult(cacheKey, direct);
@@ -1725,7 +1737,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 hasTarget: options.hasTarget,
                 local: options.local,
                 includeRulesets,
-                searchParents: false
+                searchParents: false,
+                skipCurrentSurface: true
               });
               if (direct.length > 0) {
                 this.setRegistrylessMixinCacheResult(cacheKey, direct);
