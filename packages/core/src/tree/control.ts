@@ -597,25 +597,21 @@ export class For extends Node<StructuredLoopValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const emitTrimmed = (node: Node) => {
-      const saved = options.suppressBoundaryTrivia;
-      options.suppressBoundaryTrivia = 'pre';
-      try {
-        node.toString(options);
-      } finally {
-        options.suppressBoundaryTrivia = saved;
-      }
-    };
+    this.writeSyntax(options);
+    return w.getSince(mark);
+  }
 
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     w.add('$for ', this);
     w.add('(');
     if (this.value.pattern.kind === 'single') {
-      this.value.pattern.value.toString(options);
+      this.value.pattern.value.writeSyntax(options);
     } else {
       w.add('[');
       const values = this.value.pattern.values;
       for (let i = 0; i < values.length; i++) {
-        values[i]!.toString(options);
+        values[i]!.writeSyntax(options);
         if (i < values.length - 1) {
           w.add(', ');
         }
@@ -624,9 +620,9 @@ export class For extends Node<StructuredLoopValue> {
     }
     w.add(' of ');
     if (this.value.iterable.kind === 'node') {
-      this.value.iterable.value.toString(options);
+      this.value.iterable.value.writeSyntax(options);
     } else {
-      emitTrimmed(this.value.iterable.start);
+      this.value.iterable.start.writeSyntax(options);
       if (!this.value.iterable.includeStart) {
         w.add('>');
       }
@@ -634,16 +630,15 @@ export class For extends Node<StructuredLoopValue> {
       if (!this.value.iterable.includeEnd) {
         w.add('<');
       }
-      emitTrimmed(this.value.iterable.end);
+      this.value.iterable.end.writeSyntax(options);
       if (this.value.iterable.step) {
         w.add(' step ');
-        emitTrimmed(this.value.iterable.step);
+        this.value.iterable.step.writeSyntax(options);
       }
     }
     w.add(')');
     w.add(' ');
     this.value.rules.toBraced(options);
-    return w.getSince(mark);
   }
 
   private async renderIterations(

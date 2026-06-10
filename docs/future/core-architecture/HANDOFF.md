@@ -2095,3 +2095,23 @@ the gate passed.
   tests), and `pnpm --filter @jesscss/core build` passed with only the
   pre-existing direct `eval` warning in `js-expr.ts`. This is not a speed
   claim.
+- For source writer pass: accepted as a source-serialization helper and
+  child-transport cut, not as completion of loop eval/body surfaces. New
+  traversal: none added; the existing tuple-pattern loop remains, and no new
+  recursion, parent/source walk, side-map lookup, generator, object scan, or
+  array helper was added. New node/materialization: none; no `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, or placement state was added. Render path: unchanged; `$for` render
+  still streams iterations through `renderIterations(...)`. Source
+  serialization now lives in `writeSyntax(...)`, pattern/iterable/range children
+  use direct `writeSyntax(...)`, and the per-call `emitTrimmed` closure is gone.
+  Helper/API surface: one node-local `writeSyntax(...)` override added to
+  replace the former public `toTrimmedString(...)` body; one local closure was
+  deleted. Metadata mutations: none. Evidence: pre-pass hotpath sanity at
+  commit `ba79843` reported `functions` `11.24ms` usable, `import-reference`
+  `18.14ms` usable, `mixins-guards` `15.90ms` usable, `extend-chaining`
+  `5.02ms` unstable, and `media` `5.06ms` usable. Focused
+  control/sequence/list/render-buffer tests passed (`133` tests), including the
+  `$for` range-bound no-capture test, and `pnpm --filter @jesscss/core build`
+  passed with only the pre-existing direct `eval` warning in `js-expr.ts`. This
+  is not a speed claim.
