@@ -1173,18 +1173,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const searchSurface = (
       scope: Rules,
       localContext: boolean | undefined,
-      visited: Set<Rules>
-    ): Ruleset[] => {
-      if (visited.has(scope)) {
-        return [];
+      results: Ruleset[],
+      visited?: Set<Rules>
+    ): void => {
+      if (visited?.has(scope)) {
+        return;
       }
-      visited.add(scope);
+      if (visited) {
+        visited.add(scope);
+      }
 
       if (scope.rulesIndexed < scope.value.length) {
         scope._indexRules();
       }
 
-      const results: Ruleset[] = [];
       for (let i = scope.value.length - 1; i >= 0; i--) {
         const candidate = scope.value[i]!;
         if (!isNode(candidate, N.Ruleset)) {
@@ -1208,9 +1210,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         rulesVisibility?: RulesOptions['rulesVisibility'];
       }> | undefined;
       if (!childEntries?.length) {
-        return results;
+        return;
       }
 
+      visited ??= new Set<Rules>([scope]);
       for (let i = childEntries.length - 1; i >= 0; i--) {
         const entry = childEntries[i]!;
         if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
@@ -1222,17 +1225,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (localContext && entry.node.options?.local) {
           continue;
         }
-        const nested = searchSurface(
+        searchSurface(
           entry.node,
           localContext || Boolean(entry.node.options?.local),
+          results,
           visited
         );
-        for (let nestedIndex = 0; nestedIndex < nested.length; nestedIndex++) {
-          results.push(nested[nestedIndex]!);
-        }
       }
-
-      return results;
     };
 
     const results: Ruleset[] = [];
@@ -1247,10 +1246,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         first = false;
-        const surfaceResults = searchSurface(scope, options?.local, new Set<Rules>());
-        for (let resultIndex = 0; resultIndex < surfaceResults.length; resultIndex++) {
-          results.push(surfaceResults[resultIndex]!);
-        }
+        searchSurface(scope, options?.local, results);
       }
       if (options?.searchParents === false) {
         break;
@@ -1271,18 +1267,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const searchSurface = (
       scope: Rules,
       localContext: boolean | undefined,
-      visited: Set<Rules>
-    ): Array<{ ruleset: Ruleset; consumed: string[] }> => {
-      if (visited.has(scope)) {
-        return [];
+      results: Array<{ ruleset: Ruleset; consumed: string[] }>,
+      visited?: Set<Rules>
+    ): void => {
+      if (visited?.has(scope)) {
+        return;
       }
-      visited.add(scope);
+      if (visited) {
+        visited.add(scope);
+      }
 
       if (scope.rulesIndexed < scope.value.length) {
         scope._indexRules();
       }
 
-      const results: Array<{ ruleset: Ruleset; consumed: string[] }> = [];
       for (let i = scope.value.length - 1; i >= 0; i--) {
         const candidate = scope.value[i]!;
         if (!isNode(candidate, N.Ruleset)) {
@@ -1306,9 +1304,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         rulesVisibility?: RulesOptions['rulesVisibility'];
       }> | undefined;
       if (!childEntries?.length) {
-        return results;
+        return;
       }
 
+      visited ??= new Set<Rules>([scope]);
       for (let i = childEntries.length - 1; i >= 0; i--) {
         const entry = childEntries[i]!;
         if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
@@ -1320,17 +1319,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (localContext && entry.node.options?.local) {
           continue;
         }
-        const nested = searchSurface(
+        searchSurface(
           entry.node,
           localContext || Boolean(entry.node.options?.local),
+          results,
           visited
         );
-        for (let nestedIndex = 0; nestedIndex < nested.length; nestedIndex++) {
-          results.push(nested[nestedIndex]!);
-        }
       }
-
-      return results;
     };
 
     const results: Array<{ ruleset: Ruleset; consumed: string[] }> = [];
@@ -1345,10 +1340,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         first = false;
-        const surfaceResults = searchSurface(scope, options?.local, new Set<Rules>());
-        for (let resultIndex = 0; resultIndex < surfaceResults.length; resultIndex++) {
-          results.push(surfaceResults[resultIndex]!);
-        }
+        searchSurface(scope, options?.local, results);
       }
       if (options?.searchParents === false) {
         break;

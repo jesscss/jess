@@ -785,6 +785,23 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Ruleset namespace recursive accumulator pass: accepted as remaining
+  namespace-bridge slimming, not a speed claim. Files:
+  `packages/core/src/tree/rules.ts` and this handoff. New traversal: none; the
+  existing reverse recursive child-surface walks in
+  `findVisibleExactCallableRulesetPath(...)` and
+  `findVisibleCallableRulesetPrefixMatches(...)` now append into one
+  caller-owned result array instead of allocating one result array per
+  recursive surface and copying nested results back up. The cycle guard `Set`
+  is now allocated only after a surface actually has child entries to recurse
+  into. New node/materialization: none; no AST node, wrapper `Rules`, side map,
+  callable record, output cache, or miss bucket was added. Render path:
+  unchanged. Helper/API surface: no public API and no new helper; the local
+  recursive closures were reshaped in place. Metadata mutations: none. Routine
+  error/control: no throw/catch/Error path added. Evidence: focused mixin tests
+  passed (`138` tests); expanded lookup-adjacent suite passed (`551` tests,
+  `9` skipped); eslint passed. Performance was not measured, so no speed claim
+  is made.
 - Registryless cache permanentization cleanup: accepted as hot-helper branch
   deletion and stale experiment-surface removal, not a speed claim. Files:
   `packages/core/src/tree/rules.ts`,
