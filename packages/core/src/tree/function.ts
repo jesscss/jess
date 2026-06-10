@@ -65,7 +65,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
     }
     w.add(') ');
 
-    body.toBraced(options);
+    body.writeBracedSyntax(options);
   }
 
   override toTrimmedString(options?: PrintOptions): string {

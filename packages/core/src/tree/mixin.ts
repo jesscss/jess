@@ -183,8 +183,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     if (name || params || guard) {
       w.add(' ');
     }
-    // Emit rules directly into shared writer; do not re-add return value
-    rules.toBraced(options);
+    rules.writeBracedSyntax(options);
   }
 
   override prepareRegistration(context: Context): MaybePromise<Mixin> {

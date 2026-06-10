@@ -130,10 +130,12 @@ Current hard leftovers after the broad hook sweep:
   guard/default/body copy interactions and callable candidate output.
 - [ ] `MixinCollection`: decide whether public wrapper survives; if yes, direct
   writer only.
-- [ ] `Rules`: direct body/root writer; isolate root public source serializer,
-  frame header comparison, imports, and duplicate declaration materialization.
+- [ ] `Rules`: direct braced source writer exists and public `toBraced(...)`
+  is now a cold wrapper; isolate root public source serializer, frame header
+  comparison, imports, and duplicate declaration materialization.
 - [x] `RawRules`: direct raw body writer.
-- [ ] `Collection`: audit after `Rules`; direct writer only if wrapper remains.
+- [x] `Collection`: live wrapper with direct braced source writer; broader
+  wrapper necessity remains out of scope for this source-writer pass.
 - [ ] `AtRule`: direct header/body writer; remove custom eval/render branch
   ladders where state already carries kind.
 - [ ] `StyleImport`: direct import/render writer and placement state; no
@@ -178,7 +180,7 @@ Current hard leftovers after the broad hook sweep:
 | Block | `packages/core/src/tree/block.ts` | `Node` | writeSyntax hook complete | Bracket emission writes directly; render still captures for string/buffer return. |
 | Bool | `packages/core/src/tree/bool.ts` | `Node` | writeSyntax hook complete | Scalar writer complete. |
 | Call | `packages/core/src/tree/call.ts` | `Node` | partial | Source syntax writer exists and public call source stringification uses child `writeSyntax(...)`; high priority remains for callable output, evaluated arg/content capture, async path, helper ladders, and repeated eval. |
-| Collection | `packages/core/src/tree/collection.ts` | `Rules` | queued | Audit wrapper necessity after `Rules`. |
+| Collection | `packages/core/src/tree/collection.ts` | `Rules` | direct braced writer complete | Live wrapper; `writeSyntax(...)` writes braced rules directly and public `toTrimmedString(...)` is the cold capture boundary. Broader wrapper necessity remains separate. |
 | Color | `packages/core/src/tree/color.ts` | `Node` | writeSyntax hook complete | Color emission writes directly; conversion/string-format internals remain. |
 | Combinator | `packages/core/src/tree/combinator.ts` | `Selector` | writeSyntax hook complete | Scalar selector writer avoids selector base punt. |
 | Comment | `packages/core/src/tree/comment.ts` | `Node` | writeSyntax hook complete | Comment text writes directly; visibility/render behavior remains the inherited direct scalar path. |
@@ -193,7 +195,7 @@ Current hard leftovers after the broad hook sweep:
 | Extend | `packages/core/src/tree/extend.ts` | `Node` | writeSyntax hook complete | Extend syntax writes directly; selector valueOf and resolved selector state remain. |
 | ExtendList | `packages/core/src/tree/extend-list.ts` | `Node` | writeSyntax hook complete | List wrapper writes through base child writer plus semicolon; public wrapper existence remains. |
 | For | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, pattern/iterable children use direct writers, and range-bound closure is gone. Loop state/body surface and async branch audit remain. |
-| Func | `packages/core/src/tree/function.ts` | `Node` | direct child writer complete | Public function syntax writes directly through name/params/body writers; function call/eval machinery remains. |
+| Func | `packages/core/src/tree/function.ts` | `Node` | direct child writer complete | Public function syntax writes directly through name/params and body braced writer; function call/eval machinery remains. |
 | If | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, condition children use direct writers, and branch serialization avoids rest-array allocation. Eval/body surface audit remains. |
 | Interpolated | `packages/core/src/tree/interpolated.ts` | `Node` | partial | Public `replace(...)` uses a plain placeholder loop instead of regex callback scaffolding; high-priority selector eval, generic materialization, replacement capture, and replacement arrays remain. |
 | InterpolatedSelector | `packages/core/src/tree/selector-interpolated.ts` | `SimpleSelector` | queued | Replace regex over `valueOf()` with carried selector kind when possible. |
@@ -216,10 +218,10 @@ Current hard leftovers after the broad hook sweep:
 | QueryCondition | `packages/core/src/tree/query-condition.ts` | `Sequence` | partial | Source syntax writes directly; static child render avoids writer-mark probes. Dynamic child render keeps one localized mark fallback because child render may write or return until downstream contracts are direct. |
 | Quoted | `packages/core/src/tree/quoted.ts` | `Node` | writeSyntax hook complete | Quote syntax writes directly; interpolation/replacement audit remains. |
 | Range | `packages/core/src/tree/range.ts` | `Node` | writeSyntax hook complete | Range syntax writes directly. |
-| RawRules | `packages/core/src/tree/rules-raw.ts` | `Rules` | iterator cut complete | Raw body/braced loops use indexed loops. Child `toString(...)` remains intentional because RawRules preserves exact child whitespace/comments; broader Rules audit remains. |
+| RawRules | `packages/core/src/tree/rules-raw.ts` | `Rules` | iterator/direct braced writer complete | Raw body/braced loops use indexed loops and override the direct braced writer. Child `toString(...)` remains intentional because RawRules preserves exact child whitespace/comments; broader Rules audit remains. |
 | Reference | `packages/core/src/tree/reference.ts` | `Node` | in progress | Passes 1-10 deleted alias predicates, result/fallback/materialization wrapper helpers, the useless `evalNode(...)` Promise wrapper, direct render closures, option spread helpers, scope-array walker, runtime-key IIFE, small `findVarDeclarationFast(...)` result/IIFE allocations, duplicate fallback/copy/static-return branches, callable surface rechecks, raw lookup sync-path closure/IIFE setup, main eval lookup closure setup, static declaration public-resolve copy/inherit for non-important/non-merged containers, per-call `findVarDeclarationFast(...)` helper closure allocation for bucket selection/candidate ordering/deferred dynamic-name promotion, reference-value evaluator options-object allocation, the declaration evaluator argument-object wrapper, runtime-binding sync evaluator closure setup, the rules-reference lookup executor closure, render-only dynamic declaration/runtime binding post-eval copy+inherit, and unresolved reference source serialization now has a direct `writeSyntax(...)` path. Remaining: rules-like surfaces, public value materialization, merged assign normalization, and key conversion. |
 | Rest | `packages/core/src/tree/rest.ts` | `Node` | writeSyntax hook complete | Rest syntax writes directly; wrapper necessity remains. |
-| Rules | `packages/core/src/tree/rules.ts` | `Node` | queued | High priority: body eval/render, imports, placement state, merge output. |
+| Rules | `packages/core/src/tree/rules.ts` | `Node` | partial | Direct braced source writer exists and public `toBraced(...)` is cold; high priority remains for body eval/render, imports, placement state, merge output, and root serializer capture. |
 | Ruleset | `packages/core/src/tree/ruleset.ts` | `Node` | queued | High priority: selector composition, body prep, wrappers, render branches. |
 | Selector | `packages/core/src/tree/selector.ts` | `Node` | writeSyntax complete | Selector-family writer hook exists; broader metadata and keyset invalidation audit remains. |
 | SelectorCapture | `packages/core/src/tree/selector-capture.ts` | `Node` | child/buffer staging complete | Capture syntax writes directly through child `writeSyntax(...)`, and resolved buffer render delegates to the child buffer renderer instead of rendering to string then writing that string. Audit whether capture node should exist after render rewrite. |

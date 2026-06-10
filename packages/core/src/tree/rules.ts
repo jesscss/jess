@@ -1860,18 +1860,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * rules with braces.
    */
   toBraced(options?: PrintOptions) {
-    let opts = getPrintOptions(options);
-    // Use options.depth if provided, otherwise calculate from frameState
-    const depth = opts.depth!;
-    const w = opts.writer!;
+    const opts = getPrintOptions(options);
+    const w = opts.writer;
     const mark = w.mark();
-    let space = ''.padStart(depth * 2);
+    this.writeBracedSyntax(opts);
+    return w.getSince(mark);
+  }
+
+  writeBracedSyntax(options: FinalPrintOptions): void {
+    const depth = options.depth!;
+    const w = options.writer;
+    const space = ''.padStart(depth * 2);
     w.add('{');
     w.add('\n');
-    const saved = savePrintState(opts, ['depth']);
-    opts.depth = depth + 1;
-    this._emitSourceRulesBody(opts);
-    restorePrintState(opts, saved);
+    const saved = savePrintState(options, ['depth']);
+    options.depth = depth + 1;
+    this._emitSourceRulesBody(options);
+    restorePrintState(options, saved);
     // ensure closing brace is on its own properly indented line
     w.add('\n');
     if (depth !== 0) {
@@ -1881,7 +1886,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // At root level (depth === 0), don't add a newline after the closing brace
     // The parent _emitRulesBody will add the newline before the next item
     // For nested rules (depth > 0), the newline is handled by the parent's _emitRulesBody
-    return w.getSince(mark);
   }
 
   private _emitSourceRulesBody(options: PrintOptions): void {

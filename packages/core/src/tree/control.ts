@@ -442,7 +442,7 @@ export class If extends Node<IfValue> {
     w.add(' (');
     first?.condition?.writeSyntax(options);
     w.add(') ');
-    first?.rules.toBraced(options);
+    first?.rules.writeBracedSyntax(options);
 
     for (let i = 1; i < branches.length; i++) {
       const br = branches[i]!;
@@ -453,7 +453,7 @@ export class If extends Node<IfValue> {
       } else {
         w.add(' $else ');
       }
-      br.rules.toBraced(options);
+      br.rules.writeBracedSyntax(options);
     }
   }
 
@@ -638,7 +638,7 @@ export class For extends Node<StructuredLoopValue> {
     }
     w.add(')');
     w.add(' ');
-    this.value.rules.toBraced(options);
+    this.value.rules.writeBracedSyntax(options);
   }
 
   private async renderIterations(
@@ -710,7 +710,7 @@ export class While extends Node<WhileValue> {
     w.add('$while (', this);
     this.value.condition.writeSyntax(options);
     w.add(') ');
-    this.value.rules.toBraced(options);
+    this.value.rules.writeBracedSyntax(options);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {

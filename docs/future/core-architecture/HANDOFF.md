@@ -2158,3 +2158,31 @@ the gate passed.
   tests passed (`31` tests), and `pnpm --filter @jesscss/core build` passed
   with only the pre-existing direct `eval` warning in `js-expr.ts`. This is not
   a speed claim.
+- Rules braced source writer pass: accepted as a direct writer extraction that
+  deletes public string-capture transport from multiple source writers. New
+  traversal: none added; `Rules.writeBracedSyntax(...)` contains the same
+  existing braced body emission that `toBraced(...)` already performed, and the
+  six internal call sites now write directly instead of calling a public string
+  API for side effects. New node/materialization: none; no `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, semantic placement state, side map, or helper array was added.
+  Render path: source syntax for `Mixin`, `Func`, `$if`, `$for`, `$while`, and
+  `Collection` no longer routes braced bodies through
+  `toBraced(...)`/`mark(...)`/`getSince(...)` only to discard the returned
+  string. Public `Rules.toBraced(...)`, `RawRules.toBraced(...)`, and
+  `Collection.toTrimmedString(...)` remain cold capture boundaries.
+  Helper/API surface: one `Rules.writeBracedSyntax(options)` method was added,
+  and it is accepted because it removed six internal public string-capture
+  calls while preserving the cold public API. `RawRules` overrides the same
+  direct writer rather than keeping a private same-name writer beside the base
+  method. Metadata mutations: none. Evidence: pre-pass hotpath sanity at commit
+  `7c97c221` reported `functions` `12.13ms` usable, `import-reference`
+  `19.08ms` usable, `mixins-guards` `16.67ms` usable, `extend-chaining`
+  `5.19ms` unstable, and `media` `5.22ms` unstable. Focused
+  collection/control/mixin/raw-rules/render-buffer/rules-streaming tests passed
+  (`222` tests), and `pnpm --filter @jesscss/core build` passed with only the
+  pre-existing direct `eval` warning in `js-expr.ts`. Post-pass hotpath sanity
+  at the same base commit reported `functions` `12.58ms` usable,
+  `import-reference` `19.24ms` usable, `mixins-guards` `16.25ms` usable,
+  `extend-chaining` `4.92ms` unstable, and `media` `5.06ms` unstable. This is
+  not a speed claim.

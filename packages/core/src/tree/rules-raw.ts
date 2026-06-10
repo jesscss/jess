@@ -21,7 +21,7 @@ export class RawRules extends Rules {
     return w.getSince(mark);
   }
 
-  private writeBracedSyntax(options: FinalPrintOptions): void {
+  override writeBracedSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('{');
     // Emit children using toString to preserve exact whitespace/comments

@@ -1,6 +1,6 @@
 import { defineType, Node } from './node.js';
 import { Rules } from './rules.js';
-import type { PrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { isRenderBuffer, type RenderBuffer } from './util/render-buffer.js';
@@ -18,7 +18,15 @@ import { isRenderBuffer, type RenderBuffer } from './util/render-buffer.js';
  */
 export class Collection extends Rules {
   override toTrimmedString(options?: PrintOptions) {
-    return this.toBraced(options);
+    const opts = getPrintOptions(options);
+    const w = opts.writer;
+    const mark = w.mark();
+    this.writeSyntax(opts);
+    return w.getSince(mark);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    this.writeBracedSyntax(options);
   }
 
   /**
