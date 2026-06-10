@@ -785,6 +785,18 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Duplicate ruleset namespace retry deletion: accepted as redundant lookup
+  deletion, not a speed claim. Files: `packages/core/src/tree/rules.ts` and
+  this handoff. New traversal: none; deleted a second
+  `findRulesetNamespacePathFast(keys, options)` call in array-path mixin lookup
+  that used the same keys, options, and return condition as the earlier call in
+  the same branch. New node/materialization: none; no AST node, wrapper
+  `Rules`, side map, result cache, or output object was added. Render path:
+  unchanged. Helper/API surface: no public API and no helper added. Metadata
+  mutations: none. Routine error/control: no throw/catch/Error path added.
+  Evidence: focused mixin tests passed (`138` tests); expanded
+  lookup-adjacent suite passed (`551` tests, `9` skipped); eslint passed.
+  Performance was not measured, so no speed claim is made.
 - Ruleset namespace recursive accumulator pass: accepted as remaining
   namespace-bridge slimming, not a speed claim. Files:
   `packages/core/src/tree/rules.ts` and this handoff. New traversal: none; the

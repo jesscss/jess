@@ -1779,12 +1779,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
           }
         }
-        if (namespaceMixins.length === 0 && namespaceRulesets.length > 0) {
-          const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
-          if (rulesetNamespaceFast !== undefined && (rulesetNamespaceFast.length > 0 || options.terminalMixinOnly !== true)) {
-            return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
-          }
-        }
         if (namespaceMixins.length > 0) {
           compoundPrefixFast = this.findCompoundPrefixCallableRulesetPathFast(keys, options);
           mixinNamespaceFast = this.findCallableDescendantsWithinMixinNamespaces(
