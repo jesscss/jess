@@ -163,8 +163,9 @@ Current hard leftovers after the broad hook sweep:
 - [ ] `If`: direct source syntax writer exists and branch serialization avoids
   rest-array allocation; render path already emits selected body output
   directly, but eval/body surface audit remains.
-- [ ] `Log`: confirm side-effect render path stays direct and public strings are
-  cold.
+- [x] `Log`: side-effect render path stays direct; redundant public
+  `toString(...)` override removed while cold empty `toTrimmedString(...)`
+  remains.
 
 | Node | File | Base/family | Status | Rewrite notes |
 | --- | --- | --- | --- | --- |
@@ -203,7 +204,7 @@ Current hard leftovers after the broad hook sweep:
 | JsObject | `packages/core/src/tree/js-object.ts` | `Node` | live host wrapper | `cast(plainObject)` creates it and indexed references read properties from it. Keep cold; no arbitrary source writer. |
 | Keyword | `packages/core/src/tree/any.ts` | `Any` | writeSyntax hook complete | Scalar emission uses `Any.writeSyntax`; broader compare/string normalization remains. |
 | List | `packages/core/src/tree/list.ts` | `Node` | partial | Direct item writer exists; render still captures string output before buffer writes and eval/render item-loop audit remains. |
-| Log | `packages/core/src/tree/log.ts` | `Node` | writeSyntax hook complete | Empty source writer complete; side-effect eval/render path remains. |
+| Log | `packages/core/src/tree/log.ts` | `Node` | complete | Empty source writer complete, redundant `toString(...)` override removed, and side-effect eval/render path is direct. |
 | Mixin | `packages/core/src/tree/mixin.ts` | `Node` | partial | Source syntax writer exists and name/params/guard use direct child writers; high priority remains for guard/default/body copy and callable candidate output. |
 | MixinCollection | `packages/core/src/tree/util/callable-collection.ts` | `Node` | queued | Audit whether this public node wrapper is still necessary. |
 | Negative | `packages/core/src/tree/negative.ts` | `Node` | direct child writer complete | Prefix syntax writes directly and now calls child `writeSyntax(...)` instead of public `toString(...)`; unit/text classification remains. |

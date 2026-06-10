@@ -2141,3 +2141,20 @@ the gate passed.
   API added. Metadata mutations: none. Verification for this audit is static
   repo evidence plus `pnpm run verify:aggressive-cutting-review`/diff checks;
   this is not a speed claim.
+- Log redundant serializer pass: accepted as a public method deletion. New
+  traversal: none; no loop, recursion, parent/source walk, side-map lookup,
+  generator, object scan, or array helper was added. New node/materialization:
+  none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`,
+  frozen/source/parent mutation, or placement state was added. Render path:
+  unchanged; `Log.render(...)` still runs invisible side effects through
+  `renderInvisibleEffect(...)` without public `resolve(...)`/`evalNode(...)`.
+  Helper/API surface: the redundant `Log.toString(...)` override was deleted;
+  base `Node.toString(...)` already returns `''` for invisible nodes, and
+  `Log.toTrimmedString(...)` remains the explicit cold empty body for direct
+  public calls. Metadata mutations: none. Evidence: pre-pass hotpath sanity at
+  commit `812f0ff5` reported `functions` `11.55ms` usable, `import-reference`
+  `19.10ms` usable, `mixins-guards` `16.59ms` usable, `extend-chaining`
+  `4.89ms` usable, and `media` `5.34ms` usable. Focused log/render-buffer
+  tests passed (`31` tests), and `pnpm --filter @jesscss/core build` passed
+  with only the pre-existing direct `eval` warning in `js-expr.ts`. This is not
+  a speed claim.
