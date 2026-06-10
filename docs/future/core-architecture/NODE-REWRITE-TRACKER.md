@@ -152,8 +152,8 @@ Current hard leftovers after the broad hook sweep:
   Broader declaration body staging remains on `Declaration`.
 - [ ] `For`: direct control syntax writer only for public source API; render
   path should emit body output directly.
-- [ ] `While`: direct control syntax writer only for public source API; render
-  path should emit body output directly.
+- [ ] `While`: direct source syntax writer exists; render path already emits
+  body output directly, but loop state/body surface audit remains.
 - [ ] `If`: direct source syntax writer exists and branch serialization avoids
   rest-array allocation; render path already emits selected body output
   directly, but eval/body surface audit remains.
@@ -222,4 +222,4 @@ Current hard leftovers after the broad hook sweep:
 | StyleImport | `packages/core/src/tree/import-style.ts` | `Node` | queued | High priority: first-use placement copies and derived rules surfaces. |
 | Url | `packages/core/src/tree/url.ts` | `Node` | writeSyntax hook complete | URL syntax writes directly; normalization capture remains. |
 | VarDeclaration | `packages/core/src/tree/declaration-var.ts` | `Declaration` | local probe removed | Variable prefix syntax writes directly and no longer wraps `declTrimmedString(...)` in a local `mark/getSince` fallback probe. Declaration body path remains. |
-| While | `packages/core/src/tree/control.ts` | `Node` | queued | Audit loop state, body materialization, and async branches. |
+| While | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists and condition uses direct writer. Loop state/body surface and async branch audit remain. |

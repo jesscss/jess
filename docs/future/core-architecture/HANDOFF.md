@@ -2076,3 +2076,22 @@ the gate passed.
   tests), and `pnpm --filter @jesscss/core build` passed with only the
   pre-existing direct `eval` warning in `js-expr.ts`. This is not a speed
   claim.
+- While source writer pass: accepted as a direct source-syntax child transport
+  cut, not as completion of loop eval/body surfaces. New traversal: none; no
+  loop, recursion, parent/source walk, side-map lookup, generator, object scan,
+  or array helper was added. New node/materialization: none; no `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, or placement state was added. Render path: unchanged; `$while`
+  render still streams body output through `renderIterations(...)` and
+  `renderControlToString(...)`. Source condition emission now uses child
+  `writeSyntax(...)` instead of public `toString(...)` inside the already-owned
+  control syntax. Helper/API surface: one node-local `writeSyntax(...)`
+  override added to replace the former public `toTrimmedString(...)` body; no
+  exported helper or cross-node API was added. Metadata mutations: none.
+  Evidence: pre-pass hotpath sanity at commit `80220072` reported `functions`
+  `11.99ms` usable, `import-reference` `18.32ms` usable, `mixins-guards`
+  `16.24ms` usable, `extend-chaining` `4.86ms` usable, and `media`
+  `5.27ms` usable. Focused control/condition/render-buffer tests passed (`103`
+  tests), and `pnpm --filter @jesscss/core build` passed with only the
+  pre-existing direct `eval` warning in `js-expr.ts`. This is not a speed
+  claim.

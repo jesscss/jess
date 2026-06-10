@@ -706,11 +706,16 @@ export class While extends Node<WhileValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    this.writeSyntax(options);
+    return w.getSince(mark);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     w.add('$while (', this);
-    this.value.condition.toString(options);
+    this.value.condition.writeSyntax(options);
     w.add(') ');
     this.value.rules.toBraced(options);
-    return w.getSince(mark);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
