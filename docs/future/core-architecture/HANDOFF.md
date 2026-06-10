@@ -785,6 +785,36 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Callable namespace branch cleanup: accepted as lookup-path
+  machinery deletion, not a speed claim. Files:
+  `packages/core/src/tree/rules.ts` and this handoff. New traversal: none; this
+  pass deleted a redundant `findMixinsDirect(...)` type assertion around the
+  already typed `findMixin(...)` result and collapsed the compound-prefix
+  ruleset namespace sort comparator to the consumed-length subtraction it
+  already returned for every unequal case. Array-path mixin lookup now delays
+  the first-segment exact ruleset namespace crawl until the namespace-mixin
+  search proves there are no namespace mixins, and returns before the later
+  namespace walk when both first-segment namespace starts and full-path exact
+  ruleset matches are absent. Namespace-descendant lookup now creates the
+  remainder path and child lookup options lazily, and reuses the options object
+  across eligible namespace mixins instead of spreading per candidate. New
+  node/materialization: none; no AST nodes, wrapper `Rules`, arrays, side maps,
+  result caches, or output objects were added. Render path: unchanged.
+  Helper/API surface: no helper or public API was added or widened; public
+  compatibility methods remain in place. Metadata mutations: none. Routine
+  error/control: no throw/catch/Error path added. Evidence: focused mixin tests
+  passed (`138` tests); expanded lookup-adjacent suite passed (`551` tests,
+  `9` skipped); `pnpm exec eslint packages/core/src/tree/rules.ts`,
+  `git diff --check`, `pnpm --filter @jesscss/core build`, and
+  `pnpm run verify:aggressive-cutting-review` passed. The aggressive review
+  script flagged the simplified `.sort(...)`, lazy `remainder`, and lazy
+  `nestedOptions` diff lines as danger tokens; they are prosecuted above as
+  existing traversal/order work with less branch/object setup, not new lookup
+  machinery. One parallel expanded-suite run failed while the concurrent build
+  cleaned/rebuilt `packages/core/lib`, causing Vite to fail resolving
+  `@jesscss/core`; the same suite passed when rerun after build completion.
+  This pass intentionally avoids claiming runtime speed without
+  benchmark/profile proof.
 - Callable selector lookup preparation slimming pass: accepted as lookup-prep
   array/function-call deletion, not a speed claim. Files:
   `packages/core/src/tree/rules.ts` and this handoff. New traversal: none; the
