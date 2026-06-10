@@ -114,8 +114,9 @@ Current hard leftovers after the broad hook sweep:
   resolved buffer render; audit whether node still needs to exist.
 - [x] `AttributeSelector`: direct attribute writer and child writer; avoid
   value/name public-string transport in render.
-- [ ] `Ampersand`: direct writer and structural selector replacement; remove
-  `map(...toTrimmedString)` string assembly debt.
+- [ ] `Ampersand`: direct source writer exists and local append/template
+  callback-array helpers are cut; structural selector replacement still has
+  string assembly debt.
 - [ ] `Interpolated`: direct source writer exists and public `replace(...)` no
   longer uses regex callback scaffolding, but replacement `toTrimmedString`
   assembly remains where structural emission is possible.
@@ -172,7 +173,7 @@ Current hard leftovers after the broad hook sweep:
 
 | Node | File | Base/family | Status | Rewrite notes |
 | --- | --- | --- | --- | --- |
-| Ampersand | `packages/core/src/tree/ampersand.ts` | `SimpleSelector` | queued | Replace template text splitting with selector-list structure and placement state. |
+| Ampersand | `packages/core/src/tree/ampersand.ts` | `SimpleSelector` | partial | Direct source writer exists; append/template paths use explicit loops instead of callback-array helpers. Replace remaining template text splitting/string assembly with selector-list structure and placement state. |
 | Anonymous | `packages/core/src/tree/any.ts` | `Any` | writeSyntax hook complete | Scalar emission uses `Any.writeSyntax`; broader compare/string normalization remains. |
 | Any | `packages/core/src/tree/any.ts` | `Node` | writeSyntax hook complete | Scalar emission has a direct writer; compare/string conversion and numeric regex decisions remain. |
 | AtRule | `packages/core/src/tree/at-rule.ts` | `Node` | queued | High priority: reduce custom eval/import/render branches. |
@@ -185,7 +186,7 @@ Current hard leftovers after the broad hook sweep:
 | Color | `packages/core/src/tree/color.ts` | `Node` | writeSyntax hook complete | Color emission writes directly; conversion/string-format internals remain. |
 | Combinator | `packages/core/src/tree/combinator.ts` | `Selector` | writeSyntax hook complete | Scalar selector writer avoids selector base punt. |
 | Comment | `packages/core/src/tree/comment.ts` | `Node` | writeSyntax hook complete | Comment text writes directly; visibility/render behavior remains the inherited direct scalar path. |
-| ComplexSelector | `packages/core/src/tree/selector-complex.ts` | `Selector` | writeSyntax complete | Selector component emission uses `writeSyntax` and cold private source-string wrapper is gone; broader valueOf, malformed repair, and metadata audit remains. |
+| ComplexSelector | `packages/core/src/tree/selector-complex.ts` | `Selector` | writeSyntax complete | Selector component emission uses direct `writeSyntax` with the dead non-selector fallback branch removed, and cold private source-string wrapper is gone; broader valueOf, malformed repair, and metadata audit remains. |
 | CompoundSelector | `packages/core/src/tree/selector-compound.ts` | `Selector` | writeSyntax complete | Component emission uses `writeSyntax` and cold private source-string wrapper is gone; broader valueOf classification and allocation-array audit remains. |
 | Condition | `packages/core/src/tree/condition.ts` | `Node` | direct operand writer complete | Source condition syntax writes directly through operand `writeSyntax(...)`; bool result materialization audit remains. |
 | CustomDeclaration | `packages/core/src/tree/declaration-custom.ts` | `Declaration` | queued | Audit custom-property eval/render after `Declaration`. |

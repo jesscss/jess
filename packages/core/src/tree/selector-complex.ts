@@ -120,11 +120,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       const savedBoundaryTrivia = options.suppressBoundaryTrivia;
       options.suppressBoundaryTrivia = 'pre';
       try {
-        if (component instanceof Selector) {
-          component.writeSyntax(options);
-        } else {
-          component.toTrimmedString(options);
-        }
+        component.writeSyntax(options);
       } finally {
         options.suppressBoundaryTrivia = savedBoundaryTrivia;
       }

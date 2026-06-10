@@ -2215,3 +2215,36 @@ the gate passed.
   `import-reference` `17.86ms` usable, `mixins-guards` `16.03ms` usable,
   `extend-chaining` `4.66ms` unstable, and `media` `4.74ms` usable. This is
   not a speed claim.
+- Ampersand source/append helper pass: accepted as a direct source-writer and
+  callback-helper cut, not as completion of ampersand selector composition.
+  New traversal: no new semantic traversal. The diff shows indexed loops, but
+  each one replaces an existing `map(...)` callback or existing selector-array
+  walk in the same append/template algorithm. It does not add another pass over
+  source state; it removes callback allocation and keeps result arrays only
+  where the algorithm already returned selector arrays. One existing source
+  emission path now calls `Ampersand.writeSyntax(...)` directly instead of
+  routing through selector/base `toTrimmedString(...)` capture. New
+  node/materialization: no new semantic node/materialization. The diff shows
+  `new BasicSelector(...).inherit(...)` lines because the same constructions
+  moved out of `map(...)` callbacks into loops; they remain the pre-existing
+  ampersand template-placement output boundary, not render-only nodes.
+  Existing ampersand append/template paths still construct selector outputs
+  (`BasicSelector`, `SelectorList`, `ComplexSelector`, `CompoundSelector`) at
+  that semantic placement boundary; this pass did not add new copies,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, side maps, or extra helper arrays. Render path: unchanged for evaluated
+  output; authored ampersand source syntax now emits directly through
+  `writeSyntax(...)`, and `ComplexSelector.writeSyntax(...)` no longer keeps a
+  dead non-selector fallback branch before calling component `writeSyntax(...)`.
+  Helper/API surface: one existing hook override was added on `Ampersand`, and
+  no exported API or cross-node helper was added. Several local callback
+  helpers were removed in favor of straight loops. Metadata mutations: none
+  added. Evidence: focused ampersand/selector/render-buffer tests passed (`96`
+  tests), and `pnpm --filter @jesscss/core build` passed with only the
+  pre-existing direct `eval` warning in `js-expr.ts`. Post-pass hotpath sanity
+  at commit `6e504ee3` reported `functions` `10.97ms` usable,
+  `import-reference` `17.78ms` usable, `mixins-guards` `15.75ms` usable,
+  `extend-chaining` `4.90ms` usable, and `media` `4.98ms` unstable. This is
+  not a speed claim. Remaining queue: ampersand template merging still relies
+  on string splitting and selector text assembly and needs a structural
+  selector-placement pass.
