@@ -2410,6 +2410,35 @@ describe('Mixin', () => {
       expect(root.callableLookupCache?.has('.child-frame-hit')).not.toBe(true);
     });
 
+    it('ScopeFrame callable buckets: parent miss reaches fallback frame before direct bridge', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.fallback-frame-hit') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const fallbackMixin = mixin({
+          name: any('.fallback-frame-hit'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        });
+        const parentRules = rules([]);
+        const fallbackRules = rules([fallbackMixin]);
+        const childRules = rules([]);
+        const childFrame = childRules.getScopeFrame(parentRules.getScopeFrame());
+        childFrame.fallbackFrame = fallbackRules.getScopeFrame();
+
+        expect(childRules.find('mixin', '.fallback-frame-hit', 'Mixin')).toEqual([fallbackMixin]);
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('ScopeFrame callable buckets: static Ruleset-as-mixin hit skips Rules.findMixinsFast', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }

@@ -1686,7 +1686,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         if (frameHit.kind === 'miss' || frameHit.kind === 'uncovered') {
-          let retryFrame = callableFrame.parent ?? callableFrame.fallbackFrame;
+          let retryFrame = callableFrame.parent;
+          let fallbackFrame = callableFrame.fallbackFrame;
           while (retryFrame) {
             let retryHit = lookupScopeFrameCallable(retryFrame, keys, {
               includeRulesets,
@@ -1731,7 +1732,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 return direct;
               }
             }
-            retryFrame = retryFrame.parent ?? retryFrame.fallbackFrame;
+            retryFrame = retryFrame.parent;
+            if (!retryFrame && fallbackFrame) {
+              retryFrame = fallbackFrame;
+              fallbackFrame = fallbackFrame.fallbackFrame;
+            }
           }
           if (frameHit.kind === 'miss' && this.parent === undefined) {
             const pathKeys = splitStaticCallablePathKey(keys);

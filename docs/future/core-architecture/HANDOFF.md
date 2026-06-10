@@ -785,6 +785,24 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Callable fallback-frame retry ownership pass: accepted as frame-ownership
+  narrowing, not a speed claim. Files: `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/__tests__/mixin.test.ts`, and this handoff. New
+  traversal: no new tree traversal; the existing retry loop now follows the
+  parent frame chain first, then the current frame's fallback chain, matching
+  the variable frame lookup shape instead of choosing `parent ?? fallback` and
+  skipping the fallback whenever a parent exists. New node/materialization:
+  none in production; the new test builds ordinary fixture `Rules`/`Mixin`
+  nodes and a spy hit array only for proof. No production node, wrapper, output
+  cache, callable record, side map, or stored miss bucket was added. Render
+  path: unchanged. Helper/API surface: no new helper or public API. Metadata
+  mutations: none; this only reads `fallbackFrame` already carried on
+  `ScopeFrame`. Routine error/control: no production throw/catch/Error path;
+  the new `try/finally` is test-only spy restoration. Evidence: new focused
+  mixin fixture proves a parent miss reaches a fallback callable frame without
+  calling `Rules.findMixinsFast(...)`; focused mixin tests passed (`138`
+  tests); expanded lookup-adjacent suite passed (`551` tests, `9` skipped).
+  Performance was not measured, so no speed claim is made.
 - Callable child-surface bridge accumulator pass: accepted as remaining-bridge
   slimming, not a speed claim. File: `packages/core/src/tree/rules.ts` and
   this handoff. New traversal: none; the existing reverse recursive
