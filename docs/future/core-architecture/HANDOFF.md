@@ -2040,3 +2040,19 @@ the gate passed.
   direct `eval` warning in `js-expr.ts`. This is not a speed claim. Remaining
   queue: mixin guard/default/body copy interactions and callable candidate
   output still need structural cuts.
+- RawRules iterator pass: accepted as an iterator overhead cut, with a rejected
+  child-writer swap. New traversal: none added; the two existing raw child
+  loops changed from `for...of` iterator syntax to indexed loops. New
+  node/materialization: none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, frozen/source/parent mutation, or placement state was
+  added. Render path: unchanged. The tempting child `toString(...)` to
+  `writeSyntax(...)` swap was rejected because `RawRules` explicitly preserves
+  exact child whitespace/comments, and child boundary trivia still lives behind
+  `Node.toString(...)`. Helper/API surface: none added. Metadata mutations:
+  none. Evidence: pre-pass hotpath sanity at commit `8e0f2c5` reported
+  `functions` `11.47ms` usable, `import-reference` `17.54ms` usable,
+  `mixins-guards` `15.94ms` usable, `extend-chaining` `5.21ms` usable, and
+  `media` `4.98ms` usable. Focused rules-raw/render-buffer/rules-streaming
+  tests passed (`29` tests), and `pnpm --filter @jesscss/core build` passed
+  with only the pre-existing direct `eval` warning in `js-expr.ts`. This is not
+  a speed claim.
