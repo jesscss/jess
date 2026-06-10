@@ -800,9 +800,12 @@ the gate passed.
   longer allocates an inline IIFE closure. The two ruleset namespace child
   searches now use `directChildRuleEntries`/`collectDirectChildRulesEntries()`
   instead of raw `_rulesSet`, so scopes with no exact callable child surface can
-  avoid the child-recursion path. New node/materialization: none; deleted
-  temporary arrays and a closure, and did not add AST nodes, wrapper `Rules`,
-  side maps, result caches, or output objects. Render path: unchanged.
+  avoid the child-recursion path. Compound-prefix/namespace result merging now
+  appends unique namespace hits into the fresh compound-prefix result array
+  instead of allocating and copying into a second `combined` array. New
+  node/materialization: none; deleted temporary arrays and a closure, and did
+  not add AST nodes, wrapper `Rules`, side maps, result caches, or output
+  objects. Render path: unchanged.
   Helper/API surface: no public API and no helper added; one existing private
   helper gained a start offset to remove array slicing at its call site.
   Metadata mutations: unchanged; reused the existing direct child-surface cache

@@ -1800,24 +1800,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const fast = mixinNamespaceFast ?? this.findMixinNamespacePathFast(keys, mixinFilterType, options);
       if (compoundPrefixFast !== undefined && compoundPrefixFast.length > 0) {
         if (fast !== undefined && fast.length > 0) {
-          const combined = new Array<MixinEntry>();
-          for (let i = 0; i < compoundPrefixFast.length; i++) {
-            combined.push(compoundPrefixFast[i]!);
-          }
           for (let i = 0; i < fast.length; i++) {
             const node = fast[i]!;
             let found = false;
-            for (let existing = 0; existing < combined.length; existing++) {
-              if (combined[existing] === node) {
+            for (let existing = 0; existing < compoundPrefixFast.length; existing++) {
+              if (compoundPrefixFast[existing] === node) {
                 found = true;
                 break;
               }
             }
             if (!found) {
-              combined.push(node);
+              compoundPrefixFast.push(node);
             }
           }
-          return combined;
         }
         return compoundPrefixFast;
       }
