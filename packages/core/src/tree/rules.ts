@@ -1507,7 +1507,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return exactPathMatches.length > 0 ? exactPathMatches : DEFINITE_MISS;
       }
 
-      prefixMatches.sort((a, b) => b.consumed.length - a.consumed.length);
+      if (prefixMatches.length > 1) {
+        prefixMatches.sort((a, b) => b.consumed.length - a.consumed.length);
+      }
       let sawLegacyOnlyPrefix = false;
       let simpleLookupOptions: Parameters<Rules['findMixinsFast']>[1] | undefined;
       let nestedOptions: Registries.FindOptions | undefined;
@@ -1580,7 +1582,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return [];
     }
 
-    prefixMatches.sort((a, b) => b.consumed.length - a.consumed.length);
+    if (prefixMatches.length > 1) {
+      prefixMatches.sort((a, b) => b.consumed.length - a.consumed.length);
+    }
     let nestedOptions: Registries.FindOptions | undefined;
 
     for (const { ruleset, consumed } of prefixMatches) {

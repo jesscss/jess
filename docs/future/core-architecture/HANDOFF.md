@@ -785,6 +785,27 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Callable namespace singleton-sort guard: accepted as unnecessary sort-call
+  deletion, not a speed claim. Files: `packages/core/src/tree/rules.ts` and
+  this handoff. New traversal: none; the existing ruleset-prefix match arrays
+  in `findRulesetNamespacePathFast(...)` and
+  `findCompoundPrefixCallableRulesetPathFast(...)` now call `.sort(...)` only
+  when more than one prefix candidate exists. Ordering semantics are unchanged:
+  zero matches already returned before the sort, one match has no ordering work
+  to perform, and multi-match paths keep the existing consumed-length sort.
+  New node/materialization: none; no AST node, wrapper `Rules`, array, side
+  map, result cache, or output object was added. Render path: unchanged.
+  Helper/API surface: no helper or public API was added. Metadata mutations:
+  none. Routine error/control: no throw/catch/Error path added. Evidence:
+  focused `mixin.test.ts` and `reference.test.ts` passed (`253` tests);
+  expanded lookup-adjacent suite passed (`551` tests, `9` skipped);
+  `pnpm exec eslint packages/core/src/tree/rules.ts`, `git diff --check`,
+  `pnpm --filter @jesscss/core build`, and
+  `pnpm run verify:aggressive-cutting-review` passed. The aggressive review
+  script flagged the guarded `.sort(...)` lines as array-helper danger tokens;
+  they are prosecuted here as existing sort calls that now skip the singleton
+  candidate case, not new ordering work. No runtime speed claim without
+  benchmark/profile proof.
 - Callable path splitter regex removal: accepted as hot string-lookup
   allocation deletion, not a speed claim. Files:
   `packages/core/src/tree/rules.ts` and this handoff. New traversal: one small
