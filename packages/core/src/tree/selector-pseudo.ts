@@ -10,10 +10,6 @@ import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
-function normalizeSelectorArg(text: string): string {
-  return text.replace(/\n\s*/g, ' ').trim();
-}
-
 export type PseudoSelectorValue = {
   /**
    * The name of the pseudo-selector
@@ -58,6 +54,57 @@ function createEvaluatedPseudoSelector(
  *   e.g. :hover, :focus, :active
 */
 export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
+  private writeInlineSelectorListArg(arg: Selector, options: FinalPrintOptions): void {
+    if (!isNode(arg, N.SelectorList)) {
+      arg.writeSyntax(options);
+      return;
+    }
+    let emitted = 0;
+    const value = arg.value;
+    for (let i = 0; i < value.length; i++) {
+      emitted = this.writeInlineSelectorListItem(value[i]!, options, emitted);
+    }
+  }
+
+  private writeInlineSelectorListItem(arg: Selector, options: FinalPrintOptions, emitted: number): number {
+    if (isNode(arg, N.PseudoSelector) && arg.value.name === ':is') {
+      const inner = arg.value.arg;
+      if (inner && isNode(inner, N.SelectorList)) {
+        return this.writeInlineSelectorListItems(inner.value, options, emitted);
+      }
+    }
+    if (isNode(arg, N.CompoundSelector) && arg.value.length === 1) {
+      const only = arg.value[0]!;
+      if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
+        const inner = only.value.arg;
+        if (inner && isNode(inner, N.SelectorList)) {
+          return this.writeInlineSelectorListItems(inner.value, options, emitted);
+        }
+      }
+    }
+    if (isNode(arg, N.ComplexSelector) && arg.value.length === 1) {
+      const only = arg.value[0]!;
+      if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
+        const inner = only.value.arg;
+        if (inner && isNode(inner, N.SelectorList)) {
+          return this.writeInlineSelectorListItems(inner.value, options, emitted);
+        }
+      }
+    }
+    if (emitted > 0) {
+      options.writer.add(', ');
+    }
+    arg.writeSyntax(options);
+    return emitted + 1;
+  }
+
+  private writeInlineSelectorListItems(value: ReadonlyArray<Selector>, options: FinalPrintOptions, emitted: number): number {
+    for (let i = 0; i < value.length; i++) {
+      emitted = this.writeInlineSelectorListItem(value[i]!, options, emitted);
+    }
+    return emitted;
+  }
+
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     let { name, arg } = this.value;
@@ -77,14 +124,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         arg.writeSyntax(options);
         return;
       }
-      const argMark = w.mark();
-      arg.writeSyntax(options);
-      w.replaceSince(argMark, normalizeSelectorArg, arg);
-      const out = w.getSince(argMark);
-      w.restore(argMark);
       w.add(name, this);
       w.add('(');
-      w.add(out, arg);
+      this.writeInlineSelectorListArg(arg, options);
       w.add(')');
       return;
     }
@@ -92,9 +134,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     if (arg) {
       w.add('(');
       if (isNode(arg, N.SelectorList)) {
-        const argMark = w.mark();
-        arg.writeSyntax(options);
-        w.replaceSince(argMark, normalizeSelectorArg, arg);
+        this.writeInlineSelectorListArg(arg, options);
       } else {
         arg.writeSyntax(options);
       }

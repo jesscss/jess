@@ -2274,3 +2274,39 @@ the gate passed.
   `fff2843e` reported `functions` `11.34ms` usable, `import-reference`
   `17.52ms` usable, `mixins-guards` `15.12ms` usable, `extend-chaining`
   `4.57ms` usable, and `media` `4.66ms` unstable. This is not a speed claim.
+- Pseudo selector inline-argument pass: accepted as a writer-capture deletion
+  in the active `writeSyntax` lane. New traversal: the new inline selector-list
+  loops replace the previous `arg.writeSyntax(...)` plus
+  `replaceSince(...)`/`getSince(...)`/`restore(...)` pass over the generated
+  argument string; they walk the same owned selector-list values directly and
+  preserve the existing top-level `:is(...)` flattening cases without a
+  temporary normalized string. No parent/source walk, recursion over unrelated
+  state, side-map lookup, generator, object scan, or array helper was added.
+  New node/materialization: none; no `Node`, copy, `.inherit(...)`,
+  `.adopt(...)`, wrapper `Rules`, frozen/source/parent mutation, semantic
+  placement state, side map, helper array, or public materialized selector
+  surface was added. Render path: pseudo selector source/render serialization
+  now writes selector-list arguments inline as comma-space syntax instead of
+  serializing multiline selector-list syntax, regex-normalizing the string,
+  restoring the writer, then adding the normalized string back. No render path
+  resolves into arrays or nodes just to stringify. Helper/API surface: three
+  private node-local helpers were added and one string-normalization helper was
+  removed; this is accepted only because they delete the hotter writer
+  capture/replace/restore string transport and keep the behavior node-local
+  rather than adding a generic serializer object. Metadata mutations: none;
+  focused tests now assert pseudo selector argument streaming uses no
+  `capture(...)`, `replaceSince(...)`, or `restore(...)` beyond the cold public
+  `toTrimmedString(...)` mark/getSince boundary. Evidence: starting leash at
+  commit `30aea219` reported `functions` `11.34ms` usable, `import-reference`
+  `17.52ms` usable, `mixins-guards` `15.12ms` usable, `extend-chaining`
+  `4.57ms` usable, and `media` `4.66ms` unstable. Focused
+  selector-pseudo/selector-list/selector-render-contract tests passed (`28`
+  tests), and `pnpm --filter @jesscss/core build` passed with only the
+  pre-existing direct `eval` warning in `js-expr.ts`. The first hotpath sanity
+  retry failed before measuring because the stale `jess` package build looked
+  for `packages/jess/node_modules/@jesscss/core/lib/index.js`; rebuilding the
+  actual `jess` package fixed the runner. Post-pass hotpath sanity at dirty
+  head `30aea219` reported `functions` `13.36ms` usable,
+  `import-reference` `18.73ms` usable, `mixins-guards` `17.11ms` usable,
+  `extend-chaining` `5.07ms` usable, and `media` `5.39ms` usable. This is not
+  a speed claim.

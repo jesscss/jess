@@ -64,9 +64,9 @@ first measured offenders after the selector pass.
   regex/unit formatting and operation paths.
 - [x] `Color`: move color emission to `writeSyntax`; isolate formatting and
   keyword/node value branches.
-- [ ] `PseudoSelector`: direct writer hook and child writer exist; generated
-  selector-list normalization still uses a local capture/restore and remains
-  queued.
+- [x] `PseudoSelector`: direct writer hook, child writer, and inline selector
+  list argument writer exist; generated selector-list normalization no longer
+  captures/restores a temporary argument string.
 - [ ] `Sequence`: direct writer hook exists and custom-property raw source
   children use `writeSyntax(...)`; general child-boundary emission still uses
   `toString(...)` until boundary trivia is carried explicitly.
@@ -105,9 +105,10 @@ Current hard leftovers after the broad hook sweep:
   semantics. `Sequence` general source children cannot blindly use
   `writeSyntax(...)` yet because boundary trivia currently lives in
   `Node.toString(...)`; a focused test caught the dropped source whitespace.
-- `PseudoSelector` has a writer hook and child writer, and its cold private
-  source-string wrapper is gone, but generated selector-list normalization
-  still uses capture/restore. The same pass fixed generated `:is(...)`
+- `PseudoSelector` has a writer hook and child writer, its cold private
+  source-string wrapper is gone, and generated selector-list normalization now
+  writes inline comma-space syntax directly instead of capturing/restoring a
+  temporary argument string. The same pass fixed generated `:is(...)`
   required-key metadata to match single-selector-list wrapper omission.
 - [x] `ExtendList`: direct list writer; remove super-string wrapper.
 - [x] `SelectorCapture`: direct capture syntax writer, child writer, and direct
@@ -216,7 +217,7 @@ Current hard leftovers after the broad hook sweep:
 | Num | `packages/core/src/tree/number.ts` | `Dimension` | writeSyntax hook complete | Inherits `Dimension.writeSyntax`; operation paths remain. |
 | Operation | `packages/core/src/tree/operation.ts` | `Node` | writeSyntax hook complete | Source operator syntax writes directly; arithmetic eval/calc fallback remains high priority. |
 | Paren | `packages/core/src/tree/paren.ts` | `Node` | writeSyntax hook complete | Wrapper syntax writes directly; guard/string conversion render audit remains. |
-| PseudoSelector | `packages/core/src/tree/selector-pseudo.ts` | `SimpleSelector` | partial | Direct writer hook and child arg writer exist, generated keyset omission is fixed, and cold private source-string wrapper is gone; generated arg normalization still captures/restores. |
+| PseudoSelector | `packages/core/src/tree/selector-pseudo.ts` | `SimpleSelector` | writeSyntax complete | Direct writer hook and child arg writer exist, generated keyset omission is fixed, cold private source-string wrapper is gone, and selector-list args now write inline without capture/replace/restore. Eval arg materialization remains separate. |
 | QueryCondition | `packages/core/src/tree/query-condition.ts` | `Sequence` | partial | Source syntax writes directly; static child render avoids writer-mark probes. Dynamic child render keeps one localized mark fallback because child render may write or return until downstream contracts are direct. |
 | Quoted | `packages/core/src/tree/quoted.ts` | `Node` | writeSyntax hook complete | Quote syntax writes directly; interpolation/replacement audit remains. |
 | Range | `packages/core/src/tree/range.ts` | `Node` | writeSyntax hook complete | Range syntax writes directly. |

@@ -12,10 +12,22 @@ import { createGeneratedIsPseudo, PseudoSelector } from '../selector-pseudo.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  replacements = 0;
+  restores = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override replaceSince(mark: number, replacer: (text: string) => string, origin?: unknown): void {
+    this.replacements++;
+    return super.replaceSince(mark, replacer, origin);
+  }
+
+  override restore(mark: number): void {
+    this.restores++;
+    return super.restore(mark);
   }
 }
 
@@ -113,6 +125,8 @@ describe('PseudoSelector', () => {
     expect(node.toTrimmedString({ writer })).toBe(':is(.a .b)');
     expect(writer.toString()).toBe(':is(.a .b)');
     expect(writer.captures).toBe(0);
+    expect(writer.replacements).toBe(0);
+    expect(writer.restores).toBe(0);
   });
 
   it('streams selector list arguments without capture scaffolding', () => {
@@ -125,6 +139,8 @@ describe('PseudoSelector', () => {
     expect(node.toTrimmedString({ writer })).toBe(':not(.a, .b)');
     expect(writer.toString()).toBe(':not(.a, .b)');
     expect(writer.captures).toBe(0);
+    expect(writer.replacements).toBe(0);
+    expect(writer.restores).toBe(0);
   });
 
   it('renders resolved pseudo selector values through render(context)', async () => {
