@@ -538,7 +538,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     readonly: boolean;
   }> | undefined;
 
-  registrylessMixinLookupCache: Map<string, MixinEntry[] | undefined> | undefined;
   registrylessLastMixinLookupKey: string | undefined;
   registrylessLastMixinLookupValue: MixinEntry[] | undefined;
   /** ScopeFrame storage; check this when lookup must not lazily build a frame. */
@@ -648,7 +647,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.hasExactCallableChildSurface = false;
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
-    this.registrylessMixinLookupCache = undefined;
     this.registrylessLastMixinLookupKey = undefined;
     this.registrylessLastMixinLookupValue = undefined;
     this._hasExtends = false;
@@ -1135,9 +1133,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     filterType: string | undefined,
     options: Registries.FindOptions
   ): string | undefined {
-    const mapCache = process.env.JESS_REGISTRYLESS_MIXIN_CACHE === '1';
     const lastCache = process.env.JESS_REGISTRYLESS_MIXIN_LAST_CACHE !== '0';
-    if (!mapCache && !lastCache) {
+    if (!lastCache) {
       return undefined;
     }
     if (options.hasTarget || options.local || options.context?.rulesContext === this) {
@@ -1154,31 +1151,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private hasRegistrylessMixinCacheResult(key: string): boolean {
-    if (process.env.JESS_REGISTRYLESS_MIXIN_CACHE !== '1') {
-      return this.registrylessLastMixinLookupKey === key;
-    }
-    return this.registrylessMixinLookupCache?.has(key) ?? false;
+    return this.registrylessLastMixinLookupKey === key;
   }
 
-  private getRegistrylessMixinCacheResult(key: string): MixinEntry[] | undefined {
-    if (process.env.JESS_REGISTRYLESS_MIXIN_CACHE !== '1') {
-      return this.registrylessLastMixinLookupValue;
-    }
-    return this.registrylessMixinLookupCache?.get(key);
+  private getRegistrylessMixinCacheResult(_key: string): MixinEntry[] | undefined {
+    return this.registrylessLastMixinLookupValue;
   }
 
   private setRegistrylessMixinCacheResult(key: string | undefined, value: MixinEntry[] | undefined): void {
     if (key === undefined) {
       return;
     }
-    if (process.env.JESS_REGISTRYLESS_MIXIN_CACHE !== '1') {
-      this.registrylessLastMixinLookupKey = key;
-      this.registrylessLastMixinLookupValue = value;
-      return;
-    }
-    if (process.env.JESS_REGISTRYLESS_MIXIN_CACHE === '1') {
-      (this.registrylessMixinLookupCache ??= new Map()).set(key, value);
-    }
+    this.registrylessLastMixinLookupKey = key;
+    this.registrylessLastMixinLookupValue = value;
   }
 
   private findVisibleExactCallableRulesetPath(
@@ -2540,7 +2525,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
-    this.registrylessMixinLookupCache = undefined;
     this.registrylessLastMixinLookupKey = undefined;
     this.registrylessLastMixinLookupValue = undefined;
     const directChildRules = childCallableRulesOf(node);
