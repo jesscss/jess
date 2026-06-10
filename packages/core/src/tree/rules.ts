@@ -1479,6 +1479,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       prefixMatches.sort((a, b) => b.consumed.length - a.consumed.length);
       let sawLegacyOnlyPrefix = false;
+      let simpleLookupOptions: Parameters<Rules['findMixinsFast']>[1] | undefined;
+      let nestedOptions: Registries.FindOptions | undefined;
 
       for (const { ruleset, consumed } of prefixMatches) {
         if (selectorNeedsLegacyFallback(ruleset)) {
@@ -1492,12 +1494,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         let resolved: MixinEntry[] | undefined;
         if (remainderLength === 1) {
           const segment = path[consumed.length]!;
-          const simpleCallableMatches = ruleset.value.rules.findMixinsFast(segment, {
+          simpleLookupOptions ??= {
             hasTarget: options.hasTarget,
             local: options.local,
             includeRulesets: options.terminalMixinOnly !== true,
             searchParents: false
-          });
+          };
+          const simpleCallableMatches = ruleset.value.rules.findMixinsFast(segment, simpleLookupOptions);
           if (simpleCallableMatches.length > 0) {
             resolved = simpleCallableMatches;
           } else if (options.terminalMixinOnly !== true) {
@@ -1509,13 +1512,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             resolved = simpleCallableRulesets.length > 0 ? simpleCallableRulesets : undefined;
           }
         } else {
+          nestedOptions ??= {
+            ...options,
+            searchParents: false
+          };
           resolved = ruleset.value.rules.findMixin(
             collectKeyRemainder(path, consumed.length),
             undefined,
-            {
-              ...options,
-              searchParents: false
-            }
+            nestedOptions
           );
         }
         if (resolved?.length) {
@@ -1547,19 +1551,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
 
     prefixMatches.sort((a, b) => b.consumed.length - a.consumed.length);
+    let nestedOptions: Registries.FindOptions | undefined;
 
     for (const { ruleset, consumed } of prefixMatches) {
       const remainderLength = keys.length - consumed.length;
       if (remainderLength === 0) {
         return options.terminalMixinOnly === true ? [] : [ruleset];
       }
+      nestedOptions ??= {
+        ...options,
+        searchParents: false
+      };
       const resolved = ruleset.value.rules.findMixin(
         remainderLength === 1 ? keys[consumed.length]! : collectKeyRemainder(keys, consumed.length),
         undefined,
-        {
-          ...options,
-          searchParents: false
-        }
+        nestedOptions
       );
       if (resolved?.length) {
         return resolved;

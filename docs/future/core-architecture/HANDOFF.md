@@ -785,6 +785,30 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Ruleset namespace child-option reuse pass: accepted as per-candidate object
+  setup deletion, not a speed claim. Files:
+  `packages/core/src/tree/rules.ts` and this handoff. New traversal: none; this
+  pass keeps the existing ruleset-prefix loops and sort order, but the
+  `findRulesetNamespacePathFast(...)` and
+  `findCompoundPrefixCallableRulesetPathFast(...)` candidate loops now lazily
+  create and reuse child lookup option objects instead of spreading
+  `{ ...options, searchParents: false }` for every prefix candidate. The
+  one-segment ruleset namespace branch also reuses one simple
+  `findMixinsFast(...)` options object across eligible candidates. New
+  node/materialization: none; no AST node, wrapper `Rules`, side map, result
+  cache, or output object was added. The lazy option objects replace repeated
+  per-candidate objects in the same existing lookup loops. Render path:
+  unchanged. Helper/API surface: no helper or public API was added. Metadata
+  mutations: none. Routine error/control: no throw/catch/Error path added.
+  Evidence: focused mixin tests passed (`138` tests); expanded
+  lookup-adjacent suite passed (`551` tests, `9` skipped);
+  `pnpm exec eslint packages/core/src/tree/rules.ts`, `git diff --check`, and
+  `pnpm --filter @jesscss/core build` passed. The aggressive review script
+  flagged the lazy `simpleLookupOptions` and `nestedOptions` object literals as
+  materialized-object danger tokens; they are prosecuted here as replacements
+  for repeated per-candidate object spreads in existing lookup loops, not new
+  lookup state or caches. No runtime speed claim without benchmark/profile
+  proof.
 - Callable namespace branch cleanup: accepted as lookup-path
   machinery deletion, not a speed claim. Files:
   `packages/core/src/tree/rules.ts` and this handoff. New traversal: none; this
