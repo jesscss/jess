@@ -303,7 +303,10 @@ export class Dimension extends Node<DimensionValue> {
         // Multiplication: "px*em" → calc(number * 1px * 1em)
         // Example: 10px * 2em → 20 with unit "px*em" → calc(20 * 1px * 1em)
         const parts = unit.split('*');
-        const units = parts.map(u => `1${u}`).join(' * ');
+        let units = `1${parts[0] ?? ''}`;
+        for (let i = 1; i < parts.length; i++) {
+          units += ` * 1${parts[i] ?? ''}`;
+        }
         w.add(`${numberStr} * ${units}`);
       } else if (unit.includes('±')) {
         // Addition/subtraction: "px±em" → calc(1px ± 1em)

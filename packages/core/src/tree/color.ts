@@ -468,11 +468,12 @@ export class Color extends Node<ColorData, ColorOptions> {
     if (alpha < 1) {
       values.push(round(alpha * 255));
     }
-    let hex = '#' + values.map(function(c) {
-      let hex = c.toString(16);
-      return hex.length === 1 ? '0' + hex : hex;
-    }).join('');
-    return hex;
+    let out = '#';
+    for (let i = 0; i < values.length; i++) {
+      const hex = values[i]!.toString(16);
+      out += hex.length === 1 ? `0${hex}` : hex;
+    }
+    return out;
   }
 
   override toTrimmedString(options?: PrintOptions) {

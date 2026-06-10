@@ -2,7 +2,7 @@ import type { Context } from '../context.js';
 import { defineType, F_STATIC, type Node } from './node.js';
 import { Selector } from './selector.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import type { FinalPrintOptions } from './util/print.js';
+import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './util/print.js';
 
 export type Combinators = ' ' | '>' | '+' | '~' | '|' | '||';
 
@@ -22,6 +22,14 @@ export class Combinator extends Selector<Combinators> {
 
   override writeSyntax(options: FinalPrintOptions): void {
     options.writer.add(this.value, this);
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    const opts = getPrintOptions(options);
+    const writer = opts.writer;
+    const mark = writer.mark();
+    this.writeSyntax(opts);
+    return writer.getSince(mark);
   }
 
   /** @todo move to visitor */

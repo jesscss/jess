@@ -2248,3 +2248,29 @@ the gate passed.
   not a speed claim. Remaining queue: ampersand template merging still relies
   on string splitting and selector text assembly and needs a structural
   selector-placement pass.
+- Scalar serialization helper pass: accepted as a tiny direct-string machinery
+  cut across `Color`, `Dimension`, and `Combinator`. New traversal: the two
+  indexed loops in `Color.toHex(...)` and `Dimension` preserve-mode compound
+  unit serialization replace existing `map(...).join(...)` passes over already
+  owned RGB/unit arrays; no extra source walk, parent walk, recursion, side-map
+  lookup, object scan, generator, or semantic traversal was added. `Combinator`
+  adds no traversal. New node/materialization: none; no `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, semantic placement state, side map, or helper array was added.
+  Render path: `Color` hex output and `Dimension` compound multiplication now
+  serialize with straight loops instead of callback-array/string helper
+  transport; `Combinator.toTrimmedString(...)` uses the existing direct
+  `writeSyntax(...)` hook instead of the base value visitor. No render path
+  resolves into arrays or nodes just to stringify. Helper/API surface: no new
+  helper or public API was added; `Combinator.toTrimmedString(...)` is an
+  override of the existing public cold string hook and routes to existing node
+  syntax. Metadata mutations: none. Evidence: starting leash at commit
+  `fff2843e` reported `functions` `10.97ms` usable, `import-reference`
+  `17.78ms` usable, `mixins-guards` `15.75ms` usable, `extend-chaining`
+  `4.90ms` usable, and `media` `4.98ms` unstable. Focused
+  color/dimension/combinator/render-buffer tests passed (`105` tests), and
+  `pnpm --filter @jesscss/core build` passed with only the pre-existing direct
+  `eval` warning in `js-expr.ts`. Post-pass hotpath sanity at commit
+  `fff2843e` reported `functions` `11.34ms` usable, `import-reference`
+  `17.52ms` usable, `mixins-guards` `15.12ms` usable, `extend-chaining`
+  `4.57ms` usable, and `media` `4.66ms` unstable. This is not a speed claim.
