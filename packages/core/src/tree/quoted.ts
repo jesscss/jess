@@ -44,7 +44,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     }
     w.add(quote);
     if (value instanceof Node) {
-      value.toTrimmedString(options);
+      value.writeSyntax(options);
     } else {
       w.add(value, this);
     }

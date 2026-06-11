@@ -157,6 +157,18 @@ describe('quoted', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('writes quoted node values without public toTrimmedString transport', () => {
+    const value = any('hello');
+    let stringCalls = 0;
+    value.toTrimmedString = () => {
+      stringCalls++;
+      return '';
+    };
+
+    expect(quoted(value).toTrimmedString()).toBe('"hello"');
+    expect(stringCalls).toBe(0);
+  });
+
   it('resolves quoted values without touching render state', async () => {
     const node = rules([
       vardecl({

@@ -70,8 +70,8 @@ first measured offenders after the selector pass.
 - [ ] `Sequence`: direct writer hook exists and custom-property raw source
   children use `writeSyntax(...)`; general child-boundary emission still uses
   `toString(...)` until boundary trivia is carried explicitly.
-- [x] `Quoted`: direct quoted/interpolated emission; isolate escaping and
-  compare string path.
+- [x] `Quoted`: direct quoted/interpolated emission; child node syntax uses
+  `writeSyntax(...)` with no public `toTrimmedString(...)` transport.
 - [ ] `List`: direct item writer exists; render still captures string output
   before buffer writes in resolved/direct paths.
 - [ ] `QueryCondition`: direct condition syntax writer exists, source/static
@@ -220,7 +220,7 @@ Current hard leftovers after the broad hook sweep:
 | Paren | `packages/core/src/tree/paren.ts` | `Node` | writeSyntax hook complete | Wrapper syntax and child source syntax write directly through `writeSyntax(...)`; guard/string conversion render audit remains. |
 | PseudoSelector | `packages/core/src/tree/selector-pseudo.ts` | `SimpleSelector` | writeSyntax complete | Direct writer hook and child arg writer exist, generated keyset omission is fixed, cold private source-string wrapper is gone, and selector-list args now write inline without capture/replace/restore. Eval arg materialization remains separate. |
 | QueryCondition | `packages/core/src/tree/query-condition.ts` | `Sequence` | partial | Source/static child syntax now uses `writeSyntax(...)` instead of public `toString(...)`, and static child render avoids writer-mark probes. Dynamic child render keeps one localized mark fallback because child render may write or return until downstream contracts are direct. |
-| Quoted | `packages/core/src/tree/quoted.ts` | `Node` | writeSyntax hook complete | Quote syntax writes directly; interpolation/replacement audit remains. |
+| Quoted | `packages/core/src/tree/quoted.ts` | `Node` | writeSyntax hook complete | Quote syntax and child node syntax write directly; public string wrapper is no longer used for quoted child transport. |
 | Range | `packages/core/src/tree/range.ts` | `Node` | writeSyntax hook complete | Range syntax writes directly. |
 | RawRules | `packages/core/src/tree/rules-raw.ts` | `Rules` | iterator/direct braced writer complete | Raw body/braced loops use indexed loops and override the direct braced writer. Child `toString(...)` remains intentional because RawRules preserves exact child whitespace/comments; broader Rules audit remains. |
 | Reference | `packages/core/src/tree/reference.ts` | `Node` | in progress | Passes 1-10 deleted alias predicates, result/fallback/materialization wrapper helpers, the useless `evalNode(...)` Promise wrapper, direct render closures, option spread helpers, scope-array walker, runtime-key IIFE, small `findVarDeclarationFast(...)` result/IIFE allocations, duplicate fallback/copy/static-return branches, callable surface rechecks, raw lookup sync-path closure/IIFE setup, main eval lookup closure setup, static declaration public-resolve copy/inherit for non-important/non-merged containers, per-call `findVarDeclarationFast(...)` helper closure allocation for bucket selection/candidate ordering/deferred dynamic-name promotion, reference-value evaluator options-object allocation, the declaration evaluator argument-object wrapper, runtime-binding sync evaluator closure setup, the rules-reference lookup executor closure, render-only dynamic declaration/runtime binding post-eval copy+inherit, and unresolved reference source serialization now has a direct `writeSyntax(...)` path. Remaining: rules-like surfaces, public value materialization, merged assign normalization, and key conversion. |

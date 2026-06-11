@@ -2389,3 +2389,25 @@ the gate passed.
   `import-reference` `24.81ms` noisy, `mixins-guards` `19.32ms` noisy,
   `extend-chaining` `5.38ms` noisy, and `media` `6.39ms` noisy with large
   outliers. This is not a speed claim.
+- Quoted child syntax pass: accepted as a public string-API hop deletion in the
+  active `writeSyntax` lane. New traversal: none; no loop, recursion,
+  parent/source walk, side-map lookup, generator, object scan, or array helper
+  was added. The existing quoted child emission branch now calls child
+  `writeSyntax(...)` directly instead of public `toTrimmedString(...)`. New
+  node/materialization: none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, frozen/source/parent mutation, semantic placement state,
+  side map, helper array, or public materialized quoted surface was added.
+  Render path: unchanged for evaluated output; quoted source child syntax no
+  longer routes through public string transport. No render path resolves into
+  arrays or nodes just to stringify. Helper/API surface: no new helper, method,
+  or public API was added. Metadata mutations: none; focused tests assert
+  quoted child nodes record zero public `toTrimmedString(...)` calls while
+  serializing through `writeSyntax(...)`. Evidence: starting leash at commit
+  `6c8cad14` was the noisy URL run, so it is not comparison-usable. Focused
+  quoted/render-buffer tests passed (`33` tests), and
+  `pnpm --filter @jesscss/core build` passed with only the pre-existing direct
+  `eval` warning in `js-expr.ts`. Post-pass hotpath sanity at dirty head
+  `6c8cad14` was not comparison-usable: `functions` `13.22ms` unstable,
+  `import-reference` `23.27ms` noisy, `mixins-guards` `17.68ms` noisy,
+  `extend-chaining` `5.31ms` noisy, and `media` `6.37ms` noisy with large
+  outliers. This is not a speed claim.
