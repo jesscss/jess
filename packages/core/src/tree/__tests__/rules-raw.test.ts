@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, decl, rawrules } from '../index.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 describe('RawRules', () => {
   it('serializes raw rules children without parent formatting', () => {
@@ -75,5 +85,18 @@ describe('RawRules', () => {
     expect(node.toBraced()).toBe('{color: red}');
     expect(node.toTrimmedString()).toBe('color: red');
     expect(stringCalls).toBe(0);
+  });
+
+  it('writes empty raw rules without writer readback', () => {
+    const writer = new CountingWriter();
+    const bracedWriter = new CountingWriter();
+    const node = rawrules([]);
+
+    expect(node.toTrimmedString({ writer })).toBe('');
+    expect(writer.toString()).toBe('');
+    expect(writer.reads).toBe(0);
+    expect(node.toBraced({ writer: bracedWriter })).toBe('{}');
+    expect(bracedWriter.toString()).toBe('{}');
+    expect(bracedWriter.reads).toBe(0);
   });
 });

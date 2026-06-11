@@ -2777,3 +2777,34 @@ the gate passed.
   `functions` `12.27ms`, `import-reference` `18.44ms`, `mixins-guards`
   `16.28ms`, `extend-chaining` `5.11ms`, and `media` `5.31ms`. This is not a
   speed claim.
+- Scalar/empty wrapper readback batch: accepted as another narrow public/source
+  writer readback deletion pass. New traversal: none; no loop, recursion,
+  parent/source walk, side-map lookup, generator, object scan, or array helper
+  was added. `Condition.toTrimmedString(...)` now writes and returns the known
+  boolean-only guard source directly when the left operand is already a `Bool`
+  and there is no operator/right operand; negated boolean-only conditions keep
+  the existing `not (<bool>)` spelling without opening a writer mark. Empty
+  `RawRules.toTrimmedString(...)` now returns `''`, and empty
+  `RawRules.toBraced(...)` writes and returns `'{}'`, without entering the
+  child writer loops. Empty `Paren.toTrimmedString(...)` now writes and returns
+  the exact owned delimiter pair for default, escaped, and square empty parens.
+  New node/materialization: none in runtime code; no `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, semantic placement state, side map, helper array, or public
+  materialized condition/raw-rules/paren surface was added. Test-only
+  `CountingWriter` instances prove zero writer readback and are not runtime
+  allocation. Render path: unchanged for evaluated condition output, non-empty
+  raw rules, and parens with child values. No render path resolves into arrays
+  or nodes just to stringify. Helper/API surface: no new runtime helper,
+  method, or public API was added. Metadata mutations: none. Rejected cuts:
+  general `Condition` operands, non-empty `RawRules`, parens with values, and
+  empty `Collection` were left alone. `Collection` inherits formatted
+  `Rules.writeBracedSyntax(...)`, which intentionally emits brace/newline
+  formatting rather than raw `'{}'`; changing that would be semantics, not a
+  scalar readback cut. Evidence: starting leash at commit `99bda11b` was the
+  selector scalar run, so this pass is not comparison-usable. Focused
+  condition/rules-raw/paren tests passed (`46` tests). Post-pass hotpath
+  sanity at dirty head `99bda11b` was mixed and not comparison-usable:
+  `functions` `13.68ms` usable, `import-reference` `19.34ms` unstable,
+  `mixins-guards` `16.59ms` usable, `extend-chaining` `5.37ms` noisy, and
+  `media` `5.47ms` unstable. This is not a speed claim.

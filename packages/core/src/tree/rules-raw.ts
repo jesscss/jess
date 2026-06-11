@@ -15,6 +15,10 @@ export class RawRules extends Rules {
   // Do not add newlines/indent; emit children exactly as-is
   override toBraced(options?: PrintOptions) {
     options = getPrintOptions(options);
+    if (this.value.length === 0) {
+      options.writer.add('{}', this);
+      return '{}';
+    }
     const mark = options.writer.mark();
     this.writeBracedSyntax(options);
     const w = options.writer;
@@ -51,6 +55,9 @@ export class RawRules extends Rules {
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
+    if (this.value.length === 0) {
+      return '';
+    }
     const mark = options.writer.mark();
     this.writeSyntax(options);
     const w = options.writer;

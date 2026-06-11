@@ -95,6 +95,14 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
 
   override toTrimmedString(options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
+    if (!this.value) {
+      const escapeChar = this._options?.escaped ? '~' : '';
+      const out = this._options?.delimiter === 'square'
+        ? `${escapeChar}[]`
+        : `${escapeChar}()`;
+      printOptions.writer.add(out, this);
+      return out;
+    }
     const mark = printOptions.writer.mark();
     this.writeSyntax(printOptions);
     const w = printOptions.writer;

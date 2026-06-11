@@ -63,6 +63,14 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
+    const [left, op, right] = this.value;
+    const negate = this._options?.negate === true;
+    if (left instanceof Bool && !op && !right) {
+      const boolText = left.value ? 'true' : 'false';
+      const out = negate ? `not (${boolText})` : boolText;
+      options.writer.add(out, this);
+      return out;
+    }
     const mark = options.writer.mark();
     this.writeSyntax(options);
     const w = options.writer;

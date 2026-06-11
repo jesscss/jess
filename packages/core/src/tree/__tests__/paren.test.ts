@@ -20,10 +20,16 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
   }
 }
 
@@ -47,6 +53,22 @@ describe('Paren', () => {
 
   it('renders paren syntax through toTrimmedString()', () => {
     expect(paren(any('foo')).toTrimmedString()).toBe('(foo)');
+  });
+
+  it('writes empty paren syntax without writer readback', () => {
+    const writer = new CountingWriter();
+    const escapedWriter = new CountingWriter();
+    const squareWriter = new CountingWriter();
+
+    expect(paren().toTrimmedString({ writer })).toBe('()');
+    expect(writer.toString()).toBe('()');
+    expect(writer.reads).toBe(0);
+    expect(paren(undefined, { escaped: true }).toTrimmedString({ writer: escapedWriter })).toBe('~()');
+    expect(escapedWriter.toString()).toBe('~()');
+    expect(escapedWriter.reads).toBe(0);
+    expect(paren(undefined, { delimiter: 'square' }).toTrimmedString({ writer: squareWriter })).toBe('[]');
+    expect(squareWriter.toString()).toBe('[]');
+    expect(squareWriter.reads).toBe(0);
   });
 
   it('does not allocate options when rendering paren syntax with defaults', () => {
