@@ -739,16 +739,29 @@ deep-cut queue.
    declaration/property cut must model merge-chain/source-order facts before
    deleting that registry path.
 
-5. [ ] Bring function lookup into the same binding model.
-   `FunctionRegistry` and `Rules.find('function', ...)` remain registry-shaped.
-   Model simple static function records as callable/binding records before
-   trying complex function import/visibility cases.
+5. [x] Bring function lookup into the same binding model.
+   Simple exact-name function lookup now uses `Rules.functionsByName` binding
+   records. `Rules.register('function', ...)`, stylesheet `Func` indexing, and
+   legacy `FunctionRegistry.indexPendingItems(...)` all publish into that map.
+   `Rules.findFunction(...)` returns direct hits/misses for simple option
+   shapes without calling `FunctionRegistry.find(...)`.
 
    Completion gate:
-   - simple function hits/misses do not enter `FunctionRegistry.find(...)`
-   - no callable output/evaluated value cache is added
-   - function/import visibility cases either pass through modeled facts or are
-     explicitly `UNCOVERED`
+   - Done: simple function hits and misses do not enter
+     `FunctionRegistry.find(...)`; focused tests monkeypatch the registry
+     method for both directions.
+   - Done: no callable output/evaluated value cache is added; the binding map
+     stores source `JsFunction`/`Func` nodes only.
+   - Done for simple exact names: parent/import-boundary traversal follows the
+     old registry walk. Complex registry APIs remain isolated behind
+     `FunctionRegistry`/`getRegistry('function')` until their public Less API
+     surface is deleted or replaced.
+
+5a. [ ] Delete remaining function registry compatibility surface.
+   `FunctionRegistry` still exists for Less plugin-style `getRegistry` API,
+   `get(...)`, `getLocalFunctions(...)`, `addMultiple(...)`, and
+   `inherit(...)`. Delete or replace those API surfaces once callers can use
+   direct `Rules` function bindings instead.
 
 6. [ ] Model remaining callable namespace/import/child-surface facts as
    frame/handle facts.
@@ -2731,3 +2744,38 @@ the gate passed.
   `declaration`, `control`, and `scope-frame` tests passed (`499` tests, `1`
   skipped), including a direct `findVariable(...)` proof that the declaration
   registry is not opened for covered `VarDeclaration` hits.
+- Function binding pass: accepted as simple function registry lookup deletion,
+  not as a speed claim. New traversal: `Rules.findFunctionDirect(...)` carries
+  forward the existing parent/import-boundary walk from
+  `FunctionRegistry.find(...)` so simple exact-name function hits and misses no
+  longer call the registry method. The traversal climbs through non-`Rules`
+  parents to the next enclosing `Rules` frame because Less function calls often
+  start inside a `Ruleset`; a one-off trace on
+  `if((iscolor(@some)), darken(@some, 10%), black)` proved an immediate-parent
+  check missed the root function map. This is not a new child crawl, recursive
+  surface scan, sort, generator, or broad source rediscovery; it reads
+  `functionsByName` records published at registration/indexing edges. The only
+  added scan is `FunctionRegistry.cloneForRules(...)` walking cloned registry
+  `index` entries to publish already-materialized Less plugin functions into the
+  direct map; this is clone/compat state, not normal source lookup. New
+  node/materialization: no production `Node`, copied node, wrapper `Rules`,
+  `.inherit(...)`, `.adopt(...)`, frozen state, source metadata, or parent
+  mutation was added. The production allocation is the `functionsByName` `Map`,
+  clone preservation with `new Map(source.functionsByName)`, and publishing
+  cloned `FunctionRegistry.index` entries into the same binding map so remaining
+  Less plugin-style registry injections stay visible to direct lookup. These are
+  semantic binding state replacing registry lookup for simple exact names.
+  Render path: unchanged; the same `JsFunction`/`Func` source nodes feed the
+  existing call eval/render paths. Helper/API surface: one
+  `Rules.setFunctionBinding(...)` writer and one private
+  `findFunctionDirect(...)` replace simple `FunctionRegistry.find(...)` traffic;
+  the compatibility registry remains only for plugin-style API surfaces not cut
+  in this pass. Metadata mutations: none. Test-only danger tokens:
+  `rules([])`, `new JsFunction(...)`, `root.clone(false)`, `throw new Error`,
+  `try/finally`, and monkeypatched `registry.find` appear only in focused tests
+  that prove simple hits/misses and registry-only clone preservation avoid the
+  registry method. Evidence: focused `call`, `control`, `declaration`,
+  `reference`, and `func` tests passed (`324` tests), touched-file ESLint passed,
+  `@jesscss/core` build passed, and the previously failing
+  `tests-unit/functions/functions.less` hotpath fixture rendered successfully as
+  a semantic smoke check.

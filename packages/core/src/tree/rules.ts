@@ -555,6 +555,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   declarationRegistry: Registries.DeclarationRegistry | undefined;
   functionRegistry: Registries.FunctionRegistry | undefined;
+  functionsByName: Map<string, JsFunction | Func> | undefined;
   /** Fast map: var name → ordered list of VarDeclarations registered in this scope. */
   varsByName: Map<string, VarDeclaration[]> | undefined;
   /** Per-request cache: callable start-key -> ordered entries with remaining path keys. */
@@ -662,6 +663,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     //
     // Do NOT reuse declaration/mixin registries across clones; those should always
     // be rebuilt from AST nodes via lazy indexing.
+    if (source.functionsByName) {
+      this.functionsByName = new Map(source.functionsByName);
+    } else {
+      this.functionsByName = undefined;
+    }
     if (source.functionRegistry) {
       this.functionRegistry = source.functionRegistry.cloneForRules(this);
     }
@@ -786,6 +792,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return (this.functionRegistry ??= new Registries.FunctionRegistry(this));
   }
 
+  setFunctionBinding(name: string | undefined, node: JsFunction | Func): void {
+    if (!name) {
+      return;
+    }
+    (this.functionsByName ??= new Map()).set(name, node);
+  }
+
   register(type: 'declaration', node: Declaration): void;
   register(type: 'function', node: Func | JsFunction): void;
   register(
@@ -803,6 +816,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!isNode(node, N.Func) && !isNode(node, N.JsFunction)) {
           throw new TypeError(`Expected function registry node, got ${node.type}`);
         }
+        this.setFunctionBinding(
+          isNode(node, N.JsFunction) ? node.name : node.nameKey,
+          node
+        );
         this._ensureFunctionRegistry().add(node);
     }
   }
@@ -1882,11 +1899,54 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return isNode(found, N.Declaration) ? found : undefined;
   }
 
+  private findFunctionDirect(
+    keys: string,
+    options?: Registries.FindOptions
+  ): JsFunction | Func | undefined {
+    let rules: Rules | undefined = this;
+    const { searchParents = true } = options ?? {};
+    let findRoot = false;
+    while (rules) {
+      if (rules.rulesIndexed < rules.value.length) {
+        rules._indexRules();
+      }
+      rules.functionRegistry?.indexPendingItems();
+      const fn = rules.functionsByName?.get(keys);
+      if (fn || !searchParents) {
+        return fn;
+      }
+
+      do {
+        let parent: Node | undefined = rules.parent;
+        rules = undefined;
+        while (parent) {
+          if (isNode(parent, N.Rules)) {
+            rules = parent;
+            break;
+          }
+          parent = parent.parent;
+        }
+        const rulesParent = rules?.parent;
+        if (findRoot && rules?.type === 'Rules' && rulesParent === undefined) {
+          break;
+        }
+        if (Registries.isNonClassicImportBoundary(rules)) {
+          findRoot = true;
+        }
+      } while (!findRoot && rules && rules.type !== 'Rules');
+    }
+    return undefined;
+  }
+
   findFunction(
     keys: string,
     filterType?: string,
     options?: Registries.FindOptions
   ): ReturnType<Registries.FunctionRegistry['find']> | undefined {
+    if (!filterType && !options?.findAll && !options?.candidates && !options?.optionalCandidates && !options?.searchedRules) {
+      const direct = this.findFunctionDirect(keys, options);
+      return direct;
+    }
     return this.getRegistry('function').find(keys, filterType, options);
   }
 

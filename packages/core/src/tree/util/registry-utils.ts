@@ -389,6 +389,9 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
     const next = new FunctionRegistry(rules);
     // Preserve any functions injected directly into the registry (Less plugin style).
     next.index = new Map(this.index);
+    for (const [name, fn] of next.index) {
+      rules.setFunctionBinding(name, fn);
+    }
     next.pendingItems = new Set(this.pendingItems);
     return next;
   }
@@ -397,12 +400,14 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
     for (const item of this.pendingItems) {
       if (item instanceof JsFunction) {
         this.index.set(item.name!, item);
+        this.rules.setFunctionBinding(item.name, item);
         continue;
       }
       // Stylesheet-defined function node
       const nameKey = (item as Func).nameKey;
       if (nameKey) {
         this.index.set(nameKey, item);
+        this.rules.setFunctionBinding(nameKey, item);
       }
     }
     this.pendingItems.clear();
