@@ -219,8 +219,14 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
 
   override toTrimmedString(options?: PrintOptions) {
     const printOptions = getPrintOptions(options);
+    const { name, op, value, mod } = this.value;
+    if (typeof name === 'string' && !op && !value && !mod) {
+      const out = `[${name}]`;
+      printOptions.writer.add(out, this);
+      return out;
+    }
     const mark = printOptions.writer.mark();
-    this.renderAttributeParts(this.value.name, this.value.value, printOptions);
+    this.renderAttributeParts(name, value, printOptions);
     const w = printOptions.writer;
     return w.getSince(mark);
   }

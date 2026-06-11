@@ -12,12 +12,18 @@ import { createGeneratedIsPseudo, PseudoSelector } from '../selector-pseudo.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  reads = 0;
   replacements = 0;
   restores = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
   }
 
   override replaceSince(mark: number, replacer: (text: string) => string, origin?: unknown): void {
@@ -49,6 +55,17 @@ describe('PseudoSelector', () => {
 
   it('renders pseudo selector syntax through toTrimmedString()', () => {
     expect(pseudo({ name: ':hover' }).toTrimmedString()).toBe(':hover');
+  });
+
+  it('writes no-argument pseudo selector syntax without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(pseudo({ name: ':hover' }).toTrimmedString({ writer })).toBe(':hover');
+    expect(writer.toString()).toBe(':hover');
+    expect(writer.reads).toBe(0);
+    expect(writer.captures).toBe(0);
+    expect(writer.replacements).toBe(0);
+    expect(writer.restores).toBe(0);
   });
 
   it('renders compound selector arguments without sequence spacing', () => {

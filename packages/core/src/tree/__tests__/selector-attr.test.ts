@@ -1,8 +1,18 @@
 import { attr, any, quoted, mixin, rules, ruleset, decl, call, ref, list, el, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import { OutputWriter } from '../util/print.js';
 
 let context: Context;
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 describe('Attribute Selector', () => {
   beforeEach(() => {
@@ -18,6 +28,14 @@ describe('Attribute Selector', () => {
       });
 
       expect(rule.toTrimmedString()).toBe('[data="bar"]');
+    });
+
+    test('writes bare attribute selector syntax without writer readback', () => {
+      const writer = new CountingWriter();
+
+      expect(attr({ name: 'data' }).toTrimmedString({ writer })).toBe('[data]');
+      expect(writer.toString()).toBe('[data]');
+      expect(writer.reads).toBe(0);
     });
 
     test('with or without quotes', () => {

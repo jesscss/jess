@@ -183,6 +183,11 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
+    const { name, arg } = this.value;
+    if (!arg) {
+      options.writer.add(name, this);
+      return name;
+    }
     const mark = options.writer.mark();
     this.writeSyntax(options);
     const w = options.writer;

@@ -2745,3 +2745,35 @@ the gate passed.
   `import-reference` `21.34ms` unstable, `mixins-guards` `16.26ms` unstable,
   `extend-chaining` `5.09ms` noisy, and `media` `5.31ms` unstable. This is not
   a speed claim.
+- Selector scalar wrapper readback batch: accepted as a narrow public/source
+  string readback deletion pass for three selector scalar branches, not as
+  completion of the larger selector placement queue. New traversal: none; no
+  loop, recursion, parent/source walk, side-map lookup, generator, object scan,
+  or array helper was added. `PseudoSelector.toTrimmedString(...)` now writes
+  and returns the known no-argument pseudo name directly. `Ampersand`
+  `toTrimmedString(...)` now writes and returns the bare `&` token directly
+  only when there is no append value and no collapse/composed selector stack.
+  `AttributeSelector.toTrimmedString(...)` now writes and returns the known
+  `[name]` token directly only for string-named bare attributes with no
+  operator, value, or modifier. New node/materialization: none in runtime code;
+  no `Node`, copy, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`,
+  frozen/source/parent mutation, semantic placement state, side map, helper
+  array, or public materialized selector surface was added. Test-only
+  `CountingWriter` instances prove zero writer readback and are not runtime
+  allocation. Render path: unchanged for evaluated selector output, attribute
+  interpolation, generated pseudo placement, and ampersand collapse/append
+  placement. No render path resolves into arrays or nodes just to stringify.
+  Helper/API surface: no new runtime helper, method, or public API was added.
+  Metadata mutations: none. Rejected cuts: argument-bearing pseudos,
+  appended/collapsed ampersands, value-bearing/interpolated attributes, and the
+  deeper Ampersand template-placement queue still require structural work
+  rather than scalar string reconstruction. Evidence: starting leash at commit
+  `80cca23f` was the Negative/VarDeclaration run, so this pass is not
+  comparison-usable. Focused selector-pseudo/ampersand/selector-attr tests
+  passed (`50` tests). A broad root-level vitest invocation was rejected as a
+  harness mismatch for `toBeString` in the package project; the package
+  `@jesscss/core` `test` script is the valid focused proof. Post-pass hotpath
+  sanity at dirty head `80cca23f` was usable but not comparison-usable:
+  `functions` `12.27ms`, `import-reference` `18.44ms`, `mixins-guards`
+  `16.28ms`, `extend-chaining` `5.11ms`, and `media` `5.31ms`. This is not a
+  speed claim.

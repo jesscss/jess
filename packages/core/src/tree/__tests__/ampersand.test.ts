@@ -15,6 +15,16 @@ import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
+
 describe('Ampersand', () => {
   beforeEach(() => {
     context = new Context();
@@ -93,6 +103,14 @@ describe('Ampersand', () => {
     expect(out).toBe('.foo');
     expect(options.composedSelectorStack).toBe(composedSelectorStack);
     expect(options.composedSelectorStack).toEqual([parentSelector]);
+  });
+
+  it('writes literal bare ampersands without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(amp().toTrimmedString({ writer })).toBe('&');
+    expect(writer.toString()).toBe('&');
+    expect(writer.reads).toBe(0);
   });
 
   it('resolves framed ampersands without touching render state', async () => {
