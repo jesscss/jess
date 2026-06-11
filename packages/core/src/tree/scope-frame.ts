@@ -2,14 +2,15 @@
  * ScopeFrame.
  *
  * A ScopeFrame is a lightweight runtime object for lexical variable lookup.
- * It carries static declaration buckets, live call-time slots, and unresolved
+ * It carries current bindings, static declaration buckets, and unresolved
  * declaration names without cloning node trees or rewriting parent pointers.
  *
  * Relationship to existing infrastructure:
  *   - declarationBucketsByName is built from Rules.varsByName.
  *     Only static-key VarDeclarations are stored here; dynamic keys
  *     (Interpolated name nodes) go into pendingDeclarationNames.
- *   - liveSlotsByName holds mixin params, @arguments, and loop counters.
+ *   - currentBindingsByName holds the current read path for both live slots
+ *     and the latest static declaration.
  *   - The parent frame chain is the call-site lexical chain, not the
  *     node .parent chain.
  *
@@ -56,6 +57,17 @@ export interface BindingEntry {
   /** The AST node that owns this binding. */
   sourceNode: Node;
 }
+
+export type CurrentBindingEntry =
+  | {
+    kind: 'live';
+    cell: BindingCell;
+    sourceNode?: Node;
+  }
+  | {
+    kind: 'declaration';
+    entry: BindingEntry;
+  };
 
 export type ScopeFrameVariableLookupResult =
   | {
@@ -114,6 +126,13 @@ export interface ScopeFrame {
    * O(1) Map.get; populated at call time, not from the AST.
    */
   liveSlotsByName: Map<string, BindingCell>;
+
+  /**
+   * Current binding cells for ordinary reads.
+   * Static declaration source-order history stays in declarationBucketsByName;
+   * this map is the direct path for "what is the current value of this name?"
+   */
+  currentBindingsByName: Map<string, CurrentBindingEntry>;
 
   /**
    * Contextual variable declarations with static (non-interpolated) keys.
@@ -191,6 +210,7 @@ export function buildScopeFrame(
   callableMissesCovered = callablesCovered
 ): ScopeFrame {
   const declarationBucketsByName = new Map<string, BindingEntry[]>();
+  const currentBindingsByName = new Map<string, CurrentBindingEntry>();
 
   if (varsByName) {
     for (const [name, decls] of varsByName) {
@@ -207,13 +227,30 @@ export function buildScopeFrame(
         };
       }
       declarationBucketsByName.set(name, entries);
+      const currentEntry = entries[entries.length - 1];
+      if (currentEntry) {
+        currentBindingsByName.set(name, {
+          kind: 'declaration',
+          entry: currentEntry
+        });
+      }
     }
+  }
+
+  const liveSlotsByName = liveSlots ?? new Map<string, BindingCell>();
+  for (const [name, cell] of liveSlotsByName) {
+    currentBindingsByName.set(name, {
+      kind: 'live',
+      cell,
+      sourceNode: cell.sourceNode
+    });
   }
 
   return {
     parent,
     fallbackFrame: undefined,
-    liveSlotsByName: liveSlots ?? new Map(),
+    liveSlotsByName,
+    currentBindingsByName,
     declarationBucketsByName,
     callableBucketsByName: callableEntriesByName,
     declarationsCovered,
@@ -222,6 +259,30 @@ export function buildScopeFrame(
     pendingDeclarationNames: pendingDeclarationNames ?? [],
     rulesNode
   };
+}
+
+export function setScopeFrameLiveBinding(
+  frame: ScopeFrame,
+  name: string,
+  cell: BindingCell
+): void {
+  frame.liveSlotsByName.set(name, cell);
+  frame.currentBindingsByName.set(name, {
+    kind: 'live',
+    cell,
+    sourceNode: cell.sourceNode
+  });
+}
+
+export function setScopeFrameDeclarationBinding(
+  frame: ScopeFrame,
+  name: string,
+  entry: BindingEntry
+): void {
+  frame.currentBindingsByName.set(name, {
+    kind: 'declaration',
+    entry
+  });
 }
 
 /**
@@ -237,19 +298,14 @@ export function resolveFrameCell(
 ): BindingEntry | undefined {
   let f = frame;
   while (f) {
-    // 1. Live slots (mixin params, @arguments, loop vars)
-    const live = f.liveSlotsByName.get(name);
-    if (live) {
-      return { cell: live, sourceNode: live.sourceNode ?? getBindingCellValue(live) };
+    const current = f.currentBindingsByName.get(name);
+    if (current) {
+      if (current.kind === 'live') {
+        return { cell: current.cell, sourceNode: current.sourceNode ?? getBindingCellValue(current.cell) };
+      }
+      return current.entry;
     }
 
-    // 2. Static contextual bucket — last entry wins
-    const bucket = f.declarationBucketsByName.get(name);
-    if (bucket && bucket.length > 0) {
-      return bucket[bucket.length - 1];
-    }
-
-    // 3. Walk parent
     f = f.parent;
   }
   return undefined;
@@ -272,16 +328,26 @@ export function lookupScopeFrameVariable(
   let fallbackFrame = frame?.fallbackFrame;
   while (true) {
     while (f) {
-      const live = options?.includeLive === false
-        ? undefined
-        : f.liveSlotsByName.get(name);
-      if (live) {
-        const sourceNode = live.sourceNode;
-        if (!sourceNode || !options?.blockedSource?.(sourceNode)) {
+      if (start === undefined) {
+        const current = f.currentBindingsByName.get(name);
+        if (current?.kind === 'live' && options?.includeLive !== false) {
+          const sourceNode = current.sourceNode;
+          if (!sourceNode || !options?.blockedSource?.(sourceNode)) {
+            return {
+              kind: 'live',
+              cell: current.cell,
+              sourceNode
+            };
+          }
+        } else if (
+          current?.kind === 'declaration'
+          && options?.includeDeclarations !== false
+          && f.declarationsCovered
+          && (!options?.filter || options.filter(current.entry.sourceNode))
+        ) {
           return {
-            kind: 'live',
-            cell: live,
-            sourceNode
+            kind: 'declaration',
+            entry: current.entry
           };
         }
       }

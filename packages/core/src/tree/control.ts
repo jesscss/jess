@@ -12,7 +12,13 @@ import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Range } from './range.js';
-import { buildScopeFrame, getBindingCellValue, type BindingCell, type ScopeFrame } from './scope-frame.js';
+import {
+  buildScopeFrame,
+  getBindingCellValue,
+  setScopeFrameLiveBinding,
+  type BindingCell,
+  type ScopeFrame
+} from './scope-frame.js';
 import {
   createRenderBuffer,
   isRenderBuffer,
@@ -207,7 +213,7 @@ async function syncWhileState(
       continue;
     }
     const value = await getBindingCellValue(last.cell).eval(context);
-    stateFrame.liveSlotsByName.set(name, {
+    setScopeFrameLiveBinding(stateFrame, name, {
       value,
       sourceNode: last.sourceNode,
       readonly: last.cell.readonly
@@ -228,7 +234,7 @@ async function syncDirectWhileStateMutations(
     if (!(name instanceof Any)) {
       throw new TypeError('Expected $while mutation name to resolve to Any');
     }
-    stateFrame.liveSlotsByName.set(name.valueOf(), {
+    setScopeFrameLiveBinding(stateFrame, name.valueOf(), {
       value: await mutation.value.value.eval(context),
       sourceNode: mutation,
       readonly: mutation.options?.readonly

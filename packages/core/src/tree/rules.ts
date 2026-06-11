@@ -43,6 +43,7 @@ import {
   assignScopeFrameVariable,
   buildScopeFrame,
   lookupScopeFrameCallable,
+  setScopeFrameDeclarationBinding,
   type ScopeFrame
 } from './scope-frame.js';
 import { consumeTriviaText } from './util/trivia.js';
@@ -2686,14 +2687,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               }
             }
             if (!hasBucketEntry) {
-              bucket.push({
+              const entry = {
                 cell: {
                   value: (node as VarDeclaration).value.value,
                   sourceNode: node,
                   readonly: node.options?.readonly
                 },
                 sourceNode: node as VarDeclaration
-              });
+              };
+              bucket.push(entry);
+              setScopeFrameDeclarationBinding(this._scopeFrame, name, entry);
+            } else {
+              const currentEntry = bucket[bucket.length - 1];
+              if (currentEntry) {
+                setScopeFrameDeclarationBinding(this._scopeFrame, name, currentEntry);
+              }
             }
           }
         } else if (this._scopeFrame) {

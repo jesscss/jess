@@ -23,7 +23,13 @@ import { JsExpression } from './js-expr.js';
 import { List } from './list.js';
 import { Nil } from './nil.js';
 import { comparePosition } from './util/compare.js';
-import { getBindingCellValue, lookupScopeFrameVariable, type BindingEntry, type ScopeFrame } from './scope-frame.js';
+import {
+  getBindingCellValue,
+  lookupScopeFrameVariable,
+  setScopeFrameDeclarationBinding,
+  type BindingEntry,
+  type ScopeFrame
+} from './scope-frame.js';
 import type { VarDeclaration } from './declaration-var.js';
 import { getOrderedSelectorKeys, isNonClassicImportBoundary } from './util/registry-utils.js';
 import {
@@ -223,14 +229,21 @@ function promoteResolvedPendingVarDecls(
       }
     }
     if (!hasEntry) {
-      bucket.push({
+      const entry: BindingEntry = {
         cell: {
           value: decl.value.value,
           sourceNode: decl,
           readonly: decl.options?.readonly
         },
         sourceNode: decl
-      });
+      };
+      bucket.push(entry);
+      setScopeFrameDeclarationBinding(frame, resolvedName, entry);
+    } else {
+      const currentEntry = bucket[bucket.length - 1];
+      if (currentEntry) {
+        setScopeFrameDeclarationBinding(frame, resolvedName, currentEntry);
+      }
     }
     mutated = true;
   }

@@ -604,15 +604,20 @@ Current implementation note:
 - Do not add a lookup cache to paper over that bridge. Delete the reason for
   rediscovery by making the frame know which callable surfaces it covers.
 
-### Current `ScopeFrame.liveSlotsByName`
+### Former current-read split: `ScopeFrame.liveSlotsByName` plus buckets
 
-Becomes current-cell records in the same frame. The cell is mutable; the lookup
-path is not special. This is broader than today's named live-slot surface:
-ordinary same-frame declarations also need current-cell behavior for Jess live
-reads, while `$!` and Less contextual lookup use occurrence/source-order lookup.
+Production status: ordinary current reads now use
+`ScopeFrame.currentBindingsByName`, with one current entry shape for live cells
+and latest static declaration entries. Static current entries point at the
+existing declaration bucket `BindingEntry`; live entries are published when
+mixin params, `@arguments`, loop vars, or direct loop mutation cells are
+created. `$!` and other source-order reads still use
+`declarationBucketsByName` because they need ordered declaration history.
 
-Deletion condition: live slots stop being a separate pre-check once live/current
-records and static declaration current pointers share the same slot lookup.
+Remaining deletion condition: `liveSlotsByName` can stop being a lookup-facing
+surface once the remaining live-only bridge paths, especially
+`lookupRuntimeVarBinding(...)`, are either modeled through
+`currentBindingsByName` or explicitly isolated as cold unmodeled cases.
 
 ### Current `DeclarationRegistry`
 

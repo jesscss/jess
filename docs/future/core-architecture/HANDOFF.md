@@ -669,20 +669,28 @@ deep-cut queue.
      callable namespace/import/child-surface facts still need to move into
      frame/handle state.
 
-2. [ ] Collapse live-slot and static-declaration lookup into one slot/record
+2. [x] Collapse live-slot and static-declaration lookup into one slot/record
    path.
-   `ScopeFrame.liveSlotsByName` and `declarationBucketsByName` are still two
-   adjacent maps. The proposal target is one binding record/slot surface where
-   live/current cells, source-order occurrence reads, and assignment targets
-   share lookup identity instead of branching live first and static second.
+   `ScopeFrame.currentBindingsByName` is now the ordinary current-read surface
+   for both live cells and the latest static declaration entry. Source-order
+   `$!`/snapshot reads still use `declarationBucketsByName` because they need
+   ordered history, but plain current reads no longer branch through
+   `liveSlotsByName` first and static buckets second. Live-slot creation and
+   declaration registration/promotion publish the current entry at the same
+   edge that creates the binding.
 
    Completion gate:
-   - current reads, `$!`/source-order reads, mixin params, `@arguments`, loop
-     vars, `:` shadowing, and `:=` assignment still pass focused tests
-   - covered static variable reads no longer need a separate
-     `lookupRuntimeVarBinding(...)` live-slot bridge after facade miss
-   - no new per-read record object allocation on ordinary static-key reads
-   - benchmark/profile leash recorded before any speed claim
+   - Done: current reads, `$!`/source-order reads, mixin params, `@arguments`,
+     loop vars, `:` shadowing, and `:=` assignment pass the focused
+     `scope-frame`, `reference`, `mixin`, `control`, and `import-style` tests.
+   - Done for covered ordinary reads: covered current hits are returned from
+     `lookupScopeFrameVariable(...)` through `currentBindingsByName` without a
+     post-miss `lookupRuntimeVarBinding(...)` live-slot bridge.
+   - Done: ordinary current reads do not allocate a per-read declaration entry;
+     static current entries reuse the existing bucket `BindingEntry`, and live
+     entries are published when the live cell is created.
+   - Done: benchmark/profile leash is recorded as status only; no speed claim
+     is made for this pass.
 
 3. [ ] Delete or narrow `lookupRuntimeVarBinding(...)`.
    The helper still walks live slots and fallback frames after a frame-facade
@@ -2639,3 +2647,27 @@ the gate passed.
   `replaceSince`), and leaf/value families (`Any.toString`, `Dimension`,
   `Num`, `Color`, `PseudoSelector`, `Sequence`, `Quoted`) still need
   `writeSyntax` cuts or cold-path isolation.
+- ScopeFrame current-binding pass: accepted as binding-lane consolidation, not
+  as a speed claim. New traversal: one construction/update-time overlay loop in
+  `buildScopeFrame(...)` walks supplied live slots to publish
+  `currentBindingsByName`; this replaces repeated lookup-time live/static
+  branching for ordinary current reads and runs only when a frame is built from
+  existing live-slot state. Existing declaration loops remain the same
+  `varsByName` bucket construction, and existing bucket scans remain only for
+  source-order/filter cases. No new recursive crawl, parent/source walk, sort,
+  generator, or child-surface scan was added. New node/materialization: none;
+  no `Node`, copied node, wrapper `Rules`, `.inherit(...)`, `.adopt(...)`,
+  frozen state, source metadata, or parent mutation was added. Render path:
+  unchanged; the pass changes binding lookup state before the same value eval
+  and render paths. Helper/API surface: two internal writers,
+  `setScopeFrameLiveBinding(...)` and `setScopeFrameDeclarationBinding(...)`,
+  were added to keep `currentBindingsByName` synchronized at the existing live
+  cell and declaration-entry creation edges; they replace direct map writes at
+  production mutation sites instead of adding a lookup-time helper ladder.
+  Metadata mutations: none beyond publishing binding-frame state. Evidence:
+  focused `scope-frame`, `reference`, `mixin`, `control`, and `import-style`
+  tests passed (`433` tests, `1` skipped), and touched-file ESLint passed. The
+  change avoids per-read declaration entry allocation by reusing the existing
+  bucket `BindingEntry` for static current reads; live current entries are
+  allocated when live cells are created. Performance remains leashed/status
+  only until a measured before/after pass is run.

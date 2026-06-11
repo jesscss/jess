@@ -3,7 +3,8 @@ import { Context } from '../../context.js';
 import {
   assignScopeFrameVariable,
   buildScopeFrame,
-  lookupScopeFrameVariable
+  lookupScopeFrameVariable,
+  setScopeFrameLiveBinding
 } from '../scope-frame.js';
 
 describe('ScopeFrame variable facade', () => {
@@ -30,7 +31,7 @@ describe('ScopeFrame variable facade', () => {
     ]);
     await root.eval(new Context());
     const frame = root.getScopeFrame();
-    frame.liveSlotsByName.set('x', { value: any('blue') });
+    setScopeFrameLiveBinding(frame, 'x', { value: any('blue') });
 
     const current = lookupScopeFrameVariable(frame, 'x');
     const snapshot = lookupScopeFrameVariable(frame, 'x', {
@@ -132,7 +133,7 @@ describe('ScopeFrame variable facade', () => {
   it('resolves fallback live slots from the same facade lookup', async () => {
     const fallbackRules = rules([]);
     const fallbackFrame = fallbackRules.getScopeFrame();
-    fallbackFrame.liveSlotsByName.set('x', { value: any('blue') });
+    setScopeFrameLiveBinding(fallbackFrame, 'x', { value: any('blue') });
     const root = rules([]);
     await root.eval(new Context());
     const frame = root.getScopeFrame();
