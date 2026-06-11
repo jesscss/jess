@@ -28,11 +28,9 @@ export class JsExpression extends Node<string> {
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const mark = options.writer.mark();
-    this.writeSyntax(options);
-    const w = options.writer;
-    return w.getSince(mark);
+    const out = `\`${this.value}\``;
+    getPrintOptions(options).writer.add(out, this);
+    return out;
   }
 
   /**

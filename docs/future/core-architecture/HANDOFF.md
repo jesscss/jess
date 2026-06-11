@@ -2679,3 +2679,37 @@ the gate passed.
   unstable, `import-reference` `22.33ms` unstable, `mixins-guards` `18.12ms`
   unstable, `extend-chaining` `5.33ms` noisy, and `media` `5.75ms` noisy. This
   is not a speed claim.
+- Literal wrapper readback batch: accepted as a multi-node cold/public source
+  wrapper deletion pass for `JsExpression`, string/empty `Rest`, and literal
+  `Quoted`. New traversal: none; no loop, recursion, parent/source walk,
+  side-map lookup, generator, object scan, or array helper was added.
+  `JsExpression.toTrimmedString(...)` now writes and returns the known backtick
+  source token directly. `Rest.toTrimmedString(...)` writes and returns the
+  known string/empty rest source token directly, while node-valued rest keeps
+  the existing child writer/readback boundary. `Quoted.renderQuotedSyntax(...)`
+  writes and returns literal quoted source text directly, while
+  node/interpolated quoted values keep the existing writer boundary and child
+  node syntax still writes directly. New node/materialization: none in runtime
+  code; no `Node`, copy, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`,
+  frozen/source/parent mutation, semantic placement state, side map, helper
+  array, or public materialized wrapper surface was added. Test-only
+  `CountingWriter` and `JsExpression` fixtures prove zero writer readback and
+  are not runtime allocation. Render path: unchanged for eval/value selection; these cuts are
+  public/source string wrappers and literal source emission. No render path
+  resolves into arrays or nodes just to stringify. Helper/API surface: one
+  private node-local `Quoted.serializeScalarSyntax(...)` method was added and
+  is accepted because it isolates the literal branch without changing
+  node/interpolated quoted behavior or adding public API. Metadata mutations:
+  none. Rejected cut: child-bearing wrappers such as `Range`, `Extend`,
+  `Condition`, and `JsImport` still require child syntax emission; this batch
+  deliberately avoided replacing their public readback with child public
+  string calls or broad duplicated serializer ladders. Evidence: starting
+  leash at commit `a5277854` was the Color run, so this pass is not
+  comparison-usable. Focused rest/js-expr/quoted/import-js/render-buffer tests
+  passed (`51` tests), and sequential `pnpm --filter @jesscss/core build &&
+  pnpm run measure:less:hotpath -- --stable` passed with only the pre-existing
+  direct `eval` warning in `js-expr.ts`. Post-pass hotpath sanity at dirty head
+  `a5277854` was mixed and not comparison-usable: `functions` `11.87ms`
+  usable, `import-reference` `19.15ms` unstable, `mixins-guards` `16.60ms`
+  usable, `extend-chaining` `5.02ms` usable, and `media` `5.09ms` usable. This
+  is not a speed claim.

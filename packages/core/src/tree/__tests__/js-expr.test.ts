@@ -5,8 +5,18 @@ import { Any } from '../any.js';
 import { Num } from '../number.js';
 import { JsObject } from '../js-object.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { OutputWriter } from '../util/print.js';
 
 let context: Context;
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 declare global {
   // Test-only bridge for JavaScript expressions evaluated through global eval.
@@ -16,6 +26,14 @@ declare global {
 describe('JsExpression', () => {
   beforeEach(() => {
     context = new Context();
+  });
+
+  it('returns source JavaScript expression syntax without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(new JsExpression('"blue"').toTrimmedString({ writer })).toBe('`"blue"`');
+    expect(writer.toString()).toBe('`"blue"`');
+    expect(writer.reads).toBe(0);
   });
 
   it('resolves JavaScript expressions without touching render state', async () => {

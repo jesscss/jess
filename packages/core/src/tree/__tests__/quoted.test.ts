@@ -10,10 +10,16 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
   }
 }
 
@@ -36,6 +42,15 @@ describe('quoted', () => {
 
   it('renders quoted syntax through toTrimmedString()', () => {
     expect(quoted('hello').toTrimmedString()).toBe('"hello"');
+  });
+
+  it('returns literal quoted syntax without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(quoted('hello').toTrimmedString({ writer })).toBe('"hello"');
+    expect(quoted('hello', { escaped: true, quote: '\'' }).toTrimmedString({ writer })).toBe('~\'hello\'');
+    expect(writer.toString()).toBe('"hello"~\'hello\'');
+    expect(writer.reads).toBe(0);
   });
 
   it('does not allocate options when rendering quoted syntax with defaults', () => {

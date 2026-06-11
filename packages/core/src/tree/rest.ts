@@ -35,6 +35,12 @@ export class Rest extends Node<Node | string | undefined> {
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
+    const value = this.value;
+    if (!value || !isNode(value)) {
+      const out = value ? `...$$${value}` : '...$';
+      options.writer.add(out, this);
+      return out;
+    }
     const mark = options.writer.mark();
     this.writeSyntax(options);
     const w = options.writer;

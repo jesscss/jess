@@ -53,10 +53,24 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
 
   private renderQuotedSyntax(value = this.value, options?: PrintOptions): string {
     options = getPrintOptions(options);
+    const scalar = this.serializeScalarSyntax(value);
+    if (scalar !== undefined) {
+      options.writer.add(scalar, this);
+      return scalar;
+    }
     const mark = options.writer.mark();
     this.writeQuotedSyntax(value, options);
     const w = options.writer;
     return w.getSince(mark);
+  }
+
+  private serializeScalarSyntax(value: string | Any | Interpolated | Node): string | undefined {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+    const quote = this._options?.quote ?? '"';
+    const escapeChar = this._options?.escaped ? '~' : '';
+    return `${escapeChar}${quote}${value}${quote}`;
   }
 
   constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: NodeLocation) {

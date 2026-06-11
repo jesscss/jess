@@ -2,6 +2,16 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, rest } from '../index.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 describe('Rest', () => {
   let context: Context;
@@ -13,6 +23,15 @@ describe('Rest', () => {
   it('renders rest syntax through toTrimmedString()', () => {
     expect(rest('items').toTrimmedString()).toBe('...$$items');
     expect(rest(any('items')).toTrimmedString()).toBe('...$items');
+  });
+
+  it('returns string rest syntax without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(rest('items').toTrimmedString({ writer })).toBe('...$$items');
+    expect(rest(undefined).toTrimmedString({ writer })).toBe('...$');
+    expect(writer.toString()).toBe('...$$items...$');
+    expect(writer.reads).toBe(0);
   });
 
   it('renders rest values through render(context)', () => {
