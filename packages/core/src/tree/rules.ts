@@ -397,6 +397,21 @@ function rulesMayContainExactCallableSurface(rules: Rules): boolean {
   return false;
 }
 
+function rulesMayContainExactMixinSurface(rules: Rules): boolean {
+  const value = rules.value;
+  for (let i = 0; i < value.length; i++) {
+    const node = value[i]!;
+    if (isNode(node, N.Mixin)) {
+      return true;
+    }
+    const child = childCallableRulesOf(node);
+    if (child && rulesMayContainExactMixinSurface(child)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function sourceRulesOf(rules: Rules): Rules {
   return isNode(rules.sourceNode, N.Rules) ? rules.sourceNode : rules;
 }
@@ -563,6 +578,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   directChildRuleEntries: Array<{ node: Rules; rulesVisibility?: RulesOptions['rulesVisibility'] }> | null | undefined;
   hasDirectChildRuleSurface = false;
   hasExactCallableChildSurface = false;
+  hasExactMixinChildSurface = false;
   directDeclarationsByName: Map<string, Declaration[]> | undefined;
   directDeclarationLookupCache: Map<string, {
     optionalMatch: Declaration | undefined;
@@ -602,6 +618,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this._hasReferenceImports = (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
         this.hasDirectChildRuleSurface = false;
         this.hasExactCallableChildSurface = false;
+        this.hasExactMixinChildSurface = false;
         this.directChildRuleEntries = undefined;
       }
       // Initialize fast maps so the hot-path can distinguish
@@ -683,6 +700,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.directChildRuleEntries = undefined;
     this.hasDirectChildRuleSurface = false;
     this.hasExactCallableChildSurface = false;
+    this.hasExactMixinChildSurface = false;
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
     this.registrylessLastMixinLookupKey = undefined;
@@ -767,14 +785,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return this._scopeFrame;
   }
 
-  private hasDirectLookupChildSurface(): boolean {
-    if (this._hasReferenceImports || this.hasExactCallableChildSurface) {
+  private hasDirectLookupChildSurface(includeRulesets = true): boolean {
+    if (this._hasReferenceImports) {
+      return true;
+    }
+    if (includeRulesets ? this.hasExactCallableChildSurface : this.hasExactMixinChildSurface) {
       return true;
     }
     const value = this.value;
     for (let i = this.rulesIndexed; i < value.length; i++) {
       const child = childCallableRulesOf(value[i]!);
-      if (child && rulesMayContainExactCallableSurface(child)) {
+      const childHasSurface = includeRulesets
+        ? child && rulesMayContainExactCallableSurface(child)
+        : child && rulesMayContainExactMixinSurface(child);
+      if (childHasSurface) {
         return true;
       }
     }
@@ -1140,6 +1164,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (rulesMayContainExactCallableSurface(child)) {
       this.hasExactCallableChildSurface = true;
     }
+    if (rulesMayContainExactMixinSurface(child)) {
+      this.hasExactMixinChildSurface = true;
+    }
     const visibility: RulesOptions['rulesVisibility'] = {
       ...child.options.rulesVisibility,
       ...rulesVisibility
@@ -1491,6 +1518,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         searchParents
       });
       if (prefixMatches.length === 0) {
+        if (options.terminalMixinOnly === true) {
+          return DEFINITE_MISS;
+        }
         const exactPathMatches = scope.findVisibleExactCallableRulesetPath(path, {
           hasTarget: options.hasTarget,
           local: options.local,
@@ -1685,7 +1715,27 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             return results;
           }
         }
-        if (frameHit.kind === 'uncovered') {
+        const currentFrameHasNoMixinChildSurface = frameHit.kind === 'uncovered'
+          && !includeRulesets
+          && isNode(callableFrame.rulesNode, N.Rules)
+          && !callableFrame.rulesNode.hasDirectLookupChildSurface(false);
+        if (
+          currentFrameHasNoMixinChildSurface
+          && (
+            options.searchParents === false
+            || (!callableFrame.parent && !callableFrame.fallbackFrame && this.parent === undefined)
+          )
+        ) {
+          const pathKeys = splitStaticCallablePathKey(keys);
+          if (pathKeys) {
+            const result = this.findMixin(pathKeys, filterType, options);
+            this.setRegistrylessMixinCacheResult(cacheKey, result);
+            return result;
+          }
+          this.setRegistrylessMixinCacheResult(cacheKey, undefined);
+          return undefined;
+        }
+        if (frameHit.kind === 'uncovered' && !currentFrameHasNoMixinChildSurface) {
           const direct = this.findMixinsFast(keys, {
             hasTarget: options.hasTarget,
             local: options.local,
@@ -1731,6 +1781,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 this.setRegistrylessMixinCacheResult(cacheKey, results);
                 return results;
               }
+            }
+            if (
+              retryHit.kind === 'uncovered'
+              && !includeRulesets
+              && isNode(retryFrame.rulesNode, N.Rules)
+              && !retryFrame.rulesNode.hasDirectLookupChildSurface(false)
+            ) {
+              retryFrame = retryFrame.parent;
+              if (!retryFrame && fallbackFrame) {
+                retryFrame = fallbackFrame;
+                fallbackFrame = fallbackFrame.fallbackFrame;
+              }
+              continue;
             }
             if (retryHit.kind === 'uncovered' && isNode(retryFrame.rulesNode, N.Rules)) {
               const direct = retryFrame.rulesNode.findMixinsFast(keys, {

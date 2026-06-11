@@ -2531,6 +2531,64 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: terminal mixin-only miss skips Rules.findMixinsFast for ruleset-only child surfaces', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.ruleset-only-child-missing') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          rules([
+            ruleset({
+              selector: el('.ruleset-only-child'),
+              rules: rules([decl({ name: 'color', value: any('green') })])
+            })
+          ])
+        ]);
+        root.getScopeFrame();
+
+        expect(root.findMixin('.ruleset-only-child-missing', 'Mixin', {
+          terminalMixinOnly: true
+        })).toBeUndefined();
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: terminal mixin-only child misses still climb to parent frames', () => {
+      const parentMixin = mixin({
+        name: any('.parent-terminal-mixin'),
+        params: list([any('color', { role: 'property' })]),
+        rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+      });
+      const childRules = rules([
+        ruleset({
+          selector: el('.ruleset-only-child'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        })
+      ]);
+      const root = rules([
+        parentMixin,
+        ruleset({
+          selector: el('.caller'),
+          rules: childRules
+        })
+      ]);
+      root.getScopeFrame();
+      childRules.getScopeFrame();
+
+      expect(childRules.findMixin('.parent-terminal-mixin', 'Mixin', {
+        terminalMixinOnly: true
+      })).toEqual([parentMixin]);
+    });
+
     it('callable lookup does not build a scope frame just to try the frame shortcut', () => {
       const mixinDef = mixin({
         name: any('.lazy-frame-mixin'),
@@ -3001,6 +3059,20 @@ describe('Mixin', () => {
           color: red;
         }
       `);
+    });
+
+    it('mixin-ruleset calls with args reject exact ruleset terminals after namespace resolution', () => {
+      const root = rules([
+        ruleset({
+          selector: compound([el('#theme'), el('.dark'), el('.button')]),
+          rules: rules([decl({ name: 'color', value: any('ruleset') })])
+        })
+      ]);
+
+      expect(root.findMixin(['#theme', '.dark', '.button'], undefined)).toHaveLength(1);
+      expect(root.findMixin(['#theme', '.dark', '.button'], undefined, {
+        terminalMixinOnly: true
+      })).toBeUndefined();
     });
 
     it('ScopeFrame live slots resolve param and @arguments via frame chain', async () => {

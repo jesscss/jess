@@ -763,22 +763,23 @@ deep-cut queue.
    Less-compat still presents a Less-shaped mock registry to Less plugins, but
    that bridge writes and reads `Rules` function bindings directly.
 
-6. [ ] Model remaining callable namespace/import/child-surface facts as
+6. [x] Model remaining callable namespace/import/child-surface facts as
    frame/handle facts.
-   Covered simple callable lookup is registryless, but namespace/import/guard
-   candidate collection still has direct-crawl bridge logic. Carry the facts
-   that decide whether a child surface can contain callable hits so exact names
-   and stable namespace paths can return hit/miss from binding state without
-   parent/child rediscovery.
+   Covered simple callable lookup is registryless, and child-surface facts now
+   distinguish exact callable surfaces from mixin-capable child surfaces.
+   Terminal mixin-only lookup no longer keeps the child-surface bridge alive for
+   ruleset-only child surfaces, and exact ruleset terminal scans are skipped
+   after namespace resolution when args require a mixin terminal.
 
    Completion gate:
-   - simple exact names do not crawl child surfaces unless the frame says a
-     child/import surface can contain callable hits
-   - terminal parameterized mixin-ruleset calls search only callable-compatible
-     terminal records after namespace resolution
-   - focused guard, import-reference, namespace, and stress fixtures pass
+   - Done: simple exact names do not crawl child surfaces unless the carried
+     frame/Rules fact says a child/import surface can contain callable hits.
+   - Done: terminal parameterized mixin-ruleset calls search only
+     callable-compatible terminal records after namespace resolution.
+   - Done: focused guard, import-reference, namespace, and stress-oriented
+     callable fixtures pass.
 
-7. [ ] Refresh the binding proposal after each bridge deletion.
+7. [x] Refresh the binding proposal after each bridge deletion.
    `BINDING-INDEX-PROPOSAL.md` is the contract for which fallback bridges are
    still tolerated. Every production bridge left behind must name its allowed
    scope and deletion condition there or in this handoff.
@@ -2797,3 +2798,34 @@ the gate passed.
   passed (`18` executed, `22` already-marked not-run cases); Less-compat plugin-manager/at-plugin integration
   tests passed (`17` tests); touched-file ESLint passed; `@jesscss/core` and
   `@jesscss/plugin-less-compat` builds passed.
+- Callable child-surface shape pass: accepted as direct lookup work reduction,
+  not as a speed claim. New traversal: `rulesMayContainExactMixinSurface(...)`
+  recursively scans child callable surfaces at the same registration/indexing
+  edge where `rulesMayContainExactCallableSurface(...)` already scanned for
+  broad callable capability. That fact is carried as
+  `Rules.hasExactMixinChildSurface`, so terminal mixin-only misses no longer
+  call `findMixinsFast(...)` when child surfaces contain only ruleset terminals.
+  Namespace terminal lookup also now skips `findVisibleExactCallableRulesetPath`
+  when `terminalMixinOnly` is true and no namespace prefix matched, because an
+  exact full-path ruleset cannot satisfy a parameterized mixin-ruleset call.
+  New node/materialization: no production node, wrapper Rules, copied node,
+  `.inherit(...)`, `.adopt(...)`, frozen state, source metadata, or parent
+  mutation was added. The production parent read only distinguishes a root
+  covered miss from a child-frame miss that must still climb parent/fallback
+  frames. Test-only node construction uses existing fixture builders (`rules`,
+  `ruleset`, `decl`, `any`) to prove the two miss shapes; the test-only spy
+  array and `try/finally` restore a monkey-patched method and do not enter
+  production lookup.
+  Render path: unchanged; the same source callables render/eval after lookup.
+  Helper/API surface: one private predicate and one boolean field were added;
+  no public API was added. Metadata mutations: the new boolean is reset with
+  existing derived lookup state and updated while registering child surfaces.
+  Evidence: focused `mixin`, `reference`, `import-style`, and
+  `extend-import-style` tests passed (`365` tests, `1` skipped), including
+  guard, import-reference, namespace, and recursive callable lookup coverage;
+  touched-file ESLint, `@jesscss/core` build, `git diff --check`, aggressive
+  cutting review, node-creation audit, and one-iteration
+  `tests-unit/mixins-guards/mixins-guards.less` hotpath sanity passed. Full
+  `measure:less:hotpath` completed as a correctness/sanity run only; several
+  fixtures were noisy or unstable, so no speed claim is made. Direct
+  `scope-lookup-stress.less` render still produced `8822` bytes.
