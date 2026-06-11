@@ -789,6 +789,27 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Legacy `MixinRegistry` shim deletion: accepted as compatibility-only lookup
+  scaffolding removal, not a speed claim. Files:
+  `packages/core/src/tree/util/registry-utils.ts`,
+  `packages/core/src/tree/__tests__/mixin.test.ts`,
+  `packages/core/src/tree/__tests__/reference.test.ts`,
+  `packages/core/src/tree/__tests__/import-style.test.ts`, and this handoff.
+  New traversal: none. New node/materialization: no production node or array
+  materialization added; the diff-added `TreeContext` constructor calls are
+  retained test setup exposed by removing the surrounding monkeypatch
+  `try/finally`, and the empty-array literal is the retained miss fixture for
+  empty mixin-array lookup. Render path: unchanged. Helper/API
+  surface: deleted the internal `MixinRegistry` export outright instead of
+  keeping a no-hit class solely so tests could monkeypatch
+  `MixinRegistry.prototype.find`; the touched tests now assert the lookup
+  behavior directly instead of preserving the old registry probe surface.
+  Metadata mutations: none. Routine error/control: no throw/catch/Error path
+  added. Evidence: package-scoped focused lookup-adjacent tests passed (`471`
+  passed, `9` skipped). The first broad root-run command also executed the
+  package project successfully but failed in the root project because those
+  files were loaded without test globals/matchers; the package-scoped rerun is
+  the relevant gate. No runtime speed claim without benchmark/profile proof.
 - Unreleased mixin registry surface deletion: accepted as deleting
   self-invented registry/callable API surface, not a speed claim. Files:
   `AGENTS.md`, `docs/future/core-architecture/HANDOFF.md`,
@@ -1201,18 +1222,15 @@ the gate passed.
 - Legacy `MixinRegistry` body deletion: accepted as dead recursive registry
   search/indexing removal, not a speed claim. File:
   `packages/core/src/tree/util/registry-utils.ts`. New traversal: none; this
-  deletes the old mixin registry selector indexing, recursive child/parent
+  deleted the old mixin registry selector indexing, recursive child/parent
   search, candidate filtering, subsequence matching, and compatibility helper
   loops. New node/materialization: none; no `Node`, copy, wrapper `Rules`,
   side map, output cache, or registry bucket population was added. Render path:
-  unchanged. Helper/API surface: the internal `MixinRegistry` symbol remains as
-  a cold no-hit shim so existing internal tests can still monkeypatch
-  `MixinRegistry.prototype.find` and prove production lookup does not call it;
-  the implementation no longer indexes queued mixin nodes or crawls rules. The
-  remaining widened key parameter is a compatibility type signature, not a
-  materialized runtime array. Metadata mutations: none. Routine
-  error/control: no new throw/catch/Error path. Evidence: focused eslint
-  passed; `@jesscss/core` build passed; focused
+  unchanged. Helper/API surface: this earlier pass left a cold no-hit
+  `MixinRegistry` shim for test monkeypatches; the current shim-deletion pass
+  removes that symbol instead of treating test patchability as API. Metadata
+  mutations: none. Routine error/control: no new throw/catch/Error path.
+  Evidence: focused eslint passed; `@jesscss/core` build passed; focused
   mixin/reference/import-style/rules/call tests passed (`466` tests, `9`
   skipped).
 - Rules-owned mixin registry storage cut: accepted as `Rules` instance
@@ -1224,10 +1242,9 @@ the gate passed.
   `Rules`; at that point `getRegistry('mixin')` remained as a cold request
   path, but the current unreleased surface-deletion pass removes it instead of
   preserving that compatibility shim. Metadata mutations: none. Routine
-  error/control: no new throw/catch/Error path. Remaining debt: the internal
-  legacy `MixinRegistry` class still exists for now, but production lookup does
-  not call its `find` path and `Rules` no longer owns a cached instance.
-  Evidence: focused eslint
+  error/control: no new throw/catch/Error path. Remaining debt: this pass left
+  the internal legacy `MixinRegistry` class behind; the current shim-deletion
+  pass removes that class outright. Evidence: focused eslint
   passed; focused mixin/reference/import-style/rules/call tests passed (`466`
   tests, `9` skipped); `@jesscss/core` build passed; `git diff --check`
   passed; `pnpm run verify:aggressive-cutting-review` passed.

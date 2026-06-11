@@ -1,10 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
-import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
 import type { Rules } from '../rules.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
-import type { Mixin } from '../mixin.js';
 import { Nil } from '../nil.js';
 import { Node } from '../node.js';
 import { JsFunction } from '../js-function.js';
@@ -372,27 +370,6 @@ export abstract class Registry<
       return candidates.size ? [...candidates] : undefined;
     }
     return candidates;
-  }
-}
-
-export class MixinRegistry extends Registry<
-  Mixin | Ruleset,
-  Array<{
-    value: Mixin | Ruleset;
-    match: string[];
-  }>
-> {
-  override indexPendingItems(): void {
-    this.pendingItems.clear();
-  }
-
-  override find(
-    _keys: string | Iterable<string>,
-    _filterType: 'Mixin' | 'Ruleset' | undefined = undefined,
-    _options?: FindOptions
-  ): (Mixin | Ruleset)[] | undefined {
-    this.indexPendingItems();
-    return undefined;
   }
 }
 

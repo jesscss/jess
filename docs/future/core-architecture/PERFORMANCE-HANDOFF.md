@@ -2221,15 +2221,19 @@ Follow-up array/namespace legacy branch deletion:
   baseline median `62.27ms`, candidate median `61.52ms`, mean ratio `-1.56%`,
   wins `71/100`, `t=-3.09`, preserving the recursive cache/stress signal.
 
-Follow-up one-segment array dispatch normalization:
+Follow-up mixin registry shim deletion:
 
-- `Rules.find('mixin', [], ...)` now returns a direct miss and
-  `Rules.find('mixin', [key], ...)` delegates to the already-covered
-  registryless string-key path instead of falling through to
-  `MixinRegistry.find(...)`;
-- focused tests prove both shapes skip `MixinRegistry.find(...)`. This is
-  dispatch parity cleanup, not a new speed claim;
-- focused default-path behavior, lint, and build passed:
+- the internal no-hit `MixinRegistry` class has been deleted outright; tests no
+  longer monkeypatch `MixinRegistry.prototype.find` just to preserve the old
+  registry probe surface;
+- direct behavior coverage remains for empty/one-segment array lookup,
+  namespace misses, compound-prefix precedence, terminal rulesets, imported
+  reference rulesets, and parameterized namespace hops. This is compatibility
+  scaffolding deletion, not a new speed claim;
+- focused package-scoped default-path behavior passed:
+  `pnpm --filter @jesscss/core exec vitest run src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/call.test.ts`
+  (`471` passed, `9` skipped);
+- the earlier one-segment array dispatch normalization had passed:
   `pnpm exec eslint packages/core/src/tree/rules.ts packages/core/src/tree/__tests__/mixin.test.ts`,
   `pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts --run`
   (`306` tests, `8` skipped), and `pnpm --filter @jesscss/core build`;

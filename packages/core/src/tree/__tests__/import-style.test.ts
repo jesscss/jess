@@ -36,7 +36,6 @@ import { getImportPlacementChildSegments, getImportPlacementReferenceMode, getIm
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { Context } from '../../context.js';
-import * as Registries from '../util/registry-utils.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { OutputWriter, getPrintOptions } from '../util/print.js';
@@ -2934,7 +2933,7 @@ describe('Style import', () => {
       `);
     });
 
-    it('import-reference: namespaced reference-imported ruleset array-path lookups skip MixinRegistry.find', async () => {
+    it('import-reference: namespaced reference-imported ruleset array-path lookups', async () => {
       const referencedPath = resolve(process.cwd(), 'simple-mixin-array-fast.jess');
       context.sourceTrees.set(referencedPath, rules([
         ruleset({
@@ -2945,44 +2944,29 @@ describe('Style import', () => {
         })
       ]));
 
-      const originalFind = Registries.MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (Array.isArray(key) && key[0] === '#Namespace') {
-          mixinRegistryHits.push(key.join(' '));
+      const node = rules([
+        ruleset({
+          selector: el('#Namespace'),
+          rules: rules([
+            style({ path: quoted(any('simple-mixin-array-fast.jess')) }, { type: 'import', importOptions: { reference: true } })
+          ])
+        }),
+        ruleset({
+          selector: el('#used-namespaced-mixin'),
+          rules: rules([
+            call({
+              name: ref({ key: ['#Namespace', '.mixin'] }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+
+      const css = await renderNodeToString(node, context, { context });
+      expect(css).toBeString(`
+        #used-namespaced-mixin {
+          was: included;
         }
-        return originalFind.apply(this, args);
-      };
-
-      try {
-        const node = rules([
-          ruleset({
-            selector: el('#Namespace'),
-            rules: rules([
-              style({ path: quoted(any('simple-mixin-array-fast.jess')) }, { type: 'import', importOptions: { reference: true } })
-            ])
-          }),
-          ruleset({
-            selector: el('#used-namespaced-mixin'),
-            rules: rules([
-              call({
-                name: ref({ key: ['#Namespace', '.mixin'] }, { type: 'mixin-ruleset' })
-              })
-            ])
-          })
-        ]);
-
-        const css = await renderNodeToString(node, context, { context });
-        expect(css).toBeString(`
-          #used-namespaced-mixin {
-            was: included;
-          }
-        `);
-        expect(mixinRegistryHits).toHaveLength(0);
-      } finally {
-        Registries.MixinRegistry.prototype.find = originalFind;
-      }
+      `);
     });
 
     it('import-reference-issues: repeated reference/multiple imports keep import-site-local parent chains', async () => {
