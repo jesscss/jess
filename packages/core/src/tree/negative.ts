@@ -27,6 +27,12 @@ export class Negative extends Node<Node> {
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
+    if (this.value instanceof Dimension && !this.isCompoundDimension(this.value)) {
+      const unit = this.value.value.unit ?? '';
+      const out = `-${`${round(this.value.value.number, 8)}`.toLowerCase()}${unit}`;
+      options.writer.add(out, this);
+      return out;
+    }
     const mark = options.writer.mark();
     this.writeSyntax(options);
     const w = options.writer;
@@ -79,13 +85,10 @@ export class Negative extends Node<Node> {
   private renderNegatedDimension(value: Dimension, options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const mark = w.mark();
     const unit = value.value.unit ?? '';
-    w.add(`${round(value.value.number * -1, 8)}`.toLowerCase(), value);
-    if (unit) {
-      w.add(unit);
-    }
-    return w.getSince(mark);
+    const out = `${round(value.value.number * -1, 8)}`.toLowerCase() + unit;
+    w.add(out, value);
+    return out;
   }
 
   override evalNode(context: Context): MaybePromise<Node> {

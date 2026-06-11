@@ -12,6 +12,16 @@ import {
   vardecl
 } from '../index.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 describe('Negative', () => {
   let context: Context;
@@ -32,6 +42,14 @@ describe('Negative', () => {
 
   it('renders negative syntax through toTrimmedString()', () => {
     expect(negative(num(10)).toTrimmedString()).toBe('-10');
+  });
+
+  it('returns simple dimension negative syntax without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(negative(dimension([10, 'px'])).toTrimmedString({ writer })).toBe('-10px');
+    expect(writer.toString()).toBe('-10px');
+    expect(writer.reads).toBe(0);
   });
 
   it('renders negative values through render(context)', async () => {
@@ -121,6 +139,14 @@ describe('Negative', () => {
     };
 
     expect(negativeNode.render(context)).toBe('-20');
+  });
+
+  it('renders scalar negative dimensions without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(negative(num(20)).render(context, { writer })).toBe('-20');
+    expect(writer.toString()).toBe('-20');
+    expect(writer.reads).toBe(0);
   });
 
   it('keeps compound dimension negatives on the public operation boundary', async () => {

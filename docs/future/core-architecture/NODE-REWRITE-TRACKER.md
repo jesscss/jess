@@ -220,7 +220,7 @@ Current hard leftovers after the broad hook sweep:
 | Log | `packages/core/src/tree/log.ts` | `Node` | complete | Empty source writer complete, redundant `toString(...)` override removed, and side-effect eval/render path is direct. |
 | Mixin | `packages/core/src/tree/mixin.ts` | `Node` | partial | Source syntax writer exists and name/params/guard use direct child writers; high priority remains for guard/default/body copy and callable candidate output. |
 | MixinCollection | `packages/core/src/tree/util/callable-collection.ts` | `Node` | queued | Audit whether this public node wrapper is still necessary. |
-| Negative | `packages/core/src/tree/negative.ts` | `Node` | direct child writer complete | Prefix syntax writes directly, calls child `writeSyntax(...)`, and cold private source-string wrapper is gone; unit/text classification remains. |
+| Negative | `packages/core/src/tree/negative.ts` | `Node` | partial scalar wrapper complete | Prefix syntax writes directly, simple dimension source/render output writes known scalar text with no writer readback, and arbitrary child syntax still calls child `writeSyntax(...)`. Unit/text classification remains. |
 | Nil | `packages/core/src/tree/nil.ts` | `Node` | writeSyntax hook complete | Empty writer complete; singleton/scalar allocation remains. |
 | Num | `packages/core/src/tree/number.ts` | `Dimension` | scalar serializer complete | Inherits `Dimension` scalar serialization; operation paths remain. |
 | Operation | `packages/core/src/tree/operation.ts` | `Node` | writeSyntax hook complete | Source operator syntax and operands write directly with no public `toString(...)`; arithmetic eval/calc fallback remains high priority. |
@@ -241,5 +241,5 @@ Current hard leftovers after the broad hook sweep:
 | SimpleSelector | `packages/core/src/tree/selector-simple.ts` | `Selector` | queued | Audit base class necessity and branches. |
 | StyleImport | `packages/core/src/tree/import-style.ts` | `Node` | queued | High priority: first-use placement copies and derived rules surfaces. |
 | Url | `packages/core/src/tree/url.ts` | `Node` | writeSyntax hook complete | URL wrapper and no-trivia child syntax write directly in source and context modes; render/context normalization still uses localized mark/replace and remains queued. |
-| VarDeclaration | `packages/core/src/tree/declaration-var.ts` | `Declaration` | local probe removed | Variable prefix syntax writes directly and no longer wraps `declTrimmedString(...)` in a local `mark/getSince` fallback probe. Declaration body path remains. |
+| VarDeclaration | `packages/core/src/tree/declaration-var.ts` | `Declaration` | partial scalar wrapper complete | Bare parameter vars with nil defaults write the known `$name` token with no writer readback. General variable prefix syntax writes directly, but declaration body path remains. |
 | While | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists and condition uses direct writer. Loop state/body surface and async branch audit remain. |

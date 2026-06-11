@@ -2713,3 +2713,35 @@ the gate passed.
   usable, `import-reference` `19.15ms` unstable, `mixins-guards` `16.60ms`
   usable, `extend-chaining` `5.02ms` usable, and `media` `5.09ms` usable. This
   is not a speed claim.
+- Negative/VarDeclaration scalar readback batch: accepted as a small
+  render/source scalar deletion pass. New traversal: none; no loop, recursion,
+  parent/source walk, side-map lookup, generator, object scan, or array helper
+  was added. `Negative.renderNegatedDimension(...)` now writes and returns the
+  known negated simple-dimension text directly instead of marking the writer
+  and reading back the just-written text. `Negative.toTrimmedString(...)` uses
+  the same direct scalar path for simple dimension source syntax, while
+  compound dimensions and arbitrary child nodes keep the existing child writer
+  boundary. Bare parameter `VarDeclaration` nodes with nil defaults now write
+  and return the known `$name` token directly; general declaration bodies keep
+  the existing declaration syntax boundary. New node/materialization: none in
+  runtime code; no `Node`, copy, `.inherit(...)`, `.adopt(...)`, wrapper
+  `Rules`, frozen/source/parent mutation, semantic placement state, side map,
+  helper array, or public materialized negative/declaration surface was added.
+  Test-only `CountingWriter` instances prove zero writer readback and are not
+  runtime allocation. Render path: improved for simple evaluated negative
+  dimensions by removing writer mark/readback; otherwise unchanged for
+  eval/value selection. No render path resolves into arrays or nodes just to
+  stringify. Helper/API surface: no new runtime helper, method, or public API
+  was added. Metadata mutations: none. Rejected cut: broader child-bearing
+  wrappers such as `Operation`, `Expression`, `Range`, and `Extend` still need
+  child syntax emission and should not be converted by rebuilding child strings
+  or adding generic serializer ladders. Evidence: starting leash at commit
+  `3c52fa77` was the literal wrapper run, so this pass is not
+  comparison-usable. Focused negative/var-declaration/render-buffer tests
+  passed (`38` tests), and sequential `pnpm --filter @jesscss/core build &&
+  pnpm run measure:less:hotpath -- --stable` passed with only the pre-existing
+  direct `eval` warning in `js-expr.ts`. Post-pass hotpath sanity at dirty head
+  `3c52fa77` was not comparison-usable: `functions` `13.20ms` usable,
+  `import-reference` `21.34ms` unstable, `mixins-guards` `16.26ms` unstable,
+  `extend-chaining` `5.09ms` noisy, and `media` `5.31ms` unstable. This is not
+  a speed claim.

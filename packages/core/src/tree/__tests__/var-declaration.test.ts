@@ -2,6 +2,16 @@ import { vardecl, coll, decl, any, rules, Node } from '../index.js';
 import { Context } from '../../context.js';
 import { nil } from '../index.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 let context: Context;
 
@@ -64,6 +74,20 @@ describe('Let', () => {
       });
 
       expect(rule.toTrimmedString()).toBe('$tone');
+    });
+
+    it('returns bare parameter var syntax without writer readback', () => {
+      const writer = new CountingWriter();
+      const rule = vardecl({
+        name: 'tone',
+        value: nil()
+      }, {
+        paramVar: true
+      });
+
+      expect(rule.toTrimmedString({ writer })).toBe('$tone');
+      expect(writer.toString()).toBe('$tone');
+      expect(writer.reads).toBe(0);
     });
 
     it('renders visible parameter vars through render(context)', () => {

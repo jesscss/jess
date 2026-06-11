@@ -62,6 +62,11 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
+    if (this._options?.paramVar && this.value.value instanceof Nil && this.value.name instanceof Any) {
+      const out = `$${this.value.name.value.replace(/\s+$/, '')}`;
+      options.writer.add(out, this);
+      return out;
+    }
     const mark = options.writer.mark();
     this.writeSyntax(options);
     const w = options.writer;
