@@ -3773,6 +3773,70 @@ describe('reference', () => {
       }
     });
 
+    it('reuses static property binding handles until the target rules version changes', async () => {
+      const originalFindProperty = RulesClass.prototype.findProperty;
+      let propertyLookups = 0;
+      RulesClass.prototype.findProperty = function(...args: Parameters<typeof originalFindProperty>) {
+        const [key] = args;
+        if (key === 'color') {
+          propertyLookups++;
+        }
+        return originalFindProperty.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          decl({ name: 'color', value: any('blue') })
+        ]);
+        setRulesContext(await node.eval(context));
+        const lookupRef = ref({ key: 'color' }, { type: 'property' });
+
+        expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        expect(propertyLookups).toBe(1);
+
+        expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        expect(propertyLookups).toBe(1);
+
+        node.push(decl({ name: 'unrelated', value: any('1') }));
+        expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        expect(propertyLookups).toBe(2);
+      } finally {
+        RulesClass.prototype.findProperty = originalFindProperty;
+      }
+    });
+
+    it('reuses static declaration binding handles until the target rules version changes', async () => {
+      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
+      let declarationLookups = 0;
+      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
+        const [key] = args;
+        if (key === 'color') {
+          declarationLookups++;
+        }
+        return originalFindDeclaration.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          decl({ name: 'color', value: any('blue') })
+        ]);
+        setRulesContext(await node.eval(context));
+        const lookupRef = ref({ key: 'color' }, { type: 'declaration' });
+
+        expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        expect(declarationLookups).toBe(1);
+
+        expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        expect(declarationLookups).toBe(1);
+
+        node.push(decl({ name: 'unrelated', value: any('1') }));
+        expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        expect(declarationLookups).toBe(2);
+      } finally {
+        RulesClass.prototype.findDeclaration = originalFindDeclaration;
+      }
+    });
+
     it('should resolve a mixin-ruleset call keyed by a complex selector while ignoring namespace separators', async () => {
       const node = rules([
         ruleset({

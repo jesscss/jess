@@ -668,9 +668,14 @@ deep-cut queue.
      for covered non-targeted, unfiltered string-key function lookups. A
      focused test proves the second eval skips `Rules.findFunction(...)`, and a
      later target `Rules.lookupVersion` change invalidates the handle.
-   - Remaining handle work: declaration/property terminal identity is not
-     production-wired yet, and callable namespace/import/child-surface facts
-     still need to move into frame/handle state.
+   - Static declaration/property references now reuse the same `Reference`
+     lookup handle for covered non-targeted, unfiltered string-key lookups. The
+     handle carries the contextual lookup shape (`start`, `local`, and
+     `ignoreParentScopeStart`) so source-order-sensitive references do not
+     reuse a result across a different lookup boundary.
+   - Remaining handle work: semantic filtered property merge-chain lookup,
+     complex declaration modes, and callable namespace/import/child-surface
+     facts still need to move into frame/handle state.
 
 2. [x] Collapse live-slot and static-declaration lookup into one slot/record
    path.
@@ -815,6 +820,28 @@ deep-cut queue.
    - Done: the cut widens the existing handle only for non-contextual function
      lookup; declaration/property handles remain queued until contextual-start
      facts are part of the handle key.
+
+5c. [x] Reuse binding handles for covered static declaration/property
+    references.
+   Covered static, non-targeted, unfiltered string-key `declaration` and
+   `property` references now use the existing `Reference` lookup handle. Unlike
+   callable/function handles, this handle records the contextual lookup shape:
+   `start`, `local`, and `ignoreParentScopeStart`. It still stores lookup
+   identity only; it does not cache evaluated values, rendered text,
+   declaration output, merge-chain output, or public materialized nodes.
+
+   Completion gate:
+   - Done: repeated static property `Reference` eval calls
+     `Rules.findProperty(...)` once, reuses the handle on the second eval, then
+     calls `findProperty(...)` again after the target `Rules.lookupVersion`
+     changes.
+   - Done: repeated static declaration `Reference` eval calls
+     `Rules.findDeclaration(...)` once, reuses the handle on the second eval,
+     then calls `findDeclaration(...)` again after the target
+     `Rules.lookupVersion` changes.
+   - Done: semantic filtered property merge-chain lookup remains excluded
+     through the existing `semanticFilter` guard; complex declaration modes
+     stay on the bridge ledger until modeled by frame occurrence slots.
 
 6. [x] Model remaining callable namespace/import/child-surface facts as
    frame/handle facts.
@@ -1034,6 +1061,52 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Static declaration/property reference handle pass: accepted as widening the
+  existing `Reference` lookup-handle identity path for already-covered
+  unfiltered declaration/property lookups, not as a speed claim. Files:
+  `packages/core/src/tree/reference.ts`,
+  `packages/core/src/tree/__tests__/reference.test.ts`,
+  `docs/future/core-architecture/HANDOFF.md`, and
+  `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`.
+  - New traversal: none. The pass reuses the existing handle read/write checks
+    and existing `buildReferenceLookupOptions(...)` logic to carry lookup
+    shape. It adds no parent/source walk, child crawl, sort, generator,
+    side-map lookup, or collection scan.
+  - New node/materialization: none in production. The added test nodes are
+    focused fixture setup only. No `Node`, wrapper `Rules`, declaration output,
+    merge-chain output, public materialization, copy, ownership inheritance,
+    adoption, or frozen/source metadata was added to runtime code.
+  - Render path: unchanged. The handle stores lookup result identity only;
+    existing finalization/render still owns value evaluation and output.
+  - Helper/API surface: one module-local helper,
+    `getRulesLookupHandleShape(...)`, was added so contextual declaration and
+    property handles reuse only when `start`, `local`, and
+    `ignoreParentScopeStart` match. No public API was added.
+  - Metadata mutations: none. No parent/source restoration, lazy context/options
+    creation beyond the existing lookup-options builder, generic defensive
+    read, or structural probe was added.
+  - Evidence: focused `reference.test.ts` passed (`123` tests), and broader
+    lookup-adjacent tests passed (`reference`, `declaration`, `call`,
+    `import-style`, `mixin`, and `scope-frame`: `528` passed, `1` skipped).
+    New tests prove repeated static property references call
+    `Rules.findProperty(...)` once, repeated static declaration references call
+    `Rules.findDeclaration(...)` once, and both rediscover after
+    `Rules.lookupVersion` changes. `pnpm run prototype:binding-handle-reuse`
+    passed; touched-file eslint passed; `pnpm run verify:aggressive-cutting-review`
+    passed with danger tokens prosecuted here; `pnpm run audit:node-creation`
+    passed; `git diff --check` passed; `pnpm --filter @jesscss/core build`
+    passed; direct stress render returned `8822`; `pnpm --filter jess build`
+    repaired the local package build edge for the benchmark; `pnpm run
+    measure:less:hotpath` passed as sanity only with usable medians for
+    `import-reference` `20.12ms`, `mixins-guards` `19.05ms`, and
+    `extend-chaining` `5.60ms`; `functions` and `media` were unstable.
+    Danger-token prosecution: the two added `try/finally` blocks are test-only
+    monkeypatch restoration, and `RulesLookupHandleShape` is a type-only lookup
+    identity shape plus one short-lived runtime object carrying existing
+    lookup-option facts, not a side registry or value cache.
+  - Verdict: keep. This removes repeated terminal binding rediscovery for
+    covered declaration/property reference handles without touching semantic
+    filtered merge-chain lookup or adding a registry-shaped side map.
 - Static function reference handle pass: accepted as widening the existing
   `Reference` lookup-handle identity path, not as a speed claim. Files:
   `packages/core/src/tree/reference.ts`,
