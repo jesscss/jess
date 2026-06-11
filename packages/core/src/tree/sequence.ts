@@ -170,7 +170,13 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return;
     }
 
-    value[0]!.toString(printOptions);
+    const first = value[0]!;
+    const firstSourceTrivia = printOptions.trivia ?? first.sourceRoot?._treeContext?.opts?.trivia;
+    if (firstSourceTrivia) {
+      first.toString(printOptions);
+    } else {
+      first.writeSyntax(printOptions);
+    }
 
     // Serialize subsequent nodes with normalized spacing
     for (let i = 1; i < length; i++) {
@@ -211,7 +217,12 @@ export class Sequence extends Node<Node[], SequenceOptions> {
           ? nextText => /^[A-Za-z0-9_-]/u.test(nextText)
           : undefined);
       }
-      node.toString(printOptions);
+      const nodeSourceTrivia = printOptions.trivia ?? node.sourceRoot?._treeContext?.opts?.trivia;
+      if (nodeSourceTrivia) {
+        node.toString(printOptions);
+      } else {
+        node.writeSyntax(printOptions);
+      }
     }
   }
 

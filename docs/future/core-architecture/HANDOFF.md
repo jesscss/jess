@@ -2496,3 +2496,32 @@ the gate passed.
   `import-reference` `22.17ms` unstable, `mixins-guards` `17.98ms` unstable,
   `extend-chaining` `5.33ms` unstable, and `media` `5.73ms` noisy. This is not
   a speed claim.
+- List/Sequence no-trivia child syntax pass: accepted as a guarded public
+  string transport deletion in the active `writeSyntax` lane. New traversal:
+  none; no loop, recursion, parent/source walk, side-map lookup, generator,
+  object scan, or array helper was added. Existing List/Sequence child loops
+  now call child `writeSyntax(...)` directly only when no active/source trivia
+  map exists; trivia-backed child boundaries keep the existing `toString(...)`
+  source serializer because authored comments/whitespace can live on the child
+  boundary. New node/materialization: none; no `Node`, copy, `.inherit(...)`,
+  `.adopt(...)`, wrapper `Rules`, frozen/source/parent mutation, semantic
+  placement state, side map, helper array, or public materialized list/sequence
+  surface was added. Render path: unchanged for evaluated output; no-trivia
+  List/Sequence source syntax no longer resolves through public string
+  transport at child boundaries. No render path resolves into arrays or nodes
+  just to stringify. Helper/API surface: no new helper, method, or public API
+  was added. Metadata mutations: none; the `sourceRoot?._treeContext?.opts?.trivia`
+  reads are a branch guard that preserves the existing trivia-backed source
+  serializer and do not mutate parent/source metadata. Focused tests assert
+  no-trivia list and sequence children record zero public `toString(...)` calls
+  while serializing through `writeSyntax(...)`, and existing trivia tests still
+  prove separator comments, multiline whitespace, and source adjacency are
+  preserved. Evidence:
+  starting leash at commit `2ee1479f` was the noisy Operation/Block run, so it
+  is not comparison-usable. Focused list/sequence/render-buffer tests passed
+  (`76` tests), and `pnpm --filter @jesscss/core build` passed with only the
+  pre-existing direct `eval` warning in `js-expr.ts`. Post-pass hotpath sanity
+  at dirty head `2ee1479f` was not comparison-usable: `functions` `14.43ms`
+  noisy, `import-reference` `21.01ms` unstable, `mixins-guards` `16.59ms`
+  unstable, `extend-chaining` `5.36ms` noisy, and `media` `5.54ms` usable.
+  This is not a speed claim.

@@ -26,9 +26,12 @@ function emitListItem<T extends Node>(
 ): void {
   const saved = options.suppressBoundaryTrivia;
   options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
-  try {
+  const sourceTrivia = options.trivia ?? item.sourceRoot?._treeContext?.opts?.trivia;
+  if (sourceTrivia) {
     item.toString(options);
-  } finally {
+    options.suppressBoundaryTrivia = saved;
+  } else {
+    item.writeSyntax(options);
     options.suppressBoundaryTrivia = saved;
   }
 }

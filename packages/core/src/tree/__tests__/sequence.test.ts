@@ -496,6 +496,20 @@ describe('Sequence', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('writes sequence items without public toString transport when trivia is inactive', () => {
+    const first = any('10');
+    const second = any('20');
+    const third = any('30');
+    let stringCalls = 0;
+    first.toString = second.toString = third.toString = () => {
+      stringCalls++;
+      return '';
+    };
+
+    expect(seq([first, second, third]).toTrimmedString()).toBe('10 20 30');
+    expect(stringCalls).toBe(0);
+  });
+
   it('does not inspect the emitted sequence text for each child boundary', () => {
     const writer = new CountingWriter();
     const rule = seq([

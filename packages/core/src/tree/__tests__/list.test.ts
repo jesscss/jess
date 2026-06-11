@@ -101,6 +101,19 @@ describe('List', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('writes list items without public toString transport when trivia is inactive', () => {
+    const first = any('screen');
+    const second = any('print');
+    let stringCalls = 0;
+    first.toString = second.toString = () => {
+      stringCalls++;
+      return '';
+    };
+
+    expect(list([first, second]).toTrimmedString()).toBe('screen, print');
+    expect(stringCalls).toBe(0);
+  });
+
   it('leaves plain separator whitespace to list syntax', () => {
     const first = new Any('10px', undefined, [0, 1, 1, 3, 1, 4]);
     const second = new Any('2', undefined, [7, 1, 8, 7, 1, 8]);
