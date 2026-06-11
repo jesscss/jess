@@ -2282,7 +2282,7 @@ describe('Mixin', () => {
       });
       const root = rules([mixinDef]);
 
-      expect(root.find('mixin', ['.array-mixin'], 'Mixin')).toEqual([mixinDef]);
+      expect(root.findMixin(['.array-mixin'], 'Mixin')).toEqual([mixinDef]);
     });
 
     it('registryless fast path: empty array lookup misses', () => {
@@ -2293,7 +2293,7 @@ describe('Mixin', () => {
         })
       ]);
 
-      expect(root.find('mixin', [], 'Mixin')).toBeUndefined();
+      expect(root.findMixin([], 'Mixin')).toBeUndefined();
     });
 
     it('ScopeFrame callable buckets: static Mixin hit skips Rules.findMixinsFast', async () => {
@@ -2331,7 +2331,7 @@ describe('Mixin', () => {
         context.root = root;
         root.getScopeFrame();
 
-        expect(root.find('mixin', '.frame-mixin', 'Mixin')).toEqual([mixinDef]);
+        expect(root.findMixin('.frame-mixin', 'Mixin')).toEqual([mixinDef]);
         expect(fastPathHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
@@ -2364,7 +2364,7 @@ describe('Mixin', () => {
       root.getScopeFrame();
       childRules.getScopeFrame();
 
-      expect(childRules.find('mixin', '.child-frame-hit', 'Mixin')).toEqual([mixinDef]);
+      expect(childRules.findMixin('.child-frame-hit', 'Mixin')).toEqual([mixinDef]);
       expect(root.callableLookupCache?.has('.child-frame-hit')).not.toBe(true);
     });
 
@@ -2390,7 +2390,7 @@ describe('Mixin', () => {
         const childFrame = childRules.getScopeFrame(parentRules.getScopeFrame());
         childFrame.fallbackFrame = fallbackRules.getScopeFrame();
 
-        expect(childRules.find('mixin', '.fallback-frame-hit', 'Mixin')).toEqual([fallbackMixin]);
+        expect(childRules.findMixin('.fallback-frame-hit', 'Mixin')).toEqual([fallbackMixin]);
         expect(fastPathHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
@@ -2428,7 +2428,7 @@ describe('Mixin', () => {
         context.root = root;
         root.getScopeFrame();
 
-        expect(root.find('mixin', '.frame-ruleset', undefined)).toEqual([frameRuleset]);
+        expect(root.findMixin('.frame-ruleset', undefined)).toEqual([frameRuleset]);
         expect(fastPathHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
@@ -2465,7 +2465,7 @@ describe('Mixin', () => {
         ]);
         root.getScopeFrame();
 
-        expect(root.find('mixin', '.frame-missing', 'Mixin')).toBeUndefined();
+        expect(root.findMixin('.frame-missing', 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
         expect(root.callableLookupCache?.has('.frame-missing')).not.toBe(true);
       } finally {
@@ -2497,7 +2497,7 @@ describe('Mixin', () => {
         ]);
         root.getScopeFrame();
 
-        expect(root.find('mixin', '.frame-child-missing', 'Mixin')).toBeUndefined();
+        expect(root.findMixin('.frame-child-missing', 'Mixin')).toBeUndefined();
         expect(fastPathHits.length).toBeGreaterThan(0);
         expect(skippedCurrentSurface).toBe(true);
       } finally {
@@ -2524,7 +2524,7 @@ describe('Mixin', () => {
         ]);
         root.getScopeFrame();
 
-        expect(root.find('mixin', '.frame-child-declaration-missing', 'Mixin')).toBeUndefined();
+        expect(root.findMixin('.frame-child-declaration-missing', 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
@@ -2539,7 +2539,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef]);
 
       expect(root._scopeFrame).toBeUndefined();
-      expect(root.find('mixin', '.lazy-frame-mixin', 'Mixin')).toEqual([mixinDef]);
+      expect(root.findMixin('.lazy-frame-mixin', 'Mixin')).toEqual([mixinDef]);
       expect(root._scopeFrame).toBeUndefined();
     });
 
@@ -2758,7 +2758,7 @@ describe('Mixin', () => {
         })
       ]);
 
-      const found = root.find('mixin', '.missing-mixin');
+      const found = root.findMixin('.missing-mixin');
       expect(found).toBeUndefined();
     });
 
@@ -2790,7 +2790,7 @@ describe('Mixin', () => {
         })
       ]);
 
-      const found = root.find('mixin', ['#theme', '.dark', '.navbar', '.colors'], undefined, {
+      const found = root.findMixin(['#theme', '.dark', '.navbar', '.colors'], undefined, {
         context
       });
       expect(found).toBeUndefined();
@@ -2831,7 +2831,7 @@ describe('Mixin', () => {
           ])
         })
       ]);
-      const found = root.find('mixin', ['#theme', '.dark', '.navbar', '.colors'], 'Mixin', {
+      const found = root.findMixin(['#theme', '.dark', '.navbar', '.colors'], 'Mixin', {
         context
       });
       expect(found).toHaveLength(1);
@@ -2865,7 +2865,7 @@ describe('Mixin', () => {
         })
       ]);
 
-      const found = root.find('mixin', ['#theme', '.dark', '.navbar', '.colors'], 'Mixin', {
+      const found = root.findMixin(['#theme', '.dark', '.navbar', '.colors'], 'Mixin', {
         context
       });
       expect(found).toBeUndefined();
@@ -2908,7 +2908,7 @@ describe('Mixin', () => {
 
       context.root = tree;
 
-      const found = tree.find('mixin', ['#guarded', '#deeper', '.mixin'], undefined, {
+      const found = tree.findMixin(['#guarded', '#deeper', '.mixin'], undefined, {
         context
       });
 

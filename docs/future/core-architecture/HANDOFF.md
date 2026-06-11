@@ -789,6 +789,25 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Generic mixin find wrapper deletion: accepted as deleting a stringly
+  compatibility lookup surface, not a speed claim. Files:
+  `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/__tests__/mixin.test.ts`,
+  `packages/core/src/tree/__tests__/reference.test.ts`,
+  `packages/core/src/tree/__tests__/import-style.test.ts`, and this handoff.
+  New traversal: none. New node/materialization: no production node or array
+  materialization added; the diff-added empty-array literal is the retained
+  existing miss fixture, now routed through `findMixin(...)` instead of the
+  deleted generic wrapper. Render path: unchanged. Helper/API surface: deleted
+  the `Rules.find('mixin', ...)` overload and switch arm; tests and helpers now
+  use the typed `Rules.findMixin(...)` entry directly. The remaining generic
+  `Rules.find` switch is limited to declaration/function lookup and no longer
+  presents a callable compatibility branch to preserve. Metadata mutations:
+  none. Routine error/control: removed the mixin branch and did not add
+  throw/catch/Error paths. Evidence: `rg` found no remaining `find('mixin',
+  ...)` runtime/test call sites under `packages` or `scripts`; package-scoped focused
+  lookup-adjacent tests passed (`471` passed, `9` skipped). No runtime speed
+  claim without benchmark/profile proof.
 - Legacy `MixinRegistry` shim deletion: accepted as compatibility-only lookup
   scaffolding removal, not a speed claim. Files:
   `packages/core/src/tree/util/registry-utils.ts`,

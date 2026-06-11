@@ -1883,32 +1883,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return this.getRegistry('function').find(keys, filterType, options);
   }
 
-  /**
-   * Compatibility wrapper for public callers. Production code should prefer the
-   * typed find* methods above so it does not route through a string type switch.
-   */
+  /** Cold string-dispatch wrapper for declaration/function lookups. */
   find(type: 'declaration', keys: string, filterType?: string, options?: Registries.DeclarationFindOptions): ReturnType<Registries.DeclarationRegistry['find']> | undefined;
-  find(type: 'mixin', keys: string | string[], filterType?: string, options?: Registries.FindOptions): MixinEntry[] | undefined;
   find(type: 'function', keys: string, filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.FunctionRegistry['find']> | undefined;
-  find(type: 'declaration' | 'mixin' | 'function', key: string, filterType: string, options?: Registries.FindOptions): ReturnType<Registries.DeclarationRegistry['find']> | MixinEntry[] | ReturnType<Registries.FunctionRegistry['find']> | undefined;
+  find(type: 'declaration' | 'function', key: string, filterType: string, options?: Registries.FindOptions): ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined;
   find(
-    type: 'declaration' | 'mixin' | 'function',
-    keys: string | string[],
+    type: 'declaration' | 'function',
+    keys: string,
     filterType?: string,
     options: Registries.FindOptions = {}
-  ): ReturnType<Registries.DeclarationRegistry['find']> | MixinEntry[] | ReturnType<Registries.FunctionRegistry['find']> | undefined {
+  ): ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined {
     switch (type) {
       case 'declaration':
-        if (typeof keys !== 'string') {
-          throw new TypeError('Declaration lookup keys must be a string');
-        }
         return this.findDeclaration(keys, filterType, options);
-      case 'mixin':
-        return this.findMixin(keys, filterType, options);
       case 'function':
-        if (typeof keys !== 'string') {
-          throw new TypeError('Function lookup keys must be a string');
-        }
         return this.findFunction(keys, filterType, options);
     }
   }

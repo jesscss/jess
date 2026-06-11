@@ -2237,6 +2237,16 @@ Follow-up mixin registry shim deletion:
   `pnpm exec eslint packages/core/src/tree/rules.ts packages/core/src/tree/__tests__/mixin.test.ts`,
   `pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts --run`
   (`306` tests, `8` skipped), and `pnpm --filter @jesscss/core build`;
+
+Follow-up generic mixin find wrapper deletion:
+
+- the stringly `Rules.find('mixin', ...)` overload and switch branch have been
+  deleted; remaining internal callers/tests use the typed `Rules.findMixin(...)`
+  path directly;
+- this is branch/API-surface deletion only, not a new speed claim. Focused
+  lookup-adjacent behavior passed:
+  `pnpm --filter @jesscss/core exec vitest run src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/call.test.ts`
+  (`471` passed, `9` skipped);
 - paired last-cache off/on sanity after the change stayed in the existing
   shape: `mixins-guards.less` with `--warmup 8 --pairs 60 --batch-size 5`
   reported baseline median `83.53ms`, candidate median `82.26ms`, mean ratio

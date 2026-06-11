@@ -3995,7 +3995,7 @@ describe('reference', () => {
       context.root = node;
       context.rulesContext = node;
 
-      const result = node.find('mixin', ['#theme', '.dark', '.navbar', '.colors'], undefined, {
+      const result = node.findMixin(['#theme', '.dark', '.navbar', '.colors'], undefined, {
         context
       });
 
@@ -4030,7 +4030,7 @@ describe('reference', () => {
       context.root = node;
       context.rulesContext = node;
 
-      const result = node.find('mixin', ['#theme', '.dark', '.missing', '.colors'], undefined, {
+      const result = node.findMixin(['#theme', '.dark', '.missing', '.colors'], undefined, {
         context
       });
 

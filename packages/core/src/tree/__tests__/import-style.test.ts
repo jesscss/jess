@@ -56,7 +56,7 @@ function getMixinWithContext(context: Context, n: Rules, key: string, opts: Find
   context.rulesContext = n;
   opts.context ??= context;
   opts.searchParents = true;
-  return n.find('mixin', key, 'Mixin', opts);
+  return n.findMixin(key, 'Mixin', opts);
 }
 
 describe('Style import', () => {
