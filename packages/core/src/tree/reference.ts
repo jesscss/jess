@@ -777,52 +777,6 @@ function prepareReferenceLookup(args: {
   };
 }
 
-function lookupRuntimeVarBinding(
-  targetRules: Rules,
-  key: string,
-  context: Context
-): RuntimeVarBinding | undefined {
-  const frame = targetRules.getScopeFrame();
-  const seen = new Set<ScopeFrame>();
-  const searchChain = (start: ScopeFrame | undefined): RuntimeVarBinding | undefined => {
-    let f = start;
-    while (f && !seen.has(f)) {
-      seen.add(f);
-      const live = f.liveSlotsByName.get(key);
-      if (live) {
-        const src = live.sourceNode as Node | undefined;
-        const value = getBindingCellValue(live);
-        if (!src || !context.searchScope.has(src)) {
-          return {
-            kind: 'runtime-var-binding',
-            value,
-            readonly: live.readonly,
-            sourceNode: src,
-            rulesContext: isNode(live.rulesContext, N.Rules) ? live.rulesContext : undefined
-          } satisfies RuntimeVarBinding;
-        }
-      }
-      f = f.parent;
-    }
-    return undefined;
-  };
-
-  const direct = searchChain(frame);
-  if (direct) {
-    return direct;
-  }
-
-  let fallback = frame.fallbackFrame;
-  while (fallback) {
-    const resolved = searchChain(fallback);
-    if (resolved) {
-      return resolved;
-    }
-    fallback = fallback.fallbackFrame;
-  }
-  return undefined;
-}
-
 function lookupScopeFrameVariableBinding(
   targetRules: Rules,
   key: string,
@@ -863,6 +817,28 @@ function lookupScopeFrameVariableBinding(
   } satisfies RuntimeVarBinding;
 }
 
+function lookupLiveScopeFrameVariableBinding(
+  targetRules: Rules,
+  key: string,
+  context: Context
+): RuntimeVarBinding | undefined {
+  const hit = lookupScopeFrameVariable(targetRules.getScopeFrame(), key, {
+    blockedSource: node => context.searchScope.has(node),
+    includeDeclarations: false
+  });
+  if (hit.kind !== 'live') {
+    return undefined;
+  }
+  const value = getBindingCellValue(hit.cell);
+  return {
+    kind: 'runtime-var-binding',
+    value,
+    readonly: hit.cell.readonly,
+    sourceNode: hit.sourceNode,
+    rulesContext: isNode(hit.cell.rulesContext, N.Rules) ? hit.cell.rulesContext : undefined
+  } satisfies RuntimeVarBinding;
+}
+
 function lookupIndexReference(
   targetRules: Rules,
   valueKey: NormalizedLookupKey,
@@ -873,7 +849,7 @@ function lookupIndexReference(
     return targetRules.at(valueKey);
   }
   if (!isNode(env.keyNode, N.Quoted)) {
-    const live = lookupRuntimeVarBinding(targetRules, getLookupKeyString(valueKey), env.context);
+    const live = lookupLiveScopeFrameVariableBinding(targetRules, getLookupKeyString(valueKey), env.context);
     if (live) {
       return live;
     }
@@ -907,7 +883,7 @@ function lookupVariableReference(
     }
   }
   if (env.readMode !== 'snapshot') {
-    const live = lookupRuntimeVarBinding(targetRules, keyStr, env.context);
+    const live = lookupLiveScopeFrameVariableBinding(targetRules, keyStr, env.context);
     if (live) {
       return live;
     }

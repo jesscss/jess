@@ -614,10 +614,15 @@ mixin params, `@arguments`, loop vars, or direct loop mutation cells are
 created. `$!` and other source-order reads still use
 `declarationBucketsByName` because they need ordered declaration history.
 
+Production follow-up: `lookupRuntimeVarBinding(...)` has been deleted.
+Target/interpolated variable fallback and unquoted index fallback now use the
+same `lookupScopeFrameVariable(...)` facade with `includeDeclarations: false`
+when they need live-only cells.
+
 Remaining deletion condition: `liveSlotsByName` can stop being a lookup-facing
-surface once the remaining live-only bridge paths, especially
-`lookupRuntimeVarBinding(...)`, are either modeled through
-`currentBindingsByName` or explicitly isolated as cold unmodeled cases.
+surface once direct declaration/property bridge code also reads live
+declaration-shaped cells through the binding facade or is deleted with the
+registry bridge.
 
 ### Current `DeclarationRegistry`
 
@@ -655,7 +660,7 @@ fallback must appear here or in `HANDOFF.md` before it is accepted.
 
 | Bridge | Allowed Scope | Deletion Condition |
 | --- | --- | --- |
-| `Reference.lookupVariableReference(...)` facade miss to `lookupRuntimeVarBinding(...)` / `findVarDeclarationFast(...)` | explicit targets, interpolated keys, index/property shapes, still-dynamic names, and other cases not yet represented by binding handles/slots | delete per covered mode once live/current records and static declaration records share one slot path and tests prove hits/misses do not enter the helper ladder |
+| `Reference.lookupVariableReference(...)` facade miss to `findVarDeclarationFast(...)` | explicit targets, interpolated keys, still-dynamic names, and other declaration modes not yet represented by binding handles/slots | delete per covered mode once static declaration records cover the mode and tests prove hits/misses do not enter the helper ladder |
 | `Rules.find('declaration', ...)` / `DeclarationRegistry` | declaration/property modes, dynamic names, import/reference visibility, complex source-order modes not yet encoded in frame lookup | delete per mode as soon as frame lookup encodes that mode and tests prove covered hits/misses do not enter registry search |
 | `Rules.find('function', ...)` / `FunctionRegistry` | function lookup modes not yet encoded as callable/binding records | delete simple static function fallback once function records cover exact static keys and focused tests prove hits/misses do not enter `FunctionRegistry.find(...)` |
 | Callable direct-crawl bridge after registryless mixin deletion | callable namespace, guard/candidate matching, import visibility, and child-surface facts not yet encoded in frame/handle state | delete per modeled path once binding state can return callable hit/miss or explicit `UNCOVERED`; do not restore `MixinRegistry` or stringly `Rules.find('mixin', ...)` |

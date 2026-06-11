@@ -692,17 +692,24 @@ deep-cut queue.
    - Done: benchmark/profile leash is recorded as status only; no speed claim
      is made for this pass.
 
-3. [ ] Delete or narrow `lookupRuntimeVarBinding(...)`.
-   The helper still walks live slots and fallback frames after a frame-facade
-   miss for index/target/interpolated/uncovered variable shapes. Keep it only
-   for explicitly unmodeled cold cases, or delete it when those cases are
-   represented by binding handles/slots.
+3. [x] Delete or narrow `lookupRuntimeVarBinding(...)`.
+   Deleted. The bespoke live-slot/fallback walker is gone from
+   `Reference`; target/interpolated/index shapes that still need a live-only
+   fallback now call the same `lookupScopeFrameVariable(...)` facade with
+   `includeDeclarations: false`, so live cells are read through
+   `ScopeFrame.currentBindingsByName` instead of a separate
+   `liveSlotsByName` chain crawl.
 
    Completion gate:
-   - every remaining call site names its unmodeled scope and deletion condition
-   - covered static variable/index/property modes do not enter the helper
-   - fallback-frame behavior remains proven by mixin/default-param/detached
-     ruleset tests
+   - Done: no `lookupRuntimeVarBinding(...)` call sites remain. The remaining
+     live-only facade adapter is limited to non-snapshot target/interpolated
+     variable fallback and unquoted index fallback before declaration/property
+     lookup.
+   - Done: covered static variable reads still return through
+     `lookupScopeFrameVariableBinding(...)`; live-only fallback is reached only
+     after the covered facade path declines the shape.
+   - Done: fallback-frame behavior remains covered by focused
+     mixin/default-param/detached-ruleset/import tests.
 
 4. [ ] Replace declaration/property registry bridges by mode.
    `Rules.findDeclaration(...)` still uses `DeclarationRegistry` by default,
@@ -2671,3 +2678,21 @@ the gate passed.
   bucket `BindingEntry` for static current reads; live current entries are
   allocated when live cells are created. Performance remains leashed/status
   only until a measured before/after pass is run.
+- Runtime live-binding bridge deletion: accepted as a direct lookup-walker
+  deletion, not as a speed claim. New traversal: none; this pass deletes the
+  bespoke `lookupRuntimeVarBinding(...)` `Set<ScopeFrame>`, nested
+  `searchChain(...)` closure, direct frame loop, fallback-frame loop, and
+  `liveSlotsByName.get(...)` lookup. The remaining live-only fallback delegates
+  to existing `lookupScopeFrameVariable(...)` with `includeDeclarations: false`,
+  so target/interpolated/index live cells use the same current-binding facade
+  as ordinary reads. New node/materialization: none; no `Node`, copied node,
+  wrapper `Rules`, `.inherit(...)`, `.adopt(...)`, frozen state, source
+  metadata, or parent mutation was added. Render path: unchanged; the returned
+  `RuntimeVarBinding` still feeds the same direct value eval/render path.
+  Helper/API surface: one smaller module-local adapter,
+  `lookupLiveScopeFrameVariableBinding(...)`, replaces the deleted frame walker
+  because the surrounding lookup path still consumes `RuntimeVarBinding`
+  records. Metadata mutations: none. Evidence: focused `scope-frame`,
+  `reference`, `mixin`, `control`, and `import-style` tests passed (`433`
+  tests, `1` skipped). Performance remains leashed/status only until a measured
+  before/after pass is run.
