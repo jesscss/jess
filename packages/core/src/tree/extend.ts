@@ -75,26 +75,23 @@ export class Extend extends Node<ExtendValue> {
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     let { target, selector, flag, namespace } = this.value;
-    const emitTrimmed = (node: Selector) => {
-      const saved = options.suppressBoundaryTrivia;
-      options.suppressBoundaryTrivia = 'pre';
-      try {
-        node.toString(options);
-      } finally {
-        options.suppressBoundaryTrivia = saved;
-      }
-    };
     w.add('$extend');
     if (selector) {
       w.add(' ');
-      emitTrimmed(selector);
+      const saved = options.suppressBoundaryTrivia;
+      options.suppressBoundaryTrivia = 'pre';
+      selector.writeSyntax(options);
+      options.suppressBoundaryTrivia = saved;
       w.add(' ->');
     }
     w.add(' ');
     if (namespace) {
       w.add(`${namespace}|`);
     }
-    emitTrimmed(target);
+    const saved = options.suppressBoundaryTrivia;
+    options.suppressBoundaryTrivia = 'pre';
+    target.writeSyntax(options);
+    options.suppressBoundaryTrivia = saved;
     if (flag === ExtendFlag.Exact) {
       w.add(' !exact');
     }

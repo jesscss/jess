@@ -41,17 +41,10 @@ export class Range extends Node<RangeValue, RangeOptions> {
     const includeStart = this._options?.includeStart !== false;
     const includeEnd = this._options?.includeEnd !== false;
 
-    const emitTrimmed = (n: Node) => {
-      const saved = options.suppressBoundaryTrivia;
-      options.suppressBoundaryTrivia = 'pre';
-      try {
-        n.toString(options);
-      } finally {
-        options.suppressBoundaryTrivia = saved;
-      }
-    };
-
-    emitTrimmed(start);
+    const saved = options.suppressBoundaryTrivia;
+    options.suppressBoundaryTrivia = 'pre';
+    start.writeSyntax(options);
+    options.suppressBoundaryTrivia = saved;
     if (!includeStart) {
       w.add('>');
     }
@@ -59,10 +52,14 @@ export class Range extends Node<RangeValue, RangeOptions> {
     if (!includeEnd) {
       w.add('<');
     }
-    emitTrimmed(end);
+    options.suppressBoundaryTrivia = 'pre';
+    end.writeSyntax(options);
+    options.suppressBoundaryTrivia = saved;
     if (step) {
       w.add(' step ');
-      emitTrimmed(step);
+      options.suppressBoundaryTrivia = 'pre';
+      step.writeSyntax(options);
+      options.suppressBoundaryTrivia = saved;
     }
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { num, range } from '../index.js';
+import { any, num, range } from '../index.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -53,6 +53,20 @@ describe('Range', () => {
       step: num(2)
     }).toTrimmedString({ writer })).toBe('1 to 3 step 2');
     expect(writer.captures).toBe(0);
+  });
+
+  it('writes range bounds without public toString transport', () => {
+    const start = any('1');
+    const end = any('3');
+    const step = any('2');
+    let stringCalls = 0;
+    start.toString = end.toString = step.toString = () => {
+      stringCalls++;
+      return '';
+    };
+
+    expect(range({ start, end, step }).toTrimmedString()).toBe('1 to 3 step 2');
+    expect(stringCalls).toBe(0);
   });
 
   it('renders range values through render(context) without public resolve', () => {

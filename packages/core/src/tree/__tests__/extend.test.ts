@@ -65,6 +65,24 @@ describe('Extend render', () => {
     expect(extend({ target: el('.base') })).toBeInstanceOf(Extend);
   });
 
+  it('writes extend selectors without public toString transport', () => {
+    const selector = el('.source');
+    const target = el('.base');
+    let stringCalls = 0;
+    selector.toString = target.toString = () => {
+      stringCalls++;
+      return '';
+    };
+
+    expect(extend({
+      selector,
+      target,
+      namespace: 'ns',
+      flag: ExtendFlag.Exact
+    }).toTrimmedString()).toBe('$extend .source -> ns|.base !exact;');
+    expect(stringCalls).toBe(0);
+  });
+
   it.each([
     ['all', ExtendFlag.All],
     ['exact', ExtendFlag.Exact]

@@ -2411,3 +2411,30 @@ the gate passed.
   `import-reference` `23.27ms` noisy, `mixins-guards` `17.68ms` noisy,
   `extend-chaining` `5.31ms` noisy, and `media` `6.37ms` noisy with large
   outliers. This is not a speed claim.
+- Range/Extend child syntax pass: accepted as a local public string-wrapper
+  deletion in the active `writeSyntax` lane. New traversal: none; no loop,
+  recursion, parent/source walk, side-map lookup, generator, object scan, or
+  array helper was added. Existing child emission sites in `Range.writeSyntax`
+  and `Extend.writeSyntax` now call child `writeSyntax(...)` directly instead
+  of local `emitTrimmed(...)` closures that routed through public
+  `toString(...)`. New node/materialization: none; no `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, semantic placement state, side map, helper array, or public
+  materialized range/extend surface was added. Render path: unchanged for
+  evaluated output; source syntax no longer resolves through public string
+  transport at those child boundaries. No render path resolves into arrays or
+  nodes just to stringify. Helper/API surface: no new helper, method, or public
+  API was added; two local closures and their `try/finally` scaffolding were
+  deleted and replaced with straight set/write/restore statements rather than
+  moving the call cost into another helper.
+  Metadata mutations: none; focused tests assert range bounds and extend
+  selectors record zero public `toString(...)` calls while serializing through
+  `writeSyntax(...)`. Evidence: starting leash at commit `84459379` was the
+  noisy Quoted run, so it is not comparison-usable. Focused
+  range/extend/render-buffer tests passed (`38` tests), and
+  `pnpm --filter @jesscss/core build` passed with only the pre-existing direct
+  `eval` warning in `js-expr.ts`. Post-pass hotpath sanity at dirty head
+  `84459379` was not comparison-usable: `functions` `13.22ms` unstable,
+  `import-reference` `20.86ms` unstable, `mixins-guards` `17.11ms` unstable,
+  `extend-chaining` `7.06ms` noisy, and `media` `5.71ms` usable. This is not
+  a speed claim.
