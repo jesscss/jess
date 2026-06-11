@@ -3,6 +3,16 @@ import { Color, ColorFormat, Dimension, Num } from '../index.js';
 import { Call, List } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 describe('Color Node', () => {
   describe('Constructor and Basic Properties', () => {
@@ -231,6 +241,19 @@ describe('Color Node', () => {
       });
 
       expect(color.toTrimmedString()).toBe('rgb(255, 0, 0)');
+    });
+
+    it('returns scalar color syntax without writer readback', () => {
+      const writer = new CountingWriter();
+      const color = new Color({
+        format: ColorFormat.RGB,
+        rgb: [255, 0, 0],
+        alpha: 1
+      });
+
+      expect(color.toTrimmedString({ writer })).toBe('rgb(255, 0, 0)');
+      expect(writer.toString()).toBe('rgb(255, 0, 0)');
+      expect(writer.reads).toBe(0);
     });
 
     it('should serialize RGB colors with default alpha correctly', () => {

@@ -2650,3 +2650,32 @@ the gate passed.
   `import-reference` `20.78ms` unstable, `mixins-guards` `17.37ms` unstable,
   `extend-chaining` `5.26ms` noisy, and `media` `5.83ms` usable. This is not a
   speed claim.
+- Color scalar serializer pass: accepted as scalar/string-backed public wrapper
+  readback deletion with preserved-node colors kept explicit. New traversal:
+  none; no loop, recursion, parent/source walk, side-map lookup, generator,
+  object scan, or array helper was added. Existing RGB/HSL formatting and hex
+  serialization logic moved behind one node-local scalar serializer used by
+  `Color.writeSyntax(...)` and scalar `Color.toTrimmedString(...)`; the
+  preserved child-node branch still writes the child directly and only uses
+  writer readback for the public string return boundary. New
+  node/materialization: none in runtime code; no `Node`, copy, `.inherit(...)`,
+  `.adopt(...)`, wrapper `Rules`, frozen/source/parent mutation, semantic
+  placement state, side map, helper array, or public materialized color surface
+  was added. The test-only `CountingWriter` instance and `Color` fixture prove
+  zero writer readback for scalar colors and are not runtime allocation.
+  Render path:
+  unchanged for eval/value selection; scalar color render writes the same
+  formatted text and preserved node-backed render still delegates to the child
+  writer. No render path resolves into arrays or nodes just to stringify.
+  Helper/API surface: one private node-local `serializeScalarSyntax(...)`
+  method was added and is accepted because it replaces duplicate writer
+  write/readback plumbing without adding a public API. Metadata mutations:
+  none. Evidence: starting leash at commit `455d3045` was the Dimension run, so
+  this pass is not comparison-usable. Focused color/dimension/render-buffer
+  tests passed (`104` tests), and sequential `pnpm --filter @jesscss/core
+  build && pnpm run measure:less:hotpath -- --stable` passed with only the
+  pre-existing direct `eval` warning in `js-expr.ts`. Post-pass hotpath sanity
+  at dirty head `455d3045` was not comparison-usable: `functions` `13.32ms`
+  unstable, `import-reference` `22.33ms` unstable, `mixins-guards` `18.12ms`
+  unstable, `extend-chaining` `5.33ms` noisy, and `media` `5.75ms` noisy. This
+  is not a speed claim.

@@ -64,8 +64,9 @@ first measured offenders after the selector pass.
 - [x] `Dimension` / `Num`: numeric/unit emission uses one scalar serializer
   shared by `writeSyntax(...)` and public string output; audit regex/unit
   formatting and operation paths.
-- [x] `Color`: move color emission to `writeSyntax`; isolate formatting and
-  keyword/node value branches.
+- [x] `Color`: scalar/string-backed color emission uses one serializer for
+  `writeSyntax(...)` and public string output; preserved node-backed color
+  branch stays explicit.
 - [x] `PseudoSelector`: direct writer hook, child writer, and inline selector
   list argument writer exist; generated selector-list normalization no longer
   captures/restores a temporary argument string.
@@ -190,7 +191,7 @@ Current hard leftovers after the broad hook sweep:
 | Bool | `packages/core/src/tree/bool.ts` | `Node` | scalar wrapper complete | Scalar writer complete; public `toTrimmedString(...)` writes the known token directly with no writer readback. |
 | Call | `packages/core/src/tree/call.ts` | `Node` | partial | Source syntax writer exists and public call source stringification uses child `writeSyntax(...)`; high priority remains for callable output, evaluated arg/content capture, async path, helper ladders, and repeated eval. |
 | Collection | `packages/core/src/tree/collection.ts` | `Rules` | direct braced writer complete | Live wrapper; `writeSyntax(...)` writes braced rules directly and public `toTrimmedString(...)` is the cold capture boundary. Broader wrapper necessity remains separate. |
-| Color | `packages/core/src/tree/color.ts` | `Node` | writeSyntax hook complete | Color emission and preserved node-backed color syntax write directly; hex serialization uses a straight loop instead of callback-array joining; broader conversion internals remain. |
+| Color | `packages/core/src/tree/color.ts` | `Node` | scalar serializer complete | Scalar/string-backed color emission uses one serializer for `writeSyntax(...)` and public string output with no writer readback; preserved node-backed color syntax still writes the child directly; hex serialization uses a straight loop instead of callback-array joining; broader conversion internals remain. |
 | Combinator | `packages/core/src/tree/combinator.ts` | `Selector` | scalar wrapper complete | Scalar selector writer avoids selector base punt, and public `toTrimmedString(...)` writes the known token directly with no writer readback. |
 | Comment | `packages/core/src/tree/comment.ts` | `Node` | writeSyntax hook complete | Comment text writes directly; visibility/render behavior remains the inherited direct scalar path. |
 | ComplexSelector | `packages/core/src/tree/selector-complex.ts` | `Selector` | writeSyntax complete | Selector component emission uses direct `writeSyntax` with the dead non-selector fallback branch removed, and cold private source-string wrapper is gone; broader valueOf, malformed repair, and metadata audit remains. |
