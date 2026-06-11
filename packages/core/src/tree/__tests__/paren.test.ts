@@ -207,6 +207,18 @@ describe('Paren', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('writes paren source children without public toString transport', () => {
+    const value = any('foo');
+    let toStringCalls = 0;
+    value.toString = () => {
+      toStringCalls++;
+      return '';
+    };
+
+    expect(paren(value).toTrimmedString()).toBe('(foo)');
+    expect(toStringCalls).toBe(0);
+  });
+
   it('resolves paren values without touching render state', async () => {
     const node = rules([
       vardecl({

@@ -2339,3 +2339,28 @@ the gate passed.
   `import-reference` `20.46ms` usable, `mixins-guards` `16.94ms` usable,
   `extend-chaining` `5.21ms` usable, and `media` `5.73ms` usable. This is not
   a speed claim.
+- Paren child syntax pass: accepted as a public string-API hop deletion in the
+  active `writeSyntax` lane. New traversal: none; no loop, recursion,
+  parent/source walk, side-map lookup, generator, object scan, or array helper
+  was added. The existing paren child emission path now calls child
+  `writeSyntax(...)` directly instead of public `toString(...)`. New
+  node/materialization: none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, frozen/source/parent mutation, semantic placement state,
+  side map, helper array, or public materialized paren surface was added.
+  Render path: unchanged for evaluated output; source syntax for paren children
+  no longer routes through public string transport. No render path resolves into
+  arrays or nodes just to stringify. Helper/API surface: no new helper, method,
+  or public API was added. Metadata mutations: none; focused tests assert paren
+  source children record zero `toString(...)` calls while serializing through
+  `writeSyntax(...)`. Evidence: starting leash at commit `6e3579f7` reported
+  `functions` `13.16ms` usable, `import-reference` `20.46ms` usable,
+  `mixins-guards` `16.94ms` usable, `extend-chaining` `5.21ms` usable, and
+  `media` `5.73ms` usable. Focused paren/render-buffer tests passed (`37`
+  tests), and `pnpm --filter @jesscss/core build` passed with only the
+  pre-existing direct `eval` warning in `js-expr.ts`. The first hotpath sanity
+  retry failed before measuring with the same stale `jess` package build/import
+  state; rebuilding the actual `jess` package fixed the runner. Post-pass
+  hotpath sanity at dirty head `6e3579f7` was not comparison-usable:
+  `functions` `13.09ms` unstable, `import-reference` `22.44ms` noisy,
+  `mixins-guards` `18.27ms` noisy, `extend-chaining` `6.17ms` noisy, and
+  `media` `6.15ms` noisy with large outliers. This is not a speed claim.

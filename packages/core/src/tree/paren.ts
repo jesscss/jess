@@ -48,7 +48,7 @@ function emitParenValue(value: Node, options: ReturnType<typeof getPrintOptions>
   const saved = options.suppressBoundaryTrivia;
   options.suppressBoundaryTrivia = 'pre';
   try {
-    value.toString(options);
+    value.writeSyntax(options);
   } finally {
     options.suppressBoundaryTrivia = saved;
   }
