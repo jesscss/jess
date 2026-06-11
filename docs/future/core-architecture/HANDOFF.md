@@ -749,12 +749,28 @@ deep-cut queue.
      tests pass because semantic filtered merge-chain lookups decline the
      direct path instead of duplicating merge-chain inputs.
 
-4b. [ ] Model filtered declaration/property merge-chain lookups.
-   Assignment-normalization filters (`+:`, `&,:`, `&_:`) still need direct
-   merge-anchor/source-order facts before they can leave `DeclarationRegistry`.
-   The prior full direct attempt duplicated already-coalesced merge-chain
-   inputs, so this cut must model merge anchors rather than routing filtered
-   lookups through ordinary last-wins declaration search.
+4b. [x] Model filtered declaration/property merge-chain lookups.
+   Assignment-normalization filters (`+:`, `+,:`, `+_:`) still need
+   pre-normalization declaration occurrence/source-order facts before they can
+   leave `DeclarationRegistry`. This pass explicitly keeps semantic filtered
+   property lookups on the uncovered path instead of forcing them through the
+   ordinary direct declaration bucket, because that bucket scans the current
+   `Rules.value` surface after assignment normalization/coalescing.
+
+   Completion gate:
+   - Done: a direct-registration bucket prototype was rejected. Populating
+     `directDeclarationsByName` from `register('declaration', ...)` polluted
+     evaluated/wrapper scopes where that map means "current value array has
+     been scanned"; forced direct semantic lookup then dropped/duplicated
+     merge-chain inputs and produced property reference misses.
+   - Done: focused declaration/reference tests pass with
+     `JESS_DIRECT_DECLARATION_LOOKUP=1`, proving the safe boundary remains:
+     unfiltered property lookup is direct, while semantic merge filters return
+     explicit `UNCOVERED`.
+   - Done: deletion condition recorded in `BINDING-INDEX-PROPOSAL.md`: filtered
+     property merges can leave `DeclarationRegistry` only after the binding
+     frame owns property declaration occurrence slots/merge-anchor facts, not
+     through another name-index side map.
 
 5. [x] Bring function lookup into the same binding model.
    Simple exact-name function lookup now uses `Rules.functionsByName` binding
@@ -998,6 +1014,31 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Filtered property merge-chain modeling pass: accepted as a documented
+  no-op/rejection boundary, not as a runtime speed claim. Files:
+  `docs/future/core-architecture/HANDOFF.md` and
+  `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`. New traversal:
+  none kept. A rejected prototype briefly populated `directDeclarationsByName`
+  during declaration registration, but it was removed because it conflated
+  registration-time declaration occurrence facts with the existing lazy
+  current-`Rules.value` scan cache and broke merge/property lookup semantics.
+  New node/materialization: none. Render path: unchanged. Helper/API surface:
+  none added. Metadata mutations: none. Routine error/control: no new
+  thrown/caught errors, sentinel paths, or expected-miss objects were added.
+  Evidence: forced direct declaration focused tests passed with
+  `JESS_DIRECT_DECLARATION_LOOKUP=1 pnpm --filter @jesscss/core test --
+  declaration.test.ts reference.test.ts` (`185` passed);
+  `pnpm run verify:aggressive-cutting-review` passed with no scoped-diff
+  danger tokens; `pnpm run audit:node-creation` passed; `git diff --check`
+  passed; `pnpm --filter @jesscss/core build` passed; direct stress render
+  returned `8822`; `pnpm run measure:less:hotpath` passed as sanity only with
+  usable medians for `functions` `14.73ms`, `import-reference` `20.04ms`,
+  `mixins-guards` `19.00ms`, and `extend-chaining` `5.73ms`; `media` was
+  unstable at `6.18ms`. Rejected broader cut: semantic filtered property merge
+  lookups cannot leave `DeclarationRegistry` until property declaration
+  occurrence/merge-anchor facts are represented in the binding frame; adding
+  another name-index side map would recreate the registry shape this lane is
+  deleting.
 - Production callable binding-handle pass: accepted as the first production
   slice of the brought-forward binding/index queue, not as completion of the
   whole handle system. Files: `packages/core/src/tree/reference.ts`,

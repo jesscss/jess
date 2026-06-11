@@ -632,9 +632,17 @@ complex search modes that the binding frame does not yet model.
 
 Production status: `VarDeclaration` lookup through
 `Rules.findDeclaration(..., 'VarDeclaration', ...)` and `Rules.findVariable(...)`
-uses direct declaration lookup by default. It falls back to
-`DeclarationRegistry` only when the direct path returns explicit `UNCOVERED`
-for unsupported option shapes.
+uses direct declaration lookup by default. Unfiltered `Declaration`/property
+lookup also uses the direct path by default for covered exact hits and misses.
+Both fall back to `DeclarationRegistry` only when the direct path returns
+explicit `UNCOVERED` for unsupported option shapes.
+
+Filtered property merge-chain lookup remains deliberately registry-owned.
+Assignment-normalization references need pre-normalization property occurrence
+slots and merge-anchor facts; reusing the current direct property bucket is
+wrong because it scans `Rules.value` after normalization/coalescing. The next
+valid deletion is property declaration occurrence slots in the binding frame,
+not a second registry-style name map beside `DeclarationRegistry`.
 
 Deletion condition: every time a complex declaration lookup mode is represented
 in `BindingFrame`, delete the corresponding registry fallback branch from
