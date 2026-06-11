@@ -45,6 +45,19 @@ describe('Operation', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('writes operation operands without public toString transport', () => {
+    const left = any('10');
+    const right = any('20');
+    let stringCalls = 0;
+    left.toString = right.toString = () => {
+      stringCalls++;
+      return '';
+    };
+
+    expect(op([left, '+', right]).toTrimmedString()).toBe('10 + 20');
+    expect(stringCalls).toBe(0);
+  });
+
   it('renders resolved operation values through render(context)', async () => {
     const node = rules([
       vardecl({

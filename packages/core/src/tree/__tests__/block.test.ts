@@ -57,6 +57,18 @@ describe('Block', () => {
     expect(node.toTrimmedString({ trivia })).toBe('{foo\n  }');
   });
 
+  it('writes block values without public toString transport when trivia is inactive', () => {
+    const value = any('foo');
+    let stringCalls = 0;
+    value.toString = () => {
+      stringCalls++;
+      return '';
+    };
+
+    expect(block(value).toTrimmedString()).toBe('{foo}');
+    expect(stringCalls).toBe(0);
+  });
+
   it('renders resolved block values through render(context)', async () => {
     const node = rules([
       vardecl({

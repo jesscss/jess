@@ -40,8 +40,12 @@ export class Block extends Node<Node, BlockOptions> {
     let start = type === 'square' ? '[' : '{';
     let end = type === 'square' ? ']' : '}';
     w.add(start);
-    value.toString(options);
     const trivia = options.trivia ?? this.sourceRoot?._treeContext?.opts?.trivia;
+    if (trivia) {
+      value.toString(options);
+    } else {
+      value.writeSyntax(options);
+    }
     if (trivia) {
       w.add(consumeTriviaText(trivia, this.location[3], 'before', options));
     }

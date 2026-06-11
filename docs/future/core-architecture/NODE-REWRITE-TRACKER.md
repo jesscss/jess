@@ -78,10 +78,11 @@ first measured offenders after the selector pass.
   children use `writeSyntax(...)` instead of public `toString(...)`, and static
   child probe traffic is cut; dynamic child render still has a localized
   writer-mark fallback until child render contracts are fully direct.
-- [x] `Operation`: direct operand/operator writer; render operands without
-  public string transport.
+- [x] `Operation`: direct operand/operator writer; source and render operands
+  avoid public string transport.
 - [x] `Paren`: direct wrapper writer, child syntax transport, and list path.
-- [x] `Block`: direct `{...}` writer and render path.
+- [x] `Block`: direct `{...}` writer and render path; no-trivia child syntax
+  avoids public string transport while source-trivia mode remains explicit.
 - [x] `Url`: direct `url(...)` writer and non-context child syntax transport;
   context-normalization mark/replace path remains queued.
 - [x] `Negative`: direct negative-prefix writer, child writer, and render path.
@@ -181,7 +182,7 @@ Current hard leftovers after the broad hook sweep:
 | AtRule | `packages/core/src/tree/at-rule.ts` | `Node` | queued | High priority: reduce custom eval/import/render branches. |
 | AttributeSelector | `packages/core/src/tree/selector-attr.ts` | `SimpleSelector` | direct child writer complete | Attribute parts write directly through child `writeSyntax(...)`; cold private source-string wrapper removed. Interpolation eval, valueOf construction, and render capture remain. |
 | BasicSelector | `packages/core/src/tree/selector-basic.ts` | `SimpleSelector` | writeSyntax complete | Direct source spelling emits authored `value`; kind checks use first-character tests, `valueOf()` remains normalized key text, and standalone eval now carries the existing selector-bit library from context. |
-| Block | `packages/core/src/tree/block.ts` | `Node` | writeSyntax hook complete | Bracket emission writes directly; render still captures for string/buffer return. |
+| Block | `packages/core/src/tree/block.ts` | `Node` | writeSyntax hook complete | Bracket emission writes directly; no-trivia child syntax avoids public `toString(...)`, while trivia mode keeps source serialization for authored inner comments/spacing. Render still captures for string/buffer return. |
 | Bool | `packages/core/src/tree/bool.ts` | `Node` | writeSyntax hook complete | Scalar writer complete. |
 | Call | `packages/core/src/tree/call.ts` | `Node` | partial | Source syntax writer exists and public call source stringification uses child `writeSyntax(...)`; high priority remains for callable output, evaluated arg/content capture, async path, helper ladders, and repeated eval. |
 | Collection | `packages/core/src/tree/collection.ts` | `Rules` | direct braced writer complete | Live wrapper; `writeSyntax(...)` writes braced rules directly and public `toTrimmedString(...)` is the cold capture boundary. Broader wrapper necessity remains separate. |
@@ -216,7 +217,7 @@ Current hard leftovers after the broad hook sweep:
 | Negative | `packages/core/src/tree/negative.ts` | `Node` | direct child writer complete | Prefix syntax writes directly, calls child `writeSyntax(...)`, and cold private source-string wrapper is gone; unit/text classification remains. |
 | Nil | `packages/core/src/tree/nil.ts` | `Node` | writeSyntax hook complete | Empty writer complete; singleton/scalar allocation remains. |
 | Num | `packages/core/src/tree/number.ts` | `Dimension` | writeSyntax hook complete | Inherits `Dimension.writeSyntax`; operation paths remain. |
-| Operation | `packages/core/src/tree/operation.ts` | `Node` | writeSyntax hook complete | Source operator syntax writes directly; arithmetic eval/calc fallback remains high priority. |
+| Operation | `packages/core/src/tree/operation.ts` | `Node` | writeSyntax hook complete | Source operator syntax and operands write directly with no public `toString(...)`; arithmetic eval/calc fallback remains high priority. |
 | Paren | `packages/core/src/tree/paren.ts` | `Node` | writeSyntax hook complete | Wrapper syntax and child source syntax write directly through `writeSyntax(...)`; guard/string conversion render audit remains. |
 | PseudoSelector | `packages/core/src/tree/selector-pseudo.ts` | `SimpleSelector` | writeSyntax complete | Direct writer hook and child arg writer exist, generated keyset omission is fixed, cold private source-string wrapper is gone, and selector-list args now write inline without capture/replace/restore. Eval arg materialization remains separate. |
 | QueryCondition | `packages/core/src/tree/query-condition.ts` | `Sequence` | partial | Source/static child syntax now uses `writeSyntax(...)` instead of public `toString(...)`, and static child render avoids writer-mark probes. Dynamic child render keeps one localized mark fallback because child render may write or return until downstream contracts are direct. |

@@ -2466,3 +2466,33 @@ the gate passed.
   comparison-usable: `functions` `10.43ms` usable, `import-reference`
   `17.31ms` noisy, `mixins-guards` `15.17ms` usable, `extend-chaining`
   `4.33ms` unstable, and `media` `5.35ms` noisy. This is not a speed claim.
+- Operation/Block child syntax pass: accepted as a source-child public string
+  transport deletion in the active `writeSyntax` lane, with a deliberate Block
+  trivia guard. New traversal: none; no loop, recursion, parent/source walk,
+  side-map lookup, generator, object scan, or array helper was added. Existing
+  operation operand emission now calls child `writeSyntax(...)` directly
+  instead of public `toString(...)`, and the right operand restore path no
+  longer uses `try/finally` scaffolding. `Block.writeBlockSyntax(...)` now uses
+  child `writeSyntax(...)` only when no trivia map is active; when source
+  trivia exists it keeps the old child `toString(...)` path because block
+  children may need authored inner comments/spacing before the closing
+  delimiter. New node/materialization: none; no `Node`, copy, `.inherit(...)`,
+  `.adopt(...)`, wrapper `Rules`, frozen/source/parent mutation, semantic
+  placement state, side map, helper array, or public materialized
+  operation/block surface was added. Render path: unchanged for evaluated
+  output; no-trivia operation/block source syntax no longer resolves through
+  public string transport at those child boundaries. No render path resolves
+  into arrays or nodes just to stringify. Helper/API surface: no new helper,
+  method, or public API was added. Metadata mutations: none; focused tests
+  assert operation operands and no-trivia block values record zero public
+  `toString(...)` calls while serializing through `writeSyntax(...)`, and the
+  existing block trivia test still proves closing-delimiter trivia is kept.
+  Evidence: starting leash at commit `fd53d3ce` was the mixed
+  Reference/Color run, so it is not comparison-usable. Focused
+  operation/block/render-buffer tests passed (`44` tests), and
+  `pnpm --filter @jesscss/core build` passed with only the pre-existing direct
+  `eval` warning in `js-expr.ts`. Post-pass hotpath sanity at dirty head
+  `fd53d3ce` was not comparison-usable: `functions` `14.25ms` unstable,
+  `import-reference` `22.17ms` unstable, `mixins-guards` `17.98ms` unstable,
+  `extend-chaining` `5.33ms` unstable, and `media` `5.73ms` noisy. This is not
+  a speed claim.

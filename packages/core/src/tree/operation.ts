@@ -67,7 +67,7 @@ export class Operation extends Node<OperationValue> {
     const w = options.writer;
     let [left, op, right] = this.value;
     const leftMark = w.mark();
-    left.toString(options);
+    left.writeSyntax(options);
     w.trimEndSince(leftMark);
     w.add(` ${op} `, this);
     if (options.trivia) {
@@ -79,11 +79,8 @@ export class Operation extends Node<OperationValue> {
     }
     const saved = options.suppressBoundaryTrivia;
     options.suppressBoundaryTrivia = 'pre';
-    try {
-      right.toString(options);
-    } finally {
-      options.suppressBoundaryTrivia = saved;
-    }
+    right.writeSyntax(options);
+    options.suppressBoundaryTrivia = saved;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
