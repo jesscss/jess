@@ -29,7 +29,7 @@ export class Url extends Node<Node> {
         value
       );
     } else {
-      value.toString(options);
+      value.writeSyntax(options);
     }
     w.add(')');
   }

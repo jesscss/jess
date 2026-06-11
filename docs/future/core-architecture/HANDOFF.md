@@ -2364,3 +2364,28 @@ the gate passed.
   `functions` `13.09ms` unstable, `import-reference` `22.44ms` noisy,
   `mixins-guards` `18.27ms` noisy, `extend-chaining` `6.17ms` noisy, and
   `media` `6.15ms` noisy with large outliers. This is not a speed claim.
+- URL non-context child syntax pass: accepted as a narrow public string-API hop
+  deletion in the active `writeSyntax` lane. New traversal: none; no loop,
+  recursion, parent/source walk, side-map lookup, generator, object scan, or
+  array helper was added. The non-context URL source child branch now calls
+  child `writeSyntax(...)` directly instead of public `toString(...)`. New
+  node/materialization: none; no `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, frozen/source/parent mutation, semantic placement state,
+  side map, helper array, or public materialized URL surface was added. Render
+  path: unchanged for evaluated/context output; the context-normalization branch
+  still uses the existing localized `mark(...)`/`replaceSince(...)` path and
+  remains queued because it changes whitespace semantics. No render path
+  resolves into arrays or nodes just to stringify. Helper/API surface: no new
+  helper, method, or public API was added. Metadata mutations: none; focused
+  tests assert source URL children record zero `toString(...)` calls when no
+  render context is active. Evidence: starting leash at commit `953f7cb5` was
+  the noisy paren run, so it is not comparison-usable. Focused
+  url/render-buffer tests passed (`34` tests), and
+  `pnpm --filter @jesscss/core build` passed with only the pre-existing direct
+  `eval` warning in `js-expr.ts`. The first hotpath sanity retry failed before
+  measuring with the same stale `jess` package build/import state; rebuilding
+  the actual `jess` package fixed the runner. Post-pass hotpath sanity at dirty
+  head `953f7cb5` was not comparison-usable: `functions` `14.89ms` unstable,
+  `import-reference` `24.81ms` noisy, `mixins-guards` `19.32ms` noisy,
+  `extend-chaining` `5.38ms` noisy, and `media` `6.39ms` noisy with large
+  outliers. This is not a speed claim.
