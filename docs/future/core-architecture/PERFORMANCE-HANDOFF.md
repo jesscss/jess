@@ -632,8 +632,9 @@ June 2026 direct simple-mixin lookup trial: inconclusive but more promising
 than namespace tables. The env-gated prototype
 `JESS_DIRECT_MIXIN_LOOKUP=1` bypasses `Rules.find('mixin', string, ...)` for
 simple string callable references and calls an accumulator-based
-`Rules.findMixinsDirect(...)` path over `mixinsByName`, preserving collection
-semantics. It passed focused mixin/reference lookup tests, but the broad
+direct mixin path over per-scope callable buckets, preserving collection
+semantics. The old helper name from that prototype was later deleted as
+unreleased transitional surface. It passed focused mixin/reference lookup tests, but the broad
 namespace/lexical stress fixture did not improve: 50 paired parse+render
 samples on `scope-lookup-stress-large.less` showed candidate median
 `+1.68%`, mean `+3.10%`, wins `22/50`, `t=0.35`. An isolated recursive simple
@@ -662,7 +663,7 @@ machinery than simple name lookup.
 
 June 2026 direct simple-mixin result-cache trial: rejected. An env-gated
 `JESS_DIRECT_MIXIN_CACHE=1` prototype cached
-`Rules.findMixinsDirect(...)` results per `Rules` node and lookup option shape,
+direct simple-mixin lookup results per `Rules` node and lookup option shape,
 with broad invalidation on `registerNode(...)`. Focused lookup tests passed,
 but the best-case repeated-lookup fixture still did not produce a clear win:
 50 paired parse+render samples on `simple-mixin-recursion.less` produced
@@ -697,8 +698,8 @@ After merging local `dev` into the experiment worktree, an env-gated
 For simple static callable names it forces `ScopeFrame` construction and uses
 callable buckets/direct `findMixinsFast(...)` child-surface traversal instead
 of falling through to `MixinRegistry`. Array and compound string namespace
-paths also stop before `getRegistry('mixin').find(...)` and use direct ruleset
-namespace helpers. Repeated same-key lookup caching is separate behind
+paths also stop before the deleted mixin registry fallback and use direct
+ruleset namespace helpers. Repeated same-key lookup caching is separate behind
 `JESS_REGISTRYLESS_MIXIN_CACHE=1` in this historical prototype so cache behavior
 could be measured apart from the registryless cut; that Map-cache experiment
 has since been deleted. Focused mixin/reference lookup tests passed with

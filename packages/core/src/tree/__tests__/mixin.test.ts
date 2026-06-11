@@ -2338,21 +2338,6 @@ describe('Mixin', () => {
       }
     });
 
-    it('mixin registry compatibility access does not index rules', () => {
-      const root = rules([
-        mixin({
-          name: any('.compat-mixin'),
-          rules: rules([decl({ name: 'color', value: any('purple') })])
-        })
-      ]);
-
-      const registry = root.getRegistry('mixin');
-
-      expect(registry).toBeInstanceOf(MixinRegistry);
-      expect(root.rulesIndexed).toBe(0);
-      expect(root.varsByName).toBeUndefined();
-    });
-
     it('ScopeFrame callable buckets: static Mixin hit skips Rules.findMixinsFast', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }

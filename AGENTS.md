@@ -75,6 +75,14 @@ Avoid treating these as acceptable end states:
   function-call overhead
 - local green slices presented as architectural completion
 
+During active unreleased architecture refactors, do not treat a method or
+helper as protected API merely because it is currently exported, public on a
+class, or reachable from tests. If the surface was introduced as transitional
+refactor machinery, is undocumented, unreleased, or was not explicitly approved
+as API, prefer deleting it over preserving no-op compatibility shims. Check
+repo usage and downstream workspace consumers, but do not keep public-looking
+registry/fallback wrappers solely because they exist today.
+
 If two approaches both pass tests, prefer the one with better measured or
 well-supported runtime speed. Use memory pressure as the next tiebreaker, and
 use object-count reduction only as a proxy when it covers total runtime objects

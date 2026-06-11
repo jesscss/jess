@@ -784,11 +784,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   register(type: 'declaration', node: Declaration): void;
-  register(type: 'mixin', node: Mixin | Ruleset): void;
   register(type: 'function', node: Func | JsFunction): void;
   register(
-    type: 'declaration' | 'mixin' | 'function',
-    node: Declaration | Mixin | Ruleset | Func | JsFunction
+    type: 'declaration' | 'function',
+    node: Declaration | Func | JsFunction
   ): void {
     switch (type) {
       case 'declaration':
@@ -796,13 +795,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           throw new TypeError(`Expected declaration registry node, got ${node.type}`);
         }
         this._ensureDeclarationRegistry().add(node);
-        return;
-      case 'mixin':
-        if (!isNode(node, N.Mixin) && !isNode(node, N.Ruleset)) {
-          throw new TypeError(`Expected mixin registry node, got ${node.type}`);
-        }
-        // Callable lookup is registryless. Keep the public overload as a
-        // compatibility no-op instead of constructing/populating MixinRegistry.
         return;
       case 'function':
         if (!isNode(node, N.Func) && !isNode(node, N.JsFunction)) {
@@ -813,13 +805,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   getRegistry(type: 'declaration'): Registries.DeclarationRegistry;
-  getRegistry(type: 'mixin'): Registries.MixinRegistry;
   getRegistry(type: 'function'): Registries.FunctionRegistry;
-  getRegistry(type: 'declaration' | 'mixin' | 'function'): Registries.DeclarationRegistry | Registries.MixinRegistry | Registries.FunctionRegistry;
-  getRegistry(type: 'declaration' | 'mixin' | 'function') {
-    if (type === 'mixin') {
-      return new Registries.MixinRegistry(this);
-    }
+  getRegistry(type: 'declaration' | 'function'): Registries.DeclarationRegistry | Registries.FunctionRegistry;
+  getRegistry(type: 'declaration' | 'function') {
     const registry = type === 'declaration'
       ? this._ensureDeclarationRegistry()
       : this._ensureFunctionRegistry();
@@ -1148,23 +1136,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       node: child,
       rulesVisibility: visibility
     });
-  }
-
-  findMixinsDirect(
-    key: string,
-    options?: {
-      context?: Context;
-      hasTarget?: boolean;
-      local?: boolean;
-      includeRulesets?: boolean;
-      searchParents?: boolean;
-    }
-  ): MixinEntry[] {
-    return this.findMixin(
-      key,
-      options?.includeRulesets === false ? 'Mixin' : undefined,
-      options
-    ) ?? [];
   }
 
   private getRegistrylessMixinCacheKey(

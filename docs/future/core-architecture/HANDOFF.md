@@ -72,6 +72,10 @@ prove covered behavior with focused lookup tests, and benchmark the usual
 lookup fixtures before making any speed claim. Prefer deletion of stale
 env-gated experiments, registry-side caches, recursive `_rulesSet` walks, and
 generic fallback ladders over adding new cache layers or helper surfaces.
+Do not preserve an unreleased or self-invented `Rules`/lookup method merely
+because it is public-looking today; if repo usage does not require it and the
+user has not approved it as API, delete it instead of keeping a compatibility
+shim.
 
 ## Active Work
 
@@ -785,6 +789,27 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Unreleased mixin registry surface deletion: accepted as deleting
+  self-invented registry/callable API surface, not a speed claim. Files:
+  `AGENTS.md`, `docs/future/core-architecture/HANDOFF.md`,
+  `packages/core/src/tree/rules.ts`, and
+  `packages/core/src/tree/__tests__/mixin.test.ts`. New traversal: none. New
+  node/materialization: none. Render path: unchanged. Helper/API surface:
+  deleted `Rules.register('mixin', ...)`, `Rules.getRegistry('mixin')`, and
+  `Rules.findMixinsDirect(...)`; these were unreleased/transitional
+  public-looking methods, not approved stable API. The repo guidance now says
+  to delete unreleased/self-invented public-looking lookup surfaces after usage
+  checks instead of preserving no-op compatibility shims. Metadata mutations:
+  deleted the last mixin-registry branch that could allocate a cold
+  `MixinRegistry` object through `Rules.getRegistry('mixin')`. Routine
+  error/control: no throw/catch/Error path added. Evidence: focused mixin
+  tests passed (`138` tests), the expanded lookup-adjacent suite passed (`551`
+  passed, `9` skipped), eslint passed for `rules.ts`/`mixin.test.ts`, docs
+  eslint produced only ignored-file warnings, and `@jesscss/core` build passed
+  with the existing `src/tree/js-expr.ts` direct-eval warning. The first
+  expanded-suite attempt failed only because it ran concurrently with build
+  cleaning `packages/core/lib`. No runtime speed claim without
+  benchmark/profile proof.
 - Callable namespace descendant result allocation cut: accepted as lazy miss-path
   allocation deletion, not a speed claim. File: `packages/core/src/tree/rules.ts`
   and this handoff. New traversal: none; `findCallableDescendantsWithinMixinNamespaces(...)`
@@ -819,29 +844,6 @@ the gate passed.
   `src/tree/js-expr.ts` direct-eval warning, and the first expanded suite
   attempt failed only because it ran concurrently with build cleaning
   `packages/core/lib`. No runtime speed claim without benchmark/profile proof.
-- Mixin registry compatibility indexing cut: accepted as cold compatibility
-  side-effect deletion, not a speed claim. Files:
-  `packages/core/src/tree/rules.ts` and this handoff. API surface: the public
-  `Rules.getRegistry('mixin')` overload remains in place and still returns a
-  `MixinRegistry` compatibility object, so this is not a public overload
-  deletion. New traversal: none; `getRegistry('mixin')` now returns from its
-  no-op compatibility branch before the declaration/function registry indexing
-  side effects run. That avoids calling `_indexRules()` and avoids initializing
-  declaration fast maps for a registryless callable compatibility request. New
-  node/materialization: none beyond the existing cold compatibility
-  `MixinRegistry` object that was already returned. Render path: unchanged.
-  Helper/API surface: no helper added and no public API widened or removed.
-  Metadata mutations: deleted the possible `varsByName` initialization and
-  rule-indexing side effects from the mixin-registry compatibility branch.
-  Routine error/control: no throw/catch/Error path added. Evidence: focused
-  mixin tests passed (`139` tests), including a new compatibility assertion
-  that `getRegistry('mixin')` returns a `MixinRegistry` without advancing
-  `rulesIndexed` or initializing `varsByName`; the expanded lookup-adjacent
-  suite passed (`552` passed, `9` skipped), eslint passed, `@jesscss/core`
-  build passed with the existing `src/tree/js-expr.ts` direct-eval warning,
-  `verify:aggressive-cutting-review` passed with no danger tokens, and
-  `git diff --check` passed. No runtime speed claim without benchmark/profile
-  proof.
 - Callable namespace singleton-sort guard: accepted as unnecessary sort-call
   deletion, not a speed claim. Files: `packages/core/src/tree/rules.ts` and
   this handoff. New traversal: none; the existing ruleset-prefix match arrays
@@ -1219,26 +1221,27 @@ the gate passed.
   node/materialization: none; no `Node`, copy, wrapper `Rules`, side map, or
   output cache was added. Render path: unchanged. Helper/API surface: deleted
   the `mixinRegistry` field and private `_ensureMixinRegistry()` helper from
-  `Rules`; retained the existing `getRegistry('mixin')` compatibility overload
-  as a cold explicit request path that no longer stores a registry on the
-  `Rules` instance. Metadata mutations: none. Routine error/control: no new
-  throw/catch/Error path. Remaining debt: the internal legacy `MixinRegistry`
-  class still exists for now, but production lookup does not call its `find`
-  path and `Rules` no longer owns a cached instance. Evidence: focused eslint
+  `Rules`; at that point `getRegistry('mixin')` remained as a cold request
+  path, but the current unreleased surface-deletion pass removes it instead of
+  preserving that compatibility shim. Metadata mutations: none. Routine
+  error/control: no new throw/catch/Error path. Remaining debt: the internal
+  legacy `MixinRegistry` class still exists for now, but production lookup does
+  not call its `find` path and `Rules` no longer owns a cached instance.
+  Evidence: focused eslint
   passed; focused mixin/reference/import-style/rules/call tests passed (`466`
   tests, `9` skipped); `@jesscss/core` build passed; `git diff --check`
   passed; `pnpm run verify:aggressive-cutting-review` passed.
 - `Rules.register('mixin')` registry-population cut: accepted as cold
-  compatibility side-effect deletion, not a speed claim. File:
+  side-effect deletion, not a speed claim. File:
   `packages/core/src/tree/rules.ts`. New traversal: none. New
   node/materialization: none; no `Node`, copy, wrapper `Rules`, side map, or
   output cache was added. Render path: unchanged; this only removes mixin
-  registry population from explicit registration. Helper/API surface: public
-  overload shape is preserved, including node-type validation, but the mixin
-  branch no longer constructs or populates `MixinRegistry`; production callable
-  lookup remains on `Rules.findMixin(...)` direct crawl/cache/frame paths.
-  Metadata mutations: none. Routine error/control: no new throw/catch/Error
-  path; the existing wrong-node `TypeError` remains for compatibility. Evidence:
+  registry population from explicit registration. Helper/API surface: this
+  older pass preserved the overload shape, but the current unreleased
+  surface-deletion pass removes `Rules.register('mixin', ...)` outright;
+  production callable lookup remains on `Rules.findMixin(...)` direct
+  crawl/cache/frame paths. Metadata mutations: none. Routine error/control: no
+  new throw/catch/Error path. Evidence:
   focused mixin/reference/import-style/rules/call tests passed (`466` tests,
   `9` skipped); `@jesscss/core` build passed; `git diff --check` passed;
   `pnpm run verify:aggressive-cutting-review` passed.
@@ -1454,12 +1457,12 @@ the gate passed.
   `findMixinsDirectTree(...)`, deleted `directCallableLookupCache`, and deleted
   the old direct callable cache-key helper. New node/materialization: none.
   Render path: unchanged; callable references now go straight to the permanent
-  `Rules.find('mixin', ...)` path. Helper/API surface: net deletion. Because
-  `Rules` is exported by `@jesscss/core`, `findMixinsDirect(...)` remains as a
-  compatibility wrapper over `Rules.find('mixin', string, ...)` instead of
-  being removed from the public class type. Metadata mutations: deleted the
-  stale direct-callable cache invalidation in `resetDerivedState(...)` and
-  `registerNode(...)`. Routine error/control: no new throw/catch/Error path.
+  `Rules.find('mixin', ...)` path. Helper/API surface: net deletion. This
+  older pass kept `findMixinsDirect(...)` only because it looked public; the
+  current unreleased surface-deletion pass removes it instead of preserving
+  that wrapper. Metadata mutations: deleted the stale direct-callable cache
+  invalidation in `resetDerivedState(...)` and `registerNode(...)`. Routine
+  error/control: no new throw/catch/Error path.
   Evidence: `rg` found no runtime references to `JESS_DIRECT_MIXIN_LOOKUP`,
   `findMixinsDirectTree(...)`, `directCallableLookupCache`, or the deleted
   cache-key helper; focused eslint passed; focused default-path behavior passed
