@@ -132,7 +132,7 @@ function runLookupBatch(tree, keys, options, flagValue) {
   const start = performance.now();
   for (let i = 0; i < options.lookups; i++) {
     const item = keys[i % keys.length];
-    const found = tree.leaf.find('declaration', item.key, item.filter, { searchParents: true });
+    const found = tree.leaf.findDeclaration(item.key, item.filter, { searchParents: true });
     if (found) {
       hits++;
     }

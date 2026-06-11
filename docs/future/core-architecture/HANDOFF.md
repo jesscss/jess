@@ -864,6 +864,23 @@ deep-cut queue.
    still tolerated. Every production bridge left behind must name its allowed
    scope and deletion condition there or in this handoff.
 
+7a. [x] Delete generic declaration/function `Rules.find(...)` dispatch.
+    The cold string-dispatch wrapper for declaration/function lookup is gone.
+    Internal callers and tests use typed methods directly:
+    `findDeclaration(...)`, `findVariable(...)`, `findProperty(...)`, and
+    `findFunction(...)`. The remaining declaration/function bridge debt is now
+    the registry fallback inside those typed methods, not an extra public-ish
+    dispatch layer above them.
+
+    Completion gate:
+    - Done: no production or test caller uses `find('declaration', ...)` or
+      `find('function', ...)`.
+    - Done: the remaining child-registry bridge uses typed
+      `findMixin(...)`/`findDeclaration(...)` dispatch for the already-selected
+      lookup family.
+    - Done: focused lookup/reference/call/import tests and touched-file eslint
+      pass before the full gate run.
+
 Secondary deep-cut queue:
 
 Do not select this queue while `Brought-Forward Binding/Lookup Queue` has
@@ -1061,6 +1078,50 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Generic declaration/function `Rules.find(...)` deletion pass: accepted as
+  deleting one string-dispatch wrapper and replacing the one internal bridge
+  caller with typed lookup methods. Files:
+  `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/util/registry-utils.ts`,
+  focused tests/prototype callers, `docs/future/core-architecture/HANDOFF.md`,
+  and `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`.
+  - New traversal: none. The existing `_searchRulesChildren(...)` recursion
+    remains the only child-surface traversal; this pass changes its dispatch
+    from `r.node.find(type, ...)` to the typed `findMixin(...)` or
+    `findDeclaration(...)` method for the lookup family it had already
+    selected.
+  - New node/materialization: none. No `Node`, wrapper `Rules`, copy,
+    `.inherit(...)`, `.adopt(...)`, source/root metadata, array
+    materialization, or public materialized result was added.
+  - Render path: unchanged. The cut touches lookup dispatch and test/prototype
+    callers only; render still receives the same resolved nodes.
+  - Helper/API surface: net deletion. Removed the generic declaration/function
+    `Rules.find(...)` overload/method and added no helper or public
+    compatibility shim.
+  - Metadata mutations: none. No parent restoration, `frozen`, source
+    inheritance, lazy context creation, structural probe, or side-map state was
+    added.
+  - Evidence: focused core lookup suite passed (`rules`,
+    `detached-rulesets`, `import-style`, `reference`, and `call`: `389`
+    passed, `9` skipped) after the child bridge was switched to typed methods.
+    Broader lookup suite passed (`reference`, `declaration`, `call`,
+    `import-style`, `mixin`, `scope-frame`, `rules`, and
+    `detached-rulesets`: `608` passed, `9` skipped). The touched SCSS parser
+    case passed directly; the full SCSS baseline has an unrelated existing
+    `@at-root` AST parent mismatch and was not folded into this lookup pass.
+    Touched-file eslint passed after indentation cleanup.
+    `pnpm run prototype:binding-handle-reuse` passed; `pnpm run
+    verify:aggressive-cutting-review` passed with the one danger token coming
+    from this self-prosecution text; `pnpm run audit:node-creation` passed;
+    `git diff --check` passed; `pnpm --filter @jesscss/core build` and
+    `pnpm --filter jess build` passed; direct stress render returned `8822`;
+    `pnpm run measure:less:hotpath` passed as sanity only with usable
+    `mixins-guards` `20.43ms` and `extend-chaining` `5.88ms`, while
+    `functions`, `import-reference`, and `media` were unstable. Danger-token
+    prosecution: no runtime danger tokens were introduced by this deletion.
+  - Verdict: keep. The remaining declaration/function work is now the actual
+    typed-method registry fallback, not a self-invented stringly public-looking
+    wrapper.
 - Static declaration/property reference handle pass: accepted as widening the
   existing `Reference` lookup-handle identity path for already-covered
   unfiltered declaration/property lookups, not as a speed claim. Files:

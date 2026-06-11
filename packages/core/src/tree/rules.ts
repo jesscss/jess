@@ -2017,24 +2017,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return this.getRegistry('function').find(keys, filterType, options);
   }
 
-  /** Cold string-dispatch wrapper for declaration/function lookups. */
-  find(type: 'declaration', keys: string, filterType?: string, options?: Registries.DeclarationFindOptions): ReturnType<Registries.DeclarationRegistry['find']> | undefined;
-  find(type: 'function', keys: string, filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.FunctionRegistry['find']> | undefined;
-  find(type: 'declaration' | 'function', key: string, filterType: string, options?: Registries.FindOptions): ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined;
-  find(
-    type: 'declaration' | 'function',
-    keys: string,
-    filterType?: string,
-    options: Registries.FindOptions = {}
-  ): ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined {
-    switch (type) {
-      case 'declaration':
-        return this.findDeclaration(keys, filterType, options);
-      case 'function':
-        return this.findFunction(keys, filterType, options);
-    }
-  }
-
   override toString(options?: PrintOptions): string {
     if (!this.visible && !this.fullRender) {
       return '';

@@ -49,20 +49,20 @@ function expectDeclarationNode(node: Node | undefined): Declaration {
 function getPropWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
-  return n.find('declaration', key, 'Declaration', opts);
+  return n.findDeclaration(key, 'Declaration', opts);
 }
 
 function getVarWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
-  let decl = n.find('declaration', key, 'VarDeclaration', opts);
+  let decl = n.findDeclaration(key, 'VarDeclaration', opts);
   return decl;
 }
 
 function getDeclEitherWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
-  return n.find('declaration', key, undefined, opts);
+  return n.findDeclaration(key, undefined, opts);
 }
 
 class WholeBufferCountingWriter extends OutputWriter {
@@ -1086,7 +1086,7 @@ describe('Rules', () => {
         }
         const scope3Rules = scope3.value.rules;
         expect(getVar(scope3Rules, 'z', { start: 0 })?.toTrimmedString()).toBe('$z: black');
-        const scope3Found = scope3Rules.find('declaration', 'z', 'VarDeclaration', {
+        const scope3Found = scope3Rules.findDeclaration('z', 'VarDeclaration', {
           filter: () => true,
           context,
           hasTarget: false,

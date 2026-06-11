@@ -234,7 +234,7 @@ describe('scss-parser (baseline)', () => {
         const body = fn.value.body;
         expect(isNode(body, N.Rules)).toBe(true);
         if (isNode(body, N.Rules)) {
-          const ret = body.find('declaration', 'result', 'VarDeclaration', { searchParents: false });
+          const ret = body.findDeclaration('result', 'VarDeclaration', { searchParents: false });
           expect(ret).toBeDefined();
         }
       }

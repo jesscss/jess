@@ -150,7 +150,6 @@ export abstract class Registry<
     if (!searchedRules.has(rules)) {
       searchedRules.add(rules);
     }
-    let findType = filterType === 'Mixin' ? 'mixin' as const : 'declaration' as const;
     let findAll = Boolean(options.findAll);
     let {
       candidates = new Set(),
@@ -235,9 +234,17 @@ export abstract class Registry<
           if (context) {
             newOpts.context = context;
           }
-          // Use actualChildFilterType which may be undefined for mixin-ruleset lookups
-          // filterType parameter is used to SELECT registry, actualChildFilterType is used to FILTER results
-          let result = r.node.find(findType, key, actualChildFilterType as any, newOpts);
+          // Use actualChildFilterType which may be undefined for mixin-ruleset lookups.
+          // filterType selects the lookup family; actualChildFilterType filters results.
+          let result = filterType === 'Mixin'
+            ? r.node.findMixin(key, actualChildFilterType === 'Mixin' ? 'Mixin' : undefined, newOpts)
+            : r.node.findDeclaration(
+                key,
+                actualChildFilterType === 'VarDeclaration' || actualChildFilterType === 'Declaration'
+                  ? actualChildFilterType
+                  : undefined,
+                newOpts
+              );
           if (result) {
             const isOptional = filterType !== undefined && isOptionalRulesEntry(r, filterType);
             const optionalCandidates = options?.optionalCandidates;
