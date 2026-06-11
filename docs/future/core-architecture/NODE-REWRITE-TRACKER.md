@@ -86,8 +86,8 @@ first measured offenders after the selector pass.
 - [x] `Paren`: direct wrapper writer, child syntax transport, and list path.
 - [x] `Block`: direct `{...}` writer and render path; no-trivia child syntax
   avoids public string transport while source-trivia mode remains explicit.
-- [x] `Url`: direct `url(...)` writer and non-context child syntax transport;
-  context-normalization mark/replace path remains queued.
+- [x] `Url`: direct `url(...)` writer plus no-trivia context/non-context child
+  syntax transport; context-normalization mark/replace path remains queued.
 - [x] `Negative`: direct negative-prefix writer, child writer, and render path.
 - [x] `Bool`: scalar writer.
 - [x] `Nil`: confirm no writer/capture work remains; singleton/scalar audit.
@@ -237,6 +237,6 @@ Current hard leftovers after the broad hook sweep:
 | Sequence | `packages/core/src/tree/sequence.ts` | `Node` | partial | Direct sequence writer exists; no-trivia and custom-property raw source children use `writeSyntax(...)`, while trivia-backed child `toString` transport remains until boundary-trivia emission is made explicit. Render still captures. |
 | SimpleSelector | `packages/core/src/tree/selector-simple.ts` | `Selector` | queued | Audit base class necessity and branches. |
 | StyleImport | `packages/core/src/tree/import-style.ts` | `Node` | queued | High priority: first-use placement copies and derived rules surfaces. |
-| Url | `packages/core/src/tree/url.ts` | `Node` | writeSyntax hook complete | URL wrapper and non-context child syntax write directly; render/context normalization still uses localized mark/replace and remains queued. |
+| Url | `packages/core/src/tree/url.ts` | `Node` | writeSyntax hook complete | URL wrapper and no-trivia child syntax write directly in source and context modes; render/context normalization still uses localized mark/replace and remains queued. |
 | VarDeclaration | `packages/core/src/tree/declaration-var.ts` | `Declaration` | local probe removed | Variable prefix syntax writes directly and no longer wraps `declTrimmedString(...)` in a local `mark/getSince` fallback probe. Declaration body path remains. |
 | While | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists and condition uses direct writer. Loop state/body surface and async branch audit remain. |

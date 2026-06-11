@@ -20,7 +20,12 @@ export class Url extends Node<Node> {
     w.add('url(');
     if (options.context) {
       const valueMark = w.mark();
-      value.toString(options);
+      const trivia = options.trivia ?? value.sourceRoot?._treeContext?.opts?.trivia;
+      if (trivia) {
+        value.toString(options);
+      } else {
+        value.writeSyntax(options);
+      }
       w.replaceSince(
         valueMark,
         value => value

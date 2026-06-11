@@ -164,6 +164,19 @@ describe('url', () => {
     expect(toStringCalls).toBe(0);
   });
 
+  it('writes context url values without public toString transport when trivia is inactive', () => {
+    const value = quoted('image.png');
+    let toStringCalls = 0;
+    value.toString = () => {
+      toStringCalls++;
+      return '';
+    };
+    const node = url(value);
+
+    expect(node.toTrimmedString({ context })).toBe('url("image.png")');
+    expect(toStringCalls).toBe(0);
+  });
+
   it('keeps source url syntax when print options are passed to toTrimmedString()', () => {
     const node = url(quoted('image.png'));
 

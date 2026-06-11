@@ -2560,3 +2560,32 @@ the gate passed.
   comparison-usable: `functions` `10.35ms` usable, `import-reference`
   `16.53ms` unstable, `mixins-guards` `14.62ms` usable, `extend-chaining`
   `4.53ms` unstable, and `media` `5.22ms` unstable. This is not a speed claim.
+- Url context child syntax pass: accepted as a context-mode public string
+  transport deletion in the active `writeSyntax` lane. New traversal: none; no
+  loop, recursion, parent/source walk, side-map lookup, generator, object scan,
+  or array helper was added. `Url.writeUrlSyntax(...)` already had to inspect
+  and normalize the emitted child text in render-context mode; this pass only
+  changes the no-trivia child emission from public `toString(...)` to
+  `writeSyntax(...)`, while exact-source/trivia-backed URL children keep the
+  existing `toString(...)` serializer. New node/materialization: none; no
+  `Node`, copy, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`,
+  frozen/source/parent mutation, semantic placement state, side map, helper
+  array, or public materialized URL surface was added. Render path: unchanged
+  for value selection/eval and normalization; no-trivia context URL children
+  no longer route through public string transport. No render path resolves into
+  arrays or nodes just to stringify. Helper/API surface: no new helper, method,
+  or public API was added. Metadata mutations: none; the
+  `sourceRoot?._treeContext?.opts?.trivia` read is a branch guard that
+  preserves exact-source mode and does not mutate parent/source metadata.
+  Remaining queued debt: URL context normalization still uses a localized
+  writer mark plus `replaceSince(...)`; that normalization buffer was not
+  redesigned in this pass. Evidence: starting leash at commit `02093f29` was
+  the RawRules/Declaration run, so this pass is not comparison-usable. Focused
+  url/render-buffer tests passed (`35` tests), and
+  `pnpm --filter @jesscss/core build` passed with only the pre-existing direct
+  `eval` warning in `js-expr.ts`. The first hotpath rerun was invalidated by a
+  parallel core clean/build race; the isolated post-pass hotpath sanity at
+  dirty head `02093f29` was mixed and not comparison-usable: `functions`
+  `10.80ms` usable, `import-reference` `16.14ms` usable, `mixins-guards`
+  `14.50ms` usable, `extend-chaining` `4.55ms` unstable, and `media` `4.45ms`
+  unstable. This is not a speed claim.
