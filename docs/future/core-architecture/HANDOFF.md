@@ -757,11 +757,11 @@ deep-cut queue.
      `FunctionRegistry`/`getRegistry('function')` until their public Less API
      surface is deleted or replaced.
 
-5a. [ ] Delete remaining function registry compatibility surface.
-   `FunctionRegistry` still exists for Less plugin-style `getRegistry` API,
-   `get(...)`, `getLocalFunctions(...)`, `addMultiple(...)`, and
-   `inherit(...)`. Delete or replace those API surfaces once callers can use
-   direct `Rules` function bindings instead.
+5a. [x] Delete remaining core function registry compatibility surface.
+   Core `FunctionRegistry` no longer exposes Less-style `add(name, fn)`,
+   `addMultiple(...)`, `get(...)`, `getLocalFunctions(...)`, or `inherit(...)`.
+   Less-compat still presents a Less-shaped mock registry to Less plugins, but
+   that bridge writes and reads `Rules` function bindings directly.
 
 6. [ ] Model remaining callable namespace/import/child-surface facts as
    frame/handle facts.
@@ -2779,3 +2779,21 @@ the gate passed.
   `@jesscss/core` build passed, and the previously failing
   `tests-unit/functions/functions.less` hotpath fixture rendered successfully as
   a semantic smoke check.
+- Function registry compatibility deletion: accepted as API/helper deletion, not
+  as a speed claim. Deleted core `FunctionRegistry.add(name, fn)`,
+  `addMultiple(...)`, `get(...)`, `getLocalFunctions(...)`, and `inherit(...)`,
+  including the `_parentRegistry` side channel and method override shim used only
+  by that invented compatibility layer. New traversal: none. New
+  node/materialization: no production node creation was added in core; the only
+  new `JsFunction` in this pass is test code replacing the deleted
+  `getRegistry('function').add(name, fn)` shortcut with normal
+  `Rules.register('function', new JsFunction(...))`. Render path: unchanged.
+  Helper/API surface: Less-compat now builds a tiny local bridge object in
+  `setContext(...)` whose `add(...)` writes `Rules.setFunctionBinding(...)` and
+  whose `get(...)` reads `Rules.findFunction(...)`; the Less-shaped
+  `functionRegistry` API remains in the Less-compat mock where Less plugins
+  expect it, not in core. Metadata mutations: none. Evidence: core `reference`,
+  `call`, and `control` tests passed (`255` tests); Less `functions.test.ts`
+  passed (`18` executed, `22` already-marked not-run cases); Less-compat plugin-manager/at-plugin integration
+  tests passed (`17` tests); touched-file ESLint passed; `@jesscss/core` and
+  `@jesscss/plugin-less-compat` builds passed.

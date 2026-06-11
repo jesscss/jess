@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { AbstractPlugin, Any, Declaration, Dimension, type PluginInterface, type PluginVisitor, type Node, type Rules, F_VISIBLE, REMOVE } from '@jesscss/core';
+import { AbstractPlugin, Any, Declaration, Dimension, JsFunction, type PluginInterface, type PluginVisitor, type Node, type Rules, F_VISIBLE, REMOVE } from '@jesscss/core';
 import { toLessNode, fromLessNode, fromLessPluginReturnValue } from './transform/index.js';
 import { LessAdapterBase } from './transform/less-adapter.js';
 import type { LessVisitor } from './types.js';
@@ -161,8 +161,27 @@ export class LessCompatPlugin extends AbstractPlugin {
   setContext(context: any) {
     try {
       const root = context?.root;
-      if (root && typeof root.getRegistry === 'function') {
-        this._jessFunctionRegistry = root.getRegistry('function');
+      if (
+        root
+        && typeof root.setFunctionBinding === 'function'
+        && typeof root.findFunction === 'function'
+      ) {
+        this._jessFunctionRegistry = {
+          add(name: string, func: JsFunction | ((...args: any[]) => any)): void {
+            const lowerName = name.toLowerCase();
+            const jsFunc = func instanceof JsFunction
+              ? func
+              : new JsFunction({ name: lowerName, fn: func });
+            if (!jsFunc.name) {
+              jsFunc.name = lowerName;
+            }
+            root.setFunctionBinding(lowerName, jsFunc);
+          },
+          get(name: string): JsFunction | undefined {
+            const fn = root.findFunction(name.toLowerCase());
+            return fn instanceof JsFunction ? fn : undefined;
+          }
+        };
       }
     } catch {
       // ignore

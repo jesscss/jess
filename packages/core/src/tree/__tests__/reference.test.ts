@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
 import { Context } from '../../context.js';
 import { JsExpression } from '../js-expr.js';
 import { isNode } from '../util/is-node.js';
@@ -2992,7 +2992,10 @@ describe('reference', () => {
             value: ref({ key: 'x' }, { type: 'variable' })
           })
         ]);
-        node.getRegistry('function').add('async-name', async () => any('x'));
+        node.register('function', new JsFunction({
+          name: 'async-name',
+          fn: async () => any('x')
+        }));
 
         const frame = node.getScopeFrame();
         context.rulesContext = node;
