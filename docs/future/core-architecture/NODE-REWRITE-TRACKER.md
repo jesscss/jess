@@ -74,9 +74,10 @@ first measured offenders after the selector pass.
   compare string path.
 - [ ] `List`: direct item writer exists; render still captures string output
   before buffer writes in resolved/direct paths.
-- [ ] `QueryCondition`: direct condition syntax writer exists and static child
-  probe traffic is cut; dynamic child render still has a localized writer-mark
-  fallback until child render contracts are fully direct.
+- [ ] `QueryCondition`: direct condition syntax writer exists, source/static
+  children use `writeSyntax(...)` instead of public `toString(...)`, and static
+  child probe traffic is cut; dynamic child render still has a localized
+  writer-mark fallback until child render contracts are fully direct.
 - [x] `Operation`: direct operand/operator writer; render operands without
   public string transport.
 - [x] `Paren`: direct wrapper writer and list path.
@@ -218,7 +219,7 @@ Current hard leftovers after the broad hook sweep:
 | Operation | `packages/core/src/tree/operation.ts` | `Node` | writeSyntax hook complete | Source operator syntax writes directly; arithmetic eval/calc fallback remains high priority. |
 | Paren | `packages/core/src/tree/paren.ts` | `Node` | writeSyntax hook complete | Wrapper syntax writes directly; guard/string conversion render audit remains. |
 | PseudoSelector | `packages/core/src/tree/selector-pseudo.ts` | `SimpleSelector` | writeSyntax complete | Direct writer hook and child arg writer exist, generated keyset omission is fixed, cold private source-string wrapper is gone, and selector-list args now write inline without capture/replace/restore. Eval arg materialization remains separate. |
-| QueryCondition | `packages/core/src/tree/query-condition.ts` | `Sequence` | partial | Source syntax writes directly; static child render avoids writer-mark probes. Dynamic child render keeps one localized mark fallback because child render may write or return until downstream contracts are direct. |
+| QueryCondition | `packages/core/src/tree/query-condition.ts` | `Sequence` | partial | Source/static child syntax now uses `writeSyntax(...)` instead of public `toString(...)`, and static child render avoids writer-mark probes. Dynamic child render keeps one localized mark fallback because child render may write or return until downstream contracts are direct. |
 | Quoted | `packages/core/src/tree/quoted.ts` | `Node` | writeSyntax hook complete | Quote syntax writes directly; interpolation/replacement audit remains. |
 | Range | `packages/core/src/tree/range.ts` | `Node` | writeSyntax hook complete | Range syntax writes directly. |
 | RawRules | `packages/core/src/tree/rules-raw.ts` | `Rules` | iterator/direct braced writer complete | Raw body/braced loops use indexed loops and override the direct braced writer. Child `toString(...)` remains intentional because RawRules preserves exact child whitespace/comments; broader Rules audit remains. |

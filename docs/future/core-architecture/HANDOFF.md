@@ -2310,3 +2310,32 @@ the gate passed.
   `import-reference` `18.73ms` usable, `mixins-guards` `17.11ms` usable,
   `extend-chaining` `5.07ms` usable, and `media` `5.39ms` usable. This is not
   a speed claim.
+- Query condition child syntax pass: accepted as a public string-API hop
+  deletion in the active `writeSyntax` lane. New traversal: none; no loop,
+  recursion, parent/source walk, side-map lookup, generator, object scan, or
+  array helper was added. The existing query-condition child loop now calls
+  each child's `writeSyntax(...)` directly for source/static syntax instead of
+  `toString(...)`. New node/materialization: none; no `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, semantic placement state, side map, helper array, or public
+  materialized query surface was added. Render path: static query-condition
+  render now emits child syntax through `writeSyntax(...)` and does not route
+  through public `toString(...)`; dynamic query render still keeps the existing
+  localized writer-mark fallback because child render contracts may write or
+  return until the downstream node contracts are fully direct. No render path
+  resolves into arrays or nodes just to stringify. Helper/API surface: no new
+  helper, method, or public API was added. Metadata mutations: none; focused
+  tests assert source/static query-condition children record zero
+  `toString(...)` calls while serializing through `writeSyntax(...)`. Evidence:
+  starting leash at commit `9219f645` reported `functions` `13.36ms` usable,
+  `import-reference` `18.73ms` usable, `mixins-guards` `17.11ms` usable,
+  `extend-chaining` `5.07ms` usable, and `media` `5.39ms` usable. Focused
+  query-condition/sequence/render-buffer tests passed (`61` tests), and
+  `pnpm --filter @jesscss/core build` passed with only the pre-existing direct
+  `eval` warning in `js-expr.ts`. The first hotpath sanity retry failed before
+  measuring with the same stale `jess` package build/import state; rebuilding
+  the actual `jess` package fixed the runner. Post-pass hotpath sanity at dirty
+  head `9219f645` reported `functions` `13.16ms` usable,
+  `import-reference` `20.46ms` usable, `mixins-guards` `16.94ms` usable,
+  `extend-chaining` `5.21ms` usable, and `media` `5.73ms` usable. This is not
+  a speed claim.

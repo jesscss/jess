@@ -35,7 +35,7 @@ export class QueryCondition extends Sequence {
       const saved = options.suppressBoundaryTrivia;
       options.suppressBoundaryTrivia = 'pre';
       try {
-        value[i]!.toString(options);
+        value[i]!.writeSyntax(options);
       } finally {
         options.suppressBoundaryTrivia = saved;
       }
@@ -65,7 +65,7 @@ export class QueryCondition extends Sequence {
       let asyncOut = false;
       try {
         if (node.hasFlag(F_STATIC) && !this.hasFlag(F_MAY_ASYNC)) {
-          node.toString(options);
+          node.writeSyntax(options);
           return;
         }
         const before = w.mark();

@@ -44,6 +44,24 @@ describe('QueryCondition', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('writes query-condition source children without public toString transport', () => {
+    const first = any('screen');
+    const second = any('(color)');
+    let toStringCalls = 0;
+    first.toString = () => {
+      toStringCalls++;
+      return '';
+    };
+    second.toString = () => {
+      toStringCalls++;
+      return '';
+    };
+    const node = query([first, any('and'), second]);
+
+    expect(node.toTrimmedString()).toBe('screen and (color)');
+    expect(toStringCalls).toBe(0);
+  });
+
   it('renders static query conditions without resolving children', () => {
     const first = any('screen');
     const second = any('(color)');
@@ -56,6 +74,24 @@ describe('QueryCondition', () => {
     const node = query([first, any('and'), second]);
 
     expect(node.render(context)).toBe('screen and (color)');
+  });
+
+  it('renders static query-condition children without public toString transport', () => {
+    const first = any('screen');
+    const second = any('(color)');
+    let toStringCalls = 0;
+    first.toString = () => {
+      toStringCalls++;
+      return '';
+    };
+    second.toString = () => {
+      toStringCalls++;
+      return '';
+    };
+    const node = query([first, any('and'), second]);
+
+    expect(node.render(context)).toBe('screen and (color)');
+    expect(toStringCalls).toBe(0);
   });
 
   it('renders dynamic sync query conditions directly without materialized values', () => {
