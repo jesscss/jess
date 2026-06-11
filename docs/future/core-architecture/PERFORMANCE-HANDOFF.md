@@ -918,6 +918,19 @@ Future experiments should target repeated compound reference fixtures and prove
 that reuse falls out of binding handles and frame/surface versions, not a
 separate side cache with newly rebuilt strings, arrays, or lookup containers.
 
+June 2026 binding-handle prototype: accepted as a standalone design proof, not
+a production speed claim. `scripts/prototype-binding-handle-reuse.mjs` models a
+repeated `.a .b .c[color-1]` reference with a handle carrying scope version,
+original path array identity, target scope, declaration name, and binding cell.
+It does not cache evaluated values, rendered text, mixin output, or public
+materialized nodes. Default evidence: `pnpm run prototype:binding-handle-reuse`
+passed semantic assertions and reduced `500,000` repeated references from
+`1,500,000` path segment lookups plus `500,000` declaration lookups to `3`
+path segment lookups plus `1` declaration lookup. Median time moved from
+`12.149ms` to `3.521ms` (`28.99%` ratio). A smaller `50,000` reference run
+kept the signal: `150,000` path lookups and `50,000` declaration lookups to
+`3` and `1`, median `1.145ms` to `0.354ms` (`30.88%` ratio).
+
 ### Fallback-Frame Lookup Ownership
 
 Date: 2026-06-06.

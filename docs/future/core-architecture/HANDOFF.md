@@ -520,7 +520,7 @@ next step starts.
      path identity, and static/effect facts, not from ad hoc function-level
      caches.
 
-11. [ ] Callable records prototype.
+11. [x] Callable records prototype.
    Move only simple static callable lookup into binding records. Namespace,
    guard matching, candidate evaluation, import visibility, and callable output
    stay out of the facade until separately proven.
@@ -557,8 +557,15 @@ next step starts.
      `mixins-guards` `15.43ms` usable, `extend-chaining` `5.07ms` unstable,
      `media` `5.34ms` usable. Static node-creation audit returned to
      `new-node` `321`, `with-surface` `33`, `copy-leaves` `28`, `derive` `30`.
+   - Completion audit: subsequent registryless callable passes made this
+     prototype permanent for covered simple string and namespace paths, deleted
+     the legacy callable registry branches, deleted the `MixinRegistry` shim,
+     and deleted the generic `Rules.find('mixin', ...)` wrapper. Callable
+     output remains uncached, candidate evaluation remains semantic, and
+     focused mixin/reference/import tests now exercise the typed
+     `findMixin(...)` path directly.
 
-12. [ ] Binding handle reuse model.
+12. [x] Binding handle reuse model.
    Design and prototype one coherent binding/index system for repeated
    references. Do not add a separate "lookup cache" layer. A reference should
    ask for a binding handle that already carries scope/version, reference
@@ -591,6 +598,23 @@ next step starts.
      original static key array instance.
    - No cache, evaluated-value reuse, side map, materialized node, output
      wrapper, or render-path change was added.
+   - `scripts/prototype-binding-handle-reuse.mjs` now models the coherent
+     handle contract without production wiring or a separate cache layer: the
+     handle carries scope version, original path identity, target scope,
+     declaration name, and the binding cell. It explicitly marks evaluated
+     value/text reuse as unavailable until static/effect facts exist.
+   - Prototype proof: `pnpm run prototype:binding-handle-reuse` passed semantic
+     assertions and showed repeated `.a .b .c[color-1]` rediscovery dropping
+     from `1,500,000` path segment lookups and `500,000` declaration lookups to
+     `3` path segment lookups and `1` declaration lookup for `500,000`
+     references. Median time was `12.149ms` for rediscovery vs `3.521ms` for
+     handle reuse (`28.99%` ratio). A smaller `50,000` reference run kept the
+     signal: `150,000`/`50,000` lookups to `3`/`1`, median `1.145ms` vs
+     `0.354ms` (`30.88%` ratio).
+   - This completes the handoff queue item as a design/prototype proof only.
+     Production expansion still requires a separate implementation lane that
+     wires handles into real `Reference`/`Rules` surfaces without output,
+     evaluated-value, or public materialization caching.
 
 Secondary deep-cut queue:
 
@@ -789,6 +813,32 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Active binding lane completion: accepted as completing the remaining lookup
+  architecture queue through documentation and a standalone binding-handle
+  prototype, not as a production runtime speed claim. Files:
+  `scripts/prototype-binding-handle-reuse.mjs`, `package.json`,
+  `docs/future/core-architecture/HANDOFF.md`,
+  `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`, and
+  `docs/future/core-architecture/PERFORMANCE-HANDOFF.md`. New traversal: none
+  in production. The prototype has explicit path/declaration lookup loops to
+  compare rediscovery against handle reuse; those loops are isolated in
+  `scripts/` and are the measured model, not runtime code. New
+  node/materialization: none in production; the prototype uses plain JS
+  objects/maps for model scopes, declarations, counters, and handles, with no
+  AST `Node`, `Rules`, copy, `.inherit(...)`, `.adopt(...)`, output cache, or
+  public materialization cache. Render path: unchanged. Helper/API surface:
+  one package script and one standalone prototype script were added; no runtime
+  helper/API surface was added. Metadata mutations: none in production; the
+  prototype increments model scope versions to prove handle invalidation shape.
+  Routine error/control: prototype assertions throw on impossible model
+  failures only, not expected lookup misses in runtime. Evidence:
+  `pnpm run prototype:binding-handle-reuse` passed semantic assertions and
+  showed path/declaration rediscovery dropping from `1,500,000`/`500,000` to
+  `3`/`1` for `500,000` references, with median `12.149ms` vs `3.521ms`. A
+  smaller `50,000` reference run also passed and showed `150,000`/`50,000` to
+  `3`/`1`, median `1.145ms` vs `0.354ms`. This completes the active binding
+  lane as a design/prototype queue, while production handle wiring remains a
+  future implementation lane.
 - Generic mixin find wrapper deletion: accepted as deleting a stringly
   compatibility lookup surface, not a speed claim. Files:
   `packages/core/src/tree/rules.ts`,

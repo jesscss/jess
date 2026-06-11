@@ -634,6 +634,12 @@ Deletion condition: modeled callable paths return hit/miss from the binding
 frame. Only unmodeled callable ambiguity returns `UNCOVERED` and reaches the
 registry bridge.
 
+June 2026 status: the simple callable-record path is now production-owned for
+covered registryless callable lookup. The legacy callable registry branches,
+`MixinRegistry` shim, and generic `Rules.find('mixin', ...)` wrapper are gone.
+New callable work should model facts on frames/handles instead of restoring
+stringly registry dispatch.
+
 ## Transitional Bridge Ledger
 
 The bridge ledger is part of the implementation contract. Any production
@@ -775,6 +781,19 @@ Success:
 - repeated same-key/path lookups do not rediscover binding facts;
 - dynamic-name promotion and live-slot registration invalidate correctly;
 - no evaluated node reuse until effect flags prove it is safe.
+
+Prototype status: `scripts/prototype-binding-handle-reuse.mjs` models the
+non-cache version of that reuse. A handle carries scope version, original path
+array identity, target scope, declaration name, and the binding cell. It does
+not cache evaluated values, rendered text, mixin output, or public
+materialized nodes.
+
+Evidence: the default run (`pnpm run prototype:binding-handle-reuse`) reduced
+`500,000` repeated `.a .b .c[color-1]` references from `1,500,000` path
+segment lookups and `500,000` declaration lookups to `3` path segment lookups
+and `1` declaration lookup; median time moved from `12.149ms` to `3.521ms`
+(`28.99%` ratio). A smaller `50,000` reference run kept the signal at
+`1.145ms` to `0.354ms` (`30.88%` ratio).
 
 ### Step 4: Callable Records
 
