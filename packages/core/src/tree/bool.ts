@@ -23,11 +23,9 @@ export class Bool extends Node<boolean> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    this.writeSyntax(options);
-    return w.getSince(mark);
+    const out = this.value ? 'true' : 'false';
+    getPrintOptions(options).writer.add(out, this);
+    return out;
   }
 
   override writeSyntax(options: FinalPrintOptions): void {

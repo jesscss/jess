@@ -2589,3 +2589,33 @@ the gate passed.
   `10.80ms` usable, `import-reference` `16.14ms` usable, `mixins-guards`
   `14.50ms` usable, `extend-chaining` `4.55ms` unstable, and `media` `4.45ms`
   unstable. This is not a speed claim.
+- Scalar public wrapper readback pass: accepted as cold public string API
+  machinery deletion in the active `writeSyntax` lane. New traversal: none; no
+  loop, recursion, parent/source walk, side-map lookup, generator, object scan,
+  or array helper was added. `Bool.toTrimmedString(...)`,
+  `DefaultGuard.toTrimmedString(...)`, and `Combinator.toTrimmedString(...)`
+  now write their already-known scalar token directly and return that token
+  instead of marking the writer, calling `writeSyntax(...)`, and reading back
+  the just-written text. New node/materialization: none; no `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, semantic placement state, side map, helper array, or public
+  materialized scalar surface was added in runtime code. Test-only
+  `CountingWriter` instances were added only to prove zero writer readback on
+  the public wrappers; they are not runtime allocation. Render path: unchanged;
+  these are source/public string wrappers, not render value selection. No
+  render path resolves into arrays or nodes just to stringify. Helper/API
+  surface: no new runtime helper, method, or public API was added; the tiny
+  test-only writer subclasses are local assertions. Metadata mutations: none.
+  Rejected cut: `Rest.name` still has a public string smell, but repo
+  call-site search found no internal use; removing/changing that getter is
+  API-surface cleanup, not this scalar render-wrapper pass. Evidence: starting
+  leash at commit
+  `3e442735` was the Url run, so this pass is not comparison-usable. Focused
+  bool/default-guard/combinator/render-buffer tests passed (`41` tests), and
+  sequential `pnpm --filter @jesscss/core build && pnpm run
+  measure:less:hotpath -- --stable` passed with only the pre-existing direct
+  `eval` warning in `js-expr.ts`. Post-pass hotpath sanity at dirty head
+  `3e442735` was mixed and not comparison-usable: `functions` `10.19ms`
+  usable, `import-reference` `16.19ms` usable, `mixins-guards` `14.95ms`
+  usable, `extend-chaining` `4.55ms` unstable, and `media` `4.45ms` usable.
+  This is not a speed claim.

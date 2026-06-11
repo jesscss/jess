@@ -3,6 +3,16 @@ import { Bool, bool } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { cast } from '../util/cast.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 describe('Bool', () => {
   let context: Context;
@@ -14,6 +24,14 @@ describe('Bool', () => {
   it('renders bool syntax through toTrimmedString()', () => {
     expect(bool(true).toTrimmedString()).toBe('true');
     expect(bool(false).toTrimmedString()).toBe('false');
+  });
+
+  it('returns scalar bool syntax without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(bool(true).toTrimmedString({ writer })).toBe('true');
+    expect(writer.toString()).toBe('true');
+    expect(writer.reads).toBe(0);
   });
 
   it('renders bool values through render(context)', () => {

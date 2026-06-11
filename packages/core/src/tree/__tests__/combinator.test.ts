@@ -2,6 +2,16 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { co } from '../index.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 describe('Combinator', () => {
   let context: Context;
@@ -13,6 +23,14 @@ describe('Combinator', () => {
   it('renders combinator syntax through toTrimmedString()', () => {
     expect(co('>').toTrimmedString()).toBe('>');
     expect(co('+').toTrimmedString()).toBe('+');
+  });
+
+  it('returns scalar combinator syntax without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(co('>').toTrimmedString({ writer })).toBe('>');
+    expect(writer.toString()).toBe('>');
+    expect(writer.reads).toBe(0);
   });
 
   it('renders combinators through render(context)', () => {

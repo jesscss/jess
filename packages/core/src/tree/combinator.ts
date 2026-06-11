@@ -25,11 +25,8 @@ export class Combinator extends Selector<Combinators> {
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    const opts = getPrintOptions(options);
-    const writer = opts.writer;
-    const mark = writer.mark();
-    this.writeSyntax(opts);
-    return writer.getSince(mark);
+    getPrintOptions(options).writer.add(this.value, this);
+    return this.value;
   }
 
   /** @todo move to visitor */

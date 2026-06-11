@@ -2,6 +2,16 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { Bool, createPublicBool, defaultguard } from '../index.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 describe('DefaultGuard', () => {
   let context: Context;
@@ -12,6 +22,14 @@ describe('DefaultGuard', () => {
 
   it('renders default guard syntax through toTrimmedString()', () => {
     expect(defaultguard('default').toTrimmedString()).toBe('default');
+  });
+
+  it('returns scalar default syntax without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(defaultguard('default').toTrimmedString({ writer })).toBe('default');
+    expect(writer.toString()).toBe('default');
+    expect(writer.reads).toBe(0);
   });
 
   it('renders default guard values through render(context)', () => {

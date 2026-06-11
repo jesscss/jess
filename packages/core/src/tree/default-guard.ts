@@ -15,11 +15,8 @@ export interface DefaultGuard extends Node<string> {
 
 export class DefaultGuard extends Node<string> {
   override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    this.writeSyntax(options);
-    return w.getSince(mark);
+    getPrintOptions(options).writer.add('default', this);
+    return 'default';
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
