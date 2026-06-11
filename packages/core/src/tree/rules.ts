@@ -1848,18 +1848,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     filterType?: string,
     options: Registries.DeclarationFindOptions = {}
   ): ReturnType<Registries.DeclarationRegistry['find']> | undefined {
-    if (process.env.JESS_DIRECT_DECLARATION_LOOKUP === '1') {
+    const normalizedFilter = normalizeDeclarationFilter(filterType);
+    if (
+      normalizedFilter === 'VarDeclaration'
+      || process.env.JESS_DIRECT_DECLARATION_LOOKUP === '1'
+    ) {
       const direct = findDeclarationDirect(
         this,
         keys,
-        normalizeDeclarationFilter(filterType),
+        normalizedFilter,
         options
       );
       if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
         return direct;
       }
     }
-    return this.getRegistry('declaration').find(keys, normalizeDeclarationFilter(filterType), options);
+    return this.getRegistry('declaration').find(keys, normalizedFilter, options);
   }
 
   findVariable(

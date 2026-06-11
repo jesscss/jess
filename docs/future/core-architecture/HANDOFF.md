@@ -711,18 +711,33 @@ deep-cut queue.
    - Done: fallback-frame behavior remains covered by focused
      mixin/default-param/detached-ruleset/import tests.
 
-4. [ ] Replace declaration/property registry bridges by mode.
-   `Rules.findDeclaration(...)` still uses `DeclarationRegistry` by default,
-   with `findDeclarationDirect(...)` only behind `JESS_DIRECT_DECLARATION_LOOKUP`.
-   Move modeled declaration/property lookup modes onto frame/direct binding
-   lookup and delete the registry fallback for those modes in the same pass.
+4. [x] Replace declaration/property registry bridges by mode.
+   First selected mode complete: `Rules.findDeclaration(...,
+   'VarDeclaration', ...)` and `Rules.findVariable(...)` now use
+   `findDeclarationDirect(...)` by default, falling back to
+   `DeclarationRegistry` only when the direct path returns explicit
+   `UNCOVERED` for unsupported option shapes. General declaration/property
+   lookup remains behind `JESS_DIRECT_DECLARATION_LOOKUP` because forcing the
+   full bridge direct currently breaks property merge/source-order semantics.
 
    Completion gate:
-   - one selected mode has focused hit/miss/import/reference/source-order tests
-   - covered hits and misses avoid `DeclarationRegistry.find(...)`
-   - no temporary collection, sort, broad child crawl, or parent rediscovery
-     is added for ordinary exact-name reads
-   - the bridge ledger in `BINDING-INDEX-PROPOSAL.md` is updated for the mode
+   - Done: selected mode is `VarDeclaration`; focused hit/miss/import/reference
+     and source-order tests pass, plus declaration merge tests prove property
+     modes were not accidentally switched.
+   - Done: covered `findVariable(...)` hits avoid opening
+     `DeclarationRegistry`; existing reference/import/mixin tests continue to
+     prove hot variable lookups avoid registry fallback.
+   - Done: no new traversal is added; the pass removes the env-only condition
+     for an existing direct lookup path and keeps unsupported modes gated.
+   - Done: the bridge ledger in `BINDING-INDEX-PROPOSAL.md` is updated for the
+     selected mode and the remaining declaration/property modes.
+
+4a. [ ] Replace remaining declaration/property registry bridges.
+   `Declaration` property merge/source-order modes are still registry-owned by
+   default. A full `JESS_DIRECT_DECLARATION_LOOKUP=1` focused run currently
+   fails declaration merge tests by duplicating merge-chain inputs, so the next
+   declaration/property cut must model merge-chain/source-order facts before
+   deleting that registry path.
 
 5. [ ] Bring function lookup into the same binding model.
    `FunctionRegistry` and `Rules.find('function', ...)` remain registry-shaped.
@@ -2696,3 +2711,23 @@ the gate passed.
   `reference`, `mixin`, `control`, and `import-style` tests passed (`433`
   tests, `1` skipped). Performance remains leashed/status only until a measured
   before/after pass is run.
+- VarDeclaration direct-bridge pass: accepted as the first declaration bridge
+  mode deletion, not as a speed claim. New traversal: none; this pass does not
+  add a loop, recursion, parent/source walk, child scan, sort, generator,
+  side-map lookup, or array helper. It makes the existing
+  `findDeclarationDirect(...)` path production-default for normalized
+  `VarDeclaration` lookups and keeps the existing explicit `UNCOVERED` fallback
+  for unsupported option shapes. New node/materialization: none; no `Node`,
+  copied node, wrapper `Rules`, `.inherit(...)`, `.adopt(...)`, frozen state,
+  source metadata, or parent mutation was added. Render path: unchanged; this
+  only changes how `Rules.findVariable(...)`/`findDeclaration(...,
+  'VarDeclaration', ...)` find source declarations before the same eval/render
+  paths. Helper/API surface: no helper or public method added. Metadata
+  mutations: none. Rejected broader cut: forcing all declaration/property modes
+  through direct lookup (`JESS_DIRECT_DECLARATION_LOOKUP=1`) failed declaration
+  merge tests by duplicating merge-chain values, so property/general
+  declaration modes remain registry-owned until merge/source-order facts are
+  modeled. Evidence: focused `reference`, `import-style`, `mixin`,
+  `declaration`, `control`, and `scope-frame` tests passed (`499` tests, `1`
+  skipped), including a direct `findVariable(...)` proof that the declaration
+  registry is not opened for covered `VarDeclaration` hits.

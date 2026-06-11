@@ -630,6 +630,12 @@ Becomes a cold compatibility/fallback surface. Ordinary variable/property
 lookup should not call it. Its remaining responsibilities should be narrowed to
 complex search modes that the binding frame does not yet model.
 
+Production status: `VarDeclaration` lookup through
+`Rules.findDeclaration(..., 'VarDeclaration', ...)` and `Rules.findVariable(...)`
+uses direct declaration lookup by default. It falls back to
+`DeclarationRegistry` only when the direct path returns explicit `UNCOVERED`
+for unsupported option shapes.
+
 Deletion condition: every time a complex declaration lookup mode is represented
 in `BindingFrame`, delete the corresponding registry fallback branch from
 `Reference`/`Rules.find(...)` for that mode. Do not keep both paths active for
@@ -661,7 +667,7 @@ fallback must appear here or in `HANDOFF.md` before it is accepted.
 | Bridge | Allowed Scope | Deletion Condition |
 | --- | --- | --- |
 | `Reference.lookupVariableReference(...)` facade miss to `findVarDeclarationFast(...)` | explicit targets, interpolated keys, still-dynamic names, and other declaration modes not yet represented by binding handles/slots | delete per covered mode once static declaration records cover the mode and tests prove hits/misses do not enter the helper ladder |
-| `Rules.find('declaration', ...)` / `DeclarationRegistry` | declaration/property modes, dynamic names, import/reference visibility, complex source-order modes not yet encoded in frame lookup | delete per mode as soon as frame lookup encodes that mode and tests prove covered hits/misses do not enter registry search |
+| `Rules.find('declaration', ...)` / `DeclarationRegistry` | remaining `Declaration`/property merge modes, dynamic names, import/reference visibility, complex source-order modes not yet encoded in frame lookup. `VarDeclaration` is direct-first for covered option shapes. | delete per mode as soon as frame lookup encodes that mode and tests prove covered hits/misses do not enter registry search |
 | `Rules.find('function', ...)` / `FunctionRegistry` | function lookup modes not yet encoded as callable/binding records | delete simple static function fallback once function records cover exact static keys and focused tests prove hits/misses do not enter `FunctionRegistry.find(...)` |
 | Callable direct-crawl bridge after registryless mixin deletion | callable namespace, guard/candidate matching, import visibility, and child-surface facts not yet encoded in frame/handle state | delete per modeled path once binding state can return callable hit/miss or explicit `UNCOVERED`; do not restore `MixinRegistry` or stringly `Rules.find('mixin', ...)` |
 | Public materialization from source declaration nodes | cold public `eval/resolve` API compatibility and unmodeled ownership boundaries | delete from render/eval hot paths once binding values can render directly and public materialization is isolated |
