@@ -2546,6 +2546,57 @@ describe('reference', () => {
       }
     });
 
+    it('findProperty uses direct Declaration lookup without opening DeclarationRegistry for unfiltered exact hits', async () => {
+      const originalGetRegistry = RulesClass.prototype.getRegistry;
+      const registryHits: string[] = [];
+      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
+        const [type] = args;
+        if (type === 'declaration') {
+          registryHits.push(type);
+        }
+        return originalGetRegistry.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          decl({ name: any('color'), value: any('red') })
+        ]);
+
+        await node.eval(context);
+        const found = node.findProperty('color');
+
+        expect(found?.value.value.valueOf()).toBe('red');
+        expect(registryHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.getRegistry = originalGetRegistry;
+      }
+    });
+
+    it('findProperty uses direct Declaration lookup without opening DeclarationRegistry for covered unfiltered misses', async () => {
+      const originalGetRegistry = RulesClass.prototype.getRegistry;
+      const registryHits: string[] = [];
+      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
+        const [type] = args;
+        if (type === 'declaration') {
+          registryHits.push(type);
+        }
+        return originalGetRegistry.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          decl({ name: any('color'), value: any('red') })
+        ]);
+
+        await node.eval(context);
+
+        expect(node.findProperty('missing')).toBeUndefined();
+        expect(registryHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.getRegistry = originalGetRegistry;
+      }
+    });
+
     it('nested static variable hits build parent scope frames without Rules.find fallback', async () => {
       const originalFind = RulesClass.prototype.find;
       let declarationHits = 0;

@@ -1931,6 +1931,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const normalizedFilter = normalizeDeclarationFilter(filterType);
     if (
       normalizedFilter === 'VarDeclaration'
+      || (
+        normalizedFilter === 'Declaration'
+        && !options.filter
+      )
       || process.env.JESS_DIRECT_DECLARATION_LOOKUP === '1'
     ) {
       const direct = findDeclarationDirect(

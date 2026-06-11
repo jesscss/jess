@@ -732,12 +732,28 @@ deep-cut queue.
    - Done: the bridge ledger in `BINDING-INDEX-PROPOSAL.md` is updated for the
      selected mode and the remaining declaration/property modes.
 
-4a. [ ] Replace remaining declaration/property registry bridges.
-   `Declaration` property merge/source-order modes are still registry-owned by
-   default. A full `JESS_DIRECT_DECLARATION_LOOKUP=1` focused run currently
-   fails declaration merge tests by duplicating merge-chain inputs, so the next
-   declaration/property cut must model merge-chain/source-order facts before
-   deleting that registry path.
+4a. [x] Replace remaining unfiltered declaration/property registry bridges.
+   Unfiltered exact `Declaration`/property lookup now uses
+   `findDeclarationDirect(...)` by default, so `findProperty(...)` covered hits
+   and covered misses no longer open `DeclarationRegistry`. Filtered
+   declaration/property lookups now return explicit `UNCOVERED` from the direct
+   helper and remain registry-owned.
+
+   Completion gate:
+   - Done: unfiltered exact property hits and misses avoid opening
+     `DeclarationRegistry`.
+   - Done: declaration/reference/import focused tests pass with the direct
+     property path enabled by default.
+   - Done: `JESS_DIRECT_DECLARATION_LOOKUP=1` focused declaration/reference
+     tests pass because filtered merge-chain lookups decline the direct path
+     instead of duplicating merge-chain inputs.
+
+4b. [ ] Model filtered declaration/property merge-chain lookups.
+   Assignment-normalization filters (`+:`, `&,:`, `&_:`) still need direct
+   merge-anchor/source-order facts before they can leave `DeclarationRegistry`.
+   The prior full direct attempt duplicated already-coalesced merge-chain
+   inputs, so this cut must model merge anchors rather than routing filtered
+   lookups through ordinary last-wins declaration search.
 
 5. [x] Bring function lookup into the same binding model.
    Simple exact-name function lookup now uses `Rules.functionsByName` binding
@@ -2829,3 +2845,26 @@ the gate passed.
   `measure:less:hotpath` completed as a correctness/sanity run only; several
   fixtures were noisy or unstable, so no speed claim is made. Direct
   `scope-lookup-stress.less` render still produced `8822` bytes.
+- Unfiltered property declaration direct lookup pass: accepted as a narrow
+  registry bridge deletion, not as a speed claim. New traversal: none; the pass
+  routes an already-existing `findDeclarationDirect(...)` path for unfiltered
+  exact `Declaration` lookup and adds an early `UNCOVERED` return for filtered
+  non-variable declaration lookups. New node/materialization: no production
+  node, wrapper `Rules`, copied node, `.inherit(...)`, `.adopt(...)`, frozen
+  state, source metadata, or parent mutation was added. Test-only arrays and
+  monkeypatch `try/finally` blocks prove covered property hit/miss cases do not
+  open `DeclarationRegistry`. Render path: unchanged; assignment-normalized
+  merge-chain references still fall back to the registry bridge rather than
+  duplicating coalesced merge inputs. Helper/API surface: no public API added;
+  one existing condition in `Rules.findDeclaration(...)` was widened for
+  unfiltered `Declaration`, and one direct-helper guard was narrowed to return
+  explicit `UNCOVERED` for filtered non-variable declaration lookups. Metadata
+  mutations: none. Evidence: focused `declaration`, `reference`,
+  `import-style`, and `extend-import-style` tests passed (`291` tests, `1`
+  skipped); `JESS_DIRECT_DECLARATION_LOOKUP=1` focused `declaration` and
+  `reference` tests passed (`184` tests), proving filtered merge-chain lookups
+  decline the direct path; touched-file ESLint, `@jesscss/core` build,
+  `git diff --check`, aggressive cutting review, node-creation audit, full
+  `measure:less:hotpath` sanity, and direct `scope-lookup-stress.less` render
+  (`8822` bytes) passed. The hotpath run had mixed usable/noisy/unstable
+  signals, so no speed claim is made.
