@@ -17,6 +17,7 @@ import { N } from './node-type.js';
 import type { Call } from './call.js';
 import {
   OutputWriter,
+  type FinalPrintOptions,
   type PrintOptions,
   getPrintOptions,
   prepareRenderPrintState,
@@ -547,6 +548,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   override toTrimmedString(options?: PrintOptions) {
     return this.declTrimmedString(options);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    this.declTrimmedString(options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;

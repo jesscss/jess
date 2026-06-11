@@ -56,8 +56,9 @@ first measured offenders after the selector pass.
   source-string wrapper is gone, and public string wrapper owns capture.
 - [ ] `Ruleset`: eliminate or isolate `getHeaderString(...)` capture for hot
   frame render/comparison paths.
-- [ ] `Declaration`: split `declValueTrimmedString(...)` into direct value
-  writer plus cold duplicate-comparison/materialization boundary.
+- [ ] `Declaration`: public syntax boundary exists for callers, but
+  `declValueTrimmedString(...)` still needs a direct value writer plus cold
+  duplicate-comparison/materialization boundary.
 - [x] `Any` / `Keyword` / `Anonymous`: move scalar token emission to generic
   `writeSyntax`; audit `compare(...)` string normalization.
 - [x] `Dimension` / `Num`: move numeric/unit emission to `writeSyntax`; audit
@@ -195,7 +196,7 @@ Current hard leftovers after the broad hook sweep:
 | CompoundSelector | `packages/core/src/tree/selector-compound.ts` | `Selector` | writeSyntax complete | Component emission uses `writeSyntax` and cold private source-string wrapper is gone; broader valueOf classification and allocation-array audit remains. |
 | Condition | `packages/core/src/tree/condition.ts` | `Node` | direct operand writer complete | Source condition syntax writes directly through operand `writeSyntax(...)`; bool result materialization audit remains. |
 | CustomDeclaration | `packages/core/src/tree/declaration-custom.ts` | `Declaration` | queued | Audit custom-property eval/render after `Declaration`. |
-| Declaration | `packages/core/src/tree/declaration.ts` | `Node` | queued | High priority: custom property branches, merge state, materialization. |
+| Declaration | `packages/core/src/tree/declaration.ts` | `Node` | partial | `writeSyntax(...)` now gives containers a direct declaration syntax boundary instead of forcing public `toString(...)`; high priority remains for custom property branches, merge state, internal mark/replace, and materialization. |
 | DefaultGuard | `packages/core/src/tree/default-guard.ts` | `Node` | writeSyntax hook complete | Scalar guard writer complete. |
 | Dimension | `packages/core/src/tree/dimension.ts` | `Node` | writeSyntax hook complete | Number/unit emission writes directly; preserve-mode compound unit serialization uses a straight loop instead of `map(...).join(...)`; regex/unit conversion and operation paths remain. |
 | Expression | `packages/core/src/tree/expression.ts` | `Node` | direct child writer complete | Wrapper syntax writes directly and now calls child `writeSyntax(...)` instead of public `toString(...)`; child render/eval audit remains. |
@@ -225,7 +226,7 @@ Current hard leftovers after the broad hook sweep:
 | QueryCondition | `packages/core/src/tree/query-condition.ts` | `Sequence` | partial | Source/static child syntax now uses `writeSyntax(...)` instead of public `toString(...)`, and static child render avoids writer-mark probes. Dynamic child render keeps one localized mark fallback because child render may write or return until downstream contracts are direct. |
 | Quoted | `packages/core/src/tree/quoted.ts` | `Node` | writeSyntax hook complete | Quote syntax and child node syntax write directly; public string wrapper is no longer used for quoted child transport. |
 | Range | `packages/core/src/tree/range.ts` | `Node` | writeSyntax hook complete | Range syntax and bound child syntax write directly with no local public string wrapper. |
-| RawRules | `packages/core/src/tree/rules-raw.ts` | `Rules` | iterator/direct braced writer complete | Raw body/braced loops use indexed loops and override the direct braced writer. Child `toString(...)` remains intentional because RawRules preserves exact child whitespace/comments; broader Rules audit remains. |
+| RawRules | `packages/core/src/tree/rules-raw.ts` | `Rules` | direct braced writer complete | Raw body/braced loops use indexed loops, no-trivia children call `writeSyntax(...)`, and trivia-backed children keep `toString(...)` for exact whitespace/comment preservation. Broader Rules audit remains. |
 | Reference | `packages/core/src/tree/reference.ts` | `Node` | in progress | Passes 1-10 deleted alias predicates, result/fallback/materialization wrapper helpers, the useless `evalNode(...)` Promise wrapper, direct render closures, option spread helpers, scope-array walker, runtime-key IIFE, small `findVarDeclarationFast(...)` result/IIFE allocations, duplicate fallback/copy/static-return branches, callable surface rechecks, raw lookup sync-path closure/IIFE setup, main eval lookup closure setup, static declaration public-resolve copy/inherit for non-important/non-merged containers, per-call `findVarDeclarationFast(...)` helper closure allocation for bucket selection/candidate ordering/deferred dynamic-name promotion, reference-value evaluator options-object allocation, the declaration evaluator argument-object wrapper, runtime-binding sync evaluator closure setup, the rules-reference lookup executor closure, render-only dynamic declaration/runtime binding post-eval copy+inherit, unresolved reference source serialization now has a direct `writeSyntax(...)` path, and target/key source children no longer route through public `toString(...)`. Remaining: rules-like surfaces, public value materialization, merged assign normalization, and key conversion. |
 | Rest | `packages/core/src/tree/rest.ts` | `Node` | writeSyntax hook complete | Rest syntax writes directly; wrapper necessity remains. |
 | Rules | `packages/core/src/tree/rules.ts` | `Node` | partial | Direct braced source writer exists and public `toBraced(...)` is cold; high priority remains for body eval/render, imports, placement state, merge output, and root serializer capture. |

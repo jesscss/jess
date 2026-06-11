@@ -2525,3 +2525,38 @@ the gate passed.
   noisy, `import-reference` `21.01ms` unstable, `mixins-guards` `16.59ms`
   unstable, `extend-chaining` `5.36ms` noisy, and `media` `5.54ms` usable.
   This is not a speed claim.
+- RawRules/Declaration syntax boundary pass: accepted as a guarded public
+  string transport deletion in the active `writeSyntax` lane, with declaration
+  internal formatting debt kept explicit. New traversal: none; no loop,
+  recursion, parent/source walk, side-map lookup, generator, object scan, or
+  array helper was added. Existing `RawRules` child loops now call child
+  `writeSyntax(...)` directly only when no active/source trivia map exists;
+  trivia-backed child boundaries keep the existing `toString(...)` source
+  serializer because raw rules preserve authored whitespace/comments exactly.
+  `Declaration.writeSyntax(...)` was added as a caller boundary so containers
+  no longer need declaration public `toString(...)` just to emit declaration
+  syntax. New node/materialization: none; no `Node`, copy, `.inherit(...)`,
+  `.adopt(...)`, wrapper `Rules`, frozen/source/parent mutation, semantic
+  placement state, side map, helper array, or public materialized declaration
+  surface was added. Render path: unchanged for evaluated output; no-trivia
+  RawRules source syntax no longer resolves through declaration public string
+  transport at child boundaries. No render path resolves into arrays or nodes
+  just to stringify. Helper/API surface: one override of the existing
+  `writeSyntax(...)` hook was added to `Declaration`; it deletes a required
+  public-string caller hop but does not claim to finish `Declaration` internals.
+  Metadata mutations: none; the `sourceRoot?._treeContext?.opts?.trivia` reads
+  are branch guards that preserve exact-source mode and do not mutate
+  parent/source metadata. Rejected cut: treating `RawRules` as complete by
+  blindly swapping child declarations to the base writer dropped `color: red`
+  to `colorred`; the fix was the declaration syntax boundary, not a RawRules
+  type ladder. Remaining queued debt: `declValueTrimmedString(...)` still owns
+  internal `mark/getSince` and `replaceSince` formatting, custom-property
+  branches, merge state, and duplicate/materialization boundaries. Evidence:
+  starting leash at commit `b05fc4a2` was the List/Sequence run, so this pass
+  is not comparison-usable. Focused rules-raw/declaration/render-buffer tests
+  passed (`86` tests), and `pnpm --filter @jesscss/core build` passed with
+  only the pre-existing direct `eval` warning in `js-expr.ts`. Post-pass
+  hotpath sanity at dirty head `b05fc4a2` was mixed and not
+  comparison-usable: `functions` `10.35ms` usable, `import-reference`
+  `16.53ms` unstable, `mixins-guards` `14.62ms` usable, `extend-chaining`
+  `4.53ms` unstable, and `media` `5.22ms` unstable. This is not a speed claim.

@@ -58,4 +58,22 @@ describe('RawRules', () => {
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
+
+  it('writes raw children without public toString transport when trivia is inactive', () => {
+    const name = any('color');
+    const value = any('red');
+    let stringCalls = 0;
+    name.toString = value.toString = () => {
+      stringCalls++;
+      return '';
+    };
+
+    const node = rawrules([
+      decl({ name, value })
+    ]);
+
+    expect(node.toBraced()).toBe('{color: red}');
+    expect(node.toTrimmedString()).toBe('color: red');
+    expect(stringCalls).toBe(0);
+  });
 });

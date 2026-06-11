@@ -24,9 +24,14 @@ export class RawRules extends Rules {
   override writeBracedSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('{');
-    // Emit children using toString to preserve exact whitespace/comments
     for (let i = 0; i < this.value.length; i++) {
-      this.value[i]!.toString(options);
+      const child = this.value[i]!;
+      const trivia = options.trivia ?? child.sourceRoot?._treeContext?.opts?.trivia;
+      if (trivia) {
+        child.toString(options);
+      } else {
+        child.writeSyntax(options);
+      }
     }
     w.add('}');
   }
@@ -34,7 +39,13 @@ export class RawRules extends Rules {
   // Keep trimmed output minimal – emit children verbatim without extras
   override writeSyntax(options: FinalPrintOptions): void {
     for (let i = 0; i < this.value.length; i++) {
-      this.value[i]!.toString(options);
+      const child = this.value[i]!;
+      const trivia = options.trivia ?? child.sourceRoot?._treeContext?.opts?.trivia;
+      if (trivia) {
+        child.toString(options);
+      } else {
+        child.writeSyntax(options);
+      }
     }
   }
 
