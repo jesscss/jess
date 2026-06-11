@@ -799,6 +799,20 @@ and `1` declaration lookup; median time moved from `12.149ms` to `3.521ms`
 (`28.99%` ratio). A smaller `50,000` reference run kept the signal at
 `1.145ms` to `0.354ms` (`30.88%` ratio).
 
+Production status: the first narrow callable handle is wired on `Reference`
+for static, non-targeted `mixin` / `mixin-ruleset` lookups with string or
+preserved string-array keys. It carries the target `Rules`, target
+`lookupVersion`, original key identity, lookup type, call-state bits, and the
+resolved lookup result identity. It intentionally does not cache evaluated
+values, rendered text, mixin output, or public materialized nodes. A focused
+reference test proves the second evaluation of the same static array-path
+callable reference skips `Rules.findMixin(...)`, and a later target
+`Rules.registerNode(...)` bump invalidates the handle.
+
+Remaining production work: declaration/property terminal binding handles,
+function records, live/static slot unification, and callable
+namespace/import/child-surface facts are still separate queue items.
+
 ### Step 4: Callable Records
 
 Move simple static `mixinsByName` lookup into binding records. Keep namespace

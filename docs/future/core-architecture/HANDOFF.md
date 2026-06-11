@@ -630,7 +630,7 @@ identity or miss without falling through adjacent lookup systems.
 Choose the next item from this queue before returning to the secondary
 deep-cut queue.
 
-1. [ ] Wire production binding handles into `Reference`/`Rules`.
+1. [x] Wire production binding handles into `Reference`/`Rules`.
    Use the prototype contract from `scripts/prototype-binding-handle-reuse.mjs`
    as the proof target: handles carry frame/surface version, original path/key
    identity, target scope, declaration/callable/property identity, and binding
@@ -646,6 +646,28 @@ deep-cut queue.
    - no output/value/materialization cache is introduced
    - `pnpm run prototype:binding-handle-reuse` still passes as the model check
    - focused lookup tests and `pnpm run verify:aggressive-cutting-review` pass
+
+   Status:
+   - First production slice is wired for static, non-targeted callable
+     `Reference` lookups only (`type: mixin` / `mixin-ruleset`) when the key is
+     a string or preserved string array, no custom filter is present,
+     `leakyRules` is off, and `context.searchScope` is empty.
+   - `Reference` now owns a narrow lookup handle carrying target `Rules`,
+     target `lookupVersion`, original key identity, lookup type, call-state
+     bits, and the resolved lookup result identity. This is not an evaluated
+     value cache, rendered-text cache, mixin output cache, or public
+     materialization cache.
+   - `Rules.lookupVersion` is bumped from `registerNode(...)`, the same edge
+     that already invalidates callable/declaration lookup caches. A changed
+     target rules surface invalidates the handle and forces rediscovery.
+   - Focused proof: a static array-path `mixin-ruleset` reference calls
+     `Rules.findMixin(...)` once, reuses the handle on the second eval of the
+     same `Reference`, then calls `findMixin(...)` again after the target
+     `Rules` is mutated and `lookupVersion` changes.
+   - Remaining handle work: declaration/property terminal identity is not
+     production-wired yet, function lookup is still registry-shaped, and
+     callable namespace/import/child-surface facts still need to move into
+     frame/handle state.
 
 2. [ ] Collapse live-slot and static-declaration lookup into one slot/record
    path.
@@ -915,6 +937,42 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Production callable binding-handle pass: accepted as the first production
+  slice of the brought-forward binding/index queue, not as completion of the
+  whole handle system. Files: `packages/core/src/tree/reference.ts`,
+  `packages/core/src/tree/rules.ts`, and
+  `packages/core/src/tree/__tests__/reference.test.ts`. New traversal: none in
+  production lookup. The pass adds handle read/write guard helpers, but those
+  only compare already-carried scalar facts and original key identity before
+  the existing lookup. No parent/source walk, child crawl, recursive scan,
+  sort, generator, or new collection scan was added. New state: one
+  `Reference`-owned `_rulesLookupHandle` and one `Rules.lookupVersion`.
+  `lookupVersion` is bumped at the existing `registerNode(...)` invalidation
+  edge that already clears callable/declaration caches; it is semantic lookup
+  identity, not a value cache. New node/materialization: none; no `Node`,
+  wrapper `Rules`, `MixinCollection`, copy, `.inherit(...)`, `.adopt(...)`,
+  frozen state, source/parent metadata mutation, evaluated value cache,
+  rendered-text cache, mixin output cache, or public materialization cache was
+  added. Render path: unchanged; the handle stores lookup result identity only,
+  and existing finalization/render still owns materialization/stringification.
+  Helper/API surface: three module-local helpers and one internal handle type
+  were added to avoid rediscovering callable identity on repeated static
+  references; no public API was added. Metadata mutations: no parent/source
+  restoration, lazy context/options creation, `Reflect.*`, or
+  `Object.hasOwn(...)` added. Evidence: focused `reference.test.ts` passed
+  (`116` tests); callable/import-adjacent suites passed (`252` passed, `1`
+  skipped); targeted eslint on touched files passed; `@jesscss/core` build
+  passed; `pnpm run prototype:binding-handle-reuse` passed with semantic
+  assertions and counters dropping from `1,500,000` path / `500,000`
+  declaration rediscoveries to `3` path / `1` declaration lookup in the model;
+  `audit:node-creation` reported `reference.ts` at `17` creation/copy
+  surfaces. Hotpath leash was status only, not a speed claim: `functions`
+  median `15.75ms` usable, `mixins-guards` `18.44ms` usable,
+  `import-reference` `19.32ms` unstable, `extend-chaining` `5.40ms` unstable,
+  and `media` `5.35ms` unstable. Full package lint still has unrelated
+  pre-existing failures outside this patch; touched-file lint passed. The
+  remaining diff `try/finally` is test-only monkeypatch restoration for
+  `Rules.findMixin(...)`, not production lookup miss/error control.
 - Active binding lane completion: accepted as completing the remaining lookup
   architecture queue through documentation and a standalone binding-handle
   prototype, not as a production runtime speed claim. Files:

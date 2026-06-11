@@ -3565,6 +3565,56 @@ describe('reference', () => {
       }
     });
 
+    it('reuses static callable binding handles until the target rules version changes', async () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const path = ['.a', '.b', '.c'];
+      let pathLookups = 0;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        const [key] = args;
+        if (key === path) {
+          pathLookups++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          ruleset({
+            selector: compound([el('.a'), el('.b'), el('.c')]),
+            rules: rules([
+              decl({ name: 'color', value: any('blue') })
+            ])
+          })
+        ]);
+        setRulesContext(await node.eval(context));
+        const lookupRef = ref({ key: path }, { type: 'mixin-ruleset' });
+
+        const first = lookupRef.eval(context);
+        expect(isNode(first)).toBe(true);
+        if (isNode(first)) {
+          expect(first.type).toBe('MixinCollection');
+        }
+        expect(pathLookups).toBe(1);
+
+        const second = lookupRef.eval(context);
+        expect(isNode(second)).toBe(true);
+        if (isNode(second)) {
+          expect(second.type).toBe('MixinCollection');
+        }
+        expect(pathLookups).toBe(1);
+
+        node.push(decl({ name: 'unrelated', value: any('1') }));
+        const third = lookupRef.eval(context);
+        expect(isNode(third)).toBe(true);
+        if (isNode(third)) {
+          expect(third.type).toBe('MixinCollection');
+        }
+        expect(pathLookups).toBe(2);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
     it('should resolve a mixin-ruleset call keyed by a complex selector while ignoring namespace separators', async () => {
       const node = rules([
         ruleset({

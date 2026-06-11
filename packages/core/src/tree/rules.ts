@@ -570,6 +570,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   registrylessLastMixinLookupKey: string | undefined;
   registrylessLastMixinLookupValue: MixinEntry[] | undefined;
+  lookupVersion = 0;
   /** ScopeFrame storage; check this when lookup must not lazily build a frame. */
   _scopeFrame: ScopeFrame | undefined;
   /**
@@ -679,6 +680,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.directDeclarationLookupCache = undefined;
     this.registrylessLastMixinLookupKey = undefined;
     this.registrylessLastMixinLookupValue = undefined;
+    this.lookupVersion = 0;
     this._hasExtends = false;
     this._hasReferenceImports = false;
     // Preserve only runtime live-slot bindings (mixin params / loop vars) across clones.
@@ -2498,6 +2500,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   registerNode(node: Node, options?: Record<string, any>, context?: Context) {
+    this.lookupVersion++;
     const rebuildCallableCache = this.callableLookupCache !== undefined || this._scopeFrame !== undefined;
     this.callableLookupCache = undefined;
     if (this._scopeFrame) {
