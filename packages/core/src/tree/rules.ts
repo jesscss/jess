@@ -1621,7 +1621,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     let remainder: string[] | undefined;
     let nestedOptions: Registries.FindOptions | undefined;
-    const resolved: MixinEntry[] = [];
+    let resolved: MixinEntry[] | undefined;
     for (let i = 0; i < namespaceMixins.length; i++) {
       const entry = namespaceMixins[i]!;
       if (!isNode(entry, N.Mixin)) {
@@ -1637,6 +1637,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       };
       const nested = entry.value.rules.findMixin(remainder, undefined, nestedOptions);
       if (nested?.length) {
+        resolved ??= [];
         for (let nestedIndex = 0; nestedIndex < nested.length; nestedIndex++) {
           resolved.push(nested[nestedIndex]!);
         }

@@ -785,6 +785,24 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Callable namespace descendant result allocation cut: accepted as lazy miss-path
+  allocation deletion, not a speed claim. File: `packages/core/src/tree/rules.ts`
+  and this handoff. New traversal: none; `findCallableDescendantsWithinMixinNamespaces(...)`
+  keeps the same namespace-mixin loop but creates the `resolved` array only
+  after a nested lookup returns at least one descendant hit. Misses, non-mixin
+  entries, and namespace mixins with required params now return `undefined`
+  without allocating an empty result array. New node/materialization: no new
+  materialization; the returned result array already existed, and this pass
+  moves it from eager allocation to lazy allocation only for real descendant
+  hits. Render path: unchanged. Helper/API surface: no helper added and no
+  public API changed. Metadata mutations: none. Routine error/control: no
+  throw/catch/Error path added. Evidence: focused mixin tests passed (`139`
+  tests), the expanded lookup-adjacent suite passed (`552` passed, `9`
+  skipped), eslint passed for `rules.ts`, and `@jesscss/core` build passed with
+  the existing `src/tree/js-expr.ts` direct-eval warning. Review danger token:
+  `resolved ??= []` is the kept return array allocated only after a hit,
+  replacing the previous eager `const resolved = []` miss-path allocation. No
+  runtime speed claim without benchmark/profile proof.
 - ScopeFrame callable hit scan cut: accepted as duplicate bucket-scan deletion,
   not a speed claim. File: `packages/core/src/tree/scope-frame.ts` and this
   handoff. New traversal: none; `lookupScopeFrameCallable(...)` now uses one
