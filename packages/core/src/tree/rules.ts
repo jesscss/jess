@@ -817,11 +817,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   getRegistry(type: 'function'): Registries.FunctionRegistry;
   getRegistry(type: 'declaration' | 'mixin' | 'function'): Registries.DeclarationRegistry | Registries.MixinRegistry | Registries.FunctionRegistry;
   getRegistry(type: 'declaration' | 'mixin' | 'function') {
+    if (type === 'mixin') {
+      return new Registries.MixinRegistry(this);
+    }
     const registry = type === 'declaration'
       ? this._ensureDeclarationRegistry()
-      : type === 'mixin'
-        ? new Registries.MixinRegistry(this)
-        : this._ensureFunctionRegistry();
+      : this._ensureFunctionRegistry();
     if (this.rulesIndexed < this.value.length) {
       this._indexRules();
     } else {

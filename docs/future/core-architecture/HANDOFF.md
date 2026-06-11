@@ -785,6 +785,29 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Mixin registry compatibility indexing cut: accepted as cold compatibility
+  side-effect deletion, not a speed claim. Files:
+  `packages/core/src/tree/rules.ts` and this handoff. API surface: the public
+  `Rules.getRegistry('mixin')` overload remains in place and still returns a
+  `MixinRegistry` compatibility object, so this is not a public overload
+  deletion. New traversal: none; `getRegistry('mixin')` now returns from its
+  no-op compatibility branch before the declaration/function registry indexing
+  side effects run. That avoids calling `_indexRules()` and avoids initializing
+  declaration fast maps for a registryless callable compatibility request. New
+  node/materialization: none beyond the existing cold compatibility
+  `MixinRegistry` object that was already returned. Render path: unchanged.
+  Helper/API surface: no helper added and no public API widened or removed.
+  Metadata mutations: deleted the possible `varsByName` initialization and
+  rule-indexing side effects from the mixin-registry compatibility branch.
+  Routine error/control: no throw/catch/Error path added. Evidence: focused
+  mixin tests passed (`139` tests), including a new compatibility assertion
+  that `getRegistry('mixin')` returns a `MixinRegistry` without advancing
+  `rulesIndexed` or initializing `varsByName`; the expanded lookup-adjacent
+  suite passed (`552` passed, `9` skipped), eslint passed, `@jesscss/core`
+  build passed with the existing `src/tree/js-expr.ts` direct-eval warning,
+  `verify:aggressive-cutting-review` passed with no danger tokens, and
+  `git diff --check` passed. No runtime speed claim without benchmark/profile
+  proof.
 - Callable namespace singleton-sort guard: accepted as unnecessary sort-call
   deletion, not a speed claim. Files: `packages/core/src/tree/rules.ts` and
   this handoff. New traversal: none; the existing ruleset-prefix match arrays
