@@ -734,19 +734,20 @@ deep-cut queue.
 
 4a. [x] Replace remaining unfiltered declaration/property registry bridges.
    Unfiltered exact `Declaration`/property lookup now uses
-   `findDeclarationDirect(...)` by default, so `findProperty(...)` covered hits
-   and covered misses no longer open `DeclarationRegistry`. Filtered
-   declaration/property lookups now return explicit `UNCOVERED` from the direct
-   helper and remain registry-owned.
+   `findDeclarationDirect(...)` by default, so `findProperty(...)` and normal
+   property `Reference` covered hits/misses no longer open
+   `DeclarationRegistry`. Lookup options distinguish default context/search
+   filters from semantic filters, so assignment merge filters still return
+   explicit `UNCOVERED` from the direct helper and remain registry-owned.
 
    Completion gate:
-   - Done: unfiltered exact property hits and misses avoid opening
-     `DeclarationRegistry`.
+   - Done: unfiltered exact property hits, misses, and normal property
+     references avoid opening `DeclarationRegistry`.
    - Done: declaration/reference/import focused tests pass with the direct
      property path enabled by default.
    - Done: `JESS_DIRECT_DECLARATION_LOOKUP=1` focused declaration/reference
-     tests pass because filtered merge-chain lookups decline the direct path
-     instead of duplicating merge-chain inputs.
+     tests pass because semantic filtered merge-chain lookups decline the
+     direct path instead of duplicating merge-chain inputs.
 
 4b. [ ] Model filtered declaration/property merge-chain lookups.
    Assignment-normalization filters (`+:`, `&,:`, `&_:`) still need direct
@@ -2848,23 +2849,26 @@ the gate passed.
 - Unfiltered property declaration direct lookup pass: accepted as a narrow
   registry bridge deletion, not as a speed claim. New traversal: none; the pass
   routes an already-existing `findDeclarationDirect(...)` path for unfiltered
-  exact `Declaration` lookup and adds an early `UNCOVERED` return for filtered
-  non-variable declaration lookups. New node/materialization: no production
-  node, wrapper `Rules`, copied node, `.inherit(...)`, `.adopt(...)`, frozen
-  state, source metadata, or parent mutation was added. Test-only arrays and
-  monkeypatch `try/finally` blocks prove covered property hit/miss cases do not
-  open `DeclarationRegistry`. Render path: unchanged; assignment-normalized
+  exact/default-filter `Declaration` lookup and adds an early `UNCOVERED`
+  return for semantic filtered non-variable declaration lookups. New
+  node/materialization: no production node, wrapper `Rules`, copied node,
+  `.inherit(...)`, `.adopt(...)`, frozen state, source metadata, or parent
+  mutation was added. Test-only arrays and monkeypatch `try/finally` blocks
+  prove covered property hit/miss and property-reference cases do not open
+  `DeclarationRegistry`. Render path: unchanged; assignment-normalized
   merge-chain references still fall back to the registry bridge rather than
   duplicating coalesced merge inputs. Helper/API surface: no public API added;
-  one existing condition in `Rules.findDeclaration(...)` was widened for
-  unfiltered `Declaration`, and one direct-helper guard was narrowed to return
-  explicit `UNCOVERED` for filtered non-variable declaration lookups. Metadata
-  mutations: none. Evidence: focused `declaration`, `reference`,
-  `import-style`, and `extend-import-style` tests passed (`291` tests, `1`
-  skipped); `JESS_DIRECT_DECLARATION_LOOKUP=1` focused `declaration` and
-  `reference` tests passed (`184` tests), proving filtered merge-chain lookups
+  one internal `FindOptions.semanticFilter` bit distinguishes default context
+  filters from assignment/semantic filters, one existing condition in
+  `Rules.findDeclaration(...)` was widened for default-filter `Declaration`,
+  and one direct-helper guard returns explicit `UNCOVERED` for semantic filtered
+  non-variable declaration lookups. Metadata mutations: none. Evidence:
+  focused `declaration`, `reference`, `import-style`, and `extend-import-style`
+  tests passed (`292` tests, `1` skipped);
+  `JESS_DIRECT_DECLARATION_LOOKUP=1` focused `declaration` and `reference`
+  tests passed (`185` tests), proving semantic filtered merge-chain lookups
   decline the direct path; touched-file ESLint, `@jesscss/core` build,
   `git diff --check`, aggressive cutting review, node-creation audit, full
   `measure:less:hotpath` sanity, and direct `scope-lookup-stress.less` render
-  (`8822` bytes) passed. The hotpath run had mixed usable/noisy/unstable
-  signals, so no speed claim is made.
+  (`8822` bytes) passed. The hotpath run had mixed usable/unstable signals, so
+  no speed claim is made.

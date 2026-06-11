@@ -84,6 +84,7 @@ export function isNonClassicImportBoundary(rules: Rules | undefined): boolean {
 
 export type DeclarationFindOptions = {
   filter?: (n: Node) => boolean;
+  semanticFilter?: boolean;
   candidates?: Set<Node>;
   optionalCandidates?: Set<Node>;
   findAll?: boolean;

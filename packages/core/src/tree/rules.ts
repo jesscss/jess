@@ -1933,7 +1933,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       normalizedFilter === 'VarDeclaration'
       || (
         normalizedFilter === 'Declaration'
-        && !options.filter
+        && !options.semanticFilter
       )
       || process.env.JESS_DIRECT_DECLARATION_LOOKUP === '1'
     ) {

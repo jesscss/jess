@@ -569,6 +569,7 @@ type RulesLookupAdapterEnv = {
   mixinRulesetCallHasArgs: boolean;
   isInterpolatedVariable: boolean;
   filter: (n: Node) => boolean;
+  semanticFilter: boolean;
 };
 
 type RulesLookupAdapter = {
@@ -587,6 +588,7 @@ type RulesReferenceLookupContext = {
   resolution: ReferenceOptions['resolution'];
   isInterpolatedVariable: boolean;
   filter: (n: Node) => boolean;
+  semanticFilter: boolean;
   context: Context;
   hasTarget: boolean;
   adapter: RulesLookupAdapter;
@@ -693,6 +695,7 @@ function buildReferenceLookupOptions(args: {
   resolution: ReferenceOptions['resolution'];
   isInterpolatedVariable: boolean;
   filter: (n: Node) => boolean;
+  semanticFilter: boolean;
   context: Context;
   hasTarget: boolean;
   adapter: RulesLookupAdapter;
@@ -704,12 +707,14 @@ function buildReferenceLookupOptions(args: {
     resolution,
     isInterpolatedVariable,
     filter,
+    semanticFilter,
     context,
     hasTarget,
     adapter
   } = args;
   const opts: FindOptions = {
     filter,
+    semanticFilter,
     context,
     hasTarget
   };
@@ -761,6 +766,7 @@ function prepareReferenceLookup(args: {
     && referenceNode.parent?.type === 'Interpolated'
   );
   const filter = buildReferenceFilter(originalFilter, context);
+  const semanticFilter = originalFilter !== undefined;
   const hasTarget = !!target;
   return {
     adapter: RULES_LOOKUP_ADAPTERS[lookupType],
@@ -772,7 +778,8 @@ function prepareReferenceLookup(args: {
       inCall: isNode(referenceNode.parent, N.Call),
       mixinRulesetCallHasArgs: referenceNode.options.mixinRulesetCallHasArgs === true,
       isInterpolatedVariable,
-      filter
+      filter,
+      semanticFilter
     }
   };
 }
@@ -1069,6 +1076,7 @@ function performRulesReferenceLookup(
     resolution,
     isInterpolatedVariable,
     filter,
+    semanticFilter,
     context,
     hasTarget,
     adapter,
@@ -1082,6 +1090,7 @@ function performRulesReferenceLookup(
     resolution,
     isInterpolatedVariable,
     filter,
+    semanticFilter,
     context,
     hasTarget,
     adapter
@@ -1206,6 +1215,7 @@ function lookupResolvedReference(args: {
     resolution: referenceNode.options.resolution,
     isInterpolatedVariable: env.isInterpolatedVariable,
     filter: env.filter,
+    semanticFilter: env.semanticFilter,
     context,
     hasTarget: env.hasTarget,
     adapter,
