@@ -266,15 +266,16 @@ export class Dimension extends Node<DimensionValue> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    this.writeSyntax(options);
-    return w.getSince(mark);
+    const out = this.serializeSyntax();
+    getPrintOptions(options).writer.add(out, this);
+    return out;
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
-    const w = options.writer;
+    options.writer.add(this.serializeSyntax(), this);
+  }
+
+  private serializeSyntax(): string {
     let { number, unit = '' } = this.value;
 
     // Check if unit is compound (contains '/', '*', or '±')
@@ -283,8 +284,8 @@ export class Dimension extends Node<DimensionValue> {
     if (isCompoundUnit) {
       // Output as calc() for compound units
       // Parse the compound unit to reconstruct a valid calc() expression
-      w.add('calc(', this);
       const numberStr = `${round(number, 8)}`.toLowerCase();
+      let out = 'calc(';
 
       // Parse compound unit to create calc expression
       if (unit.includes('/')) {
@@ -294,10 +295,10 @@ export class Dimension extends Node<DimensionValue> {
         const denominator = parts[1] || '1';
         if (numerator === '1') {
           // Special case: "1/s" means number / unit → calc(number / 1s)
-          w.add(`${numberStr} / 1${denominator}`);
+          out += `${numberStr} / 1${denominator}`;
         } else {
           // General case: "px/s" → calc(number * 1px / 1s)
-          w.add(`${numberStr} * 1${numerator} / 1${denominator}`);
+          out += `${numberStr} * 1${numerator} / 1${denominator}`;
         }
       } else if (unit.includes('*')) {
         // Multiplication: "px*em" → calc(number * 1px * 1em)
@@ -307,7 +308,7 @@ export class Dimension extends Node<DimensionValue> {
         for (let i = 1; i < parts.length; i++) {
           units += ` * 1${parts[i] ?? ''}`;
         }
-        w.add(`${numberStr} * ${units}`);
+        out += `${numberStr} * ${units}`;
       } else if (unit.includes('±')) {
         // Addition/subtraction: "px±em" → calc(1px ± 1em)
         // Note: We don't have the original values, so this is approximate
@@ -316,20 +317,20 @@ export class Dimension extends Node<DimensionValue> {
         const unit1 = parts[0] || '';
         const unit2 = parts[1] || '';
         // Output as calc(1unit1 + 1unit2) - approximation since we don't have original values
-        w.add(`1${unit1} + 1${unit2}`);
+        out += `1${unit1} + 1${unit2}`;
       } else {
         // Fallback - shouldn't happen
-        w.add(`${numberStr} * 1${unit}`);
+        out += `${numberStr} * 1${unit}`;
       }
-      w.add(')');
-    } else {
-      // Normal unit output
-      const numberStr = `${round(number, 8)}`.toLowerCase();
-      w.add(numberStr, this);
-      if (unit) {
-        w.add(unit);
-      }
+      return `${out})`;
     }
+
+    // Normal unit output
+    const numberStr = `${round(number, 8)}`.toLowerCase();
+    if (unit) {
+      return `${numberStr}${unit}`;
+    }
+    return numberStr;
   }
 
   override resolve(_context: Context): this {

@@ -2,6 +2,16 @@ import { color, dimension, num } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { type Operator } from '../util/calculate.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 let context: Context;
 
@@ -40,6 +50,15 @@ describe('Dimension', () => {
     it('renders dimension syntax through toTrimmedString()', () => {
       expect(dimension([10, 'px']).toTrimmedString()).toBe('10px');
       expect(num(10).toTrimmedString()).toBe('10');
+    });
+
+    it('returns dimension syntax without writer readback', () => {
+      const writer = new CountingWriter();
+
+      expect(dimension([10, 'px']).toTrimmedString({ writer })).toBe('10px');
+      expect(dimension([20, 'px*em']).toTrimmedString({ writer })).toBe('calc(20 * 1px * 1em)');
+      expect(writer.toString()).toBe('10pxcalc(20 * 1px * 1em)');
+      expect(writer.reads).toBe(0);
     });
 
     it('renders dimension values through render(context)', () => {

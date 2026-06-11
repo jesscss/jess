@@ -2619,3 +2619,34 @@ the gate passed.
   usable, `import-reference` `16.19ms` usable, `mixins-guards` `14.95ms`
   usable, `extend-chaining` `4.55ms` unstable, and `media` `4.45ms` usable.
   This is not a speed claim.
+- Dimension scalar serializer pass: accepted as cold/public scalar wrapper
+  readback deletion plus one local serialization boundary. New traversal: none;
+  no loop, recursion, parent/source walk, side-map lookup, generator, object
+  scan, or array helper was added. Existing compound-unit parsing still uses
+  the same split/loop shapes it already used; the change is that
+  `Dimension.writeSyntax(...)` and `Dimension.toTrimmedString(...)` share one
+  node-local scalar serializer instead of public string output marking the
+  writer and reading back the just-written text. New node/materialization:
+  none in runtime code; no `Node`, copy, `.inherit(...)`, `.adopt(...)`,
+  wrapper `Rules`, frozen/source/parent mutation, semantic placement state,
+  side map, helper array, or public materialized dimension surface was added.
+  The test-only `CountingWriter` instance proves zero writer readback and is
+  not runtime allocation. Render path: unchanged for eval/value selection; the
+  direct render path still writes the same dimension text. No render path
+  resolves into arrays or nodes just to stringify. Helper/API surface: one
+  private node-local `serializeSyntax()` method was added and is accepted
+  because it replaces duplicate writer/readback plumbing across
+  `writeSyntax(...)` and the public string wrapper. Metadata mutations: none.
+  Rejected cut: `Color.toTrimmedString(...)` still has a writer-readback smell,
+  but `Color` can preserve an authored child node, so collapsing it wholesale
+  would either reintroduce child public string transport or duplicate too much
+  color/child emission in this pass. Evidence: starting leash at commit
+  `334b1862` was the scalar wrapper run, so this pass is not
+  comparison-usable. Focused dimension/color/render-buffer tests passed
+  (`103` tests), and sequential `pnpm --filter @jesscss/core build && pnpm run
+  measure:less:hotpath -- --stable` passed with only the pre-existing direct
+  `eval` warning in `js-expr.ts`. Post-pass hotpath sanity at dirty head
+  `334b1862` was not comparison-usable: `functions` `13.87ms` unstable,
+  `import-reference` `20.78ms` unstable, `mixins-guards` `17.37ms` unstable,
+  `extend-chaining` `5.26ms` noisy, and `media` `5.83ms` usable. This is not a
+  speed claim.

@@ -61,8 +61,9 @@ first measured offenders after the selector pass.
   duplicate-comparison/materialization boundary.
 - [x] `Any` / `Keyword` / `Anonymous`: move scalar token emission to generic
   `writeSyntax`; audit `compare(...)` string normalization.
-- [x] `Dimension` / `Num`: move numeric/unit emission to `writeSyntax`; audit
-  regex/unit formatting and operation paths.
+- [x] `Dimension` / `Num`: numeric/unit emission uses one scalar serializer
+  shared by `writeSyntax(...)` and public string output; audit regex/unit
+  formatting and operation paths.
 - [x] `Color`: move color emission to `writeSyntax`; isolate formatting and
   keyword/node value branches.
 - [x] `PseudoSelector`: direct writer hook, child writer, and inline selector
@@ -198,7 +199,7 @@ Current hard leftovers after the broad hook sweep:
 | CustomDeclaration | `packages/core/src/tree/declaration-custom.ts` | `Declaration` | queued | Audit custom-property eval/render after `Declaration`. |
 | Declaration | `packages/core/src/tree/declaration.ts` | `Node` | partial | `writeSyntax(...)` now gives containers a direct declaration syntax boundary instead of forcing public `toString(...)`; high priority remains for custom property branches, merge state, internal mark/replace, and materialization. |
 | DefaultGuard | `packages/core/src/tree/default-guard.ts` | `Node` | scalar wrapper complete | Scalar guard writer complete; public source string writes the known `default` token directly with no writer readback. |
-| Dimension | `packages/core/src/tree/dimension.ts` | `Node` | writeSyntax hook complete | Number/unit emission writes directly; preserve-mode compound unit serialization uses a straight loop instead of `map(...).join(...)`; regex/unit conversion and operation paths remain. |
+| Dimension | `packages/core/src/tree/dimension.ts` | `Node` | scalar serializer complete | Number/unit emission uses one scalar serializer for `writeSyntax(...)` and public string output with no writer readback; preserve-mode compound unit serialization uses a straight loop instead of `map(...).join(...)`; regex/unit conversion and operation paths remain. |
 | Expression | `packages/core/src/tree/expression.ts` | `Node` | direct child writer complete | Wrapper syntax writes directly and now calls child `writeSyntax(...)` instead of public `toString(...)`; child render/eval audit remains. |
 | Extend | `packages/core/src/tree/extend.ts` | `Node` | writeSyntax hook complete | Extend syntax and selector/target child syntax write directly with no local public string wrapper; selector valueOf and resolved selector state remain. |
 | ExtendList | `packages/core/src/tree/extend-list.ts` | `Node` | writeSyntax hook complete | List wrapper writes through base child writer plus semicolon; public wrapper existence remains. |
@@ -219,7 +220,7 @@ Current hard leftovers after the broad hook sweep:
 | MixinCollection | `packages/core/src/tree/util/callable-collection.ts` | `Node` | queued | Audit whether this public node wrapper is still necessary. |
 | Negative | `packages/core/src/tree/negative.ts` | `Node` | direct child writer complete | Prefix syntax writes directly, calls child `writeSyntax(...)`, and cold private source-string wrapper is gone; unit/text classification remains. |
 | Nil | `packages/core/src/tree/nil.ts` | `Node` | writeSyntax hook complete | Empty writer complete; singleton/scalar allocation remains. |
-| Num | `packages/core/src/tree/number.ts` | `Dimension` | writeSyntax hook complete | Inherits `Dimension.writeSyntax`; operation paths remain. |
+| Num | `packages/core/src/tree/number.ts` | `Dimension` | scalar serializer complete | Inherits `Dimension` scalar serialization; operation paths remain. |
 | Operation | `packages/core/src/tree/operation.ts` | `Node` | writeSyntax hook complete | Source operator syntax and operands write directly with no public `toString(...)`; arithmetic eval/calc fallback remains high priority. |
 | Paren | `packages/core/src/tree/paren.ts` | `Node` | writeSyntax hook complete | Wrapper syntax and child source syntax write directly through `writeSyntax(...)`; guard/string conversion render audit remains. |
 | PseudoSelector | `packages/core/src/tree/selector-pseudo.ts` | `SimpleSelector` | writeSyntax complete | Direct writer hook and child arg writer exist, generated keyset omission is fixed, cold private source-string wrapper is gone, and selector-list args now write inline without capture/replace/restore. Eval arg materialization remains separate. |
