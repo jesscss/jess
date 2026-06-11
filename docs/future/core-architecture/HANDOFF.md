@@ -17,8 +17,9 @@ Active implementation specs:
 
 - `BINDING-INDEX-PROPOSAL.md`: binding-index implementation spec for
   reference lookup, Less contextual semantics, Jess/Sass-style live bindings,
-  and removal of transitional fallback bridges. It is active while the
-  `Active Binding Implementation Lane` below has unchecked items.
+  and removal of transitional fallback bridges. The first implementation lane
+  below is checked off as facade/callable/handle prototype proof, not as the
+  complete binding-index migration.
 
 ## How To Work
 
@@ -130,16 +131,17 @@ Binding prototype status:
   miss from the binding frame and stop. Only unmodeled cold/complex cases may
   route to old registry/search/materialization paths, and every such bridge
   needs a deletion condition in `BINDING-INDEX-PROPOSAL.md` or this handoff.
-- Next binding step: delete the remaining `UNCOVERED` bridges
-  one by one by carrying the missing facts at construction/adoption time:
-  manual-frame indexing state and fallback-frame lookup ownership. Do not start
-  lookup caching until those bridge boundaries are narrower.
+- Next binding step: continue the brought-forward binding/index queue below.
+  The old manual-frame and fallback-frame bridge targets were completed, but
+  the larger original agenda remains: one binding system, production binding
+  handles, live/static slot unification, and deletion of declaration/function
+  registry bridges as each mode becomes modeled.
 
 ## Active Binding Implementation Lane
 
-This lane is the current integration path for `BINDING-INDEX-PROPOSAL.md`.
-Do not jump ahead: each step must prove behavior and patch shape before the
-next step starts.
+This lane was the first integration path for `BINDING-INDEX-PROPOSAL.md`.
+Its checked state means the first facade/callable/handle-prototype sequence is
+complete. It does not mean all lookup/binding work from the proposal is done.
 
 1. [x] Harness semantic proof.
    `scripts/prototype-binding-frame-layout.mjs` proves same-frame current
@@ -616,9 +618,109 @@ next step starts.
      wires handles into real `Reference`/`Rules` surfaces without output,
      evaluated-value, or public materialization caching.
 
+## Brought-Forward Binding/Lookup Queue
+
+This queue recovers the original binding-index direction after the
+registryless callable cleanup stream. Registryless lookup was useful because it
+deleted `MixinRegistry`, the `Rules.find('mixin', ...)` dispatch layer, and
+several callable fallback/crawl branches. It was not the final architecture.
+The target remains one binding system whose covered hot paths return binding
+identity or miss without falling through adjacent lookup systems.
+
+Choose the next item from this queue before returning to the secondary
+deep-cut queue.
+
+1. [ ] Wire production binding handles into `Reference`/`Rules`.
+   Use the prototype contract from `scripts/prototype-binding-handle-reuse.mjs`
+   as the proof target: handles carry frame/surface version, original path/key
+   identity, target scope, declaration/callable/property identity, and binding
+   cell. Do not cache evaluated values, rendered text, mixin output, or public
+   materialized nodes. The first production slice should prove repeated
+   compound references stop rediscovering the same namespace path and terminal
+   declaration/callable identity.
+
+   Completion gate:
+   - focused repeated compound-reference fixture proves lookup/path counters or
+     monkey-patched probes drop for the covered path
+   - invalidation covers scope/frame version changes and dynamic-name promotion
+   - no output/value/materialization cache is introduced
+   - `pnpm run prototype:binding-handle-reuse` still passes as the model check
+   - focused lookup tests and `pnpm run verify:aggressive-cutting-review` pass
+
+2. [ ] Collapse live-slot and static-declaration lookup into one slot/record
+   path.
+   `ScopeFrame.liveSlotsByName` and `declarationBucketsByName` are still two
+   adjacent maps. The proposal target is one binding record/slot surface where
+   live/current cells, source-order occurrence reads, and assignment targets
+   share lookup identity instead of branching live first and static second.
+
+   Completion gate:
+   - current reads, `$!`/source-order reads, mixin params, `@arguments`, loop
+     vars, `:` shadowing, and `:=` assignment still pass focused tests
+   - covered static variable reads no longer need a separate
+     `lookupRuntimeVarBinding(...)` live-slot bridge after facade miss
+   - no new per-read record object allocation on ordinary static-key reads
+   - benchmark/profile leash recorded before any speed claim
+
+3. [ ] Delete or narrow `lookupRuntimeVarBinding(...)`.
+   The helper still walks live slots and fallback frames after a frame-facade
+   miss for index/target/interpolated/uncovered variable shapes. Keep it only
+   for explicitly unmodeled cold cases, or delete it when those cases are
+   represented by binding handles/slots.
+
+   Completion gate:
+   - every remaining call site names its unmodeled scope and deletion condition
+   - covered static variable/index/property modes do not enter the helper
+   - fallback-frame behavior remains proven by mixin/default-param/detached
+     ruleset tests
+
+4. [ ] Replace declaration/property registry bridges by mode.
+   `Rules.findDeclaration(...)` still uses `DeclarationRegistry` by default,
+   with `findDeclarationDirect(...)` only behind `JESS_DIRECT_DECLARATION_LOOKUP`.
+   Move modeled declaration/property lookup modes onto frame/direct binding
+   lookup and delete the registry fallback for those modes in the same pass.
+
+   Completion gate:
+   - one selected mode has focused hit/miss/import/reference/source-order tests
+   - covered hits and misses avoid `DeclarationRegistry.find(...)`
+   - no temporary collection, sort, broad child crawl, or parent rediscovery
+     is added for ordinary exact-name reads
+   - the bridge ledger in `BINDING-INDEX-PROPOSAL.md` is updated for the mode
+
+5. [ ] Bring function lookup into the same binding model.
+   `FunctionRegistry` and `Rules.find('function', ...)` remain registry-shaped.
+   Model simple static function records as callable/binding records before
+   trying complex function import/visibility cases.
+
+   Completion gate:
+   - simple function hits/misses do not enter `FunctionRegistry.find(...)`
+   - no callable output/evaluated value cache is added
+   - function/import visibility cases either pass through modeled facts or are
+     explicitly `UNCOVERED`
+
+6. [ ] Model remaining callable namespace/import/child-surface facts as
+   frame/handle facts.
+   Covered simple callable lookup is registryless, but namespace/import/guard
+   candidate collection still has direct-crawl bridge logic. Carry the facts
+   that decide whether a child surface can contain callable hits so exact names
+   and stable namespace paths can return hit/miss from binding state without
+   parent/child rediscovery.
+
+   Completion gate:
+   - simple exact names do not crawl child surfaces unless the frame says a
+     child/import surface can contain callable hits
+   - terminal parameterized mixin-ruleset calls search only callable-compatible
+     terminal records after namespace resolution
+   - focused guard, import-reference, namespace, and stress fixtures pass
+
+7. [ ] Refresh the binding proposal after each bridge deletion.
+   `BINDING-INDEX-PROPOSAL.md` is the contract for which fallback bridges are
+   still tolerated. Every production bridge left behind must name its allowed
+   scope and deletion condition there or in this handoff.
+
 Secondary deep-cut queue:
 
-Do not select this queue while `Active Binding Implementation Lane` has
+Do not select this queue while `Brought-Forward Binding/Lookup Queue` has
 unchecked items, unless the binding lane is explicitly paused in the Focus Spec
 above. These items are still valid targets, but they are secondary to finishing
 the binding index/scope lookup refactor.

@@ -625,14 +625,17 @@ in `BindingFrame`, delete the corresponding registry fallback branch from
 `Reference`/`Rules.find(...)` for that mode. Do not keep both paths active for
 covered inputs.
 
-### Current `MixinRegistry`
+### Former `MixinRegistry`
 
-Same direction: keep it only for complex callable searches until the binding
-frame handles them. Do not let ordinary static callable lookup fall through.
+The callable registry bridge has been deleted for mixins. The remaining
+callable debt is not "fall through to `MixinRegistry`"; it is direct-crawl
+bridge logic for namespace/import/child-surface/candidate cases that the
+binding frame does not yet model.
 
-Deletion condition: modeled callable paths return hit/miss from the binding
-frame. Only unmodeled callable ambiguity returns `UNCOVERED` and reaches the
-registry bridge.
+Deletion condition for the remaining bridge logic: modeled callable paths
+return hit/miss from binding frame or binding handle state. Only unmodeled
+callable namespace, import visibility, guard/candidate, or child-surface facts
+may return `UNCOVERED` and reach direct crawl/candidate code.
 
 June 2026 status: the simple callable-record path is now production-owned for
 covered registryless callable lookup. The legacy callable registry branches,
@@ -647,9 +650,10 @@ fallback must appear here or in `HANDOFF.md` before it is accepted.
 
 | Bridge | Allowed Scope | Deletion Condition |
 | --- | --- | --- |
-| `Reference.lookupVariableReference(...)` facade miss to `lookupRuntimeVarBinding(...)` / `findVarDeclarationFast(...)` | static variable reads not yet represented as binding identity, pending dynamic names, unmodeled contextual/current split | delete for covered static variable reads once declaration-bucket hits return binding identity and current/live records share one slot path |
+| `Reference.lookupVariableReference(...)` facade miss to `lookupRuntimeVarBinding(...)` / `findVarDeclarationFast(...)` | explicit targets, interpolated keys, index/property shapes, still-dynamic names, and other cases not yet represented by binding handles/slots | delete per covered mode once live/current records and static declaration records share one slot path and tests prove hits/misses do not enter the helper ladder |
 | `Rules.find('declaration', ...)` / `DeclarationRegistry` | declaration/property modes, dynamic names, import/reference visibility, complex source-order modes not yet encoded in frame lookup | delete per mode as soon as frame lookup encodes that mode and tests prove covered hits/misses do not enter registry search |
-| `Rules.find('mixin'/'function', ...)` / `MixinRegistry` | callable namespace, guard ambiguity, import visibility, candidate collection not yet encoded in callable records | delete simple static callable fallback once callable records cover exact static keys |
+| `Rules.find('function', ...)` / `FunctionRegistry` | function lookup modes not yet encoded as callable/binding records | delete simple static function fallback once function records cover exact static keys and focused tests prove hits/misses do not enter `FunctionRegistry.find(...)` |
+| Callable direct-crawl bridge after registryless mixin deletion | callable namespace, guard/candidate matching, import visibility, and child-surface facts not yet encoded in frame/handle state | delete per modeled path once binding state can return callable hit/miss or explicit `UNCOVERED`; do not restore `MixinRegistry` or stringly `Rules.find('mixin', ...)` |
 | Public materialization from source declaration nodes | cold public `eval/resolve` API compatibility and unmodeled ownership boundaries | delete from render/eval hot paths once binding values can render directly and public materialization is isolated |
 
 ## Mental Test Matrix
