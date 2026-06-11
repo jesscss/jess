@@ -2081,7 +2081,7 @@ function emitReferenceSyntaxKey(
     return;
   }
   if (key instanceof Node) {
-    key.toString(options);
+    key.writeSyntax(options);
     return;
   }
   if (Array.isArray(key)) {
@@ -2298,7 +2298,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     let { target, key, rawKey } = this.value;
     const printableKey = rawKey ?? key;
     if (target) {
-      target.toString(options);
+      target.writeSyntax(options);
     } else {
       w.add('$');
     }

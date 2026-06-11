@@ -2438,3 +2438,31 @@ the gate passed.
   `import-reference` `20.86ms` unstable, `mixins-guards` `17.11ms` unstable,
   `extend-chaining` `7.06ms` noisy, and `media` `5.71ms` usable. This is not
   a speed claim.
+- Reference/Color child syntax pass: accepted as a narrow source-child public
+  string transport deletion in the active `writeSyntax` lane. New traversal:
+  none; no loop, recursion, parent/source walk, side-map lookup, generator,
+  object scan, or array helper was added. Existing reference target/key and
+  preserved node-backed color emission now call child `writeSyntax(...)`
+  directly instead of public `toString(...)` / `toTrimmedString(...)`. New
+  node/materialization: production code added none; no production `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, semantic placement state, side map, helper array, or public
+  materialized reference/color surface was added. The new `Color` test builds
+  a `Call`/`List`/`Dimension` fixture and a `Color` fixture only to prove the
+  existing preserved-node source path no longer calls the child's public string
+  wrapper. Render path: unchanged for evaluated output; source syntax no
+  longer resolves through public string transport at those child boundaries. No
+  render path resolves into arrays or nodes just to stringify. Helper/API
+  surface: no new helper, method, or public API was added. Metadata mutations:
+  none;
+  focused tests assert reference target/key children record zero public
+  `toString(...)` calls and preserved node-backed colors record zero public
+  `toTrimmedString(...)` calls while serializing through `writeSyntax(...)`.
+  Evidence: starting leash at commit `ec5f8993` was the noisy Range/Extend run,
+  so it is not comparison-usable. Focused reference/color/render-buffer tests
+  passed (`181` tests), and `pnpm --filter @jesscss/core build` passed with
+  only the pre-existing direct `eval` warning in `js-expr.ts`. Post-pass
+  hotpath sanity at dirty head `ec5f8993` was mixed and not
+  comparison-usable: `functions` `10.43ms` usable, `import-reference`
+  `17.31ms` noisy, `mixins-guards` `15.17ms` usable, `extend-chaining`
+  `4.33ms` unstable, and `media` `5.35ms` noisy. This is not a speed claim.

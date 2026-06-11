@@ -105,6 +105,30 @@ describe('reference', () => {
       let node = ref({ key: quoted('foo') }, { type: 'index' });
       expect(node.toTrimmedString()).toBe('$["foo"]');
     });
+
+    it('writes node keys without public toString transport', () => {
+      const key = quoted('foo');
+      let stringCalls = 0;
+      key.toString = () => {
+        stringCalls++;
+        return '';
+      };
+
+      expect(ref({ key }, { type: 'index' }).toTrimmedString()).toBe('$["foo"]');
+      expect(stringCalls).toBe(0);
+    });
+
+    it('writes reference targets without public toString transport', () => {
+      const target = any('theme');
+      let stringCalls = 0;
+      target.toString = () => {
+        stringCalls++;
+        return '';
+      };
+
+      expect(ref({ target, key: 'color' }, { type: 'property' }).toTrimmedString()).toBe('theme[color]');
+      expect(stringCalls).toBe(0);
+    });
   });
 
   describe('get from scope', () => {

@@ -490,7 +490,7 @@ export class Color extends Node<ColorData, ColorOptions> {
 
     // If value has a node that's a Node, serialize it directly
     if (this.value.node && isNode(this.value.node)) {
-      this.value.node.toTrimmedString(options);
+      this.value.node.writeSyntax(options);
       return;
     }
 

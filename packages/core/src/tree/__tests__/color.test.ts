@@ -348,6 +348,32 @@ describe('Color Node', () => {
       expect(color.toTrimmedString()).toBe('rgba(0, 0, 0, 0.1)');
     });
 
+    it('writes preserved node colors without public toTrimmedString transport', () => {
+      const callNode = new Call({
+        name: 'rgba',
+        args: new List([
+          new Dimension({ number: 0, unit: '' }),
+          new Dimension({ number: 0, unit: '' }),
+          new Dimension({ number: 0, unit: '' }),
+          new Dimension({ number: 0.1, unit: '' })
+        ])
+      });
+      let stringCalls = 0;
+      callNode.toTrimmedString = () => {
+        stringCalls++;
+        return '';
+      };
+      const color = new Color({
+        format: ColorFormat.RGB,
+        node: callNode,
+        rgb: [0, 0, 0],
+        alpha: 0.1
+      });
+
+      expect(color.toTrimmedString()).toBe('rgba(0, 0, 0, 0.1)');
+      expect(stringCalls).toBe(0);
+    });
+
     it('should preserve string nodes (like hex strings)', () => {
       const color = new Color({
         format: ColorFormat.HEX,
