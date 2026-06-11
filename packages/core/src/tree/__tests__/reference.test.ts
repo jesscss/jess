@@ -3727,6 +3727,52 @@ describe('reference', () => {
       }
     });
 
+    it('reuses static function binding handles until the target rules version changes', async () => {
+      const originalFindFunction = RulesClass.prototype.findFunction;
+      let functionLookups = 0;
+      RulesClass.prototype.findFunction = function(...args: Parameters<typeof originalFindFunction>) {
+        const [key] = args;
+        if (key === 'paint') {
+          functionLookups++;
+        }
+        return originalFindFunction.apply(this, args);
+      };
+
+      try {
+        const node = rules([]);
+        node.register('function', new JsFunction({
+          name: 'paint',
+          fn: () => any('blue')
+        }));
+        setRulesContext(await node.eval(context));
+        const lookupRef = ref({ key: 'paint' }, { type: 'function' });
+
+        const first = lookupRef.eval(context);
+        expect(isNode(first)).toBe(true);
+        if (isNode(first)) {
+          expect(first.type).toBe('JsFunction');
+        }
+        expect(functionLookups).toBe(1);
+
+        const second = lookupRef.eval(context);
+        expect(isNode(second)).toBe(true);
+        if (isNode(second)) {
+          expect(second.type).toBe('JsFunction');
+        }
+        expect(functionLookups).toBe(1);
+
+        node.push(decl({ name: 'unrelated', value: any('1') }));
+        const third = lookupRef.eval(context);
+        expect(isNode(third)).toBe(true);
+        if (isNode(third)) {
+          expect(third.type).toBe('JsFunction');
+        }
+        expect(functionLookups).toBe(2);
+      } finally {
+        RulesClass.prototype.findFunction = originalFindFunction;
+      }
+    });
+
     it('should resolve a mixin-ruleset call keyed by a complex selector while ignoring namespace separators', async () => {
       const node = rules([
         ruleset({

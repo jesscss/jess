@@ -550,7 +550,7 @@ type ReferenceRulesLookupHandle = {
   targetRules: Rules;
   targetLookupVersion: number;
   valueKey: string | string[];
-  lookupType: 'mixin' | 'mixin-ruleset';
+  lookupType: 'function' | 'mixin' | 'mixin-ruleset';
   inCall: boolean;
   mixinRulesetCallHasArgs: boolean;
   returnVal: RulesLookupResult;
@@ -1110,12 +1110,19 @@ function canUseRulesLookupHandle(args: {
   env: RulesLookupAdapterEnv;
   context: Context;
 }): args is typeof args & {
-  lookupType: 'mixin' | 'mixin-ruleset';
+  lookupType: 'function' | 'mixin' | 'mixin-ruleset';
   valueKey: string | string[];
 } {
+  const handleableKey = args.lookupType === 'function'
+    ? typeof args.valueKey === 'string'
+    : isHandleableLookupKey(args.valueKey);
   return (
-    (args.lookupType === 'mixin' || args.lookupType === 'mixin-ruleset')
-    && isHandleableLookupKey(args.valueKey)
+    (
+      args.lookupType === 'function'
+      || args.lookupType === 'mixin'
+      || args.lookupType === 'mixin-ruleset'
+    )
+    && handleableKey
     && args.target === undefined
     && args.originalFilter === undefined
     && !args.env.hasTarget

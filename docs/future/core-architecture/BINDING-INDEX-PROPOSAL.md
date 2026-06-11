@@ -676,7 +676,7 @@ fallback must appear here or in `HANDOFF.md` before it is accepted.
 | --- | --- | --- |
 | `Reference.lookupVariableReference(...)` facade miss to `findVarDeclarationFast(...)` | explicit targets, interpolated keys, still-dynamic names, and other declaration modes not yet represented by binding handles/slots | delete per covered mode once static declaration records cover the mode and tests prove hits/misses do not enter the helper ladder |
 | `Rules.find('declaration', ...)` / `DeclarationRegistry` | semantic filtered `Declaration`/property merge-chain modes, dynamic names, import/reference visibility, complex source-order modes not yet encoded in frame lookup. `VarDeclaration` plus unfiltered/default-filter exact `Declaration`/property lookup are direct-first for covered option shapes. | delete per mode as soon as frame lookup encodes that mode and tests prove covered hits/misses do not enter registry search |
-| `Rules.find('function', ...)` / `FunctionRegistry` | unsupported complex option shapes and internal fallback/clone paths. Simple exact-name `findFunction(...)` is direct through `Rules.functionsByName`; Less-style compatibility APIs live in the Less-compat mock registry and bridge straight to `Rules` function bindings. | delete the remaining internal function registry once complex function option shapes no longer need `FunctionRegistry.find(...)` |
+| `Rules.find('function', ...)` / `FunctionRegistry` | unsupported complex option shapes and internal fallback/clone paths. Simple exact-name `findFunction(...)` is direct through `Rules.functionsByName`, and covered static function `Reference` reads reuse the same binding handle shape as callable reads. Less-style compatibility APIs live in the Less-compat mock registry and bridge straight to `Rules` function bindings. | delete the remaining internal function registry once complex function option shapes no longer need `FunctionRegistry.find(...)` |
 | Callable direct-crawl bridge after registryless mixin deletion | guard/candidate matching, import visibility, and namespace cases not yet encoded in frame/handle state. Exact simple misses now distinguish ruleset-capable child surfaces from mixin-capable child surfaces, and parameterized terminal lookups skip exact ruleset terminal scans. | delete per modeled path once binding state can return callable hit/miss or explicit `UNCOVERED`; do not restore `MixinRegistry` or stringly `Rules.find('mixin', ...)` |
 | Public materialization from source declaration nodes | cold public `eval/resolve` API compatibility and unmodeled ownership boundaries | delete from render/eval hot paths once binding values can render directly and public materialization is isolated |
 
@@ -825,17 +825,20 @@ and `1` declaration lookup; median time moved from `12.149ms` to `3.521ms`
 
 Production status: the first narrow callable handle is wired on `Reference`
 for static, non-targeted `mixin` / `mixin-ruleset` lookups with string or
-preserved string-array keys. It carries the target `Rules`, target
-`lookupVersion`, original key identity, lookup type, call-state bits, and the
-resolved lookup result identity. It intentionally does not cache evaluated
-values, rendered text, mixin output, or public materialized nodes. A focused
-reference test proves the second evaluation of the same static array-path
-callable reference skips `Rules.findMixin(...)`, and a later target
-`Rules.registerNode(...)` bump invalidates the handle.
+preserved string-array keys. Static, non-targeted, unfiltered string-key
+function references now use the same handle shape. It carries the target
+`Rules`, target `lookupVersion`, original key identity, lookup type,
+call-state bits, and the resolved lookup result identity. It intentionally
+does not cache evaluated values, rendered text, callable/function output, or
+public materialized nodes. Focused reference tests prove the second evaluation
+of the same static array-path callable reference skips `Rules.findMixin(...)`,
+the second evaluation of the same static function reference skips
+`Rules.findFunction(...)`, and a later target `Rules.registerNode(...)` bump
+invalidates the handle.
 
 Remaining production work: declaration/property terminal binding handles,
-function records, live/static slot unification, and callable
-namespace/import/child-surface facts are still separate queue items.
+live/static slot unification, and callable namespace/import/child-surface facts
+are still separate queue items.
 
 ### Step 4: Callable Records
 

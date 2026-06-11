@@ -664,10 +664,13 @@ deep-cut queue.
      `Rules.findMixin(...)` once, reuses the handle on the second eval of the
      same `Reference`, then calls `findMixin(...)` again after the target
      `Rules` is mutated and `lookupVersion` changes.
+   - Static function references now reuse the same `Reference` lookup handle
+     for covered non-targeted, unfiltered string-key function lookups. A
+     focused test proves the second eval skips `Rules.findFunction(...)`, and a
+     later target `Rules.lookupVersion` change invalidates the handle.
    - Remaining handle work: declaration/property terminal identity is not
-     production-wired yet, function lookup is still registry-shaped, and
-     callable namespace/import/child-surface facts still need to move into
-     frame/handle state.
+     production-wired yet, and callable namespace/import/child-surface facts
+     still need to move into frame/handle state.
 
 2. [x] Collapse live-slot and static-declaration lookup into one slot/record
    path.
@@ -795,6 +798,23 @@ deep-cut queue.
    `addMultiple(...)`, `get(...)`, `getLocalFunctions(...)`, or `inherit(...)`.
    Less-compat still presents a Less-shaped mock registry to Less plugins, but
    that bridge writes and reads `Rules` function bindings directly.
+
+5b. [x] Reuse binding handles for static function references.
+   Covered static, non-targeted, unfiltered string-key function references now
+   use the existing `Reference` lookup handle. The handle stores function
+   lookup identity only: target `Rules`, `lookupVersion`, key identity,
+   lookup type, call-state bits, and returned source function/declaration
+   identity. It does not cache evaluated values, rendered text, function
+   output, or public materialized nodes.
+
+   Completion gate:
+   - Done: repeated static function `Reference` eval calls
+     `Rules.findFunction(...)` once, reuses the handle on the second eval, then
+     calls `findFunction(...)` again after the target `Rules.lookupVersion`
+     changes.
+   - Done: the cut widens the existing handle only for non-contextual function
+     lookup; declaration/property handles remain queued until contextual-start
+     facts are part of the handle key.
 
 6. [x] Model remaining callable namespace/import/child-surface facts as
    frame/handle facts.
@@ -1014,6 +1034,39 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Static function reference handle pass: accepted as widening the existing
+  `Reference` lookup-handle identity path, not as a speed claim. Files:
+  `packages/core/src/tree/reference.ts`,
+  `packages/core/src/tree/__tests__/reference.test.ts`,
+  `docs/future/core-architecture/HANDOFF.md`, and
+  `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`. New traversal:
+  none. The pass reuses the existing handle read/write checks and adds no
+  parent/source walk, child crawl, sort, generator, side-map lookup, or object
+  scan. New node/materialization: none; no `Node`, wrapper `Rules`, function
+  output, public materialization, copy, `.inherit(...)`, `.adopt(...)`, or
+  frozen/source metadata was added. Render path: unchanged; the handle stores
+  lookup result identity only and finalization/render remain on the existing
+  path. Helper/API surface: no new helper or public API; the existing
+  `ReferenceRulesLookupHandle` union now admits `function` for covered static
+  string-key function references. Metadata mutations: no parent/source
+  restoration, lazy context/options creation, `Reflect.*`, `Object.hasOwn(...)`,
+  or structural probe added. Evidence: focused `reference.test.ts` passed
+  (`121` tests), including a new proof that repeated static function
+  references call `Rules.findFunction(...)` once, reuse the handle on the
+  second eval, and rediscover after `Rules.lookupVersion` changes; focused
+  `reference.test.ts call.test.ts` passed (`200` tests);
+  `pnpm run prototype:binding-handle-reuse` passed; touched-file eslint
+  passed; `pnpm run verify:aggressive-cutting-review` passed with danger tokens
+  prosecuted here; `pnpm run audit:node-creation` passed; `git diff --check`
+  passed; `pnpm --filter @jesscss/core build` passed; direct stress render
+  returned `8822`; `pnpm run measure:less:hotpath` passed as sanity only with
+  usable medians for `functions` `15.20ms`, `import-reference` `21.36ms`, and
+  `mixins-guards` `20.53ms`; `extend-chaining` and `media` were noisy. No
+  performance claim until a measured before/after run targets this path.
+  Danger-token prosecution: the added `new JsFunction(...)`, `rules([])`, and
+  `try/finally` are test-only setup/restoration in the focused reference proof;
+  the `.inherit(...)`, `.adopt(...)`, `Reflect.*`, and `Object.hasOwn(...)`
+  matches are literal text in this prosecution paragraph, not production code.
 - Filtered property merge-chain modeling pass: accepted as a documented
   no-op/rejection boundary, not as a runtime speed claim. Files:
   `docs/future/core-architecture/HANDOFF.md` and
