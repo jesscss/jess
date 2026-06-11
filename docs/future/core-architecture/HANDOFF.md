@@ -785,6 +785,22 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- ScopeFrame callable hit scan cut: accepted as duplicate bucket-scan deletion,
+  not a speed claim. File: `packages/core/src/tree/scope-frame.ts` and this
+  handoff. New traversal: none; `lookupScopeFrameCallable(...)` now uses one
+  reverse bucket scan to prove that an exact callable hit exists under the
+  requested ruleset filter, instead of scanning once for any exact hit and then
+  scanning again for non-ruleset exact hits. The caller still owns result
+  collection from the same bucket, so behavior and ordering remain unchanged.
+  New node/materialization: none. Render path: unchanged. Helper/API surface:
+  no helper added and no public API changed. Metadata mutations: none.
+  Routine error/control: no throw/catch/Error path added. Evidence: focused
+  callable/scope tests passed (`152` tests), the expanded lookup-adjacent
+  suite passed (`552` passed, `9` skipped), eslint passed for
+  `scope-frame.ts`, `@jesscss/core` build passed with the existing
+  `src/tree/js-expr.ts` direct-eval warning, and the first expanded suite
+  attempt failed only because it ran concurrently with build cleaning
+  `packages/core/lib`. No runtime speed claim without benchmark/profile proof.
 - Mixin registry compatibility indexing cut: accepted as cold compatibility
   side-effect deletion, not a speed claim. Files:
   `packages/core/src/tree/rules.ts` and this handoff. API surface: the public

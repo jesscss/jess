@@ -348,15 +348,12 @@ export function lookupScopeFrameCallable(
 
     const bucket = f.callableBucketsByName?.get(name);
     if (bucket?.length) {
-      if (options?.includeRulesets !== false) {
-        for (let i = bucket.length - 1; i >= 0; i--) {
-          if (bucket[i]!.match.length === 0) {
-            return { kind: 'hit', bucket };
-          }
-        }
-      }
       for (let i = bucket.length - 1; i >= 0; i--) {
-        if (bucket[i]!.match.length === 0 && bucket[i]!.value.type !== 'Ruleset') {
+        const entry = bucket[i]!;
+        if (
+          entry.match.length === 0
+          && (options?.includeRulesets !== false || entry.value.type !== 'Ruleset')
+        ) {
           return { kind: 'hit', bucket };
         }
       }
