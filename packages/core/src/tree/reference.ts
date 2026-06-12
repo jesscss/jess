@@ -2235,8 +2235,7 @@ function finalizeDirectRawRenderValue(
   if (
     target === RAW_REFERENCE_TARGET_NOT_FOUND
     || !isNode(target)
-    || !target.hasFlag(F_STATIC)
-    || isRulesLikeReferenceValue(target)
+    || !canReturnReferenceValue(target)
   ) {
     return undefined;
   }
@@ -2546,7 +2545,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           if (
             value !== RAW_REFERENCE_TARGET_NOT_FOUND
             && isNode(value)
-            && !isRulesLikeReferenceValue(value)
             && canReturnReferenceValue(value)
           ) {
             return renderBuffer
@@ -2578,7 +2576,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       if (
         rawValue !== RAW_REFERENCE_TARGET_NOT_FOUND
         && isNode(rawValue)
-        && !isRulesLikeReferenceValue(rawValue)
         && canReturnReferenceValue(rawValue)
       ) {
         return renderBuffer

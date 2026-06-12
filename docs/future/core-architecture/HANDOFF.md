@@ -1034,6 +1034,10 @@ the binding index/scope lookup refactor.
    `finalizeRuntimeVarBindingResult(...)` therefore no longer accepts
    `textOnly`, and its static-value return branch was folded into the common
    return path.
+   Eleventh partial status: raw reference render now reuses the existing
+   `canReturnReferenceValue(...)` predicate instead of repeating static plus
+   non-rules-like checks in the direct raw render finalizer and both async/sync
+   raw-render branches.
 15. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -1113,6 +1117,33 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Raw reference render predicate dedupe pass: accepted as a narrow hot-path
+  predicate cut in `Reference.render(...)`, not as a speed claim. Files:
+  `packages/core/src/tree/reference.ts` and this handoff.
+  - New traversal: none. No loop, recursion, parent/source walk, child crawl,
+    sort, side map, or array/object scan was added.
+  - New node/materialization: none. The pass only deletes duplicate
+    static/rules-like predicates; it does not add node construction, copying,
+    wrapper surfaces, inheritance, or metadata mutation.
+  - Render path: unchanged. Direct raw variable rendering still accepts only
+    static, non-rules-like nodes; that fact is now checked through
+    `canReturnReferenceValue(...)`.
+  - Helper/API surface: net deletion. No helper was added; existing predicate
+    ownership replaces repeated condition fragments.
+  - Metadata mutations: none added or moved.
+  - Evidence: focused `reference`, `declaration`, `call`, and `mixin` tests
+    passed (`409` tests); the broader lookup/materialization set passed (`693`
+    passed, `9` skipped); touched TypeScript eslint passed; `git diff --check`,
+    `pnpm run verify:aggressive-cutting-review`, `pnpm run
+    audit:node-creation`, `pnpm run prototype:binding-handle-reuse`,
+    `pnpm --filter @jesscss/core build`, and `pnpm --filter jess build`
+    passed. Direct stress render of `scope-lookup-stress.less` produced length
+    `8822`. `measure:less:hotpath` completed as sanity only with unstable
+    `functions` `16.12ms`, noisy `import-reference` `22.88ms`,
+    `mixins-guards` `20.36ms`, `extend-chaining` `5.56ms`, and unstable
+    `media` `6.39ms`, so this pass makes no speed claim.
+  - Verdict: keep. This removes repeated hot-path condition checks while
+    preserving the same raw-render boundary.
 - Runtime-binding render-text flag deletion pass: accepted as a narrow
   helper/API-surface cut in `Reference` runtime binding finalization, not as a
   speed claim. Files: `packages/core/src/tree/reference.ts` and this handoff.
