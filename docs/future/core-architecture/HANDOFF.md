@@ -1075,9 +1075,28 @@ the binding index/scope lookup refactor.
    because the finalizer list differed from the copied eval list, and now
    proves the finalizer reuses that owned list while still preserving nested
    merged property lookup behavior.
-15. [ ] Sweep `Ampersand` template placement next. Replace
+15. [x] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
+
+   Status:
+   - Done: `Ampersand` template replacement discovery no longer stringifies a
+     selector to detect commas and no longer reparses split text into
+     `BasicSelector` items. Distribution now comes only from actual
+     `SelectorList` structure or the generated `:is(SelectorList)` placement
+     state.
+   - Done: focused ampersand distribution tests now construct real
+     `SelectorList` inputs for comma-separated parent selectors instead of a
+     raw selector string that preserved the old split fallback.
+   - Done: generated `:is(...)` placement metadata now keeps required-key
+     facts aligned with the omitted-wrapper render path for a single
+     selector-list item; it uses the lone child selector's required keys
+     instead of the selector-list aggregate, which is intentionally empty for
+     alternatives.
+   - Boundary: template joining still stringifies the individual replacement
+     selector when building the merged selector text. This pass deletes
+     comma-discovery/reparse string work; a later structural template-builder
+     pass would be a separate selector construction change.
 16. [ ] Sweep selector matching/extend equality. Replace hot `valueOf()` equality
    predicates with structural/keyset checks where possible, keeping
    `valueOf()` only as a measured, cached fast-path when it wins.
@@ -1173,6 +1192,58 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Ampersand template placement structure pass: accepted as a placement/runtime
+  cleanup, not as a speed claim. Files:
+  `packages/core/src/tree/ampersand.ts`,
+  `packages/core/src/tree/selector-pseudo.ts`,
+  `packages/core/src/tree/__tests__/ampersand.test.ts`, and this handoff.
+  - Hypothesis: selector-list distribution should be decided by selector
+    structure and generated placement state, not by rendering a selector,
+    scanning the text for commas, splitting it, and manufacturing new basic
+    selectors from the pieces.
+  - New traversal: none. The template replacement helper now returns the
+    structural selector-list children it already had, or the original selector
+    as a single replacement. No parent walk, child crawl, sort, side map,
+    recursive search, or broad helper surface was added.
+  - New node/materialization: production net deletion for the comma-string
+    fallback. The old branch created new `BasicSelector` nodes from split
+    selector text; the remaining multi-output path is the pre-existing
+    `SelectorList` result when structural replacement produces multiple items.
+    The pseudo metadata fix creates no nodes.
+  - Render path: final CSS rendering is unchanged. Template merge still
+    stringifies the individual replacement selector to build the merged
+    selector text, but it no longer uses selector string output to discover
+    comma-separated replacement items.
+  - Helper/API surface: one private comma splitter was deleted and no new
+    public-looking compatibility method, registry, cache, or generic helper was
+    added. The pseudo change reuses existing generated placement state.
+  - Metadata mutations: no new metadata mutation. Generated `:is(...)`
+    required-key computation now follows the existing omitted-wrapper placement
+    flag for the single-item selector-list case, using the lone child
+    selector's required keys instead of treating the generated output as a
+    wrapped selector-list alternative.
+  - Evidence: the first focused selector sweep exposed that generated
+    `:is(SelectorList)` required-key metadata was stale for omitted-wrapper
+    placement; after fixing that, the focused ampersand/nesting/selector suite
+    passed (`84` tests). The wider focused placement/render suite passed
+    (`91` tests), and the broader lookup/materialization set passed (`698`
+    passed, `9` skipped). Touched TypeScript eslint passed. `git diff
+    --check`, `pnpm run verify:aggressive-cutting-review`, `pnpm run
+    audit:node-creation`, `pnpm run prototype:binding-handle-reuse`, `pnpm
+    --filter @jesscss/core build`, and `pnpm --filter jess build` passed.
+    Direct stress render of `scope-lookup-stress.less` produced length `8822`.
+    `measure:less:hotpath` completed as sanity only with unstable `functions`
+    `15.93ms`, unstable `import-reference` `20.84ms`, unstable
+    `mixins-guards` `18.56ms`, usable `extend-chaining` `5.43ms`, and usable
+    `media` `5.57ms`, so this pass makes no speed claim.
+  - Verdict: keep. This removes dead split/reparse work from ampersand template
+    placement and tightens selector metadata around the same structural
+    placement state.
+  - Danger-token prosecution: production `new BasicSelector(...)` in the split
+    fallback was deleted. Existing template merge still constructs
+    `BasicSelector`/`SelectorList` results for real merged selector output.
+    Existing casts from selector-list values remain local to the established
+    selector model and were not widened.
 - Reference flat merged-normalization cleanup pass: accepted as a direct
   public-materialization cut in `Reference` merged declaration finalization,
   not as a speed claim. Files: `packages/core/src/tree/reference.ts`,

@@ -117,7 +117,12 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         this._keySet = arg.keySet;
         this._visibleKeySet = arg.visibleKeySet;
         if (isNode(arg, N.SelectorList)) {
-          this._requiredKeySet = library.getBitset();
+          const omitGeneratedWrapper = this.generated
+            && this.value.generatedPseudoPlacementOverride?.omitWrapperForSingleSelectorList === true
+            && arg.value.length === 1;
+          this._requiredKeySet = omitGeneratedWrapper
+            ? arg.value[0]!.requiredKeySet
+            : library.getBitset();
         } else {
           this._requiredKeySet = arg.requiredKeySet;
         }

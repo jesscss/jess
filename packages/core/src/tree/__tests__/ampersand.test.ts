@@ -414,10 +414,14 @@ describe('Ampersand', () => {
   });
 
   it('should distribute merge template across comma-separated items', async () => {
-    // Simulates ~'apple, satsuma, banana, pear' as parent selector
     const node = rules([
       ruleset({
-        selector: el('apple, satsuma, banana, pear'),
+        selector: sellist([
+          sel([el('apple')]),
+          sel([el('satsuma')]),
+          sel([el('banana')]),
+          sel([el('pear')])
+        ]),
         rules: rules([
           ruleset({
             selector: sel([amp('.fruit-quoted-&')]),
@@ -473,7 +477,10 @@ describe('Ampersand', () => {
     // .one starts with '.' and '-' before '&' is ident — invalid head join per item
     const node = rules([
       ruleset({
-        selector: el('.one, .two'),
+        selector: sellist([
+          sel([el('.one')]),
+          sel([el('.two')])
+        ]),
         rules: rules([
           ruleset({
             selector: sel([amp('.fruit-&')]),
