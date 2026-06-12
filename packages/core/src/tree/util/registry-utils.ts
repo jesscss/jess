@@ -521,12 +521,12 @@ export class DeclarationRegistry extends Registry<Declaration> {
       let currentReadonly = options?.readonly || rules.options.readonly;
       newReadonly = currentReadonly;
       if (filterType !== 'Declaration') {
-        const live = rules._scopeFrame?.liveSlotsByName.get(key);
-        const liveSource = live?.sourceNode;
+        const live = rules._scopeFrame?.currentBindingsByName.get(key);
+        const liveSource = live?.kind === 'live' ? live.sourceNode : undefined;
         if (liveSource && isNode(liveSource, N.VarDeclaration)) {
           const passesFilter = !options?.filter || options.filter(liveSource);
           if (passesFilter) {
-            newReadonly ||= live.readonly || liveSource.options?.readonly;
+            newReadonly ||= live.cell.readonly || liveSource.options?.readonly;
             const currentRulesVisibility = rules.options.rulesVisibility?.VarDeclaration ?? '';
             const isRulesetBodyScope = isNode(rules.parent, N.Ruleset) || isNode(rules.sourceNode, N.Ruleset);
             if (currentRulesVisibility === 'optional' && !isRulesetBodyScope) {

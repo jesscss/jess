@@ -619,10 +619,12 @@ Target/interpolated variable fallback and unquoted index fallback now use the
 same `lookupScopeFrameVariable(...)` facade with `includeDeclarations: false`
 when they need live-only cells.
 
-Remaining deletion condition: `liveSlotsByName` can stop being a lookup-facing
-surface once direct declaration/property bridge code also reads live
-declaration-shaped cells through the binding facade or is deleted with the
-registry bridge.
+Production follow-up: direct declaration lookup and the declaration-registry
+fallback now read live declaration-shaped cells through
+`ScopeFrame.currentBindingsByName`, not `liveSlotsByName`. `liveSlotsByName`
+remains runtime storage/construction input for mixin params, `@arguments`, loop
+vars, cloning, and slot publication, but ordinary declaration lookup no longer
+queries it as a separate lookup surface.
 
 ### Current `DeclarationRegistry`
 
@@ -675,7 +677,7 @@ fallback must appear here or in `HANDOFF.md` before it is accepted.
 | Bridge | Allowed Scope | Deletion Condition |
 | --- | --- | --- |
 | `Reference.lookupVariableReference(...)` facade miss to `findVarDeclarationFast(...)` | explicit targets, interpolated keys, still-dynamic names, and other declaration modes not yet represented by binding handles/slots | delete per covered mode once static declaration records cover the mode and tests prove hits/misses do not enter the helper ladder |
-| `Rules.findDeclaration(...)` / `Rules.findProperty(...)` fallback to `DeclarationRegistry` | semantic filtered `Declaration`/property merge-chain modes, dynamic names, import/reference visibility, complex source-order modes not yet encoded in frame lookup. `VarDeclaration` plus unfiltered/default-filter exact `Declaration`/property lookup are direct-first for covered option shapes, and covered static declaration/property `Reference` reads reuse binding handles keyed by contextual lookup shape. The generic `Rules.find('declaration', ...)` wrapper is deleted. | delete per mode as soon as frame lookup encodes that mode and tests prove covered hits/misses do not enter registry search |
+| `Rules.findDeclaration(...)` / `Rules.findProperty(...)` fallback to `DeclarationRegistry` | semantic filtered `Declaration`/property merge-chain modes, dynamic names, import/reference visibility, complex source-order modes not yet encoded in frame lookup. `VarDeclaration` plus unfiltered/default-filter exact `Declaration`/property lookup are direct-first for covered option shapes, and covered static declaration/property `Reference` reads reuse binding handles keyed by contextual lookup shape. Direct declaration lookup and the registry fallback both read live declaration-shaped cells through `currentBindingsByName`; `liveSlotsByName` is no longer queried as a parallel declaration lookup surface. The generic `Rules.find('declaration', ...)` wrapper is deleted. | delete per mode as soon as frame lookup encodes that mode and tests prove covered hits/misses do not enter registry search |
 | `Rules.findFunction(...)` fallback to `FunctionRegistry` | unsupported complex option shapes and internal fallback/clone paths. Simple exact-name `findFunction(...)` is direct through `Rules.functionsByName`, and covered static function `Reference` reads reuse the same binding handle shape as callable reads. Less-style compatibility APIs live in the Less-compat mock registry and bridge straight to `Rules` function bindings. The generic `Rules.find('function', ...)` wrapper is deleted. | delete the remaining internal function registry once complex function option shapes no longer need `FunctionRegistry.find(...)` |
 | Callable direct-crawl bridge after registryless mixin deletion | guard/candidate matching, import visibility, and namespace cases not yet encoded in frame/handle state. Exact simple misses now distinguish ruleset-capable child surfaces from mixin-capable child surfaces, and parameterized terminal lookups skip exact ruleset terminal scans. | delete per modeled path once binding state can return callable hit/miss or explicit `UNCOVERED`; do not restore `MixinRegistry` or stringly `Rules.find('mixin', ...)` |
 | Public materialization from source declaration nodes | cold public `eval/resolve` API compatibility and unmodeled ownership boundaries | delete from render/eval hot paths once binding values can render directly and public materialization is isolated |

@@ -905,6 +905,23 @@ left for this branch.
     - Done: focused lookup/reference/call/import tests and touched-file eslint
       pass before the full gate run.
 
+7b. [x] Stop declaration lookup from reading `liveSlotsByName` as a parallel
+    lookup surface.
+    Direct declaration lookup and the old declaration-registry fallback now
+    read live declaration-shaped cells through
+    `ScopeFrame.currentBindingsByName`. `liveSlotsByName` remains runtime
+    storage/construction input for live cells, but declaration lookup no longer
+    treats it as a second lookup map beside the unified current binding layer.
+
+    Completion gate:
+    - Done: `findDeclarationDirect(...)` and `DeclarationRegistry.find(...)`
+      read `currentBindingsByName.get(key)` for live `VarDeclaration` cells.
+    - Done: focused tests make `liveSlotsByName.get` throw and prove both
+      direct `findVariable(...)` and registry fallback lookup still resolve via
+      current bindings.
+    - Done: focused `scope-frame`, `reference`, `import-style`, and `mixin`
+      lookup suites pass.
+
 Parked secondary deep-cut queue:
 
 Do not select this queue while the Focus Spec is registryless lookup/binding.
@@ -1233,6 +1250,48 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Binding current-read lookup surface pass: accepted as a binding/lookup bridge
+  deletion, not as a speed claim. Files:
+  `packages/core/src/tree/util/direct-rules-lookup.ts`,
+  `packages/core/src/tree/util/registry-utils.ts`,
+  `packages/core/src/tree/__tests__/reference.test.ts`,
+  `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`, and this handoff.
+  - Hypothesis: declaration lookup should not keep `liveSlotsByName` as a
+    parallel read map after `ScopeFrame.currentBindingsByName` became the
+    unified current binding layer for live cells and static declaration
+    entries.
+  - New traversal: none. Existing declaration lookup loops are unchanged; the
+    live-cell read inside them now reads `currentBindingsByName.get(key)`
+    instead of `liveSlotsByName.get(key)`.
+  - New node/materialization: none. No nodes, wrappers, copied declarations, or
+    materialized arrays were added.
+  - Render path: unchanged. This pass only changes declaration lookup identity
+    reads before reference evaluation/render finalization.
+  - Helper/API surface: no helper, public method, registry, cache, or wrapper
+    was added.
+  - Metadata mutations: none. The pass does not change parent/source/frozen
+    metadata, scope-frame construction, or live cell publication. The
+    `sourceNode` references in the diff are existing binding identity reads and
+    focused test fixture setup, not metadata writes.
+  - Error control: no production errors were added. The new `throw new Error`
+    calls are test sentinels that prove the old `liveSlotsByName.get` path is
+    not used.
+  - Evidence: focused regression tests make `liveSlotsByName.get` throw and
+    prove both direct `findVariable(...)` and `DeclarationRegistry.find(...)`
+    resolve live declaration-shaped cells through current bindings. The focused
+    current-bindings reference slice passed (`2` tests selected), and the
+    adjacent `scope-frame`, `reference`, `import-style`, and `mixin` lookup
+    suites passed (`392` passed, `1` skipped). Touched TypeScript eslint
+    passed. `git diff --check`, `pnpm run verify:aggressive-cutting-review`,
+    `pnpm run prototype:binding-handle-reuse`, `pnpm run audit:node-creation`,
+    `pnpm --filter @jesscss/core build`, and `pnpm --filter jess build`
+    passed. Direct stress render of `scope-lookup-stress.less` produced length
+    `8822`. `measure:less:hotpath` completed as sanity only with usable
+    `functions` `14.99ms`, usable `import-reference` `20.01ms`, noisy
+    `mixins-guards` `25.73ms`, noisy `extend-chaining` `7.41ms`, and unstable
+    `media` `6.18ms`, so this pass makes no speed claim.
+  - Verdict: keep. This closes the live-slot lookup-surface bridge for
+    declaration lookup while leaving live-slot storage/construction intact.
 - Ampersand escaped selector correction and selector equality audit: accepted
   as a correctness repair plus a rejected selector-match experiment, not as a
   speed claim. Files:

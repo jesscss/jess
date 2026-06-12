@@ -3,7 +3,7 @@ import { Context } from '../../context.js';
 import { JsExpression } from '../js-expr.js';
 import { isNode } from '../util/is-node.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
-import { buildScopeFrame, lookupScopeFrameVariable } from '../scope-frame.js';
+import { buildScopeFrame, lookupScopeFrameVariable, setScopeFrameLiveBinding } from '../scope-frame.js';
 let context: Context;
 let expectedAsyncRulesContext: RulesClass | undefined;
 
@@ -2708,6 +2708,57 @@ describe('reference', () => {
         expect(registryHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.getRegistry = originalGetRegistry;
+      }
+    });
+
+    it('direct VarDeclaration lookup reads live cells through current bindings', async () => {
+      const liveSource = vardecl({ name: 'color', value: any('blue') });
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') })
+      ]);
+      await node.eval(context);
+      const frame = node.getScopeFrame();
+      setScopeFrameLiveBinding(frame, 'color', {
+        value: liveSource.value.value,
+        sourceNode: liveSource
+      });
+      const originalGet = frame.liveSlotsByName.get;
+      frame.liveSlotsByName.get = () => {
+        throw new Error('direct lookup should read currentBindingsByName');
+      };
+
+      try {
+        const found = node.findVariable('color');
+
+        expect(found).toBe(liveSource);
+      } finally {
+        frame.liveSlotsByName.get = originalGet;
+      }
+    });
+
+    it('declaration registry fallback reads live cells through current bindings', async () => {
+      const liveSource = vardecl({ name: 'color', value: any('blue') });
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') })
+      ]);
+      await node.eval(context);
+      const registry = node.getRegistry('declaration');
+      const frame = node.getScopeFrame();
+      setScopeFrameLiveBinding(frame, 'color', {
+        value: liveSource.value.value,
+        sourceNode: liveSource
+      });
+      const originalGet = frame.liveSlotsByName.get;
+      frame.liveSlotsByName.get = () => {
+        throw new Error('registry fallback should read currentBindingsByName');
+      };
+
+      try {
+        const found = registry.find('color', 'VarDeclaration');
+
+        expect(found).toBe(liveSource);
+      } finally {
+        frame.liveSlotsByName.get = originalGet;
       }
     });
 
