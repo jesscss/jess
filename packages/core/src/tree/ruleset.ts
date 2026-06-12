@@ -672,7 +672,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     if (guard instanceof Condition) {
       const guardPasses = guard.evaluateBoolean(context);
       return isThenable(guardPasses)
-        ? (guardPasses as Promise<boolean>).then(passes => passes ? this.evalNilSelectorBodyForRender(context) : new Nil())
+        ? guardPasses.then(passes => passes ? this.evalNilSelectorBodyForRender(context) : new Nil())
         : guardPasses ? this.evalNilSelectorBodyForRender(context) : new Nil();
     }
     const ownedGuard = copyOwnedWithReusableLeaves(guard);
@@ -1475,12 +1475,12 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
         this._setSelector(selector);
         const evaluatedRules = this.value.rules.eval(context);
         if (isThenable(evaluatedRules)) {
-          return (evaluatedRules as Promise<Rules>).then((rules) => {
+          return evaluatedRules.then((rules) => {
             this._setRules(rules);
             return finishEvaluatedRules(rules);
           });
         }
-        this._setRules(evaluatedRules as Rules);
+        this._setRules(evaluatedRules);
         return finishEvaluatedRules(evaluatedRules);
       }
       this._setSelector(selector);
@@ -1500,7 +1500,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
         throw error;
       }
       return isThenable(evaluatedRules)
-        ? (evaluatedRules as Promise<Rules>).then(
+        ? evaluatedRules.then(
             finishEvaluatedRules,
             (error) => {
               restorePushedEvalFrames();

@@ -20,7 +20,7 @@ export class CustomDeclaration extends Declaration {
     try {
       const node = super.evalNode(context);
       if (isThenable(node)) {
-        return (node as Promise<this | Nil>).then(
+        return node.then(
           (resolved) => {
             context.inCustom = false;
             return resolved;

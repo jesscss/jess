@@ -306,7 +306,7 @@ export function renderNodeToWriter(
   };
   const resolved = node.resolve(context);
   return isThenable(resolved)
-    ? (resolved as Promise<RenderableOutput>).then(writeResolved)
+    ? resolved.then(writeResolved)
     : writeResolved(resolved);
 }
 

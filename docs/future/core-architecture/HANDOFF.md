@@ -788,42 +788,46 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: second full `MaybePromise` narrowing and sync-child eval sweep.
+Current pass: final broad `MaybePromise` assertion sweep.
 
-- New traversal: none added. Existing loops in `evaluate-node-array.ts`,
-  `Declaration`, `Interpolated`, selector collections, `Condition`, and
-  `AttributeSelector` were kept; no loop, recursion, parent/source walk,
-  side-map lookup, or helper-array path was added.
+- New traversal: none added. Existing loops in `List`, `Sequence`,
+  `QueryCondition`, `Declaration`, `AtRule`, `Ruleset`, and `Rules` were kept;
+  no loop, recursion, parent/source walk, side-map lookup, or helper-array path
+  was added.
 - New node/materialization: none added. No runtime `Node`, copied node,
   `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
   metadata mutation, side map, helper array, or materialized eval/render value
-  was added.
-- Render path: `Negative` now uses `evalSync(...)` for flag-proven sync
-  child render/eval. `Quoted`, `Condition`, `AttributeSelector`, `Selector`,
-  `InterpolatedSelector`, `Extend`, `Log`, `Operation`, `Node` base,
-  `Interpolated`, `SelectorList`, `CompoundSelector`, and `ComplexSelector`
-  now rely on existing `isThenable(...)` narrowing instead of local
-  `as Promise<...>` / sync-result casts where the return type is already a
-  real `MaybePromise<T>`.
+  was added. The diff still shows the pre-existing `new Nil()` failed-guard
+  branch in `Ruleset` only because its surrounding `as Promise<boolean>` cast
+  was removed.
+- Render path: `List`, `Sequence`, `QueryCondition`, `Paren`,
+  `CustomDeclaration`, `Declaration`, `AtRule`, `Ruleset`, `Rules`, and the
+  internal render-buffer adapter now rely on existing `isThenable(...)`
+  narrowing instead of local `as Promise<...>` / sync-result casts where the
+  return type is already a real `MaybePromise<T>`. Rendering still writes
+  through the existing direct writer/buffer paths; no path was changed to
+  resolve into arrays/nodes just to stringify.
 - Helper/API surface: no helper, method, public API, package entrypoint, or
   runtime wrapper object was added in this pass.
 - Metadata mutations: none. No parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
   read, ownership probe, structural probe, or error-control-flow path was
-  added to runtime code.
-- Evidence: focused negative/log/quoted/selector/interpolated-selector/
-  selector-list/compound/complex/interpolated/operation/extend/condition/
-  attribute tests passed (`151` tests). `@jesscss/core` build passed and
-  proved TypeScript narrows all touched `MaybePromise<T>` paths without local
-  assertions.
-- Hotpath leash: pre-pass at `1726d33c` was status-only, not a speed claim:
-  `functions` `13.56ms` usable, `import-reference` `21.48ms` usable,
-  `mixins-guards` `17.14ms` usable, `extend-chaining` `5.15ms` usable, and
-  `media` `5.47ms` usable. Final dirty post-pass leash was also status-only:
-  `functions` `12.99ms` usable, `import-reference` `19.78ms` usable,
-  `mixins-guards` `16.72ms` usable, `extend-chaining` `5.24ms` usable, and
-  `media` `5.85ms` usable.
-- Verdict: keep if review gates stay green. Remaining `as ...` sites are
-  mostly structural selector/materialization casts, rules/declaration async
-  ladders, or ownership/copy boundaries; do not delete them mechanically
-  without narrowing the underlying API return type or ownership model.
+  added to runtime code. The diff still shows the pre-existing
+  `value.catch(handleError)` import/drain error cleanup in `Rules` only because
+  its surrounding `as Promise<Node>` cast was removed.
+- Evidence: focused list/sequence/query-condition/paren/declaration/at-rule/
+  ruleset/rules tests passed (`323` passed, `8` skipped). `@jesscss/core`
+  build passed and proved all touched `MaybePromise<T>` branches narrow without
+  local assertions.
+- Hotpath leash: pre-pass at `c6c4d0c` was status-only, not a speed claim:
+  `functions` `14.21ms` usable, `import-reference` `22.67ms` usable,
+  `mixins-guards` `18.16ms` usable, `extend-chaining` `5.90ms` usable, and
+  `media` `6.41ms` noisy. Final dirty post-pass leash was also status-only:
+  `functions` `11.60ms` usable, `import-reference` `18.82ms` unstable,
+  `mixins-guards` `16.43ms` usable, `extend-chaining` `5.07ms` usable, and
+  `media` `5.39ms` unstable.
+- Verdict: keep if review gates stay green. All `as Promise<...>` sites under
+  `packages/core/src/tree` are gone; remaining casts are structural
+  identity/value casts (`as Node`, `as string`, selector utility casts) and
+  should be attacked by tightening ownership/API types, not by mechanical
+  branch edits.

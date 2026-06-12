@@ -585,13 +585,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (this.type !== 'Declaration') {
       const state = this.evalPreparedState(context);
       return isThenable(state)
-        ? (state as Promise<DeclarationEvalState>).then(resolved => this.renderEvaluatedDeclaration(context, resolved, bufferOrOptions, options))
-        : this.renderEvaluatedDeclaration(context, state as DeclarationEvalState, bufferOrOptions, options);
+        ? state.then(resolved => this.renderEvaluatedDeclaration(context, resolved, bufferOrOptions, options))
+        : this.renderEvaluatedDeclaration(context, state, bufferOrOptions, options);
     }
     const state = this.evalRenderState(context);
     return isThenable(state)
-      ? (state as Promise<DeclarationRenderState>).then(resolved => this.renderDeclarationRenderState(context, resolved, bufferOrOptions, options))
-      : this.renderDeclarationRenderState(context, state as DeclarationRenderState, bufferOrOptions, options);
+      ? state.then(resolved => this.renderDeclarationRenderState(context, resolved, bufferOrOptions, options))
+      : this.renderDeclarationRenderState(context, state, bufferOrOptions, options);
   }
 
   private renderEvaluatedDeclaration(
@@ -663,15 +663,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override resolve(context: Context): MaybePromise<Node> {
     const state = this.evalPreparedState(context);
     return isThenable(state)
-      ? (state as Promise<DeclarationEvalState>).then(resolved => resolved.output)
-      : (state as DeclarationEvalState).output;
+      ? state.then(resolved => resolved.output)
+      : state.output;
   }
 
   private evalRenderState(context: Context): MaybePromise<DeclarationRenderState> {
     const state = this._prepareDeclarationRegistrationState(context, { ownParts: false });
     return isThenable(state)
-      ? (state as Promise<DeclarationRegistrationState>).then(resolved => this.evalRegistrationRenderState(context, resolved))
-      : this.evalRegistrationRenderState(context, state as DeclarationRegistrationState);
+      ? state.then(resolved => this.evalRegistrationRenderState(context, resolved))
+      : this.evalRegistrationRenderState(context, state);
   }
 
   private evalRegistrationRenderState(
@@ -891,15 +891,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       };
     };
     return isThenable(valueState)
-      ? (valueState as Promise<DeclarationValueState<this> | Nil>).then(finish)
-      : finish(valueState as DeclarationValueState<this> | Nil);
+      ? valueState.then(finish)
+      : finish(valueState);
   }
 
   private evalPreparedValueState(context: Context): MaybePromise<DeclarationValueState<this> | Nil> {
     const node = this.prepareRegistration(context);
     return isThenable(node)
-      ? (node as Promise<this>).then(prepared => prepared.evalValueState(context))
-      : (node as this).evalValueState(context);
+      ? node.then(prepared => prepared.evalValueState(context))
+      : node.evalValueState(context);
   }
 
   override prepareRegistration(
@@ -908,8 +908,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   ): MaybePromise<this> {
     const state = this._prepareDeclarationRegistrationState(context, options);
     return isThenable(state)
-      ? (state as Promise<DeclarationRegistrationState>).then(resolved => this.materializeRegistrationState(resolved, options))
-      : this.materializeRegistrationState(state as DeclarationRegistrationState, options);
+      ? state.then(resolved => this.materializeRegistrationState(resolved, options))
+      : this.materializeRegistrationState(state, options);
   }
 
   private createRegistrationState(
@@ -1248,8 +1248,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override evalNode(context: Context): MaybePromise<this | Nil> {
     const state = this.evalValueState(context);
     return isThenable(state)
-      ? (state as Promise<DeclarationValueState<this> | Nil>).then(resolved => resolved instanceof Nil ? resolved : this.materializeValueState(resolved))
-      : state instanceof Nil ? state : this.materializeValueState(state as DeclarationValueState<this>);
+      ? state.then(resolved => resolved instanceof Nil ? resolved : this.materializeValueState(resolved))
+      : state instanceof Nil ? state : this.materializeValueState(state);
   }
 
   /** @todo - move to visitors */

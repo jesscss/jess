@@ -2624,7 +2624,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       };
       if (isThenable(mp)) {
-        return (mp as Promise<this>)
+        return mp
           .then((result) => {
             popNestableBody();
             return result;
@@ -2696,11 +2696,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): MaybePromise<this> {
     const pendingResult = this._scanRegistrationNodes(rules, context, prepState);
     if (isThenable(pendingResult)) {
-      return (pendingResult as Promise<RegistrationPrepState>).then(scanState =>
+      return pendingResult.then(scanState =>
         this._finishRegistrationPrep(rules, context, saved, scanState)
       );
     }
-    return this._finishRegistrationPrep(rules, context, saved, pendingResult as RegistrationPrepState);
+    return this._finishRegistrationPrep(rules, context, saved, pendingResult);
   }
 
   private _scanRegistrationNodes(
@@ -2782,7 +2782,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return this._finishOrderedIdentityRegistrationPrep(rules, context, saved, prepState);
     };
     if (isThenable(declarationResult)) {
-      return (declarationResult as Promise<void>).then(finishAfterDeclarations);
+      return declarationResult.then(finishAfterDeclarations);
     }
     return finishAfterDeclarations();
   }
@@ -2955,7 +2955,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this._applyResolvedRegistrationNodes(rules, pendingDeclarationNames.resolvedNodes);
     };
     if (isThenable(result)) {
-      return (result as Promise<void>).then(finish);
+      return result.then(finish);
     }
     return finish();
   }
@@ -2986,7 +2986,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return this;
     };
     if (isThenable(orderedResult)) {
-      return (orderedResult as Promise<void>).then(finish);
+      return orderedResult.then(finish);
     }
     return finish();
   }
@@ -3261,16 +3261,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         try {
           const value = rule.eval(context);
           return isThenable(value)
-            ? (value as Promise<Node>).catch(handleError)
+            ? value.catch(handleError)
             : value;
         } catch (error) {
           return handleError(error);
         }
       })();
       if (isThenable(result)) {
-        return (result as Promise<Node | undefined>).then(resolved => applyResult(idx, rule, resolved));
+        return result.then(resolved => applyResult(idx, rule, resolved));
       }
-      applyResult(idx, rule, result as Node | undefined);
+      applyResult(idx, rule, result);
     };
 
     // These are the two eval-owned side-effect lanes left after removing the
@@ -3310,7 +3310,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       };
       const drained = drainRest(0);
       if (isThenable(drained) && allowRetry) {
-        return (drained as Promise<void>).then(() => drainPendingImports(false));
+        return drained.then(() => drainPendingImports(false));
       }
       return drained;
     };
@@ -3328,23 +3328,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             return true;
           }, false);
           if (isThenable(normal)) {
-            return (normal as Promise<void>).then(() => rulesToHoist);
+            return normal.then(() => rulesToHoist);
           }
           return rulesToHoist;
         };
         if (isThenable(calls)) {
-          return (calls as Promise<void>).then(afterCalls);
+          return calls.then(afterCalls);
         }
         return afterCalls();
       };
       if (isThenable(importDrain)) {
-        return (importDrain as Promise<void>).then(afterImports);
+        return importDrain.then(afterImports);
       }
       return afterImports();
     };
 
     if (isThenable(evaluateImports)) {
-      return (evaluateImports as Promise<void>).then(evaluateBody);
+      return evaluateImports.then(evaluateBody);
     }
     return evaluateBody();
   }
@@ -3682,11 +3682,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this._assignRootDocumentOrder(rules, context);
     const maybeHoist = this._evaluateSourceOrder(rules, context);
     if (isThenable(maybeHoist)) {
-      return (maybeHoist as Promise<boolean>).then(rulesToHoist =>
+      return maybeHoist.then(rulesToHoist =>
         this._finishSourceOrderEvaluation(rules, rulesToHoist)
       );
     }
-    return this._finishSourceOrderEvaluation(rules, maybeHoist as boolean);
+    return this._finishSourceOrderEvaluation(rules, maybeHoist);
   }
 
   private _finishSourceOrderEvaluation(rules: Rules, rulesToHoist: boolean): { rules: Rules; rulesToHoist: boolean } {
@@ -3758,11 +3758,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this._setupContextForRules(context, this);
     const rulesAfterPrep = this._prepareRegistrationForEval(context);
     if (isThenable(rulesAfterPrep)) {
-      return (rulesAfterPrep as Promise<Rules>).then(rules =>
+      return rulesAfterPrep.then(rules =>
         this._evalPreparedRules(rules, context)
       );
     }
-    return this._evalPreparedRules(rulesAfterPrep as Rules, context);
+    return this._evalPreparedRules(rulesAfterPrep, context);
   }
 
   private _evalPreparedRules(rules: Rules, context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
@@ -3785,7 +3785,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Eval owns registration prep. This step establishes lookup identities
     // before the source-order eval walk without evaluating rule bodies.
     const result = this._prepareRegistrationOnce(context);
-    return isThenable(result) ? (result as Promise<Rules>) : result;
+    return result;
   }
 
   private _createRegistrationPrepState(): RegistrationPrepState {

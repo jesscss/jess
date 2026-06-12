@@ -1797,6 +1797,35 @@ deleted assertion scaffolding and a narrower sync assertion boundary on
 `Negative`; remaining casts should be attacked by tightening ownership/API
 types, not by sprinkling more branch-local assertions.
 
+### Final Broad MaybePromise Assertion Sweep
+
+Date: 2026-06-12.
+
+Change: removed the remaining `as Promise<...>` assertion scaffolding under
+`packages/core/src/tree` where `isThenable(...)` already narrows a
+`MaybePromise<T>` branch. Touched paths include `List`, `Sequence`,
+`QueryCondition`, `Paren`, `CustomDeclaration`, `Declaration`, `AtRule`,
+`Ruleset`, `Rules`, and the internal render-buffer adapter. No helper,
+traversal, materialization, copy, or metadata mutation was added.
+
+Hotpath status:
+
+- Pre-pass `pnpm run measure:less:hotpath -- --stable` at `c6c4d0c` reported:
+  `functions` median `14.21ms` usable, `import-reference` median `22.67ms`
+  usable, `mixins-guards` median `18.16ms` usable,
+  `extend-chaining` median `5.90ms` usable, and `media` median `6.41ms`
+  noisy.
+- Final dirty post-pass `pnpm run measure:less:hotpath -- --stable` reported:
+  `functions` median `11.60ms` usable, `import-reference` median `18.82ms`
+  unstable, `mixins-guards` median `16.43ms` usable,
+  `extend-chaining` median `5.07ms` usable, and `media` median `5.39ms`
+  unstable.
+
+Interpretation: status only, not a runtime win claim. The code-path proof is
+the deletion of branch-local assertions after existing thenable checks. The
+remaining cast sites are structural identity/value casts and should be handled
+by tightening ownership/API types or node-family contracts.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

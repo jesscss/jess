@@ -72,8 +72,8 @@ function writeRenderedSequenceNode(
   rendered: MaybePromise<string>
 ): MaybePromise<string> {
   return isThenable(rendered)
-    ? (rendered as Promise<string>).then(out => writeRenderText(buffer, out))
-    : writeRenderText(buffer, rendered as string);
+    ? rendered.then(out => writeRenderText(buffer, out))
+    : writeRenderText(buffer, rendered);
 }
 
 /**
@@ -338,7 +338,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         }
         const rendered = emitRenderedSequenceNodeMaybe(node, context, printOptions);
         if (isThenable(rendered)) {
-          return (rendered as Promise<void>).then(() => renderCustomRest(i + 1));
+          return rendered.then(() => renderCustomRest(i + 1));
         }
       }
       return w.getSince(mark);
@@ -371,7 +371,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       }
       const rendered = emitRenderedSequenceNodeMaybe(node, context, printOptions);
       if (isThenable(rendered)) {
-        return (rendered as Promise<void>).then(() => renderRest(i + 1, node));
+        return rendered.then(() => renderRest(i + 1, node));
       }
       prev = node;
     }
@@ -509,11 +509,11 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     const out = this.renderSequenceDirectMaybe(context, prepared);
     if (isThenable(out)) {
       return buffer
-        ? writePreparedRenderTextResult(buffer, prepared, mark, out as Promise<string>)
+        ? writePreparedRenderTextResult(buffer, prepared, mark, out)
         : out;
     }
     return buffer
-      ? writePreparedRenderText(buffer, prepared, mark, out as string)
+      ? writePreparedRenderText(buffer, prepared, mark, out)
       : out;
   }
 
@@ -562,8 +562,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     const values = evaluateNodeArrayMaybe(context, this.value);
     return isThenable(values)
-      ? (values as Promise<Node[]>).then(resolved => this.finalizeValues(resolved))
-      : this.finalizeValues(values as Node[]);
+      ? values.then(resolved => this.finalizeValues(resolved))
+      : this.finalizeValues(values);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

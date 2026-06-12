@@ -75,7 +75,7 @@ export class QueryCondition extends Sequence {
         const rendered = node.render(context, options);
         if (isThenable(rendered)) {
           asyncOut = true;
-          return (rendered as Promise<string>).then(
+          return rendered.then(
             (out) => {
               if (w.mark() === before) {
                 w.add(out);
@@ -89,7 +89,7 @@ export class QueryCondition extends Sequence {
           );
         }
         if (w.mark() === before) {
-          w.add(rendered as string);
+          w.add(rendered);
         }
       } finally {
         if (!asyncOut) {
@@ -104,7 +104,7 @@ export class QueryCondition extends Sequence {
       }
       const rendered = emitRendered(value[i]!);
       if (isThenable(rendered)) {
-        return (rendered as Promise<void>).then(() => renderRest(i + 1));
+        return rendered.then(() => renderRest(i + 1));
       }
     }
 
@@ -147,12 +147,12 @@ export class QueryCondition extends Sequence {
       : this.renderQueryConditionValue(this.value, prepared, context);
     if (isThenable(rendered)) {
       return buffer
-        ? writePreparedRenderTextResult(buffer, prepared, mark, rendered as Promise<string>)
+        ? writePreparedRenderTextResult(buffer, prepared, mark, rendered)
         : rendered;
     }
     return buffer
-      ? writePreparedRenderText(buffer, prepared, mark, rendered as string)
-      : rendered as string;
+      ? writePreparedRenderText(buffer, prepared, mark, rendered)
+      : rendered;
   }
 }
 export const query = defineType(QueryCondition, 'QueryCondition', 'query');

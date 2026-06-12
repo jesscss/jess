@@ -198,7 +198,7 @@ function runAtRuleBodyRulesEval<T>(
   try {
     const out = work();
     if (isThenable(out)) {
-      return (out as Promise<T>).then(
+      return out.then(
         (value) => {
           restoreRulesetFrames();
           return value;
@@ -803,9 +803,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (!this.registrationPrepared) {
       const prepared = this._prepareAtRuleNameIdentity(context);
       if (isThenable(prepared)) {
-        return (prepared as Promise<AtRule>).then(node => this._prepareAtRuleRegistration(node, context, this));
+        return prepared.then(node => this._prepareAtRuleRegistration(node, context, this));
       }
-      return this._prepareAtRuleRegistration(prepared as AtRule, context, this);
+      return this._prepareAtRuleRegistration(prepared, context, this);
     }
     return this;
   }
@@ -1175,7 +1175,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       throw error;
     }
     if (isThenable(out)) {
-      return (out as Promise<AtRule | Nil>).then(
+      return out.then(
         (value) => {
           return value instanceof AtRule
             ? createAtRuleEvalResultNode(this, record)
@@ -1241,8 +1241,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             return runAtRuleBodyRulesEval(bodyEvalRecord, context, () => {
               const evalOut = bodyToEval.eval(context);
               return isThenable(evalOut)
-                ? (evalOut as Promise<Rules>).then(finishEval)
-                : finishEval(evalOut as Rules);
+                ? evalOut.then(finishEval)
+                : finishEval(evalOut);
             });
           };
 
@@ -1313,7 +1313,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     try {
       const out = run(restore);
       if (isThenable(out)) {
-        return (out as Promise<T>).then(
+        return out.then(
           (value) => {
             restore();
             return value;

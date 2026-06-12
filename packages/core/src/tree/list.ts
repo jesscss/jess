@@ -80,7 +80,7 @@ function emitRenderedListItemMaybe<T extends Node>(
     throw error;
   }
   if (isThenable(rendered)) {
-    return (rendered as Promise<void>).then(
+    return rendered.then(
       () => {
         options.suppressBoundaryTrivia = saved;
       },
@@ -222,7 +222,7 @@ function renderListValueDirectMaybe<T extends Node>(
   let item = value[0]!;
   const first = emitRenderedListItemMaybe(item, context, printOptions);
   if (isThenable(first)) {
-    return (first as Promise<void>).then(() => renderRest(1, item));
+    return first.then(() => renderRest(1, item));
   }
   for (let i = 1; i < value.length; i++) {
     const prev = item;
@@ -230,7 +230,7 @@ function renderListValueDirectMaybe<T extends Node>(
     emitListSeparator(prev, item, printOptions, sep);
     const rendered = emitRenderedListItemMaybe(item, context, printOptions, true);
     if (isThenable(rendered)) {
-      return (rendered as Promise<void>).then(() => renderRest(i + 1, item));
+      return rendered.then(() => renderRest(i + 1, item));
     }
   }
   return w.getSince(mark);
@@ -410,11 +410,11 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     const out = renderListValueDirectMaybe(context, this.value, prepared, this._options?.sep ?? ',');
     if (isThenable(out)) {
       return buffer
-        ? writePreparedRenderTextResult(buffer, prepared, mark, out as Promise<string>)
+        ? writePreparedRenderTextResult(buffer, prepared, mark, out)
         : out;
     }
     return buffer
-      ? writePreparedRenderText(buffer, prepared, mark, out as string)
+      ? writePreparedRenderText(buffer, prepared, mark, out)
       : out;
   }
 
@@ -427,7 +427,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       ? evaluateNodeArrayMaybe(context, source)
       : evaluateNodeArraySync(context, source);
     if (isThenable(values)) {
-      return (values as Promise<Node[]>).then((resolvedValues) => {
+      return values.then((resolvedValues) => {
         for (let i = 0; i < resolvedValues.length; i++) {
           if (resolvedValues[i] !== source[i]) {
             return this.withResolvedValue(resolvedValues);

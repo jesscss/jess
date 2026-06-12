@@ -213,7 +213,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       return wrapped;
     }
     return isThenable(wrapped)
-      ? (wrapped as Promise<string>).then(out => writeRenderText(bufferOrOptions, out))
+      ? wrapped.then(out => writeRenderText(bufferOrOptions, out))
       : writeRenderText(bufferOrOptions, wrapped);
   }
 
