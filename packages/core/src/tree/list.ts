@@ -392,6 +392,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       : evaluateNodeArraySync(context, source);
     if (isThenable(values)) {
       return (values as Promise<Node[]>).then((resolvedValues) => {
+        if (resolvedValues === source) {
+          return this;
+        }
         for (let i = 0; i < resolvedValues.length; i++) {
           if (resolvedValues[i] !== source[i]) {
             return this.withResolvedValue(resolvedValues);
@@ -399,6 +402,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
         }
         return this;
       });
+    }
+    if (values === source) {
+      return this;
     }
     for (let i = 0; i < values.length; i++) {
       if (values[i] !== source[i]) {

@@ -999,6 +999,14 @@ the binding index/scope lookup refactor.
    callback deletion around the existing public materialization boundary; the
    owned `withResolvedValue(...)`/`withValue(...)` surfaces still exist and
    remain queued.
+   Sixth partial status: shared list/sequence child-array eval now lazily
+   allocates the evaluated child array only after the first child identity
+   changes. Dynamic-but-unchanged public `List`/`Sequence` eval returns the
+   original child array and source node instead of allocating a parallel array
+   and then proving identity afterward. Focused tests pin that unchanged
+   dynamic list/sequence eval does not call `withResolvedValue(...)` or
+   `withValue(...)`. The owned surfaces still remain for real child changes,
+   Nil filtering, and public materialization semantics.
 15. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -1078,6 +1086,52 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Lazy unchanged list/sequence eval array pass: accepted as a narrow public
+  materialization shrink for `Reference`-adjacent `List`/`Sequence` values, not
+  as a speed claim. Files:
+  `packages/core/src/tree/util/evaluate-node-array.ts`,
+  `packages/core/src/tree/list.ts`,
+  `packages/core/src/tree/__tests__/list.test.ts`,
+  `packages/core/src/tree/__tests__/sequence.test.ts`, and this handoff.
+  - New traversal: one prefix-copy loop runs only after the first evaluated
+    child differs from the source child. It replaces the previous unconditional
+    full-array allocation plus caller-side full identity scan for unchanged
+    `List` eval. `Sequence` still performs its existing finalize scan because
+    Nil filtering and single-item collapse are semantic public materialization
+    behavior.
+  - New node/materialization: none. The pass deletes unchanged-case evaluated
+    array allocation; it does not add `Node`, wrapper `Rules`, copied node,
+    `.inherit(...)`, `.adopt(...)`, `copyWithReusableLeaves(...)`, frozen/source
+    metadata, or public result materialization.
+  - Render path: unchanged. Render already stringifies directly and does not
+    route through this public eval materialization path.
+  - Helper/API surface: no new helper or public API. The existing shared
+    `evaluateNodeArraySync(...)`/`evaluateNodeArrayMaybe(...)` utility now
+    returns the original child array when evaluation is identity-preserving.
+  - Metadata mutations: none. No parent/source restoration, lazy context
+    creation, structural probe, side map, or defensive metadata read was added.
+  - Evidence: focused `list`, `sequence`, `reference`, `declaration`, and
+    `call` tests passed (`351` tests), and touched-file eslint passed. New
+    tests prove dynamic-but-unchanged list and sequence public resolve return
+    the source surface without calling replacement-surface constructors.
+    Broader materialization/lookup suite passed (`list`, `sequence`,
+    `reference`, `declaration`, `call`, `import-style`, `mixin`,
+    `scope-frame`, `rules`, and `detached-rulesets`: `692` passed, `9`
+    skipped). `pnpm run verify:aggressive-cutting-review` passed with danger
+    tokens prosecuted here; `pnpm run audit:node-creation` passed;
+    `git diff --check` passed; `pnpm run prototype:binding-handle-reuse`
+    passed; `pnpm --filter @jesscss/core build` and `pnpm --filter jess build`
+    passed; direct stress render returned `8822`;
+    `pnpm run measure:less:hotpath` passed as sanity only with usable medians
+    for `functions` `12.80ms`, `import-reference` `16.49ms`,
+    `mixins-guards` `16.63ms`, and `extend-chaining` `4.87ms`; `media` was
+    unstable. Danger-token prosecution: the runtime prefix-copy loops execute
+    only after a changed child proves a replacement array is needed; the new
+    `Error`/`try` sites are test-only monkeypatch restoration; the runtime diff
+    adds no copy/inherit/adopt/frozen machinery.
+  - Verdict: keep. This removes allocation and identity-scan work from the
+    unchanged public eval case while leaving real changed-child ownership and
+    sequence finalization semantics intact.
 - Generic declaration/function `Rules.find(...)` deletion pass: accepted as
   deleting one string-dispatch wrapper and replacing the one internal bridge
   caller with typed lookup methods. Files:

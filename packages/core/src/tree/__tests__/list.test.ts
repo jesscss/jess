@@ -341,6 +341,30 @@ describe('List', () => {
     expect(resolved.toTrimmedString()).toBe('one, two');
   });
 
+  it('resolves dynamic unchanged lists without a replacement surface', async () => {
+    const listNode = list([any('one'), any('two')]);
+    listNode.removeFlag(F_STATIC);
+    const descriptor = Object.getOwnPropertyDescriptor(List.prototype, 'withResolvedValue');
+    if (!descriptor) {
+      throw new Error('Expected List.withResolvedValue for resolve materialization proof');
+    }
+
+    Object.defineProperty(List.prototype, 'withResolvedValue', {
+      ...descriptor,
+      value: () => {
+        throw new Error('unchanged dynamic list resolve should return the source list');
+      }
+    });
+    try {
+      const resolved = await listNode.resolve(context);
+
+      expect(resolved).toBe(listNode);
+      expect(resolved.toTrimmedString()).toBe('one, two');
+    } finally {
+      Object.defineProperty(List.prototype, 'withResolvedValue', descriptor);
+    }
+  });
+
   it('keeps source list values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({

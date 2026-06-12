@@ -71,6 +71,30 @@ describe('Sequence', () => {
     expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
   });
 
+  it('resolves dynamic unchanged sequences without a replacement surface', async () => {
+    const sequenceNode = seq([any('one'), any('two')]);
+    sequenceNode.removeFlag(F_STATIC);
+    const descriptor = Object.getOwnPropertyDescriptor(Sequence.prototype, 'withValue');
+    if (!descriptor) {
+      throw new Error('Expected Sequence.withValue for resolve materialization proof');
+    }
+
+    Object.defineProperty(Sequence.prototype, 'withValue', {
+      ...descriptor,
+      value: () => {
+        throw new Error('unchanged dynamic sequence resolve should return the source sequence');
+      }
+    });
+    try {
+      const resolved = await sequenceNode.resolve(context);
+
+      expect(resolved).toBe(sequenceNode);
+      expect(resolved.toTrimmedString()).toBe('one two');
+    } finally {
+      Object.defineProperty(Sequence.prototype, 'withValue', descriptor);
+    }
+  });
+
   it('renders resolved sequence values through render(context)', async () => {
     const node = rules([
       vardecl({
