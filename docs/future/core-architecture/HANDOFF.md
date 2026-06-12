@@ -788,46 +788,39 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: declaration direct child writer and callback-array cut.
+Current pass: Ruleset predicate callback cut.
 
-- New traversal: no new runtime traversal shape was added. Existing declaration
-  scans were converted from `every(...)`, `filter/map/join`, and child public
-  string calls to straight loops/direct writes. The fallback custom-function
-  argument loop is the same one-pass work previously hidden behind array
-  helpers, and source-free assignment reuse still scans children only once.
+- New traversal: no new traversal shape was added. Two existing
+  `every(...)` predicate scans in `Ruleset.canRenderSourceDirectly(...)` and
+  `Ruleset.isBareAmpersandSelector(...)` now use explicit indexed loops with
+  the same short-circuit behavior. The loops replace callback invocation and do
+  not add child/source/parent walks.
 - New node/materialization: none added. No runtime `Node`, copied node,
   `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
   metadata mutation, side map, helper array, or materialized eval/render value
-  was added. The pass deletes temporary callback-array assembly for custom
-  fallback function text instead of replacing it with another container.
-- Render path: non-custom declaration names, values, important flags, and
-  generated space-merge items now write through `writeSyntax(...)` rather than
-  public `toString(...)`/`toTrimmedString(...)` transport. Custom-property raw
-  value emission deliberately keeps the existing `value.toString(...)` branch
-  because that path preserves authored raw source/trivia and is still queued
-  separately.
+  was added.
+- Render path: source-direct ruleset eligibility still decides whether render
+  can stream canonical source rules without preparing/evaluating an owned body.
+  The pass changes only the predicate machinery; it does not route render
+  through public string APIs or create a materialized render value.
 - Helper/API surface: no helper, method, public API, or package export was
-  added. `stringifyCustomFallbackFunctionCall(...)` remains the existing local
-  cold/custom fallback function, but its internal `map/filter/join` array
-  assembly is gone.
+  added.
 - Metadata mutations: none. No parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
-  read, `Reflect.*`, `Object.hasOwn`, or structural probe was added.
-- Evidence: focused `declaration.test.ts` passed (`60` tests). A new
-  declaration test turns non-custom child public string methods into tripwires
-  and proves the direct writer path for name, value, and `!important`.
-  `NODE-REWRITE-TRACKER.md` records declaration as still partial because
-  custom-property raw source, merge state, internal mark/replace, and
-  materialization remain. It also corrects the AtRule queue wording: the actual
-  direct header/body writer is still missing.
-- Hotpath leash: pre-pass at `d5dd18f7` was status-only and noisy/unstable
-  (`functions` `13.02ms` unstable, `import-reference` `20.70ms` usable,
-  `mixins-guards` `17.84ms` unstable, `extend-chaining` `6.00ms` noisy,
-  `media` `5.64ms` unstable). Post-pass dirty leash is also status-only, not a
-  speed claim: `functions` `12.45ms` usable, `import-reference` `21.62ms`
-  usable, `mixins-guards` `17.33ms` usable, `extend-chaining` `5.70ms` usable,
-  and `media` `5.42ms` usable.
-- Verdict: keep the cut. Next full queue pass should continue through
-  declaration custom/raw-source boundaries only if it can preserve authored
-  custom-property text, otherwise move to Call, Ruleset, or AtRule direct
-  writer work with focused tripwire tests.
+  read, ownership probe, or structural probe was added to runtime code.
+- Evidence: focused `ruleset.test.ts` passed (`41` tests). Existing
+  source-direct render tests cover the `canRenderSourceDirectly(...)` behavior,
+  and a new public static-method test proves the bare-ampersand selector-list
+  loop stops at the first non-bare selector. `NODE-REWRITE-TRACKER.md` records
+  Ruleset as partial because `getHeaderString(...)` capture, selector
+  composition, body prep, wrappers, and render branches remain.
+- Hotpath leash: pre-pass at `196b5c44` was status-only, not a speed claim:
+  `functions` `12.36ms` usable, `import-reference` `20.22ms` usable,
+  `mixins-guards` `16.96ms` usable, `extend-chaining` `5.00ms` usable, and
+  `media` `5.68ms` usable. Post-pass dirty leash is also status-only:
+  `functions` `11.87ms` usable, `import-reference` `20.65ms` usable,
+  `mixins-guards` `16.83ms` usable, `extend-chaining` `5.54ms` usable, and
+  `media` `5.08ms` usable.
+- Verdict: keep the cut if the post-pass gates stay green. Next full queue
+  pass should continue Ruleset only for a real `getHeaderString(...)` or render
+  branch deletion; otherwise move to Call or AtRule direct writer work.

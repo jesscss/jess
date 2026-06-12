@@ -5,6 +5,7 @@ import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { serializeRulesContainer } from '../util/serialize-helper.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import { Ruleset } from '../ruleset.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 let context: Context;
@@ -233,6 +234,18 @@ describe('Rule', () => {
     expect(leaf.parent).toBe(body);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('stops bare-ampersand selector-list checks at the first non-bare item', () => {
+    const laterBare = sel([el('&')]);
+    let laterBareChecks = 0;
+    laterBare.value[0]!.hasFlag = () => {
+      laterBareChecks++;
+      return false;
+    };
+
+    expect(Ruleset.isBareAmpersandSelector(sellist([el('.x'), laterBare]))).toBe(false);
+    expect(laterBareChecks).toBe(0);
   });
 
   it('source-direct renders static rulesets with invisible variable declarations from source', async () => {

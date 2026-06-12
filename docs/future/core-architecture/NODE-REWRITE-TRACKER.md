@@ -54,8 +54,9 @@ first measured offenders after the selector pass.
   remains explicit.
 - [x] `SelectorList`: list item emission uses `writeSyntax`, cold private
   source-string wrapper is gone, and public string wrapper owns capture.
-- [ ] `Ruleset`: eliminate or isolate `getHeaderString(...)` capture for hot
-  frame render/comparison paths.
+- [ ] `Ruleset`: source-direct eligibility and bare-ampersand selector-list
+  checks use straight loops instead of callback predicates. Eliminate or
+  isolate `getHeaderString(...)` capture for hot frame render/comparison paths.
 - [ ] `Declaration`: public syntax boundary exists for callers, non-custom
   declaration children now write through direct syntax hooks, and custom
   fallback function assembly uses straight loops. Custom-property raw source,
@@ -240,7 +241,7 @@ Current hard leftovers after the broad hook sweep:
 | Reference | `packages/core/src/tree/reference.ts` | `Node` | in progress | Passes 1-10 deleted alias predicates, result/fallback/materialization wrapper helpers, the useless `evalNode(...)` Promise wrapper, direct render closures, option spread helpers, scope-array walker, runtime-key IIFE, small `findVarDeclarationFast(...)` result/IIFE allocations, duplicate fallback/copy/static-return branches, callable surface rechecks, raw lookup sync-path closure/IIFE setup, main eval lookup closure setup, static declaration public-resolve copy/inherit for non-important/non-merged containers, per-call `findVarDeclarationFast(...)` helper closure allocation for bucket selection/candidate ordering/deferred dynamic-name promotion, reference-value evaluator options-object allocation, the declaration evaluator argument-object wrapper, runtime-binding sync evaluator closure setup, the rules-reference lookup executor closure, render-only dynamic declaration/runtime binding post-eval copy+inherit, unresolved reference source serialization now has a direct `writeSyntax(...)` path, and target/key source children no longer route through public `toString(...)`. Remaining: rules-like surfaces, public value materialization, merged assign normalization, and key conversion. |
 | Rest | `packages/core/src/tree/rest.ts` | `Node` | partial scalar wrapper complete | String/empty rest syntax writes the known source token directly with no writer readback; node-valued rest stays on the existing child writer boundary. Wrapper necessity remains. |
 | Rules | `packages/core/src/tree/rules.ts` | `Node` | partial | Direct braced source writer exists and public `toBraced(...)` is cold; high priority remains for body eval/render, imports, placement state, merge output, and root serializer capture. |
-| Ruleset | `packages/core/src/tree/ruleset.ts` | `Node` | queued | High priority: selector composition, body prep, wrappers, render branches. |
+| Ruleset | `packages/core/src/tree/ruleset.ts` | `Node` | partial | Source-direct eligibility and bare-ampersand selector-list checks use straight loops with short-circuit tests. High priority remains for `getHeaderString(...)` capture, selector composition, body prep, wrappers, and render branches. |
 | Selector | `packages/core/src/tree/selector.ts` | `Node` | writeSyntax complete | Selector-family writer hook exists; broader metadata and keyset invalidation audit remains. |
 | SelectorCapture | `packages/core/src/tree/selector-capture.ts` | `Node` | child/buffer staging complete | Capture syntax writes directly through child `writeSyntax(...)`, cold private source-string wrapper is gone, and resolved buffer render delegates to the child buffer renderer instead of rendering to string then writing that string. Audit whether capture node should exist after render rewrite. |
 | SelectorList | `packages/core/src/tree/selector-list.ts` | `Selector` | writeSyntax complete | List item emission uses `writeSyntax` and cold private source-string wrapper is gone; flattening, temporary arrays, and valueOf joins remain queued. |
