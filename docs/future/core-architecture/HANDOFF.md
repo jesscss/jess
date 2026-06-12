@@ -1021,6 +1021,13 @@ the binding index/scope lookup refactor.
    non-merged return branch were deleted. The real merged public
    normalization/inherit boundary remains and is still queued for the larger
    placement/materialization rethink.
+   Ninth partial status: direct/fallback/runtime reference finalization no
+   longer carries private mode arguments or branches that returned the same
+   value as the fallthrough. `evaluateFallbackValue(...)` no longer receives an
+   unused `Reference`; direct-node finalization no longer accepts `textOnly`;
+   runtime-binding finalization no longer has a redundant text-only return
+   branch. `textOnly` remains only where it changes behavior: fallback
+   container/JS-expression handling and runtime-binding evaluation flags.
 15. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -1100,6 +1107,35 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Direct/fallback/runtime reference private-mode deletion pass: accepted as a
+  narrow helper/API-surface cut in `Reference` finalization, not as a speed
+  claim. Files: `packages/core/src/tree/reference.ts` and this handoff.
+  - New traversal: none. No loop, recursion, parent/source walk, child crawl,
+    sort, side map, or array/object scan was added.
+  - New node/materialization: none. The pass does not add node construction,
+    copying, wrapper surfaces, inheritance, or metadata mutation.
+  - Render path: unchanged. Text-only render still reaches the same resolved
+    node; `textOnly` remains only where it avoids fallback container/JS
+    expression materialization or sets runtime-binding eval flags.
+  - Helper/API surface: net deletion. `evaluateFallbackValue(...)` drops an
+    unused `Reference` parameter; direct reference/node finalization drops an
+    unused `textOnly` parameter; runtime-binding finalization drops a redundant
+    branch that returned the same evaluated node as fallthrough.
+  - Metadata mutations: none added or moved.
+  - Evidence: focused `reference`, `declaration`, `call`, and `mixin` tests
+    passed (`409` tests); the broader lookup/materialization set passed (`693`
+    passed, `9` skipped); touched TypeScript eslint passed; `git diff --check`,
+    `pnpm run verify:aggressive-cutting-review`, `pnpm run
+    audit:node-creation`, `pnpm run prototype:binding-handle-reuse`,
+    `pnpm --filter @jesscss/core build`, and `pnpm --filter jess build`
+    passed. Direct stress render of `scope-lookup-stress.less` produced length
+    `8822`. `measure:less:hotpath` completed as sanity only with `functions`
+    `15.23ms`, unstable `import-reference` `22.05ms`, `mixins-guards`
+    `20.02ms`, `extend-chaining` `5.71ms`, and unstable `media` `6.22ms`, so
+    this pass makes no speed claim.
+  - Verdict: keep. This deletes misleading private-mode plumbing while leaving
+    the still-semantic `textOnly` behavior explicit at the remaining call
+    sites.
 - Merged declaration reference private-mode deletion pass: accepted as a
   narrow helper/API-surface cut in `Reference` declaration finalization, not as
   a speed claim. Files: `packages/core/src/tree/reference.ts` and this handoff.

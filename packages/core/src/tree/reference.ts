@@ -1640,7 +1640,6 @@ function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeV
 }
 
 function evaluateFallbackValue(
-  referenceNode: Reference,
   fallbackValue: Node,
   context: Context,
   textOnly = false
@@ -1709,20 +1708,19 @@ function finalizeFallbackReferenceResult(
     any.options.role = referenceNode.options.role;
     return any;
   }
-  return evaluateFallbackValue(referenceNode, fallbackValue, context, textOnly);
+  return evaluateFallbackValue(fallbackValue, context, textOnly);
 }
 
 function finalizeDirectReferenceResult(
   referenceNode: Reference,
   returnVal: unknown,
-  context: Context,
-  textOnly = false
+  context: Context
 ): Node {
   if (isArray(returnVal)) {
     context.popReference();
     return createDirectCallableReferenceResult(referenceNode, returnVal);
   }
-  return finalizeDirectNodeReferenceResult(referenceNode, cast(returnVal), context, textOnly);
+  return finalizeDirectNodeReferenceResult(referenceNode, cast(returnVal), context);
 }
 
 function createDirectCallableReferenceResult(
@@ -1747,13 +1745,9 @@ function createDirectCallableReferenceResult(
 function finalizeDirectNodeReferenceResult(
   referenceNode: Reference,
   result: Node,
-  context: Context,
-  textOnly = false
+  context: Context
 ): Node {
   context.popReference();
-  if (textOnly && canReturnReferenceValue(result)) {
-    return result;
-  }
   if (
     referenceNode.options?.type === 'mixin-ruleset'
     && isRulesLikeReferenceValue(result)
@@ -1785,10 +1779,6 @@ function finalizeRuntimeVarBindingResult(
         : evald;
     }
     if (canReturnReferenceValue(evald)) {
-      context.popReference();
-      return evald;
-    }
-    if (textOnly) {
       context.popReference();
       return evald;
     }
@@ -2103,7 +2093,7 @@ function finalizeReferenceLookupResult(
   if (isNode(returnVal, N.Declaration) || isNode(returnVal, N.VarDeclaration)) {
     return finalizeDeclarationReferenceResult(referenceNode, returnVal, context);
   }
-  return finalizeDirectReferenceResult(referenceNode, returnVal, context, textOnly);
+  return finalizeDirectReferenceResult(referenceNode, returnVal, context);
 }
 
 function finalizeRawReferenceLookupTarget(
