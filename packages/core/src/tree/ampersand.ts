@@ -85,6 +85,39 @@ const isSingleAmpersandWrapper = (node: Node | undefined): boolean => {
   return false;
 };
 
+function splitTopLevelCommas(str: string): string[] {
+  const items: string[] = [];
+  let depth = 0;
+  let inQuote: string | null = null;
+  let start = 0;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i]!;
+    if (inQuote) {
+      if (ch === inQuote && str[i - 1] !== '\\') {
+        inQuote = null;
+      }
+    // eslint-disable-next-line @stylistic/quotes
+    } else if (ch === '"' || ch === "'") {
+      inQuote = ch;
+    } else if (ch === '(' || ch === '[') {
+      depth++;
+    } else if (ch === ')' || ch === ']') {
+      depth--;
+    } else if (ch === ',' && depth === 0) {
+      const item = str.slice(start, i).trim();
+      if (item) {
+        items.push(item);
+      }
+      start = i + 1;
+    }
+  }
+  const last = str.slice(start).trim();
+  if (last) {
+    items.push(last);
+  }
+  return items;
+}
+
 type AppendSelectorResult<T extends Selector = Selector> = {
   selector: T;
   appended: boolean;
@@ -178,6 +211,14 @@ function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
   }
   if (isNode(baseSelector, N.SelectorList)) {
     return baseSelector.value.map(item => item as Selector);
+  }
+  if (isNode(baseSelector, N.SimpleSelector)) {
+    const selectorText = baseSelector.toTrimmedString();
+    if (!selectorText.includes(',')) {
+      return [baseSelector];
+    }
+    return splitTopLevelCommas(selectorText)
+      .map(item => new BasicSelector(item).inherit(baseSelector));
   }
   return [baseSelector];
 }
