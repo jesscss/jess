@@ -137,9 +137,11 @@ Current hard leftovers after the broad hook sweep:
 - [x] `Reference`: direct unresolved reference writer; keep eval/render result
   emission out of public string APIs.
 - [ ] `Call`: direct source syntax writer exists, empty string-name source calls
-  return their known source token without writer readback, and remaining work is
-  split callable output value selection plus evaluated-argument/content
-  emission from capture/string transport.
+  return their known source token without writer readback, and node-valued call
+  names in finalized/plain call syntax write directly instead of using public
+  `toTrimmedString(...)`. Remaining work is split callable output value
+  selection plus evaluated-argument/content emission from capture/string
+  transport.
 - [x] `Func`: direct function signature/body writer, including name/params, if
   public syntax remains necessary.
 - [ ] `Mixin`: direct source syntax/guard writer exists; audit
@@ -198,7 +200,7 @@ Current hard leftovers after the broad hook sweep:
 | BasicSelector | `packages/core/src/tree/selector-basic.ts` | `SimpleSelector` | writeSyntax complete | Direct source spelling emits authored `value`; kind checks use first-character tests, `valueOf()` remains normalized key text, and standalone eval now carries the existing selector-bit library from context. |
 | Block | `packages/core/src/tree/block.ts` | `Node` | writeSyntax hook complete | Bracket emission writes directly; no-trivia child syntax avoids public `toString(...)`, while trivia mode keeps source serialization for authored inner comments/spacing. Render still captures for string/buffer return. |
 | Bool | `packages/core/src/tree/bool.ts` | `Node` | scalar wrapper complete | Scalar writer complete; public `toTrimmedString(...)` writes the known token directly with no writer readback. |
-| Call | `packages/core/src/tree/call.ts` | `Node` | partial | Source syntax writer exists, public call source stringification uses child `writeSyntax(...)`, and empty string-name calls now return their known source token without writer readback; high priority remains for callable output, evaluated arg/content capture, async path, helper ladders, and repeated eval. |
+| Call | `packages/core/src/tree/call.ts` | `Node` | partial | Source syntax writer exists, public call source stringification uses child `writeSyntax(...)`, empty string-name calls return their known source token without writer readback, and node-valued call names in finalized/plain call syntax write directly instead of public `toTrimmedString(...)`. High priority remains for callable output, evaluated arg/content capture, async path, helper ladders, and repeated eval. |
 | Collection | `packages/core/src/tree/collection.ts` | `Rules` | direct braced writer complete | Live wrapper; `writeSyntax(...)` writes braced rules directly and public `toTrimmedString(...)` is the cold capture boundary. Broader wrapper necessity remains separate. |
 | Color | `packages/core/src/tree/color.ts` | `Node` | scalar serializer complete | Scalar/string-backed color emission uses one serializer for `writeSyntax(...)` and public string output with no writer readback; preserved node-backed color syntax still writes the child directly; hex serialization uses a straight loop instead of callback-array joining; broader conversion internals remain. |
 | Combinator | `packages/core/src/tree/combinator.ts` | `Selector` | scalar wrapper complete | Scalar selector writer avoids selector base punt, and public `toTrimmedString(...)` writes the known token directly with no writer readback. |

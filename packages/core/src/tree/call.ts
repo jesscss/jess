@@ -538,13 +538,14 @@ export class Call extends Node<CallValue, CallOptions> {
     context: Context,
     prepared: PrintOptions
   ): MaybePromise<string> {
-    const w = getPrintOptions(prepared).writer!;
+    const printOptions = getPrintOptions(prepared);
+    const w = printOptions.writer!;
     const mark = w.mark();
     const { name, contentNode } = callNode.value;
     if (typeof name === 'string') {
       w.add(name, callNode);
     } else {
-      name.toTrimmedString(prepared);
+      name.writeSyntax(printOptions);
     }
     if (callNode.options?.silentFail) {
       w.add('?');
@@ -603,14 +604,15 @@ export class Call extends Node<CallValue, CallOptions> {
     prepared: PrintOptions,
     syntax?: { args?: List<Node>; contentNode?: Node }
   ): MaybePromise<string> {
-    const w = getPrintOptions(prepared).writer!;
+    const printOptions = getPrintOptions(prepared);
+    const w = printOptions.writer!;
     const mark = w.mark();
     const args = syntax && 'args' in syntax ? syntax.args : state.args;
     const contentNode = syntax && 'contentNode' in syntax ? syntax.contentNode : state.contentNode;
     if (typeof name === 'string') {
       w.add(name, state.source);
     } else if (name instanceof Node) {
-      name.toTrimmedString(prepared);
+      name.writeSyntax(printOptions);
     } else {
       w.add(stringifyValueOf(name), state.source);
     }

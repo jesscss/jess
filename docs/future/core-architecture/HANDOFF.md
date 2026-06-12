@@ -788,39 +788,39 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Ruleset predicate callback cut.
+Current pass: Call node-valued name writer cut.
 
-- New traversal: no new traversal shape was added. Two existing
-  `every(...)` predicate scans in `Ruleset.canRenderSourceDirectly(...)` and
-  `Ruleset.isBareAmpersandSelector(...)` now use explicit indexed loops with
-  the same short-circuit behavior. The loops replace callback invocation and do
-  not add child/source/parent walks.
+- New traversal: none. No loop, recursion, child/source/parent walk, callback
+  iterator, side-map lookup, or object/array scan was added.
 - New node/materialization: none added. No runtime `Node`, copied node,
   `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
   metadata mutation, side map, helper array, or materialized eval/render value
   was added.
-- Render path: source-direct ruleset eligibility still decides whether render
-  can stream canonical source rules without preparing/evaluating an owned body.
-  The pass changes only the predicate machinery; it does not route render
-  through public string APIs or create a materialized render value.
+- Render path: `renderPlainFunctionCall(...)` and
+  `renderFinalizedCallSyntax(...)` now write node-valued call names through the
+  already-prepared writer with `writeSyntax(...)` instead of public
+  `toTrimmedString(...)` transport. Argument and content rendering remain on
+  their existing evaluated-node string boundaries and stay queued separately.
 - Helper/API surface: no helper, method, public API, or package export was
-  added.
+  added. The pass reuses the existing prepared print options already allocated
+  by both render paths.
 - Metadata mutations: none. No parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
   read, ownership probe, or structural probe was added to runtime code.
-- Evidence: focused `ruleset.test.ts` passed (`41` tests). Existing
-  source-direct render tests cover the `canRenderSourceDirectly(...)` behavior,
-  and a new public static-method test proves the bare-ampersand selector-list
-  loop stops at the first non-bare selector. `NODE-REWRITE-TRACKER.md` records
-  Ruleset as partial because `getHeaderString(...)` capture, selector
-  composition, body prep, wrappers, and render branches remain.
-- Hotpath leash: pre-pass at `196b5c44` was status-only, not a speed claim:
-  `functions` `12.36ms` usable, `import-reference` `20.22ms` usable,
-  `mixins-guards` `16.96ms` usable, `extend-chaining` `5.00ms` usable, and
-  `media` `5.68ms` usable. Post-pass dirty leash is also status-only:
-  `functions` `11.87ms` usable, `import-reference` `20.65ms` usable,
-  `mixins-guards` `16.83ms` usable, `extend-chaining` `5.54ms` usable, and
-  `media` `5.08ms` usable.
+- Evidence: focused `call.test.ts` passed (`78` tests). The dynamic CSS call
+  name test now turns the evaluated name node's public `toTrimmedString(...)`
+  into a counter tripwire and proves render still emits `rgb(...)` without
+  calling it. `NODE-REWRITE-TRACKER.md` records Call as partial because
+  evaluated argument/content emission, callable output value selection, async
+  branches, helper ladders, and repeated eval remain.
+- Hotpath leash: pre-pass at `a8e7397b` was status-only, not a speed claim:
+  `functions` `12.60ms` unstable, `import-reference` `21.77ms` usable,
+  `mixins-guards` `17.86ms` unstable, `extend-chaining` `5.34ms` noisy, and
+  `media` `5.72ms` noisy. Post-pass dirty leash is also status-only:
+  `functions` `11.90ms` usable, `import-reference` `19.30ms` usable,
+  `mixins-guards` `16.50ms` usable, `extend-chaining` `5.36ms` usable, and
+  `media` `5.34ms` unstable.
 - Verdict: keep the cut if the post-pass gates stay green. Next full queue
-  pass should continue Ruleset only for a real `getHeaderString(...)` or render
-  branch deletion; otherwise move to Call or AtRule direct writer work.
+  pass should continue Call only for evaluated arg/content transport or a real
+  callable branch deletion; otherwise move to AtRule direct header/body writer
+  work or the remaining Ruleset header capture.

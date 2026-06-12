@@ -276,10 +276,16 @@ describe('Call', () => {
 
   it('renders dynamic CSS call names without evaluating the name twice', async () => {
     const name = any('source-name');
+    const renderedName = any('rgb');
+    let renderedNamePublicStringCalls = 0;
+    renderedName.toTrimmedString = () => {
+      renderedNamePublicStringCalls++;
+      return 'wrong-name';
+    };
     let nameEvaluations = 0;
     name.eval = function evalForCounting() {
       nameEvaluations++;
-      return any('rgb');
+      return renderedName;
     };
     const rule = call({
       name,
@@ -288,6 +294,7 @@ describe('Call', () => {
 
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('rgb(100, 100, 100)');
     expect(nameEvaluations).toBe(1);
+    expect(renderedNamePublicStringCalls).toBe(0);
     expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
