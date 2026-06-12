@@ -2839,3 +2839,29 @@ the gate passed.
   `import-reference` `16.30ms`, `mixins-guards` `15.09ms`,
   `extend-chaining` `4.30ms`, and `media` `4.38ms` unstable. This is not a
   speed claim.
+- Selector empty/container delimiter readback cuts: accepted as a bounded
+  public/source writer readback deletion pass. New traversal: none; no loop,
+  recursion, parent/source walk, side-map lookup, generator, object scan, or
+  array helper was added. Empty `CompoundSelector`, `ComplexSelector`, and
+  `SelectorList` source serialization now returns `''` directly instead of
+  opening a writer mark around a no-op child emission. `Block` with a `Nil`
+  value now writes and returns owned delimiters (`{}` or `[]`) directly only
+  when no active/source trivia map is present; trivia-backed blocks keep the
+  existing writer path so closing-delimiter trivia is preserved. New
+  node/materialization: none in runtime code; no `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, semantic placement state, side map, helper array, or public
+  materialized selector/block surface was added. Test-only `CountingWriter`
+  instances prove zero writer readback and are not runtime allocation. Render
+  path: unchanged for non-empty selectors, evaluated selector output, block
+  children, and trivia-backed block output. No render path resolves into
+  arrays or nodes just to stringify. Helper/API surface: no new runtime helper,
+  method, or public API was added; `Block` imports the existing `Nil` class to
+  identify the already-owned empty child. Metadata mutations: none. Evidence:
+  starting leash at commit `d611f2a6` was the previous scalar wrapper run, so
+  this pass is not comparison-usable. Focused
+  selector-compound/selector-complex/selector-list/block tests passed (`44`
+  tests). Post-pass hotpath sanity at dirty head `d611f2a6` was mixed and not
+  comparison-usable: `functions` `10.99ms` unstable, `import-reference`
+  `15.64ms` usable, `mixins-guards` `14.16ms` usable, `extend-chaining`
+  `4.33ms` usable, and `media` `4.57ms` usable. This is not a speed claim.

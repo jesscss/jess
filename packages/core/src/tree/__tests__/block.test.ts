@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
-import { any, block, Block, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
+import { any, block, Block, nil, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
+import { OutputWriter } from '../util/print.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -18,6 +19,15 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   startColumn: 1,
   endColumn: image.length
 });
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
   const evald = await node.eval(context);
@@ -37,6 +47,18 @@ describe('Block', () => {
 
   it('renders block syntax through toTrimmedString()', () => {
     expect(block(any('foo')).toTrimmedString()).toBe('{foo}');
+  });
+
+  it('writes nil block delimiters without writer readback', () => {
+    const writer = new CountingWriter();
+    const squareWriter = new CountingWriter();
+
+    expect(block(nil()).toTrimmedString({ writer })).toBe('{}');
+    expect(writer.toString()).toBe('{}');
+    expect(writer.reads).toBe(0);
+    expect(block(nil(), { type: 'square' }).toTrimmedString({ writer: squareWriter })).toBe('[]');
+    expect(squareWriter.toString()).toBe('[]');
+    expect(squareWriter.reads).toBe(0);
   });
 
   it('does not allocate options when rendering block syntax with defaults', () => {

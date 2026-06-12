@@ -7,10 +7,16 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
   }
 }
 
@@ -50,6 +56,15 @@ describe('Complex selector', () => {
       ]);
 
       expect(node.toTrimmedString()).toBe('a > .foo');
+    });
+
+    test('writes empty complex selector syntax without writer readback', () => {
+      const writer = new CountingWriter();
+
+      expect(sel([]).toTrimmedString({ writer })).toBe('');
+      expect(writer.toString()).toBe('');
+      expect(writer.reads).toBe(0);
+      expect(writer.captures).toBe(0);
     });
 
     test('streams selector components without capture scaffolding', () => {

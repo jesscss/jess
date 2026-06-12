@@ -158,6 +158,9 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
 
   override toTrimmedString(options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
+    if (this.value.length === 0) {
+      return '';
+    }
     const w = printOptions.writer;
     const mark = w.mark();
     this.writeSyntax(printOptions);

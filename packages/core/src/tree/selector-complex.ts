@@ -220,6 +220,9 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
+    if (this.value.length === 0) {
+      return '';
+    }
     const w = options.writer!;
     const mark = w.mark();
     this.writeSyntax(options);

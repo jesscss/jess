@@ -181,6 +181,9 @@ export class SelectorList extends Selector<Selector[]> {
   /** Normalize selectors on separate lines with indentation */
   override toTrimmedString(options?: PrintOptions) {
     const printOptions = getPrintOptions(options);
+    if (this.value.length === 0) {
+      return '';
+    }
     const w = printOptions.writer;
     const mark = w.mark();
     this.writeSyntax(printOptions);

@@ -19,10 +19,16 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
   }
 }
 
@@ -57,6 +63,15 @@ describe('Compound Selector', () => {
       ]);
 
       expect(node.toTrimmedString()).toBe('a[data=bar]');
+    });
+
+    test('writes empty compound selector syntax without writer readback', () => {
+      const writer = new CountingWriter();
+
+      expect(compound([]).toTrimmedString({ writer })).toBe('');
+      expect(writer.toString()).toBe('');
+      expect(writer.reads).toBe(0);
+      expect(writer.captures).toBe(0);
     });
 
     test('same value', () => {

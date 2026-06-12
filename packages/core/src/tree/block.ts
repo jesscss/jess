@@ -1,5 +1,6 @@
 import type { Context } from '../context.js';
 import { Node, F_STATIC, defineType } from './node.js';
+import { Nil } from './nil.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { consumeTriviaText } from './util/trivia.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -54,6 +55,13 @@ export class Block extends Node<Node, BlockOptions> {
 
   private renderBlockSyntax(value = this.value, options?: PrintOptions): string {
     options = getPrintOptions(options);
+    const type = this._options?.type;
+    const trivia = options.trivia ?? this.sourceRoot?._treeContext?.opts?.trivia;
+    if (value instanceof Nil && !trivia) {
+      const out = type === 'square' ? '[]' : '{}';
+      options.writer.add(out, this);
+      return out;
+    }
     const mark = options.writer.mark();
     this.writeBlockSyntax(value, options);
     const w = options.writer;

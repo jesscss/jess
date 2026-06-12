@@ -1,6 +1,16 @@
 import { any, attr, co, compound, el, pseudo, ref, rules, Rules as RulesClass, sel, sellist, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 /**
  * @todo - add tests for list bubbling
@@ -28,6 +38,14 @@ describe('Selector list', () => {
       ]);
 
       expect(node.toTrimmedString()).toBe('.foo,\n.bar');
+    });
+
+    test('writes empty selector-list syntax without writer readback', () => {
+      const writer = new CountingWriter();
+
+      expect(sellist([]).toTrimmedString({ writer })).toBe('');
+      expect(writer.toString()).toBe('');
+      expect(writer.reads).toBe(0);
     });
 
     /** @todo - add test for non-equality */
