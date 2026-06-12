@@ -569,7 +569,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override allowRoot = true;
 
   declarationRegistry: Registries.DeclarationRegistry | undefined;
-  functionRegistry: Registries.FunctionRegistry | undefined;
   functionsByName: Map<string, JsFunction | Func> | undefined;
   /** Fast map: var name → ordered list of VarDeclarations registered in this scope. */
   varsByName: Map<string, VarDeclaration[]> | undefined;
@@ -684,9 +683,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.functionsByName = new Map(source.functionsByName);
     } else {
       this.functionsByName = undefined;
-    }
-    if (source.functionRegistry) {
-      this.functionRegistry = source.functionRegistry.cloneForRules(this);
     }
 
     // IMPORTANT: cloned Rules must re-index their own registries.
@@ -812,10 +808,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return (this.declarationRegistry ??= new Registries.DeclarationRegistry(this));
   }
 
-  private _ensureFunctionRegistry(): Registries.FunctionRegistry {
-    return (this.functionRegistry ??= new Registries.FunctionRegistry(this));
-  }
-
   setFunctionBinding(name: string | undefined, node: JsFunction | Func): void {
     if (!name) {
       return;
@@ -844,17 +836,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           isNode(node, N.JsFunction) ? node.name : node.nameKey,
           node
         );
-        this._ensureFunctionRegistry().add(node);
     }
   }
 
   getRegistry(type: 'declaration'): Registries.DeclarationRegistry;
-  getRegistry(type: 'function'): Registries.FunctionRegistry;
-  getRegistry(type: 'declaration' | 'function'): Registries.DeclarationRegistry | Registries.FunctionRegistry;
-  getRegistry(type: 'declaration' | 'function') {
-    const registry = type === 'declaration'
-      ? this._ensureDeclarationRegistry()
-      : this._ensureFunctionRegistry();
+  getRegistry(_type: 'declaration'): Registries.DeclarationRegistry {
+    const registry = this._ensureDeclarationRegistry();
     if (this.rulesIndexed < this.value.length) {
       this._indexRules();
     } else {
@@ -1977,7 +1964,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (rules.rulesIndexed < rules.value.length) {
         rules._indexRules();
       }
-      rules.functionRegistry?.indexPendingItems();
       const fn = rules.functionsByName?.get(keys);
       if (fn || !searchParents) {
         return fn;
@@ -2009,12 +1995,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     keys: string,
     filterType?: string,
     options?: Registries.FindOptions
-  ): ReturnType<Registries.FunctionRegistry['find']> | undefined {
-    if (!filterType && !options?.findAll && !options?.candidates && !options?.optionalCandidates && !options?.searchedRules) {
-      const direct = this.findFunctionDirect(keys, options);
-      return direct;
-    }
-    return this.getRegistry('function').find(keys, filterType, options);
+  ): JsFunction | Func | undefined {
+    return this.findFunctionDirect(keys, options);
   }
 
   override toString(options?: PrintOptions): string {

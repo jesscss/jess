@@ -5,8 +5,6 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { Node } from '../node.js';
-import { JsFunction } from '../js-function.js';
-import type { Func } from '../function.js';
 import type { Declaration } from '../declaration.js';
 import type { Context } from '../../context.js';
 import { atIndex } from './collections.js';
@@ -378,82 +376,6 @@ export abstract class Registry<
       return candidates.size ? [...candidates] : undefined;
     }
     return candidates;
-  }
-}
-
-/**
- * For either Sass, Jess, or JS functions.
- *
- * Less and Sass can register global functions that can be called from the language
- * without a `@-use` directive.
- *
- * @todo Should the presence of `@-use` directives anywhere in the
- * stylesheet tree cause these global functions to be disabled?
- */
-export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | Func> {
-  index = new Map<string, JsFunction | Func>();
-
-  cloneForRules(rules: Rules): FunctionRegistry {
-    const next = new FunctionRegistry(rules);
-    // Preserve any functions injected directly into the registry (Less plugin style).
-    next.index = new Map(this.index);
-    for (const [name, fn] of next.index) {
-      rules.setFunctionBinding(name, fn);
-    }
-    next.pendingItems = new Set(this.pendingItems);
-    return next;
-  }
-
-  override indexPendingItems() {
-    for (const item of this.pendingItems) {
-      if (item instanceof JsFunction) {
-        this.index.set(item.name!, item);
-        this.rules.setFunctionBinding(item.name, item);
-        continue;
-      }
-      // Stylesheet-defined function node
-      const nameKey = (item as Func).nameKey;
-      if (nameKey) {
-        this.index.set(nameKey, item);
-        this.rules.setFunctionBinding(nameKey, item);
-      }
-    }
-    this.pendingItems.clear();
-  }
-
-  override find(name: string, filterType?: string, options?: FindOptions): JsFunction | Func | undefined {
-    let fn: JsFunction | Func | undefined;
-    let rules: Rules | undefined = this.rules;
-    let { searchParents = true } = options ?? {};
-    let findRoot = false;
-    while (rules) {
-      let registry = rules.functionRegistry;
-      if (registry) {
-        registry.indexPendingItems();
-        fn = registry.index.get(name);
-
-        if (fn || !searchParents) {
-          break;
-        }
-      }
-
-      do {
-        rules = rules?.parent as Rules;
-        const rulesParent = rules?.parent;
-        if (findRoot && rules.type === 'Rules' && rulesParent === undefined) {
-          /** We're at the root */
-          break;
-        }
-        /**
-         * If we reach an import boundary, skip the scope until we get to the top level.
-         */
-        if (isNonClassicImportBoundary(rules)) {
-          findRoot = true;
-        }
-      } while (!findRoot && rules && rules.type !== 'Rules');
-    }
-
-    return fn;
   }
 }
 

@@ -69,10 +69,7 @@ async function renderControlRules(
 
 function createDerivedIterationRulesSurface(
   sourceRules: Rules,
-  childNodes?: Node[],
-  options: {
-    preserveFunctionRegistry?: boolean;
-  } = {}
+  childNodes?: Node[]
 ): Rules {
   const sourceOptions = sourceRules.options;
   const sourceLocation = sourceRules.location.length === 0
@@ -87,8 +84,8 @@ function createDerivedIterationRulesSurface(
     sourceLocation,
     sourceRules._treeContext
   ).inherit(sourceRules);
-  if (options.preserveFunctionRegistry === true && sourceRules.functionRegistry) {
-    output.functionRegistry = sourceRules.functionRegistry.cloneForRules(output);
+  if (sourceRules.functionsByName) {
+    output.functionsByName = new Map(sourceRules.functionsByName);
   }
   output.scopeFrame = undefined;
   if (childNodes) {
@@ -130,8 +127,7 @@ function deriveIterationChild(node: Node): Node {
 function createIterationEvalSurface(sourceRules: Rules): Rules {
   const iterationRules = createDerivedIterationRulesSurface(
     sourceRules,
-    sourceRules.value.map(deriveIterationChild),
-    { preserveFunctionRegistry: true }
+    sourceRules.value.map(deriveIterationChild)
   );
   iterationRules.options.rulesVisibility = {
     ...iterationRules.options.rulesVisibility,
@@ -161,9 +157,7 @@ function attachIterationFallbackFrame(
 
 function createWhileStateSurface(sourceRules: Rules, context: Context): Rules {
   const stateRules = createDerivedIterationRulesSurface(
-    sourceRules,
-    undefined,
-    { preserveFunctionRegistry: true }
+    sourceRules
   );
   const parentFrame: ScopeFrame | undefined = isNode(context.rulesContext, N.Rules)
     ? context.rulesContext.getScopeFrame()

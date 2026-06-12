@@ -166,26 +166,30 @@ export class LessCompatPlugin extends AbstractPlugin {
         && typeof root.setFunctionBinding === 'function'
         && typeof root.findFunction === 'function'
       ) {
-        this._jessFunctionRegistry = {
-          add(name: string, func: JsFunction | ((...args: any[]) => any)): void {
-            const lowerName = name.toLowerCase();
-            const jsFunc = func instanceof JsFunction
-              ? func
-              : new JsFunction({ name: lowerName, fn: func });
-            if (!jsFunc.name) {
-              jsFunc.name = lowerName;
-            }
-            root.setFunctionBinding(lowerName, jsFunc);
-          },
-          get(name: string): JsFunction | undefined {
-            const fn = root.findFunction(name.toLowerCase());
-            return fn instanceof JsFunction ? fn : undefined;
-          }
-        };
+        this._jessFunctionRegistry = this.createJessFunctionBindingRegistry(root);
       }
     } catch {
       // ignore
     }
+  }
+
+  private createJessFunctionBindingRegistry(root: any) {
+    return {
+      add(name: string, func: JsFunction | ((...args: any[]) => any)): void {
+        const lowerName = name.toLowerCase();
+        const jsFunc = func instanceof JsFunction
+          ? func
+          : new JsFunction({ name: lowerName, fn: func });
+        if (!jsFunc.name) {
+          jsFunc.name = lowerName;
+        }
+        root.setFunctionBinding(lowerName, jsFunc);
+      },
+      get(name: string): JsFunction | undefined {
+        const fn = root.findFunction(name.toLowerCase());
+        return fn instanceof JsFunction ? fn : undefined;
+      }
+    };
   }
 
   private hasConfiguredBeforeEvalWork(): boolean {
@@ -865,13 +869,17 @@ export class LessCompatPlugin extends AbstractPlugin {
                   while (scopeRules && scopeRules.type !== 'Rules') {
                     scopeRules = scopeRules.parent;
                   }
-                  if (scopeRules && typeof scopeRules.getRegistry === 'function') {
+                  if (
+                    scopeRules
+                    && typeof scopeRules.setFunctionBinding === 'function'
+                    && typeof scopeRules.findFunction === 'function'
+                  ) {
                     // Root-level @plugin should behave as global registration (Less.js behavior),
                     // even when encountered in an imported file.
                     if (!scopeRules.parent) {
                       currentRealRegistry = this._jessFunctionRegistry;
                     } else {
-                      currentRealRegistry = scopeRules.getRegistry('function');
+                      currentRealRegistry = this.createJessFunctionBindingRegistry(scopeRules);
                     }
                   } else {
                     currentRealRegistry = this._jessFunctionRegistry;

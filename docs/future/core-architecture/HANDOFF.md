@@ -807,26 +807,28 @@ left for this branch.
 5. [x] Bring function lookup into the same binding model.
    Simple exact-name function lookup now uses `Rules.functionsByName` binding
    records. `Rules.register('function', ...)`, stylesheet `Func` indexing, and
-   legacy `FunctionRegistry.indexPendingItems(...)` all publish into that map.
-   `Rules.findFunction(...)` returns direct hits/misses for simple option
-   shapes without calling `FunctionRegistry.find(...)`.
+   Less-compat plugin registration all publish into that map.
+   `Rules.findFunction(...)` returns direct hits/misses for all current option
+   shapes without opening any registry lookup.
 
    Completion gate:
-   - Done: simple function hits and misses do not enter
-     `FunctionRegistry.find(...)`; focused tests monkeypatch the registry
-     method for both directions.
+   - Done: function hits, misses, option-shaped lookups, and cloned function
+     maps do not open `Rules.getRegistry(...)`; focused tests monkeypatch the
+     registry entry and count zero calls.
    - Done: no callable output/evaluated value cache is added; the binding map
      stores source `JsFunction`/`Func` nodes only.
-   - Done for simple exact names: parent/import-boundary traversal follows the
-     old registry walk. Complex registry APIs remain isolated behind
-     `FunctionRegistry`/`getRegistry('function')` until their public Less API
-     surface is deleted or replaced.
+   - Done: parent/import-boundary traversal follows the old registry walk
+     while reading `functionsByName` directly. The core `FunctionRegistry`
+     class and `Rules.getRegistry('function')` overload are deleted; Less-style
+     `functionRegistry` APIs live only in the Less-compat mock adapter and
+     bridge to `Rules.setFunctionBinding(...)` / `Rules.findFunction(...)`.
 
 5a. [x] Delete remaining core function registry compatibility surface.
-   Core `FunctionRegistry` no longer exposes Less-style `add(name, fn)`,
-   `addMultiple(...)`, `get(...)`, `getLocalFunctions(...)`, or `inherit(...)`.
-   Less-compat still presents a Less-shaped mock registry to Less plugins, but
-   that bridge writes and reads `Rules` function bindings directly.
+   Deleted. Core no longer exports or allocates `FunctionRegistry`, no longer
+   has a `Rules.functionRegistry` field, and no longer accepts
+   `getRegistry('function')`. Less-compat still presents a Less-shaped mock
+   registry to Less plugins, but both global and scoped plugin registration
+   write/read `Rules` function bindings directly.
 
 5b. [x] Reuse binding handles for static function references.
    Covered static, non-targeted, unfiltered string-key function references now
@@ -1250,6 +1252,56 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Core function registry deletion pass: accepted as binding/lookup registry
+  plumbing deletion, not as a speed claim. Files:
+  `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/util/registry-utils.ts`,
+  `packages/core/src/tree/control.ts`,
+  `packages/core/src/tree/util/callable-surface.ts`,
+  `packages/core/src/tree/__tests__/call.test.ts`,
+  `packages/core/src/tree/__tests__/control.test.ts`,
+  `packages/jess-plugin-less-compat/src/plugin.ts`,
+  `docs/future/core-architecture/HANDOFF.md`, and
+  `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`.
+  - New traversal: none. `Rules.findFunction(...)` keeps the existing
+    parent/import-boundary loop from the prior direct-binding pass and no
+    longer opens any registry lookup or deferred function-indexing store. The
+    diff-visible `sourceRules.value.map(deriveIterationChild)` is pre-existing
+    iteration-body copy work; this pass only removed its old
+    preserve-function-registry options argument.
+  - New node/materialization: no AST node construction, wrapper `Rules`,
+    `.inherit(...)`, `.adopt(...)`, frozen/source metadata, or parent mutation
+    was added. Runtime function registrations write `functionsByName`
+    directly. The only production allocation added by this pass is
+    `new Map(sourceRules.functionsByName)` on runtime `$for` iteration surfaces,
+    replacing the previous `FunctionRegistry.cloneForRules(...)` preservation
+    so existing function visibility remains available during iteration.
+  - Render path: unchanged. Function calls still evaluate the same
+    `JsFunction`/`Func` source nodes.
+  - Helper/API surface: net deletion. Removed core `FunctionRegistry`,
+    `Rules.functionRegistry`, `Rules.getRegistry('function')`,
+    `_ensureFunctionRegistry(...)`, `FunctionRegistry.cloneForRules(...)`, and
+    stale preserve-function-registry clone hooks. Less-compat keeps a
+    Less-shaped mock `functionRegistry` only inside the plugin adapter and
+    bridges it to `Rules.setFunctionBinding(...)` / `Rules.findFunction(...)`.
+  - Metadata mutations: none. No parent/source/frozen metadata, scope-frame
+    construction, or registration-prep semantics changed.
+  - Routine error/control: no new runtime throw/catch/Error path; the existing
+    Less-compat plugin-load catch remains unchanged. Diff-visible
+    `getRegistry(...)` text is the now declaration-only method signature plus
+    test monkeypatching; it is not expected-miss error control.
+  - Test-only danger tokens: focused tests still use `new JsFunction(...)`,
+    `new Set(...)`, `rules([])`, and `try/finally` monkeypatch restoration to
+    prove function lookups do not open registries.
+  - Evidence: touched-file ESLint passed; focused core function call tests
+    passed (`24` passed, `56` skipped); focused control function-binding tests
+    passed (`3` passed, `56` skipped); lookup-adjacent core suite passed
+    (`518` passed, `1` skipped); `@jesscss/core` build passed with the existing
+    `src/tree/js-expr.ts` direct-eval warning; `@jesscss/plugin-less-compat`
+    build passed with the existing mixed-exports warning; Less-compat
+    plugin-manager/at-plugin/directive compatibility tests passed (`25`
+    tests). Performance remains leashed/status only; no speed claim without a
+    measured before/after run.
 - Binding current-read lookup surface pass: accepted as a binding/lookup bridge
   deletion, not as a speed claim. Files:
   `packages/core/src/tree/util/direct-rules-lookup.ts`,

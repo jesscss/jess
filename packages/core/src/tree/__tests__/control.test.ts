@@ -1092,7 +1092,7 @@ describe('Control Nodes', () => {
     expect(await renderNodeToString(root, new Context())).toBe('');
   });
 
-  it('does not carry function registries on zero-iteration $for output wrappers', async () => {
+  it('does not carry function bindings on zero-iteration $for output wrappers', async () => {
     const context = new Context();
     const loopRules = rules([
       decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
@@ -1106,12 +1106,12 @@ describe('Control Nodes', () => {
     const evald = await root.eval(context);
     const loopOutput = evald.at(0);
 
-    expect(loopRules.functionRegistry).toBeDefined();
+    expect(loopRules.functionsByName).toBeDefined();
     expect(loopOutput).toBeInstanceOf(Rules);
     if (!(loopOutput instanceof Rules)) {
       throw new Error('Expected loop output to be Rules');
     }
-    expect(loopOutput.functionRegistry).toBeUndefined();
+    expect(loopOutput.functionsByName).toBeUndefined();
   });
 
   it('does not prepare $for body registration when the iterable is empty', async () => {
@@ -1246,7 +1246,7 @@ describe('Control Nodes', () => {
     expect(css).toContain('item: b');
   });
 
-  it('does not carry function registries on multi-iteration $for output wrappers', async () => {
+  it('does not carry function bindings on multi-iteration $for output wrappers', async () => {
     const context = new Context();
     const loopRules = rules([
       decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
@@ -1260,16 +1260,16 @@ describe('Control Nodes', () => {
     const evald = await root.eval(context);
     const loopOutput = evald.at(0);
 
-    expect(loopRules.functionRegistry).toBeDefined();
+    expect(loopRules.functionsByName).toBeDefined();
     expect(loopOutput).toBeInstanceOf(Rules);
     if (!(loopOutput instanceof Rules)) {
       throw new Error('Expected loop output to be Rules');
     }
     expect(loopOutput.value).toHaveLength(2);
-    expect(loopOutput.functionRegistry).toBeUndefined();
+    expect(loopOutput.functionsByName).toBeUndefined();
   });
 
-  it('preserves function registries on runtime $for iteration surfaces', async () => {
+  it('preserves function bindings on runtime $for iteration surfaces', async () => {
     const context = new Context();
     const loopRules = rules([
       decl({

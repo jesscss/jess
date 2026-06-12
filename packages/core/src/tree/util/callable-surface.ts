@@ -170,9 +170,6 @@ function createDerivedRulesSurface(
     sourceLocation,
     sourceRules._treeContext
   ).inherit(sourceRules);
-  if (sourceRules.functionRegistry) {
-    output.functionRegistry = sourceRules.functionRegistry.cloneForRules(output);
-  }
   output.scopeFrame = undefined;
   if (options?.rulesOptions || options?.markMixinOutput) {
     output.options = {

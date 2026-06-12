@@ -675,92 +675,106 @@ describe('Call', () => {
     expect(rule.registrationPrepared).toBe(false);
   });
 
-  it('resolves simple function hits without FunctionRegistry.find', () => {
+  it('resolves simple function hits without opening a registry lookup', () => {
     const root = rules([]);
     root.register('function', new JsFunction({
       name: 'direct-hit',
       fn: () => any('ok')
     }));
-    const registry = root.functionRegistry;
-    expect(registry).toBeDefined();
-    if (!registry) {
-      throw new Error('Expected function registry');
-    }
-    const originalFind = registry.find;
-    let findCalls = 0;
-    registry.find = function countFunctionFind(
-      this: typeof registry,
-      ...args: Parameters<typeof originalFind>
-    ): ReturnType<typeof originalFind> {
-      findCalls++;
-      return originalFind.apply(this, args);
+    const originalGetRegistry = Rules.prototype.getRegistry;
+    let registryHits = 0;
+    Rules.prototype.getRegistry = function countFunctionRegistry(
+      this: Rules,
+      ...args: Parameters<typeof originalGetRegistry>
+    ): ReturnType<typeof originalGetRegistry> {
+      registryHits++;
+      return originalGetRegistry.apply(this, args);
     };
 
     try {
       expect(root.findFunction('direct-hit')?.type).toBe('JsFunction');
-      expect(findCalls).toBe(0);
+      expect(registryHits).toBe(0);
     } finally {
-      registry.find = originalFind;
+      Rules.prototype.getRegistry = originalGetRegistry;
     }
   });
 
-  it('resolves simple function misses without FunctionRegistry.find', () => {
+  it('resolves simple function misses without opening a registry lookup', () => {
     const root = rules([]);
     root.register('function', new JsFunction({
       name: 'other',
       fn: () => any('ok')
     }));
-    const registry = root.functionRegistry;
-    expect(registry).toBeDefined();
-    if (!registry) {
-      throw new Error('Expected function registry');
-    }
-    const originalFind = registry.find;
-    let findCalls = 0;
-    registry.find = function countFunctionFind(
-      this: typeof registry,
-      ...args: Parameters<typeof originalFind>
-    ): ReturnType<typeof originalFind> {
-      findCalls++;
-      return originalFind.apply(this, args);
+    const originalGetRegistry = Rules.prototype.getRegistry;
+    let registryHits = 0;
+    Rules.prototype.getRegistry = function countFunctionRegistry(
+      this: Rules,
+      ...args: Parameters<typeof originalGetRegistry>
+    ): ReturnType<typeof originalGetRegistry> {
+      registryHits++;
+      return originalGetRegistry.apply(this, args);
     };
 
     try {
       expect(root.findFunction('missing')).toBeUndefined();
-      expect(findCalls).toBe(0);
+      expect(registryHits).toBe(0);
     } finally {
-      registry.find = originalFind;
+      Rules.prototype.getRegistry = originalGetRegistry;
     }
   });
 
-  it('preserves direct function bindings when cloning registry-only functions', () => {
+  it('resolves option-shaped function lookup without opening a registry lookup', () => {
+    const root = rules([]);
+    const fnNode = new JsFunction({
+      name: 'direct-options-hit',
+      fn: () => any('ok')
+    });
+    root.register('function', fnNode);
+    const originalGetRegistry = Rules.prototype.getRegistry;
+    let registryHits = 0;
+    Rules.prototype.getRegistry = function countFunctionRegistry(
+      this: Rules,
+      ...args: Parameters<typeof originalGetRegistry>
+    ): ReturnType<typeof originalGetRegistry> {
+      registryHits++;
+      return originalGetRegistry.apply(this, args);
+    };
+
+    try {
+      expect(root.findFunction('direct-options-hit', 'ignored', {
+        candidates: new Set(),
+        optionalCandidates: new Set(),
+        findAll: true
+      })).toBe(fnNode);
+      expect(registryHits).toBe(0);
+    } finally {
+      Rules.prototype.getRegistry = originalGetRegistry;
+    }
+  });
+
+  it('preserves direct function bindings when cloning function maps', () => {
     const root = rules([]);
     const fn = new JsFunction({
       name: 'registry-only',
       fn: () => any('ok')
     });
-    root.getRegistry('function').index.set('registry-only', fn);
+    root.setFunctionBinding('registry-only', fn);
     const cloned = root.clone(false);
-    const registry = cloned.functionRegistry;
-    expect(registry).toBeDefined();
-    if (!registry) {
-      throw new Error('Expected function registry');
-    }
-    const originalFind = registry.find;
-    let findCalls = 0;
-    registry.find = function countFunctionFind(
-      this: typeof registry,
-      ...args: Parameters<typeof originalFind>
-    ): ReturnType<typeof originalFind> {
-      findCalls++;
-      return originalFind.apply(this, args);
+    const originalGetRegistry = Rules.prototype.getRegistry;
+    let registryHits = 0;
+    Rules.prototype.getRegistry = function countFunctionRegistry(
+      this: Rules,
+      ...args: Parameters<typeof originalGetRegistry>
+    ): ReturnType<typeof originalGetRegistry> {
+      registryHits++;
+      return originalGetRegistry.apply(this, args);
     };
 
     try {
       expect(cloned.findFunction('registry-only')).toBe(fn);
-      expect(findCalls).toBe(0);
+      expect(registryHits).toBe(0);
     } finally {
-      registry.find = originalFind;
+      Rules.prototype.getRegistry = originalGetRegistry;
     }
   });
 
