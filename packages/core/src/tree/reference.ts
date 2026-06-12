@@ -1570,14 +1570,10 @@ function materializeReferenceTarget(args: {
   if (isNode(resolvedTarget, N.Mixin | N.Ruleset)) {
     const sourceRules = resolvedTarget.value.rules;
     const mixinResult = sourceRules.eval(context);
-    const finalizeRules = (rules: Rules): [Rules, NormalizedLookupKey] => {
-      rules.inherit(sourceRules);
-      return [rules, valueKey];
-    };
     if (isThenable(mixinResult)) {
-      return Promise.resolve(mixinResult).then(finalizeRules);
+      return Promise.resolve(mixinResult).then(rules => [rules, valueKey]);
     }
-    return finalizeRules(mixinResult);
+    return [mixinResult, valueKey];
   }
 
   return [resolvedTarget, valueKey];

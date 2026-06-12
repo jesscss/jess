@@ -1007,6 +1007,13 @@ the binding index/scope lookup refactor.
    dynamic list/sequence eval does not call `withResolvedValue(...)` or
    `withValue(...)`. The owned surfaces still remain for real child changes,
    Nil filtering, and public materialization semantics.
+   Seventh partial status: `Reference` target materialization no longer calls
+   `rules.inherit(sourceRules)` after `sourceRules.eval(context)` for direct
+   mixin/ruleset targets. `Node.evalStatic(...)` already applies the necessary
+   inheritance when eval produces a replacement rules surface, and static
+   source rules need no re-inherit. Focused coverage pins target-mixin
+   materialization to one inherit from eval replacement rather than a second
+   materialization inherit.
 15. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -1086,6 +1093,40 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Mixin/ruleset target materialization inherit deletion pass: accepted as a
+  narrow duplicate-metadata mutation cut in `Reference` target lookup, not as a
+  speed claim. Files: `packages/core/src/tree/reference.ts`,
+  `packages/core/src/tree/__tests__/reference.test.ts`, and this handoff.
+  - New traversal: none. No loop, parent/source walk, child crawl, sort,
+    generator, side-map lookup, or object/array scan was added.
+  - New node/materialization: none. The pass deletes one
+    `rules.inherit(sourceRules)` call after `sourceRules.eval(context)`.
+    `Node.evalStatic(...)` remains the owner of the one required inheritance
+    when eval returns a replacement rules surface.
+  - Render path: unchanged. The target rules still evaluate before lookup and
+    render receives the same resolved property value.
+  - Helper/API surface: net deletion. No helper, public API, or compatibility
+    shim was added.
+  - Metadata mutations: reduced. Target materialization no longer re-stamps
+    parent/source/location metadata after eval has already done so. The
+    remaining inherit observed by the focused test is the eval-owned replacement
+    inherit, not duplicate materialization work.
+  - Evidence: focused `reference`, `mixin`, `declaration`, and `call` tests
+    passed (`409` tests); the broader lookup/materialization set passed (`693`
+    passed, `9` skipped); touched TypeScript eslint passed; `git diff --check`,
+    `pnpm run verify:aggressive-cutting-review`, `pnpm run
+    audit:node-creation`, `pnpm run prototype:binding-handle-reuse`,
+    `pnpm --filter @jesscss/core build`, and `pnpm --filter jess build`
+    passed. New coverage stores a `Mixin` in a variable, indexes through that
+    target, renders `out: green`, and proves the target rules inherit from
+    source rules exactly once. Direct stress render of
+    `scope-lookup-stress.less` produced length `8822`; `measure:less:hotpath`
+    completed as sanity only with noisy/unstable cases, so this pass makes no
+    speed claim. The danger tokens are prosecuted here: the runtime diff deletes
+    an `inherit`, and the test-only `try` restores a monkeypatched prototype.
+  - Verdict: keep. This removes duplicate metadata stamping for direct
+    mixin/ruleset reference targets while preserving eval-owned replacement
+    ownership.
 - Lazy unchanged list/sequence eval array pass: accepted as a narrow public
   materialization shrink for `Reference`-adjacent `List`/`Sequence` values, not
   as a speed claim. Files:

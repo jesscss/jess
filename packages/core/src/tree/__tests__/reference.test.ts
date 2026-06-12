@@ -2084,6 +2084,49 @@ describe('reference', () => {
       }
     });
 
+    it('materializes mixin reference targets without double-inheriting evaluated rules', async () => {
+      const mixinRules = rules([
+        decl({ name: 'color', value: any('green') })
+      ]);
+      const mixinDef = mixin({
+        name: any('.box'),
+        rules: mixinRules
+      });
+      const root = rules([
+        vardecl({ name: 'target', value: mixinDef }),
+        decl({
+          name: 'out',
+          value: ref({
+            target: ref({ key: 'target' }, { type: 'variable' }),
+            key: quoted('color')
+          }, { type: 'index' })
+        })
+      ]);
+      const originalInherit = RulesClass.prototype.inherit;
+      let inheritedFromMixinRules = 0;
+      RulesClass.prototype.inherit = function inheritForCounting(
+        this: RulesClass,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === mixinRules) {
+          inheritedFromMixinRules++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        const evald = setRulesContext(await root.eval(context));
+
+        expect(await renderNodeToString(evald, context)).toBeString(`
+          out: green;
+        `);
+        expect(inheritedFromMixinRules).toBe(1);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        RulesClass.prototype.inherit = originalInherit;
+      }
+    });
+
     it('should get a variable from scope', async () => {
       let node = rules([
         vardecl({
