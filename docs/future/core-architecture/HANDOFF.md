@@ -2899,3 +2899,25 @@ the gate passed.
   comparison-usable: `functions` `12.28ms`, `import-reference` `19.97ms`,
   `mixins-guards` `17.15ms`, `extend-chaining` `5.49ms`, and `media`
   `5.94ms`. This is not a speed claim.
+- Empty call readback cut: accepted as a narrow public/source writer readback
+  deletion pass for `Call.toTrimmedString(...)`. New traversal: none; no loop,
+  recursion, parent/source walk, side-map lookup, generator, object scan, or
+  array helper was added. New node/materialization: none in runtime code; no
+  `Node`, copy, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`,
+  frozen/source/parent mutation, semantic placement state, side map, helper
+  array, or public materialized call surface was added. Helper/API surface: no
+  new runtime helper, method, or public API was added; the branch is inline and
+  limited to owned string-name calls with no args and no content node. Metadata
+  mutations: none. Render path: unchanged; no render path resolves into arrays
+  or nodes just to stringify. Rejected cut: dynamic names, args, content nodes,
+  optional fallback output, and evaluated/callable paths remain on the existing
+  writer/eval machinery because they carry child syntax, async/eval selection,
+  or semantic fallback behavior. Evidence: starting head was `4b96e81b`, so
+  any hotpath run after this patch is status-only unless compared to a clean
+  before/after pair. Focused call tests passed (`78` tests), including new
+  `CountingWriter` assertions proving zero `mark()`/`getSince(...)` for
+  `button()` and `missing?() !important`. Post-pass hotpath sanity at dirty
+  head `4b96e81b` was not comparison-usable: `functions` `12.67ms` usable,
+  `import-reference` `19.69ms` usable, `mixins-guards` `16.27ms` usable,
+  `extend-chaining` `5.91ms` noisy, and `media` `5.90ms` noisy. This is not a
+  speed claim.

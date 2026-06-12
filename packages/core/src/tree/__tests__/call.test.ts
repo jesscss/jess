@@ -20,10 +20,22 @@ import { MixinCollection } from '../util/callable-collection.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  marks = 0;
+  readbacks = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.readbacks++;
+    return super.getSince(mark);
   }
 }
 
@@ -138,6 +150,26 @@ describe('Call', () => {
 
     expect(rule.toTrimmedString({ writer })).toBe('rgb(100, 100, 100)');
     expect(writer.captures).toBe(0);
+  });
+
+  it('serializes empty CSS calls without writer readback scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = call({ name: 'button' });
+
+    expect(rule.toTrimmedString({ writer })).toBe('button()');
+    expect(writer.toString()).toBe('button()');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes empty optional-important CSS calls without writer readback scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = call({ name: 'missing' }, { silentFail: true, markImportant: true });
+
+    expect(rule.toTrimmedString({ writer })).toBe('missing?() !important');
+    expect(writer.toString()).toBe('missing?() !important');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('serializes comment trivia owned by function argument separators', () => {

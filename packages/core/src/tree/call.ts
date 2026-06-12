@@ -877,6 +877,14 @@ export class Call extends Node<CallValue, CallOptions> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
+    const { name, args, contentNode } = this.value;
+    if (typeof name === 'string' && !args && !contentNode) {
+      const silentFail = this._options?.silentFail === true;
+      const markImportant = this._options?.markImportant === true;
+      const out = `${name}${silentFail ? '?' : ''}()${markImportant ? ' !important' : ''}`;
+      getPrintOptions(options).writer.add(out, this);
+      return out;
+    }
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
