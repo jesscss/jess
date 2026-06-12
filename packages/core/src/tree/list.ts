@@ -59,21 +59,28 @@ function emitRenderedListItemMaybe<T extends Node>(
 ): MaybePromise<void> {
   const saved = options.suppressBoundaryTrivia;
   options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
-  const renderNode = (node: Node): MaybePromise<void> => {
-    const rendered = node.render(context, options);
-    if (isThenable(rendered)) {
-      return rendered.then(() => undefined);
-    }
-  };
   let rendered: MaybePromise<void>;
   try {
     if (item.hasFlag(F_MAY_ASYNC)) {
       const resolved = item.resolve(context);
-      rendered = isThenable(resolved)
-        ? resolved.then(renderNode)
-        : renderNode(resolved);
+      if (isThenable(resolved)) {
+        rendered = resolved.then((node) => {
+          const renderedNode = node.render(context, options);
+          return isThenable(renderedNode)
+            ? renderedNode.then(() => undefined)
+            : undefined;
+        });
+      } else {
+        const renderedNode = resolved.render(context, options);
+        rendered = isThenable(renderedNode)
+          ? renderedNode.then(() => undefined)
+          : undefined;
+      }
     } else {
-      rendered = renderNode(item);
+      const renderedNode = item.render(context, options);
+      rendered = isThenable(renderedNode)
+        ? renderedNode.then(() => undefined)
+        : undefined;
     }
   } catch (error: unknown) {
     options.suppressBoundaryTrivia = saved;
@@ -91,6 +98,26 @@ function emitRenderedListItemMaybe<T extends Node>(
     );
   }
   options.suppressBoundaryTrivia = saved;
+}
+
+async function renderListValueDirectMaybeRest<T extends Node>(
+  context: Context,
+  value: T[],
+  options: ReturnType<typeof getPrintOptions>,
+  sep: ListOptions['sep'],
+  mark: number,
+  start: number,
+  previous: T
+): Promise<string> {
+  const w = options.writer;
+  let item = previous;
+  for (let i = start; i < value.length; i++) {
+    const prev = item;
+    item = value[i]!;
+    emitListSeparator(prev, item, options, sep);
+    await emitRenderedListItemMaybe(item, context, options, true);
+  }
+  return w.getSince(mark);
 }
 
 export function writeListValueSyntax<T extends Node>(
@@ -208,21 +235,10 @@ function renderListValueDirectMaybe<T extends Node>(
     return '';
   }
 
-  const renderRest = async (start: number, previous: T): Promise<string> => {
-    let item = previous;
-    for (let i = start; i < value.length; i++) {
-      const prev = item;
-      item = value[i]!;
-      emitListSeparator(prev, item, printOptions, sep);
-      await emitRenderedListItemMaybe(item, context, printOptions, true);
-    }
-    return w.getSince(mark);
-  };
-
   let item = value[0]!;
   const first = emitRenderedListItemMaybe(item, context, printOptions);
   if (isThenable(first)) {
-    return first.then(() => renderRest(1, item));
+    return first.then(() => renderListValueDirectMaybeRest(context, value, printOptions, sep, mark, 1, item));
   }
   for (let i = 1; i < value.length; i++) {
     const prev = item;
@@ -230,7 +246,7 @@ function renderListValueDirectMaybe<T extends Node>(
     emitListSeparator(prev, item, printOptions, sep);
     const rendered = emitRenderedListItemMaybe(item, context, printOptions, true);
     if (isThenable(rendered)) {
-      return rendered.then(() => renderRest(i + 1, item));
+      return rendered.then(() => renderListValueDirectMaybeRest(context, value, printOptions, sep, mark, i + 1, item));
     }
   }
   return w.getSince(mark);
@@ -286,8 +302,8 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return this.value.length;
   }
 
-  * [Symbol.iterator]() {
-    yield* this.value.entries();
+  [Symbol.iterator](): IterableIterator<[number, T]> {
+    return this.value.entries();
   }
 
   private _valueOf: string | undefined;

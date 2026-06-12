@@ -1885,6 +1885,36 @@ machinery deletion. Next performance-sensitive cuts should prioritize larger
 measured buckets rather than more local polish unless the code path is
 obviously wrong.
 
+### List / Sequence Async Render Scaffold Cut
+
+Date: 2026-06-12.
+
+Change: `List` async-capable render no longer allocates a local
+`renderNode(...)` closure or nested async `renderRest(...)` function on the
+sync path, and `List[Symbol.iterator]` now returns the array iterator directly
+instead of using a generator wrapper. `Sequence` async-capable render no longer
+allocates local render-node/rest closures on the sync path; async rest work is
+isolated behind private methods only used after a thenable is observed.
+
+Hotpath status:
+
+- Pre-pass `pnpm run measure:less:hotpath -- --stable` at `78a26349`
+  reported: `functions` median `12.93ms` usable, `import-reference` median
+  `20.57ms` usable, `mixins-guards` median `16.32ms` usable,
+  `extend-chaining` median `4.80ms` usable, and `media` median `5.31ms`
+  usable.
+- Final dirty post-pass `pnpm run measure:less:hotpath -- --stable` reported:
+  `functions` median `12.19ms` usable, `import-reference` median `19.46ms`
+  usable, `mixins-guards` median `16.64ms` usable,
+  `extend-chaining` median `5.61ms` usable, and `media` median `5.69ms`
+  usable/noisy.
+
+Interpretation: status only, not a runtime win claim. The leash was mixed:
+functions/import improved, mixins-guards moved slightly slower, and
+extend/media regressed. Keep only as behavior-preserving scaffold deletion;
+future passes should keep pressure on larger measured buckets before polishing
+more local helper shape.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

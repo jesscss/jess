@@ -52,19 +52,25 @@ function emitRenderedSequenceNodeMaybe(
   context: Context,
   options: ReturnType<typeof getPrintOptions>
 ): MaybePromise<void> {
-  const renderNode = (renderedNode: Node): MaybePromise<void> => {
-    const rendered = renderedNode.render(context, options);
-    if (isThenable(rendered)) {
-      return rendered.then(() => undefined);
-    }
-  };
   if (node.hasFlag(F_MAY_ASYNC)) {
     const resolved = node.resolve(context);
-    return isThenable(resolved)
-      ? resolved.then(renderNode)
-      : renderNode(resolved);
+    if (isThenable(resolved)) {
+      return resolved.then((renderedNode) => {
+        const rendered = renderedNode.render(context, options);
+        return isThenable(rendered)
+          ? rendered.then(() => undefined)
+          : undefined;
+      });
+    }
+    const rendered = resolved.render(context, options);
+    return isThenable(rendered)
+      ? rendered.then(() => undefined)
+      : undefined;
   }
-  return renderNode(node);
+  const rendered = node.render(context, options);
+  return isThenable(rendered)
+    ? rendered.then(() => undefined)
+    : undefined;
 }
 
 function writeRenderedSequenceNode(
@@ -319,17 +325,6 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     const w = printOptions.writer;
     const mark = w.mark();
 
-    const renderCustomRest = async (start: number): Promise<string> => {
-      for (let i = start; i < this.value.length; i++) {
-        const node = this.value[i]!;
-        if (node instanceof Nil) {
-          continue;
-        }
-        await emitRenderedSequenceNodeMaybe(node, context, printOptions);
-      }
-      return w.getSince(mark);
-    };
-
     if (printOptions.inCustom) {
       for (let i = 0; i < this.value.length; i++) {
         const node = this.value[i]!;
@@ -338,27 +333,11 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         }
         const rendered = emitRenderedSequenceNodeMaybe(node, context, printOptions);
         if (isThenable(rendered)) {
-          return rendered.then(() => renderCustomRest(i + 1));
+          return rendered.then(() => this.renderSequenceCustomRest(context, printOptions, mark, i + 1));
         }
       }
       return w.getSince(mark);
     }
-
-    const renderRest = async (start: number, previous: Node | undefined): Promise<string> => {
-      let prev = previous;
-      for (let i = start; i < this.value.length; i++) {
-        const node = this.value[i]!;
-        if (node instanceof Nil) {
-          continue;
-        }
-        if (prev) {
-          this.emitDirectSeparator(prev, node, printOptions);
-        }
-        await emitRenderedSequenceNodeMaybe(node, context, printOptions);
-        prev = node;
-      }
-      return w.getSince(mark);
-    };
 
     let prev: Node | undefined;
     for (let i = 0; i < this.value.length; i++) {
@@ -371,11 +350,51 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       }
       const rendered = emitRenderedSequenceNodeMaybe(node, context, printOptions);
       if (isThenable(rendered)) {
-        return rendered.then(() => renderRest(i + 1, node));
+        return rendered.then(() => this.renderSequenceRest(context, printOptions, mark, i + 1, node));
       }
       prev = node;
     }
 
+    return w.getSince(mark);
+  }
+
+  private async renderSequenceCustomRest(
+    context: Context,
+    printOptions: ReturnType<typeof getPrintOptions>,
+    mark: number,
+    start: number
+  ): Promise<string> {
+    const w = printOptions.writer;
+    for (let i = start; i < this.value.length; i++) {
+      const node = this.value[i]!;
+      if (node instanceof Nil) {
+        continue;
+      }
+      await emitRenderedSequenceNodeMaybe(node, context, printOptions);
+    }
+    return w.getSince(mark);
+  }
+
+  private async renderSequenceRest(
+    context: Context,
+    printOptions: ReturnType<typeof getPrintOptions>,
+    mark: number,
+    start: number,
+    previous: Node | undefined
+  ): Promise<string> {
+    const w = printOptions.writer;
+    let prev = previous;
+    for (let i = start; i < this.value.length; i++) {
+      const node = this.value[i]!;
+      if (node instanceof Nil) {
+        continue;
+      }
+      if (prev) {
+        this.emitDirectSeparator(prev, node, printOptions);
+      }
+      await emitRenderedSequenceNodeMaybe(node, context, printOptions);
+      prev = node;
+    }
     return w.getSince(mark);
   }
 
