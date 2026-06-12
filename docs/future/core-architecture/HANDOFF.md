@@ -1028,6 +1028,12 @@ the binding index/scope lookup refactor.
    runtime-binding finalization no longer has a redundant text-only return
    branch. `textOnly` remains only where it changes behavior: fallback
    container/JS-expression handling and runtime-binding evaluation flags.
+   Tenth partial status: runtime-binding evaluation no longer carries a
+   render-text reuse flag. Runtime binding always enables source-free reuse, and
+   the deleted render-text bit only OR'd into the same static-value branch.
+   `finalizeRuntimeVarBindingResult(...)` therefore no longer accepts
+   `textOnly`, and its static-value return branch was folded into the common
+   return path.
 15. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -1107,6 +1113,36 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Runtime-binding render-text flag deletion pass: accepted as a narrow
+  helper/API-surface cut in `Reference` runtime binding finalization, not as a
+  speed claim. Files: `packages/core/src/tree/reference.ts` and this handoff.
+  - New traversal: none. No loop, recursion, parent/source walk, child crawl,
+    sort, side map, or array/object scan was added.
+  - New node/materialization: none. The pass deletes a flag and branches; it
+    does not add node construction, copying, wrapper surfaces, inheritance, or
+    metadata mutation.
+  - Render path: unchanged. Runtime binding evaluation already always set
+    `REF_EVAL_REUSE_SOURCE_FREE`, and the removed render-text flag only fed the
+    same static-value reuse branch. Fallback text rendering still keeps its
+    semantic `textOnly` handling.
+  - Helper/API surface: net deletion. Removed `REF_EVAL_REUSE_RENDER_TEXT`,
+    removed the `textOnly` parameter from
+    `finalizeRuntimeVarBindingResult(...)`, and collapsed a redundant
+    static-value return branch into the common return.
+  - Metadata mutations: none added or moved.
+  - Evidence: focused `reference`, `declaration`, `call`, and `mixin` tests
+    passed (`409` tests); the broader lookup/materialization set passed (`693`
+    passed, `9` skipped); touched TypeScript eslint passed; `git diff --check`,
+    `pnpm run verify:aggressive-cutting-review`, `pnpm run
+    audit:node-creation`, `pnpm run prototype:binding-handle-reuse`,
+    `pnpm --filter @jesscss/core build`, and `pnpm --filter jess build`
+    passed. Direct stress render of `scope-lookup-stress.less` produced length
+    `8822`. `measure:less:hotpath` completed as sanity only with noisy
+    `functions` `18.85ms`, noisy `import-reference` `21.85ms`,
+    `mixins-guards` `19.40ms`, unstable `extend-chaining` `5.66ms`, and
+    unstable `media` `6.26ms`, so this pass makes no speed claim.
+  - Verdict: keep. This leaves `textOnly` only at fallback/direct render
+    boundaries where it still changes behavior.
 - Direct/fallback/runtime reference private-mode deletion pass: accepted as a
   narrow helper/API-surface cut in `Reference` finalization, not as a speed
   claim. Files: `packages/core/src/tree/reference.ts` and this handoff.

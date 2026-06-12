@@ -137,7 +137,6 @@ const isRuntimeVarBinding = (value: unknown): value is RuntimeVarBinding => (
 
 const REF_EVAL_PRESERVE_RULES_LIKE = 1;
 const REF_EVAL_REUSE_SOURCE_FREE = 1 << 1;
-const REF_EVAL_REUSE_RENDER_TEXT = 1 << 2;
 
 function selectVarBucketCandidate(
   bucket: BindingEntry[] | undefined,
@@ -1760,8 +1759,7 @@ function finalizeDirectNodeReferenceResult(
 function finalizeRuntimeVarBindingResult(
   referenceNode: Reference,
   binding: RuntimeVarBinding,
-  context: Context,
-  textOnly = false
+  context: Context
 ): MaybePromise<Node> {
   const bindingSource = binding.sourceNode;
   const finalizeRuntimeBinding = (evald: Node) => {
@@ -1777,10 +1775,6 @@ function finalizeRuntimeVarBindingResult(
       )
         ? createRulesLikeReferenceSurface(evald)
         : evald;
-    }
-    if (canReturnReferenceValue(evald)) {
-      context.popReference();
-      return evald;
     }
     context.popReference();
     return evald;
@@ -1803,9 +1797,6 @@ function finalizeRuntimeVarBindingResult(
     )
   ) {
     evalFlags |= REF_EVAL_PRESERVE_RULES_LIKE;
-  }
-  if (textOnly) {
-    evalFlags |= REF_EVAL_REUSE_RENDER_TEXT;
   }
   const evaluatedBinding = evaluateRuntimeVarBindingValue(
     binding,
@@ -2024,10 +2015,7 @@ function evaluateReferenceValueNode(
       return declValue;
     }
     if (
-      (
-        (flags & REF_EVAL_REUSE_RENDER_TEXT) !== 0
-        || (flags & REF_EVAL_REUSE_SOURCE_FREE) !== 0
-      )
+      (flags & REF_EVAL_REUSE_SOURCE_FREE) !== 0
       && canReturnReferenceValue(declValue)
     ) {
       return declValue;
@@ -2088,7 +2076,7 @@ function finalizeReferenceLookupResult(
     );
   }
   if (isRuntimeVarBinding(returnVal)) {
-    return finalizeRuntimeVarBindingResult(referenceNode, returnVal, context, textOnly);
+    return finalizeRuntimeVarBindingResult(referenceNode, returnVal, context);
   }
   if (isNode(returnVal, N.Declaration) || isNode(returnVal, N.VarDeclaration)) {
     return finalizeDeclarationReferenceResult(referenceNode, returnVal, context);
