@@ -2126,13 +2126,9 @@ function resolveRawReferenceLookupTarget(
         originalFilter: referenceNode.options.filter,
         context
       }))
-      .then(({ returnVal }) => {
+      .then(({ returnVal }) => finalizeRawReferenceLookupTarget(returnVal))
+      .finally(() => {
         context.popReference();
-        return finalizeRawReferenceLookupTarget(returnVal);
-      })
-      .catch((error) => {
-        context.popReference();
-        throw error;
       });
   }
 
@@ -2154,13 +2150,9 @@ function resolveRawReferenceLookupTarget(
         originalFilter: referenceNode.options.filter,
         context
       }))
-      .then(({ returnVal }) => {
+      .then(({ returnVal }) => finalizeRawReferenceLookupTarget(returnVal))
+      .finally(() => {
         context.popReference();
-        return finalizeRawReferenceLookupTarget(returnVal);
-      })
-      .catch((error) => {
-        context.popReference();
-        throw error;
       });
   }
 
@@ -2181,13 +2173,9 @@ function resolveRawReferenceLookupTarget(
         originalFilter: referenceNode.options.filter,
         context
       }))
-      .then(({ returnVal }) => {
+      .then(({ returnVal }) => finalizeRawReferenceLookupTarget(returnVal))
+      .finally(() => {
         context.popReference();
-        return finalizeRawReferenceLookupTarget(returnVal);
-      })
-      .catch((error) => {
-        context.popReference();
-        throw error;
       });
   }
 
@@ -2202,13 +2190,9 @@ function resolveRawReferenceLookupTarget(
   });
   if (isThenable(lookup)) {
     return Promise.resolve(lookup)
-      .then(({ returnVal }) => {
+      .then(({ returnVal }) => finalizeRawReferenceLookupTarget(returnVal))
+      .finally(() => {
         context.popReference();
-        return finalizeRawReferenceLookupTarget(returnVal);
-      })
-      .catch((error) => {
-        context.popReference();
-        throw error;
       });
   }
 

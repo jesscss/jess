@@ -1038,6 +1038,12 @@ the binding index/scope lookup refactor.
    `canReturnReferenceValue(...)` predicate instead of repeating static plus
    non-rules-like checks in the direct raw render finalizer and both async/sync
    raw-render branches.
+   Twelfth partial status: raw-reference async target lookup no longer carries
+   duplicate success/error cleanup continuations in each staged branch.
+   `resolveRawReferenceLookupTarget(...)` now finalizes the raw lookup value
+   directly and restores the reference stack with promise `finally(...)`.
+   The sync path stays unchanged; this deletes repeated closure plumbing only
+   for actual async raw lookups and does not add a helper/API surface.
 15. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -1117,6 +1123,38 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Raw reference async cleanup continuation pass: accepted as a narrow
+  helper/API-surface cut in `Reference` raw lookup, not as a speed claim. Files:
+  `packages/core/src/tree/reference.ts` and this handoff.
+  - New traversal: none. No loop, recursion, parent/source walk, child crawl,
+    sort, side map, or array/object scan was added.
+  - New node/materialization: none. The pass only changes async cleanup
+    continuation shape; it does not add node construction, copying, wrapper
+    surfaces, inheritance, or metadata mutation.
+  - Render path: raw variable render still uses the same direct raw lookup
+    sentinel and falls back to `evaluateReferenceNode(...)` on misses. Async
+    branches now finalize the raw target value directly and restore
+    `context.popReference()` through promise `finally(...)`; the sync branch is
+    unchanged.
+  - Helper/API surface: net deletion. Four duplicated success/error cleanup
+    continuation pairs in `resolveRawReferenceLookupTarget(...)` were replaced
+    with direct raw-finalization continuations plus `finally(...)` cleanup. No
+    helper or public method was added.
+  - Metadata mutations: no new mutations. Existing reference-stack restoration
+    remains required and is now expressed once per async branch.
+  - Evidence: focused `reference`, `declaration`, `call`, and `mixin` tests
+    passed (`409` tests); the broader lookup/materialization set passed (`693`
+    passed, `9` skipped); touched TypeScript eslint passed; `git diff --check`,
+    `pnpm run verify:aggressive-cutting-review`, `pnpm run
+    audit:node-creation`, `pnpm run prototype:binding-handle-reuse`,
+    `pnpm --filter @jesscss/core build`, and `pnpm --filter jess build`
+    passed. Direct stress render of `scope-lookup-stress.less` produced length
+    `8822`. `measure:less:hotpath` completed as sanity only with usable
+    `functions` `14.69ms`, usable `import-reference` `20.62ms`,
+    usable `mixins-guards` `19.13ms`, usable `extend-chaining` `5.53ms`,
+    and usable `media` `6.83ms`, so this pass makes no speed claim.
+  - Verdict: keep. This removes repeated async raw-lookup continuation
+    plumbing while preserving the existing lookup and fallback boundaries.
 - Raw reference render predicate dedupe pass: accepted as a narrow hot-path
   predicate cut in `Reference.render(...)`, not as a speed claim. Files:
   `packages/core/src/tree/reference.ts` and this handoff.
