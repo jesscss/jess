@@ -2808,3 +2808,34 @@ the gate passed.
   `functions` `13.68ms` usable, `import-reference` `19.34ms` unstable,
   `mixins-guards` `16.59ms` usable, `extend-chaining` `5.37ms` noisy, and
   `media` `5.47ms` unstable. This is not a speed claim.
+- More scalar/empty readback cuts: accepted as a bounded public/source writer
+  readback deletion pass. New traversal: none; no loop, recursion,
+  parent/source walk, side-map lookup, generator, object scan, or array helper
+  was added. Appended `Ampersand.toTrimmedString(...)` now writes and returns
+  the owned `&(<appendValue>)` source token directly. Raw `Url` syntax with an
+  `Any` string value and no render context now writes and returns
+  `url(<value>)` directly; context/trivia normalization, quoted values, and
+  interpolated values stay on the existing writer path. Empty
+  `QueryCondition` source syntax now returns `''` without opening a writer
+  mark. Empty `ExtendList.toTrimmedString(...)` now writes and returns `';'`
+  directly. New node/materialization: none in runtime code; no `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, semantic placement state, side map, helper array, or public
+  materialized ampersand/url/query/extend surface was added. Test-only
+  `CountingWriter` instances prove zero writer readback and are not runtime
+  allocation. Render path: unchanged for ampersand collapse/selector
+  placement, rendered URL normalization, non-empty query conditions, and
+  extend side effects. No render path resolves into arrays or nodes just to
+  stringify. Helper/API surface: no new runtime helper, method, or public API
+  was added. Metadata mutations: none. Rejected cut: `JsImport` literal
+  serialization was left alone because doing it correctly would require either
+  reading another node's protected `_options`, paying the lazy public
+  `options` getter, or duplicating namespace/specifier inference. That belongs
+  in a structural import cleanup, not a scalar shortcut. Evidence: starting
+  leash at commit `7c1dbb13` was the scalar/empty wrapper run, so this pass is
+  not comparison-usable. Focused ampersand/url/query-condition/extend tests
+  passed (`60` tests). Post-pass hotpath sanity at dirty head `7c1dbb13` was
+  mostly usable but not comparison-usable: `functions` `10.29ms`,
+  `import-reference` `16.30ms`, `mixins-guards` `15.09ms`,
+  `extend-chaining` `4.30ms`, and `media` `4.38ms` unstable. This is not a
+  speed claim.

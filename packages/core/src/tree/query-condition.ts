@@ -44,6 +44,9 @@ export class QueryCondition extends Sequence {
 
   private renderQueryConditionSyntax(value: Node[], options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
+    if (value.length === 0) {
+      return '';
+    }
     const mark = printOptions.writer.mark();
     this.writeQueryConditionSyntax(value, printOptions);
     const w = printOptions.writer;

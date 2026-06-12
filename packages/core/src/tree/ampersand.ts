@@ -558,6 +558,11 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
+    if (this.value.appendValue) {
+      const out = `&(${this.value.appendValue})`;
+      options.writer.add(out, this);
+      return out;
+    }
     if (!this.value.appendValue && !(options.collapseNesting && options.composedSelectorStack?.length)) {
       options.writer.add('&', this);
       return '&';

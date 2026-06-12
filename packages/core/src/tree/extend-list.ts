@@ -35,6 +35,10 @@ export class ExtendList extends Node<Extend[]> {
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
+    if (this.value.length === 0) {
+      options.writer.add(';', this);
+      return ';';
+    }
     const mark = options.writer.mark();
     this.writeSyntax(options);
     const w = options.writer;

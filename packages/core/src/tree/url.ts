@@ -41,6 +41,11 @@ export class Url extends Node<Node> {
 
   private renderUrlSyntax(value = this.value, options?: PrintOptions): string {
     options = getPrintOptions(options);
+    if (!options.context && isNode(value, N.Any) && typeof value.value === 'string') {
+      const out = `url(${value.value})`;
+      options.writer.add(out, this);
+      return out;
+    }
     const mark = options.writer.mark();
     this.writeUrlSyntax(value, options);
     const w = options.writer;

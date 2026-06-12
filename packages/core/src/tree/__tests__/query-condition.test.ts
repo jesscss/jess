@@ -6,10 +6,16 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
   }
 }
 
@@ -34,6 +40,15 @@ describe('QueryCondition', () => {
     const node = query([any('screen'), any('and'), ref({ key: 'mode' }, { type: 'variable' })]);
 
     expect(node.toTrimmedString()).toBe('screen and $mode');
+  });
+
+  it('writes empty query-condition syntax without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(query([]).toTrimmedString({ writer })).toBe('');
+    expect(writer.toString()).toBe('');
+    expect(writer.reads).toBe(0);
+    expect(writer.captures).toBe(0);
   });
 
   it('streams query-condition parts without capture scaffolding', () => {

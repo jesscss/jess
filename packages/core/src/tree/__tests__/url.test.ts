@@ -8,10 +8,16 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
   }
 }
 
@@ -45,6 +51,15 @@ describe('url', () => {
 
   it('renders url syntax through toTrimmedString()', () => {
     expect(url(quoted('image.png')).toTrimmedString()).toBe('url("image.png")');
+  });
+
+  it('writes raw url syntax without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(url(any('image.png')).toTrimmedString({ writer })).toBe('url(image.png)');
+    expect(writer.toString()).toBe('url(image.png)');
+    expect(writer.reads).toBe(0);
+    expect(writer.captures).toBe(0);
   });
 
   it('renders a resolved url value through render(context)', async () => {

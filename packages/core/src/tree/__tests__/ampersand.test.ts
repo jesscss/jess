@@ -113,6 +113,14 @@ describe('Ampersand', () => {
     expect(writer.reads).toBe(0);
   });
 
+  it('writes appended ampersands without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(amp('-bar').toTrimmedString({ writer })).toBe('&(-bar)');
+    expect(writer.toString()).toBe('&(-bar)');
+    expect(writer.reads).toBe(0);
+  });
+
   it('resolves framed ampersands without touching render state', async () => {
     const frame = ruleset({
       selector: sel([el('.foo')]),
