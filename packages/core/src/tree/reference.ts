@@ -1893,8 +1893,7 @@ function evaluateRuntimeVarBindingValue(
 function finalizeDeclarationReferenceResult(
   referenceNode: Reference,
   declaration: Declaration | VarDeclaration,
-  context: Context,
-  textOnly = false
+  context: Context
 ): MaybePromise<Node> {
   const declarationValue = declaration.value.value;
   let isMergedAssign = false;
@@ -1929,15 +1928,11 @@ function finalizeDeclarationReferenceResult(
     const evaluated = evaluateReferenceValueNode(declarationValue, context);
     const finalize = (evaluatedNode: Node): Node => {
       try {
-        if (textOnly && !isMergedAssign) {
-          context.popReference();
-          return evaluatedNode;
-        }
         if (!isMergedAssign) {
           context.popReference();
           return evaluatedNode;
         }
-        const normalized = normalizeMergedAssignReferenceResult(evaluatedNode, true);
+        const normalized = normalizeMergedAssignReferenceResult(evaluatedNode);
         const finalized = normalized.inherit(referenceNode);
         context.popReference();
         return finalized;
@@ -2053,11 +2048,8 @@ function evaluateReferenceValueNode(
   }
 }
 
-function normalizeMergedAssignReferenceResult(
-  node: Node,
-  isMergedAssign: boolean
-): Node {
-  if (!isMergedAssign || !isNode(node, N.List)) {
+function normalizeMergedAssignReferenceResult(node: Node): Node {
+  if (!isNode(node, N.List)) {
     return node;
   }
   const mergedItems: Node[] = [];
@@ -2109,7 +2101,7 @@ function finalizeReferenceLookupResult(
     return finalizeRuntimeVarBindingResult(referenceNode, returnVal, context, textOnly);
   }
   if (isNode(returnVal, N.Declaration) || isNode(returnVal, N.VarDeclaration)) {
-    return finalizeDeclarationReferenceResult(referenceNode, returnVal, context, textOnly);
+    return finalizeDeclarationReferenceResult(referenceNode, returnVal, context);
   }
   return finalizeDirectReferenceResult(referenceNode, returnVal, context, textOnly);
 }

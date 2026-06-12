@@ -1014,6 +1014,13 @@ the binding index/scope lookup refactor.
    source rules need no re-inherit. Focused coverage pins target-mixin
    materialization to one inherit from eval replacement rather than a second
    materialization inherit.
+   Eighth partial status: merged declaration reference finalization no longer
+   carries a dead `textOnly` private mode or an `isMergedAssign` parameter on
+   `normalizeMergedAssignReferenceResult(...)`. That normalizer is called only
+   from the already-merged branch, so the maybe-merged API and duplicate
+   non-merged return branch were deleted. The real merged public
+   normalization/inherit boundary remains and is still queued for the larger
+   placement/materialization rethink.
 15. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -1093,6 +1100,39 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Merged declaration reference private-mode deletion pass: accepted as a
+  narrow helper/API-surface cut in `Reference` declaration finalization, not as
+  a speed claim. Files: `packages/core/src/tree/reference.ts` and this handoff.
+  - New traversal: none. No loop, recursion, parent/source walk, child crawl,
+    sort, side map, or array/object scan was added.
+  - New node/materialization: none. The pass does not add `new Node`,
+    `copyWithReusableLeaves(...)`, `.inherit(...)`, wrapper rules, or metadata
+    mutation. The existing merged-declaration `normalized.inherit(referenceNode)`
+    boundary remains unchanged.
+  - Render path: unchanged. Render-only declaration references still return the
+    evaluated value directly for non-merged declarations; merged references keep
+    the existing public normalization path.
+  - Helper/API surface: net deletion. The private
+    `finalizeDeclarationReferenceResult(...)` no longer accepts an unused
+    `textOnly` parameter, and `normalizeMergedAssignReferenceResult(...)` no
+    longer accepts a boolean that was always true at its only call site.
+  - Metadata mutations: unchanged except for removing dead branches before the
+    existing merged inherit boundary.
+  - Evidence: focused `reference`/`declaration` tests passed (`189` tests);
+    the broader lookup/materialization set passed (`693` passed, `9` skipped);
+    touched TypeScript eslint passed; `git diff --check`, `pnpm run
+    verify:aggressive-cutting-review`, `pnpm run audit:node-creation`,
+    `pnpm run prototype:binding-handle-reuse`, `pnpm --filter @jesscss/core
+    build`, and `pnpm --filter jess build` passed. Direct stress render of
+    `scope-lookup-stress.less` produced length `8822`. `measure:less:hotpath`
+    completed as sanity only with `functions` `15.21ms`, `import-reference`
+    `21.37ms`, `mixins-guards` `19.28ms`, `extend-chaining` `5.66ms`, and
+    noisy `media` `6.54ms`, so this pass makes no speed claim. The danger
+    tokens are prosecuted here: they are handoff prose documenting no new copy
+    or inherit plus the unchanged existing merged inherit boundary.
+  - Verdict: keep. This removes misleading private-mode plumbing while leaving
+    the still-real merged public materialization boundary visible for the next
+    cut.
 - Mixin/ruleset target materialization inherit deletion pass: accepted as a
   narrow duplicate-metadata mutation cut in `Reference` target lookup, not as a
   speed claim. Files: `packages/core/src/tree/reference.ts`,
