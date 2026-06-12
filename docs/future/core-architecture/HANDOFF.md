@@ -1058,6 +1058,14 @@ the binding index/scope lookup refactor.
    on one boundary and uses a guarded reference pop so success, rejection, and
    thrown normalization paths do not leak the active reference frame. Focused
    regressions prove both paths leaked before the batch and are now covered.
+   Fifteenth partial status: important declaration references now restore the
+   contextual important frame when async declaration value evaluation rejects,
+   while successful important propagation still remains available to the
+   enclosing declaration finalizer. The async declaration branch also uses one
+   finalizer-level rejection cleanup boundary, so errors thrown after async
+   value evaluation resolves, including merged public materialization failures,
+   restore the reference stack, search scope, and contextual important state.
+   Focused regressions prove both leaks before the fix.
 15. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -1156,6 +1164,63 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Reference async important/finalizer cleanup pass: accepted as a correctness
+  fix in `Reference` declaration finalization, not as a speed claim. Files:
+  `packages/core/src/tree/reference.ts`,
+  `packages/core/src/tree/__tests__/reference.test.ts`, and this handoff.
+  - New traversal: none. No loop, recursion, parent/source walk, child crawl,
+    sort, side map, or array/object scan was added.
+  - New node/materialization: production none. The implementation adds no node
+    construction, copying, wrapper surface, inheritance, or source/parent
+    mutation. Test-only coverage reuses existing source builders plus
+    `AsyncNativeRenderAny`/`RejectingAsyncAny`; one test monkey-patches
+    `List.prototype.inherit` only to force the existing merged public
+    materialization boundary to throw.
+  - Render path: unchanged. Declaration references still evaluate the same
+    declaration value and render through existing node render paths. This pass
+    only restores cleanup when async declaration evaluation rejects or when the
+    async merged finalizer throws after value evaluation resolves.
+  - Helper/API surface: no public API or generic helper was added. The async
+    declaration path now uses one `.then(finalize).catch(cleanup).finally(...)`
+    boundary instead of a two-argument `.then(success, evalReject)` that missed
+    finalizer-thrown errors. The new `importantPushed` boolean is local cleanup
+    state so rejected/throwing paths can undo the contextual important frame
+    while successful declaration references still propagate `!important` to the
+    enclosing declaration finalizer.
+  - Metadata mutations: no new metadata kind. Existing `Context`
+    `referenceStack`, `searchScope`, and contextual important stack mutations
+    are now restored on the covered exceptional paths. Successful important
+    propagation is intentionally unchanged.
+  - Evidence: the new important-declaration regression failed before the fix
+    with `context.hasImportantSource === true` after rejected async value eval.
+    The new async merged-finalizer regression failed before the second cleanup
+    cut with `context.hasImportantSource === true` after the finalizer-thrown
+    rejection. After the fix, both targeted regressions passed, the focused
+    `reference`, `declaration`, `call`, and `mixin` family passed (`414`
+    tests), and the broader lookup/materialization set passed (`698` passed,
+    `9` skipped). Touched TypeScript eslint passed; the handoff is ignored by
+    eslint config. `git diff --check`, `pnpm run
+    verify:aggressive-cutting-review`, `pnpm run audit:node-creation`,
+    `pnpm run prototype:binding-handle-reuse`,
+    `pnpm --filter @jesscss/core build`, and `pnpm --filter jess build`
+    passed. Direct stress render of `scope-lookup-stress.less` produced length
+    `8822`. `measure:less:hotpath` completed as sanity only with usable
+    `functions` `15.27ms`, usable `import-reference` `20.67ms`, unstable
+    `mixins-guards` `19.32ms`, usable `extend-chaining` `5.47ms`, and usable
+    `media` `5.95ms`, so this pass makes no speed claim.
+  - Verdict: keep. This fixes two proven async declaration cleanup leaks and
+    tightens the finalizer rejection boundary without advancing any performance
+    claim.
+  - Danger-token prosecution: test-only `new RejectingAsyncAny(...)`,
+    `new AsyncNativeRenderAny(...)`, `rules([declaration])`, and
+    `List.prototype.inherit` monkey-patching are targeted exceptional-path
+    fixtures; test-only `throw new Error('merged finalization failed')` forces
+    the existing merged-finalization boundary to prove cleanup. Test-only
+    `try` restores the monkey-patched prototype. Production
+    `try`/`.catch(...)` remains an exceptional cleanup boundary, not routine
+    lookup miss control. Production
+    `.inherit(referenceNode)` is still the pre-existing merged-assignment
+    public materialization boundary and remains queued under item 14/24.
 - Reference async binding/declaration cleanup batch: accepted as a
   correctness fix plus helper/API-surface cut in `Reference` runtime-binding
   and declaration-reference finalization, not as a speed claim. Files:

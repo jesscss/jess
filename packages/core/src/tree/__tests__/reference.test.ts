@@ -1150,6 +1150,51 @@ describe('reference', () => {
       expect(context.referenceStack).toBe(0);
     });
 
+    it('restores important source when async important declaration reference rejects', async () => {
+      const declaration = decl({
+        name: any('src'),
+        value: list([new RejectingAsyncAny('important declaration failed')]),
+        important: any('!important', { role: 'flag' })
+      });
+      const node = rules([declaration]);
+      setRulesContext(node);
+
+      await expect(ref({ key: 'src' }, { type: 'declaration' }).eval(context)).rejects.toThrow('important declaration failed');
+      expect(context.hasImportantSource).toBe(false);
+      expect(context.searchScope.has(declaration)).toBe(false);
+      expect(context.referenceStack).toBe(0);
+    });
+
+    it('restores declaration reference frames when async merged finalization throws', async () => {
+      const declaration = decl({
+        name: any('src'),
+        value: list([new AsyncNativeRenderAny('red'), any('blue')]),
+        important: any('!important', { role: 'flag' })
+      }, { normalizedFromAssign: '+:' });
+      const node = rules([declaration]);
+      setRulesContext(node);
+      const refNode = ref({ key: 'src' }, { type: 'declaration' });
+
+      const originalInherit = List.prototype.inherit;
+      List.prototype.inherit = function throwingInherit(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] !== refNode) {
+          return originalInherit.apply(this, args);
+        }
+        throw new Error('merged finalization failed');
+      };
+      try {
+        await expect(refNode.eval(context)).rejects.toThrow('merged finalization failed');
+        expect(context.hasImportantSource).toBe(false);
+        expect(context.searchScope.has(declaration)).toBe(false);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
     it('does not redirect direct index sequence targets as mixin keys', async () => {
       const targetValue = spaced([any('red'), any('blue')]);
       const node = rules([

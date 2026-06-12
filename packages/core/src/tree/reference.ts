@@ -1889,6 +1889,7 @@ function finalizeDeclarationReferenceResult(
   }
   context.searchScope.add(declaration);
   let referencePopped = false;
+  let importantPushed = false;
   const popReference = () => {
     if (!referencePopped) {
       context.popReference();
@@ -1898,6 +1899,7 @@ function finalizeDeclarationReferenceResult(
   try {
     if (hasImportant) {
       context.pushImportantSource();
+      importantPushed = true;
     }
     const evaluated = evaluateReferenceValueNode(declarationValue, context);
     const finalize = (evaluatedNode: Node): Node => {
@@ -1911,21 +1913,29 @@ function finalizeDeclarationReferenceResult(
       return finalized;
     };
     if (isThenable(evaluated)) {
-      return Promise.resolve(evaluated).then(
-        finalize,
-        (error) => {
+      return Promise.resolve(evaluated)
+        .then(finalize)
+        .catch((error) => {
           popReference();
+          if (importantPushed) {
+            context.popImportantSource();
+            importantPushed = false;
+          }
           throw error;
-        }
-      ).finally(() => {
-        context.searchScope.delete(declaration);
-      });
+        })
+        .finally(() => {
+          context.searchScope.delete(declaration);
+        });
     }
     const finalized = finalize(evaluated);
     context.searchScope.delete(declaration);
     return finalized;
   } catch (error) {
     popReference();
+    if (importantPushed) {
+      context.popImportantSource();
+      importantPushed = false;
+    }
     context.searchScope.delete(declaration);
     throw error;
   }
