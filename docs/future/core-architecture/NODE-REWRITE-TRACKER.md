@@ -71,7 +71,8 @@ first measured offenders after the selector pass.
   list argument writer exist; generated selector-list normalization no longer
   captures/restores a temporary argument string.
 - [ ] `Sequence`: direct writer hook exists; no-trivia source children and
-  custom-property raw source children use `writeSyntax(...)`, while
+  custom-property raw source children use `writeSyntax(...)`, and nil children
+  are skipped by the writer instead of materializing replacement arrays, while
   trivia-backed child-boundary emission still uses `toString(...)`.
 - [x] `Quoted`: direct quoted/interpolated emission; child node syntax uses
   `writeSyntax(...)` with no public `toTrimmedString(...)` transport.
@@ -238,7 +239,7 @@ Current hard leftovers after the broad hook sweep:
 | Selector | `packages/core/src/tree/selector.ts` | `Node` | writeSyntax complete | Selector-family writer hook exists; broader metadata and keyset invalidation audit remains. |
 | SelectorCapture | `packages/core/src/tree/selector-capture.ts` | `Node` | child/buffer staging complete | Capture syntax writes directly through child `writeSyntax(...)`, cold private source-string wrapper is gone, and resolved buffer render delegates to the child buffer renderer instead of rendering to string then writing that string. Audit whether capture node should exist after render rewrite. |
 | SelectorList | `packages/core/src/tree/selector-list.ts` | `Selector` | writeSyntax complete | List item emission uses `writeSyntax` and cold private source-string wrapper is gone; flattening, temporary arrays, and valueOf joins remain queued. |
-| Sequence | `packages/core/src/tree/sequence.ts` | `Node` | partial | Direct sequence writer exists; no-trivia and custom-property raw source children use `writeSyntax(...)`, while trivia-backed child `toString` transport remains until boundary-trivia emission is made explicit. Render still captures. |
+| Sequence | `packages/core/src/tree/sequence.ts` | `Node` | partial | Direct sequence writer exists; no-trivia and custom-property raw source children use `writeSyntax(...)`; nil children are skipped in the writer so static render no longer materializes a filtered replacement array. Trivia-backed child `toString` transport and broader render capture remain until boundary-trivia emission is made explicit. |
 | SimpleSelector | `packages/core/src/tree/selector-simple.ts` | `Selector` | queued | Audit base class necessity and branches. |
 | StyleImport | `packages/core/src/tree/import-style.ts` | `Node` | queued | High priority: first-use placement copies and derived rules surfaces. |
 | Url | `packages/core/src/tree/url.ts` | `Node` | writeSyntax hook complete | URL wrapper and no-trivia child syntax write directly in source and context modes; render/context normalization still uses localized mark/replace and remains queued. |

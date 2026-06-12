@@ -159,7 +159,10 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   private writeSequenceSyntax(value: Node[], printOptions: FinalPrintOptions): void {
     if (printOptions.inCustom) {
       for (let i = 0; i < value.length; i++) {
-        value[i]!.writeSyntax(printOptions);
+        const node = value[i]!;
+        if (!(node instanceof Nil)) {
+          node.writeSyntax(printOptions);
+        }
       }
       return;
     }
@@ -170,7 +173,15 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return;
     }
 
-    const first = value[0]!;
+    let firstIndex = 0;
+    while (firstIndex < length && value[firstIndex] instanceof Nil) {
+      firstIndex++;
+    }
+    if (firstIndex === length) {
+      return;
+    }
+
+    const first = value[firstIndex]!;
     const firstSourceTrivia = printOptions.trivia ?? first.sourceRoot?._treeContext?.opts?.trivia;
     if (firstSourceTrivia) {
       first.toString(printOptions);
@@ -179,9 +190,12 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
 
     // Serialize subsequent nodes with normalized spacing
-    for (let i = 1; i < length; i++) {
-      const prev = value[i - 1]!;
+    let prev = first;
+    for (let i = firstIndex + 1; i < length; i++) {
       const node = value[i]!;
+      if (node instanceof Nil) {
+        continue;
+      }
       const prevLastChar = w.lastChar();
       const prevEndsWithSpace = prevLastChar === ' ';
 
@@ -223,6 +237,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       } else {
         node.writeSyntax(printOptions);
       }
+      prev = node;
     }
   }
 
@@ -440,11 +455,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     let count = 0;
     let only: Node | undefined;
-    let hasNil = false;
     for (let i = 0; i < value.length; i++) {
       const node = value[i]!;
       if (!node || node instanceof Nil) {
-        hasNil = true;
         continue;
       }
       count++;
@@ -456,22 +469,11 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         ? writeRenderedSequenceNode(buffer, node.render(context, options))
         : node.render(context, bufferOrOptions);
     }
-    let renderValue = value;
-    if (hasNil) {
-      renderValue = new Array<Node>(count);
-      let outIndex = 0;
-      for (let i = 0; i < value.length; i++) {
-        const node = value[i]!;
-        if (node && !(node instanceof Nil)) {
-          renderValue[outIndex++] = node;
-        }
-      }
-    }
     const prepared = buffer
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
     const mark = buffer ? prepared.writer.mark() : 0;
-    const out = this.renderSequenceSyntax(renderValue, prepared);
+    const out = this.renderSequenceSyntax(value, prepared);
     return buffer
       ? writePreparedRenderText(buffer, prepared, mark, out)
       : out;

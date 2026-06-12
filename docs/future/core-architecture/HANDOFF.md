@@ -784,32 +784,36 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: compact the handoff self-prosecution block and add a verifier cap
-so it cannot become an append-only evidence landfill again.
+Current pass: cut `Sequence` static render nil replacement arrays.
 
-- New traversal: one script-side section scan/count is added in
-  `scripts/verify-aggressive-cutting-review.mjs`. It reads the existing
-  handoff text once and counts lines after the self-prosecution header. This is
-  not eval/render runtime code and it replaces the worse human habit of
-  accumulating thousands of stale review lines.
-- New node/materialization: none. No runtime `Node`, copied node,
+- New traversal: no extra runtime traversal beyond the existing sequence item
+  loops. `writeSequenceSyntax(...)` now skips `Nil` while it is already walking
+  the sequence, and `renderResolvedValue(...)` no longer performs a second pass
+  to materialize a filtered child array.
+- New node/materialization: none added. One render-only
+  `new Array<Node>(count)` replacement surface was removed from
+  `Sequence.renderResolvedValue(...)`; no runtime `Node`, copied node,
   `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
   metadata mutation, side map, helper array, or materialized eval/render value
-  is added. This doc-only pass removes old prosecution prose from the live
-  handoff rather than creating a new historical status object.
-- Render path: unchanged. No render path resolves into arrays/nodes or strings
-  merely to satisfy this documentation gate.
-- Helper/API surface: one verifier constant/check is added to keep this section
-  below `MAX_SELF_PROSECUTION_LINES`. No package API, runtime helper, node
-  method, eval/render helper, or lookup helper is added.
+  was added.
+- Render path: static sequence render now passes the canonical child array into
+  the existing writer and lets the writer skip nils directly. It does not
+  resolve into arrays/nodes just to stringify. Dynamic and async sequence render
+  paths are unchanged.
+- Helper/API surface: no helper, method, public API, or package export was
+  added. The existing `writeSequenceSyntax(...)` loop handles nils directly.
 - Metadata mutations: none. No parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
-  read, `Reflect.*`, `Object.hasOwn`, or structural probe is added.
-- Evidence: before this pass, `HANDOFF.md` was 2923 lines and the
-  self-prosecution section began at line 780, leaving roughly 2100 lines of old
-  pass history in the live handoff. The active work already points to
-  `NODE-REWRITE-TRACKER.md` for node status and `PERFORMANCE-HANDOFF.md` for
-  benchmark/profile evidence, so the long prose duplicated the wrong surface.
-- Verdict: keep the compact current-pass block and the verifier size cap. Future
-  queue passes must replace this block with the current pass evidence instead
-  of appending another bullet.
+  read, `Reflect.*`, `Object.hasOwn`, or structural probe was added.
+- Evidence: focused `sequence.test.ts` passed (`31` tests), including new nil
+  source and flat-buffer render coverage for static sequences with leading and
+  middle nil children. The diff deletes the filtered replacement array from
+  `packages/core/src/tree/sequence.ts` and keeps `Sequence` marked partial in
+  `NODE-REWRITE-TRACKER.md` because broader render capture and trivia-backed
+  child `toString(...)` transport remain. Hotpath leash at dirty head
+  `a2f199e2` is status-only, not a speed claim: `functions` `13.55ms` usable,
+  `import-reference` `20.83ms` unstable, `mixins-guards` `17.39ms` unstable,
+  `extend-chaining` `5.16ms` usable, and `media` `5.48ms` noisy.
+- Verdict: keep the deletion. Next Sequence/List work should attack broader
+  buffer/render capture only with focused child-boundary/trivia proof, not by
+  adding another transport object.

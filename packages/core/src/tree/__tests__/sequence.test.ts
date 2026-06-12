@@ -1,4 +1,4 @@
-import { Node, Sequence, any, list, num, op, ref, rules, seq, F_MAY_ASYNC, F_STATIC, type Rules as RulesClass, vardecl } from '../index.js';
+import { Node, Sequence, any, list, nil, num, op, ref, rules, seq, F_MAY_ASYNC, F_STATIC, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createToken, type IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
@@ -303,6 +303,49 @@ describe('Sequence', () => {
     }
 
     expect(rendered).toBe('left right');
+  });
+
+  it('renders static sequence values with nil children without replacement arrays', () => {
+    const sequenceNode = seq([
+      nil(),
+      any('left'),
+      nil(),
+      any('right')
+    ]);
+    const originalFilter = sequenceNode.value.filter;
+    let rendered = '';
+    Object.defineProperty(sequenceNode.value, 'filter', {
+      configurable: true,
+      value: () => {
+        throw new Error('sequence render should not filter nil children into a replacement array');
+      }
+    });
+
+    try {
+      rendered = sequenceNode.render(context);
+    } finally {
+      Object.defineProperty(sequenceNode.value, 'filter', {
+        configurable: true,
+        writable: true,
+        value: originalFilter
+      });
+    }
+
+    expect(rendered).toBe('left right');
+    expect(sequenceNode.toTrimmedString()).toBe('left right');
+  });
+
+  it('writes static sequence values with nil children into flat buffers directly', () => {
+    const buffer = createRenderBuffer('flat');
+    const sequenceNode = seq([
+      nil(),
+      any('left'),
+      nil(),
+      any('right')
+    ]);
+
+    expect(sequenceNode.render(context, buffer)).toBe('left right');
+    expect(buffer.parts).toEqual(['left right']);
   });
 
   it('keeps source sequence child containers canonical after resolve(context)', async () => {
