@@ -788,43 +788,46 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `$if` selected-branch buffer render staging cut.
+Current pass: declaration direct child writer and callback-array cut.
 
-- New traversal: none. The pass does not add a source walk, child walk,
-  recursive scan, map/filter/sort, side-map lookup, parent walk, or helper
-  array iteration. `renderControlRules(...)` only inspects the emitted buffer
-  tail when the selected branch returned a trailing nested-rule newline.
+- New traversal: no new runtime traversal shape was added. Existing declaration
+  scans were converted from `every(...)`, `filter/map/join`, and child public
+  string calls to straight loops/direct writes. The fallback custom-function
+  argument loop is the same one-pass work previously hidden behind array
+  helpers, and source-free assignment reuse still scans children only once.
 - New node/materialization: none added. No runtime `Node`, copied node,
   `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
   metadata mutation, side map, helper array, or materialized eval/render value
-  was added. Test-only capture of the `Rules.render(...)` second argument only
-  proves the selected branch received the existing `RenderBuffer`.
-- Render path: selected `$if` branches now call
-  `branch.rules.render(context, buffer, options)` through
-  `renderControlRules(...)` instead of rendering the branch rules into a
-  detached string and then writing that string into the control buffer. The
-  direct buffer path trims only the single trailing nested-rules separator that
-  `Rules` direct string render already removes for non-root fragments. The
-  cold non-buffer control render path still uses `renderControlToString(...)`
-  and remains queued.
+  was added. The pass deletes temporary callback-array assembly for custom
+  fallback function text instead of replacing it with another container.
+- Render path: non-custom declaration names, values, important flags, and
+  generated space-merge items now write through `writeSyntax(...)` rather than
+  public `toString(...)`/`toTrimmedString(...)` transport. Custom-property raw
+  value emission deliberately keeps the existing `value.toString(...)` branch
+  because that path preserves authored raw source/trivia and is still queued
+  separately.
 - Helper/API surface: no helper, method, public API, or package export was
-  added. `renderControlRules(...)` is still the existing local control
-  function, but it no longer imports or calls `prepareBufferPrintState(...)` or
-  `writeRenderText(...)`.
+  added. `stringifyCustomFallbackFunctionCall(...)` remains the existing local
+  cold/custom fallback function, but its internal `map/filter/join` array
+  assembly is gone.
 - Metadata mutations: none. No parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
   read, `Reflect.*`, `Object.hasOwn`, or structural probe was added.
-- Evidence: focused `control.test.ts`, `list.test.ts`, `sequence.test.ts`, and
-  `query-condition.test.ts` passed (`130` tests). The `$if` buffer test now
-  proves the selected `Rules.render(...)` call receives the same `RenderBuffer`
-  supplied to `$if.render(...)`. The first focused run caught a real newline
-  drift (`color: red;\n`/`color: blue;\n`), so the final patch preserves the
-  existing nested-fragment string result while still deleting detached branch
-  string staging. Hotpath leash at head `98078db9` plus dirty pass is
-  status-only, not a speed claim: `functions` `11.91ms` usable,
-  `import-reference` `18.62ms` usable, `mixins-guards` `16.11ms` usable,
-  `extend-chaining` `4.79ms` usable, and `media` `4.82ms` unstable.
-- Verdict: keep the cut. Next full queue pass should continue through the
-  unchecked node tracker, with control non-buffer `renderControlToString(...)`
-  eligible only if it can remove capture without changing nested-fragment
-  newline semantics.
+- Evidence: focused `declaration.test.ts` passed (`60` tests). A new
+  declaration test turns non-custom child public string methods into tripwires
+  and proves the direct writer path for name, value, and `!important`.
+  `NODE-REWRITE-TRACKER.md` records declaration as still partial because
+  custom-property raw source, merge state, internal mark/replace, and
+  materialization remain. It also corrects the AtRule queue wording: the actual
+  direct header/body writer is still missing.
+- Hotpath leash: pre-pass at `d5dd18f7` was status-only and noisy/unstable
+  (`functions` `13.02ms` unstable, `import-reference` `20.70ms` usable,
+  `mixins-guards` `17.84ms` unstable, `extend-chaining` `6.00ms` noisy,
+  `media` `5.64ms` unstable). Post-pass dirty leash is also status-only, not a
+  speed claim: `functions` `12.45ms` usable, `import-reference` `21.62ms`
+  usable, `mixins-guards` `17.33ms` usable, `extend-chaining` `5.70ms` usable,
+  and `media` `5.42ms` usable.
+- Verdict: keep the cut. Next full queue pass should continue through
+  declaration custom/raw-source boundaries only if it can preserve authored
+  custom-property text, otherwise move to Call, Ruleset, or AtRule direct
+  writer work with focused tripwire tests.

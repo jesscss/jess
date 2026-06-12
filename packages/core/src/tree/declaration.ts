@@ -275,7 +275,13 @@ const canReuseSourceFreeAssignmentInput = (node: Node): boolean => {
   if (node.location.length !== 0 || !node.hasFlag(F_STATIC)) {
     return false;
   }
-  return node.value.every(child => child instanceof Node && canReuseLeaf(child));
+  for (let i = 0; i < node.value.length; i++) {
+    const child = node.value[i];
+    if (!(child instanceof Node) || !canReuseLeaf(child)) {
+      return false;
+    }
+  }
+  return true;
 };
 
 type LessFunctionFallbackCall = Call & {
@@ -307,16 +313,35 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
 
   const { name, args } = atomicValue.value;
   const printableKey = name.value.rawKey ?? name.value.key;
-  const nameText = typeof printableKey === 'string' || typeof printableKey === 'number'
-    ? String(printableKey)
-    : Array.isArray(printableKey)
-      ? printableKey.map(part => String(part)).join('')
-      : stringifyDetached(printableKey, options).trim();
-  const argTexts = (args?.value ?? [])
-    .filter(Boolean)
-    .map(arg => stringifyDetached(arg, options).trim());
+  let nameText: string;
+  if (typeof printableKey === 'string' || typeof printableKey === 'number') {
+    nameText = String(printableKey);
+  } else if (Array.isArray(printableKey)) {
+    nameText = '';
+    for (let i = 0; i < printableKey.length; i++) {
+      nameText += String(printableKey[i]);
+    }
+  } else {
+    nameText = stringifyDetached(printableKey, options).trim();
+  }
 
-  return `${nameText}(${argTexts.join(', ')})`;
+  let out = `${nameText}(`;
+  const argValues = args?.value;
+  if (argValues) {
+    let emitted = false;
+    for (let i = 0; i < argValues.length; i++) {
+      const arg = argValues[i];
+      if (!arg) {
+        continue;
+      }
+      if (emitted) {
+        out += ', ';
+      }
+      out += stringifyDetached(arg, options).trim();
+      emitted = true;
+    }
+  }
+  return `${out})`;
 };
 
 /**
@@ -473,7 +498,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     let a = effAssign === ':' ? ':' : ` ${effAssign}`;
     // Normalize property name by trimming trailing whitespace
     const nameMark = w.mark();
-    name.toTrimmedString(options);
+    name.writeSyntax(options);
     w.trimEndSince(nameMark);
     emitCommentTriviaAfterNode(name, options);
     w.add(a);
@@ -509,7 +534,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       } else if (mergeAdapter?.kind === 'space') {
         this.renderSpaceValueSyntax(mergeAdapter.items, options);
       } else {
-        value.toTrimmedString(options);
+        value.writeSyntax(options);
       }
       w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
       if (!isNode(value, N.Collection)) {
@@ -517,7 +542,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           w.add(' ');
           if (important) {
             const importantMark = w.mark();
-            important.toString(options);
+            important.writeSyntax(options);
             w.trimStartSince(importantMark);
             w.trimEndSince(importantMark);
           } else {
@@ -541,7 +566,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         w.queueSpacer(' ');
       }
       const item = value[index]!;
-      item.toString(printOptions);
+      item.writeSyntax(printOptions);
     }
     return w.getSince(mark);
   }

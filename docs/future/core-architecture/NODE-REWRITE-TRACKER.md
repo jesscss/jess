@@ -56,9 +56,10 @@ first measured offenders after the selector pass.
   source-string wrapper is gone, and public string wrapper owns capture.
 - [ ] `Ruleset`: eliminate or isolate `getHeaderString(...)` capture for hot
   frame render/comparison paths.
-- [ ] `Declaration`: public syntax boundary exists for callers, but
-  `declValueTrimmedString(...)` still needs a direct value writer plus cold
-  duplicate-comparison/materialization boundary.
+- [ ] `Declaration`: public syntax boundary exists for callers, non-custom
+  declaration children now write through direct syntax hooks, and custom
+  fallback function assembly uses straight loops. Custom-property raw source,
+  duplicate-comparison/materialization, and merge-state boundaries remain.
 - [x] `Any` / `Keyword` / `Anonymous`: move scalar token emission to generic
   `writeSyntax`; audit `compare(...)` string normalization.
 - [x] `Dimension` / `Num`: numeric/unit emission uses one scalar serializer
@@ -150,8 +151,9 @@ Current hard leftovers after the broad hook sweep:
 - [x] `RawRules`: direct raw body writer.
 - [x] `Collection`: live wrapper with direct braced source writer; broader
   wrapper necessity remains out of scope for this source-writer pass.
-- [ ] `AtRule`: direct header/body writer; remove custom eval/render branch
-  ladders where state already carries kind.
+- [ ] `AtRule`: add an actual direct header/body writer, then remove public
+  child-string transport and custom eval/render branch ladders where state
+  already carries kind.
 - [ ] `StyleImport`: direct import/render writer and placement state; no
   first-use copied rules surfaces on render-only paths.
 - [x] `JsImport`: live parser-owned syntax node for Jess/SCSS JS module
@@ -204,7 +206,7 @@ Current hard leftovers after the broad hook sweep:
 | CompoundSelector | `packages/core/src/tree/selector-compound.ts` | `Selector` | writeSyntax complete | Component emission uses `writeSyntax` and cold private source-string wrapper is gone; broader valueOf classification and allocation-array audit remains. |
 | Condition | `packages/core/src/tree/condition.ts` | `Node` | direct operand writer complete | Source condition syntax writes directly through operand `writeSyntax(...)`; bool result materialization audit remains. |
 | CustomDeclaration | `packages/core/src/tree/declaration-custom.ts` | `Declaration` | queued | Audit custom-property eval/render after `Declaration`. |
-| Declaration | `packages/core/src/tree/declaration.ts` | `Node` | partial | `writeSyntax(...)` now gives containers a direct declaration syntax boundary instead of forcing public `toString(...)`; high priority remains for custom property branches, merge state, internal mark/replace, and materialization. |
+| Declaration | `packages/core/src/tree/declaration.ts` | `Node` | partial | `writeSyntax(...)` now gives containers a direct declaration syntax boundary, non-custom name/value/important children use direct writers instead of public string transport, custom fallback function assembly uses loops instead of filter/map/join arrays, and source-free assignment reuse uses a straight loop. High priority remains for custom property raw-source branches, merge state, internal mark/replace, and materialization. |
 | DefaultGuard | `packages/core/src/tree/default-guard.ts` | `Node` | scalar wrapper complete | Scalar guard writer complete; public source string writes the known `default` token directly with no writer readback. |
 | Dimension | `packages/core/src/tree/dimension.ts` | `Node` | scalar serializer complete | Number/unit emission uses one scalar serializer for `writeSyntax(...)` and public string output with no writer readback; preserve-mode compound unit serialization uses a straight loop instead of `map(...).join(...)`; regex/unit conversion and operation paths remain. |
 | Expression | `packages/core/src/tree/expression.ts` | `Node` | direct child writer complete | Wrapper syntax writes directly and now calls child `writeSyntax(...)` instead of public `toString(...)`; child render/eval audit remains. |

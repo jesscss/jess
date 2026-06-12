@@ -60,6 +60,29 @@ describe('Declaration', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('writes non-custom declaration children without public string transport', () => {
+    const name = any('color');
+    const value = any('red');
+    const important = any('!important', { role: 'flag' });
+    const rule = decl({ name, value, important });
+    let publicStringCalls = 0;
+    name.toTrimmedString = () => {
+      publicStringCalls++;
+      return 'wrong-name';
+    };
+    value.toTrimmedString = () => {
+      publicStringCalls++;
+      return 'wrong-value';
+    };
+    important.toString = () => {
+      publicStringCalls++;
+      return 'wrong-important';
+    };
+
+    expect(rule.toTrimmedString()).toBe('color: red !important');
+    expect(publicStringCalls).toBe(0);
+  });
+
   it('renders resolved declarations through render(context)', async () => {
     const root = rules([
       vardecl({ name: any('tone'), value: any('red') })
