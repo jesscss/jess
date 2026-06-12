@@ -1050,6 +1050,14 @@ the binding index/scope lookup refactor.
    previously left `Context.referenceStack` incremented; a focused regression
    test now covers that rejection while the change also deletes the duplicate
    JsExpression success/error cleanup continuations.
+   Fourteenth partial status: runtime-binding and declaration-reference async
+   value evaluation now restore the reference stack on rejection. Runtime
+   binding cleanup also restores `rulesContext`/`searchScope` through the same
+   promise `finally(...)` boundary instead of duplicated success/error
+   continuations. Declaration-reference cleanup keeps search-scope restoration
+   on one boundary and uses a guarded reference pop so success, rejection, and
+   thrown normalization paths do not leak the active reference frame. Focused
+   regressions prove both paths leaked before the batch and are now covered.
 15. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -1148,6 +1156,66 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Reference async binding/declaration cleanup batch: accepted as a
+  correctness fix plus helper/API-surface cut in `Reference` runtime-binding
+  and declaration-reference finalization, not as a speed claim. Files:
+  `packages/core/src/tree/reference.ts`,
+  `packages/core/src/tree/__tests__/reference.test.ts`, and this handoff.
+  - New traversal: none. No loop, recursion, parent/source walk, child crawl,
+    sort, side map, or array/object scan was added.
+  - New node/materialization: production none. The implementation changes
+    cleanup/finalization boundaries only; it does not add node construction,
+    copying, wrapper surfaces, inheritance, or metadata mutation. Test-only
+    coverage reuses the existing `RejectingAsyncAny` fixture and constructs two
+    focused rejecting values plus source `rules([])`/`Map` binding fixtures to
+    prove the rejected async binding/declaration paths. The diff still shows
+    `normalized.inherit(referenceNode)` because the existing merged-assignment
+    public materialization boundary moved inside the reshaped finalizer; this
+    batch does not add that inherit or expand its scope.
+  - Render path: unchanged. Runtime binding and declaration references still
+    evaluate the same resolved values and render through the existing native
+    node render path. The batch only guarantees cleanup when async value eval
+    rejects.
+  - Helper/API surface: net deletion on async paths. Runtime-binding value eval
+    now restores `searchScope`/`rulesContext` with one promise `finally(...)`
+    instead of duplicated success/error continuations, and runtime-binding
+    result finalization pops the reference frame from one sync/async boundary
+    instead of inside each success return branch. Declaration-reference
+    finalization uses one search-scope cleanup boundary and a guarded local
+    reference pop for success, rejection, and thrown normalization paths. No
+    public method or generic helper was added; sync cleanup duplication was left
+    in place rather than adding hot-path helper closures just for tidiness.
+  - Metadata mutations: no new metadata mutation. Existing `Context`
+    `referenceStack`, `rulesContext`, and `searchScope` restoration is now
+    guaranteed for the covered rejected async paths. The test-only
+    `sourceNode: paramDecl` binding fixture is the existing runtime binding
+    shape needed to route through the live-slot path.
+  - Evidence: the new runtime-binding regression failed before the fix with
+    `Context.referenceStack === 1`; the declaration-reference regression also
+    failed before the fix by rejecting through the async declaration value path.
+    After the fix, `reference.test.ts` passed (`127` tests), the focused
+    `reference`, `declaration`, `call`, and `mixin` family passed (`412`
+    tests), and the broader lookup/materialization set passed (`696` passed,
+    `9` skipped); touched TypeScript eslint passed; `git diff --check`,
+    `pnpm run verify:aggressive-cutting-review` (with the documented
+    test-fixture and existing merged-inherit danger tokens), `pnpm run
+    audit:node-creation`, `pnpm run prototype:binding-handle-reuse`,
+    `pnpm --filter @jesscss/core build`, and `pnpm --filter jess build`
+    passed. Direct stress render of `scope-lookup-stress.less` produced length
+    `8822`. `measure:less:hotpath` completed as sanity only with unstable
+    `functions` `17.79ms`, usable `import-reference` `24.67ms`,
+    noisy `mixins-guards` `34.01ms`, usable `extend-chaining` `6.12ms`, and
+    unstable `media` `6.81ms`, so this pass makes no speed claim.
+  - Verdict: keep. This batch fixes two proven rejected-async cleanup leaks and
+    removes duplicated async cleanup continuations while preserving the
+    remaining materialization boundaries in item 14.
+  - Danger-token prosecution: test-only `new RejectingAsyncAny(...)`,
+    `new Map(...)`, `rules([])`, and `sourceNode: paramDecl` construct the
+    minimal live binding fixture; production `try` remains the existing
+    exceptional cleanup boundary for thrown evaluation/finalization failures,
+    not ordinary miss control; production `.inherit(referenceNode)` is the
+    pre-existing merged-assignment public materialization boundary and remains
+    queued for the larger item-14 placement rethink.
 - Reference async fallback cleanup pass: accepted as a narrow correctness fix
   plus helper/API-surface cut in fallback reference evaluation, not as a speed
   claim. Files: `packages/core/src/tree/reference.ts`,

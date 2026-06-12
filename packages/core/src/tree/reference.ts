@@ -1759,7 +1759,6 @@ function finalizeRuntimeVarBindingResult(
       referenceNode.options?.preserveRulesLike === true
       && isRulesLikeReferenceValue(evald)
     ) {
-      context.popReference();
       return (
         isNode(bindingSource, N.VarDeclaration)
         && !bindingSource.options?.paramVar
@@ -1768,7 +1767,6 @@ function finalizeRuntimeVarBindingResult(
         ? createRulesLikeReferenceSurface(evald)
         : evald;
     }
-    context.popReference();
     return evald;
   };
   const shouldUseDefinitionRulesContext = isNode(bindingSource, N.VarDeclaration) && (
@@ -1799,9 +1797,17 @@ function finalizeRuntimeVarBindingResult(
   );
 
   if (isThenable(evaluatedBinding)) {
-    return Promise.resolve(evaluatedBinding).then(finalizeRuntimeBinding);
+    return Promise.resolve(evaluatedBinding)
+      .then(finalizeRuntimeBinding)
+      .finally(() => {
+        context.popReference();
+      });
   }
-  return finalizeRuntimeBinding(evaluatedBinding);
+  try {
+    return finalizeRuntimeBinding(evaluatedBinding);
+  } finally {
+    context.popReference();
+  }
 }
 
 function evaluateRuntimeVarBindingValue(
@@ -1824,26 +1830,14 @@ function evaluateRuntimeVarBindingValue(
   try {
     const result = evaluateReferenceValueNode(binding.value, context, evalFlags);
     if (isThenable(result)) {
-      return Promise.resolve(result).then(
-        (node) => {
-          if (bindingSource) {
-            context.searchScope.delete(bindingSource);
-          }
-          if (changedRulesContext) {
-            context.rulesContext = savedRulesContext;
-          }
-          return node;
-        },
-        (error) => {
-          if (bindingSource) {
-            context.searchScope.delete(bindingSource);
-          }
-          if (changedRulesContext) {
-            context.rulesContext = savedRulesContext;
-          }
-          throw error;
+      return Promise.resolve(result).finally(() => {
+        if (bindingSource) {
+          context.searchScope.delete(bindingSource);
         }
-      );
+        if (changedRulesContext) {
+          context.rulesContext = savedRulesContext;
+        }
+      });
     }
     if (bindingSource) {
       context.searchScope.delete(bindingSource);
@@ -1894,36 +1888,44 @@ function finalizeDeclarationReferenceResult(
     return preservedValue;
   }
   context.searchScope.add(declaration);
+  let referencePopped = false;
+  const popReference = () => {
+    if (!referencePopped) {
+      context.popReference();
+      referencePopped = true;
+    }
+  };
   try {
     if (hasImportant) {
       context.pushImportantSource();
     }
     const evaluated = evaluateReferenceValueNode(declarationValue, context);
     const finalize = (evaluatedNode: Node): Node => {
-      try {
-        if (!isMergedAssign) {
-          context.popReference();
-          return evaluatedNode;
-        }
-        const normalized = normalizeMergedAssignReferenceResult(evaluatedNode);
-        const finalized = normalized.inherit(referenceNode);
-        context.popReference();
-        return finalized;
-      } finally {
-        context.searchScope.delete(declaration);
+      if (!isMergedAssign) {
+        popReference();
+        return evaluatedNode;
       }
+      const normalized = normalizeMergedAssignReferenceResult(evaluatedNode);
+      const finalized = normalized.inherit(referenceNode);
+      popReference();
+      return finalized;
     };
     if (isThenable(evaluated)) {
       return Promise.resolve(evaluated).then(
         finalize,
         (error) => {
-          context.searchScope.delete(declaration);
+          popReference();
           throw error;
         }
-      );
+      ).finally(() => {
+        context.searchScope.delete(declaration);
+      });
     }
-    return finalize(evaluated);
+    const finalized = finalize(evaluated);
+    context.searchScope.delete(declaration);
+    return finalized;
   } catch (error) {
+    popReference();
     context.searchScope.delete(declaration);
     throw error;
   }

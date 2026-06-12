@@ -245,6 +245,31 @@ describe('reference', () => {
       expect(context.rulesContext).toBe(runtimeScope);
     });
 
+    it('restores runtime binding frames when async live-slot value eval rejects', async () => {
+      const definitionRules = rules([]);
+      const paramDecl = vardecl({ name: any('tone'), value: any('blue') }, { paramVar: true });
+      definitionRules.push(paramDecl);
+      const asyncValue = new RejectingAsyncAny('runtime binding failed');
+      const runtimeScope = rules([]);
+      runtimeScope.scopeFrame = buildScopeFrame(
+        undefined,
+        runtimeScope,
+        undefined,
+        new Map([
+          ['tone', {
+            value: list([asyncValue]),
+            sourceNode: paramDecl
+          }]
+        ])
+      );
+      context.rulesContext = runtimeScope;
+
+      await expect(ref({ key: 'tone' }, { type: 'variable' }).eval(context)).rejects.toThrow('runtime binding failed');
+      expect(context.rulesContext).toBe(runtimeScope);
+      expect(context.searchScope.has(paramDecl)).toBe(false);
+      expect(context.referenceStack).toBe(0);
+    });
+
     it('renders runtime-binding scalar references without applying public result metadata', async () => {
       const sourceValue = any('red');
       const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
@@ -1110,6 +1135,19 @@ describe('reference', () => {
       } finally {
         List.prototype.inherit = originalInherit;
       }
+    });
+
+    it('restores declaration reference frames when async value eval rejects', async () => {
+      const declaration = decl({
+        name: any('src'),
+        value: list([new RejectingAsyncAny('declaration reference failed')])
+      });
+      const node = rules([declaration]);
+      setRulesContext(node);
+
+      await expect(ref({ key: 'src' }, { type: 'declaration' }).eval(context)).rejects.toThrow('declaration reference failed');
+      expect(context.searchScope.has(declaration)).toBe(false);
+      expect(context.referenceStack).toBe(0);
     });
 
     it('does not redirect direct index sequence targets as mixin keys', async () => {
