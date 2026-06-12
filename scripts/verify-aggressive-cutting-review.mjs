@@ -35,6 +35,7 @@ const requiredLabels = [
   '- Evidence:',
   '- Verdict:'
 ];
+const MAX_SELF_PROSECUTION_LINES = 90;
 
 const dangerPatterns = [
   ['loop/traversal', /\+\s*(for|while)\s*\(/],
@@ -66,6 +67,7 @@ const sectionIndex = handoff.lastIndexOf('## Aggressive Cutting Self-Prosecution
 const section = sectionIndex === -1 ? '' : handoff.slice(sectionIndex);
 const missingLabels = requiredLabels.filter(label => !section.includes(label));
 const stalePlaceholders = /\b(TODO|TBD|fill in|pending)\b/i.test(section);
+const selfProsecutionLineCount = section === '' ? 0 : section.split('\n').length;
 
 let failed = false;
 
@@ -80,6 +82,13 @@ if (sectionIndex === -1 || missingLabels.length > 0) {
 if (stalePlaceholders) {
   failed = true;
   console.error('Self-prosecution block still contains a placeholder word: TODO/TBD/fill in/pending.');
+}
+
+if (selfProsecutionLineCount > MAX_SELF_PROSECUTION_LINES) {
+  failed = true;
+  console.error(
+    `Self-prosecution block is ${selfProsecutionLineCount} lines; keep it current-pass only and under ${MAX_SELF_PROSECUTION_LINES} lines.`
+  );
 }
 
 if (findings.length > 0) {
