@@ -1066,6 +1066,15 @@ the binding index/scope lookup refactor.
    value evaluation resolves, including merged public materialization failures,
    restore the reference stack, search scope, and contextual important state.
    Focused regressions prove both leaks before the fix.
+   Sixteenth partial status: merged declaration reference normalization now
+   returns the already-owned evaluated `List` unchanged when it is already a
+   flat, non-empty-placeholder list. The normalizer lazily allocates the
+   `mergedItems` array only after it sees a nested list or empty placeholder,
+   so the common clean merged-reference path no longer creates a second
+   `List` only to inherit from the `Reference`. Focused coverage first failed
+   because the finalizer list differed from the copied eval list, and now
+   proves the finalizer reuses that owned list while still preserving nested
+   merged property lookup behavior.
 15. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -1164,6 +1173,55 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Reference flat merged-normalization cleanup pass: accepted as a direct
+  public-materialization cut in `Reference` merged declaration finalization,
+  not as a speed claim. Files: `packages/core/src/tree/reference.ts`,
+  `packages/core/src/tree/__tests__/reference.test.ts`, and this handoff.
+  - New traversal: none beyond the existing merged-list scan. The normalizer
+    still inspects the same list children, but it stops allocating the output
+    array and replacement `List` unless the scan actually finds a nested list
+    or empty placeholder that requires normalization.
+  - New node/materialization: production net deletion on the clean merged-list
+    path. The previous code always built `mergedItems` and returned
+    `new List(mergedItems)` for flat multi-item lists; the new code returns the
+    already-owned evaluated `List` directly. The remaining `new Nil()` and
+    `new List(mergedItems)` branches are still required for all-placeholder
+    and genuinely normalized nested/filtered outputs. Test-only instrumentation
+    monkey-patches `List.prototype.inherit` to prove object identity.
+  - Render path: unchanged. This is public declaration-reference
+    materialization, not render stringification; render still writes through the
+    existing node render paths.
+  - Helper/API surface: no public API or generic helper was added. The local
+    normalizer kept the existing local `collect(...)` recursion for the
+    genuinely nested case and added only local lazy state to avoid allocating
+    on the flat case.
+  - Metadata mutations: no new metadata mutation. The final `.inherit(...)`
+    still happens at the existing merged-reference public boundary, but it now
+    targets the evaluated owned list directly when no normalization is needed.
+  - Evidence: the focused regression failed before the fix because
+    `finalizedList !== latestCopiedList`; after the fix, the targeted merged
+    reference pair passed, the focused `reference`, `declaration`, `call`, and
+    `mixin` family passed (`414` tests), and the broader
+    lookup/materialization set passed (`698` passed, `9` skipped). Touched
+    TypeScript eslint passed; the handoff is ignored by eslint config.
+    `git diff --check`, `pnpm run verify:aggressive-cutting-review`,
+    `pnpm run audit:node-creation`, `pnpm run
+    prototype:binding-handle-reuse`, `pnpm --filter @jesscss/core build`,
+    and `pnpm --filter jess build` passed. Direct stress render of
+    `scope-lookup-stress.less` produced length `8822`.
+    `measure:less:hotpath` completed as sanity only with unstable `functions`
+    `17.35ms`, usable `import-reference` `23.24ms`, unstable
+    `mixins-guards` `20.73ms`, noisy `extend-chaining` `7.27ms`, and noisy
+    `media` `24.96ms`, so this pass makes no speed claim.
+  - Verdict: keep. This removes one replacement `List` and one always-built
+    normalization array from the clean merged-reference path while leaving
+    nested/placeholder normalization semantics intact.
+  - Danger-token prosecution: production `new List(mergedItems)` and
+    `new Nil()` are pre-existing, now colder normalization outputs for paths
+    that actually changed shape; production `.inherit(...)` is the existing
+    merged-reference public placement boundary. Test-only
+    `List.prototype.inherit` monkey-patching and `try`/`finally` restore the
+    spy around the identity assertion.
 - Reference async important/finalizer cleanup pass: accepted as a correctness
   fix in `Reference` declaration finalization, not as a speed claim. Files:
   `packages/core/src/tree/reference.ts`,

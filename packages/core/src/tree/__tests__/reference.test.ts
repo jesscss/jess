@@ -2412,33 +2412,47 @@ describe('reference', () => {
     });
 
     it('flattens merged declaration references without recopying copied leaves', async () => {
+      const sourceValue = list([any('red'), any('foo')]);
       const node = rules([
         decl({
           name: any('background-color'),
-          value: any('red')
-        }, { assign: '+:' }),
-        decl({
-          name: any('background-color'),
-          value: any('foo')
-        }, { assign: '+:' })
+          value: sourceValue
+        }, { normalizedFromAssign: '+:' })
       ]);
-      const evald = setRulesContext(await node.eval(context));
 
       const originalCopy = Any.prototype.copy;
+      const originalInherit = List.prototype.inherit;
       let valueCopyCount = 0;
+      let latestCopiedList: List | undefined;
+      let finalizedList: List | undefined;
       Any.prototype.copy = function(this: Any, deep?: boolean, cloneFn?: (n: Node) => Node) {
         if (this.value === 'red' || this.value === 'foo') {
           valueCopyCount++;
         }
         return originalCopy.call(this, deep, cloneFn);
       };
+      const refNode = ref({ key: 'background-color' }, { type: 'declaration' });
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] instanceof List) {
+          latestCopiedList = this;
+        } else if (args[0] === refNode) {
+          finalizedList = this;
+        }
+        return originalInherit.apply(this, args);
+      };
       try {
-        const resolved = await ref({ key: 'background-color' }, { type: 'declaration' }).resolve(context);
+        setRulesContext(await node.eval(context));
+        const resolved = await refNode.resolve(context);
 
         expect(resolved.toTrimmedString()).toBe('red, foo');
         expect(valueCopyCount).toBe(0);
+        expect(finalizedList).toBe(latestCopiedList);
       } finally {
         Any.prototype.copy = originalCopy;
+        List.prototype.inherit = originalInherit;
       }
     });
 

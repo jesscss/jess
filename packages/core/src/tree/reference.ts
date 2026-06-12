@@ -2031,26 +2031,50 @@ function evaluateReferenceValueNode(
 }
 
 function normalizeMergedAssignReferenceResult(node: Node): Node {
-  if (!isNode(node, N.List)) {
+  if (!(node instanceof List)) {
     return node;
   }
-  const mergedItems: Node[] = [];
+  let mergedItems: Node[] | undefined;
   const collect = (child: Node): void => {
-    if (isNode(child, N.List)) {
+    if (child instanceof List) {
       for (const item of child.value) {
-        collect(item as Node);
+        collect(item);
       }
       return;
     }
     const isEmptyPlaceholder = (
-      isNode(child, N.Nil)
+      child instanceof Nil
       || String(child.valueOf?.() ?? '') === ''
     );
     if (!isEmptyPlaceholder) {
-      mergedItems.push(child);
+      mergedItems!.push(child);
     }
   };
-  collect(node);
+
+  for (let i = 0; i < node.value.length; i++) {
+    const child = node.value[i]!;
+    const needsNormalization = (
+      child instanceof List
+      || child instanceof Nil
+      || String(child.valueOf?.() ?? '') === ''
+    );
+    if (!needsNormalization) {
+      if (mergedItems) {
+        mergedItems.push(child);
+      }
+      continue;
+    }
+    if (!mergedItems) {
+      mergedItems = [];
+      for (let j = 0; j < i; j++) {
+        mergedItems.push(node.value[j]!);
+      }
+    }
+    collect(child);
+  }
+  if (!mergedItems) {
+    return node;
+  }
   if (mergedItems.length === 0) {
     return new Nil();
   }
