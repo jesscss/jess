@@ -128,30 +128,10 @@ type AmpersandAppendPlacementState = {
   selector: Selector | Nil;
   appendValue?: string;
   templateMerge: boolean;
-  templateParts?: string[];
   hoistToRoot: boolean;
-  inputItemTexts: string[];
-  inputItemCount: number;
   result?: Selector | Nil;
-  resultItemTexts?: string[];
-  resultItemCount?: number;
-  resultText?: string;
   selectorBits: Context['selectorBits'];
 };
-
-function getSelectorItemTexts(selector: Selector | Nil): string[] {
-  if (isNode(selector, N.SelectorList)) {
-    const out = new Array<string>(selector.value.length);
-    for (let i = 0; i < selector.value.length; i++) {
-      out[i] = selector.value[i]!.toTrimmedString();
-    }
-    return out;
-  }
-  if (isNode(selector, N.Nil)) {
-    return [];
-  }
-  return [selector.toTrimmedString()];
-}
 
 function createAmpersandAppendPlacementState(
   source: Ampersand,
@@ -159,16 +139,12 @@ function createAmpersandAppendPlacementState(
   context: Context,
   appendValue?: string
 ): AmpersandAppendPlacementState {
-  const inputItemTexts = getSelectorItemTexts(selector);
   return {
     source,
     selector,
     appendValue,
     templateMerge: appendValue?.includes('&') === true,
-    templateParts: appendValue?.includes('&') === true ? appendValue.split('&') : undefined,
     hoistToRoot: appendValue !== undefined || source.hoistToRoot === true,
-    inputItemTexts,
-    inputItemCount: inputItemTexts.length,
     selectorBits: context.selectorBits
   };
 }
@@ -244,29 +220,41 @@ function mergeAmpersandTemplateSelector(
   baseSelector: Selector,
   placement: AmpersandAppendPlacementState
 ): Selector {
-  const { appendValue, templateParts } = placement;
+  const { appendValue, templateMerge } = placement;
   if (appendValue === undefined) {
     return baseSelector;
   }
   const replacements = getAmpersandTemplateReplacements(baseSelector);
   const merged = new Array<Selector>(replacements.length);
+  const singleLeadingSuffix = templateMerge
+    && appendValue[0] === '&'
+    && appendValue.indexOf('&', 1) === -1
+    && appendValue.length > 1
+    ? appendValue.slice(1)
+    : undefined;
   for (let i = 0; i < replacements.length; i++) {
     const item = replacements[i]!;
     const value = item.toTrimmedString();
     assertValidAmpersandTemplateJoin(appendValue, value);
-    if (templateParts?.length === 2 && templateParts[0] === '' && templateParts[1]) {
-      const result = appendSelector(item, templateParts[1]);
+    if (singleLeadingSuffix) {
+      const result = appendSelector(item, singleLeadingSuffix);
       if (result.appended) {
         merged[i] = result.selector;
         continue;
       }
     }
     let mergedText = appendValue;
-    if (templateParts) {
-      mergedText = templateParts[0] ?? '';
-      for (let j = 1; j < templateParts.length; j++) {
-        mergedText += value + templateParts[j]!;
+    if (templateMerge) {
+      let out = '';
+      let start = 0;
+      let next = appendValue.indexOf('&');
+      while (next !== -1) {
+        out += appendValue.slice(start, next);
+        out += value;
+        start = next + 1;
+        next = appendValue.indexOf('&', start);
       }
+      mergedText = out + appendValue.slice(start);
     }
     merged[i] = new BasicSelector(mergedText).inherit(baseSelector);
   }
@@ -281,10 +269,12 @@ function mergeAmpersandTemplateSelectorList(
   placement: AmpersandAppendPlacementState
 ): SelectorList {
   const mergedItems: Selector[] = [];
-  for (const item of selector.value) {
-    const merged = mergeAmpersandTemplateSelector(item as Selector, placement);
+  for (let i = 0; i < selector.value.length; i++) {
+    const merged = mergeAmpersandTemplateSelector(selector.value[i]!, placement);
     if (isNode(merged, N.SelectorList)) {
-      mergedItems.push(...merged.value);
+      for (let j = 0; j < merged.value.length; j++) {
+        mergedItems.push(merged.value[j]!);
+      }
     } else {
       mergedItems.push(merged);
     }
@@ -436,11 +426,6 @@ function finishAmpersandAppendPlacement(
 ): Selector | Nil {
   placement.selector = selector;
   placement.result = selector;
-  placement.resultItemTexts = getSelectorItemTexts(selector);
-  placement.resultItemCount = placement.resultItemTexts.length;
-  placement.resultText = placement.resultItemTexts.length === 1
-    ? placement.resultItemTexts[0]
-    : selector.toTrimmedString();
   if (placement.hoistToRoot) {
     placement.result.hoistToRoot = true;
   }

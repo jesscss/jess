@@ -144,9 +144,11 @@ Current hard leftovers after the broad hook sweep:
 - [x] `AttributeSelector`: direct attribute writer and child writer; avoid
   value/name public-string transport in render, and interpolation/value
   branches use `MaybePromise` narrowing instead of local assertions.
-- [ ] `Ampersand`: direct source writer exists and local append/template
-  callback-array helpers are cut; structural selector replacement still has
-  string assembly debt.
+- [ ] `Ampersand`: direct source writer exists; append/template placement no
+  longer stores dead selector text arrays, no longer splits template strings
+  into `templateParts`, and no longer uses selector-list iterator/spread
+  flattening. Structural selector replacement still has string/class
+  construction debt.
 - [ ] `Interpolated`: direct source writer exists and public `replace(...)` no
   longer uses regex callback scaffolding, but replacement `toTrimmedString`
   assembly remains where structural emission is possible. Replacement
@@ -217,7 +219,7 @@ Current hard leftovers after the broad hook sweep:
 
 | Node | File | Base/family | Status | Rewrite notes |
 | --- | --- | --- | --- | --- |
-| Ampersand | `packages/core/src/tree/ampersand.ts` | `SimpleSelector` | partial | Direct source writer exists; append/template paths use explicit loops instead of callback-array helpers. Replace remaining template text splitting/string assembly with selector-list structure and placement state. |
+| Ampersand | `packages/core/src/tree/ampersand.ts` | `SimpleSelector` | partial | Direct source writer exists; append/template placement no longer stores dead selector text arrays, no longer splits template strings into `templateParts`, and selector-list template flattening uses indexed loops instead of iterator/spread. Remaining debt is structural selector replacement, string assembly, and generic class construction. |
 | Anonymous | `packages/core/src/tree/any.ts` | `Any` | writeSyntax hook complete | Scalar emission uses `Any.writeSyntax`; broader compare/string normalization remains. |
 | Any | `packages/core/src/tree/any.ts` | `Node` | writeSyntax hook complete | Scalar emission has a direct writer; compare/string conversion and numeric regex decisions remain. |
 | AtRule | `packages/core/src/tree/at-rule.ts` | `Node` | queued | Body eval/registration async branches use `MaybePromise` narrowing. High priority: reduce custom eval/import/render branches. |

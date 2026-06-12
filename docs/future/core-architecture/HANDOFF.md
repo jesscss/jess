@@ -788,46 +788,41 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: final broad `MaybePromise` assertion sweep.
+Current pass: ampersand append/template placement cut.
 
-- New traversal: none added. Existing loops in `List`, `Sequence`,
-  `QueryCondition`, `Declaration`, `AtRule`, `Ruleset`, and `Rules` were kept;
-  no loop, recursion, parent/source walk, side-map lookup, or helper-array path
-  was added.
+- New traversal: added only local indexed loops in `Ampersand` to replace worse
+  machinery: one `indexOf`/`while` loop replaces `appendValue.split('&')` and a
+  `templateParts` array, and one indexed nested copy loop replaces
+  `for...of` plus spread-push when flattening selector-list template output.
+  The new `slice(...)` calls are direct substring writes used by that scanner,
+  not array slicing, and replace the old split-parts array. No recursion,
+  parent/source walk, side-map lookup, or helper-array path was added.
 - New node/materialization: none added. No runtime `Node`, copied node,
   `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
   metadata mutation, side map, helper array, or materialized eval/render value
-  was added. The diff still shows the pre-existing `new Nil()` failed-guard
-  branch in `Ruleset` only because its surrounding `as Promise<boolean>` cast
-  was removed.
-- Render path: `List`, `Sequence`, `QueryCondition`, `Paren`,
-  `CustomDeclaration`, `Declaration`, `AtRule`, `Ruleset`, `Rules`, and the
-  internal render-buffer adapter now rely on existing `isThenable(...)`
-  narrowing instead of local `as Promise<...>` / sync-result casts where the
-  return type is already a real `MaybePromise<T>`. Rendering still writes
-  through the existing direct writer/buffer paths; no path was changed to
-  resolve into arrays/nodes just to stringify.
+  was added. The pre-existing `BasicSelector`/`SelectorList` ownership
+  materialization in ampersand template merge remains; this pass deletes
+  placement/string churn around that boundary but does not change the boundary.
+- Render path: no render path was changed to resolve into arrays/nodes just to
+  stringify. The ampersand append path now carries only needed placement state:
+  it no longer stores unused `inputItemTexts`, `inputItemCount`,
+  `resultItemTexts`, `resultItemCount`, or `resultText`, and no longer
+  allocates `templateParts` from `split('&')`.
 - Helper/API surface: no helper, method, public API, package entrypoint, or
   runtime wrapper object was added in this pass.
 - Metadata mutations: none. No parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
   read, ownership probe, structural probe, or error-control-flow path was
-  added to runtime code. The diff still shows the pre-existing
-  `value.catch(handleError)` import/drain error cleanup in `Rules` only because
-  its surrounding `as Promise<Node>` cast was removed.
-- Evidence: focused list/sequence/query-condition/paren/declaration/at-rule/
-  ruleset/rules tests passed (`323` passed, `8` skipped). `@jesscss/core`
-  build passed and proved all touched `MaybePromise<T>` branches narrow without
-  local assertions.
-- Hotpath leash: pre-pass at `c6c4d0c` was status-only, not a speed claim:
-  `functions` `14.21ms` usable, `import-reference` `22.67ms` usable,
-  `mixins-guards` `18.16ms` usable, `extend-chaining` `5.90ms` usable, and
-  `media` `6.41ms` noisy. Final dirty post-pass leash was also status-only:
-  `functions` `11.60ms` usable, `import-reference` `18.82ms` unstable,
-  `mixins-guards` `16.43ms` usable, `extend-chaining` `5.07ms` usable, and
-  `media` `5.39ms` unstable.
-- Verdict: keep if review gates stay green. All `as Promise<...>` sites under
-  `packages/core/src/tree` are gone; remaining casts are structural
-  identity/value casts (`as Node`, `as string`, selector utility casts) and
-  should be attacked by tightening ownership/API types, not by mechanical
-  branch edits.
+  added to runtime code.
+- Evidence: focused ampersand/ruleset/selector tests passed (`113` tests).
+  `@jesscss/core` build passed.
+- Hotpath leash: pre-pass at `acc3a910` was status-only, not a speed claim:
+  `functions` `12.37ms` usable, `import-reference` `19.95ms` unstable,
+  `mixins-guards` `16.96ms` usable, `extend-chaining` `5.04ms` usable, and
+  `media` `5.35ms` usable. Final dirty post-pass leash was also status-only:
+  `functions` `11.88ms` usable, `import-reference` `19.60ms` usable,
+  `mixins-guards` `16.21ms` usable, `extend-chaining` `4.82ms` unstable, and
+  `media` `4.81ms` usable.
+- Verdict: keep if review gates stay green. Remaining ampersand debt is the
+  structural selector replacement and class-construction ownership path, not
+  the now-deleted dead placement text arrays or template split/spread churn.

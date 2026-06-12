@@ -1826,6 +1826,33 @@ the deletion of branch-local assertions after existing thenable checks. The
 remaining cast sites are structural identity/value casts and should be handled
 by tightening ownership/API types or node-family contracts.
 
+### Ampersand Append Placement State Cut
+
+Date: 2026-06-12.
+
+Change: removed unused ampersand append placement text fields
+(`inputItemTexts`, `inputItemCount`, `resultItemTexts`, `resultItemCount`,
+`resultText`) and their `toTrimmedString()` array builder. Replaced
+`appendValue.split('&')`/`templateParts` with direct `indexOf` scanning, and
+replaced selector-list `for...of` plus spread-push with indexed loops.
+
+Hotpath status:
+
+- Pre-pass `pnpm run measure:less:hotpath -- --stable` at `acc3a910` reported:
+  `functions` median `12.37ms` usable, `import-reference` median `19.95ms`
+  unstable, `mixins-guards` median `16.96ms` usable,
+  `extend-chaining` median `5.04ms` usable, and `media` median `5.35ms`
+  usable.
+- Final dirty post-pass `pnpm run measure:less:hotpath -- --stable` reported:
+  `functions` median `11.88ms` usable, `import-reference` median `19.60ms`
+  usable, `mixins-guards` median `16.21ms` usable,
+  `extend-chaining` median `4.82ms` unstable, and `media` median `4.81ms`
+  usable.
+
+Interpretation: status only, not a runtime win claim. The code-path proof is
+deleted placement string arrays and deleted split/iterator/spread allocation on
+ampersand append/template evaluation.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
