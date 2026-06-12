@@ -2857,7 +2857,13 @@ the gate passed.
   children, and trivia-backed block output. No render path resolves into
   arrays or nodes just to stringify. Helper/API surface: no new runtime helper,
   method, or public API was added; `Block` imports the existing `Nil` class to
-  identify the already-owned empty child. Metadata mutations: none. Evidence:
+  identify the already-owned empty child. Metadata mutations: none. Rejected
+  cut: a direct plain `Declaration` shortcut was left alone because declaration
+  source serialization still owns custom-property preservation,
+  comment/trivia-after-name/value emission, assignment normalization, merge
+  adapters, important text, and multiline value formatting. Rebuilding the
+  apparent `name: value` case would duplicate that formatting logic and risk
+  semantic drift. Evidence:
   starting leash at commit `d611f2a6` was the previous scalar wrapper run, so
   this pass is not comparison-usable. Focused
   selector-compound/selector-complex/selector-list/block tests passed (`44`
