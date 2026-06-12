@@ -220,8 +220,8 @@ export class SelectorList extends Selector<Selector[]> {
     }
     const evaluatedValue = this.evaluateSelectors(context, false);
     return isThenable(evaluatedValue)
-      ? (evaluatedValue as Promise<Selector[]>).then(value => this.finalizeEvaluatedSelectors(value, true))
-      : this.finalizeEvaluatedSelectors(evaluatedValue as Selector[], true);
+      ? evaluatedValue.then(value => this.finalizeEvaluatedSelectors(value, true))
+      : this.finalizeEvaluatedSelectors(evaluatedValue, true);
   }
 
   protected override resolveForRender(context: Context): MaybePromise<Node> {
@@ -231,8 +231,8 @@ export class SelectorList extends Selector<Selector[]> {
     }
     const resolvedValue = this.evaluateSelectors(context, true);
     return isThenable(resolvedValue)
-      ? (resolvedValue as Promise<Selector[]>).then(value => this.finalizeEvaluatedSelectors(value, false))
-      : this.finalizeEvaluatedSelectors(resolvedValue as Selector[], false);
+      ? resolvedValue.then(value => this.finalizeEvaluatedSelectors(value, false))
+      : this.finalizeEvaluatedSelectors(resolvedValue, false);
   }
 
   private evaluateSelectorsSync(context: Context, resolve: boolean): Selector[] {

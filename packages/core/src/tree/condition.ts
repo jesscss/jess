@@ -90,14 +90,14 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
     const value = this.evaluateBoolean(context);
     if (isThenable(value)) {
-      return (value as Promise<boolean>).then((resolved) => {
+      return value.then((resolved) => {
         const out = String(resolved);
         return isRenderBuffer(bufferOrOptions)
           ? writeRenderText(bufferOrOptions, out)
           : out;
       });
     }
-    const out = String(value as boolean);
+    const out = String(value);
     return isRenderBuffer(bufferOrOptions)
       ? writeRenderText(bufferOrOptions, out)
       : out;
@@ -136,14 +136,14 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     const negated = this._options?.negate === true;
     const leftResult = left.eval(context);
     if (isThenable(leftResult)) {
-      return (leftResult as Promise<Node>).then((resolvedLeft) => {
+      return leftResult.then((resolvedLeft) => {
         const a = getDefaultGuardValue(resolvedLeft, context) ?? resolvedLeft;
         if (!right) {
           return Condition.getBoolValue(a, negated);
         }
         const rightResult = right.eval(context);
         if (isThenable(rightResult)) {
-          return (rightResult as Promise<Node>).then((resolvedRight) => {
+          return rightResult.then((resolvedRight) => {
             const b = getDefaultGuardValue(resolvedRight, context) ?? resolvedRight;
             const result = Condition.getResult(a, b, op!);
             return negated ? !result : result;
@@ -160,7 +160,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     }
     const rightResult = right.eval(context);
     if (isThenable(rightResult)) {
-      return (rightResult as Promise<Node>).then((resolvedRight) => {
+      return rightResult.then((resolvedRight) => {
         const b = getDefaultGuardValue(resolvedRight, context) ?? resolvedRight;
         const result = Condition.getResult(a, b, op!);
         return negated ? !result : result;
@@ -174,8 +174,8 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   private evaluateCondition(context: Context): MaybePromise<Bool> {
     const value = this.evaluateBoolean(context);
     return isThenable(value)
-      ? (value as Promise<boolean>).then(resolved => createPublicBool(resolved))
-      : createPublicBool(value as boolean);
+      ? value.then(resolved => createPublicBool(resolved))
+      : createPublicBool(value);
   }
 
   override evalNode(context: Context): MaybePromise<Bool> {

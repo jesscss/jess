@@ -48,17 +48,17 @@ export class Log extends Node<LogValue, NodeOptions> {
   private runLogEffect(context: Context): MaybePromise<void> {
     const messageResult = this.value.message.eval(context);
     if (isThenable(messageResult)) {
-      return (messageResult as Promise<Node>).then((evaluatedMessage) => {
+      return messageResult.then((evaluatedMessage) => {
         this._logMessage(evaluatedMessage);
       });
     }
-    this._logMessage(messageResult as Node);
+    this._logMessage(messageResult);
   }
 
   override evalNode(context: Context): MaybePromise<Nil> {
     const effect = this.runLogEffect(context);
     return isThenable(effect)
-      ? (effect as Promise<void>).then(createPublicNil)
+      ? effect.then(createPublicNil)
       : createPublicNil();
   }
 

@@ -38,9 +38,9 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
     this.keySetLibrary ??= selectorBits;
     const out = this.value.evalToSelector(context);
     if (isThenable(out)) {
-      return (out as Promise<Selector>).then(selector => attachSelectorBitLibrary(selector, selectorBits));
+      return out.then(selector => attachSelectorBitLibrary(selector, selectorBits));
     }
-    return attachSelectorBitLibrary(out as Selector, selectorBits);
+    return attachSelectorBitLibrary(out, selectorBits);
   }
 
   override resolve(context: Context): MaybePromise<Selector> {
@@ -52,9 +52,9 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
     this.keySetLibrary ??= selectorBits;
     const out = this.value.evalToSelector(context, 'resolve');
     if (isThenable(out)) {
-      return (out as Promise<Selector>).then(selector => attachSelectorBitLibrary(selector, selectorBits));
+      return out.then(selector => attachSelectorBitLibrary(selector, selectorBits));
     }
-    return attachSelectorBitLibrary(out as Selector, selectorBits);
+    return attachSelectorBitLibrary(out, selectorBits);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -62,8 +62,8 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const node = this.resolveValue(context);
     return isThenable(node)
-      ? (node as Promise<Selector>).then(resolved => this.renderOutput(context, resolved, bufferOrOptions, options))
-      : this.renderOutput(context, node as Selector, bufferOrOptions, options);
+      ? node.then(resolved => this.renderOutput(context, resolved, bufferOrOptions, options))
+      : this.renderOutput(context, node, bufferOrOptions, options);
   }
 
   override valueOf(): string {

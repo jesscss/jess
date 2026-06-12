@@ -100,8 +100,8 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const value = this.evaluateRenderValue(context);
     return isThenable(value)
-      ? (value as Promise<string | Any | Interpolated | Node>).then(resolved => this.renderResolvedQuotedValue(context, resolved, bufferOrOptions, options))
-      : this.renderResolvedQuotedValue(context, value as string | Any | Interpolated | Node, bufferOrOptions, options);
+      ? value.then(resolved => this.renderResolvedQuotedValue(context, resolved, bufferOrOptions, options))
+      : this.renderResolvedQuotedValue(context, value, bufferOrOptions, options);
   }
 
   private renderResolvedQuotedValue(
@@ -165,9 +165,9 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     if (value instanceof Node) {
       const out = value.eval(context);
       if (isThenable(out)) {
-        return (out as Promise<Node | Any | Interpolated>).then(cont);
+        return out.then(cont);
       }
-      return cont(out as Node | Any | Interpolated);
+      return cont(out);
     }
     return cont(value);
   }

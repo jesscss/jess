@@ -61,9 +61,9 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
           if (decl && isNode(decl, N.VarDeclaration)) {
             const out = decl.value.value.resolve(context);
             if (isThenable(out)) {
-              return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
+              return out.then(evaluated => quoted(String(evaluated.valueOf())));
             }
-            return quoted(String((out as Node).valueOf()));
+            return quoted(String(out.valueOf()));
           }
         }
       }
@@ -122,11 +122,11 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
           if (decl && isNode(decl, N.VarDeclaration)) {
             const out = decl.value.value.eval(context);
             if (isThenable(out)) {
-              return (out as Promise<Node>).then((evaluated) => {
+              return out.then((evaluated) => {
                 return this.createResolvedValueNode(evaluated);
               });
             }
-            return this.createResolvedValueNode(out as Node);
+            return this.createResolvedValueNode(out);
           }
         }
       }
@@ -165,21 +165,21 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
       return node;
     };
     if (isThenable(name)) {
-      return (name as Promise<string | Node>).then((resolvedName) => {
+      return name.then((resolvedName) => {
         if (isThenable(value)) {
-          return (value as Promise<Node | undefined>).then((resolvedValue) => {
+          return value.then((resolvedValue) => {
             return finalize(resolvedName, resolvedValue);
           });
         }
-        return finalize(resolvedName, value as Node | undefined);
+        return finalize(resolvedName, value);
       });
     }
     if (isThenable(value)) {
-      return (value as Promise<Node | undefined>).then((resolvedValue) => {
-        return finalize(name as string | Node, resolvedValue);
+      return value.then((resolvedValue) => {
+        return finalize(name, resolvedValue);
       });
     }
-    return finalize(name as string | Node, value as Node | undefined);
+    return finalize(name, value);
   }
 
   override resolve(context: Context): MaybePromise<this> {
@@ -204,17 +204,17 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
       return buffer ? writePreparedRenderText(buffer, prepared, mark, out) : out;
     };
     if (isThenable(name)) {
-      return (name as Promise<string | Node>).then((resolvedName) => {
+      return name.then((resolvedName) => {
         if (isThenable(value)) {
-          return (value as Promise<Node | undefined>).then(resolvedValue => finalize(resolvedName, resolvedValue));
+          return value.then(resolvedValue => finalize(resolvedName, resolvedValue));
         }
-        return finalize(resolvedName, value as Node | undefined);
+        return finalize(resolvedName, value);
       });
     }
     if (isThenable(value)) {
-      return (value as Promise<Node | undefined>).then(resolvedValue => finalize(name as string | Node, resolvedValue));
+      return value.then(resolvedValue => finalize(name, resolvedValue));
     }
-    return finalize(name as string | Node, value as Node | undefined);
+    return finalize(name, value);
   }
 
   override toTrimmedString(options?: PrintOptions) {

@@ -96,8 +96,8 @@ export class Operation extends Node<OperationValue> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const output = this.evaluateRenderOperands(context);
     return isThenable(output)
-      ? (output as Promise<OperationRenderResult>).then(result => this.renderEvaluatedOutput(context, result, bufferOrOptions, options))
-      : this.renderEvaluatedOutput(context, output as OperationRenderResult, bufferOrOptions, options);
+      ? output.then(result => this.renderEvaluatedOutput(context, result, bufferOrOptions, options))
+      : this.renderEvaluatedOutput(context, output, bufferOrOptions, options);
   }
 
   private evaluateRenderOperands(context: Context): MaybePromise<OperationRenderResult> {
@@ -180,8 +180,8 @@ export class Operation extends Node<OperationValue> {
       return rendered;
     }
     return isThenable(rendered)
-      ? (rendered as Promise<string>).then(out => writeRenderText(bufferOrOptions, out))
-      : writeRenderText(bufferOrOptions, rendered as string);
+      ? rendered.then(out => writeRenderText(bufferOrOptions, out))
+      : writeRenderText(bufferOrOptions, rendered);
   }
 
   private evaluateOperands(context: Context): MaybePromise<Node> {

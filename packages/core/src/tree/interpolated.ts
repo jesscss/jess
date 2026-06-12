@@ -282,19 +282,19 @@ export class Interpolated<
   evalToSelector(context: Context, mode: 'eval' | 'resolve' = 'eval'): MaybePromise<Selector> {
     const out = this._evalToInterpolated(context, mode);
     if (isThenable(out)) {
-      return (out as Promise<Interpolated<Role>>).then(node => node.createSelector(mode));
+      return out.then(node => node.createSelector(mode));
     }
-    return (out as Interpolated<Role>).createSelector(mode);
+    return out.createSelector(mode);
   }
 
   override evalNode(context: Context): MaybePromise<Any> {
     const out = this._evalToInterpolated(context);
     if (isThenable(out)) {
-      return (out as Promise<Interpolated<Role>>).then((node) => {
+      return out.then((node) => {
         return node.createGeneric();
       });
     }
-    const result = (out as Interpolated<Role>).createGeneric();
+    const result = out.createGeneric();
     return result;
   }
 
@@ -305,11 +305,11 @@ export class Interpolated<
   private resolveValue(context: Context): MaybePromise<Any<Role>> {
     const out = this._evalToInterpolated(context, 'resolve');
     if (isThenable(out)) {
-      return (out as Promise<Interpolated<Role>>).then((node) => {
+      return out.then((node) => {
         return node.createGeneric();
       });
     }
-    const result = (out as Interpolated<Role>).createGeneric();
+    const result = out.createGeneric();
     return result;
   }
 

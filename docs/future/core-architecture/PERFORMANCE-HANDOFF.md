@@ -1768,6 +1768,35 @@ mixed for a runtime claim. The code-path proof is fewer generic thenable
 branches on non-async child eval paths and deletion of unsafe local casts after
 existing type guards.
 
+### Second MaybePromise Narrowing / Sync Child Eval Sweep
+
+Date: 2026-06-12.
+
+Change: extended the same narrowing rule to `Negative`, `Quoted`, `Condition`,
+`AttributeSelector`, `Selector`, `InterpolatedSelector`, `Extend`, `Log`,
+`Operation`, `Node` base registration/eval helpers, `Interpolated`,
+`SelectorList`, `CompoundSelector`, and `ComplexSelector`. `Negative` now uses
+`evalSync(...)` for non-async child render/eval; the other touched paths delete
+local assertions where `isThenable(...)` already proves the branch.
+
+Hotpath status:
+
+- Pre-pass `pnpm run measure:less:hotpath -- --stable` at `1726d33c` reported:
+  `functions` median `13.56ms` usable, `import-reference` median `21.48ms`
+  usable, `mixins-guards` median `17.14ms` usable,
+  `extend-chaining` median `5.15ms` usable, and `media` median `5.47ms`
+  usable.
+- Final dirty post-pass `pnpm run measure:less:hotpath -- --stable` reported:
+  `functions` median `12.99ms` usable, `import-reference` median `19.78ms`
+  usable, `mixins-guards` median `16.72ms` usable,
+  `extend-chaining` median `5.24ms` usable, and `media` median `5.85ms`
+  usable.
+
+Interpretation: status only, not a runtime win claim. The code-path proof is
+deleted assertion scaffolding and a narrower sync assertion boundary on
+`Negative`; remaining casts should be attacked by tightening ownership/API
+types, not by sprinkling more branch-local assertions.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

@@ -174,8 +174,8 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     }
     const evaluatedValue = this.evaluateComponents(context, false);
     return isThenable(evaluatedValue)
-      ? (evaluatedValue as Promise<Array<Selector | Nil>>).then(value => this.finalizeComponents(value, true))
-      : this.finalizeComponents(evaluatedValue as Array<Selector | Nil>, true);
+      ? evaluatedValue.then(value => this.finalizeComponents(value, true))
+      : this.finalizeComponents(evaluatedValue, true);
   }
 
   protected override resolveForRender(context: Context): MaybePromise<Node> {
@@ -185,8 +185,8 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     }
     const resolvedValue = this.evaluateComponents(context, true);
     return isThenable(resolvedValue)
-      ? (resolvedValue as Promise<Array<Selector | Nil>>).then(value => this.finalizeComponents(value, false))
-      : this.finalizeComponents(resolvedValue as Array<Selector | Nil>, false);
+      ? resolvedValue.then(value => this.finalizeComponents(value, false))
+      : this.finalizeComponents(resolvedValue, false);
   }
 
   private evaluateComponentsSync(context: Context, resolve: boolean): Array<Selector | Nil> {

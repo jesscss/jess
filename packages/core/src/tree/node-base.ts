@@ -1049,7 +1049,7 @@ export abstract class Node<
       // Other nodes will get indices assigned by their parent Rules
       const out = node.forEachNode(n => n.prepareRegistration(context), context);
       if (isThenable(out)) {
-        return (out as Promise<void>).then(() => node);
+        return out.then(() => node);
       }
       return node;
     }
@@ -1070,7 +1070,7 @@ export abstract class Node<
       return n.eval(context);
     }, context);
     if (isThenable(out)) {
-      return (out as Promise<void>).then(() => {
+      return out.then(() => {
         return this;
       });
     }
@@ -1099,7 +1099,7 @@ export abstract class Node<
       ? node
       : node.evalNode(context);
     if (isThenable(evaluated)) {
-      return (evaluated as Promise<Node>).then((evald) => {
+      return evaluated.then((evald) => {
         evald.evaluated = true;
         if (node !== evald) {
           evald.inherit(node);

@@ -153,14 +153,14 @@ export class Extend extends Node<ExtendValue> {
       });
     };
     return isThenable(maybeSel)
-      ? (maybeSel as Promise<Selector | Nil>).then(register)
-      : register(maybeSel as Selector | Nil);
+      ? maybeSel.then(register)
+      : register(maybeSel);
   }
 
   override evalNode(context: Context): MaybePromise<Nil> {
     const effect = this.runExtendEffect(context);
     return isThenable(effect)
-      ? (effect as Promise<void>).then(createPublicNil)
+      ? effect.then(createPublicNil)
       : createPublicNil();
   }
 

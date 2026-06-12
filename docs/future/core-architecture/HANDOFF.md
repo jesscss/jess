@@ -788,38 +788,42 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: full `MaybePromise` narrowing and sync-child eval sweep.
+Current pass: second full `MaybePromise` narrowing and sync-child eval sweep.
 
 - New traversal: none added. Existing loops in `evaluate-node-array.ts`,
-  `Declaration`, and `Interpolated` were kept but now rely on existing
-  `isThenable(...)` narrowing instead of local casts.
+  `Declaration`, `Interpolated`, selector collections, `Condition`, and
+  `AttributeSelector` were kept; no loop, recursion, parent/source walk,
+  side-map lookup, or helper-array path was added.
 - New node/materialization: none added. No runtime `Node`, copied node,
   `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
   metadata mutation, side map, helper array, or materialized eval/render value
   was added.
-- Render path: `Expression`, `Block`, and `Url` now use `evalSync(...)` for
-  non-async child render/eval paths and reserve the generic thenable branch for
-  `F_MAY_ASYNC` children. `Block`, `Url`, `Expression`, `PseudoSelector`,
-  `Declaration`, `Interpolated`, and `evaluate-node-array.ts` delete
-  `as Node`/`as Promise<Node>` casts where `isThenable(...)` already narrows
-  `MaybePromise<Node>`.
+- Render path: `Negative` now uses `evalSync(...)` for flag-proven sync
+  child render/eval. `Quoted`, `Condition`, `AttributeSelector`, `Selector`,
+  `InterpolatedSelector`, `Extend`, `Log`, `Operation`, `Node` base,
+  `Interpolated`, `SelectorList`, `CompoundSelector`, and `ComplexSelector`
+  now rely on existing `isThenable(...)` narrowing instead of local
+  `as Promise<...>` / sync-result casts where the return type is already a
+  real `MaybePromise<T>`.
 - Helper/API surface: no helper, method, public API, package entrypoint, or
   runtime wrapper object was added in this pass.
 - Metadata mutations: none. No parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
   read, ownership probe, structural probe, or error-control-flow path was
   added to runtime code.
-- Evidence: focused expression/block/url/pseudo/declaration/interpolated plus
-  call/paren/operation tests passed (`231` tests). `@jesscss/core` build
-  passed and proved TypeScript narrows all touched `MaybePromise<Node>` paths
-  without casts.
-- Hotpath leash: pre-pass at `6963d319` was status-only, not a speed claim:
-  `functions` `13.65ms` unstable, `import-reference` `21.15ms` unstable,
-  `mixins-guards` `17.46ms` unstable, `extend-chaining` `5.43ms` usable, and
-  `media` `5.71ms` noisy. Post-pass dirty leash was also status-only:
-  `functions` `12.88ms` usable, `import-reference` `22.18ms` unstable,
-  `mixins-guards` `18.12ms` usable, `extend-chaining` `5.32ms` noisy, and
-  `media` `5.62ms` unstable.
-- Verdict: keep if review gates stay green. Continue removing remaining
-  `as Node` casts only where `!F_MAY_ASYNC` permits `evalSync(...)` or
-  `isThenable(...)` already narrows a real `MaybePromise<T>`.
+- Evidence: focused negative/log/quoted/selector/interpolated-selector/
+  selector-list/compound/complex/interpolated/operation/extend/condition/
+  attribute tests passed (`151` tests). `@jesscss/core` build passed and
+  proved TypeScript narrows all touched `MaybePromise<T>` paths without local
+  assertions.
+- Hotpath leash: pre-pass at `1726d33c` was status-only, not a speed claim:
+  `functions` `13.56ms` usable, `import-reference` `21.48ms` usable,
+  `mixins-guards` `17.14ms` usable, `extend-chaining` `5.15ms` usable, and
+  `media` `5.47ms` usable. Final dirty post-pass leash was also status-only:
+  `functions` `12.99ms` usable, `import-reference` `19.78ms` usable,
+  `mixins-guards` `16.72ms` usable, `extend-chaining` `5.24ms` usable, and
+  `media` `5.85ms` usable.
+- Verdict: keep if review gates stay green. Remaining `as ...` sites are
+  mostly structural selector/materialization casts, rules/declaration async
+  ladders, or ownership/copy boundaries; do not delete them mechanically
+  without narrowing the underlying API return type or ownership model.

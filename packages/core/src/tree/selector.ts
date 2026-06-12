@@ -136,8 +136,8 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const node = this.resolveForRender(context);
     return isThenable(node)
-      ? (node as Promise<Node>).then(resolved => this.renderOutput(context, resolved, bufferOrOptions, options))
-      : this.renderOutput(context, node as Node, bufferOrOptions, options);
+      ? node.then(resolved => this.renderOutput(context, resolved, bufferOrOptions, options))
+      : this.renderOutput(context, node, bufferOrOptions, options);
   }
 
   /**

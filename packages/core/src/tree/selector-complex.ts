@@ -239,8 +239,8 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     }
     const evaluatedValue = this.evaluateComponents(context, false);
     return isThenable(evaluatedValue)
-      ? (evaluatedValue as Promise<Node[]>).then(value => this.finalizeComponents(context, value, true))
-      : this.finalizeComponents(context, evaluatedValue as Node[], true);
+      ? evaluatedValue.then(value => this.finalizeComponents(context, value, true))
+      : this.finalizeComponents(context, evaluatedValue, true);
   }
 
   protected override resolveForRender(context: Context): MaybePromise<Node> {
@@ -250,8 +250,8 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     }
     const resolvedValue = this.evaluateComponents(context, true);
     return isThenable(resolvedValue)
-      ? (resolvedValue as Promise<Node[]>).then(value => this.finalizeComponents(context, value, false))
-      : this.finalizeComponents(context, resolvedValue as Node[], false);
+      ? resolvedValue.then(value => this.finalizeComponents(context, value, false))
+      : this.finalizeComponents(context, resolvedValue, false);
   }
 
   private evaluateComponentsSync(context: Context, resolve: boolean): Node[] {
