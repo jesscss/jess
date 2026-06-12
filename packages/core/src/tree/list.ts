@@ -369,14 +369,16 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     options?: PrintOptions
   ): string {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const prepared = buffer
-      ? prepareBufferPrintState(context, options, buffer)
-      : prepareRenderPrintState(context, bufferOrOptions);
-    const mark = buffer ? prepared.writer.mark() : 0;
-    const out = this.renderListSyntax(value, prepared);
-    return buffer
-      ? writePreparedRenderText(buffer, prepared, mark, out)
-      : out;
+    const sep = this._options?.sep ?? ',';
+    if (buffer) {
+      const prepared = prepareBufferPrintState(context, options, buffer);
+      const mark = prepared.writer.mark();
+      writeListValueSyntax(value, prepared, sep);
+      const out = prepared.writer.getSince(mark);
+      return writePreparedRenderText(buffer, prepared, mark, out);
+    }
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    return this.renderListSyntax(value, prepared);
   }
 
   private renderDirectListValue(

@@ -32,10 +32,16 @@ async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<voi
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  marks = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
   }
 }
 
@@ -203,6 +209,18 @@ describe('List', () => {
     expect(resolveCalls).toBe(0);
     expect(listNode.evaluated).toBe(false);
     expect(listNode.registrationPrepared).toBe(false);
+  });
+
+  it('writes static list render output into shared flat buffers with one mark', () => {
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const listNode = list([any('one'), any('two')]);
+
+    expect(listNode.render(context, buffer)).toBe('one, two');
+    expect(buffer.parts).toEqual(['one', ', ', 'two']);
+    expect(writer.marks).toBe(1);
   });
 
   it('renders dynamic list values without materializing a replacement list', async () => {

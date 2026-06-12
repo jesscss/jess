@@ -6,11 +6,17 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  marks = 0;
   reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
   }
 
   override getSince(mark: number): string {
@@ -152,6 +158,18 @@ describe('QueryCondition', () => {
     expect(buffer.parts).toEqual(['screen and print']);
     expect(queryNode.evaluated).toBe(false);
     expect(queryNode.registrationPrepared).toBe(false);
+  });
+
+  it('writes static query-condition output into shared flat buffers with one mark', () => {
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const queryNode = query([any('screen'), any('and'), any('(color)')]);
+
+    expect(queryNode.render(context, buffer)).toBe('screen and (color)');
+    expect(buffer.parts).toEqual(['screen', ' ', 'and', ' ', '(color)']);
+    expect(writer.marks).toBe(1);
   });
 
   it('renders query conditions through their own resolved syntax instead of Sequence.render()', async () => {

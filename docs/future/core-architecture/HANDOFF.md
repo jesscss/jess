@@ -69,11 +69,15 @@ The goal is the fastest credible path from parsed Less to CSS output:
 Less is the optimizing path. Preserve SCSS-enabling seams only when they are
 concrete and cheap or isolated behind cold extension boundaries.
 
-Work shape while `writeSyntax` is active: take the next unchecked node or
-family from the tracker, split direct emission from public string capture,
-make render call the direct writer path after value selection, prove output
-with focused tests, run the aggressive cutting gate, record any benchmark/profile
-status if the node is hot, then commit and push. Reject changes that make
+Work shape while `writeSyntax` is active: run full queue batches, not one-node
+dribbles. Sweep the unchecked node/family list in `NODE-REWRITE-TRACKER.md`,
+land every bounded deletion that shares the same proof surface, and stop only
+when the remaining candidates require a larger semantic design, a behavior
+decision, or benchmark-first tradeoff work. For each touched node, split direct
+emission from public string capture, make render call the direct writer path
+after value selection, and prove output with focused tests. Run the aggressive
+cutting gate, record any benchmark/profile status if a touched node is hot,
+then commit and push the whole coherent batch. Reject changes that make
 `render(...)` call public `toString(...)`/`toTrimmedString(...)` as transport,
 or that add helper objects/arrays only to describe syntax.
 
@@ -784,36 +788,43 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: cut `Sequence` static render nil replacement arrays.
+Current pass: full-queue static buffer render capture batch.
 
-- New traversal: no extra runtime traversal beyond the existing sequence item
-  loops. `writeSequenceSyntax(...)` now skips `Nil` while it is already walking
-  the sequence, and `renderResolvedValue(...)` no longer performs a second pass
-  to materialize a filtered child array.
-- New node/materialization: none added. One render-only
-  `new Array<Node>(count)` replacement surface was removed from
-  `Sequence.renderResolvedValue(...)`; no runtime `Node`, copied node,
+- New traversal: no extra runtime traversal beyond existing syntax/item loops.
+  `List.renderResolvedListValue(...)`, `Sequence.renderResolvedValue(...)`, and
+  static `QueryCondition.render(...)` now write syntax directly into the
+  prepared buffer writer instead of entering a nested public syntax capture.
+  `Sequence.writeSequenceSyntax(...)` continues to skip nils during its
+  existing loop; no new child/source walk was added.
+- New node/materialization: none added. No runtime `Node`, copied node,
   `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
   metadata mutation, side map, helper array, or materialized eval/render value
-  was added.
-- Render path: static sequence render now passes the canonical child array into
-  the existing writer and lets the writer skip nils directly. It does not
-  resolve into arrays/nodes just to stringify. Dynamic and async sequence render
-  paths are unchanged.
+  was added. The previous Sequence nil replacement-array deletion remains in
+  place, and this pass adds no replacement materialization. Test-only
+  `CountingWriter` fixtures were added only to prove one-mark shared-buffer
+  rendering.
+- Render path: static flat-buffer render for `List`, `Sequence`, and
+  `QueryCondition` now uses one prepared writer mark and direct syntax writes.
+  Public `toString(...)`/`toTrimmedString(...)` transport is not used for these
+  static buffer paths. Dynamic list/sequence/query-condition render remains on
+  the existing capture/fallback contracts until child render return/write
+  behavior is narrowed with separate proof.
 - Helper/API surface: no helper, method, public API, or package export was
-  added. The existing `writeSequenceSyntax(...)` loop handles nils directly.
+  added. Handoff guidance was updated so `writeSyntax` work runs full queue
+  batches rather than one-node dribbles.
 - Metadata mutations: none. No parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
   read, `Reflect.*`, `Object.hasOwn`, or structural probe was added.
-- Evidence: focused `sequence.test.ts` passed (`31` tests), including new nil
-  source and flat-buffer render coverage for static sequences with leading and
-  middle nil children. The diff deletes the filtered replacement array from
-  `packages/core/src/tree/sequence.ts` and keeps `Sequence` marked partial in
-  `NODE-REWRITE-TRACKER.md` because broader render capture and trivia-backed
-  child `toString(...)` transport remain. Hotpath leash at dirty head
-  `a2f199e2` is status-only, not a speed claim: `functions` `13.55ms` usable,
-  `import-reference` `20.83ms` unstable, `mixins-guards` `17.39ms` unstable,
-  `extend-chaining` `5.16ms` usable, and `media` `5.48ms` noisy.
-- Verdict: keep the deletion. Next Sequence/List work should attack broader
-  buffer/render capture only with focused child-boundary/trivia proof, not by
-  adding another transport object.
+- Evidence: focused `list.test.ts`, `sequence.test.ts`, and
+  `query-condition.test.ts` passed (`71` tests). New shared-flat-buffer tests
+  prove static buffer render for all three touched families uses one writer
+  mark. `NODE-REWRITE-TRACKER.md` keeps all three nodes partial because
+  dynamic render capture and trivia-backed child `toString(...)` boundaries
+  remain. Hotpath leash at dirty head `9a94771f` is status-only, not a speed
+  claim: `functions` `14.06ms` unstable, `import-reference` `22.09ms` usable,
+  `mixins-guards` `17.84ms` unstable, `extend-chaining` `5.34ms` noisy, and
+  `media` `6.73ms` noisy.
+- Verdict: keep the batch. Next full queue pass should continue with dynamic
+  List/Sequence/QueryCondition capture only if it can prove child render
+  write/return contracts directly, otherwise move to the next unchecked node
+  family with an obvious deletion.

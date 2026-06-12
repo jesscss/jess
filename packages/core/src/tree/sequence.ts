@@ -469,14 +469,15 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         ? writeRenderedSequenceNode(buffer, node.render(context, options))
         : node.render(context, bufferOrOptions);
     }
-    const prepared = buffer
-      ? prepareBufferPrintState(context, options, buffer)
-      : prepareRenderPrintState(context, bufferOrOptions);
-    const mark = buffer ? prepared.writer.mark() : 0;
-    const out = this.renderSequenceSyntax(value, prepared);
-    return buffer
-      ? writePreparedRenderText(buffer, prepared, mark, out)
-      : out;
+    if (buffer) {
+      const prepared = prepareBufferPrintState(context, options, buffer);
+      const mark = prepared.writer.mark();
+      this.writeSequenceSyntax(value, prepared);
+      const out = prepared.writer.getSince(mark);
+      return writePreparedRenderText(buffer, prepared, mark, out);
+    }
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    return this.renderSequenceSyntax(value, prepared);
   }
 
   private renderDirectValue(

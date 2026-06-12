@@ -138,6 +138,10 @@ export class QueryCondition extends Sequence {
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, printOptions);
     const mark = buffer ? prepared.writer.mark() : 0;
+    if (buffer && this.hasFlag(F_STATIC)) {
+      this.writeQueryConditionSyntax(this.value, prepared);
+      return writePreparedRenderText(buffer, prepared, mark, prepared.writer.getSince(mark));
+    }
     const rendered = this.hasFlag(F_STATIC)
       ? this.renderQueryConditionSyntax(this.value, prepared)
       : this.renderQueryConditionValue(this.value, prepared, context);

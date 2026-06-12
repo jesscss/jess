@@ -10,11 +10,17 @@ import { N } from '../node-type.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  marks = 0;
   reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
   }
 
   override getSince(mark: number): string {
@@ -346,6 +352,21 @@ describe('Sequence', () => {
 
     expect(sequenceNode.render(context, buffer)).toBe('left right');
     expect(buffer.parts).toEqual(['left right']);
+  });
+
+  it('writes static sequence render output into shared flat buffers with one mark', () => {
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const sequenceNode = seq([
+      any('left'),
+      any('right')
+    ]);
+
+    expect(sequenceNode.render(context, buffer)).toBe('left right');
+    expect(buffer.parts).toEqual(['left', ' ', 'right']);
+    expect(writer.marks).toBe(1);
   });
 
   it('keeps source sequence child containers canonical after resolve(context)', async () => {
