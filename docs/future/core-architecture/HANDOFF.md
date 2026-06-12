@@ -662,7 +662,17 @@ the binding index/scope lookup refactor.
    values instead of applying a post-eval `copyWithReusableLeaves(...)` plus
    `.inherit(reference)`. Focused tests prove dynamic container renders do not
    stamp reference ownership after eval.
-14. [ ] Continue `Reference` before moving to the next node. Audit and cut the
+14. [x] Continue node `writeSyntax` pass. Cut three bounded node-family
+   surfaces without changing semantics: `Mixin.deriveMixin(...)` no longer
+   builds conditional object-spread fragments for optional fields;
+   `Interpolated.writeReplacement(...)` writes through direct
+   `writeSyntax(...)` plus the existing trim window instead of public
+   `toTrimmedString(...)` transport; and `QueryCondition` dynamic render now
+   uses a straight sync loop with one async rest method only after a thenable is
+   observed. Focused `Mixin`, `Interpolated`, `InterpolatedSelector`, and
+   `QueryCondition` tests passed. Hotpath leash was status-only and not a win;
+   see `PERFORMANCE-HANDOFF.md`.
+15. [ ] Continue `Reference` before moving to the next node. Audit and cut the
    remaining copy/materialization pressure: `createRulesLikeReferenceSurface`,
    public `evaluateReferenceValueNode(...)` materialization, merged assign
    normalization, and remaining non-render `.inherit(...)`/
@@ -704,34 +714,34 @@ the binding index/scope lookup refactor.
    callback deletion around the existing public materialization boundary; the
    owned `withResolvedValue(...)`/`withValue(...)` surfaces still exist and
    remain queued.
-15. [ ] Sweep `Ampersand` template placement next. Replace
+16. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
-16. [ ] Sweep selector matching/extend equality. Replace hot `valueOf()` equality
+17. [ ] Sweep selector matching/extend equality. Replace hot `valueOf()` equality
    predicates with structural/keyset checks where possible, keeping
    `valueOf()` only as a measured, cached fast-path when it wins.
-17. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
+18. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
    materialization so routine eval replacement does not imply `.inherit(...)`.
-18. [ ] Replace `StyleImport` first-use placement copies with placement state
+19. [ ] Replace `StyleImport` first-use placement copies with placement state
    that points at canonical source children and preserves import visibility.
-19. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
+20. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
    is source/visibility/placement bookkeeping.
-20. [ ] Replace remaining `Rules` merge output copies with direct merge
+21. [ ] Replace remaining `Rules` merge output copies with direct merge
    placement/render state or a narrow owned-item copier proven by merge tests.
-21. [ ] Convert registration-prep expected misses away from routine `try/catch`
+22. [ ] Convert registration-prep expected misses away from routine `try/catch`
    only after adding tests for unresolved declaration/identity behavior.
-22. [ ] Continue selector/extend factory cuts separately; do not hide selector
+23. [ ] Continue selector/extend factory cuts separately; do not hide selector
    placement copies inside another generic copy helper.
-23. [ ] Replace callable binding copies for static containers with explicit
+24. [ ] Replace callable binding copies for static containers with explicit
    binding/placement state. Static containers should not be copied merely
    because they contain child nodes; `F_HAS_NODE_CHILD` is only a cheap current
    ownership boundary, not a final architecture.
-24. [ ] Attack the measured copy stack next: `copyChild`,
+25. [ ] Attack the measured copy stack next: `copyChild`,
    `copyWithReusableLeaves`, `copyCallableRulesValue`, `constructCopy`, and
    `.inherit(...)`. CPU evidence says these are mostly registration derivation,
    selector header rendering, JS function argument ownership, reference value
    eval, and binding clone debt; do not justify them as render output copying.
-25. [ ] Audit repeated callable/mixin evaluation from the profile before making
+26. [ ] Audit repeated callable/mixin evaluation from the profile before making
    more local helper cuts. If a mixin candidate or output body is evaluated
    more than the semantic call count requires, carry placement/binding state or
    cache the cold public materialization boundary instead of copying/evaluating
@@ -788,41 +798,60 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: ampersand append/template placement cut.
+Current pass: mixin/interpolated/query-condition writer cut.
 
-- New traversal: added only local indexed loops in `Ampersand` to replace worse
-  machinery: one `indexOf`/`while` loop replaces `appendValue.split('&')` and a
-  `templateParts` array, and one indexed nested copy loop replaces
-  `for...of` plus spread-push when flattening selector-list template output.
-  The new `slice(...)` calls are direct substring writes used by that scanner,
-  not array slicing, and replace the old split-parts array. No recursion,
-  parent/source walk, side-map lookup, or helper-array path was added.
-- New node/materialization: none added. No runtime `Node`, copied node,
+- New traversal: no new semantic traversal. The two flagged `for` loops in
+  `QueryCondition` are the same child iteration as before: the first is the
+  existing sync render loop with the local `emitRendered(...)` closure inlined,
+  and the second is the existing async-rest continuation moved from a nested
+  function to a private method. They do not add recursion, parent/source walks,
+  side maps, extra array scans, or another pass over children.
+- New node/materialization: none added. The flagged `nextValue: MixinValue = {`
+  is a replacement for three conditional object-spread fragments in the same
+  `Mixin.deriveMixin(...)` materialization boundary; it is one object the
+  constructor already required, not a new runtime node or helper array. The
+  flagged `value: Node[]` is a method parameter on the async-rest continuation,
+  not a newly materialized array. No new `Node`, copied node,
   `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
   metadata mutation, side map, helper array, or materialized eval/render value
-  was added. The pre-existing `BasicSelector`/`SelectorList` ownership
-  materialization in ampersand template merge remains; this pass deletes
-  placement/string churn around that boundary but does not change the boundary.
-- Render path: no render path was changed to resolve into arrays/nodes just to
-  stringify. The ampersand append path now carries only needed placement state:
-  it no longer stores unused `inputItemTexts`, `inputItemCount`,
-  `resultItemTexts`, `resultItemCount`, or `resultText`, and no longer
-  allocates `templateParts` from `split('&')`.
-- Helper/API surface: no helper, method, public API, package entrypoint, or
-  runtime wrapper object was added in this pass.
-- Metadata mutations: none. No parent restoration, `frozen`, inherited
+  was added. Pre-existing `Mixin.deriveMixin(...)` ownership copies remain for
+  interpolated-name registration prep and are still queued as copy debt.
+- Render path: `Interpolated.writeReplacement(...)` no longer calls public
+  `toTrimmedString(...)` as a render transport. It writes replacement nodes
+  directly through `writeSyntax(...)` and trims the same writer window.
+  `QueryCondition` dynamic render still writes/returns child output directly;
+  it does not resolve into arrays/nodes just to stringify.
+- Helper/API surface: one private `QueryCondition.renderQueryConditionValueRest`
+  async continuation was added to delete the per-render local
+  `emitRendered(...)` closure and nested `renderRest(...)` function from the
+  sync path. No public API, package entrypoint, runtime wrapper, or helper
+  object was added.
+- Metadata mutations: none. The flagged `try` is the existing boundary-trivia
+  save/restore guard moved with the inlined query-condition sync loop; it is
+  not error-driven control flow and it does not allocate or return errors for
+  routine misses. No parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
   read, ownership probe, structural probe, or error-control-flow path was
   added to runtime code.
-- Evidence: focused ampersand/ruleset/selector tests passed (`113` tests).
-  `@jesscss/core` build passed.
-- Hotpath leash: pre-pass at `acc3a910` was status-only, not a speed claim:
-  `functions` `12.37ms` usable, `import-reference` `19.95ms` unstable,
-  `mixins-guards` `16.96ms` usable, `extend-chaining` `5.04ms` usable, and
-  `media` `5.35ms` usable. Final dirty post-pass leash was also status-only:
-  `functions` `11.88ms` usable, `import-reference` `19.60ms` usable,
-  `mixins-guards` `16.21ms` usable, `extend-chaining` `4.82ms` unstable, and
-  `media` `4.81ms` usable.
-- Verdict: keep if review gates stay green. Remaining ampersand debt is the
-  structural selector replacement and class-construction ownership path, not
-  the now-deleted dead placement text arrays or template split/spread churn.
+- Evidence: focused tests passed after rebuilding stale built parser output:
+  `pnpm --filter @jesscss/core test -- src/tree/__tests__/mixin.test.ts
+  src/tree/__tests__/mixin-recursion.test.ts
+  src/tree/__tests__/interpolated.test.ts
+  src/tree/__tests__/selector-interpolated.test.ts
+  src/tree/__tests__/query-condition.test.ts` (`173` passed, `1` skipped).
+  `pnpm --filter @jesscss/core build` passed. `pnpm --filter
+  @jesscss/css-parser build` was needed after the core build because the
+  combined focused test run initially hit stale built `css-parser` output
+  resolving `@jesscss/core`; the rerun passed.
+- Hotpath leash: pre-pass at `9f5b8b43` was status-only, not a speed claim:
+  `functions` `12.64ms` usable, `import-reference` `20.24ms` usable,
+  `mixins-guards` `16.94ms` usable, `extend-chaining` `4.93ms` unstable, and
+  `media` `5.22ms` usable. Final dirty post-pass leash was also status-only
+  and not a win: `functions` `13.18ms` usable, `import-reference` `20.62ms`
+  usable, `mixins-guards` `17.49ms` usable, `extend-chaining` `5.12ms`
+  usable, and `media` `5.35ms` usable.
+- Verdict: keep as behavior-preserving machinery deletion if the review gates
+  stay green, but do not claim runtime improvement. Next cuts should hit larger
+  measured buckets: Reference/copy ownership pressure, callable/mixin repeated
+  evaluation, and selector/header materialization. The flagged `copyChild`
+  token is a doc-only queue target naming existing copy debt, not a new call.

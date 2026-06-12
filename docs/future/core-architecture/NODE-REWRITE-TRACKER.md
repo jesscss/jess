@@ -93,10 +93,11 @@ first measured offenders after the selector pass.
   still captures string output before buffer writes.
 - [ ] `QueryCondition`: direct condition syntax writer exists, source/static
   children use `writeSyntax(...)` instead of public `toString(...)`, static
-  flat-buffer render writes syntax directly with one writer mark, and static
-  child probe traffic is cut; render branches use `MaybePromise` narrowing.
-  Dynamic child render still has a localized writer-mark fallback until child
-  render contracts are fully direct.
+  flat-buffer render writes syntax directly with one writer mark, static child
+  probe traffic is cut, and dynamic render now uses a straight sync loop with
+  an async rest method only after a thenable is observed. Dynamic child render
+  still has a localized writer-mark fallback until child render contracts are
+  fully direct.
 - [x] `Operation`: direct operand/operator writer; source and render operands
   avoid public string transport.
 - [x] `Paren`: direct wrapper writer, child syntax transport, list path, and
@@ -149,11 +150,11 @@ Current hard leftovers after the broad hook sweep:
   into `templateParts`, and no longer uses selector-list iterator/spread
   flattening. Structural selector replacement still has string/class
   construction debt.
-- [ ] `Interpolated`: direct source writer exists and public `replace(...)` no
-  longer uses regex callback scaffolding, but replacement `toTrimmedString`
-  assembly remains where structural emission is possible. Replacement
-  eval/resolve loops now rely on `MaybePromise` narrowing instead of local
-  node/promise casts.
+- [ ] `Interpolated`: direct source writer exists, public `replace(...)` no
+  longer uses regex callback scaffolding, and live writer replacement emission
+  uses `writeSyntax(...)` plus the existing trim window instead of public
+  `toTrimmedString(...)` transport. Cold replacement string assembly,
+  selector/generic materialization, and replacement arrays remain.
 - [x] `InterpolatedSelector`: direct selector writer, cheap kind checks, and
   `MaybePromise` narrowing in eval/resolve/render branches.
 - [x] `Reference`: direct unresolved reference writer; keep eval/render result
@@ -167,8 +168,10 @@ Current hard leftovers after the broad hook sweep:
   whole-call mark/readback, async/helper ladders, and repeated eval.
 - [x] `Func`: direct function signature/body writer, including name/params, if
   public syntax remains necessary.
-- [ ] `Mixin`: direct source syntax/guard writer exists; audit
-  guard/default/body copy interactions and callable candidate output.
+- [ ] `Mixin`: direct source syntax/guard writer exists, and interpolated-name
+  derivation no longer allocates conditional object-spread fragments for
+  optional `name`/`params`/`guard`. Audit guard/default/body copy interactions
+  and callable candidate output.
 - [ ] `MixinCollection`: decide whether public wrapper survives; if yes, direct
   writer only.
 - [ ] `Rules`: direct braced source writer exists and public `toBraced(...)`
@@ -245,7 +248,7 @@ Current hard leftovers after the broad hook sweep:
 | For | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, pattern/iterable children use direct writers, and range-bound closure is gone. Loop state/body surface and async branch audit remain. |
 | Func | `packages/core/src/tree/function.ts` | `Node` | direct child writer complete | Public function syntax writes directly through name/params and body braced writer; function call/eval machinery remains. |
 | If | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, condition children use direct writers, branch serialization avoids rest-array allocation, and selected branch buffer render uses the existing `RenderBuffer` instead of a detached rules string. Eval/body surface audit remains. |
-| Interpolated | `packages/core/src/tree/interpolated.ts` | `Node` | partial | Direct source writer exists, public `replace(...)` uses a plain placeholder loop instead of regex callback scaffolding, and replacement plus selector/generic eval/resolve paths use thenable narrowing instead of local node/promise casts; high-priority selector eval, generic materialization, replacement capture, and replacement arrays remain. |
+| Interpolated | `packages/core/src/tree/interpolated.ts` | `Node` | partial | Direct source writer exists, public `replace(...)` uses a plain placeholder loop instead of regex callback scaffolding, live writer replacement emission uses `writeSyntax(...)` instead of public `toTrimmedString(...)` transport, and replacement plus selector/generic eval/resolve paths use thenable narrowing instead of local node/promise casts; high-priority selector eval, generic materialization, cold replacement capture, and replacement arrays remain. |
 | InterpolatedSelector | `packages/core/src/tree/selector-interpolated.ts` | `SimpleSelector` | direct writer/kind check complete | Source syntax writes directly through `Interpolated.writeSyntax(...)`; `isClass`/`isId`/`isTag` use first-character checks instead of regex, and eval/render selector output uses `MaybePromise` narrowing. |
 | JsArray | `packages/core/src/tree/js-array.ts` | `Node` | removal candidate | No Less/SCSS/Jess parser constructs it, `cast([...])` creates `List`, and only explicit public API/tests use it. Do not polish; remove only in a dedicated API-breaking host-wrapper pass. |
 | JsExpression | `packages/core/src/tree/js-expr.ts` | `Node` | scalar wrapper complete | Backtick source syntax writes the known scalar token directly with no writer readback; JS eval path remains. Skip deeper polish unless JS eval support is being redesigned. |
@@ -255,7 +258,7 @@ Current hard leftovers after the broad hook sweep:
 | Keyword | `packages/core/src/tree/any.ts` | `Any` | writeSyntax hook complete | Scalar emission uses `Any.writeSyntax`; broader compare/string normalization remains. |
 | List | `packages/core/src/tree/list.ts` | `Node` | partial | Direct item writer exists, no-trivia items avoid public `toString(...)`, static flat-buffer render writes syntax directly with one writer mark, cached `valueOf()` uses a plain loop instead of callback-array joining, and render/eval item branches use `MaybePromise` narrowing. Trivia-backed item emission, dynamic render string capture before buffer writes, and eval/render item-loop audit remain. |
 | Log | `packages/core/src/tree/log.ts` | `Node` | complete | Empty source writer complete, redundant `toString(...)` override removed, and side-effect eval/render path is direct with `MaybePromise` narrowing. |
-| Mixin | `packages/core/src/tree/mixin.ts` | `Node` | partial | Source syntax writer exists and name/params/guard use direct child writers; high priority remains for guard/default/body copy and callable candidate output. |
+| Mixin | `packages/core/src/tree/mixin.ts` | `Node` | partial | Source syntax writer exists and name/params/guard use direct child writers; interpolated-name derivation now builds the owned value object directly instead of allocating conditional spread fragments; high priority remains for guard/default/body copy and callable candidate output. |
 | MixinCollection | `packages/core/src/tree/util/callable-collection.ts` | `Node` | queued | Audit whether this public node wrapper is still necessary. |
 | Negative | `packages/core/src/tree/negative.ts` | `Node` | partial scalar wrapper complete | Prefix syntax writes directly, simple dimension source/render output writes known scalar text with no writer readback, arbitrary child syntax still calls child `writeSyntax(...)`, and non-async child render/eval uses `evalSync(...)`. Unit/text classification remains. |
 | Nil | `packages/core/src/tree/nil.ts` | `Node` | writeSyntax hook complete | Empty writer complete; singleton/scalar allocation remains. |
@@ -263,7 +266,7 @@ Current hard leftovers after the broad hook sweep:
 | Operation | `packages/core/src/tree/operation.ts` | `Node` | writeSyntax hook complete | Source operator syntax and operands write directly with no public `toString(...)`; render operand branches use `MaybePromise` narrowing. Arithmetic eval/calc fallback remains high priority. |
 | Paren | `packages/core/src/tree/paren.ts` | `Node` | writeSyntax hook complete | Wrapper syntax and child source syntax write directly through `writeSyntax(...)`; render wrapper branch uses `MaybePromise` narrowing. Guard/string conversion render audit remains. |
 | PseudoSelector | `packages/core/src/tree/selector-pseudo.ts` | `SimpleSelector` | writeSyntax complete | Direct writer hook and child arg writer exist, generated keyset omission is fixed, cold private source-string wrapper is gone, selector-list args now write inline without capture/replace/restore, and eval arg handling uses thenable narrowing instead of local node/promise casts. Eval arg materialization remains separate. |
-| QueryCondition | `packages/core/src/tree/query-condition.ts` | `Sequence` | partial | Source/static child syntax now uses `writeSyntax(...)` instead of public `toString(...)`, static flat-buffer render writes syntax directly with one writer mark, static child render avoids writer-mark probes, and render branches use `MaybePromise` narrowing. Dynamic child render keeps one localized mark fallback because child render may write or return until downstream contracts are direct. |
+| QueryCondition | `packages/core/src/tree/query-condition.ts` | `Sequence` | partial | Source/static child syntax now uses `writeSyntax(...)` instead of public `toString(...)`, static flat-buffer render writes syntax directly with one writer mark, static child render avoids writer-mark probes, render branches use `MaybePromise` narrowing, and dynamic render no longer allocates local closure/rest scaffolding on the sync path. Dynamic child render keeps one localized mark fallback because child render may write or return until downstream contracts are direct. |
 | Quoted | `packages/core/src/tree/quoted.ts` | `Node` | partial scalar wrapper complete | Literal quoted source syntax writes the known scalar token directly with no writer readback; node/interpolated quoted values stay on the existing writer boundary, child node syntax writes directly, and render/eval value branches use `MaybePromise` narrowing. |
 | Range | `packages/core/src/tree/range.ts` | `Node` | writeSyntax hook complete | Range syntax and bound child syntax write directly with no local public string wrapper. |
 | RawRules | `packages/core/src/tree/rules-raw.ts` | `Rules` | direct braced writer complete | Raw body/braced loops use indexed loops, no-trivia children call `writeSyntax(...)`, and trivia-backed children keep `toString(...)` for exact whitespace/comment preservation. Broader Rules audit remains. |

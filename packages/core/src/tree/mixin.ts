@@ -126,13 +126,20 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   }
 
   private deriveMixin(value: MixinValue): Mixin {
+    const nextValue: MixinValue = {
+      rules: this.ownRules(value.rules)
+    };
+    if (value.name !== undefined) {
+      nextValue.name = this.ownName(value.name);
+    }
+    if (value.params !== undefined) {
+      nextValue.params = this.ownParams(value.params);
+    }
+    if (value.guard !== undefined) {
+      nextValue.guard = this.ownGuard(value.guard);
+    }
     return new Mixin(
-      {
-        ...(value.name !== undefined && { name: this.ownName(value.name) }),
-        rules: this.ownRules(value.rules),
-        ...(value.params !== undefined && { params: this.ownParams(value.params) }),
-        ...(value.guard !== undefined && { guard: this.ownGuard(value.guard) })
-      },
+      nextValue,
       this._options ? { ...this._options } : undefined,
       this.location.length ? this.location : undefined,
       this.sourceRoot?._treeContext

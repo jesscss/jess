@@ -1853,6 +1853,38 @@ Interpretation: status only, not a runtime win claim. The code-path proof is
 deleted placement string arrays and deleted split/iterator/spread allocation on
 ampersand append/template evaluation.
 
+### Mixin / Interpolated / QueryCondition Writer Cut
+
+Date: 2026-06-12.
+
+Change: `Mixin.deriveMixin(...)` now builds its owned value object directly
+instead of allocating conditional object-spread fragments for optional fields.
+`Interpolated.writeReplacement(...)` writes replacement nodes through
+`writeSyntax(...)` plus the existing trim window instead of calling public
+`toTrimmedString(...)` as writer transport. `QueryCondition` dynamic render now
+uses a straight sync loop and only enters an async rest method after a thenable
+is observed, deleting the per-render local closure/rest scaffold from the sync
+path.
+
+Hotpath status:
+
+- Pre-pass `pnpm run measure:less:hotpath -- --stable` at `9f5b8b43`
+  reported: `functions` median `12.64ms` usable, `import-reference` median
+  `20.24ms` usable, `mixins-guards` median `16.94ms` usable,
+  `extend-chaining` median `4.93ms` unstable, and `media` median `5.22ms`
+  usable.
+- Final dirty post-pass `pnpm run measure:less:hotpath -- --stable` reported:
+  `functions` median `13.18ms` usable, `import-reference` median `20.62ms`
+  usable, `mixins-guards` median `17.49ms` usable,
+  `extend-chaining` median `5.12ms` usable, and `media` median `5.35ms`
+  usable.
+
+Interpretation: status only, not a runtime win claim. The post-pass medians
+were slower across the leash, so this pass is kept only as behavior-preserving
+machinery deletion. Next performance-sensitive cuts should prioritize larger
+measured buckets rather than more local polish unless the code path is
+obviously wrong.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

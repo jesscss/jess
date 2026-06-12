@@ -62,63 +62,80 @@ export class QueryCondition extends Sequence {
       return '';
     }
 
-    const emitRendered = (node: Node): MaybePromise<void> => {
+    for (let i = 0; i < length; i++) {
+      if (i > 0) {
+        w.add(' ');
+      }
+      const node = value[i]!;
       const saved = options.suppressBoundaryTrivia;
       options.suppressBoundaryTrivia = 'pre';
       let asyncOut = false;
       try {
         if (node.hasFlag(F_STATIC) && !this.hasFlag(F_MAY_ASYNC)) {
           node.writeSyntax(options);
-          return;
-        }
-        const before = w.mark();
-        const rendered = node.render(context, options);
-        if (isThenable(rendered)) {
-          asyncOut = true;
-          return rendered.then(
-            (out) => {
-              if (w.mark() === before) {
-                w.add(out);
+        } else {
+          const before = w.mark();
+          const rendered = node.render(context, options);
+          if (isThenable(rendered)) {
+            asyncOut = true;
+            return rendered.then(
+              (out) => {
+                if (w.mark() === before) {
+                  w.add(out);
+                }
+                options.suppressBoundaryTrivia = saved;
+                return this.renderQueryConditionValueRest(value, options, context, mark, i + 1);
+              },
+              (error) => {
+                options.suppressBoundaryTrivia = saved;
+                throw error;
               }
-              options.suppressBoundaryTrivia = saved;
-            },
-            (error) => {
-              options.suppressBoundaryTrivia = saved;
-              throw error;
-            }
-          );
-        }
-        if (w.mark() === before) {
-          w.add(rendered);
+            );
+          }
+          if (w.mark() === before) {
+            w.add(rendered);
+          }
         }
       } finally {
         if (!asyncOut) {
           options.suppressBoundaryTrivia = saved;
         }
       }
-    };
-
-    for (let i = 0; i < length; i++) {
-      if (i > 0) {
-        w.add(' ');
-      }
-      const rendered = emitRendered(value[i]!);
-      if (isThenable(rendered)) {
-        return rendered.then(() => renderRest(i + 1));
-      }
     }
 
     return w.getSince(mark);
+  }
 
-    async function renderRest(start: number): Promise<string> {
-      for (let i = start; i < length; i++) {
-        if (i > 0) {
-          w.add(' ');
-        }
-        await emitRendered(value[i]!);
+  private async renderQueryConditionValueRest(
+    value: Node[],
+    options: FinalPrintOptions,
+    context: Context,
+    mark: number,
+    start: number
+  ): Promise<string> {
+    const w = options.writer;
+    for (let i = start; i < value.length; i++) {
+      if (i > 0) {
+        w.add(' ');
       }
-      return w.getSince(mark);
+      const node = value[i]!;
+      const saved = options.suppressBoundaryTrivia;
+      options.suppressBoundaryTrivia = 'pre';
+      try {
+        if (node.hasFlag(F_STATIC) && !this.hasFlag(F_MAY_ASYNC)) {
+          node.writeSyntax(options);
+          continue;
+        }
+        const before = w.mark();
+        const rendered = await node.render(context, options);
+        if (w.mark() === before) {
+          w.add(rendered);
+        }
+      } finally {
+        options.suppressBoundaryTrivia = saved;
+      }
     }
+    return w.getSince(mark);
   }
 
   override toTrimmedString(options?: PrintOptions): string {

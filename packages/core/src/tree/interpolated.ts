@@ -136,7 +136,8 @@ export class Interpolated<
   }
 
   private writeReplacement(replacement: Node, options: PrintOptions): void {
-    const w = getPrintOptions(options).writer!;
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer!;
     if (isNode(replacement, N.Quoted) && !this.options.preserveQuotedSyntax) {
       // Interpolated string slots merge raw string content.
       // Using valueOf() avoids re-emitting inner quote delimiters.
@@ -144,7 +145,7 @@ export class Interpolated<
       return;
     }
     const mark = w.mark();
-    replacement.toTrimmedString(options);
+    replacement.writeSyntax(printOptions);
     if (!isNode(replacement, N.Reference)) {
       w.trimStartSince(mark);
       w.trimEndSince(mark);
