@@ -71,6 +71,14 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
       options.writer.add(out, this);
       return out;
     }
+    if (left instanceof Bool && right instanceof Bool && op) {
+      const leftText = left.value ? 'true' : 'false';
+      const rightText = right.value ? 'true' : 'false';
+      const conditionText = `(${leftText} ${op} ${rightText})`;
+      const out = negate ? `not ${conditionText}` : conditionText;
+      options.writer.add(out, this);
+      return out;
+    }
     const mark = options.writer.mark();
     this.writeSyntax(options);
     const w = options.writer;

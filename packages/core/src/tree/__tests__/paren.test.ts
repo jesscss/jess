@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
-import { any, Bool, call, list, Node, num, Paren, paren, ref, rules, Rules, vardecl } from '../index.js';
+import { any, Bool, call, list, nil, Node, num, Paren, paren, ref, rules, Rules, vardecl } from '../index.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
@@ -67,6 +67,18 @@ describe('Paren', () => {
     expect(escapedWriter.toString()).toBe('~()');
     expect(escapedWriter.reads).toBe(0);
     expect(paren(undefined, { delimiter: 'square' }).toTrimmedString({ writer: squareWriter })).toBe('[]');
+    expect(squareWriter.toString()).toBe('[]');
+    expect(squareWriter.reads).toBe(0);
+  });
+
+  it('writes nil paren syntax without writer readback when trivia is inactive', () => {
+    const writer = new CountingWriter();
+    const squareWriter = new CountingWriter();
+
+    expect(paren(nil()).toTrimmedString({ writer })).toBe('()');
+    expect(writer.toString()).toBe('()');
+    expect(writer.reads).toBe(0);
+    expect(paren(nil(), { delimiter: 'square' }).toTrimmedString({ writer: squareWriter })).toBe('[]');
     expect(squareWriter.toString()).toBe('[]');
     expect(squareWriter.reads).toBe(0);
   });

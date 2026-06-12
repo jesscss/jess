@@ -2871,3 +2871,31 @@ the gate passed.
   comparison-usable: `functions` `10.99ms` unstable, `import-reference`
   `15.64ms` usable, `mixins-guards` `14.16ms` usable, `extend-chaining`
   `4.33ms` usable, and `media` `4.57ms` usable. This is not a speed claim.
+- Boolean condition / nil paren readback cuts: accepted as a narrow
+  public/source writer readback deletion pass. New traversal: none; no loop,
+  recursion, parent/source walk, side-map lookup, generator, object scan, or
+  array helper was added. `Condition.toTrimmedString(...)` now writes and
+  returns boolean-vs-boolean source forms directly, including negated
+  comparisons, after the existing boolean-only branch. `Paren.toTrimmedString`
+  now treats a `Nil` child as empty only when no active trivia map is present,
+  so it writes and returns `()`, `~()`, or `[]` directly without opening a
+  writer mark; trivia-backed nil parens keep the existing child/trivia writer
+  path. New node/materialization: none in runtime code; no `Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  mutation, semantic placement state, side map, helper array, or public
+  materialized condition/paren surface was added. Test-only `CountingWriter`
+  instances prove zero writer readback and are not runtime allocation. Render
+  path: unchanged for evaluated condition output, non-boolean operands, parens
+  with real child values, and trivia-backed parens. No render path resolves
+  into arrays or nodes just to stringify. Helper/API surface: no new runtime
+  helper, method, or public API was added; `Paren` imports the existing `Nil`
+  class to identify an already-owned empty child. Metadata mutations: none.
+  Rejected cut: node-backed `Color.toTrimmedString(...)` remains on the child
+  writer path because scalar colors are already direct and preserved node colors
+  require real child syntax emission. Evidence: starting leash at commit
+  `cdc2ecd9` was the declaration-rejection doc pass, so this pass is not
+  comparison-usable. Focused condition/paren tests passed (`43` tests).
+  Post-pass hotpath sanity at dirty head `cdc2ecd9` was usable but not
+  comparison-usable: `functions` `12.28ms`, `import-reference` `19.97ms`,
+  `mixins-guards` `17.15ms`, `extend-chaining` `5.49ms`, and `media`
+  `5.94ms`. This is not a speed claim.

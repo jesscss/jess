@@ -5,6 +5,7 @@ import { Operation } from './operation.js';
 import { Node, defineType, F_MAY_ASYNC, F_NON_STATIC, type NodeLocation } from './node.js';
 import { Dimension } from './dimension.js';
 import { List, renderListValueSyntax } from './list.js';
+import { Nil } from './nil.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
@@ -95,7 +96,8 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
 
   override toTrimmedString(options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
-    if (!this.value) {
+    const isEmptyValue = !this.value || (this.value instanceof Nil && !printOptions.trivia);
+    if (isEmptyValue) {
       const escapeChar = this._options?.escaped ? '~' : '';
       const out = this._options?.delimiter === 'square'
         ? `${escapeChar}[]`

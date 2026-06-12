@@ -71,6 +71,22 @@ describe('Condition', () => {
       expect(writer.reads).toBe(0);
     });
 
+    it('writes boolean comparison condition syntax without writer readback', () => {
+      const writer = new CountingWriter();
+
+      expect(condition([bool(true), '=', bool(false)]).toTrimmedString({ writer })).toBe('(true = false)');
+      expect(writer.toString()).toBe('(true = false)');
+      expect(writer.reads).toBe(0);
+    });
+
+    it('writes negated boolean comparison condition syntax without writer readback', () => {
+      const writer = new CountingWriter();
+
+      expect(condition([bool(true), 'and', bool(false)], { negate: true }).toTrimmedString({ writer })).toBe('not (true and false)');
+      expect(writer.toString()).toBe('not (true and false)');
+      expect(writer.reads).toBe(0);
+    });
+
     it('does not allocate options when rendering a default condition', () => {
       const node = condition([
         bool(true),
