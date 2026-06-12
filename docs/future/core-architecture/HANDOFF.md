@@ -788,7 +788,7 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Call node-valued name writer cut.
+Current pass: Call evaluated arg/content writer cut.
 
 - New traversal: none. No loop, recursion, child/source/parent walk, callback
   iterator, side-map lookup, or object/array scan was added.
@@ -796,31 +796,32 @@ Current pass: Call node-valued name writer cut.
   `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
   metadata mutation, side map, helper array, or materialized eval/render value
   was added.
-- Render path: `renderPlainFunctionCall(...)` and
-  `renderFinalizedCallSyntax(...)` now write node-valued call names through the
-  already-prepared writer with `writeSyntax(...)` instead of public
-  `toTrimmedString(...)` transport. Argument and content rendering remain on
-  their existing evaluated-node string boundaries and stay queued separately.
+- Render path: `serializeRenderedArgs(...)`, `renderPlainFunctionCall(...)`,
+  and `renderFinalizedCallSyntax(...)` now write already-evaluated call
+  argument and content nodes through the prepared writer with
+  `writeSyntax(...)` instead of public `toTrimmedString(...)` transport. This
+  includes the escaped-paren argument branch.
 - Helper/API surface: no helper, method, public API, or package export was
   added. The pass reuses the existing prepared print options already allocated
   by both render paths.
 - Metadata mutations: none. No parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
   read, ownership probe, or structural probe was added to runtime code.
-- Evidence: focused `call.test.ts` passed (`78` tests). The dynamic CSS call
-  name test now turns the evaluated name node's public `toTrimmedString(...)`
-  into a counter tripwire and proves render still emits `rgb(...)` without
-  calling it. `NODE-REWRITE-TRACKER.md` records Call as partial because
-  evaluated argument/content emission, callable output value selection, async
-  branches, helper ladders, and repeated eval remain.
-- Hotpath leash: pre-pass at `a8e7397b` was status-only, not a speed claim:
-  `functions` `12.60ms` unstable, `import-reference` `21.77ms` usable,
-  `mixins-guards` `17.86ms` unstable, `extend-chaining` `5.34ms` noisy, and
-  `media` `5.72ms` noisy. Post-pass dirty leash is also status-only:
-  `functions` `11.90ms` usable, `import-reference` `19.30ms` usable,
-  `mixins-guards` `16.50ms` usable, `extend-chaining` `5.36ms` usable, and
-  `media` `5.34ms` unstable.
+- Evidence: focused `call.test.ts` passed (`81` tests). New tripwires turn the
+  evaluated argument, escaped-argument inner value, and evaluated content
+  node's public `toTrimmedString(...)` into counters and prove render still
+  emits the expected call output without calling them. `NODE-REWRITE-TRACKER.md`
+  records Call as partial because callable output value selection,
+  `evalArgNodes(...)` copy pressure, whole-call mark/readback, async/helper
+  ladders, and repeated eval remain.
+- Hotpath leash: pre-pass at `8099e114` was status-only, not a speed claim:
+  `functions` `13.05ms` unstable, `import-reference` `20.80ms` unstable,
+  `mixins-guards` `17.10ms` usable, `extend-chaining` `5.10ms` usable, and
+  `media` `5.85ms` usable. Post-pass at dirty tree was also status-only:
+  `functions` `12.87ms` unstable, `import-reference` `20.64ms` unstable,
+  `mixins-guards` `17.28ms` unstable, `extend-chaining` `5.30ms` unstable,
+  and `media` `5.81ms` noisy.
 - Verdict: keep the cut if the post-pass gates stay green. Next full queue
-  pass should continue Call only for evaluated arg/content transport or a real
-  callable branch deletion; otherwise move to AtRule direct header/body writer
-  work or the remaining Ruleset header capture.
+  pass should attack a real `Call` ownership/copy branch only with focused
+  proof, otherwise move to AtRule direct header/body writer work or the
+  remaining Ruleset header capture.

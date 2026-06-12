@@ -1689,6 +1689,34 @@ node-local prepare/write pairs using the already introduced shared flat writer
 finish path. The remaining `Rules` bridge needs a staging-separation pass,
 not a blind shared-writer conversion.
 
+### Call Evaluated Arg/Content Writer Leash
+
+Date: 2026-06-12.
+
+Change: plain/finalized `Call` rendering now writes already-evaluated argument
+and content nodes through `writeSyntax(...)` instead of public
+`toTrimmedString(...)` transport. The cut covers normal arguments,
+escaped-paren argument inners, and call content.
+
+Hotpath status:
+
+- Pre-pass `pnpm run measure:less:hotpath -- --stable` at `8099e114` reported:
+  `functions` median `13.05ms` unstable, `import-reference` median `20.80ms`
+  unstable, `mixins-guards` median `17.10ms` usable,
+  `extend-chaining` median `5.10ms` usable, and `media` median `5.85ms`
+  usable.
+- Post-pass dirty `pnpm run measure:less:hotpath -- --stable` reported:
+  `functions` median `12.87ms` unstable, `import-reference` median `20.64ms`
+  unstable, `mixins-guards` median `17.28ms` unstable,
+  `extend-chaining` median `5.30ms` unstable, and `media` median `5.81ms`
+  noisy.
+
+Interpretation: status only, not speed proof. The code-path proof is the
+removal of public string API transport for evaluated `Call` arg/content nodes,
+with focused tests that trip if `toTrimmedString(...)` is called. Remaining
+`Call` work is ownership/copy pressure, whole-call mark/readback, and helper
+ladder reduction.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

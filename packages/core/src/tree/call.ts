@@ -507,11 +507,11 @@ export class Call extends Node<CallValue, CallOptions> {
           };
           if (isThenable(rendered)) {
             return rendered.then((value) => {
-              value.toTrimmedString(printOptions);
+              value.writeSyntax(printOptions);
               return finishParen();
             });
           }
-          (rendered as Node).toTrimmedString(printOptions);
+          (rendered as Node).writeSyntax(printOptions);
           return finishParen();
         }
         w.add(')', arg);
@@ -522,11 +522,11 @@ export class Call extends Node<CallValue, CallOptions> {
         const rendered = arg.eval(context);
         if (isThenable(rendered)) {
           return rendered.then((value) => {
-            value.toTrimmedString(printOptions);
+            value.writeSyntax(printOptions);
             return finishArg(argMark);
           });
         }
-        (rendered as Node).toTrimmedString(printOptions);
+        (rendered as Node).writeSyntax(printOptions);
         return finishArg(argMark);
       }
     };
@@ -568,11 +568,11 @@ export class Call extends Node<CallValue, CallOptions> {
         const renderedContent = contentNode.eval(context);
         if (isThenable(renderedContent)) {
           return renderedContent.then((value) => {
-            value.toTrimmedString(prepared);
+            value.writeSyntax(printOptions);
             return w.getSince(mark);
           });
         }
-        (renderedContent as Node).toTrimmedString(prepared);
+        (renderedContent as Node).writeSyntax(printOptions);
         return w.getSince(mark);
       }
       return w.getSince(mark);
@@ -627,11 +627,11 @@ export class Call extends Node<CallValue, CallOptions> {
         const renderedContent = contentNode.eval(context);
         if (isThenable(renderedContent)) {
           return renderedContent.then((value) => {
-            value.toTrimmedString(prepared);
+            value.writeSyntax(printOptions);
             return w.getSince(mark);
           });
         }
-        (renderedContent as Node).toTrimmedString(prepared);
+        (renderedContent as Node).writeSyntax(printOptions);
         return w.getSince(mark);
       }
       return w.getSince(mark);

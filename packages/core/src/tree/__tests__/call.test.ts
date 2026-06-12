@@ -299,6 +299,72 @@ describe('Call', () => {
     expect(rule.registrationPrepared).toBe(false);
   });
 
+  it('renders evaluated CSS call arguments without public string transport', async () => {
+    const arg = any('source');
+    const renderedArg = any('20');
+    let renderedArgPublicStringCalls = 0;
+    renderedArg.toTrimmedString = () => {
+      renderedArgPublicStringCalls++;
+      return 'wrong-arg';
+    };
+    arg.eval = function evalForArgTransport() {
+      return renderedArg;
+    };
+    const rule = call({
+      name: 'rgb',
+      args: list([num(10), arg, num(30)])
+    });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('rgb(10, 20, 30)');
+    expect(renderedArgPublicStringCalls).toBe(0);
+    expect(rule.evaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders evaluated escaped call arguments without public string transport', async () => {
+    const inner = any('source');
+    const renderedInner = any('a, b');
+    let renderedInnerPublicStringCalls = 0;
+    renderedInner.toTrimmedString = () => {
+      renderedInnerPublicStringCalls++;
+      return 'wrong-inner';
+    };
+    inner.eval = function evalForEscapedArgTransport() {
+      return renderedInner;
+    };
+    const rule = call({
+      name: 'func',
+      args: list([paren(inner, { escaped: true })])
+    });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('func((a, b))');
+    expect(renderedInnerPublicStringCalls).toBe(0);
+    expect(rule.evaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders evaluated CSS call content without public string transport', async () => {
+    const content = any('source-content');
+    const renderedContent = any('body-output');
+    let renderedContentPublicStringCalls = 0;
+    renderedContent.toTrimmedString = () => {
+      renderedContentPublicStringCalls++;
+      return 'wrong-content';
+    };
+    content.eval = function evalForContentTransport() {
+      return renderedContent;
+    };
+    const rule = call({
+      name: 'wrap',
+      contentNode: content
+    });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('wrap(): body-output');
+    expect(renderedContentPublicStringCalls).toBe(0);
+    expect(rule.evaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
   it('renders dynamic calc names through one name eval with calc frames', async () => {
     const name = any('source-name');
     let nameEvaluations = 0;
