@@ -422,7 +422,6 @@ export function findDeclarationDirect(
     options.findAll
     || options.candidates
     || options.optionalCandidates
-    || options.searchedRules
     || (filterType !== 'VarDeclaration' && options.semanticFilter)
   ) {
     return DIRECT_DECLARATION_LOOKUP_UNCOVERED;

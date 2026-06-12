@@ -957,6 +957,19 @@ left for this branch.
      `value` array again.
    - Done: focused declaration/property/import/mixin/scope suites pass.
 
+7d. [x] Stop registry recursion bookkeeping from forcing covered declaration
+    lookup back to `DeclarationRegistry`.
+   `findDeclarationDirect(...)` now treats `searchedRules` as old registry loop
+   bookkeeping, not an unsupported lookup mode. The direct walker already owns
+   a per-call visited set, so covered exact variable/property hits and misses
+   can remain on the direct path even when a caller carries `searchedRules`.
+
+   Completion gate:
+   - Done: focused variable and property tests pass `searchedRules` while
+     proving `Rules.getRegistry('declaration')` is not opened.
+   - Done: direct lookup caching remains disabled for `searchedRules` shapes;
+     this pass only deletes the registry fallback, not loop-state caching.
+
 Parked secondary deep-cut queue:
 
 Do not select this queue while the Focus Spec is registryless lookup/binding.
@@ -1285,6 +1298,33 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Declaration `searchedRules` bridge pass: accepted as a narrow declaration
+  registry fallback deletion, not as a speed claim. Files:
+  `packages/core/src/tree/util/direct-rules-lookup.ts`,
+  `packages/core/src/tree/__tests__/reference.test.ts`,
+  `docs/future/core-architecture/HANDOFF.md`, and
+  `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`.
+  - New traversal: none. `findDeclarationDirect(...)` already creates and
+    owns its direct-walk visited set. This pass only stops treating an incoming
+    registry `searchedRules` marker as an unsupported option shape.
+  - New node/materialization: none. No node, wrapper `Rules`, copy,
+    `.inherit(...)`, `.adopt(...)`, source metadata, parent mutation, map/set,
+    helper array, or materialized output was added in production. The only new
+    `Set` allocation is in focused tests to simulate the old registry
+    `searchedRules` bookkeeping option.
+  - Render path: unchanged. This only changes whether covered exact declaration
+    lookup can stay on the direct lookup path.
+  - Helper/API surface: no helper or public method added. The tests carry
+    `searchedRules` through an existing options object shape to mirror registry
+    recursion bookkeeping rather than broadening the intended lookup API.
+  - Metadata mutations: none.
+  - Routine error/control: no production throw/catch/Error path added. Test-only
+    `try/finally` restores monkey-patched `Rules.getRegistry(...)`, and
+    `registryHits: string[]` records the tripwire count.
+  - Evidence: touched-file ESLint passed; focused `reference.test.ts` lookup
+    tests passed (`13` passed, `121` skipped), including direct variable and
+    property lookup with `searchedRules` present and
+    `Rules.getRegistry('declaration')` monkey-patched as the tripwire.
 - Declaration child-entry carry pass: accepted as binding/direct-lookup
   rediscovery deletion, not as a speed claim. Files:
   `packages/core/src/tree/rules.ts`,
