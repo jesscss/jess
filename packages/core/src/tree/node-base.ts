@@ -1138,6 +1138,11 @@ export abstract class Node<
 
   evalSync<T extends this>(this: T, context: Context): EvalSyncResult<T>;
   evalSync(context: Context): Node {
+    if (!this.hasFlag(F_MAY_ASYNC)) {
+      return this.eval === Node.prototype.eval
+        ? Node._evalStaticSync(this, context)
+        : mustBeNode(this.eval(context));
+    }
     const evaluated = this.eval(context);
     if (isThenable(evaluated)) {
       throw new TypeError('Expected synchronous eval result.');

@@ -798,10 +798,13 @@ Current pass: `evalSync` plus `MaybePromise` narrowing cleanup.
   fixtures construct `Context` and `AsyncAny` instances to prove
   `evalSync(...)` returns sync values and rejects async misuse.
 - Render path: `Node.evalSync(context)` now gives flag-proven sync paths a
-  typed assertion boundary. `Paren` and sync `Call` argument/content branches
-  use it only after `!F_MAY_ASYNC` checks. Generic maybe-async branches in
-  `Call`, `Paren`, and `Operation` now rely on `isThenable(...)` type
-  narrowing instead of `as Node`/`as Promise<Node>` casts.
+  typed boundary. When `!F_MAY_ASYNC`, nodes that use the base `eval(...)`
+  reuse `_evalStaticSync(...)`; nodes with an override call that override and
+  assert a node result, avoiding the generic thenable branch while preserving
+  subclass semantics. `Paren` and sync `Call` argument/content branches use it
+  only after sync-flag checks. Generic maybe-async branches in `Call`, `Paren`,
+  and `Operation` rely on `isThenable(...)` type narrowing instead of
+  `as Node`/`as Promise<Node>` casts.
 - Helper/API surface: one base method and one exported result type were added
   to delete repeated local sync-eval assertions and unsafe casts. No new
   per-node helper ladder, package entrypoint, or runtime wrapper object was
