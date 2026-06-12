@@ -206,11 +206,13 @@ describe('Control Nodes', () => {
     const selectedRules = rules([decl({ name: 'color', value: any('blue') })]);
     const originalSelectedRender = selectedRules.render;
     let selectedRulesRenderCalls = 0;
+    let selectedRulesRenderBuffer: unknown;
     selectedRules.render = function countSelectedRulesRender(
       this: typeof selectedRules,
       ...args: Parameters<typeof originalSelectedRender>
     ): ReturnType<typeof originalSelectedRender> {
       selectedRulesRenderCalls++;
+      selectedRulesRenderBuffer = args[1];
       return originalSelectedRender.apply(this, args);
     };
     const node = new If({
@@ -238,6 +240,7 @@ describe('Control Nodes', () => {
     await expect(node.render(context, buffer)).resolves.toBe('color: blue;');
     expect(buffer.parts).toEqual(['color: blue;']);
     expect(selectedRulesRenderCalls).toBe(1);
+    expect(selectedRulesRenderBuffer).toBe(buffer);
   });
 
   it('evaluates $if output through root render', async () => {

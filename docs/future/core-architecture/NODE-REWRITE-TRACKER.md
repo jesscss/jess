@@ -177,9 +177,10 @@ Current hard leftovers after the broad hook sweep:
   audit remains.
 - [ ] `While`: direct source syntax writer exists; render path already emits
   body output directly, but loop state/body surface audit remains.
-- [ ] `If`: direct source syntax writer exists and branch serialization avoids
-  rest-array allocation; render path already emits selected body output
-  directly, but eval/body surface audit remains.
+- [ ] `If`: direct source syntax writer exists, branch serialization avoids
+  rest-array allocation, and selected branch buffer render passes the existing
+  `RenderBuffer` through to `Rules.render(...)` instead of staging through a
+  detached rules string. Eval/body surface audit remains.
 - [x] `Log`: side-effect render path stays direct; redundant public
   `toString(...)` override removed while cold empty `toTrimmedString(...)`
   remains.
@@ -211,7 +212,7 @@ Current hard leftovers after the broad hook sweep:
 | ExtendList | `packages/core/src/tree/extend-list.ts` | `Node` | writeSyntax hook complete | List wrapper writes through base child writer plus semicolon; public wrapper existence remains. |
 | For | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, pattern/iterable children use direct writers, and range-bound closure is gone. Loop state/body surface and async branch audit remain. |
 | Func | `packages/core/src/tree/function.ts` | `Node` | direct child writer complete | Public function syntax writes directly through name/params and body braced writer; function call/eval machinery remains. |
-| If | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, condition children use direct writers, and branch serialization avoids rest-array allocation. Eval/body surface audit remains. |
+| If | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, condition children use direct writers, branch serialization avoids rest-array allocation, and selected branch buffer render uses the existing `RenderBuffer` instead of a detached rules string. Eval/body surface audit remains. |
 | Interpolated | `packages/core/src/tree/interpolated.ts` | `Node` | partial | Direct source writer exists and public `replace(...)` uses a plain placeholder loop instead of regex callback scaffolding; high-priority selector eval, generic materialization, replacement capture, and replacement arrays remain. |
 | InterpolatedSelector | `packages/core/src/tree/selector-interpolated.ts` | `SimpleSelector` | direct writer/kind check complete | Source syntax writes directly through `Interpolated.writeSyntax(...)`; `isClass`/`isId`/`isTag` use first-character checks instead of regex. Eval/render still resolve selector output. |
 | JsArray | `packages/core/src/tree/js-array.ts` | `Node` | removal candidate | No Less/SCSS/Jess parser constructs it, `cast([...])` creates `List`, and only explicit public API/tests use it. Do not polish; remove only in a dedicated API-breaking host-wrapper pass. |

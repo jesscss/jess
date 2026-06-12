@@ -788,43 +788,43 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: full-queue static buffer render capture batch.
+Current pass: `$if` selected-branch buffer render staging cut.
 
-- New traversal: no extra runtime traversal beyond existing syntax/item loops.
-  `List.renderResolvedListValue(...)`, `Sequence.renderResolvedValue(...)`, and
-  static `QueryCondition.render(...)` now write syntax directly into the
-  prepared buffer writer instead of entering a nested public syntax capture.
-  `Sequence.writeSequenceSyntax(...)` continues to skip nils during its
-  existing loop; no new child/source walk was added.
+- New traversal: none. The pass does not add a source walk, child walk,
+  recursive scan, map/filter/sort, side-map lookup, parent walk, or helper
+  array iteration. `renderControlRules(...)` only inspects the emitted buffer
+  tail when the selected branch returned a trailing nested-rule newline.
 - New node/materialization: none added. No runtime `Node`, copied node,
   `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
   metadata mutation, side map, helper array, or materialized eval/render value
-  was added. The previous Sequence nil replacement-array deletion remains in
-  place, and this pass adds no replacement materialization. Test-only
-  `CountingWriter` fixtures were added only to prove one-mark shared-buffer
-  rendering.
-- Render path: static flat-buffer render for `List`, `Sequence`, and
-  `QueryCondition` now uses one prepared writer mark and direct syntax writes.
-  Public `toString(...)`/`toTrimmedString(...)` transport is not used for these
-  static buffer paths. Dynamic list/sequence/query-condition render remains on
-  the existing capture/fallback contracts until child render return/write
-  behavior is narrowed with separate proof.
+  was added. Test-only capture of the `Rules.render(...)` second argument only
+  proves the selected branch received the existing `RenderBuffer`.
+- Render path: selected `$if` branches now call
+  `branch.rules.render(context, buffer, options)` through
+  `renderControlRules(...)` instead of rendering the branch rules into a
+  detached string and then writing that string into the control buffer. The
+  direct buffer path trims only the single trailing nested-rules separator that
+  `Rules` direct string render already removes for non-root fragments. The
+  cold non-buffer control render path still uses `renderControlToString(...)`
+  and remains queued.
 - Helper/API surface: no helper, method, public API, or package export was
-  added. Handoff guidance was updated so `writeSyntax` work runs full queue
-  batches rather than one-node dribbles.
+  added. `renderControlRules(...)` is still the existing local control
+  function, but it no longer imports or calls `prepareBufferPrintState(...)` or
+  `writeRenderText(...)`.
 - Metadata mutations: none. No parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
   read, `Reflect.*`, `Object.hasOwn`, or structural probe was added.
-- Evidence: focused `list.test.ts`, `sequence.test.ts`, and
-  `query-condition.test.ts` passed (`71` tests). New shared-flat-buffer tests
-  prove static buffer render for all three touched families uses one writer
-  mark. `NODE-REWRITE-TRACKER.md` keeps all three nodes partial because
-  dynamic render capture and trivia-backed child `toString(...)` boundaries
-  remain. Hotpath leash at dirty head `9a94771f` is status-only, not a speed
-  claim: `functions` `14.06ms` unstable, `import-reference` `22.09ms` usable,
-  `mixins-guards` `17.84ms` unstable, `extend-chaining` `5.34ms` noisy, and
-  `media` `6.73ms` noisy.
-- Verdict: keep the batch. Next full queue pass should continue with dynamic
-  List/Sequence/QueryCondition capture only if it can prove child render
-  write/return contracts directly, otherwise move to the next unchecked node
-  family with an obvious deletion.
+- Evidence: focused `control.test.ts`, `list.test.ts`, `sequence.test.ts`, and
+  `query-condition.test.ts` passed (`130` tests). The `$if` buffer test now
+  proves the selected `Rules.render(...)` call receives the same `RenderBuffer`
+  supplied to `$if.render(...)`. The first focused run caught a real newline
+  drift (`color: red;\n`/`color: blue;\n`), so the final patch preserves the
+  existing nested-fragment string result while still deleting detached branch
+  string staging. Hotpath leash at head `98078db9` plus dirty pass is
+  status-only, not a speed claim: `functions` `11.91ms` usable,
+  `import-reference` `18.62ms` usable, `mixins-guards` `16.11ms` usable,
+  `extend-chaining` `4.79ms` usable, and `media` `4.82ms` unstable.
+- Verdict: keep the cut. Next full queue pass should continue through the
+  unchecked node tracker, with control non-buffer `renderControlToString(...)`
+  eligible only if it can remove capture without changing nested-fragment
+  newline semantics.

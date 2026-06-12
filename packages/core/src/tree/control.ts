@@ -16,8 +16,6 @@ import { buildScopeFrame, getBindingCellValue, type BindingCell, type ScopeFrame
 import {
   createRenderBuffer,
   isRenderBuffer,
-  prepareBufferPrintState,
-  writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
@@ -55,10 +53,24 @@ async function renderControlRules(
   buffer: RenderBuffer,
   options?: PrintOptions
 ): Promise<string> {
-  return writeRenderText(
-    buffer,
-    await Promise.resolve(rules.render(context, prepareBufferPrintState(context, options)))
-  );
+  const out = await Promise.resolve(rules.render(context, buffer, options));
+  if (!out.endsWith('\n')) {
+    return out;
+  }
+  if (buffer.kind === 'flat') {
+    const index = buffer.parts.length - 1;
+    const part = buffer.parts[index];
+    if (part?.endsWith('\n')) {
+      buffer.parts[index] = part.substring(0, part.length - 1);
+    }
+  } else {
+    const index = buffer.segments.length - 1;
+    const segment = buffer.segments[index];
+    if (typeof segment === 'string' && segment.endsWith('\n')) {
+      buffer.segments[index] = segment.substring(0, segment.length - 1);
+    }
+  }
+  return out.substring(0, out.length - 1);
 }
 
 function createDerivedIterationRulesSurface(
