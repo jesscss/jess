@@ -9,8 +9,7 @@ import {
   canEnterRulesEntryForLookup,
   isOptionalRulesEntry,
   isPublicRulesEntry,
-  type LookupVisibility,
-  type RulesEntryLike
+  type LookupVisibility
 } from './mixin-output-slot.js';
 import type { DeclarationFindOptions } from './registry-utils.js';
 
@@ -21,10 +20,6 @@ type DirectDeclarationFindOptions = DeclarationFindOptions & {
 };
 
 export const DIRECT_DECLARATION_LOOKUP_UNCOVERED = Symbol('direct-declaration-lookup-uncovered');
-
-type RulesEntry = RulesEntryLike & {
-  readonly?: boolean;
-};
 
 type MatchState = {
   optionalMatch: Declaration | undefined;
@@ -234,46 +229,6 @@ function writeCachedMatch(scope: Rules, cacheKey: string | undefined, state: Mat
   });
 }
 
-function childRulesOf(node: Node): Rules | undefined {
-  if (isNode(node, N.Rules)) {
-    return node;
-  }
-  if (isNode(node, N.Ruleset) || isNode(node, N.Mixin)) {
-    return node.value.rules;
-  }
-  if (isNode(node, N.AtRule)) {
-    return node.value.rules;
-  }
-  return undefined;
-}
-
-function defaultRulesVisibility(rules: Rules): RulesOptions['rulesVisibility'] {
-  const visibility: RulesOptions['rulesVisibility'] = {
-    ...rules.options.rulesVisibility
-  };
-  visibility.Declaration ??= 'public';
-  visibility.Ruleset ??= 'public';
-  visibility.Mixin ??= 'public';
-  return visibility;
-}
-
-function collectDirectChildEntries(scope: Rules): RulesEntry[] | undefined {
-  let out: RulesEntry[] | undefined;
-  const value = scope.value;
-  for (let i = 0; i < value.length; i++) {
-    const childRules = childRulesOf(value[i]!);
-    if (!childRules) {
-      continue;
-    }
-    (out ??= []).push({
-      node: childRules,
-      readonly: childRules.options.readonly,
-      rulesVisibility: defaultRulesVisibility(childRules)
-    });
-  }
-  return out;
-}
-
 function findLocalDeclaration(
   scope: Rules,
   key: string,
@@ -402,7 +357,9 @@ function findWithinScopeSurface(
     }
   }
 
-  const childEntries = collectDirectChildEntries(scope);
+  const childEntries = scope.directDeclarationChildEntries !== undefined
+    ? (scope.directDeclarationChildEntries ?? undefined)
+    : scope.collectDirectDeclarationChildEntries();
   if (!childEntries?.length) {
     writeCachedMatch(scope, cacheKey, state);
     return state;

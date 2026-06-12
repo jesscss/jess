@@ -575,6 +575,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /** Per-request cache: callable start-key -> ordered entries with remaining path keys. */
   callableLookupCache: Map<string, CallableLookupEntry[]> | undefined;
   directChildRuleEntries: Array<{ node: Rules; rulesVisibility?: RulesOptions['rulesVisibility'] }> | null | undefined;
+  directDeclarationChildEntries: Array<{ node: Rules; rulesVisibility?: RulesOptions['rulesVisibility'] }> | null | undefined;
   hasDirectChildRuleSurface = false;
   hasExactCallableChildSurface = false;
   hasExactMixinChildSurface = false;
@@ -619,6 +620,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this.hasExactCallableChildSurface = false;
         this.hasExactMixinChildSurface = false;
         this.directChildRuleEntries = undefined;
+        this.directDeclarationChildEntries = undefined;
       }
       // Initialize fast maps so the hot-path can distinguish
       // "indexed (nothing found)" from "not yet indexed" (undefined).
@@ -694,6 +696,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.varsByName = undefined;
     this.callableLookupCache = undefined;
     this.directChildRuleEntries = undefined;
+    this.directDeclarationChildEntries = undefined;
     this.hasDirectChildRuleSurface = false;
     this.hasExactCallableChildSurface = false;
     this.hasExactMixinChildSurface = false;
@@ -1145,6 +1148,62 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     this.directChildRuleEntries = out ?? null;
     return out;
+  }
+
+  collectDirectDeclarationChildEntries(): Array<{ node: Rules; rulesVisibility?: RulesOptions['rulesVisibility'] }> | undefined {
+    if (this.directDeclarationChildEntries !== undefined) {
+      return this.directDeclarationChildEntries ?? undefined;
+    }
+    if (this.rulesIndexed >= this.value.length && !this.hasDirectChildRuleSurface) {
+      this.directDeclarationChildEntries = null;
+      return undefined;
+    }
+    let out: Array<{ node: Rules; rulesVisibility?: RulesOptions['rulesVisibility'] }> | undefined;
+    const value = this.value;
+    for (let i = 0; i < value.length; i++) {
+      const child = childRulesOf(value[i]!);
+      if (!child) {
+        continue;
+      }
+      (out ??= []).push({
+        node: child,
+        rulesVisibility: this.getDirectDeclarationChildRulesVisibility(child)
+      });
+    }
+    this.directDeclarationChildEntries = out ?? null;
+    return out;
+  }
+
+  private getDirectDeclarationChildRulesVisibility(child: Rules): RulesOptions['rulesVisibility'] {
+    const rulesVisibility: RulesOptions['rulesVisibility'] = {
+      ...child.options.rulesVisibility
+    };
+    rulesVisibility.Declaration ??= 'public';
+    rulesVisibility.Ruleset ??= 'public';
+    rulesVisibility.Mixin ??= 'public';
+    return rulesVisibility;
+  }
+
+  private addDirectDeclarationChildRuleEntry(
+    child: Rules,
+    rulesVisibility?: RulesOptions['rulesVisibility']
+  ): void {
+    this.hasDirectChildRuleSurface = true;
+    if (this.directDeclarationChildEntries === undefined) {
+      return;
+    }
+    const visibility: RulesOptions['rulesVisibility'] = {
+      ...child.options.rulesVisibility,
+      ...rulesVisibility
+    };
+    visibility.Declaration ??= 'public';
+    visibility.Ruleset ??= 'public';
+    visibility.Mixin ??= 'public';
+    const entries = this.directDeclarationChildEntries ?? (this.directDeclarationChildEntries = []);
+    entries.push({
+      node: child,
+      rulesVisibility: visibility
+    });
   }
 
   private addDirectChildRuleEntry(
@@ -2616,6 +2675,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (directChildRules && !isNode(node, N.Rules)) {
       this.addDirectChildRuleEntry(directChildRules);
     }
+    const declarationChildRules = childRulesOf(node);
+    if (declarationChildRules && !isNode(node, N.Rules)) {
+      this.addDirectDeclarationChildRuleEntry(declarationChildRules);
+    }
     if (node.type === 'Extend' || node.type === 'ExtendList') {
       this._hasExtends = true;
     }
@@ -2658,6 +2721,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         rulesVisibility,
         readonly
       });
+      this.addDirectDeclarationChildRuleEntry(node, rulesVisibility);
       this.addDirectChildRuleEntry(node, rulesVisibility);
       if (this._scopeFrame) {
         this._scopeFrame.callableMissesCovered = false;

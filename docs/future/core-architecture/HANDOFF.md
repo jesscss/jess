@@ -941,6 +941,22 @@ left for this branch.
     - Done: focused `scope-frame`, `reference`, `import-style`, and `mixin`
       lookup suites pass.
 
+7c. [x] Carry declaration child-surface entries on `Rules` instead of
+    rediscovering them inside direct lookup.
+   Direct declaration lookup no longer owns a private child-rules scan. `Rules`
+   now carries declaration child entries alongside callable child entries during
+   registration, including mixin body rules that declaration lookup can enter
+   through the existing mixin-output visibility gate. `findDeclarationDirect(...)`
+   reads that carried surface or asks `Rules` to populate it once.
+
+   Completion gate:
+   - Done: deleted the direct declaration walker's local child-rules scanner
+     and default visibility clone.
+   - Done: focused test proves a warmed, fully indexed parent can resolve a
+     nested property through carried child entries without reading the parent's
+     `value` array again.
+   - Done: focused declaration/property/import/mixin/scope suites pass.
+
 Parked secondary deep-cut queue:
 
 Do not select this queue while the Focus Spec is registryless lookup/binding.
@@ -1269,6 +1285,51 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Declaration child-entry carry pass: accepted as binding/direct-lookup
+  rediscovery deletion, not as a speed claim. Files:
+  `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/util/direct-rules-lookup.ts`,
+  `packages/core/src/tree/__tests__/reference.test.ts`,
+  `docs/future/core-architecture/HANDOFF.md`, and
+  `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`.
+  - New traversal: no new lookup-time traversal. This deletes the direct
+    declaration walker's private child-rules scan and reuses child-surface
+    state carried by `Rules` registration. The lazy population path is the same
+    one-time child surface walk that the deleted helper performed, now owned by
+    `Rules` so later direct declaration lookups read cached entries instead of
+    scanning `Rules.value` again. The remaining `for` loop in
+    `Rules.collectDirectDeclarationChildEntries()` is that moved one-time
+    population path.
+  - New node/materialization: none. No node, wrapper `Rules`, copy,
+    `.inherit(...)`, `.adopt(...)`, source metadata, parent mutation, or
+    materialized output was added in production. One small
+    `directDeclarationChildEntries` array is carried on existing `Rules`
+    derived state; it replaces repeated child-entry arrays previously allocated
+    inside direct lookup. The new `rulesVisibility` objects are the same
+    per-entry visibility payload the deleted lookup helper already created, now
+    cached with the carried child entry.
+  - Render path: unchanged. This only changes how declaration lookup obtains
+    child scope entries before resolving the same declarations.
+  - Helper/API surface: one internal `Rules.collectDirectDeclarationChildEntries()`
+    method and two private `Rules` helpers were added to move ownership out of
+    `direct-rules-lookup.ts`; the old local child scanner and default visibility
+    clone were deleted from the lookup utility.
+  - Metadata mutations: no parent/source/frozen metadata mutation. Existing
+    derived-state invalidation on `registerNode(...)` now clears the declaration
+    child-entry cache beside the direct declaration lookup caches.
+  - Routine error/control: no production throw/catch/Error path added. The
+    focused test installs a temporary throwing `value` getter only to prove the
+    warmed parent lookup does not rescan the parent `value` array, and uses
+    `map(...)` only to assert the carried entry identity.
+  - Evidence: touched-file ESLint passed after cleanup; focused direct
+    property/reference tests passed; broader `reference`, `scope-frame`,
+    `import-style`, `mixin`, `rules`, and `detached-rulesets` suites passed
+    (`474` passed, `9` skipped). `pnpm run verify:baseline -- --changed`
+    escalated to full baseline because the upstream tracking ref was not found,
+    then showed unrelated selector/keyset failures and stalled with Vitest
+    workers pegged; it was stopped and treated as inconclusive, not passed.
+    The isolated failing selector tests reproduced outside the touched lookup
+    path.
 - No-frame mixin-only child-surface bridge pass: accepted as callable
   direct-crawl work reduction, not as a speed claim. Files:
   `packages/core/src/tree/rules.ts`,

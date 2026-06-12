@@ -2845,6 +2845,42 @@ describe('reference', () => {
       }
     });
 
+    it('direct property lookup reuses carried child rule entries after indexing', async () => {
+      const childRules = rules([
+        decl({ name: any('child-color'), value: any('blue') })
+      ]);
+      const root = rules([
+        decl({ name: any('root-color'), value: any('red') }),
+        ruleset({
+          selector: el('.scope'),
+          rules: childRules
+        })
+      ]);
+      await root.eval(context);
+
+      expect(root.findProperty('warmup-missing', { searchParents: false })).toBeUndefined();
+      expect(root.directDeclarationChildEntries?.map(entry => entry.node)).toEqual([childRules]);
+
+      const originalValue = root.value;
+      Object.defineProperty(root, 'value', {
+        configurable: true,
+        get() {
+          throw new Error('direct declaration lookup should reuse carried child entries');
+        }
+      });
+
+      try {
+        const found = root.findProperty('child-color', { searchParents: false });
+        expect(found?.value.value.valueOf()).toBe('blue');
+      } finally {
+        Object.defineProperty(root, 'value', {
+          configurable: true,
+          writable: true,
+          value: originalValue
+        });
+      }
+    });
+
     it('nested static variable hits build parent scope frames without Rules.find fallback', async () => {
       const originalFind = RulesClass.prototype.find;
       let declarationHits = 0;

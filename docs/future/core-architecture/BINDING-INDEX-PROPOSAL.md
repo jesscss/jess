@@ -639,6 +639,12 @@ lookup also uses the direct path by default for covered exact hits and misses.
 Both fall back to `DeclarationRegistry` only when the direct path returns
 explicit `UNCOVERED` for unsupported option shapes.
 
+Production follow-up: direct declaration lookup no longer rediscover-scans
+child rule surfaces on every recursive lookup. `Rules` carries declaration
+child entries during registration, including mixin body rules where declaration
+lookup semantics need the existing mixin-output visibility gate. The direct
+walker reads that carried surface instead of owning a second child-rule scanner.
+
 Filtered property merge-chain lookup remains deliberately registry-owned.
 Assignment-normalization references need pre-normalization property occurrence
 slots and merge-anchor facts; reusing the current direct property bucket is
@@ -698,7 +704,7 @@ fallback must appear here or in `HANDOFF.md` before it is accepted.
 | Bridge | Allowed Scope | Deletion Condition |
 | --- | --- | --- |
 | `Reference.lookupVariableReference(...)` facade miss to `findVarDeclarationFast(...)` | explicit targets, interpolated keys, still-dynamic names, and other declaration modes not yet represented by binding handles/slots | delete per covered mode once static declaration records cover the mode and tests prove hits/misses do not enter the helper ladder |
-| `Rules.findDeclaration(...)` / `Rules.findProperty(...)` fallback to `DeclarationRegistry` | semantic filtered `Declaration`/property merge-chain modes, dynamic names, import/reference visibility, complex source-order modes not yet encoded in frame lookup. `VarDeclaration` plus unfiltered/default-filter exact `Declaration`/property lookup are direct-first for covered option shapes, and covered static declaration/property `Reference` reads reuse binding handles keyed by contextual lookup shape. Direct declaration lookup and the registry fallback both read live declaration-shaped cells through `currentBindingsByName`; `liveSlotsByName` is no longer queried as a parallel declaration lookup surface. The generic `Rules.find('declaration', ...)` wrapper is deleted. | delete per mode as soon as frame lookup encodes that mode and tests prove covered hits/misses do not enter registry search |
+| `Rules.findDeclaration(...)` / `Rules.findProperty(...)` fallback to `DeclarationRegistry` | semantic filtered `Declaration`/property merge-chain modes, dynamic names, import/reference visibility, complex source-order modes not yet encoded in frame lookup. `VarDeclaration` plus unfiltered/default-filter exact `Declaration`/property lookup are direct-first for covered option shapes, and covered static declaration/property `Reference` reads reuse binding handles keyed by contextual lookup shape. Direct declaration lookup and the registry fallback both read live declaration-shaped cells through `currentBindingsByName`; `liveSlotsByName` is no longer queried as a parallel declaration lookup surface. Direct declaration child-surface traversal now uses carried `Rules` child entries instead of a private rediscovery scan. The generic `Rules.find('declaration', ...)` wrapper is deleted. | delete per mode as soon as frame lookup encodes that mode and tests prove covered hits/misses do not enter registry search |
 | Callable direct-crawl bridge after registryless mixin deletion | guard/candidate matching, import visibility, and namespace cases not yet encoded in frame/handle state. Exact simple misses now distinguish ruleset-capable child surfaces from mixin-capable child surfaces in both frame and no-frame direct lookup, and parameterized terminal lookups skip exact ruleset terminal scans. | delete per modeled path once binding state can return callable hit/miss or explicit `UNCOVERED`; do not restore `MixinRegistry` or stringly `Rules.find('mixin', ...)` |
 | Public materialization from source declaration nodes | cold public `eval/resolve` API compatibility and unmodeled ownership boundaries | delete from render/eval hot paths once binding values can render directly and public materialization is isolated |
 
