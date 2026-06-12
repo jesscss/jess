@@ -29,18 +29,26 @@ Active implementation specs:
    or this handoff.
 3. Read `PERFORMANCE-HANDOFF.md` before making or accepting any speed claim, or
    before touching a measured hot path.
-4. Choose work from the highest-priority active lane below. An unchecked active
-   implementation lane outranks benchmark cutting, node cleanup, and smell
-   sweeps unless this handoff explicitly marks that lane paused.
-5. Start each non-correctness pass from the benchmark leash below when the
-   selected lane touches measured hot paths.
-6. State one hypothesis before editing.
-7. Make the smallest behavior-preserving cut that removes measured work or
+4. While the Focus Spec says registryless lookup/binding is active, choose work
+   only from the `Brought-Forward Binding/Lookup Queue` or from a newly found
+   binding/lookup bridge that belongs in that queue. Unchecked or unexhausted
+   binding/lookup work blocks benchmark cutting, node cleanup, selector cleanup,
+   and smell sweeps. Do not seed the active queue from secondary cutting or
+   performance items.
+5. Treat "full queue pass" as a full binding/lookup swath: complete as many
+   related binding/lookup items as can be safely proven before a commit. Only
+   after the binding/lookup queue is fully complete and exhausted may this
+   worktree return to cutting/performance work, unless the user explicitly
+   redirects the lane.
+6. Start each non-correctness binding/lookup pass from the benchmark leash below
+   when the selected lane touches measured hot paths.
+7. State one hypothesis before editing.
+8. Make the smallest behavior-preserving cut that removes measured work or
    clearly wrong machinery.
-8. Run focused tests first, then the required gates.
-9. Keep, reshape, or revert based on the benchmark evidence and the aggressive
+9. Run focused tests first, then the required gates.
+10. Keep, reshape, or revert based on the benchmark evidence and the aggressive
    cutting self-prosecution.
-10. Commit and push the completed pass.
+11. Commit and push the completed pass.
 
 ## Focus Spec
 
@@ -78,6 +86,15 @@ because it is public-looking today; if repo usage does not require it and the
 user has not approved it as API, delete it instead of keeping a compatibility
 shim.
 
+Active queue discipline: the active queue for this worktree is seeded only with
+binding/lookup work. A task belongs in the active queue only if it deletes,
+replaces, or proves a bridge around registry lookup, `Rules.find*`, scope
+frames, binding handles, callable/declaration/function/property lookup, import
+or child-surface lookup facts, or the fallback paths around those systems.
+General eval/render, selector, ampersand, node-copy, materialization, and
+performance cutting items are parked until binding/lookup work is fully
+complete and exhausted, or until the user explicitly redirects this worktree.
+
 ## Active Work
 
 Correctness queue: no active lookup correctness blockers. If a `.less` fixture
@@ -105,7 +122,9 @@ Performance leash:
 
 Immediate benchmark commands are defined in `PERFORMANCE-HANDOFF.md`.
 Performance evidence/history stays parked there; this handoff owns the active
-work lane and the gates for proving each slice complete.
+binding/lookup work lane and the gates for proving each slice complete. Do not
+choose a performance-only pass while any binding/lookup queue item, bridge, or
+fallback deletion condition remains.
 
 Binding prototype status:
 
@@ -627,8 +646,13 @@ several callable fallback/crawl branches. It was not the final architecture.
 The target remains one binding system whose covered hot paths return binding
 identity or miss without falling through adjacent lookup systems.
 
-Choose the next item from this queue before returning to the secondary
-deep-cut queue.
+This is the sole selectable implementation queue while the Focus Spec is
+registryless lookup/binding. Choose the next item from this queue, and if this
+queue appears empty, first audit `BINDING-INDEX-PROPOSAL.md` and the remaining
+`Rules.find*`/registry/fallback code for binding/lookup bridge work to append
+here. The queue is exhausted only when there are no remaining binding/lookup
+bridges, registry fallbacks, handle gaps, or modeled lookup deletion conditions
+left for this branch.
 
 1. [x] Wire production binding handles into `Reference`/`Rules`.
    Use the prototype contract from `scripts/prototype-binding-handle-reuse.mjs`
@@ -881,12 +905,14 @@ deep-cut queue.
     - Done: focused lookup/reference/call/import tests and touched-file eslint
       pass before the full gate run.
 
-Secondary deep-cut queue:
+Parked secondary deep-cut queue:
 
-Do not select this queue while `Brought-Forward Binding/Lookup Queue` has
-unchecked items, unless the binding lane is explicitly paused in the Focus Spec
-above. These items are still valid targets, but they are secondary to finishing
-the binding index/scope lookup refactor.
+Do not select this queue while the Focus Spec is registryless lookup/binding.
+Do not seed the active queue from this list. These items are parked backlog,
+not current work, until the `Brought-Forward Binding/Lookup Queue` is fully
+complete and exhausted or the user explicitly redirects this worktree to
+cutting/performance work. The presence of checked or unchecked items here is
+not permission to leave binding/lookup work.
 
 0. [x] Move callable `default()` guard classification out of
    `prepareCallableEvalCandidates(...)`. Parsed Less now passes explicit
