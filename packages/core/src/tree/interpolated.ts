@@ -322,12 +322,12 @@ export class Interpolated<
       sourceOffset = this.writeNextSourceSegment(w, source, sourceOffset);
       const out = replacements[i]!.resolve(context);
       if (isThenable(out)) {
-        return (out as Promise<Node>).then((replacement) => {
+        return out.then((replacement) => {
           this.writeReplacement(replacement, options);
           return this.renderEvaluatedReplacementTextRest(context, options, mark, sourceOffset, i + 1);
         });
       }
-      this.writeReplacement(out as Node, options);
+      this.writeReplacement(out, options);
     }
     w.add(source.slice(sourceOffset), this);
     return w.getSince(mark);
@@ -347,12 +347,12 @@ export class Interpolated<
       sourceOffset = this.writeNextSourceSegment(w, source, sourceOffset);
       const out = replacements[i]!.resolve(context);
       if (isThenable(out)) {
-        return (out as Promise<Node>).then((replacement) => {
+        return out.then((replacement) => {
           this.writeReplacement(replacement, options);
           return this.renderEvaluatedReplacementTextRest(context, options, mark, sourceOffset, i + 1);
         });
       }
-      this.writeReplacement(out as Node, options);
+      this.writeReplacement(out, options);
     }
     w.add(source.slice(sourceOffset), this);
     return w.getSince(mark);
@@ -382,13 +382,13 @@ export class Interpolated<
       const n = currentReplacements[idx]!;
       const out = this.evaluateReplacement(context, n, mode);
       if (isThenable(out)) {
-        return (out as Promise<Node>).then((result) => {
+        return out.then((result) => {
           evaluatedReplacements[idx] = result;
           changed ||= result !== n;
           return this.evaluateInterpolatedRest(context, mode, evaluatedReplacements, idx + 1, changed);
         });
       }
-      const result = out as Node;
+      const result = out;
       evaluatedReplacements[idx] = result;
       changed ||= result !== n;
     }
@@ -407,12 +407,12 @@ export class Interpolated<
       const n = currentReplacements[idx]!;
       const out = this.evaluateReplacement(context, n, mode);
       if (isThenable(out)) {
-        return (out as Promise<Node>).then((result) => {
+        return out.then((result) => {
           evaluatedReplacements[idx] = result;
           return this.evaluateInterpolatedRest(context, mode, evaluatedReplacements, idx + 1, changed || result !== n);
         });
       }
-      const result = out as Node;
+      const result = out;
       evaluatedReplacements[idx] = result;
       changed ||= result !== n;
     }

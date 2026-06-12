@@ -788,43 +788,38 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `evalSync` plus `MaybePromise` narrowing cleanup.
+Current pass: full `MaybePromise` narrowing and sync-child eval sweep.
 
-- New traversal: none. No loop, recursion, child/source/parent walk, callback
-  iterator, side-map lookup, or object/array scan was added.
-- New node/materialization: no runtime `Node`, copied node, `.inherit(...)`,
-  `.adopt(...)`, wrapper `Rules`, frozen/source/parent metadata mutation, side
-  map, helper array, or materialized eval/render value was added. Test-only
-  fixtures construct `Context` and `AsyncAny` instances to prove
-  `evalSync(...)` returns sync values and rejects async misuse.
-- Render path: `Node.evalSync(context)` now gives flag-proven sync paths a
-  typed boundary. When `!F_MAY_ASYNC`, nodes that use the base `eval(...)`
-  reuse `_evalStaticSync(...)`; nodes with an override call that override and
-  assert a node result, avoiding the generic thenable branch while preserving
-  subclass semantics. `Paren` and sync `Call` argument/content branches use it
-  only after sync-flag checks. Generic maybe-async branches in `Call`, `Paren`,
-  and `Operation` rely on `isThenable(...)` type narrowing instead of
-  `as Node`/`as Promise<Node>` casts.
-- Helper/API surface: one base method and one exported result type were added
-  to delete repeated local sync-eval assertions and unsafe casts. No new
-  per-node helper ladder, package entrypoint, or runtime wrapper object was
-  added.
+- New traversal: none added. Existing loops in `evaluate-node-array.ts`,
+  `Declaration`, and `Interpolated` were kept but now rely on existing
+  `isThenable(...)` narrowing instead of local casts.
+- New node/materialization: none added. No runtime `Node`, copied node,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  metadata mutation, side map, helper array, or materialized eval/render value
+  was added.
+- Render path: `Expression`, `Block`, and `Url` now use `evalSync(...)` for
+  non-async child render/eval paths and reserve the generic thenable branch for
+  `F_MAY_ASYNC` children. `Block`, `Url`, `Expression`, `PseudoSelector`,
+  `Declaration`, `Interpolated`, and `evaluate-node-array.ts` delete
+  `as Node`/`as Promise<Node>` casts where `isThenable(...)` already narrows
+  `MaybePromise<Node>`.
+- Helper/API surface: no helper, method, public API, package entrypoint, or
+  runtime wrapper object was added in this pass.
 - Metadata mutations: none. No parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
-  read, ownership probe, or structural probe was added to runtime code. The
-  added `TypeError` is an exceptional API assertion when `evalSync(...)` is
-  called on a thenable result; it is not used for routine miss/branch control.
-- Evidence: focused node/call/paren/operation tests passed (`116` tests).
-  `@jesscss/core` build passed and proved TypeScript narrows
-  `MaybePromise<Node>` after `isThenable(...)` without casts. `evalSync` tests
-  prove a normal sync node returns its typed value and an async-flagged node
-  throws if called through the sync assertion path.
-- Hotpath leash: status-only dirty run from `d0bd3717`, not a speed claim:
-  `functions` `12.41ms` usable, `import-reference` `19.15ms` usable,
-  `mixins-guards` `17.03ms` usable, `extend-chaining` `4.84ms` usable, and
-  `media` `5.35ms` usable. No speed claim is allowed without a clean
-  before/after pair.
-- Verdict: keep if review gates stay green. Follow-up cleanup should remove
-  remaining `as Node` casts only where either `!F_MAY_ASYNC` permits
-  `evalSync(...)` or `isThenable(...)` already narrows a real
-  `MaybePromise<T>`.
+  read, ownership probe, structural probe, or error-control-flow path was
+  added to runtime code.
+- Evidence: focused expression/block/url/pseudo/declaration/interpolated plus
+  call/paren/operation tests passed (`231` tests). `@jesscss/core` build
+  passed and proved TypeScript narrows all touched `MaybePromise<Node>` paths
+  without casts.
+- Hotpath leash: pre-pass at `6963d319` was status-only, not a speed claim:
+  `functions` `13.65ms` unstable, `import-reference` `21.15ms` unstable,
+  `mixins-guards` `17.46ms` unstable, `extend-chaining` `5.43ms` usable, and
+  `media` `5.71ms` noisy. Post-pass dirty leash was also status-only:
+  `functions` `12.88ms` usable, `import-reference` `22.18ms` unstable,
+  `mixins-guards` `18.12ms` usable, `extend-chaining` `5.32ms` noisy, and
+  `media` `5.62ms` unstable.
+- Verdict: keep if review gates stay green. Continue removing remaining
+  `as Node` casts only where `!F_MAY_ASYNC` permits `evalSync(...)` or
+  `isThenable(...)` already narrows a real `MaybePromise<T>`.

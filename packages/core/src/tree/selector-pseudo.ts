@@ -224,7 +224,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     try {
       const evaluatedArg = currentArg.eval(context);
       if (isThenable(evaluatedArg)) {
-        return (evaluatedArg as Promise<Node>).then(
+        return evaluatedArg.then(
           (arg) => {
             context.parenFrames.pop();
             return this.finalizeEvaluatedArg(context, currentArg, arg);
@@ -236,7 +236,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         );
       }
       context.parenFrames.pop();
-      return this.finalizeEvaluatedArg(context, currentArg, evaluatedArg as Node);
+      return this.finalizeEvaluatedArg(context, currentArg, evaluatedArg);
     } catch (error) {
       context.parenFrames.pop();
       throw error;

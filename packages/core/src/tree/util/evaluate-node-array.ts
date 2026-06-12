@@ -27,9 +27,9 @@ export function evaluateNodeArrayMaybe(
     const node = value[index]!;
     const out = node.eval(context);
     if (isThenable(out)) {
-      return evaluateNodeArrayRest(context, value, values, index, out as Promise<Node>);
+      return evaluateNodeArrayRest(context, value, values, index, out);
     }
-    values[index] = out as Node;
+    values[index] = out;
   }
   return values;
 }
@@ -45,7 +45,7 @@ async function evaluateNodeArrayRest(
   for (let index = pendingIndex + 1; index < value.length; index++) {
     const node = value[index]!;
     const out = node.eval(context);
-    values[index] = isThenable(out) ? await out : out as Node;
+    values[index] = isThenable(out) ? await out : out;
   }
   return values;
 }

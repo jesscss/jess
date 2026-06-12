@@ -1,4 +1,4 @@
-import { Node, F_STATIC, defineType } from './node.js';
+import { Node, F_MAY_ASYNC, F_STATIC, defineType } from './node.js';
 import type { Context } from '../context.js';
 import { type FinalPrintOptions, getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
@@ -83,16 +83,20 @@ export class Url extends Node<Node> {
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
     const mark = buffer ? prepared.writer.mark() : 0;
-    const value = this.hasFlag(F_STATIC) ? this.value : this.value.eval(context);
+    const value = this.hasFlag(F_STATIC)
+      ? this.value
+      : this.value.hasFlag(F_MAY_ASYNC)
+        ? this.value.eval(context)
+        : this.value.evalSync(context);
     if (isThenable(value)) {
-      return (value as Promise<Node>).then((resolved) => {
+      return value.then((resolved) => {
         const out = this.renderUrlSyntax(resolved, prepared);
         return buffer
           ? writePreparedRenderText(buffer, prepared, mark, out)
           : out;
       });
     }
-    const out = this.renderUrlSyntax(value as Node, prepared);
+    const out = this.renderUrlSyntax(value, prepared);
     return buffer
       ? writePreparedRenderText(buffer, prepared, mark, out)
       : out;
@@ -106,7 +110,9 @@ export class Url extends Node<Node> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
-    const value = this.value.eval(context);
+    const value = this.value.hasFlag(F_MAY_ASYNC)
+      ? this.value.eval(context)
+      : this.value.evalSync(context);
     const finalize = (resolvedValue: Node): Node => {
       if (resolvedValue === this.value) {
         return this;
@@ -114,9 +120,9 @@ export class Url extends Node<Node> {
       return this.withValue(resolvedValue);
     };
     if (isThenable(value)) {
-      return (value as Promise<Node>).then(finalize);
+      return value.then(finalize);
     }
-    return finalize(value as Node);
+    return finalize(value);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

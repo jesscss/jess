@@ -699,7 +699,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           });
         }
         if (!(out instanceof Nil)) {
-          evaluated.push(out as Node);
+          evaluated.push(out);
         }
       };
       for (const item of state.renderAssignment?.items ?? []) {
@@ -816,7 +816,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           replacements[index] = evaluated;
         });
       }
-      replacements[index] = out as Node;
+      replacements[index] = out;
     };
     for (const [index, replacement] of replacements.entries()) {
       if (chain) {

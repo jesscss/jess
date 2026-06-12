@@ -1739,6 +1739,35 @@ pair for this exact patch. The code-path proof is a narrower sync assertion
 boundary for flag-proven paths and deletion of casts after existing thenable
 checks.
 
+### Full MaybePromise Narrowing / Sync Child Eval Sweep
+
+Date: 2026-06-12.
+
+Change: extended the `evalSync(...)`/`MaybePromise` narrowing rule to
+`Expression`, `Block`, `Url`, `PseudoSelector`, `Declaration`, `Interpolated`,
+and the shared node-array evaluator. Non-async child paths in expression/block
+/url now use `evalSync(...)`; generic maybe-async branches delete local
+`as Node`/`as Promise<Node>` casts where `isThenable(...)` already narrows the
+value.
+
+Hotpath status:
+
+- Pre-pass `pnpm run measure:less:hotpath -- --stable` at `6963d319` reported:
+  `functions` median `13.65ms` unstable, `import-reference` median `21.15ms`
+  unstable, `mixins-guards` median `17.46ms` unstable,
+  `extend-chaining` median `5.43ms` usable, and `media` median `5.71ms`
+  noisy.
+- Post-pass dirty `pnpm run measure:less:hotpath -- --stable` reported:
+  `functions` median `12.88ms` usable, `import-reference` median `22.18ms`
+  unstable, `mixins-guards` median `18.12ms` usable,
+  `extend-chaining` median `5.32ms` noisy, and `media` median `5.62ms`
+  unstable.
+
+Interpretation: status only, not speed proof. The pre/post signals are too
+mixed for a runtime claim. The code-path proof is fewer generic thenable
+branches on non-async child eval paths and deletion of unsafe local casts after
+existing type guards.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

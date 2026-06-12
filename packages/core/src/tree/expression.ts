@@ -31,17 +31,17 @@ export class Expression extends Node<Node> {
     const out = value.eval(context);
     /** @todo - Cast as selector if the context is within a selector */
     if (isThenable(out)) {
-      return out as Promise<Node>;
+      return out;
     }
-    return out as Node;
+    return out;
   }
 
   override resolve(context: Context): MaybePromise<Node> {
     const out = this.evalNode(context);
     if (isThenable(out)) {
-      return out as Promise<Node>;
+      return out;
     }
-    return out as Node;
+    return out;
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -53,10 +53,7 @@ export class Expression extends Node<Node> {
         : this.value.render(context, bufferOrOptions);
     }
     if (!this.value.hasFlag(F_MAY_ASYNC)) {
-      const node = this.value.eval(context);
-      if (!(node instanceof Node)) {
-        throw new TypeError('Expected expression value to evaluate to a node');
-      }
+      const node = this.value.evalSync(context);
       return isRenderBuffer(bufferOrOptions)
         ? node.render(context, bufferOrOptions, options)
         : node.render(context, bufferOrOptions);
