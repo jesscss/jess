@@ -20,6 +20,18 @@ When performance work is active, this checklist still applies. A benchmark may
 choose the target, but it does not excuse adding generic copy/traversal/helper
 machinery unless the measured runtime result and semantic boundary justify it.
 
+## Pass Size
+
+This checklist is a commit-boundary guard, not permission to stop after the
+first safe edit. A queue pass should cover a coherent swath of adjacent work in
+the active lane before commit. That rule applies equally to binding/scope
+architecture work and to broader eval/render/performance cutting work.
+
+Use focused tests while iterating through the swath. Run this review, broader
+gates, benchmark sanity, staging, commit, and push at the batch boundary, unless
+the next slice has different semantics, requires user judgment, or the evidence
+shows the approach should be abandoned.
+
 ## Hard Rules
 
 1. No new traversal unless it deletes worse traversal.

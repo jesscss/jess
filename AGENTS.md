@@ -75,6 +75,15 @@ Avoid treating these as acceptable end states:
   function-call overhead
 - local green slices presented as architectural completion
 
+For active architecture queues, a "full pass" is a swath of adjacent queue work,
+not one tiny cleanup. Keep working within the active lane until one of these is
+true: the lane is drained, the next step has materially different semantics,
+the next step needs user/product judgment, evidence says the approach is wrong,
+or a failing test/debugging thread needs focused investigation. This applies to
+binding/scope work and to broader performance/cutting work. Use small focused
+tests while iterating, then run the expensive review/build/benchmark gates once
+at the batch boundary. Commit and push the batch, not each trivial deletion.
+
 During active unreleased architecture refactors, do not treat a method or
 helper as protected API merely because it is currently exported, public on a
 class, or reachable from tests. If the surface was introduced as transitional

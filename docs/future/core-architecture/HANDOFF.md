@@ -1091,6 +1091,25 @@ Before editing:
 - Capture or identify the benchmark/profile target when touching hot paths.
 - State the hypothesis in this handoff or in the working notes for the pass.
 
+Pass size and commit discipline:
+
+- A full queue pass means finishing a coherent swath of adjacent work in the
+  active lane before committing, not stopping after one safe cleanup. This is
+  true for binding/scope architecture work and for broader performance/cutting
+  work.
+- Prefer the active binding/scope queue when it has unchecked work. If that lane
+  is active, cleanup-only `Reference` or render/materialization edits are
+  secondary unless they directly simplify, unblock, or prove binding lookup
+  behavior.
+- Within a pass, keep going until the lane is drained for that swath, the next
+  task has materially different semantics, the next task needs user/product
+  judgment, evidence rejects the approach, or a failing test/debugging thread
+  needs isolated investigation.
+- Run focused tests as each slice lands. Save expensive full gates, benchmark
+  sanity, staging, commit, and push for the batch boundary.
+- Update the queue and self-prosecution block as a batch summary. Do not use
+  handoff updates as a reason to stop after each tiny deletion.
+
 Required before commit:
 
 ```sh
