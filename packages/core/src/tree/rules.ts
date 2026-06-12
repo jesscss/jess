@@ -902,9 +902,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
 
+      const includeRulesets = options?.includeRulesets !== false;
       const childEntries = scope.directChildRuleEntries !== undefined
         ? (scope.directChildRuleEntries ?? undefined)
-        : scope.rulesIndexed >= scope.value.length && !scope.hasExactCallableChildSurface
+        : scope.rulesIndexed >= scope.value.length && !scope.hasDirectLookupChildSurface(includeRulesets)
           ? undefined
           : scope.collectDirectChildRulesEntries();
       if (!childEntries?.length) {
@@ -915,6 +916,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       for (let i = childEntries.length - 1; i >= 0; i--) {
         const entry = childEntries[i]!;
         if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
+          continue;
+        }
+        if (!includeRulesets && !rulesMayContainExactMixinSurface(entry.node)) {
           continue;
         }
         if (entry.node.options?.forward) {

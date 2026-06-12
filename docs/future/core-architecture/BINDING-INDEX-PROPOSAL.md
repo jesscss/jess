@@ -672,6 +672,13 @@ callable debt is not "fall through to `MixinRegistry`"; it is direct-crawl
 bridge logic for namespace/import/child-surface/candidate cases that the
 binding frame does not yet model.
 
+Production follow-up: no-frame direct mixin-only misses now use the carried
+exact-mixin child-surface fact. When `includeRulesets` is false,
+`findMixinsFast(...)` can skip child surfaces that only contain ruleset
+terminals, matching the earlier frame-owned miss behavior. Rulesets remain
+searchable as namespace containers for mixin-ruleset calls and parameterized
+namespace resolution.
+
 Deletion condition for the remaining bridge logic: modeled callable paths
 return hit/miss from binding frame or binding handle state. Only unmodeled
 callable namespace, import visibility, guard/candidate, or child-surface facts
@@ -692,7 +699,7 @@ fallback must appear here or in `HANDOFF.md` before it is accepted.
 | --- | --- | --- |
 | `Reference.lookupVariableReference(...)` facade miss to `findVarDeclarationFast(...)` | explicit targets, interpolated keys, still-dynamic names, and other declaration modes not yet represented by binding handles/slots | delete per covered mode once static declaration records cover the mode and tests prove hits/misses do not enter the helper ladder |
 | `Rules.findDeclaration(...)` / `Rules.findProperty(...)` fallback to `DeclarationRegistry` | semantic filtered `Declaration`/property merge-chain modes, dynamic names, import/reference visibility, complex source-order modes not yet encoded in frame lookup. `VarDeclaration` plus unfiltered/default-filter exact `Declaration`/property lookup are direct-first for covered option shapes, and covered static declaration/property `Reference` reads reuse binding handles keyed by contextual lookup shape. Direct declaration lookup and the registry fallback both read live declaration-shaped cells through `currentBindingsByName`; `liveSlotsByName` is no longer queried as a parallel declaration lookup surface. The generic `Rules.find('declaration', ...)` wrapper is deleted. | delete per mode as soon as frame lookup encodes that mode and tests prove covered hits/misses do not enter registry search |
-| Callable direct-crawl bridge after registryless mixin deletion | guard/candidate matching, import visibility, and namespace cases not yet encoded in frame/handle state. Exact simple misses now distinguish ruleset-capable child surfaces from mixin-capable child surfaces, and parameterized terminal lookups skip exact ruleset terminal scans. | delete per modeled path once binding state can return callable hit/miss or explicit `UNCOVERED`; do not restore `MixinRegistry` or stringly `Rules.find('mixin', ...)` |
+| Callable direct-crawl bridge after registryless mixin deletion | guard/candidate matching, import visibility, and namespace cases not yet encoded in frame/handle state. Exact simple misses now distinguish ruleset-capable child surfaces from mixin-capable child surfaces in both frame and no-frame direct lookup, and parameterized terminal lookups skip exact ruleset terminal scans. | delete per modeled path once binding state can return callable hit/miss or explicit `UNCOVERED`; do not restore `MixinRegistry` or stringly `Rules.find('mixin', ...)` |
 | Public materialization from source declaration nodes | cold public `eval/resolve` API compatibility and unmodeled ownership boundaries | delete from render/eval hot paths once binding values can render directly and public materialization is isolated |
 
 ## Mental Test Matrix

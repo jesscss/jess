@@ -885,6 +885,23 @@ left for this branch.
    - Done: focused guard, import-reference, namespace, and stress-oriented
      callable fixtures pass.
 
+6a. [x] Narrow no-frame direct callable child-surface bridge for mixin-only
+    misses.
+   `findMixinsFast(...)` now uses the carried mixin-only child-surface fact
+   when `includeRulesets` is false. Direct mixin-only lookup without a
+   prebuilt scope frame skips child surfaces whose descendants can only contain
+   ruleset terminals, instead of using the broader exact-callable surface fact
+   and recursing anyway.
+
+   Completion gate:
+   - Done: focused no-frame test proves a terminal mixin-only miss does not
+     enter the child bridge for a ruleset-only child surface.
+   - Done: existing frame-based terminal mixin-only miss tests still pass.
+   - Done: namespace and parameterized mixin-ruleset tests still pass, proving
+     rulesets remain valid namespace containers where required.
+   - Done: broader callable/reference/import/call suite passes after rerun
+     without a concurrent build cleaning package artifacts.
+
 7. [x] Refresh the binding proposal after each bridge deletion.
    `BINDING-INDEX-PROPOSAL.md` is the contract for which fallback bridges are
    still tolerated. Every production bridge left behind must name its allowed
@@ -1252,6 +1269,36 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- No-frame mixin-only child-surface bridge pass: accepted as callable
+  direct-crawl work reduction, not as a speed claim. Files:
+  `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/__tests__/mixin.test.ts`,
+  `docs/future/core-architecture/HANDOFF.md`, and
+  `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`.
+  - New traversal: no new tree traversal. The direct `findMixinsFast(...)`
+    bridge already walked child callable surfaces; this pass changes the
+    existing bridge condition from the broad exact-callable child fact to
+    `hasDirectLookupChildSurface(includeRulesets)` and skips entries that fail
+    the already-existing `rulesMayContainExactMixinSurface(...)` predicate when
+    ruleset terminals are excluded.
+  - New node/materialization: none. No node, wrapper `Rules`, copy,
+    `.inherit(...)`, `.adopt(...)`, map/set, source metadata, parent mutation,
+    or materialized output was added in production.
+  - Render path: unchanged. This only avoids an unnecessary callable lookup
+    child-surface crawl for covered mixin-only misses.
+  - Helper/API surface: no helper or public method added. The existing private
+    `hasDirectLookupChildSurface(...)` and `rulesMayContainExactMixinSurface(...)`
+    facts are reused.
+  - Metadata mutations: none. Existing child-surface booleans are read, not
+    mutated differently.
+  - Routine error/control: no throw/catch/Error path added. Test-only
+    `try/finally` monkeypatch restoration and `rules([])`/`new Set`-like
+    fixtures are isolated to focused tests.
+  - Evidence: touched-file ESLint passed; focused callable child-surface tests
+    passed (`11` passed, `131` skipped); serial broader callable/reference/import/call
+    suite passed (`460` passed, `1` skipped). An earlier broad run failed
+    while `@jesscss/core build` was cleaning `lib` in parallel; the serial rerun
+    after the build finished passed.
 - Core function registry deletion pass: accepted as binding/lookup registry
   plumbing deletion, not as a speed claim. Files:
   `packages/core/src/tree/rules.ts`,

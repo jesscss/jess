@@ -2589,6 +2589,36 @@ describe('Mixin', () => {
       })).toEqual([parentMixin]);
     });
 
+    it('direct mixin-only miss skips ruleset-only child surfaces without a frame', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const childBridgeKeys: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key, options] = args;
+        if (key === '.ruleset-only-direct-missing' && options?.searchParents === false) {
+          childBridgeKeys.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          rules([
+            ruleset({
+              selector: el('.ruleset-only-direct-child'),
+              rules: rules([decl({ name: 'color', value: any('green') })])
+            })
+          ])
+        ]);
+
+        expect(root.findMixin('.ruleset-only-direct-missing', 'Mixin', {
+          terminalMixinOnly: true
+        })).toBeUndefined();
+        expect(childBridgeKeys).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('callable lookup does not build a scope frame just to try the frame shortcut', () => {
       const mixinDef = mixin({
         name: any('.lazy-frame-mixin'),
