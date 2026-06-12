@@ -1044,6 +1044,12 @@ the binding index/scope lookup refactor.
    directly and restores the reference stack with promise `finally(...)`.
    The sync path stays unchanged; this deletes repeated closure plumbing only
    for actual async raw lookups and does not add a helper/API surface.
+   Thirteenth partial status: fallback evaluation now restores the reference
+   stack with promise `finally(...)` for both async `JsExpression.resolve(...)`
+   and generic async fallback `eval(...)`. The generic fallback rejection path
+   previously left `Context.referenceStack` incremented; a focused regression
+   test now covers that rejection while the change also deletes the duplicate
+   JsExpression success/error cleanup continuations.
 15. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -1123,6 +1129,48 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Reference async fallback cleanup pass: accepted as a narrow correctness fix
+  plus helper/API-surface cut in fallback reference evaluation, not as a speed
+  claim. Files: `packages/core/src/tree/reference.ts`,
+  `packages/core/src/tree/__tests__/reference.test.ts`, and this handoff.
+  - New traversal: none. No loop, recursion, parent/source walk, child crawl,
+    sort, side map, or array/object scan was added.
+  - New node/materialization: production none. The implementation changes
+    async cleanup continuations only; it does not add node construction,
+    copying, wrapper surfaces, inheritance, or metadata mutation. Test-only
+    construction adds one `RejectingAsyncAny` fixture instance to prove the
+    rejection cleanup hole.
+  - Render path: fallback render still resolves the same fallback node and
+    renders through the resolved node's native render path. The change only
+    ensures async fallback rejection restores `Context.referenceStack` instead
+    of leaking the active reference frame.
+  - Helper/API surface: net deletion. Async `JsExpression` fallback evaluation
+    no longer carries duplicated success/error cleanup callbacks, and generic
+    async fallback evaluation no longer carries a success-only cleanup callback.
+    Both use promise `finally(...)` cleanup; no helper or public method was
+    added. The test-only `Promise.reject(new Error(...))` is deliberate
+    exceptional failure coverage, not routine hot-path error control.
+  - Metadata mutations: no new mutations. Existing reference-stack restoration
+    is now guaranteed on async fallback success or rejection.
+  - Evidence: the new regression
+    `restores reference stack when async fallback render rejects` failed before
+    the fix with `Context.referenceStack === 1` after rejection. After the fix,
+    `reference.test.ts` passed (`125` tests), the focused `reference`,
+    `declaration`, `call`, and `mixin` family passed (`410` tests), and the
+    broader lookup/materialization set passed (`694` passed, `9` skipped);
+    touched TypeScript eslint passed; `git diff --check`, `pnpm run
+    verify:aggressive-cutting-review` (with the documented test-only rejection
+    fixture danger tokens), `pnpm run audit:node-creation`, `pnpm run
+    prototype:binding-handle-reuse`, `pnpm --filter @jesscss/core build`, and
+    `pnpm --filter jess build` passed. Direct stress render of
+    `scope-lookup-stress.less` produced length `8822`.
+    `measure:less:hotpath` completed as sanity only with unstable `functions`
+    `16.47ms`, usable `import-reference` `22.74ms`, noisy `mixins-guards`
+    `28.59ms`, noisy `extend-chaining` `13.33ms`, and usable `media`
+    `6.44ms`, so this pass makes no speed claim.
+  - Verdict: keep. This fixes a proven async cleanup leak and removes repeated
+    fallback continuation plumbing without moving lookup/materialization
+    boundaries.
 - Raw reference async cleanup continuation pass: accepted as a narrow
   helper/API-surface cut in `Reference` raw lookup, not as a speed claim. Files:
   `packages/core/src/tree/reference.ts` and this handoff.

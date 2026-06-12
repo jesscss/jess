@@ -1658,25 +1658,17 @@ function evaluateFallbackValue(
   if (fallbackValue instanceof JsExpression) {
     const out = fallbackValue.resolve(context);
     if (isThenable(out)) {
-      return Promise.resolve(out).then(
-        (node) => {
-          context.popReference();
-          return node;
-        },
-        (error) => {
-          context.popReference();
-          throw error;
-        }
-      );
+      return Promise.resolve(out).finally(() => {
+        context.popReference();
+      });
     }
     context.popReference();
     return out;
   }
   const out = fallbackValue.eval(context);
   if (isThenable(out)) {
-    return Promise.resolve(out).then((node) => {
+    return Promise.resolve(out).finally(() => {
       context.popReference();
-      return node;
     });
   }
   context.popReference();

@@ -49,6 +49,17 @@ class AsyncNativeRenderAny extends Any<string> {
   }
 }
 
+class RejectingAsyncAny extends Any<string> {
+  constructor(value: string) {
+    super(value);
+    this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+  }
+
+  override eval() {
+    return Promise.reject(new Error(this.value));
+  }
+}
+
 describe('reference', () => {
   beforeEach(() => {
     context = new Context();
@@ -1911,6 +1922,20 @@ describe('reference', () => {
       );
 
       await expect(Promise.resolve(refNode.render(context))).resolves.toBe('rendered-red');
+      expect(context.referenceStack).toBe(0);
+    });
+
+    it('restores reference stack when async fallback render rejects', async () => {
+      const fallback = new RejectingAsyncAny('fallback failed');
+      const refNode = ref(
+        { key: 'missing' },
+        {
+          type: 'variable',
+          fallbackValue: fallback
+        }
+      );
+
+      await expect(Promise.resolve(refNode.render(context))).rejects.toThrow('fallback failed');
       expect(context.referenceStack).toBe(0);
     });
 
