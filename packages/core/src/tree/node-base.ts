@@ -267,6 +267,8 @@ export const F_DEFAULT = F_VISIBLE;
 export type Mutable<T extends { value: unknown }> =
   Omit<T, 'value'> & { -readonly [P in 'value']: T[P] };
 
+export type EvalSyncResult<T extends Node> = Awaited<ReturnType<T['eval']>>;
+
 /**
  * The underlying type for all Jess nodes
  */
@@ -1132,6 +1134,15 @@ export abstract class Node<
    */
   eval(context: Context): MaybePromise<Node> {
     return Node.evalStatic(this, context);
+  }
+
+  evalSync<T extends this>(this: T, context: Context): EvalSyncResult<T>;
+  evalSync(context: Context): Node {
+    const evaluated = this.eval(context);
+    if (isThenable(evaluated)) {
+      throw new TypeError('Expected synchronous eval result.');
+    }
+    return evaluated;
   }
 
   /**

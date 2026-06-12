@@ -788,40 +788,40 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Call evaluated arg/content writer cut.
+Current pass: `evalSync` plus `MaybePromise` narrowing cleanup.
 
 - New traversal: none. No loop, recursion, child/source/parent walk, callback
   iterator, side-map lookup, or object/array scan was added.
-- New node/materialization: none added. No runtime `Node`, copied node,
-  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
-  metadata mutation, side map, helper array, or materialized eval/render value
-  was added.
-- Render path: `serializeRenderedArgs(...)`, `renderPlainFunctionCall(...)`,
-  and `renderFinalizedCallSyntax(...)` now write already-evaluated call
-  argument and content nodes through the prepared writer with
-  `writeSyntax(...)` instead of public `toTrimmedString(...)` transport. This
-  includes the escaped-paren argument branch.
-- Helper/API surface: no helper, method, public API, or package export was
-  added. The pass reuses the existing prepared print options already allocated
-  by both render paths.
+- New node/materialization: no runtime `Node`, copied node, `.inherit(...)`,
+  `.adopt(...)`, wrapper `Rules`, frozen/source/parent metadata mutation, side
+  map, helper array, or materialized eval/render value was added. Test-only
+  fixtures construct `Context` and `AsyncAny` instances to prove
+  `evalSync(...)` returns sync values and rejects async misuse.
+- Render path: `Node.evalSync(context)` now gives flag-proven sync paths a
+  typed assertion boundary. `Paren` and sync `Call` argument/content branches
+  use it only after `!F_MAY_ASYNC` checks. Generic maybe-async branches in
+  `Call`, `Paren`, and `Operation` now rely on `isThenable(...)` type
+  narrowing instead of `as Node`/`as Promise<Node>` casts.
+- Helper/API surface: one base method and one exported result type were added
+  to delete repeated local sync-eval assertions and unsafe casts. No new
+  per-node helper ladder, package entrypoint, or runtime wrapper object was
+  added.
 - Metadata mutations: none. No parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
-  read, ownership probe, or structural probe was added to runtime code.
-- Evidence: focused `call.test.ts` passed (`81` tests). New tripwires turn the
-  evaluated argument, escaped-argument inner value, and evaluated content
-  node's public `toTrimmedString(...)` into counters and prove render still
-  emits the expected call output without calling them. `NODE-REWRITE-TRACKER.md`
-  records Call as partial because callable output value selection,
-  `evalArgNodes(...)` copy pressure, whole-call mark/readback, async/helper
-  ladders, and repeated eval remain.
-- Hotpath leash: pre-pass at `8099e114` was status-only, not a speed claim:
-  `functions` `13.05ms` unstable, `import-reference` `20.80ms` unstable,
-  `mixins-guards` `17.10ms` usable, `extend-chaining` `5.10ms` usable, and
-  `media` `5.85ms` usable. Post-pass at dirty tree was also status-only:
-  `functions` `12.87ms` unstable, `import-reference` `20.64ms` unstable,
-  `mixins-guards` `17.28ms` unstable, `extend-chaining` `5.30ms` unstable,
-  and `media` `5.81ms` noisy.
-- Verdict: keep the cut if the post-pass gates stay green. Next full queue
-  pass should attack a real `Call` ownership/copy branch only with focused
-  proof, otherwise move to AtRule direct header/body writer work or the
-  remaining Ruleset header capture.
+  read, ownership probe, or structural probe was added to runtime code. The
+  added `TypeError` is an exceptional API assertion when `evalSync(...)` is
+  called on a thenable result; it is not used for routine miss/branch control.
+- Evidence: focused node/call/paren/operation tests passed (`116` tests).
+  `@jesscss/core` build passed and proved TypeScript narrows
+  `MaybePromise<Node>` after `isThenable(...)` without casts. `evalSync` tests
+  prove a normal sync node returns its typed value and an async-flagged node
+  throws if called through the sync assertion path.
+- Hotpath leash: status-only dirty run from `d0bd3717`, not a speed claim:
+  `functions` `12.41ms` usable, `import-reference` `19.15ms` usable,
+  `mixins-guards` `17.03ms` usable, `extend-chaining` `4.84ms` usable, and
+  `media` `5.35ms` usable. No speed claim is allowed without a clean
+  before/after pair.
+- Verdict: keep if review gates stay green. Follow-up cleanup should remove
+  remaining `as Node` casts only where either `!F_MAY_ASYNC` permits
+  `evalSync(...)` or `isThenable(...)` already narrows a real
+  `MaybePromise<T>`.

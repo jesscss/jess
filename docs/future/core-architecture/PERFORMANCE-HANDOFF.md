@@ -1717,6 +1717,28 @@ with focused tests that trip if `toTrimmedString(...)` is called. Remaining
 `Call` work is ownership/copy pressure, whole-call mark/readback, and helper
 ladder reduction.
 
+### EvalSync / MaybePromise Narrowing Leash
+
+Date: 2026-06-12.
+
+Change: added `Node.evalSync(context)` for `!F_MAY_ASYNC`-proven sync eval
+paths and removed local `as Node`/`as Promise<Node>` casts where
+`isThenable(...)` already narrows `MaybePromise<Node>`. Initial call sites are
+`Call`, `Paren`, and `Operation`.
+
+Hotpath status:
+
+- Dirty `pnpm run measure:less:hotpath -- --stable` from `d0bd3717` reported:
+  `functions` median `12.41ms` usable, `import-reference` median `19.15ms`
+  usable, `mixins-guards` median `17.03ms` usable,
+  `extend-chaining` median `4.84ms` usable, and `media` median `5.35ms`
+  usable.
+
+Interpretation: status only, not speed proof. There was no clean before/after
+pair for this exact patch. The code-path proof is a narrower sync assertion
+boundary for flag-proven paths and deletion of casts after existing thenable
+checks.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

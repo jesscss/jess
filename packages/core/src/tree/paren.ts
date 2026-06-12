@@ -149,11 +149,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     };
     try {
       if (!currentValue.hasFlag(F_MAY_ASYNC)) {
-        const evaluated = currentValue.eval(context);
-        if (!(evaluated instanceof Node)) {
-          throw new TypeError('Expected paren value to evaluate to a node');
-        }
-        return finish(evaluated);
+        return finish(currentValue.evalSync(context));
       }
       const maybeEvald = currentValue.eval(context);
       if (isThenable(maybeEvald)) {
@@ -167,7 +163,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
           }
         );
       }
-      return finish(maybeEvald as Node);
+      return finish(maybeEvald);
     } catch (error) {
       if (isOp) {
         context.parenFrames.pop();
@@ -287,9 +283,9 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         return this.withValue(value);
       };
       if (isThenable(maybeEvald)) {
-        return (maybeEvald as Promise<Node>).then(after);
+        return maybeEvald.then(after);
       }
-      return after(maybeEvald as Node);
+      return after(maybeEvald);
     }
     return this;
   }

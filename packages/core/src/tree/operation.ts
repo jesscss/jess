@@ -143,17 +143,16 @@ export class Operation extends Node<OperationValue> {
     const handleLeft = (l: Node): MaybePromise<OperationRenderResult> => {
       const maybeRight = right.eval(context);
       if (isThenable(maybeRight)) {
-        return (maybeRight as Promise<Node>).then((r) => {
+        return maybeRight.then((r) => {
           return finalize(l, r);
         });
       }
-      const r = maybeRight as Node;
-      return finalize(l, r);
+      return finalize(l, maybeRight);
     };
     if (isThenable(maybeLeft)) {
-      return (maybeLeft as Promise<Node>).then(handleLeft);
+      return maybeLeft.then(handleLeft);
     }
-    return handleLeft(maybeLeft as Node);
+    return handleLeft(maybeLeft);
   }
 
   private renderEvaluatedOutput(
@@ -240,17 +239,16 @@ export class Operation extends Node<OperationValue> {
     const handleLeft = (l: Node): MaybePromise<Node> => {
       const maybeRight = right.eval(context);
       if (isThenable(maybeRight)) {
-        return (maybeRight as Promise<Node>).then((r) => {
+        return maybeRight.then((r) => {
           return finalize(l, r);
         });
       }
-      const r = maybeRight as Node;
-      return finalize(l, r);
+      return finalize(l, maybeRight);
     };
     if (isThenable(maybeLeft)) {
-      return (maybeLeft as Promise<Node>).then(handleLeft);
+      return maybeLeft.then(handleLeft);
     }
-    return handleLeft(maybeLeft as Node);
+    return handleLeft(maybeLeft);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {

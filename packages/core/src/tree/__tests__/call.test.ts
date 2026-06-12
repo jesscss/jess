@@ -1,6 +1,6 @@
 import type { IToken } from 'chevrotain';
 import * as treeIndex from '../index.js';
-import { Any, Call, F_NON_STATIC, JsFunction, List, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, fn, list, mixin, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Any, Call, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, fn, list, mixin, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import {
   getCallRawArgDiagnosticMessageSource,
   getCallRawArgDiagnosticSource,
@@ -51,6 +51,11 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
 });
 
 class AsyncAny extends Any<string> {
+  constructor(value: string) {
+    super(value);
+    this.addFlag(F_MAY_ASYNC);
+  }
+
   override eval() {
     return Promise.resolve(any(this.value));
   }
@@ -59,6 +64,7 @@ class AsyncAny extends Any<string> {
 class AsyncRenderedAny extends Any<string> {
   constructor(value: string, private readonly renderedValue: string) {
     super(value);
+    this.addFlag(F_MAY_ASYNC);
   }
 
   override eval() {
@@ -67,6 +73,11 @@ class AsyncRenderedAny extends Any<string> {
 }
 
 class RejectingAny extends Any<string> {
+  constructor(value: string) {
+    super(value);
+    this.addFlag(F_MAY_ASYNC);
+  }
+
   override eval() {
     return Promise.reject(new Error(this.value));
   }

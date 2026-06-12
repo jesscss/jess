@@ -497,7 +497,6 @@ export class Call extends Node<CallValue, CallOptions> {
         w.add('(', arg);
         if (arg.value) {
           const innerMark = w.mark();
-          const rendered = arg.value.eval(context);
           const finishParen = (): MaybePromise<string> => {
             w.trimHorizontalStartSince(innerMark);
             w.trimHorizontalEndSince(innerMark);
@@ -505,13 +504,18 @@ export class Call extends Node<CallValue, CallOptions> {
             writeArgSeparator();
             return serializeArgAt(next);
           };
+          if (!arg.value.hasFlag(F_MAY_ASYNC)) {
+            arg.value.evalSync(context).writeSyntax(printOptions);
+            return finishParen();
+          }
+          const rendered = arg.value.eval(context);
           if (isThenable(rendered)) {
             return rendered.then((value) => {
               value.writeSyntax(printOptions);
               return finishParen();
             });
           }
-          (rendered as Node).writeSyntax(printOptions);
+          rendered.writeSyntax(printOptions);
           return finishParen();
         }
         w.add(')', arg);
@@ -519,6 +523,10 @@ export class Call extends Node<CallValue, CallOptions> {
         return serializeArgAt(next);
       } else {
         const argMark = w.mark();
+        if (!arg.hasFlag(F_MAY_ASYNC)) {
+          arg.evalSync(context).writeSyntax(printOptions);
+          return finishArg(argMark);
+        }
         const rendered = arg.eval(context);
         if (isThenable(rendered)) {
           return rendered.then((value) => {
@@ -526,7 +534,7 @@ export class Call extends Node<CallValue, CallOptions> {
             return finishArg(argMark);
           });
         }
-        (rendered as Node).writeSyntax(printOptions);
+        rendered.writeSyntax(printOptions);
         return finishArg(argMark);
       }
     };
@@ -565,6 +573,10 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       if (contentNode) {
         w.add(': ');
+        if (!contentNode.hasFlag(F_MAY_ASYNC)) {
+          contentNode.evalSync(context).writeSyntax(printOptions);
+          return w.getSince(mark);
+        }
         const renderedContent = contentNode.eval(context);
         if (isThenable(renderedContent)) {
           return renderedContent.then((value) => {
@@ -572,7 +584,7 @@ export class Call extends Node<CallValue, CallOptions> {
             return w.getSince(mark);
           });
         }
-        (renderedContent as Node).writeSyntax(printOptions);
+        renderedContent.writeSyntax(printOptions);
         return w.getSince(mark);
       }
       return w.getSince(mark);
@@ -624,6 +636,10 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       if (contentNode) {
         w.add(': ');
+        if (!contentNode.hasFlag(F_MAY_ASYNC)) {
+          contentNode.evalSync(context).writeSyntax(printOptions);
+          return w.getSince(mark);
+        }
         const renderedContent = contentNode.eval(context);
         if (isThenable(renderedContent)) {
           return renderedContent.then((value) => {
@@ -631,7 +647,7 @@ export class Call extends Node<CallValue, CallOptions> {
             return w.getSince(mark);
           });
         }
-        (renderedContent as Node).writeSyntax(printOptions);
+        renderedContent.writeSyntax(printOptions);
         return w.getSince(mark);
       }
       return w.getSince(mark);
