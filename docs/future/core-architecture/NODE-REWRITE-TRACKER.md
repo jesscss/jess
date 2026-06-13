@@ -218,7 +218,9 @@ Current hard leftovers after the broad hook sweep:
   already carries kind. Body eval/registration async branches now use
   `MaybePromise` narrowing.
 - [ ] `StyleImport`: direct import/render writer and placement state; no
-  first-use copied rules surfaces on render-only paths.
+  first-use copied rules surfaces on render-only paths. Placement-state
+  bookkeeping no longer stores a redundant top-level `Map`, unused preservation
+  flag, or defensive recursive `Set`, but first-use child copies still remain.
 - [x] `JsImport`: live parser-owned syntax node for Jess/SCSS JS module
   imports; keep direct source writer.
 - [x] `JsExpression`: live explicit JS eval node; backtick source wrapper

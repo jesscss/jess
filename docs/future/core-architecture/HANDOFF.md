@@ -746,6 +746,15 @@ the binding index/scope lookup refactor.
    materialization so routine eval replacement does not imply `.inherit(...)`.
 20. [ ] Replace `StyleImport` first-use placement copies with placement state
    that points at canonical source children and preserves import visibility.
+   Partial status: first-use placement state no longer stores a redundant
+   `sourceByPlacement` `Map` or unused preservation flag, and nested
+   source-child lookup no longer allocates a defensive `Set` per recursive
+   search. The actual first-use placement child copies remain. A direct
+   `getImportPlacementChildSegments(...)` return was tried and rejected by the
+   focused import test because evaluated placement children can replace the
+   initial segment output; the public segment read must report the current
+   placement child until placement state is redesigned around canonical source
+   children.
 21. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
    is source/visibility/placement bookkeeping.
 22. [ ] Replace remaining `Rules` merge output copies with direct merge
@@ -820,41 +829,36 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: queue status closure for already-proven cold/audited surfaces.
+Current pass: `StyleImport` placement-state bookkeeping cut.
 
-- New traversal: none. This pass changed docs only; no loop, recursion,
-  callback helper, parent/source walk, side-map lookup, or object/array scan was
-  added to runtime code.
-- New node/materialization: none. No runtime `new Node`, copied node,
-  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, materialized array, frozen
-  state, parent restoration, or source metadata mutation was added.
-- Render path: no render path changed. The closures are tracker/handoff status
-  updates for surfaces whose behavior was already proven by focused tests.
-- Helper/API surface: no helper, method, or public API was added. `JsArray` and
-  `MixinCollection` were explicitly kept as cold host/handoff wrappers rather
-  than given fake source serialization. `CustomDeclaration` was marked audited
-  because it inherits `Declaration` writer/render staging and only toggles
-  `context.inCustom` during eval.
-- Metadata mutations: none added.
-- Evidence: focused tests passed:
-  `pnpm --filter @jesscss/core test --
-  src/tree/__tests__/mixin.test.ts -t "ScopeFrame callable buckets"` (`4`
-  tests); `pnpm --filter @jesscss/core test --
-  src/tree/__tests__/js-host.test.ts src/tree/__tests__/reference.test.ts -t
-  "JsArray|JS host|array"` (`11` tests); and `pnpm --filter @jesscss/core test
-  -- src/tree/util/__tests__/callable-collection.test.ts
-  src/tree/__tests__/call.test.ts -t "MixinCollection|callable
-  collection|collection surface|dynamic mixin collection"` (`4` tests).
-  `pnpm exec eslint packages/core/src/tree/js-array.ts
-  packages/core/src/tree/util/callable-collection.ts
-  packages/core/src/tree/reference.ts` and `pnpm exec eslint
-  packages/core/src/tree/declaration-custom.ts packages/core/src/tree/control.ts`
-  also passed.
-- Hotpath leash: pre-pass bounded status at `011ce0f2` reported `functions`
-  `13.39ms` usable, `import-reference` `18.45ms` unstable, `mixins-guards`
-  `15.05ms` usable, `extend-chaining` `4.78ms` usable, and `media` `5.16ms`
-  usable. No post-pass leash was run because runtime code did not change.
-- Verdict: keep these as queue closures only. `Binding handle reuse`,
-  `Reference` materialization, `StyleImport`, `Rules` merge placement,
-  selector/extend equality, and control body-surface audits remain open because
-  they require runtime design/code changes, not status cleanup.
+- New traversal: none added. One defensive recursive-cycle `Set` allocation was
+  removed from `findImportPlacementValuePath(...)`; the same recursive value
+  walk remains because the public placement-source lookup still has to map an
+  evaluated placement descendant back to its source descendant.
+- New node/materialization: none added. The existing first-use import placement
+  copy path is still present and still open queue debt. This pass removed the
+  redundant top-level `sourceByPlacement` `Map` and an unused placement-state
+  flag; it did not add `new Node`, `.inherit(...)`, `.adopt(...)`, wrapper
+  `Rules`, copied nodes, frozen state, parent restoration, or source metadata
+  mutation.
+- Render path: no render path changed. Import rendering still goes through
+  existing evaluated `Rules` output. No arrays/nodes were added merely to
+  stringify.
+- Helper/API surface: no helper, method, or public API was added. The attempted
+  direct `getImportPlacementChildSegments(...)` return was rejected and backed
+  out because focused tests prove evaluated placement children can replace the
+  initial segment output.
+- Metadata mutations: none added. This pass removed side bookkeeping rather
+  than adding parent/source restoration or defensive property reads.
+- Evidence: pre-pass hotpath leash at `3b1e60ff` was status-only:
+  `functions` `15.09ms` unstable, `import-reference` `22.94ms` usable,
+  `mixins-guards` `19.08ms` usable, `extend-chaining` `6.10ms` usable, and
+  `media` `6.07ms` usable. Focused import tests passed after the narrower cut:
+  `pnpm --filter @jesscss/core test -- src/tree/__tests__/import-style.test.ts`
+  (`84` passed, `1` skipped). The failed intermediate direct-segment return
+  was caught by the same test and removed.
+- Verdict: accept the bookkeeping deletion only. `StyleImport` first-use child
+  copies, `deriveRulesSurface(...)` wrappers, binding-handle reuse, `Reference`
+  materialization, `Rules` merge placement, selector/extend equality, and
+  callable evaluation audits remain open because they require deeper runtime
+  redesign instead of local bookkeeping cuts.

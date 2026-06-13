@@ -267,8 +267,6 @@ type ImportPlacementState = {
   source: Rules;
   children: Node[];
   childSegments: readonly ImportPlacementChildSegment[];
-  sourceByPlacement: ReadonlyMap<Node, Node>;
-  preservesDirectCommentChildren: true;
 };
 
 export type ImportPlacementChildSegment = PlacementChildSegment;
@@ -322,8 +320,7 @@ type ImportPlacementValuePath = readonly (string | number)[];
 function findImportPlacementValuePath(
   value: unknown,
   target: Node,
-  path: (string | number)[] = [],
-  seen = new Set<unknown>()
+  path: (string | number)[] = []
 ): ImportPlacementValuePath | undefined {
   if (value === target) {
     const out = new Array<string | number>(path.length);
@@ -333,16 +330,12 @@ function findImportPlacementValuePath(
     return out;
   }
   if (value instanceof Node) {
-    if (seen.has(value)) {
-      return undefined;
-    }
-    seen.add(value);
-    return findImportPlacementValuePath(value.value, target, path, seen);
+    return findImportPlacementValuePath(value.value, target, path);
   }
   if (Array.isArray(value)) {
     for (let index = 0; index < value.length; index++) {
       path.push(index);
-      const found = findImportPlacementValuePath(value[index], target, path, seen);
+      const found = findImportPlacementValuePath(value[index], target, path);
       path.pop();
       if (found) {
         return found;
@@ -353,7 +346,7 @@ function findImportPlacementValuePath(
   if (isRecord(value)) {
     for (const key in value) {
       path.push(key);
-      const found = findImportPlacementValuePath(value[key], target, path, seen);
+      const found = findImportPlacementValuePath(value[key], target, path);
       path.pop();
       if (found) {
         return found;
@@ -396,10 +389,6 @@ export function getImportPlacementSourceChild(
   const segmentSource = getImportPlacementSegmentSourceChild(placementRules, placementChild);
   if (segmentSource) {
     return segmentSource;
-  }
-  const directSource = state.sourceByPlacement.get(placementChild);
-  if (directSource) {
-    return directSource;
   }
   const index = placementRules.value.indexOf(placementChild);
   return index >= 0 ? state.source.value[index] : undefined;
@@ -555,20 +544,16 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
     const children = new Array<Node>(sourceRules.value.length);
     const childSegments = new Array<PlacementChildSegment>(sourceRules.value.length);
-    const sourceByPlacement = new Map<Node, Node>();
     for (let index = 0; index < sourceRules.value.length; index++) {
       const source = sourceRules.value[index]!;
       const child = copyImportPlacementNode(source);
       children[index] = child;
       childSegments[index] = createPlacementChildSegment(source, child, index);
-      sourceByPlacement.set(child, source);
     }
     return {
       source: sourceRules,
       children,
-      childSegments,
-      sourceByPlacement,
-      preservesDirectCommentChildren: true
+      childSegments
     };
   }
 
