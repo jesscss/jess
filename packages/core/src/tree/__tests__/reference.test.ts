@@ -2959,6 +2959,42 @@ describe('reference', () => {
       }
     });
 
+    it('semantic filtered property lookup ignores stale direct-lookup env and stays registry-owned', async () => {
+      const originalEnv = process.env.JESS_DIRECT_DECLARATION_LOOKUP;
+      const originalGetRegistry = RulesClass.prototype.getRegistry;
+      const registryHits: string[] = [];
+      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
+        const [type] = args;
+        if (type === 'declaration') {
+          registryHits.push(type);
+        }
+        return originalGetRegistry.apply(this, args);
+      };
+      process.env.JESS_DIRECT_DECLARATION_LOOKUP = '1';
+
+      try {
+        const node = rules([
+          decl({ name: any('color'), value: any('red') })
+        ]);
+
+        await node.eval(context);
+        const found = node.findProperty('color', {
+          semanticFilter: true,
+          filter: () => true
+        });
+
+        expect(found?.value.value.valueOf()).toBe('red');
+        expect(registryHits.length).toBeGreaterThan(0);
+      } finally {
+        if (originalEnv === undefined) {
+          delete process.env.JESS_DIRECT_DECLARATION_LOOKUP;
+        } else {
+          process.env.JESS_DIRECT_DECLARATION_LOOKUP = originalEnv;
+        }
+        RulesClass.prototype.getRegistry = originalGetRegistry;
+      }
+    });
+
     it('direct property lookup reuses carried child rule entries after indexing', async () => {
       const childRules = rules([
         decl({ name: any('child-color'), value: any('blue') })

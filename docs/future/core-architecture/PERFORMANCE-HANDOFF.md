@@ -1775,6 +1775,12 @@ container materialization boundary, not another local wrapper.
 
 Date: 2026-06-08.
 
+Status update: the runtime `JESS_DIRECT_DECLARATION_LOOKUP` switch and
+`scripts/prototype-direct-declaration-lookup.mjs` comparator were deleted after
+the covered direct declaration/property modes became production defaults. The
+measurements below are historical evidence only; do not rerun these commands
+as current gates.
+
 Hypothesis: `Rules.find('declaration', ...)` can preserve the old declaration
 registry semantics while replacing declaration-registry indexing/searching with
 a direct crawl over `Rules.value` and child `Rules` bodies whose visibility

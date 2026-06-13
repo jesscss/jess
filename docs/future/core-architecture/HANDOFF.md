@@ -748,9 +748,9 @@ left for this branch.
    'VarDeclaration', ...)` and `Rules.findVariable(...)` now use
    `findDeclarationDirect(...)` by default, falling back to
    `DeclarationRegistry` only when the direct path returns explicit
-   `UNCOVERED` for unsupported option shapes. General declaration/property
-   lookup remains behind `JESS_DIRECT_DECLARATION_LOOKUP` because forcing the
-   full bridge direct currently breaks property merge/source-order semantics.
+   `UNCOVERED` for unsupported option shapes. The old env-gated
+   declaration-direct experiment is deleted; unsupported declaration/property
+   modes remain explicit `UNCOVERED` bridges instead of a global switch.
 
    Completion gate:
    - Done: selected mode is `VarDeclaration`; focused hit/miss/import/reference
@@ -777,9 +777,9 @@ left for this branch.
      references avoid opening `DeclarationRegistry`.
    - Done: declaration/reference/import focused tests pass with the direct
      property path enabled by default.
-   - Done: `JESS_DIRECT_DECLARATION_LOOKUP=1` focused declaration/reference
-     tests pass because semantic filtered merge-chain lookups decline the
-     direct path instead of duplicating merge-chain inputs.
+   - Done: the old `JESS_DIRECT_DECLARATION_LOOKUP` switch has since been
+     deleted; semantic filtered merge-chain lookups still decline the direct
+     path instead of duplicating merge-chain inputs.
 
 4b. [x] Model filtered declaration/property merge-chain lookups.
    Assignment-normalization filters (`+:`, `+,:`, `+_:`) still need
@@ -795,8 +795,7 @@ left for this branch.
      evaluated/wrapper scopes where that map means "current value array has
      been scanned"; forced direct semantic lookup then dropped/duplicated
      merge-chain inputs and produced property reference misses.
-   - Done: focused declaration/reference tests pass with
-     `JESS_DIRECT_DECLARATION_LOOKUP=1`, proving the safe boundary remains:
+   - Done: focused declaration/reference tests prove the safe boundary remains:
      unfiltered property lookup is direct, while semantic merge filters return
      explicit `UNCOVERED`.
    - Done: deletion condition recorded in `BINDING-INDEX-PROPOSAL.md`: filtered
@@ -997,6 +996,22 @@ left for this branch.
    - Done: focused variable and property tests pass empty candidate sets while
      proving `Rules.getRegistry('declaration')` is not opened.
    - Done: non-empty candidate sets remain excluded from the direct path.
+
+7f. [x] Delete stale direct-declaration env experiment.
+   The runtime no longer checks `JESS_DIRECT_DECLARATION_LOOKUP` inside
+   `Rules.findDeclaration(...)`. Covered `VarDeclaration` and unfiltered
+   `Declaration`/property lookup are production defaults; semantic filtered
+   declaration/property lookup remains registry-owned until merge-chain
+   occurrence facts are modeled. The obsolete prototype script that only
+   compared the env switch was removed.
+
+   Completion gate:
+   - Done: no runtime code reads `JESS_DIRECT_DECLARATION_LOOKUP`.
+   - Done: focused tests prove covered direct variable/property modes still
+     avoid `DeclarationRegistry`.
+   - Done: focused test sets the stale env var and proves semantic filtered
+     property lookup still enters the registry-owned bridge.
+   - Done: no semantic filtered declaration/property lookup was forced direct.
 
 Parked secondary deep-cut queue:
 
@@ -1326,6 +1341,42 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Direct-declaration env deletion pass: accepted as transitional lookup
+  experiment deletion, not as a speed claim. Files:
+  `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/__tests__/reference.test.ts`,
+  `scripts/prototype-direct-declaration-lookup.mjs`,
+  `docs/future/core-architecture/HANDOFF.md`, and
+  `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`.
+  - New traversal: none. The runtime branch that checked
+    `process.env.JESS_DIRECT_DECLARATION_LOOKUP` was deleted; no lookup loop,
+    parent walk, child walk, or cache probe was added.
+  - New node/materialization: none. No node, wrapper `Rules`, copy,
+    `.inherit(...)`, `.adopt(...)`, source metadata, parent mutation, output
+    array, or materialized render artifact was added.
+  - Render path: unchanged. This only removes a declaration lookup selection
+    switch and a stale prototype script for that switch.
+  - Helper/API surface: deleted one runtime env branch and the obsolete
+    `scripts/prototype-direct-declaration-lookup.mjs` comparator. No helper or
+    public method was added.
+  - Metadata mutations: none.
+  - Routine error/control: no production throw/catch/Error path added. The new
+    focused test uses `try/finally` to restore the temporary env var and
+    monkey-patched `Rules.getRegistry(...)`.
+  - Evidence: touched-file ESLint passed; focused reference lookup tests
+    passed (`8` passed, `129` skipped), proving covered direct declaration
+    modes remain direct and stale-env semantic filtered property lookup remains
+    registry-owned. Broader binding sweep passed: `reference`, `scope-frame`,
+    `import-style`, `mixin`, `rules`, `detached-rulesets`, `call`, `control`,
+    and `declaration` plus matched utility suites (`684` passed, `9` skipped).
+    `@jesscss/core` and `jess` builds passed; node-creation audit reported
+    `new-node` `310`, `with-surface` `39`, `derive` `30`, `copy-leaves` `28`;
+    hotpath sanity was status only: usable `functions` `15.39ms`,
+    `import-reference` `20.55ms`, `extend-chaining` `5.88ms`, and `media`
+    `6.36ms`; unstable `mixins-guards` `19.44ms`. `verify:aggressive-cutting-review`
+    and `git diff --check` passed; the verifier flagged the expected test-only
+    `try` and `registryHits: string[]` tripwires plus literal
+    `.inherit(...)`/`.adopt(...)` text prosecuted above.
 - Ruleset child-surface callable pass: accepted as callable direct-crawl work
   reduction, not as a speed claim. Files:
   `packages/core/src/tree/rules.ts`,
