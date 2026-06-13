@@ -135,8 +135,11 @@ Current hard leftovers after the broad hook sweep:
   still own meaningful render/eval string-transport or branch-heavy paths.
 - Shared utility cleanup: `cast([...])` and cloning/reusable-leaf helpers now
   use straight indexed loops instead of `.map(...)`, `.some(...)`, and metadata
-  spread copies. This does not complete any node family; it removes callback
-  scaffolding from existing cast/copy ownership boundaries.
+  spread copies. `canReuseLeaf(...)` now trusts `F_HAS_NODE_CHILD` instead of
+  recursively rediscovering child nodes, and `Node.set(null, ...)` refreshes
+  that bit on whole-value replacement. This does not complete any node family;
+  it removes callback/crawl scaffolding from existing cast/copy ownership
+  boundaries.
 - `Sequence` and `List` have writer hooks, but are not complete until resolved
   render paths stop capturing strings before writing buffers and child emission
   stops routing through public `toString(...)` where direct hooks preserve

@@ -550,6 +550,7 @@ export abstract class Node<
   set<K extends NodeSetKey<Data>>(key: K, value: NodeSetValue<Data, K>): void;
   set(key: null | string | number, value: any) {
     if (key == null) {
+      this.removeFlag(F_HAS_NODE_CHILD);
       this.value = this._processNodes(value);
     } else {
       if (!isMutableNodeValue(this.value)) {

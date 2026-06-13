@@ -2046,6 +2046,29 @@ Interpretation: status only, not a speed claim. Keep as callback/spread
 scaffold deletion in shared cast/copy utilities; the hotpath leash was
 unstable/noisy and mixed.
 
+### Reusable-Leaf Child-Flag Trust Cut
+
+Date: 2026-06-13.
+
+Change: deleted the recursive `hasNodeChild(...)` value crawl from
+`packages/core/src/tree/util/cloning.ts`; `canReuseLeaf(...)` now trusts
+`F_HAS_NODE_CHILD`, which constructor/adoption already maintains. Hardened
+`Node.set(null, ...)` so whole-value replacement clears and re-processes that
+flag instead of leaving it stale.
+
+Hotpath status:
+
+- Dirty `pnpm run measure:less:hotpath -- --stable` at `8e5281f1` reported:
+  `functions` median `13.35ms` unstable,
+  `import-reference` median `21.47ms` unstable,
+  `mixins-guards` median `17.04ms` unstable,
+  `extend-chaining` median `5.56ms` noisy, and `media` median `5.91ms`
+  unstable.
+
+Interpretation: status only, not a speed claim. Keep as a code-path deletion:
+reusable-leaf checks no longer pay a recursive child scan to rediscover a flag
+already carried by node construction/adoption.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

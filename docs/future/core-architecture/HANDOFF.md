@@ -813,43 +813,36 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: cast/cloning callback scaffold cut.
+Current pass: reusable-leaf child-flag trust cut.
 
-- New traversal: none. `cast([...])`, `hasNodeChild(...)`,
-  `cloneChildrenWithReusableLeaves(...)`, `copyChild(...)`,
-  `copyChildPreservingComments(...)`, and render-frame metadata copying already
-  walked the same arrays through `.map(...)`, `.some(...)`, or spread. This
-  pass keeps the existing walks and replaces callback/spread scaffolding with
-  straight indexed loops.
-- New node/materialization: no new node creation boundary was added.
-  `cast([...])` still creates one `List` and one converted node per input item.
-  The flagged `new Array<...>` allocations replace arrays previously created
-  by `.map(...)` or `[...frames]`; they are fixed-size output arrays for the
-  same required result surfaces, not render-only or eval-to-immediate-string
-  materialization. `copyWithReusableLeaves(...)`, `constructCopy(...)`,
-  `.inherit(...)`, and `frozen` behavior are unchanged.
+- New traversal: none. This pass deletes the recursive `hasNodeChild(...)`
+  value crawl from `packages/core/src/tree/util/cloning.ts`. `canReuseLeaf(...)`
+  now trusts the constructor/adoption-maintained `F_HAS_NODE_CHILD` bit.
+- New node/materialization: no new node, copy, wrapper, array, or object
+  materialization was added. The reusable-leaf decision is the same ownership
+  boundary, but child existence is read from node state instead of rediscovered
+  from `node.value`.
 - Render path: no render path was changed, and nothing resolves into arrays or
-  nodes just to stringify. This pass only touches JS-value casting and reusable
-  leaf/copy utility internals used by existing ownership boundaries.
-- Helper/API surface: no helper or public API was added. Added JSDoc to the
-  exported cloning utility functions touched by the pass so their remaining
-  structural scans are explicit.
-- Metadata mutations: no new parent restoration, `frozen`, inherited
+  nodes just to stringify.
+- Helper/API surface: deleted exported `hasNodeChild(...)`; added no helper and
+  no public replacement API. Existing `F_HAS_NODE_CHILD` is the sole source of
+  truth for this decision. Whole-value `Node.set(null, ...)` now clears the
+  flag before re-processing the new value so the bit is not stale when a child
+  value is replaced by a primitive.
+- Metadata mutations: no parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
-  read, `Reflect.*`, `Object.hasOwn`, or structural probe was added. Existing
-  render-frame metadata copying remains the same semantic copy, just without
-  spread allocation.
+  read, `Reflect.*`, `Object.hasOwn`, or structural probe was added. The only
+  state mutation added is the direct `F_HAS_NODE_CHILD` refresh in
+  `Node.set(null, ...)`, which maintains the existing flag contract.
 - Evidence: focused tests passed:
   `pnpm --filter @jesscss/core test --
-  src/tree/util/__tests__/cloning.test.ts src/tree/__tests__/bool.test.ts
-  src/tree/__tests__/call.test.ts src/tree/__tests__/mixin.test.ts
-  src/tree/__tests__/reference.test.ts` (`335` tests).
-- Hotpath leash: pre-pass `pnpm run measure:less:hotpath -- --stable` at
-  `b237feb5` reported `functions` `14.11ms` unstable,
-  `import-reference` `20.90ms` unstable, `mixins-guards` `17.36ms` unstable,
-  `extend-chaining` `5.44ms` usable, and `media` `5.67ms` usable. Dirty
-  post-pass status reported `functions` `13.94ms` unstable,
-  `import-reference` `22.13ms` unstable, `mixins-guards` `17.82ms` unstable,
-  `extend-chaining` `5.56ms` noisy, and `media` `5.77ms` unstable.
-- Verdict: keep only as callback/spread scaffold deletion in shared hot
-  utilities. Do not claim speed; the leash was unstable/noisy and mixed.
+  src/tree/__tests__/node-flags.test.ts
+  src/tree/util/__tests__/cloning.test.ts src/tree/__tests__/mixin.test.ts
+  src/tree/__tests__/reference.test.ts src/tree/__tests__/call.test.ts`
+  (`384` tests). `rg -n "hasNodeChild" packages/core/src` returns no source
+  hits after the deletion.
+- Hotpath leash: dirty status at `8e5281f1` reported `functions` `13.35ms`
+  unstable, `import-reference` `21.47ms` unstable, `mixins-guards` `17.04ms`
+  unstable, `extend-chaining` `5.56ms` noisy, and `media` `5.91ms` unstable.
+- Verdict: keep as a correctness-backed hot-path crawl deletion. Do not claim
+  measured speed; the leash was status-only and unstable/noisy.

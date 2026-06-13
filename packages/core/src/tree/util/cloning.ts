@@ -1,34 +1,6 @@
-import { F_NON_STATIC, Node } from '../node-base.js';
+import { F_HAS_NODE_CHILD, F_NON_STATIC, Node } from '../node-base.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
-
-/**
- * Returns true when a node value contains any nested AST node.
- *
- * This is intentionally a direct structural scan because reusable-leaf checks
- * need to reject containers without allocating child lists.
- */
-export function hasNodeChild(value: unknown): boolean {
-  if (value instanceof Node) {
-    return true;
-  }
-  if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i++) {
-      if (hasNodeChild(value[i])) {
-        return true;
-      }
-    }
-    return false;
-  }
-  if (isRecord(value)) {
-    for (const key in value) {
-      if (hasNodeChild(value[key])) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
 
 /**
  * A source-free childless node can be shared as an inert value leaf.
@@ -38,7 +10,7 @@ export function hasNodeChild(value: unknown): boolean {
 export function canReuseLeaf(node: Node): boolean {
   return node.location.length === 0
     && !node.hasFlag(F_NON_STATIC)
-    && !hasNodeChild(node.value);
+    && !node.hasFlag(F_HAS_NODE_CHILD);
 }
 
 export function reuseLeaf<T extends Node>(node: T): T {
