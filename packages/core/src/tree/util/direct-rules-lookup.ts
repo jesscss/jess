@@ -12,7 +12,7 @@ import {
   isPublicRulesEntry,
   type LookupVisibility
 } from './mixin-output-slot.js';
-import type { DeclarationFindOptions } from './registry-utils.js';
+import type { DeclarationFindOptions } from './lookup-utils.js';
 
 type DirectDeclarationLookupResult = Declaration | undefined | typeof DIRECT_DECLARATION_LOOKUP_UNCOVERED;
 type DirectDeclarationFindOptions = DeclarationFindOptions & {
@@ -375,7 +375,8 @@ function findWithinScopeSurface(
   }
   visited.add(scope);
 
-  if (strategy.prepareScopeFrame) {
+  const includeLiveBindings = strategy.includeLiveBindings && options.includeLiveBindings !== false;
+  if (strategy.prepareScopeFrame && includeLiveBindings) {
     if (!scope._scopeFrame) {
       if (scope.rulesIndexed < scope.value.length) {
         scope._indexRules();
@@ -385,7 +386,7 @@ function findWithinScopeSurface(
   }
 
   const state = createEmptyState(readonly || Boolean(scope.options.readonly));
-  if (strategy.includeLiveBindings) {
+  if (includeLiveBindings) {
     const live = scope._scopeFrame?.currentBindingsByName.get(key);
     const liveSource = live?.kind === 'live' ? live.sourceNode : undefined;
     if (
@@ -405,7 +406,7 @@ function findWithinScopeSurface(
   }
 
   let localMatch: Declaration | undefined;
-  if (strategy.includeLiveBindings) {
+  if (includeLiveBindings) {
     const bindingMatch = findScopeBindingDeclaration(scope, key, options.filter, start);
     if (bindingMatch) {
       state.readonly ||= Boolean(bindingMatch.options.readonly);
@@ -438,7 +439,7 @@ function findWithinScopeSurface(
     }
   }
 
-  const lexicalParentRules = strategy.includeLiveBindings
+  const lexicalParentRules = includeLiveBindings
     ? scope._scopeFrame?.parent?.rulesNode
     : undefined;
   if (

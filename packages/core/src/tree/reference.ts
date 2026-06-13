@@ -1,7 +1,7 @@
 import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, F_STATIC, type LocationInfo } from './node.js';
 import type { Context } from '../context.js';
 import { cast } from './util/cast.js';
-import type { FindOptions } from './util/registry-utils.js';
+import type { ReferenceFindOptions } from './util/lookup-utils.js';
 import { Any, type AnyRole } from './any.js';
 import { Selector } from './selector.js';
 import { isNode } from './util/is-node.js';
@@ -30,7 +30,7 @@ import {
   type ScopeFrame
 } from './scope-frame.js';
 import type { VarDeclaration } from './declaration-var.js';
-import { getOrderedSelectorKeys } from './util/registry-utils.js';
+import { getOrderedSelectorKeys } from './util/lookup-utils.js';
 import {
   isRenderBuffer,
   writeRenderTextResult,
@@ -314,7 +314,7 @@ type RulesLookupAdapter = {
   lookup: (
     targetRules: Rules,
     valueKey: NormalizedLookupKey,
-    opts: FindOptions,
+    opts: ReferenceFindOptions,
     env: RulesLookupAdapterEnv
   ) => RulesLookupResult;
 };
@@ -436,7 +436,7 @@ function buildReferenceLookupOptions(args: {
   context: Context;
   hasTarget: boolean;
   adapter: RulesLookupAdapter;
-}): FindOptions {
+}): ReferenceFindOptions {
   const {
     referenceNode,
     target,
@@ -449,7 +449,7 @@ function buildReferenceLookupOptions(args: {
     hasTarget,
     adapter
   } = args;
-  const opts: FindOptions = {
+  const opts: ReferenceFindOptions = {
     filter,
     semanticFilter,
     context,
@@ -530,7 +530,7 @@ function prepareReferenceLookup(args: {
 function lookupScopeFrameVariableBinding(
   targetRules: Rules,
   key: string,
-  opts: FindOptions,
+  opts: ReferenceFindOptions,
   env: RulesLookupAdapterEnv
 ): ScopeFrameVariableBindingResult {
   if (
@@ -592,7 +592,7 @@ function lookupLiveScopeFrameVariableBinding(
 function lookupIndexReference(
   targetRules: Rules,
   valueKey: NormalizedLookupKey,
-  opts: FindOptions,
+  opts: ReferenceFindOptions,
   env: RulesLookupAdapterEnv
 ): RulesLookupResult {
   if (typeof valueKey === 'number') {
@@ -613,7 +613,7 @@ function lookupIndexReference(
 function lookupPropertyReference(
   targetRules: Rules,
   valueKey: NormalizedLookupKey,
-  opts: FindOptions
+  opts: ReferenceFindOptions
 ): RulesLookupResult {
   return lookupPropertyDeclarationOrFind(targetRules, getLookupKeyString(valueKey), opts);
 }
@@ -621,7 +621,7 @@ function lookupPropertyReference(
 function lookupVariableReference(
   targetRules: Rules,
   valueKey: NormalizedLookupKey,
-  opts: FindOptions,
+  opts: ReferenceFindOptions,
   env: RulesLookupAdapterEnv
 ): RulesLookupResult {
   const keyStr = getLookupKeyString(valueKey);
@@ -629,9 +629,12 @@ function lookupVariableReference(
     const frameHit = lookupScopeFrameVariableBinding(targetRules, keyStr, opts, env);
     if (frameHit) {
       if (frameHit === SCOPE_FRAME_VARIABLE_MISS) {
-        return undefined;
+        if (env.readMode !== 'snapshot') {
+          return undefined;
+        }
+      } else {
+        return frameHit;
       }
-      return frameHit;
     }
   }
   if (env.readMode !== 'snapshot') {
@@ -646,6 +649,7 @@ function lookupVariableReference(
     hasTarget: env.hasTarget,
     local: opts.local,
     filter: env.filter,
+    includeLiveBindings: env.readMode !== 'snapshot',
     ignoreCurrentScopeStart: true,
     ignoreParentScopeStart: opts.ignoreParentScopeStart === true
   });
@@ -655,7 +659,7 @@ function lookupVariableReference(
 function lookupDeclarationReference(
   targetRules: Rules,
   valueKey: NormalizedLookupKey,
-  opts: FindOptions
+  opts: ReferenceFindOptions
 ): RulesLookupResult {
   return lookupAnyDeclarationOrFind(targetRules, getLookupKeyString(valueKey), opts);
 }
@@ -663,7 +667,7 @@ function lookupDeclarationReference(
 function lookupFunctionReference(
   targetRules: Rules,
   valueKey: NormalizedLookupKey,
-  opts: FindOptions,
+  opts: ReferenceFindOptions,
   env: RulesLookupAdapterEnv
 ): RulesLookupResult {
   const keyStr = getLookupKeyString(valueKey);
@@ -682,7 +686,7 @@ function lookupFunctionReference(
 function lookupVariableDeclarationOrFind(
   targetRules: Rules,
   key: string,
-  opts: FindOptions
+  opts: ReferenceFindOptions
 ): RulesLookupResult {
   const direct = findVariableDeclaration(targetRules, key, opts);
   return direct === DIRECT_DECLARATION_LOOKUP_UNCOVERED ? undefined : direct;
@@ -691,7 +695,7 @@ function lookupVariableDeclarationOrFind(
 function lookupPropertyDeclarationOrFind(
   targetRules: Rules,
   key: string,
-  opts: FindOptions
+  opts: ReferenceFindOptions
 ): RulesLookupResult {
   const direct = findPropertyDeclaration(targetRules, key, opts);
   return direct === DIRECT_DECLARATION_LOOKUP_UNCOVERED ? undefined : direct;
@@ -700,7 +704,7 @@ function lookupPropertyDeclarationOrFind(
 function lookupAnyDeclarationOrFind(
   targetRules: Rules,
   key: string,
-  opts: FindOptions
+  opts: ReferenceFindOptions
 ): RulesLookupResult {
   const direct = findAnyDeclaration(targetRules, key, opts);
   return direct === DIRECT_DECLARATION_LOOKUP_UNCOVERED ? undefined : direct;
@@ -709,7 +713,7 @@ function lookupAnyDeclarationOrFind(
 function lookupCallableReference(
   targetRules: Rules,
   valueKey: NormalizedLookupKey,
-  opts: FindOptions,
+  opts: ReferenceFindOptions,
   env: RulesLookupAdapterEnv,
   filterType?: 'Mixin'
 ): RulesLookupResult {

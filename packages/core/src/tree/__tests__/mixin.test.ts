@@ -1,7 +1,7 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
-import { getRulesEntryTraversalState } from '../util/registry-utils.js';
+import { getRulesEntryTraversalState } from '../util/lookup-utils.js';
 import { renderNodeToString } from '../util/render-buffer.js';
 import {
   attachMixinOutputSlot,
@@ -2275,7 +2275,7 @@ describe('Mixin', () => {
       `);
     });
 
-    it('registryless fast path: one-segment array lookup', () => {
+    it('direct callable fast path: one-segment array lookup', () => {
       const mixinDef = mixin({
         name: any('.array-mixin'),
         rules: rules([decl({ name: 'color', value: any('purple') })])
@@ -2285,7 +2285,7 @@ describe('Mixin', () => {
       expect(root.findMixin(['.array-mixin'], 'Mixin')).toEqual([mixinDef]);
     });
 
-    it('registryless fast path: empty array lookup misses', () => {
+    it('direct callable fast path: empty array lookup misses', () => {
       const root = rules([
         mixin({
           name: any('.array-mixin'),

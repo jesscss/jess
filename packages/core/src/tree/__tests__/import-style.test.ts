@@ -36,7 +36,7 @@ import { getImportPlacementChildSegments, getImportPlacementReferenceMode, getIm
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { Context } from '../../context.js';
-import type { FindOptions } from '../util/registry-utils.js';
+import type { ReferenceFindOptions } from '../util/lookup-utils.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { OutputWriter, getPrintOptions } from '../util/print.js';
 import { buildSourceMap } from '../util/sourcemap.js';
@@ -45,14 +45,14 @@ import { createTestContext } from './import-style-test-helpers.js';
 
 let context: Context;
 
-function getVarWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
+function getVarWithContext(context: Context, n: Rules, key: string, opts: ReferenceFindOptions = {}) {
   context.rulesContext = n;
   opts.context ??= context;
   opts.searchParents = true;
   return n.findVariable(key, opts);
 }
 
-function getMixinWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
+function getMixinWithContext(context: Context, n: Rules, key: string, opts: ReferenceFindOptions = {}) {
   context.rulesContext = n;
   opts.context ??= context;
   opts.searchParents = true;

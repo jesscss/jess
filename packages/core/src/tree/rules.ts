@@ -24,7 +24,12 @@ import {
   restorePrintState
 } from './util/print.js';
 
-import * as Registries from './util/registry-utils.js';
+import {
+  getOrderedSelectorKeys,
+  isNonClassicImportBoundary,
+  type CallableFindOptions,
+  type DeclarationFindOptions
+} from './util/lookup-utils.js';
 import { processExtends } from './util/extend-roots.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
@@ -174,14 +179,14 @@ function getCallableRulesetKeyPaths(ruleset: Ruleset): string[][] {
   if (isNode(selector, N.SelectorList)) {
     const out: string[][] = [];
     for (let i = 0; i < selector.value.length; i++) {
-      const keys = Registries.getOrderedSelectorKeys(selector.value[i]!);
+      const keys = getOrderedSelectorKeys(selector.value[i]!);
       if (keys.length > 0) {
         out.push(keys);
       }
     }
     return out;
   }
-  const keys = Registries.getOrderedSelectorKeys(selector);
+  const keys = getOrderedSelectorKeys(selector);
   return keys.length > 0 ? [keys] : [];
 }
 
@@ -659,7 +664,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
-   * Rules clones still need to preserve function registry state so visitor/plugin
+   * Rules clones still need to preserve function bindings so visitor/plugin
    * registrations survive the explicit clone sites that remain outside the hot path.
    */
   override clone(copyChildren?: boolean, cloneFn?: (n: Node) => Node): this {
@@ -690,12 +695,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private resetDerivedState(source: Rules): void {
-    // Only preserve *function* registry across clones.
-    // This supports Less plugin compat, where plugins can inject functions into the registry
-    // without creating AST nodes that would be re-registered on clone.
-    //
-    // Do NOT reuse declaration/mixin registries across clones; those should always
-    // be rebuilt from AST nodes via lazy indexing.
+    // Only preserve explicit function bindings across clones. This supports
+    // Less plugin compat without reusing derived declaration/callable lookup
+    // state, which must be rebuilt from AST nodes via lazy indexing.
     if (source.functionsByName) {
       this.functionsByName = new Map(source.functionsByName);
     } else {
@@ -828,19 +830,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   register(type: 'function', node: Func | JsFunction): void;
   register(
-    type: 'function',
+    _type: 'function',
     node: Func | JsFunction
   ): void {
-    switch (type) {
-      case 'function':
-        if (!isNode(node, N.Func) && !isNode(node, N.JsFunction)) {
-          throw new TypeError(`Expected function registry node, got ${node.type}`);
-        }
-        this.setFunctionBinding(
-          isNode(node, N.JsFunction) ? node.name : node.nameKey,
-          node
-        );
+    if (!isNode(node, N.Func) && !isNode(node, N.JsFunction)) {
+      throw new TypeError(`Expected function binding node, got ${node.type}`);
     }
+    this.setFunctionBinding(
+      isNode(node, N.JsFunction) ? node.name : node.nameKey,
+      node
+    );
   }
 
   /**
@@ -848,7 +847,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    *
    * Covers callable entries from the lazy callable cache:
    * static Mixins plus static Ruleset-as-mixin keys.
-   * Compound / namespace cases use the registryless namespace path in
+   * Compound / namespace cases use the direct namespace path in
    * `find(...)`.
    */
   findMixinsFast(
@@ -937,7 +936,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isNode(cursor, N.Rules)) {
         const scope = cursor as Rules;
         if (!first) {
-          if (Registries.isNonClassicImportBoundary(scope)) {
+          if (isNonClassicImportBoundary(scope)) {
             break;
           }
         }
@@ -1031,9 +1030,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const sourceSelector = isSelectorLikeNode(selector.sourceNode)
         ? selector.sourceNode
         : undefined;
-      let keys = Registries.getOrderedSelectorKeys(selector);
+      let keys = getOrderedSelectorKeys(selector);
       if (keys.length === 0 && sourceSelector) {
-        const sourceKeys = Registries.getOrderedSelectorKeys(sourceSelector);
+        const sourceKeys = getOrderedSelectorKeys(sourceSelector);
         if (sourceKeys.length > 0) {
           selector = sourceSelector;
           keys = sourceKeys;
@@ -1044,7 +1043,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           this.addDirectCallableSelectorEntries(
             lookupKey,
             node,
-            Registries.getOrderedSelectorKeys(selector.value[selectorIndex]!),
+            getOrderedSelectorKeys(selector.value[selectorIndex]!),
             bucket
           );
         }
@@ -1055,7 +1054,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           ? (node.parent.parent as Ruleset).value.selector
           : undefined;
         const parentKeys = parentSelector && !isNode(parentSelector, N.Nil)
-          ? Registries.getOrderedSelectorKeys(parentSelector)
+          ? getOrderedSelectorKeys(parentSelector)
           : [];
         if (
           parentKeys.length > 0
@@ -1234,7 +1233,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private getCallableLookupCacheKey(
     keys: string | string[],
     filterType: string | undefined,
-    options: Registries.FindOptions
+    options: CallableFindOptions
   ): string | undefined {
     if (options.hasTarget || options.local || options.context?.rulesContext === this) {
       return undefined;
@@ -1348,7 +1347,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isNode(cursor, N.Rules)) {
         const scope = cursor as Rules;
         if (!first) {
-          if (Registries.isNonClassicImportBoundary(scope)) {
+          if (isNonClassicImportBoundary(scope)) {
             break;
           }
         }
@@ -1446,7 +1445,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isNode(cursor, N.Rules)) {
         const scope = cursor as Rules;
         if (!first) {
-          if (Registries.isNonClassicImportBoundary(scope)) {
+          if (isNonClassicImportBoundary(scope)) {
             break;
           }
         }
@@ -1464,7 +1463,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   findMixinNamespacePathFast(
     keys: string[],
     filterType: 'Mixin' | undefined,
-    options: Registries.FindOptions = {}
+    options: CallableFindOptions = {}
   ): MixinEntry[] | undefined {
     if (keys.length < 2) {
       return undefined;
@@ -1534,7 +1533,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private findRulesetNamespacePathFast(
     keys: string[],
-    options: Registries.FindOptions = {}
+    options: CallableFindOptions = {}
   ): MixinEntry[] | undefined {
     if (keys.length < 2) {
       return undefined;
@@ -1586,7 +1585,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       let sawLegacyOnlyPrefix = false;
       let simpleLookupOptions: Parameters<Rules['findMixinsFast']>[1] | undefined;
-      let nestedOptions: Registries.FindOptions | undefined;
+      let nestedOptions: CallableFindOptions | undefined;
 
       for (const { ruleset, consumed } of prefixMatches) {
         if (selectorNeedsLegacyFallback(ruleset)) {
@@ -1642,7 +1641,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private findCompoundPrefixCallableRulesetPathFast(
     keys: string[],
-    options: Registries.FindOptions = {}
+    options: CallableFindOptions = {}
   ): MixinEntry[] | undefined {
     if (keys.length < 2) {
       return undefined;
@@ -1659,7 +1658,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (prefixMatches.length > 1) {
       prefixMatches.sort((a, b) => b.consumed.length - a.consumed.length);
     }
-    let nestedOptions: Registries.FindOptions | undefined;
+    let nestedOptions: CallableFindOptions | undefined;
 
     for (const { ruleset, consumed } of prefixMatches) {
       const remainderLength = keys.length - consumed.length;
@@ -1686,14 +1685,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private findCallableDescendantsWithinMixinNamespaces(
     namespaceMixins: MixinEntry[],
     keys: string[],
-    options: Registries.FindOptions = {}
+    options: CallableFindOptions = {}
   ): MixinEntry[] | undefined {
     if (keys.length < 2 || namespaceMixins.length === 0) {
       return undefined;
     }
 
     let remainder: string[] | undefined;
-    let nestedOptions: Registries.FindOptions | undefined;
+    let nestedOptions: CallableFindOptions | undefined;
     let resolved: MixinEntry[] | undefined;
     for (let i = 0; i < namespaceMixins.length; i++) {
       const entry = namespaceMixins[i]!;
@@ -1723,7 +1722,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   findMixin(
     keys: string | string[],
     filterType?: string,
-    options: Registries.FindOptions = {}
+    options: CallableFindOptions = {}
   ): MixinEntry[] | undefined {
     if (typeof keys === 'string') {
       const includeRulesets = filterType !== 'Mixin' && options.terminalMixinOnly !== true;
@@ -1978,18 +1977,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   findDeclaration(
     keys: string,
     filterType?: 'VarDeclaration' | 'Declaration',
-    options?: Registries.DeclarationFindOptions
+    options?: DeclarationFindOptions
   ): Declaration | VarDeclaration | undefined {
-    const directLookup = filterType === 'VarDeclaration'
-      ? findVariableDeclaration
+    const direct = filterType === 'VarDeclaration'
+      ? findVariableDeclaration(this, keys, options)
       : filterType === 'Declaration'
-        ? findPropertyDeclaration
-        : filterType === undefined
-          ? findAnyDeclaration
-          : undefined;
-    const direct = directLookup
-      ? directLookup(this, keys, options)
-      : DIRECT_DECLARATION_LOOKUP_UNCOVERED;
+        ? findPropertyDeclaration(this, keys, options)
+        : findAnyDeclaration(this, keys, options);
     if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
       return direct;
     }
@@ -1998,7 +1992,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   findVariable(
     keys: string,
-    options?: Registries.DeclarationFindOptions
+    options?: DeclarationFindOptions
   ): VarDeclaration | undefined {
     const direct = findVariableDeclaration(this, keys, options);
     if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
@@ -2009,7 +2003,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   findProperty(
     keys: string,
-    options?: Registries.DeclarationFindOptions
+    options?: DeclarationFindOptions
   ): Declaration | undefined {
     const direct = findPropertyDeclaration(this, keys, options);
     const found = direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED ? direct : undefined;
@@ -2018,7 +2012,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private findFunctionDirect(
     keys: string,
-    options?: Registries.FindOptions
+    options?: CallableFindOptions
   ): JsFunction | Func | undefined {
     let rules: Rules | undefined = this;
     const { searchParents = true } = options ?? {};
@@ -2046,7 +2040,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (findRoot && rules?.type === 'Rules' && rulesParent === undefined) {
           break;
         }
-        if (Registries.isNonClassicImportBoundary(rules)) {
+        if (isNonClassicImportBoundary(rules)) {
           findRoot = true;
         }
       } while (!findRoot && rules && rules.type !== 'Rules');
@@ -2057,7 +2051,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   findFunction(
     keys: string,
     filterType?: string,
-    options?: Registries.FindOptions
+    options?: CallableFindOptions
   ): JsFunction | Func | undefined {
     return this.findFunctionDirect(keys, options);
   }
@@ -2739,7 +2733,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
         let key = node.value.name?.toString();
         /** Don't set within sibling rules */
-        let opts: Registries.FindOptions = {};
+        let opts: DeclarationFindOptions = {};
         opts.searchParents = true;
         // Don't use start when searching parents - we want to find variables in parent regardless of position
         // start is only relevant for finding variables before the current node in the same Rules
@@ -2870,8 +2864,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
     } else if (isNode(node, N.Ruleset) || isNode(node, N.Mixin)) {
-      // Callable lookup is registryless: the lazy callable cache crawls
-      // Rules.value directly and filters candidates at lookup/call time.
+      // Callable lookup crawls Rules.value directly and filters candidates at lookup/call time.
     } else if (isNode(node, N.Func)) {
       this.register('function', node);
     }

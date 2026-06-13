@@ -1337,29 +1337,76 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7ai. [ ] Rename or split `registry-utils.ts` now that it contains lookup
+7ai. [x] Rename or split `registry-utils.ts` now that it contains lookup
     traversal helpers and option types, not registries. Keep the cut import-only
     unless code inspection shows dead helper surface.
+   Done. The file is now `lookup-utils.ts`; all source/test imports were
+   updated, and the stale `FindOptions` alias was deleted.
 
-7aj. [ ] Audit `FindOptions` versus `DeclarationFindOptions` after the
+7aj. [x] Audit `FindOptions` versus `DeclarationFindOptions` after the
     `findAll` split; move callable-only fields out of declaration-facing
     callsites where TypeScript can enforce it without adding wrapper helpers.
+   Done. Lookup options are now split into `DeclarationFindOptions`,
+   `CallableFindOptions`, and `ReferenceFindOptions`. Declaration-only helpers
+   and tests use declaration options; callable methods use callable options;
+   `Reference` uses the explicit mixed shape because it passes one object
+   through both lanes.
 
-7ak. [ ] Audit direct function binding names/comments (`register('function')`,
+7ak. [x] Audit direct function binding names/comments (`register('function')`,
     `setFunctionBinding`, function compat wording) and delete any stale registry
     compatibility scaffolding that is not required for Less plugin behavior.
+   Done. Function clone comments and `register('function')` errors now describe
+   function bindings, not registries. The single-type `register('function')`
+   implementation no longer has a switch/registry branch; Less plugin
+   function binding behavior remains.
 
-7al. [ ] Inspect `Rules.findDeclaration(...)` string-dispatch shape after typed
+7al. [x] Inspect `Rules.findDeclaration(...)` string-dispatch shape after typed
     `findVariable(...)` / `findProperty(...)` / any-declaration helpers; delete
     or narrow generic branches if production callers no longer need them.
+   Done. Production grep finds no generic `findDeclaration(...)` caller outside
+   focused tests. The implementation now narrows directly to the three declared
+   lanes without assigning a dynamic lookup function.
 
-7am. [ ] Audit callable lookup cache invalidation against live binding updates
+7am. [x] Audit callable lookup cache invalidation against live binding updates
     and scope-frame callable buckets; keep the one-entry cache only if it cannot
     return stale results across mixin-param/live-binding mutation paths.
+   Done. Live binding updates mutate `liveSlotsByName` /
+   `currentBindingsByName`, not callable buckets. Callable buckets are derived
+   from static mixin/ruleset entries and are invalidated on `registerNode(...)`
+   with `callableLookupCache`, `ScopeFrame.callableBucketsByName`, and
+   `lastCallableLookup*`; no extra invalidation layer was added.
 
-7an. [ ] Audit direct declaration lookup cache keys now that variable lookup
+7an. [x] Audit direct declaration lookup cache keys now that variable lookup
     skips the recursive cache; remove cache key dimensions or helper surface
     that no longer correspond to reachable declaration lookup modes.
+   Done. No cache-key dimension was removed: `strategy.cacheTag` still
+   separates property/any-declaration semantics, `local` changes child-scope
+   admission, and `hasTarget` changes visibility/admission. Variable lookup is
+   still excluded by `strategy.includeLiveBindings`.
+
+Seeded next binding/lookup queue:
+
+7ao. [ ] Audit remaining public-looking `register('function')` callsites in
+    tests/helpers; where a test is not specifically about plugin-style function
+    registration, switch to `setFunctionBinding(...)` or a narrower helper.
+
+7ap. [ ] Audit `Rules.findDeclaration(...)` as a test-supported legacy helper:
+    either add explicit overload tests for any-declaration semantics or delete
+    the generic test-only caller if typed finders cover the behavior.
+
+7aq. [ ] Inspect `ReferenceFindOptions` callsites for mutation (`opts.start`,
+    `opts.local`, `opts.context`) and split construction so declaration and
+    callable lanes do not carry irrelevant fields when avoidable without
+    wrappers.
+
+7ar. [ ] Audit `directDeclarationsByName` / `directDeclarationLookupCache`
+    invalidation against dynamic declaration-name promotion and `setDefined`
+    writes; delete cache usage if the next focused tests can prove it is too
+    broad or redundant.
+
+7as. [ ] Audit callable cache key construction for array path keys; avoid
+    rebuilding a compound path string when an existing normalized key can be
+    carried from reference/call preparation.
 
 Parked secondary deep-cut queue:
 
@@ -1688,6 +1735,58 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Lookup option split and utility rename pass: accepted as binding/lookup
+  surface slimming and stale registry residue deletion, not as a speed claim.
+  Files: `packages/core/src/tree/util/lookup-utils.ts`,
+  `packages/core/src/tree/util/direct-rules-lookup.ts`,
+  `packages/core/src/tree/reference.ts`,
+  `packages/core/src/tree/rules.ts`, focused lookup tests, and this handoff.
+  - New traversal: none. The utility file was renamed from
+    `registry-utils.ts` to `lookup-utils.ts`; import sites were updated.
+    `ReferenceFindOptions` names the existing mixed reference lookup object
+    rather than adding a wrapper walk. The callable/declaration cache audits
+    added no loop, recursion, parent/source walk, sort, or extra scan. Snapshot
+    variable references now pass `includeLiveBindings: false` into the existing
+    direct declaration walker so the already-modeled source-position path can
+    run instead of stopping at a live-slot miss.
+  - New node/materialization: none. No production node, wrapper `Rules`,
+    copied node, `.inherit(...)`, `.adopt(...)`, frozen/source metadata
+    mutation, helper output array, cache, side map, or render materialization
+    was added. Existing `Map` caches and `MixinEntry[]` result arrays were not
+    widened. The default `{}` objects in changed test helper signatures are
+    existing test option defaults with narrower type names, not new production
+    allocation paths.
+  - Render path: unchanged. The pass changes type surfaces, imports, comments,
+    and direct lookup dispatch; rendered output still consumes the same resolved
+    declaration/callable values.
+  - Helper/API surface: net deletion/cleanup. Deleted the stale `FindOptions`
+    alias, split option shapes into `DeclarationFindOptions`,
+    `CallableFindOptions`, and `ReferenceFindOptions`, renamed the utility file,
+    simplified the single-type `register('function')` implementation, narrowed
+    `findDeclaration(...)` so it no longer assigns a dynamic lookup function,
+    and added one declaration option bit (`includeLiveBindings`) to select the
+    existing snapshot/source-position lane without live slots. No compatibility
+    shim was kept for registry names. The changed `TypeError` text in
+    `register('function')` remains an exceptional invalid-node guard, not
+    routine lookup miss control flow.
+  - Metadata mutations: none. Callable cache invalidation remains tied to
+    clone/reset and `registerNode(...)`, which clears `callableLookupCache`,
+    `ScopeFrame.callableBucketsByName`, coverage flags, and
+    `lastCallableLookup*`. Live binding updates mutate variable binding maps,
+    not callable buckets. Direct declaration cache keys were audited and kept:
+    `strategy.cacheTag`, `local`, and `hasTarget` still correspond to reachable
+    lookup semantics, while variable lookup remains excluded from the recursive
+    cache by `strategy.includeLiveBindings`; disabling live bindings for
+    snapshot reads also keeps that path out of the recursive cache.
+  - Evidence: touched-file ESLint passed; `@jesscss/core` build passed with
+    only the pre-existing direct-`eval` warning in `js-expr.ts`;
+    `git diff --check` passed; focused snapshot-read control test passed;
+    broader focused lookup suite passed (`434` passed, `206` skipped);
+    aggressive review passed with danger tokens prosecuted in this block;
+    `audit:node-creation` passed; `jess` build passed; one-iteration hotpath
+    smoke passed for `mixins-guards.less` (`24.76ms`) and
+    `scope-lookup-stress.less` (`80.61ms`). No speed claim is made.
 
 - Lookup registry residue cleanup pass: accepted as binding/lookup surface
   deletion and naming cleanup, not as a speed claim. Files:

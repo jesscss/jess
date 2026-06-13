@@ -89,12 +89,20 @@ export type DeclarationFindOptions = {
   local?: boolean;
   /** Whether this lookup has an explicit target, e.g. #ns[@foo]. */
   hasTarget?: boolean;
+  /** Snapshot reads use source-position declarations without current live slots. */
+  includeLiveBindings?: boolean;
 };
 
-export type FindOptions = DeclarationFindOptions & {
+export type CallableFindOptions = {
+  searchParents?: boolean;
+  local?: boolean;
+  /** Whether this lookup has an explicit target, e.g. #ns[.mixin]. */
+  hasTarget?: boolean;
   findAll?: boolean;
   childFilterType?: 'Mixin' | 'Ruleset' | undefined;
   context?: Context;
   /** For mixin-ruleset calls with args, namespace containers may be rulesets but terminal hits must be mixins. */
   terminalMixinOnly?: boolean;
 };
+
+export type ReferenceFindOptions = DeclarationFindOptions & CallableFindOptions;

@@ -24,7 +24,7 @@ import {
   atrule
 } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
-import type { FindOptions } from '../util/registry-utils.js';
+import type { DeclarationFindOptions } from '../util/lookup-utils.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
@@ -46,20 +46,20 @@ function expectDeclarationNode(node: Node | undefined): Declaration {
   return node;
 }
 
-function getPropWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
+function getPropWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
   return n.findProperty(key, opts);
 }
 
-function getVarWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
+function getVarWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
   let decl = n.findVariable(key, opts);
   return decl;
 }
 
-function getDeclEitherWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
+function getDeclEitherWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
   return n.findDeclaration(key, undefined, opts);

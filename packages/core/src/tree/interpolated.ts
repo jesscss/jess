@@ -253,7 +253,7 @@ export class Interpolated<
       output += source.slice(sourceOffset);
     }
     // Interpolated selector output can produce compound selectors (e.g. ".a#b").
-    // Preserve token boundaries so keySet/registry lookup can match correctly.
+    // Preserve token boundaries so direct callable lookup can match correctly.
     const simpleTokens = output.match(/[#.][^#.\s]+|[^#.\s]+/g) ?? [output];
     if (
       simpleTokens.length > 1

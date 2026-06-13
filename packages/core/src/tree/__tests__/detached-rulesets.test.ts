@@ -9,9 +9,9 @@ import {
   Node
 } from '../index.js';
 import { Context } from '../../context.js';
-import type { FindOptions } from '../util/registry-utils.js';
+import type { DeclarationFindOptions } from '../util/lookup-utils.js';
 
-function getVar(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
+function getVar(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
   return n.findVariable(key, opts);
