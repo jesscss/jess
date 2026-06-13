@@ -841,32 +841,34 @@ function evaluateReferenceKey(
   context: Context
 ): MaybePromise<[unknown, NormalizedLookupKey]> {
   const out = isNode(key) ? key.eval(context) : key;
-
-  const finalizeKey = (resolvedKey: unknown): [unknown, NormalizedLookupKey] => {
-    if (isNode(resolvedKey, N.Selector)) {
-      return [resolvedTarget, normalizeSelectorReferenceKey(resolvedKey)];
-    }
-    if (Array.isArray(resolvedKey)) {
-      if (isStringArray(resolvedKey)) {
-        return [resolvedTarget, resolvedKey];
-      }
-      const normalized = new Array<string>(resolvedKey.length);
-      for (let i = 0; i < resolvedKey.length; i++) {
-        normalized[i] = String(resolvedKey[i]);
-      }
-      return [resolvedTarget, normalized];
-    }
-    const normalizedKey = isNode(resolvedKey) ? resolvedKey.valueOf() : resolvedKey;
-    if (typeof normalizedKey === 'string' || typeof normalizedKey === 'number') {
-      return [resolvedTarget, normalizedKey];
-    }
-    return [resolvedTarget, String(normalizedKey)];
-  };
-
   if (isThenable(out)) {
-    return Promise.resolve(out).then(finalizeKey);
+    return Promise.resolve(out).then(resolvedKey => finalizeReferenceKey(resolvedTarget, resolvedKey));
   }
-  return finalizeKey(out);
+  return finalizeReferenceKey(resolvedTarget, out);
+}
+
+function finalizeReferenceKey(
+  resolvedTarget: unknown,
+  resolvedKey: unknown
+): [unknown, NormalizedLookupKey] {
+  if (isNode(resolvedKey, N.Selector)) {
+    return [resolvedTarget, normalizeSelectorReferenceKey(resolvedKey)];
+  }
+  if (Array.isArray(resolvedKey)) {
+    if (isStringArray(resolvedKey)) {
+      return [resolvedTarget, resolvedKey];
+    }
+    const normalized = new Array<string>(resolvedKey.length);
+    for (let i = 0; i < resolvedKey.length; i++) {
+      normalized[i] = String(resolvedKey[i]);
+    }
+    return [resolvedTarget, normalized];
+  }
+  const normalizedKey = isNode(resolvedKey) ? resolvedKey.valueOf() : resolvedKey;
+  if (typeof normalizedKey === 'string' || typeof normalizedKey === 'number') {
+    return [resolvedTarget, normalizedKey];
+  }
+  return [resolvedTarget, String(normalizedKey)];
 }
 
 function resolveInitialReferenceTarget(
@@ -882,19 +884,15 @@ function resolveInitialReferenceTarget(
     && target.options.type !== 'mixin-ruleset'
   ) {
     const rawTarget = resolveRawReferenceLookupTarget(target, context);
-    const finalizeRawTarget = (resolvedRawTarget: unknown): MaybePromise<unknown> => {
-      if (
-        resolvedRawTarget !== RAW_REFERENCE_TARGET_NOT_FOUND
-        && isDirectIndexContainerTarget(referenceNode, resolvedRawTarget)
-      ) {
-        return resolvedRawTarget;
-      }
-      return target.eval(context);
-    };
     if (isThenable(rawTarget)) {
-      return Promise.resolve(rawTarget).then(finalizeRawTarget);
+      return Promise.resolve(rawTarget).then(resolvedRawTarget => finalizeInitialRawReferenceTarget(
+        referenceNode,
+        target,
+        resolvedRawTarget,
+        context
+      ));
     }
-    return finalizeRawTarget(rawTarget);
+    return finalizeInitialRawReferenceTarget(referenceNode, target, rawTarget, context);
   }
   const runtimeRulesParent = referenceNode.rulesParent;
   const runtimeKey = referenceNode.value.rawKey ?? referenceNode.value.key;
@@ -915,6 +913,21 @@ function resolveInitialReferenceTarget(
     return Promise.resolve(resolvedTarget);
   }
   return resolvedTarget;
+}
+
+function finalizeInitialRawReferenceTarget(
+  referenceNode: Reference,
+  target: Reference,
+  resolvedRawTarget: unknown,
+  context: Context
+): MaybePromise<unknown> {
+  if (
+    resolvedRawTarget !== RAW_REFERENCE_TARGET_NOT_FOUND
+    && isDirectIndexContainerTarget(referenceNode, resolvedRawTarget)
+  ) {
+    return resolvedRawTarget;
+  }
+  return target.eval(context);
 }
 
 function isDirectIndexContainerTarget(
@@ -992,17 +1005,22 @@ function materializeReferenceTarget(args: {
   if (isNode(resolvedTarget, N.Mixin | N.Ruleset)) {
     const sourceRules = resolvedTarget.value.rules;
     const mixinResult = sourceRules.eval(context);
-    const finalizeRules = (rules: Rules): [Rules, NormalizedLookupKey] => {
-      rules.inherit(sourceRules);
-      return [rules, valueKey];
-    };
     if (isThenable(mixinResult)) {
-      return Promise.resolve(mixinResult).then(finalizeRules);
+      return Promise.resolve(mixinResult).then(rules => finalizeMaterializedRulesTarget(rules, sourceRules, valueKey));
     }
-    return finalizeRules(mixinResult);
+    return finalizeMaterializedRulesTarget(mixinResult, sourceRules, valueKey);
   }
 
   return [resolvedTarget, valueKey];
+}
+
+function finalizeMaterializedRulesTarget(
+  rules: Rules,
+  sourceRules: Rules,
+  valueKey: NormalizedLookupKey
+): [Rules, NormalizedLookupKey] {
+  rules.inherit(sourceRules);
+  return [rules, valueKey];
 }
 
 function resolveReferenceTargetValue(args: {
@@ -1528,22 +1546,7 @@ function normalizeMergedAssignReferenceResult(
     return node;
   }
   const mergedItems: Node[] = [];
-  const collect = (child: Node): void => {
-    if (isNode(child, N.List)) {
-      for (const item of child.value) {
-        collect(item as Node);
-      }
-      return;
-    }
-    const isEmptyPlaceholder = (
-      isNode(child, N.Nil)
-      || String(child.valueOf?.() ?? '') === ''
-    );
-    if (!isEmptyPlaceholder) {
-      mergedItems.push(child);
-    }
-  };
-  collect(node);
+  collectMergedAssignItems(node, mergedItems);
   if (mergedItems.length === 0) {
     return new Nil();
   }
@@ -1551,6 +1554,22 @@ function normalizeMergedAssignReferenceResult(
     return mergedItems[0]!;
   }
   return new List(mergedItems);
+}
+
+function collectMergedAssignItems(child: Node, mergedItems: Node[]): void {
+  if (isNode(child, N.List)) {
+    for (const item of child.value) {
+      collectMergedAssignItems(item as Node, mergedItems);
+    }
+    return;
+  }
+  const isEmptyPlaceholder = (
+    isNode(child, N.Nil)
+    || String(child.valueOf?.() ?? '') === ''
+  );
+  if (!isEmptyPlaceholder) {
+    mergedItems.push(child);
+  }
 }
 
 function finalizeReferenceLookupResult(

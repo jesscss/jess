@@ -738,6 +738,12 @@ the binding index/scope lookup refactor.
    reference-stack cleanup, search-scope cleanup, rules-like preservation, and
    merged-assign normalization still run; the async branch keeps only the
    continuation needed for actual thenables.
+   Eighth partial status: key normalization, direct-index raw-target
+   finalization, mixin/ruleset materialization finalization, and merged-assign
+   item collection no longer allocate local helper closures on the synchronous
+   Reference path. The same array key normalization, direct-index fallback
+   behavior, rules-output `.inherit(sourceRules)`, and merged-list flattening
+   semantics remain.
 17. [x] Sweep `Ampersand` template placement. Structured selector-list and
    generated `:is(...)` parents now stay structural instead of being copied into
    temporary replacement arrays, and raw comma text no longer pays
@@ -835,38 +841,44 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Reference` sync finalizer closure cut.
+Current pass: `Reference` sync helper closure cut.
 
-- New traversal: none added. No loop, recursion, parent/source walk, side-map
-  lookup, object scan, array scan, `map/filter/sort`, or generator was added.
+- New traversal: no traversal was added. `collectMergedAssignItems(...)` is the
+  same recursive merged-list walk that already existed as a local closure; it
+  now lives at module scope so the closure is not allocated per merged
+  declaration reference. No parent/source walk, side-map lookup, object scan,
+  array scan, `map/filter/sort`, or generator was added.
 - New node/materialization: none added. Existing rules-like public
-  materialization and merged-assign `.inherit(reference)` behavior stayed
-  exactly where it was; this pass did not add `new Node`, copied nodes,
-  `.adopt(...)`, wrapper `Rules`, frozen state, parent restoration, or source
-  metadata mutation.
+  materialization, rules-output `.inherit(sourceRules)`, and merged-assign
+  `.inherit(reference)` behavior stayed exactly where they were; this pass did
+  not add `new Node`, copied nodes, `.adopt(...)`, wrapper `Rules`, frozen
+  state, parent restoration, or source metadata mutation.
 - Render path: no render path changed. Runtime binding and declaration
   references still return/evaluate the same nodes and only render through the
   existing resolved-node render path; no arrays/nodes were created just to
   stringify.
-- Helper/API surface: added two module-local finalizer functions only to delete
-  two per-call local closure allocations from the common synchronous Reference
-  lookup path: `finalizeRuntimeBinding(...)` and declaration `finalize(...)`.
-  This is private implementation surface, not public API. The async thenable
-  branches still allocate only their required continuation.
+- Helper/API surface: added private module-local helpers only to delete per-call
+  local closure allocations from the common synchronous Reference lookup path:
+  key normalization, direct-index raw-target finalization, mixin/ruleset
+  materialization finalization, and merged-assign collection. This is private
+  implementation surface, not public API. The async thenable branches still
+  allocate only their required continuations.
 - Metadata mutations: none added. Existing `context.popReference()`,
   `context.searchScope.delete(...)`, rules-like preservation, and merged-assign
   `.inherit(reference)` semantics are unchanged. Registration-prep
   `try/catch` expected misses were audited and left open because converting
   them properly needs a typed unresolved result from node registration prep,
   not another wrapper around thrown misses.
-- Evidence: pre-pass hotpath leash at `304ed45f` was status-only:
-  `functions` `14.76ms` usable, `import-reference` `26.09ms` unstable,
-  `mixins-guards` `16.98ms` usable, `extend-chaining` `5.38ms` usable, and
-  `media` `5.71ms` noisy. Focused Reference tests passed after each closure
+- Evidence: pre-pass hotpath leash at `56b0de9c` was status-only:
+  `functions` `15.32ms` usable, `import-reference` `21.27ms` usable,
+  `mixins-guards` `18.21ms` usable, `extend-chaining` `6.89ms` usable, and
+  `media` `5.99ms` noisy. Focused Reference tests passed after each closure
   cut: `pnpm --filter @jesscss/core test --
   src/tree/__tests__/reference.test.ts` (`117` passed).
-- Verdict: accept the sync closure deletion only. `Reference`
-  `createRulesLikeReferenceSurface(...)`, public
+- Verdict: accept the sync helper closure deletion only. The remaining local
+  Reference closure is the calc slash arithmetic finalizer and was left alone
+  because it is a separate arithmetic special case, not the lookup/materialize
+  hot path. `Reference` `createRulesLikeReferenceSurface(...)`, public
   `evaluateReferenceValueNode(...)` materialization, merged assign
   normalization, `StyleImport` placement copies, registration-prep typed
   misses, `Rules` merge placement, and selector/extend equality remain open
