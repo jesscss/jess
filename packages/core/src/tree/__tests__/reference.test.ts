@@ -2748,6 +2748,32 @@ describe('reference', () => {
       }
     });
 
+    it('findVariable uses the variable lane without calling findDeclaration', async () => {
+      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
+      let declarationLookups = 0;
+      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
+        const [key, filterType] = args;
+        if (key === 'color' && filterType === 'VarDeclaration') {
+          declarationLookups++;
+        }
+        return originalFindDeclaration.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({ name: 'color', value: any('red') })
+        ]);
+
+        await node.eval(context);
+        const found = node.findVariable('color');
+
+        expect(found?.value.value.valueOf()).toBe('red');
+        expect(declarationLookups).toBe(0);
+      } finally {
+        RulesClass.prototype.findDeclaration = originalFindDeclaration;
+      }
+    });
+
     it('direct VarDeclaration lookup reads live cells through current bindings', async () => {
       const liveSource = vardecl({ name: 'color', value: any('blue') });
       const node = rules([

@@ -749,9 +749,11 @@ left for this branch.
    falling back to
    `DeclarationRegistry` only when the direct path returns explicit
    `UNCOVERED` for unsupported option shapes. The old env-gated
-   declaration-direct experiment and later `Rules.findVariable(...)` wrapper
-   are deleted; unsupported declaration/property modes remain explicit
-   `UNCOVERED` bridges instead of a global switch.
+   declaration-direct experiment is deleted; `Rules.findVariable(...)` is a
+   typed variable lane rather than a wrapper over
+   `findDeclaration(..., 'VarDeclaration')`. Unsupported
+   declaration/property modes remain explicit `UNCOVERED` bridges instead of a
+   global switch.
 
    Completion gate:
    - Done: selected mode is `VarDeclaration`; focused hit/miss/import/reference
@@ -927,11 +929,11 @@ left for this branch.
     The cold string-dispatch wrapper for declaration/function lookup is gone.
     Internal callers and tests use typed methods/direct helpers:
     `findDeclaration(...)`, `findProperty(...)`, `findFunction(...)`, and
-    direct declaration lookup where the mode is already covered. The later
-    `Rules.findVariable(...)` wrapper was deleted, so it is no longer an
-    accepted production lookup surface. The remaining declaration/function
-    bridge debt is now the registry fallback inside typed methods, not an extra
-    public-ish dispatch layer above them.
+    direct declaration lookup where the mode is already covered. `Rules.findVariable(...)`
+    is accepted only as the typed variable lane described in `7i`, not as a
+    wrapper over string-discriminator declaration lookup. The remaining
+    declaration/function bridge debt is now the registry fallback inside typed
+    methods, not an extra public-ish dispatch layer above them.
 
     Completion gate:
     - Done: no production or test caller uses `find('declaration', ...)` or
@@ -1033,7 +1035,8 @@ left for this branch.
 7h. [x] Route covered `Reference` declaration/property reads directly.
    Static `Reference` declaration, property, index-declaration, direct-rules
    target, and function-fallback declaration lookups now call
-   `findDeclarationDirect(...)` before falling back to `Rules.findDeclaration(...)`.
+   the selected direct declaration operation before falling back to
+   `Rules.findDeclaration(...)`.
    Covered reference reads skip the typed `Rules.findProperty(...)` /
    `Rules.findDeclaration(...)` method layer entirely; semantic filtered and
    otherwise unsupported shapes still return `UNCOVERED` and use the existing
@@ -1046,19 +1049,21 @@ left for this branch.
    - Done: semantic filtered property lookup remains registry-owned.
    - Done: focused variable/property/direct fallback tests still pass.
 
-7i. [x] Delete `Rules.findVariable(...)` and route selector interpolation direct.
-   The last production callers of `Rules.findVariable(...)` were raw Less
-   attribute selector interpolation reads in `AttributeSelector`. They now call
-   `findDeclarationDirect(..., 'VarDeclaration')` first, with
-   `Rules.findDeclaration(..., 'VarDeclaration')` retained only as the
-   `UNCOVERED` fallback. The `Rules.findVariable(...)` wrapper is deleted.
+7i. [x] Reshape declaration lookup lanes away from string branching.
+   `Rules.findVariable(...)` is restored as a real typed variable lookup lane,
+   not a wrapper over `findDeclaration(..., 'VarDeclaration')`.
+   `Rules.findProperty(...)`, `Rules.findDeclaration(...)`, `Reference`, and
+   selector-attribute interpolation now assign the direct lookup operation for
+   the path and call it, while the direct declaration walker receives a
+   preselected strategy object instead of a string discriminator.
 
    Completion gate:
-   - Done: no production or test code calls `findVariable(...)`.
+   - Done: `findVariable(...)` focused test proves it does not call
+     `findDeclaration(..., 'VarDeclaration')`.
    - Done: focused selector-attribute test proves covered raw `@{attr-data}`
-     interpolation does not call `Rules.findDeclaration(...)`.
+     interpolation does not call the `findVariable(...)` fallback lane.
    - Done: direct `VarDeclaration` tests now cover
-     `findDeclaration(..., 'VarDeclaration')` rather than the deleted wrapper.
+     `findDeclaration(..., 'VarDeclaration')` and `findVariable(...)`.
 
 Parked secondary deep-cut queue:
 
@@ -1388,41 +1393,49 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
-- `Rules.findVariable(...)` deletion pass: accepted as typed wrapper deletion
-  and direct selector lookup routing, not as a speed claim. Files:
+- Declaration lookup lane reshaping pass: accepted as string-discriminator
+  reduction and typed lane restoration, not as a speed claim. Files:
   `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/reference.ts`,
   `packages/core/src/tree/selector-attr.ts`,
+  `packages/core/src/tree/util/direct-rules-lookup.ts`,
   `packages/core/src/tree/__tests__/reference.test.ts`,
   `packages/core/src/tree/__tests__/selector-attr.test.ts`,
   `docs/future/core-architecture/HANDOFF.md`, and
   `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`.
-  - New traversal: none. Attribute selector interpolation now calls the
-    existing `findDeclarationDirect(..., 'VarDeclaration')` walker before the
-    typed fallback instead of calling the deleted `Rules.findVariable(...)`
-    wrapper, which itself only delegated to `findDeclaration(...)`.
+  - New traversal: none. `Rules.findVariable(...)` now calls the selected
+    variable declaration operation directly instead of delegating through
+    `findDeclaration(..., 'VarDeclaration')`. `Rules.findProperty(...)`,
+    `Rules.findDeclaration(...)`, `Reference`, and selector-attribute
+    interpolation assign the direct lookup operation for their path once and
+    call it. The direct walker receives a preselected strategy object instead
+    of re-branching on a string mode through the traversal.
   - New node/materialization: none. No node, wrapper `Rules`, copy,
     `.inherit(...)`, `.adopt(...)`, source metadata, parent mutation, output
     array, or materialized render artifact was added.
   - Render path: unchanged. The same variable declaration value resolves/evals
     before attribute selector string output.
-  - Helper/API surface: one module-local selector helper was added to replace
-    two wrapper calls and keep fallback semantics local to the only remaining
-    production caller. The exported `Rules.findVariable(...)` method was
-    deleted.
-  - Metadata mutations: none.
+  - Helper/API surface: the `Rules.findVariable(...)` method is restored as a
+    typed lane. One module-local selector helper keeps direct-first fallback
+    semantics local to raw attribute interpolation. The old
+    `findDeclarationDirect(...)` string adapter remains only as a compatibility
+    edge around typed direct operations.
+  - Metadata mutations: none. The static declaration lookup strategy objects
+    and shared empty-options sentinel are module-level constants, not
+    per-lookup state graphs or node metadata.
   - Routine error/control: no production throw/catch/Error path added. The new
     selector test uses `try/finally` only to restore a monkey-patched typed
     method sentinel.
   - Evidence: touched-file ESLint passed; focused selector/reference coverage
-    passed (`13` tests, `159` skipped), including the raw interpolated
-    attribute lookup sentinel and direct `VarDeclaration` lookup modes. `rg`
-    found no remaining `findVariable(...)` calls in production or tests.
-    Expanded binding/selector sweep passed (`18` files, `719` passed,
-    `9` skipped). `@jesscss/core` and `jess` builds passed. Node-creation
-    audit stayed at `new-node 310`, `with-surface 39`, `derive 30`,
-    `copy-leaves 28`. `measure:less:hotpath` ran as sanity only with mixed
-    noisy/unstable/usable signals, so this pass makes no speed claim.
-    `verify:aggressive-cutting-review` and `git diff --check` passed.
+    passed (`8` tests, `140` skipped), including `findVariable(...)` proving it
+    does not call `findDeclaration(..., 'VarDeclaration')` and raw interpolated
+    attribute lookup proving it skips the `findVariable(...)` fallback.
+    Expanded binding/selector sweep passed (`18` files, `720` passed,
+    `9` skipped). `@jesscss/core` and `jess` builds passed. Node-creation audit
+    stayed at `new-node 310`, `with-surface 39`, `derive 30`, `copy-leaves 28`.
+    Hotpath sanity ran with mixed usable/unstable/noisy signals, so this pass
+    makes no speed claim. `verify:aggressive-cutting-review` and
+    `git diff --check` passed.
 - Reference direct declaration bridge pass: accepted as a typed lookup method
   bridge deletion, not as a speed claim. Files:
   `packages/core/src/tree/reference.ts`,

@@ -168,14 +168,14 @@ describe('Attribute Selector', () => {
   });
 
   test('interpolated attribute values use direct variable declaration lookup', async () => {
-    const originalFindDeclaration = RulesClass.prototype.findDeclaration;
-    let declarationLookups = 0;
-    RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
-      const [key, filterType] = args;
-      if (key === 'attr-data' && filterType === 'VarDeclaration') {
-        declarationLookups++;
+    const originalFindVariable = RulesClass.prototype.findVariable;
+    let fallbackLookups = 0;
+    RulesClass.prototype.findVariable = function(...args: Parameters<typeof originalFindVariable>) {
+      const [key] = args;
+      if (key === 'attr-data') {
+        fallbackLookups++;
       }
-      return originalFindDeclaration.apply(this, args);
+      return originalFindVariable.apply(this, args);
     };
 
     try {
@@ -199,9 +199,9 @@ describe('Attribute Selector', () => {
       const css = await renderNodeToString(node, context);
 
       expect(css).toContain('[data="foo"]');
-      expect(declarationLookups).toBe(0);
+      expect(fallbackLookups).toBe(0);
     } finally {
-      RulesClass.prototype.findDeclaration = originalFindDeclaration;
+      RulesClass.prototype.findVariable = originalFindVariable;
     }
   });
 

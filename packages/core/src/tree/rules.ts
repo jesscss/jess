@@ -66,7 +66,9 @@ import { isIndexedRuleChild } from './util/callable-surface.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
   DIRECT_DECLARATION_LOOKUP_UNCOVERED,
-  findDeclarationDirect
+  findAnyDeclaration,
+  findPropertyDeclaration,
+  findVariableDeclaration
 } from './util/direct-rules-lookup.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
@@ -2003,34 +2005,47 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   findDeclaration(
     keys: string,
     filterType?: string,
-    options: Registries.DeclarationFindOptions = {}
+    options?: Registries.DeclarationFindOptions
   ): ReturnType<Registries.DeclarationRegistry['find']> | undefined {
     const normalizedFilter = normalizeDeclarationFilter(filterType);
-    if (
-      normalizedFilter === 'VarDeclaration'
-      || (
-        normalizedFilter === 'Declaration'
-        && !options.semanticFilter
-      )
-    ) {
-      const direct = findDeclarationDirect(
-        this,
-        keys,
-        normalizedFilter,
-        options
-      );
-      if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
-        return direct;
-      }
+    const directLookup = normalizedFilter === 'VarDeclaration'
+      ? findVariableDeclaration
+      : normalizedFilter === 'Declaration' && !options?.semanticFilter
+        ? findPropertyDeclaration
+        : normalizedFilter === undefined
+          ? findAnyDeclaration
+          : undefined;
+    const direct = directLookup
+      ? directLookup(this, keys, options)
+      : DIRECT_DECLARATION_LOOKUP_UNCOVERED;
+    if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
+      return direct;
     }
     return this.getRegistry('declaration').find(keys, normalizedFilter, options);
+  }
+
+  findVariable(
+    keys: string,
+    options?: Registries.DeclarationFindOptions
+  ): VarDeclaration | undefined {
+    const direct = findVariableDeclaration(this, keys, options);
+    if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
+      return direct;
+    }
+    const found = this.getRegistry('declaration').find(keys, 'VarDeclaration', options);
+    return isNode(found, N.VarDeclaration) ? found : undefined;
   }
 
   findProperty(
     keys: string,
     options?: Registries.DeclarationFindOptions
   ): Declaration | undefined {
-    const found = this.findDeclaration(keys, 'Declaration', options);
+    const direct = !options?.semanticFilter
+      ? findPropertyDeclaration(this, keys, options)
+      : DIRECT_DECLARATION_LOOKUP_UNCOVERED;
+    const found = direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED
+      ? direct
+      : this.getRegistry('declaration').find(keys, 'Declaration', options);
     return isNode(found, N.Declaration) ? found : undefined;
   }
 

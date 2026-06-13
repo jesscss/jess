@@ -46,7 +46,9 @@ import { MixinCollection } from './util/callable-collection.js';
 import type { MixinEntry } from './util/callable-entry.js';
 import {
   DIRECT_DECLARATION_LOOKUP_UNCOVERED,
-  findDeclarationDirect
+  findAnyDeclaration,
+  findPropertyDeclaration,
+  findVariableDeclaration
 } from './util/direct-rules-lookup.js';
 /**
  * The type is determined by syntax
@@ -947,7 +949,12 @@ function lookupDeclarationDirectOrFind(
   filterType: 'Declaration' | 'VarDeclaration' | undefined,
   opts: FindOptions
 ): RulesLookupResult {
-  const direct = findDeclarationDirect(targetRules, key, filterType, opts);
+  const directLookup = filterType === 'VarDeclaration'
+    ? findVariableDeclaration
+    : filterType === 'Declaration'
+      ? findPropertyDeclaration
+      : findAnyDeclaration;
+  const direct = directLookup(targetRules, key, opts);
   if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
     return direct;
   }

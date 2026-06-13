@@ -18,7 +18,7 @@ import type { Rules } from './rules.js';
 import type { VarDeclaration } from './declaration-var.js';
 import {
   DIRECT_DECLARATION_LOOKUP_UNCOVERED,
-  findDeclarationDirect
+  findVariableDeclaration
 } from './util/direct-rules-lookup.js';
 
 export type AttributeSelectorValue = {
@@ -33,10 +33,10 @@ export type AttributeSelectorValue = {
 };
 
 function findAttributeVarDeclaration(rules: Rules, key: string): VarDeclaration | undefined {
-  const direct = findDeclarationDirect(rules, key, 'VarDeclaration');
+  const direct = findVariableDeclaration(rules, key);
   const found = direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED
     ? direct
-    : rules.findDeclaration(key, 'VarDeclaration');
+    : rules.findVariable(key);
   return isNode(found, N.VarDeclaration) ? found : undefined;
 }
 
