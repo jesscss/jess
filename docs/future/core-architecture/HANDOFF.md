@@ -817,56 +817,41 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Ampersand template placement comma-scan cut.
+Current pass: Ampersand placement state and BasicSelector append construction
+cut.
 
-- New traversal: `splitTopLevelCommas(...)` still performs a string scan, but
-  it now returns `undefined` when no top-level comma is found and allocates the
-  result array only after seeing the first real comma. This replaces the old
-  two-step `toTrimmedString().includes(',')` check plus second split scan. No
-  source tree, parent chain, or selector tree walk was added. The flagged
-  `while (next !== -1)` template-replacement loop is moved existing logic, not
-  a new traversal; it still runs only for template strings containing `&`. The
-  flagged `for (let i = 0; i < splitItems.length; i++)` loop exists only on the
-  raw scalar-comma fallback after a top-level comma has already been found.
-- New node/materialization: no render-only node materialization was added.
-  Structured selector-list and generated `:is(...)` parents now pass their
-  existing child arrays directly into `mergeAmpersandTemplateSelectorList(...)`
-  instead of first copying them into a temporary replacements array. Raw scalar
-  comma parents still create `BasicSelector` items and a `SelectorList` only at
-  the existing semantic placement boundary: the source is already one scalar
-  selector string containing comma-separated selectors, so the flagged
-  `new BasicSelector(...)` and `new SelectorList(...)` calls are the existing
-  semantic placement materialization before output/extend can treat them as
-  selectors. The flagged `new Array<Selector>(splitItems.length)` is likewise
-  raw scalar-comma placement storage; the structured selector-list path no
-  longer pays its former temporary replacement array.
-- Render path: no render path was changed. This pass only changes ampersand
-  eval/placement preparation for merge templates; it does not resolve into
-  arrays or nodes merely to stringify.
-- Helper/API surface: no public API was added. The deleted
-  `getAmpersandTemplateReplacements(...)` helper used to hide the temp-array
-  copy and single-item `[baseSelector]` allocation. One private
-  `mergeAmpersandTemplateItem(...)` helper remains to avoid duplicating the
-  existing per-item merge logic between raw-scalar and structured-list paths.
-  The flagged `slice(...)` calls are existing string assembly for template text,
-  now localized in that one per-item helper.
+- New traversal: none. No loop, recursion, callback array helper, parent walk,
+  source walk, or side-map lookup was added.
+- New node/materialization: no new node category or render-only
+  materialization was added. The existing append placement boundary still
+  creates an owned selector result because the parent selector text is changed.
+  For the hot `BasicSelector` case, that existing `BasicSelector` result is now
+  constructed directly instead of through generic `Reflect.construct(...)`.
+- Render path: no render path was changed. The pass only trims ampersand
+  eval/placement machinery; it does not resolve into arrays/nodes merely to
+  stringify.
+- Helper/API surface: no helper or public API was added. The
+  `AmpersandAppendPlacementState` object now carries only `appendValue`,
+  `templateMerge`, and `hoistToRoot`; dead `source`, `selector`, `result`, and
+  `selectorBits` fields are gone. `createAmpersandAppendPlacementState(...)`
+  also no longer accepts the unused `selector` or `context` arguments.
 - Metadata mutations: no parent restoration, `frozen`, lazy options/context
-  creation, `Reflect.*`, `Object.hasOwn`, or structural probe was added.
-  Existing `.inherit(...)` calls remain at selector placement ownership
-  boundaries and are not expanded by this pass.
+  creation, `Object.hasOwn`, or defensive structural probe was added. One
+  existing `.inherit(...)` ownership boundary remains after constructing the
+  append result. The only `Reflect.construct(...)` change is a deletion from
+  the BasicSelector append path; non-basic selector subclasses still keep the
+  old generic fallback.
 - Evidence: focused tests passed:
   `pnpm --filter @jesscss/core test --
   src/tree/__tests__/ampersand.test.ts
   src/tree/util/__tests__/extend-ampersand.test.ts
-  src/tree/__tests__/mixin.test.ts
-  src/tree/__tests__/nesting-collapse.test.ts` (`192` tests).
-- Hotpath leash: pre-pass bounded status at `b356ce19` reported `functions`
-  `15.50ms` unstable, `import-reference` `24.40ms` unstable,
-  `mixins-guards` `30.05ms` noisy, `extend-chaining` `12.03ms` noisy, and
-  `media` `10.00ms` noisy. Dirty post-pass bounded status reported
-  `functions` `17.52ms` noisy, `import-reference` `24.83ms` usable,
-  `mixins-guards` `19.05ms` usable, `extend-chaining` `5.84ms` usable, and
-  `media` `8.08ms` noisy.
-- Verdict: keep as an obvious serialize-check-scan and temporary-array deletion
-  in Ampersand template placement. Do not claim measured speed; the leash is
-  status-only and mixed/noisy.
+  src/tree/util/__tests__/extend-ampersand-boundary.test.ts` (`44` tests).
+  `pnpm exec eslint packages/core/src/tree/ampersand.ts` also passed.
+- Hotpath leash: pre-pass bounded status at `f00f1368` reported `functions`
+  `16.26ms` usable, `import-reference` `21.84ms` usable, `mixins-guards`
+  `18.09ms` usable, `extend-chaining` `11.62ms` noisy, and `media` `34.36ms`
+  noisy. Dirty post-pass bounded status reported `functions` `14.53ms`
+  usable, `import-reference` `21.06ms` usable, `mixins-guards` `18.17ms`
+  usable, `extend-chaining` `5.86ms` usable, and `media` `5.99ms` unstable.
+- Verdict: keep as an obvious dead-field/generic-construction deletion in
+  Ampersand placement. Do not claim measured speed; the leash is status-only.

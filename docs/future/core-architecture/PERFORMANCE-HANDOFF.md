@@ -2160,6 +2160,33 @@ Hotpath status:
 Interpretation: status only, not a speed claim. Keep as an Ampersand placement
 machinery deletion; the hotpath leash was mixed/noisy.
 
+### Ampersand Placement State/Construction Cut
+
+Date: 2026-06-13.
+
+Change: `AmpersandAppendPlacementState` no longer carries dead `source`,
+`selector`, `result`, or `selectorBits` fields, and its factory no longer takes
+unused selector/context arguments. The common BasicSelector append placement
+path now constructs `BasicSelector` directly instead of paying the generic
+`Reflect.construct(...)` fallback plus spread options.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `f00f1368` reported: `functions` median `16.26ms` usable,
+  `import-reference` median `21.84ms` usable, `mixins-guards` median `18.09ms`
+  usable, `extend-chaining` median `11.62ms` noisy, and `media` median
+  `34.36ms` noisy.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `14.53ms` usable,
+  `import-reference` median `21.06ms` usable, `mixins-guards` median `18.17ms`
+  usable, `extend-chaining` median `5.86ms` usable, and `media` median
+  `5.99ms` unstable.
+
+Interpretation: status only, not a speed claim. Keep as a dead-field and
+generic-construction deletion in Ampersand placement; no performance conclusion
+is claimed from the bounded leash.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

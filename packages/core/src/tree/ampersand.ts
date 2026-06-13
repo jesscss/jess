@@ -128,28 +128,19 @@ type AppendSelectorResult<T extends Selector = Selector> = {
 };
 
 type AmpersandAppendPlacementState = {
-  source: Ampersand;
-  selector: Selector | Nil;
   appendValue?: string;
   templateMerge: boolean;
   hoistToRoot: boolean;
-  result?: Selector | Nil;
-  selectorBits: Context['selectorBits'];
 };
 
 function createAmpersandAppendPlacementState(
   source: Ampersand,
-  selector: Selector | Nil,
-  context: Context,
   appendValue?: string
 ): AmpersandAppendPlacementState {
   return {
-    source,
-    selector,
     appendValue,
     templateMerge: appendValue?.includes('&') === true,
-    hoistToRoot: appendValue !== undefined || source.hoistToRoot === true,
-    selectorBits: context.selectorBits
+    hoistToRoot: appendValue !== undefined || source.hoistToRoot === true
   };
 }
 
@@ -341,6 +332,13 @@ function ownComplexComponentForAppend(component: ComplexSelectorComponent): Comp
 }
 
 function createSimpleSelectorLike(selector: SimpleSelector, value: unknown): SimpleSelector {
+  if (selector instanceof BasicSelector) {
+    return new BasicSelector(
+      String(value),
+      selector._options,
+      selector.location.length === 0 ? undefined : selector.location
+    ).inherit(selector);
+  }
   const node = Reflect.construct(
     selector.constructor,
     [
@@ -433,12 +431,10 @@ function finishAmpersandAppendPlacement(
   placement: AmpersandAppendPlacementState,
   selector: Selector | Nil
 ): Selector | Nil {
-  placement.selector = selector;
-  placement.result = selector;
   if (placement.hoistToRoot) {
-    placement.result.hoistToRoot = true;
+    selector.hoistToRoot = true;
   }
-  return placement.result;
+  return selector;
 }
 
 /**
@@ -604,7 +600,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       if (!selector) {
         return createPublicNil();
       }
-      const placement = createAmpersandAppendPlacementState(this, selector, context, appendValue);
+      const placement = createAmpersandAppendPlacementState(this, appendValue);
       if (appendValue && !isNode(selector, N.Nil)) {
         if (placement.templateMerge) {
           if (isNode(selector, N.SelectorList)) {
