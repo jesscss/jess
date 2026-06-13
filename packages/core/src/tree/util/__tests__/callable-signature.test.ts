@@ -9,6 +9,7 @@ describe('callable signature helpers', () => {
 
     expect(getCallableNodeSignature(first)).toBe('1px');
     expect(getCallableRestSignature([first, second], '@rest', false)).toBe('1px solid');
+    expect(getCallableRestSignature([first, second], '@rest', false, 1)).toBe('solid');
     expect(getCallableRestSignature([], '@rest', false)).toBe('@rest');
     expect(getCallableRestSignature([], '@rest', true)).toBe('');
     expect(getCallableSignatureKey(['1px', undefined, 'solid'])).toBe('1px;solid');

@@ -813,43 +813,46 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: callable arguments binding flag/allocation cut.
+Current pass: callable rest binding match-time array cut.
 
-- New traversal: no net new hot traversal. `getArgumentsBindingValues(...)`
-  already walked every argument and allocated an output array unconditionally.
-  It now scans until the first rest `Sequence`; if none exists, it returns the
-  original args array with no output allocation. If a rest sequence exists, it
-  performs the required flatten from that point.
-- New node/materialization: no new node copy, wrapper, or render-only
-  materialization was added. `createArgumentsBindingValue(...)` still creates
-  one `Sequence` binding surface for `@arguments`; this pass only marks
-  unadopted child contents with `F_HAS_NODE_CHILD` so the state flag remains
-  truthful without reparenting caller arg nodes. The flagged `new Array<Node>()`
-  is now only allocated when rest flattening is actually needed; the previous
-  code allocated an array for every call.
+- New traversal: no net new traversal. `matchCallableParams(...)` now uses one
+  parameter scan for rest detection plus required-position counting instead of
+  two scans. Rest matching no longer allocates and fills a copied `rest` array;
+  it carries `restStart` into the existing binding/signature helpers.
+  `getCallableRestSignature(...)` now loops over the original args from that
+  offset. `createRestBindingValue(...)` still performs the existing clone loop
+  only when the rest binding value is actually prepared.
+- New node/materialization: no new node, wrapper, copy, `.inherit(...)`,
+  `.adopt(...)`, frozen state, or render-only materialization was added. This
+  deletes the match-time `new Array<Node>(args.length - argPos)` and copy loop.
+  The actual rest `Sequence` materialization remains the named binding
+  ownership boundary and is still lazy.
 - Render path: no render path was changed, and nothing resolves into arrays or
   nodes just to stringify.
-- Helper/API surface: no helper or public API was added. The helper behavior is
-  narrower: no-rest `@arguments` returns the existing arg list to the caller
-  instead of manufacturing an identical intermediate array.
+- Helper/API surface: no helper or public API was added. Existing helpers grew
+  one `start` argument so callers can pass the original arg surface instead of
+  manufacturing a rest-only array.
 - Metadata mutations: no parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
-  read, `Reflect.*`, `Object.hasOwn`, or structural probe was added. The only
-  state mutation added is `F_HAS_NODE_CHILD` on an `@arguments` `Sequence` that
-  intentionally contains unadopted child nodes.
+  read, `Reflect.*`, `Object.hasOwn`, or structural probe was added.
 - Evidence: focused tests passed:
   `pnpm --filter @jesscss/core test --
+  src/tree/util/__tests__/callable-param-match.test.ts
+  src/tree/util/__tests__/callable-signature.test.ts
   src/tree/util/__tests__/callable-binding.test.ts
-  src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts
-  src/tree/__tests__/call.test.ts src/tree/__tests__/node-flags.test.ts`
-  (`389` tests).
-- Hotpath leash: pre-pass `pnpm run measure:less:hotpath -- --stable` at
-  `bc3e4884` reported `functions` `13.87ms` noisy,
-  `import-reference` `23.07ms` unstable, `mixins-guards` `18.10ms` noisy,
-  `extend-chaining` `5.60ms` unstable, and `media` `5.67ms` noisy. Dirty
-  post-pass status reported `functions` `14.13ms` usable,
-  `import-reference` `22.01ms` usable, `mixins-guards` `17.20ms` unstable,
-  `extend-chaining` `5.52ms` usable, and `media` `5.70ms` unstable.
-- Verdict: keep as a flag-invariant fix plus unconditional allocation deletion
-  in callable binding. Do not claim measured speed; the leash is status-only
-  and still mixed.
+  src/tree/__tests__/mixin.test.ts src/tree/__tests__/call.test.ts
+  src/tree/__tests__/reference.test.ts` (`337` tests). A rejected experiment
+  tried to return the canonical empty `Call.evalArgNodes(...)` arg list; focused
+  tests showed the empty arg list was reparented during resolve, so no code from
+  that cut was kept. Empty-arg reuse needs a separate ownership split, not
+  parent restoration after the fact.
+- Hotpath leash: pre-pass bounded status at `50406d10` reported `functions`
+  `13.59ms` noisy, `import-reference` `23.24ms` unstable, `mixins-guards`
+  `18.22ms` unstable, `extend-chaining` `5.64ms` unstable, and `media`
+  `6.02ms` unstable. Dirty post-pass bounded status reported `functions`
+  `15.38ms` unstable, `import-reference` `89.22ms` noisy, `mixins-guards`
+  `19.76ms` usable, `extend-chaining` `6.17ms` usable, and `media` `6.28ms`
+  unstable.
+- Verdict: keep as an obvious match-time array/copy deletion plus one removed
+  parameter scan. Do not claim measured speed; the leash is status-only and
+  mixed/noisy.

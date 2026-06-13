@@ -35,28 +35,26 @@ export function matchCallableParams({
   const bindingRecordsByIndex = new Array<CallableParamBindingRecord | undefined>(params.length);
   const signatureParts: Array<string | undefined> = new Array(params.length);
   let hasRestParam = false;
-  for (let i = 0; i < params.value.length; i++) {
-    if (params.value[i]!.type === 'Rest') {
-      hasRestParam = true;
-      break;
-    }
-  }
-  const maxPositionalArgs = hasRestParam ? Number.POSITIVE_INFINITY : params.length;
   const positions = params.length;
   let requiredPositions = 0;
 
   for (let i = 0; i < params.value.length; i++) {
     const param = params.value[i]!;
+    if (param.type === 'Rest') {
+      hasRestParam = true;
+      continue;
+    }
     if (isNode(param, N.VarDeclaration)) {
       if (param.value.value instanceof Nil) {
         requiredPositions++;
       }
     } else if (isNode(param, N.Any) && param.options.role === 'property') {
       requiredPositions++;
-    } else if (param.type !== 'Rest') {
+    } else {
       requiredPositions++;
     }
   }
+  const maxPositionalArgs = hasRestParam ? Number.POSITIVE_INFINITY : params.length;
 
   let argPos = 0;
   let match = true;
@@ -127,16 +125,13 @@ export function matchCallableParams({
       };
       signatureParts[paramIndex] = getCallableNodeSignature(argValue);
     } else if (param.type === 'Rest') {
-      const rest = new Array<Node>(args.length - argPos);
-      for (let j = argPos; j < args.length; j++) {
-        rest[j - argPos] = args[j]!;
-      }
+      const restStart = argPos;
       const restName = param.value ? `${param.value}` : `rest${i}`;
       bindingRecordsByIndex[paramIndex] = {
         name: restName,
-        prepareValue: () => createRestBindingValue(rest)
+        prepareValue: () => createRestBindingValue(args, restStart)
       };
-      signatureParts[paramIndex] = getCallableRestSignature(rest, restName, hasFileContext);
+      signatureParts[paramIndex] = getCallableRestSignature(args, restName, hasFileContext, restStart);
     } else {
       signatureParts[paramIndex] = getCallableNodeSignature(argValue);
       if (param.compare(argValue) !== 0) {

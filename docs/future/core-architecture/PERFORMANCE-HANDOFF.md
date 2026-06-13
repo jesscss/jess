@@ -2099,6 +2099,37 @@ Interpretation: status only, not a speed claim. Keep as a flag-invariant fix
 and unconditional allocation deletion in callable binding; the hotpath leash was
 mixed.
 
+### Callable Rest Match-Time Array Cut
+
+Date: 2026-06-13.
+
+Change: `matchCallableParams(...)` no longer builds a rest-only array during
+candidate matching. It carries `restStart` into `createRestBindingValue(...)`
+and `getCallableRestSignature(...)`, so the original arg surface is read
+directly and the actual rest `Sequence` materializes only when the binding value
+is prepared. The same pass collapsed the separate rest-detection scan into the
+required-position scan. A rejected empty `Call.evalArgNodes(...)` reuse attempt
+proved that empty arg-list reuse still needs an ownership split: the canonical
+empty args list was reparented during resolve, so no code from that experiment
+was kept.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `50406d10` reported: `functions` median `13.59ms` noisy,
+  `import-reference` median `23.24ms` unstable, `mixins-guards` median
+  `18.22ms` unstable, `extend-chaining` median `5.64ms` unstable, and `media`
+  median `6.02ms` unstable.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `15.38ms` unstable,
+  `import-reference` median `89.22ms` noisy, `mixins-guards` median `19.76ms`
+  usable, `extend-chaining` median `6.17ms` usable, and `media` median
+  `6.28ms` unstable.
+
+Interpretation: status only, not a speed claim. Keep as an obvious match-time
+array/copy deletion plus one removed param scan; the hotpath leash was too
+mixed/noisy for performance conclusions.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

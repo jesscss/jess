@@ -4,13 +4,18 @@ export function getCallableNodeSignature(value: Node): string {
   return String(value.valueOf());
 }
 
-export function getCallableRestSignature(args: Node[], restName: string, hasFileContext: boolean): string {
-  if (args.length === 0 && !hasFileContext) {
+export function getCallableRestSignature(
+  args: readonly Node[],
+  restName: string,
+  hasFileContext: boolean,
+  start = 0
+): string {
+  if (args.length === start && !hasFileContext) {
     return restName;
   }
   let signature = '';
-  for (let i = 0; i < args.length; i++) {
-    if (i !== 0) {
+  for (let i = start; i < args.length; i++) {
+    if (i !== start) {
       signature += ' ';
     }
     signature += getCallableNodeSignature(args[i]!);

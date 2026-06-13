@@ -15,10 +15,11 @@ export function cloneBoundValue(value: Node): Node {
   return copyWithReusableLeaves(value).detachTrivia(true);
 }
 
-export function createRestBindingValue(args: Node[]): Sequence {
-  const restArgs = new Array<Node>(args.length);
-  for (let i = 0; i < args.length; i++) {
-    restArgs[i] = cloneBoundValue(args[i]!);
+export function createRestBindingValue(args: readonly Node[], start = 0): Sequence {
+  const restLength = args.length - start;
+  const restArgs = new Array<Node>(restLength);
+  for (let i = 0; i < restLength; i++) {
+    restArgs[i] = cloneBoundValue(args[start + i]!);
   }
   return new Sequence(restArgs);
 }

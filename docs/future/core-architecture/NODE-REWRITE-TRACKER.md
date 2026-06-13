@@ -139,9 +139,12 @@ Current hard leftovers after the broad hook sweep:
   recursively rediscovering child nodes, and `Node.set(null, ...)` refreshes
   that bit on whole-value replacement. Callable `@arguments` binding now marks
   unadopted child contents with `F_HAS_NODE_CHILD` and skips the intermediate
-  flatten array when no rest `Sequence` is present. This does not complete any
-  node family; it removes callback/crawl/allocation scaffolding from existing
-  cast/copy/binding ownership boundaries.
+  flatten array when no rest `Sequence` is present. Callable rest parameter
+  matching no longer materializes a rest-only arg array during candidate
+  matching; it carries the original args plus a start offset into the lazy rest
+  binding/signature helpers. This does not complete any node family; it removes
+  callback/crawl/allocation scaffolding from existing cast/copy/binding
+  ownership boundaries.
 - `Sequence` and `List` have writer hooks, but are not complete until resolved
   render paths stop capturing strings before writing buffers and child emission
   stops routing through public `toString(...)` where direct hooks preserve
