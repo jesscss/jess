@@ -813,57 +813,43 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: immediate callable wrapper cut.
+Current pass: cast/cloning callback scaffold cut.
 
-- New traversal: none. `Call` and `Func` still evaluate the same callable
-  candidates. This pass only removes three one-entry `MixinCollection`
-  wrapper constructions that were immediately consumed by `.evalCall(...)`.
-- New node/materialization: deleted three transient `new MixinCollection(...)`
-  node wrappers from direct `Rules`/`Collection` callable paths in
-  `packages/core/src/tree/call.ts` and stylesheet function calls in
-  `packages/core/src/tree/function.ts`. The remaining one-entry
-  `mixinEntries: [...]` arrays replace the old wrapper argument arrays and are
-  still required by the existing `evaluateCallableCollection(...)` signature;
-  they are not a new semantic materialization boundary. The `callableRulesEntry`
-  objects already existed inside the deleted wrappers. The new module-level
-  `noCallArgs` sentinel replaces two hot-site `?? []` literals when an optional
-  call state has no argument list. `MixinCollection` remains live for actual
-  callable-value handoff and is not deleted wholesale until references/calls no
-  longer need that public value surface.
-- Render path: no render stringification path was changed into
-  resolve-then-stringify. The render-side dynamic `Rules`/`Collection` call path
-  now evaluates through `evaluateCallableCollection(...)` directly instead of
-  constructing a wrapper node first.
-- Helper/API surface: no public API or new helper was added. Existing
-  `evaluateCallableCollection(...)` is imported where the code was previously
-  manufacturing a `MixinCollection` only to invoke the same evaluator through
-  the wrapper method. The `Call` eval branch carries the existing
-  `ReferenceError`/fallback behavior locally to avoid the wrapper hop; that is
-  code surface growth, but not helper growth. The flagged `new Any(...)`,
-  `new ReferenceError(...)`, `try`, and `catch` in `Call` are moved fallback
-  behavior from the existing common callable branch, not new routine
-  success-path control flow.
+- New traversal: none. `cast([...])`, `hasNodeChild(...)`,
+  `cloneChildrenWithReusableLeaves(...)`, `copyChild(...)`,
+  `copyChildPreservingComments(...)`, and render-frame metadata copying already
+  walked the same arrays through `.map(...)`, `.some(...)`, or spread. This
+  pass keeps the existing walks and replaces callback/spread scaffolding with
+  straight indexed loops.
+- New node/materialization: no new node creation boundary was added.
+  `cast([...])` still creates one `List` and one converted node per input item.
+  The flagged `new Array<...>` allocations replace arrays previously created
+  by `.map(...)` or `[...frames]`; they are fixed-size output arrays for the
+  same required result surfaces, not render-only or eval-to-immediate-string
+  materialization. `copyWithReusableLeaves(...)`, `constructCopy(...)`,
+  `.inherit(...)`, and `frozen` behavior are unchanged.
+- Render path: no render path was changed, and nothing resolves into arrays or
+  nodes just to stringify. This pass only touches JS-value casting and reusable
+  leaf/copy utility internals used by existing ownership boundaries.
+- Helper/API surface: no helper or public API was added. Added JSDoc to the
+  exported cloning utility functions touched by the pass so their remaining
+  structural scans are explicit.
 - Metadata mutations: no new parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
   read, `Reflect.*`, `Object.hasOwn`, or structural probe was added. Existing
-  parent/index inputs to `callableRulesEntry(...)` are preserved.
-- Evidence: focused tests passed after rerunning serially after build:
+  render-frame metadata copying remains the same semantic copy, just without
+  spread allocation.
+- Evidence: focused tests passed:
   `pnpm --filter @jesscss/core test --
-  src/tree/__tests__/call.test.ts src/tree/__tests__/reference.test.ts
-  src/tree/__tests__/mixin.test.ts
-  src/tree/util/__tests__/callable-collection.test.ts
-  src/tree/util/__tests__/callable-eval.test.ts` (`331` tests). A parallel
-  build/test attempt failed because build cleaned `packages/core/lib` while
-  Vitest imported parser output; the same tests passed serially.
-  `pnpm --filter @jesscss/core build` passed with the existing `js-expr.ts`
-  direct-eval warning.
+  src/tree/util/__tests__/cloning.test.ts src/tree/__tests__/bool.test.ts
+  src/tree/__tests__/call.test.ts src/tree/__tests__/mixin.test.ts
+  src/tree/__tests__/reference.test.ts` (`335` tests).
 - Hotpath leash: pre-pass `pnpm run measure:less:hotpath -- --stable` at
-  `af2c6955` reported `functions` `10.37ms` usable,
-  `import-reference` `15.40ms` usable, `mixins-guards` `14.67ms` usable,
-  `extend-chaining` `4.56ms` unstable, and `media` `4.35ms` noisy. Dirty
-  post-pass status reported `functions` `11.09ms` unstable,
-  `import-reference` `16.35ms` unstable, `mixins-guards` `14.43ms` usable,
-  `extend-chaining` `4.36ms` usable, and `media` `4.35ms` usable.
-- Verdict: keep as a small wrapper-node deletion only if gates pass. Do not
-  claim speed; the hotpath leash was mixed/noisy and this was not a controlled
-  performance pass.
+  `b237feb5` reported `functions` `14.11ms` unstable,
+  `import-reference` `20.90ms` unstable, `mixins-guards` `17.36ms` unstable,
+  `extend-chaining` `5.44ms` usable, and `media` `5.67ms` usable. Dirty
+  post-pass status reported `functions` `13.94ms` unstable,
+  `import-reference` `22.13ms` unstable, `mixins-guards` `17.82ms` unstable,
+  `extend-chaining` `5.56ms` noisy, and `media` `5.77ms` unstable.
+- Verdict: keep only as callback/spread scaffold deletion in shared hot
+  utilities. Do not claim speed; the leash was unstable/noisy and mixed.

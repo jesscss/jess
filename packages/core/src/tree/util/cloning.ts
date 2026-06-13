@@ -2,12 +2,23 @@ import { F_NON_STATIC, Node } from '../node-base.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 
+/**
+ * Returns true when a node value contains any nested AST node.
+ *
+ * This is intentionally a direct structural scan because reusable-leaf checks
+ * need to reject containers without allocating child lists.
+ */
 export function hasNodeChild(value: unknown): boolean {
   if (value instanceof Node) {
     return true;
   }
   if (Array.isArray(value)) {
-    return value.some(item => hasNodeChild(item));
+    for (let i = 0; i < value.length; i++) {
+      if (hasNodeChild(value[i])) {
+        return true;
+      }
+    }
+    return false;
   }
   if (isRecord(value)) {
     for (const key in value) {
@@ -50,8 +61,15 @@ export function cloneWithReusableLeaves<T extends Node>(node: T): T {
   return clone;
 }
 
+/**
+ * Clones a list of output children while preserving reusable scalar leaves.
+ */
 export function cloneChildrenWithReusableLeaves<T extends Node>(nodes: readonly T[]): T[] {
-  return nodes.map(node => cloneWithReusableLeaves(node));
+  const out = new Array<T>(nodes.length);
+  for (let i = 0; i < nodes.length; i++) {
+    out[i] = cloneWithReusableLeaves(nodes[i]!);
+  }
+  return out;
 }
 
 function copyChild(value: unknown): unknown {
@@ -59,7 +77,11 @@ function copyChild(value: unknown): unknown {
     return copyWithReusableLeaves(value);
   }
   if (Array.isArray(value)) {
-    return value.map(item => copyChild(item));
+    const out = new Array<unknown>(value.length);
+    for (let i = 0; i < value.length; i++) {
+      out[i] = copyChild(value[i]);
+    }
+    return out;
   }
   if (isRecord(value)) {
     const out: Record<string, unknown> = {};
@@ -76,7 +98,11 @@ function copyChildPreservingComments(value: unknown): unknown {
     return copyWithReusableLeavesPreservingComments(value);
   }
   if (Array.isArray(value)) {
-    return value.map(item => copyChildPreservingComments(item));
+    const out = new Array<unknown>(value.length);
+    for (let i = 0; i < value.length; i++) {
+      out[i] = copyChildPreservingComments(value[i]);
+    }
+    return out;
   }
   if (isRecord(value)) {
     const out: Record<string, unknown> = {};
@@ -108,7 +134,15 @@ function copyRenderMetadata(source: Node, target: Node): void {
   target.hoistToRoot = source.hoistToRoot;
   if (hasFrameMetadata(source)) {
     const frames = source.frames;
-    (target as FrameMetadataNode).frames = Array.isArray(frames) ? [...frames] : undefined;
+    if (Array.isArray(frames)) {
+      const frameCopy = new Array<unknown>(frames.length);
+      for (let i = 0; i < frames.length; i++) {
+        frameCopy[i] = frames[i];
+      }
+      (target as FrameMetadataNode).frames = frameCopy;
+    } else {
+      (target as FrameMetadataNode).frames = undefined;
+    }
   }
 }
 

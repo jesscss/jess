@@ -2017,6 +2017,35 @@ Hotpath status:
 Interpretation: status only, not a speed claim. Keep as a small wrapper-node
 deletion backed by focused callable tests; the hotpath leash was mixed/noisy.
 
+### Cast/Cloning Callback Scaffold Cut
+
+Date: 2026-06-13.
+
+Change: `packages/core/src/tree/util/cast.ts` now casts JS arrays with a
+pre-sized indexed loop instead of `.map(...)`; `packages/core/src/tree/util/cloning.ts`
+now scans/copies child arrays and render-frame metadata with indexed loops
+instead of `.some(...)`, `.map(...)`, and `[...frames]`. Copy ownership
+semantics are unchanged.
+
+Hotpath status:
+
+- Pre-pass `pnpm run measure:less:hotpath -- --stable` at `b237feb5`
+  reported: `functions` median `14.11ms` unstable,
+  `import-reference` median `20.90ms` unstable,
+  `mixins-guards` median `17.36ms` unstable,
+  `extend-chaining` median `5.44ms` usable, and `media` median `5.67ms`
+  usable.
+- Dirty post-pass `pnpm run measure:less:hotpath -- --stable` reported:
+  `functions` median `13.94ms` unstable,
+  `import-reference` median `22.13ms` unstable,
+  `mixins-guards` median `17.82ms` unstable,
+  `extend-chaining` median `5.56ms` noisy, and `media` median `5.77ms`
+  unstable.
+
+Interpretation: status only, not a speed claim. Keep as callback/spread
+scaffold deletion in shared cast/copy utilities; the hotpath leash was
+unstable/noisy and mixed.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

@@ -133,6 +133,10 @@ Current hard leftovers after the broad hook sweep:
 - `Rules`, `Ruleset`, `Declaration`, `AtRule`, `Call`, `Reference`,
   `QueryCondition`, `Interpolated`, `Mixin`, `Ampersand`, and control nodes
   still own meaningful render/eval string-transport or branch-heavy paths.
+- Shared utility cleanup: `cast([...])` and cloning/reusable-leaf helpers now
+  use straight indexed loops instead of `.map(...)`, `.some(...)`, and metadata
+  spread copies. This does not complete any node family; it removes callback
+  scaffolding from existing cast/copy ownership boundaries.
 - `Sequence` and `List` have writer hooks, but are not complete until resolved
   render paths stop capturing strings before writing buffers and child emission
   stops routing through public `toString(...)` where direct hooks preserve
