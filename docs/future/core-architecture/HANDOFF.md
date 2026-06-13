@@ -1244,21 +1244,54 @@ Seeded next binding/lookup queue:
    `Rules.findDeclaration(..., 'Declaration', ...)`, and property references
    no longer route semantic-filtered property lookup through
    `DeclarationRegistry.find(...)`.
-7z. [ ] Delete or quarantine `Rules.rulesSet` / `_rulesSet` once child
+7z. [x] Delete or quarantine `Rules.rulesSet` / `_rulesSet` once child
     declaration and callable registry bridges no longer require it.
-   Next pass should start here. Live grep still shows `Rules.rulesSet` used by
-   mixin child lookup, registration, and export/import compatibility surfaces.
-   Do not delete it until callable child lookup and any export/import logic have
-   direct carried facts or a cold quarantine boundary.
-7aa. [ ] Audit `DeclarationRegistry.find(...)` remaining callers after `7v-7z`
+   Production `Rules.rulesSet` / `_rulesSet` storage is deleted. Child callable
+   recursion in the remaining registry bridge now reads
+   `collectDirectChildRulesEntries()`, declaration-family recursion reads
+   `collectDirectDeclarationChildEntries()`, and `registerNode(...)` writes only
+   those carried child-entry surfaces. Readonly import shadow checks no longer
+   force declaration registries open; they scan the carried readonly child
+   entries and direct current/imported variable declarations.
+
+7aa. [x] Audit `DeclarationRegistry.find(...)` remaining callers after `7v-7z`
     and collapse it to a test-only or deleted path if no production lookup uses
     it.
-   Current remaining production callers are the explicit fallback in
-   `Rules.findDeclaration(...)`/`findVariable(...)`/`findProperty(...)` for
-   `findAll` or any-declaration uncovered shapes, plus generic declaration
-   fallback from `Reference` function/any-declaration lookup. Re-audit after
-   `7z` and after deciding whether any-declaration lookup gets a typed direct
-   model or is deleted.
+   Audit complete, deletion blocked by real production any-declaration/order
+   bridges. `Reference.lookupAnyDeclarationOrFind(...)` still calls
+   `Rules.findDeclaration(key, undefined, opts)` after direct any-declaration
+   lookup declines. `Registry._searchRulesChildren(...)` still uses the
+   remaining any-declaration `findDeclaration(..., undefined, ...)` child lane.
+   `Rules.findDeclaration(...)` still owns the final
+   `DeclarationRegistry.find(...)` fallback for uncovered any-declaration and
+   `findAll` shapes. Typed `findVariable(...)` and `findProperty(...)` no
+   longer fall back to `DeclarationRegistry.find(...)` when their direct lanes
+   decline.
+
+Seeded next binding/lookup queue:
+
+7ab. [ ] Model direct any-declaration ordering well enough to delete
+    `Reference.lookupAnyDeclarationOrFind(...)` fallback to
+    `Rules.findDeclaration(..., undefined, ...)`.
+   Required fact: same source-order and optional/public/read-only candidate
+   selection across variable and property declarations without rebuilding a
+   registry list and sorting by `comparePosition(...)`.
+
+7ac. [ ] Replace any-declaration child recursion in
+    `Registry._searchRulesChildren(...)` with a direct typed result path or
+    delete the any-declaration child lane if no production caller needs it.
+   The direct child-entry surface is already available; the missing piece is
+   result accumulation semantics for mixed variable/property candidates.
+
+7ad. [ ] Decide whether declaration `findAll` is production semantics or
+    test-only/callable-only residue; then either model direct all-results or
+    remove it from declaration lookup options before deleting
+    `DeclarationRegistry.find(...)`.
+
+7ae. [ ] After `7ab-7ad`, delete `declarationRegistry`,
+    `_ensureDeclarationRegistry()`, `getRegistry('declaration')`, declaration
+    `register(...)`, and `DeclarationRegistry` if production grep shows no
+    lookup caller remains.
 
 Parked secondary deep-cut queue:
 
@@ -4658,3 +4691,37 @@ the gate passed.
   `functions.test.ts` property merge coverage passed (`2` executed in the
   selected pattern, with unrelated not-run cases preserved). No speed claim is
   made before the closing hotpath sanity/gates.
+- Rules child-entry storage deletion pass: accepted as registry lookup plumbing
+  deletion, not as a speed claim. New traversal: `_checkReadonlyImportShadows`
+  now directly scans carried readonly child entries, imported child values, and
+  current scope values; this replaces opening two declaration registries and
+  walking registry index sets for the same readonly-import shadow check.
+  `Registry._searchRulesChildren(...)` still uses its existing child-entry
+  filter and reverse walk, but it now consumes carried
+  `collectDirectChildRulesEntries()` / `collectDirectDeclarationChildEntries()`
+  instead of `Rules.rulesSet`. New node/materialization: no production node,
+  wrapper `Rules`, copied node, ownership-copy call, frozen state, source
+  metadata, parent mutation, cache, side map, or render materialization was
+  added. New state:
+  existing direct child-entry records now carry the readonly bit that
+  `rulesSet` previously carried; this is construction-time lookup state, not a
+  second registry. Render path: unchanged; resolved declarations and callables
+  feed the existing eval/render paths. Helper/API surface: deleted
+  `Rules.rulesSet`, `_rulesSet`, and the duplicate local `RulesEntry`
+  interface; widened the existing child-entry collector only because the
+  remaining registry bridge still needs the carried child surface until the
+  final declaration registry cut. Metadata mutations: none. Rejected broader
+  cut: deleting `DeclarationRegistry.find(...)` in the same pass broke
+  any-declaration merge/ordering semantics, so the audit records that bridge
+  explicitly as `7ab-7ae` instead of preserving it for compatibility. Evidence:
+  touched-file ESLint passed; focused declaration/reference/import tests passed
+  (`259` tests, `28` skipped); expanded lookup-adjacent suite passed (`434`
+  tests, `69` skipped); `@jesscss/core` build, `git diff --check`,
+  aggressive-cutting review, and node-creation audit passed. Production grep
+  finds no `_rulesSet`/`rulesSet` storage or lookup use. Exceptional errors:
+  the readonly shadow error remains a real Less/Jess semantic failure, not miss
+  control flow; the child-entry self-containment error remains a structural
+  invariant check on a corrupt lookup graph. Hotpath smoke ran
+  `mixins-guards.less` and `scope-lookup-stress.less` with one iteration only;
+  this is regression smoke, not speed evidence. No speed claim is made by this
+  pass.

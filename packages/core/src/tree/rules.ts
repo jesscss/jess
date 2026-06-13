@@ -57,7 +57,8 @@ import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
 import {
   blocksAmbientMixinOutputLookup,
-  canEnterRulesEntryForLookup
+  canEnterRulesEntryForLookup,
+  type RulesEntryLike
 } from './util/mixin-output-slot.js';
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
@@ -587,8 +588,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   varsByName: Map<string, VarDeclaration[]> | undefined;
   /** Per-request cache: callable start-key -> ordered entries with remaining path keys. */
   callableLookupCache: Map<string, CallableLookupEntry[]> | undefined;
-  directChildRuleEntries: Array<{ node: Rules; rulesVisibility?: RulesOptions['rulesVisibility'] }> | null | undefined;
-  directDeclarationChildEntries: Array<{ node: Rules; rulesVisibility?: RulesOptions['rulesVisibility'] }> | null | undefined;
+  directChildRuleEntries: Array<RulesEntryLike> | null | undefined;
+  directDeclarationChildEntries: Array<RulesEntryLike> | null | undefined;
   hasDirectChildRuleSurface = false;
   hasExactCallableChildSurface = false;
   hasExactMixinChildSurface = false;
@@ -707,7 +708,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // while having an empty/incorrect registry state, causing lookup misses (e.g. @c in detached-rulesets).
     this.rulesIndexed = 0;
     this._indexing = false;
-    this._rulesSet = undefined;
     this.varsByName = undefined;
     this.callableLookupCache = undefined;
     this.directChildRuleEntries = undefined;
@@ -1133,7 +1133,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  private collectDirectChildRulesEntries(): Array<{ node: Rules; rulesVisibility?: RulesOptions['rulesVisibility'] }> | undefined {
+  collectDirectChildRulesEntries(): Array<RulesEntryLike> | undefined {
     if (this.directChildRuleEntries !== undefined) {
       return this.directChildRuleEntries ?? undefined;
     }
@@ -1141,7 +1141,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.directChildRuleEntries = null;
       return undefined;
     }
-    let out: Array<{ node: Rules; rulesVisibility?: RulesOptions['rulesVisibility'] }> | undefined;
+    let out: Array<RulesEntryLike> | undefined;
     const value = this.value;
     for (let i = 0; i < value.length; i++) {
       const child = childCallableRulesOf(value[i]!);
@@ -1159,14 +1159,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       rulesVisibility.Mixin ??= 'public';
       (out ??= []).push({
         node: child,
-        rulesVisibility
+        rulesVisibility,
+        readonly: Boolean(child.options.readonly)
       });
     }
     this.directChildRuleEntries = out ?? null;
     return out;
   }
 
-  collectDirectDeclarationChildEntries(): Array<{ node: Rules; rulesVisibility?: RulesOptions['rulesVisibility'] }> | undefined {
+  collectDirectDeclarationChildEntries(): Array<RulesEntryLike> | undefined {
     if (this.directDeclarationChildEntries !== undefined) {
       return this.directDeclarationChildEntries ?? undefined;
     }
@@ -1174,7 +1175,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.directDeclarationChildEntries = null;
       return undefined;
     }
-    let out: Array<{ node: Rules; rulesVisibility?: RulesOptions['rulesVisibility'] }> | undefined;
+    let out: Array<RulesEntryLike> | undefined;
     const value = this.value;
     for (let i = 0; i < value.length; i++) {
       const child = childRulesOf(value[i]!);
@@ -1183,7 +1184,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       (out ??= []).push({
         node: child,
-        rulesVisibility: this.getDirectDeclarationChildRulesVisibility(child)
+        rulesVisibility: this.getDirectDeclarationChildRulesVisibility(child),
+        readonly: Boolean(child.options.readonly)
       });
     }
     this.directDeclarationChildEntries = out ?? null;
@@ -1202,7 +1204,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private addDirectDeclarationChildRuleEntry(
     child: Rules,
-    rulesVisibility?: RulesOptions['rulesVisibility']
+    rulesVisibility?: RulesOptions['rulesVisibility'],
+    readonly = Boolean(child.options.readonly)
   ): void {
     this.hasDirectChildRuleSurface = true;
     if (this.directDeclarationChildEntries === undefined) {
@@ -1218,13 +1221,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const entries = this.directDeclarationChildEntries ?? (this.directDeclarationChildEntries = []);
     entries.push({
       node: child,
-      rulesVisibility: visibility
+      rulesVisibility: visibility,
+      readonly
     });
   }
 
   private addDirectChildRuleEntry(
     child: Rules,
-    rulesVisibility?: RulesOptions['rulesVisibility']
+    rulesVisibility?: RulesOptions['rulesVisibility'],
+    readonly = Boolean(child.options.readonly)
   ): void {
     this.hasDirectChildRuleSurface = true;
     if (rulesMayContainExactCallableSurface(child)) {
@@ -1250,7 +1255,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const entries = this.directChildRuleEntries ?? (this.directChildRuleEntries = []);
     entries.push({
       node: child,
-      rulesVisibility: visibility
+      rulesVisibility: visibility,
+      readonly
     });
   }
 
@@ -2027,8 +2033,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
       return direct;
     }
-    const found = this.getRegistry('declaration').find(keys, 'VarDeclaration', options);
-    return isNode(found, N.VarDeclaration) ? found : undefined;
+    return undefined;
   }
 
   findProperty(
@@ -2036,9 +2041,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     options?: Registries.DeclarationFindOptions
   ): Declaration | undefined {
     const direct = findPropertyDeclaration(this, keys, options);
-    const found = direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED
-      ? direct
-      : this.getRegistry('declaration').find(keys, 'Declaration', options);
+    const found = direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED ? direct : undefined;
     return isNode(found, N.Declaration) ? found : undefined;
   }
 
@@ -2678,12 +2681,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return Object.fromEntries(output);
   }
 
-  /** @todo - Refactor? */
-  _rulesSet: RulesEntry[] | undefined;
-  get rulesSet(): RulesEntry[] {
-    return (this._rulesSet ??= []);
-  }
-
   registerNode(node: Node, options?: Record<string, any>, context?: Context) {
     this.lookupVersion++;
     const rebuildCallableCache = this.callableLookupCache !== undefined || this._scopeFrame !== undefined;
@@ -2742,13 +2739,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       /** Either one set as readonly will win */
       let readonly = Boolean(options?.readonly || node.options.readonly);
-      this.rulesSet.push({
-        node,
-        rulesVisibility,
-        readonly
-      });
-      this.addDirectDeclarationChildRuleEntry(node, rulesVisibility);
-      this.addDirectChildRuleEntry(node, rulesVisibility);
+      this.addDirectDeclarationChildRuleEntry(node, rulesVisibility, readonly);
+      this.addDirectChildRuleEntry(node, rulesVisibility, readonly);
       if (this._scopeFrame) {
         this._scopeFrame.callableMissesCovered = false;
       }
@@ -4056,34 +4048,30 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private _checkReadonlyImportShadows(rules: Rules): void {
     // After all evaluation stages, direct variables in the current Rules cannot
     // shadow readonly variables imported into the same scope.
-    if (rules.rulesSet.length === 0) {
+    const childEntries = rules.collectDirectDeclarationChildEntries();
+    if (!childEntries?.length) {
       return;
     }
-    const currentRegistry = rules.getRegistry('declaration');
-    currentRegistry.indexPendingItems();
-    for (const entry of rules.rulesSet) {
+    const currentRules = rules.value;
+    for (const entry of childEntries) {
       if (!entry.readonly) {
         continue;
       }
-      const importedRegistry = entry.node.getRegistry('declaration');
-      importedRegistry.indexPendingItems();
-      for (const [key, declarations] of importedRegistry.index) {
-        for (const decl of declarations) {
-          if (!isNode(decl, N.VarDeclaration)) {
-            continue;
-          }
-          const currentDeclarations = currentRegistry.index.get(key);
-          if (!currentDeclarations) {
-            continue;
-          }
-          for (const currentDecl of currentDeclarations) {
-            if (
-              isNode(currentDecl, N.VarDeclaration)
-              && !currentDecl.options?.setDefined
-              && currentDecl.parent === rules
-            ) {
-              throw new ReferenceError(`"${key}" is readonly`);
-            }
+      const importedRules = entry.node.value;
+      for (let i = 0; i < importedRules.length; i++) {
+        const importedDecl = importedRules[i]!;
+        if (!isNode(importedDecl, N.VarDeclaration)) {
+          continue;
+        }
+        const key = String(importedDecl.value.name.valueOf());
+        for (let j = 0; j < currentRules.length; j++) {
+          const currentDecl = currentRules[j]!;
+          if (
+            isNode(currentDecl, N.VarDeclaration)
+            && !currentDecl.options?.setDefined
+            && String(currentDecl.value.name.valueOf()) === key
+          ) {
+            throw new ReferenceError(`"${key}" is readonly`);
           }
         }
       }
@@ -4294,16 +4282,6 @@ type PendingOrderedIdentityPrepState = {
 // }
 
 // type IndexKey = `${NodeType}${string}`
-
-interface RulesEntry {
-  node: Rules;
-  rulesVisibility?: RulesOptions['rulesVisibility'];
-  /**
-   * These are from use, from, and import statements. Can't be assigned with $$
-   * (verify that this is not possible with SCSS).
-   */
-  readonly?: boolean;
-}
 
 /**
  * Right now, the only nodes that can be registered to the scope for lookups

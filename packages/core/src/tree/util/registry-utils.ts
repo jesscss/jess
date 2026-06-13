@@ -163,15 +163,15 @@ export abstract class Registry<
     const actualChildFilterType = 'childFilterType' in options ? childFilterType : filterType;
     let firstValue = candidates.values().next().value;
     const childRuleEntries = filterType === 'Mixin'
-      ? (rules._rulesSet ? rules.rulesSet : undefined)
+      ? rules.collectDirectChildRulesEntries()
       : rules.collectDirectDeclarationChildEntries();
     if (childRuleEntries) {
-      let rulesSet = childRuleEntries;
+      let searchableChildren = childRuleEntries;
       /**
        * Only consider rules after the last found declaration (if relevant)
        * and before the start position (if relevant)
        */
-      rulesSet = rulesSet.filter((n) => {
+      searchableChildren = searchableChildren.filter((n) => {
         const isVisible = getRulesEntryTraversalState(n, {
           type: filterType,
           hasTarget: options?.hasTarget
@@ -206,22 +206,21 @@ export abstract class Registry<
           && isVisible;
       });
 
-      let length = rulesSet.length;
+      let length = searchableChildren.length;
       if (length) {
         // searchedRules is already initialized above and includes the current Rules
         for (let i = length - 1; i >= 0; i--) {
-          let r = rulesSet.at(i)!;
+          let r = searchableChildren.at(i)!;
           // Skip if we've already searched this Rules node to prevent infinite recursion
           if (searchedRules && searchedRules.has(r.node)) {
             continue;
           }
           if (r.node === rules) {
-            throw new Error(`Rules node contains itself in rulesSet`);
+            throw new Error(`Rules node contains itself in child lookup entries`);
           }
           /** Locals can be searched once but not twice */
           let newLocal = local || Boolean(r.node.options?.local);
-          const entryReadonly = (r as { readonly?: boolean }).readonly;
-          let newOpts = options ? { ...options, readonly: readonly || entryReadonly } : { readonly: readonly || entryReadonly };
+          let newOpts = options ? { ...options, readonly: readonly || r.readonly } : { readonly: readonly || r.readonly };
           newOpts.local = newLocal;
           // Preserve source-order constraints when looking "through" child Rules.
           // This prevents an earlier sibling declaration from seeing vars emitted by
@@ -293,11 +292,9 @@ export abstract class Registry<
         }
       }
     }
-    // REMOVED: Manual iteration through rules.value for child Rules nodes
-    // If a Rules node is in rules.value and should be searchable, it should be registered
-    // via registerNode() which adds it to rulesSet. We already search rulesSet above.
-    // Manually iterating through rules.value creates infinite loops when a Rules node
-    // appears in its own children, and is unnecessary since registered Rules are in rulesSet.
+    // Child Rules are searched through carried child-entry surfaces above.
+    // Manually iterating through rules.value here can re-enter a Rules node
+    // through its own children and duplicate the carried traversal.
   }
 
   /**

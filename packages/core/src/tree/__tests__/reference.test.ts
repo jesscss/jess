@@ -1354,26 +1354,12 @@ describe('reference', () => {
       targetRules.collectDirectDeclarationChildEntries();
       targetRules.getScopeFrame();
       childRules.getScopeFrame();
-      const descriptor = Object.getOwnPropertyDescriptor(targetRules, '_rulesSet');
-      Object.defineProperty(targetRules, '_rulesSet', {
-        configurable: true,
-        get() {
-          throw new Error('explicit target variable fallback should not read _rulesSet');
-        }
-      });
 
-      try {
-        await expect(Promise.resolve(ref({
-          target: ref({ key: 'targetRules' }, { type: 'variable' }),
-          key: 'target-color'
-        }, { type: 'variable' }).render(context))).resolves.toBe('blue');
-      } finally {
-        if (descriptor) {
-          Object.defineProperty(targetRules, '_rulesSet', descriptor);
-        } else {
-          delete (targetRules as { _rulesSet?: unknown })._rulesSet;
-        }
-      }
+      expect('_rulesSet' in targetRules).toBe(false);
+      await expect(Promise.resolve(ref({
+        target: ref({ key: 'targetRules' }, { type: 'variable' }),
+        key: 'target-color'
+      }, { type: 'variable' }).render(context))).resolves.toBe('blue');
     });
 
     it('renders source-free direct index scalar hits without applying reference metadata', async () => {
@@ -3163,7 +3149,7 @@ describe('reference', () => {
       }
     });
 
-    it('semantic filtered child declaration fallback uses carried child entries without _rulesSet', async () => {
+    it('semantic filtered child declaration fallback uses carried child entries without rulesSet storage', async () => {
       const childRules = rules([
         decl({ name: any('child-color'), value: any('blue') })
       ]);
@@ -3175,28 +3161,13 @@ describe('reference', () => {
       ]);
       await root.eval(context);
 
-      const descriptor = Object.getOwnPropertyDescriptor(root, '_rulesSet');
-      Object.defineProperty(root, '_rulesSet', {
-        configurable: true,
-        get() {
-          throw new Error('semantic declaration child fallback should not read _rulesSet');
-        }
+      expect('_rulesSet' in root).toBe(false);
+      const found = root.findProperty('child-color', {
+        searchParents: false,
+        semanticFilter: true,
+        filter: () => true
       });
-
-      try {
-        const found = root.findProperty('child-color', {
-          searchParents: false,
-          semanticFilter: true,
-          filter: () => true
-        });
-        expect(found?.value.value.valueOf()).toBe('blue');
-      } finally {
-        if (descriptor) {
-          Object.defineProperty(root, '_rulesSet', descriptor);
-        } else {
-          delete (root as { _rulesSet?: unknown })._rulesSet;
-        }
-      }
+      expect(found?.value.value.valueOf()).toBe('blue');
     });
 
     it('direct property lookup reuses carried child rule entries after indexing', async () => {

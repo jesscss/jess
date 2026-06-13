@@ -7,6 +7,7 @@ export type LookupVisibility = keyof NonNullable<RulesOptions['rulesVisibility']
 export type RulesEntryLike = {
   node: Rules;
   rulesVisibility?: RulesOptions['rulesVisibility'];
+  readonly?: boolean;
 };
 
 export type RulesEntryVisibility = {
