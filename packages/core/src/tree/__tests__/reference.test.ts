@@ -2846,7 +2846,7 @@ describe('reference', () => {
       }
     });
 
-    it('findDeclaration reads live cells through current bindings without declaration registry fallback', async () => {
+    it('findDeclaration reads live cells through current bindings', async () => {
       const liveSource = vardecl({ name: 'color', value: any('blue') });
       const node = rules([
         vardecl({ name: 'color', value: any('red') })
@@ -2892,31 +2892,7 @@ describe('reference', () => {
       expect(node.findProperty('missing')).toBeUndefined();
     });
 
-    it('direct VarDeclaration lookup ignores registry searchedRules bookkeeping', async () => {
-      const node = rules([
-        vardecl({ name: 'color', value: any('red') })
-      ]);
-
-      await node.eval(context);
-      const opts = { searchedRules: new Set([node]) };
-      const found = node.findVariable('color', opts);
-
-      expect(found?.value.value.valueOf()).toBe('red');
-    });
-
-    it('direct property lookup ignores registry searchedRules bookkeeping', async () => {
-      const node = rules([
-        decl({ name: any('color'), value: any('red') })
-      ]);
-
-      await node.eval(context);
-      const opts = { searchedRules: new Set([node]) };
-      const found = node.findProperty('color', opts);
-
-      expect(found?.value.value.valueOf()).toBe('red');
-    });
-
-    it('direct VarDeclaration lookup ignores empty registry candidate bookkeeping', async () => {
+    it('direct VarDeclaration lookup ignores empty candidate sets', async () => {
       const node = rules([
         vardecl({ name: 'color', value: any('red') })
       ]);
@@ -2931,7 +2907,7 @@ describe('reference', () => {
       expect(found?.value.value.valueOf()).toBe('red');
     });
 
-    it('direct property lookup ignores empty registry candidate bookkeeping', async () => {
+    it('direct property lookup ignores empty candidate sets', async () => {
       const node = rules([
         decl({ name: any('color'), value: any('red') })
       ]);
@@ -2946,7 +2922,7 @@ describe('reference', () => {
       expect(found?.value.value.valueOf()).toBe('red');
     });
 
-    it('direct property lookup models non-empty candidate bookkeeping without registry fallback', async () => {
+    it('direct property lookup records non-empty candidate hits', async () => {
       const stale = decl({ name: any('other-color'), value: any('black') });
       const node = rules([
         decl({ name: any('color'), value: any('red') })
@@ -3130,7 +3106,7 @@ describe('reference', () => {
       }
     });
 
-    it('plain lexical misses ignore unresolved dynamic declaration names without declaration-registry fallback', async () => {
+    it('plain lexical misses ignore unresolved dynamic declaration names', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];
       RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
@@ -3162,7 +3138,7 @@ describe('reference', () => {
       }
     });
 
-    it('same-scope unresolved dynamic names before a static winner do not force declaration-registry fallback', async () => {
+    it('same-scope unresolved dynamic names before a static winner stay on direct lookup', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];
       RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
@@ -3201,7 +3177,7 @@ describe('reference', () => {
       }
     });
 
-    it('same-scope unresolved dynamic names after a static winner do not force declaration-registry fallback', async () => {
+    it('same-scope unresolved dynamic names after a static winner stay on direct lookup', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];
       RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {

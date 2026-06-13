@@ -74,8 +74,8 @@ import {
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
-const REGISTRYLESS_MIXIN_CACHE_KEY_SEPARATOR = '\u001e';
-const REGISTRYLESS_MIXIN_PATH_KEY_SEPARATOR = '\u001f';
+const CALLABLE_LOOKUP_CACHE_KEY_SEPARATOR = '\u001e';
+const CALLABLE_LOOKUP_PATH_KEY_SEPARATOR = '\u001f';
 type StyleImportRegistrationNode = Node<{ path: unknown }>;
 type PathResolutionError = Error & { _isPathResolutionError?: boolean };
 type FlagLikeNode = { hasFlag(flag: number): boolean };
@@ -600,8 +600,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     readonly: boolean;
   }> | undefined;
 
-  registrylessLastMixinLookupKey: string | undefined;
-  registrylessLastMixinLookupValue: MixinEntry[] | undefined;
+  lastCallableLookupKey: string | undefined;
+  lastCallableLookupValue: MixinEntry[] | undefined;
   lookupVersion = 0;
   /** ScopeFrame storage; check this when lookup must not lazily build a frame. */
   _scopeFrame: ScopeFrame | undefined;
@@ -702,9 +702,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.functionsByName = undefined;
     }
 
-    // IMPORTANT: cloned Rules must re-index their own registries.
+    // IMPORTANT: cloned Rules must rebuild their derived lookup state.
     // Otherwise, a clone can inherit `rulesIndexed` from the source Rules (often == value.length),
-    // while having an empty/incorrect registry state, causing lookup misses (e.g. @c in detached-rulesets).
+    // while having empty/incorrect lookup maps, causing lookup misses (e.g. @c in detached-rulesets).
     this.rulesIndexed = 0;
     this._indexing = false;
     this.varsByName = undefined;
@@ -717,8 +717,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.hasExactRulesetChildSurface = false;
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
-    this.registrylessLastMixinLookupKey = undefined;
-    this.registrylessLastMixinLookupValue = undefined;
+    this.lastCallableLookupKey = undefined;
+    this.lastCallableLookupValue = undefined;
     this.lookupVersion = 0;
     this._hasExtends = false;
     this._hasReferenceImports = false;
@@ -1231,7 +1231,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     });
   }
 
-  private getRegistrylessMixinCacheKey(
+  private getCallableLookupCacheKey(
     keys: string | string[],
     filterType: string | undefined,
     options: Registries.FindOptions
@@ -1239,30 +1239,30 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (options.hasTarget || options.local || options.context?.rulesContext === this) {
       return undefined;
     }
-    const lookupKey = isArray(keys) ? keys.join(REGISTRYLESS_MIXIN_PATH_KEY_SEPARATOR) : keys;
+    const lookupKey = isArray(keys) ? keys.join(CALLABLE_LOOKUP_PATH_KEY_SEPARATOR) : keys;
     return lookupKey
-      + REGISTRYLESS_MIXIN_CACHE_KEY_SEPARATOR
+      + CALLABLE_LOOKUP_CACHE_KEY_SEPARATOR
       + (filterType ?? '')
-      + REGISTRYLESS_MIXIN_CACHE_KEY_SEPARATOR
+      + CALLABLE_LOOKUP_CACHE_KEY_SEPARATOR
       + (options.terminalMixinOnly === true ? 't1' : 't0')
-      + REGISTRYLESS_MIXIN_CACHE_KEY_SEPARATOR
+      + CALLABLE_LOOKUP_CACHE_KEY_SEPARATOR
       + (options.searchParents === false ? 's0' : 's1');
   }
 
-  private hasRegistrylessMixinCacheResult(key: string): boolean {
-    return this.registrylessLastMixinLookupKey === key;
+  private hasLastCallableLookupResult(key: string): boolean {
+    return this.lastCallableLookupKey === key;
   }
 
-  private getRegistrylessMixinCacheResult(): MixinEntry[] | undefined {
-    return this.registrylessLastMixinLookupValue;
+  private getLastCallableLookupResult(): MixinEntry[] | undefined {
+    return this.lastCallableLookupValue;
   }
 
-  private setRegistrylessMixinCacheResult(key: string | undefined, value: MixinEntry[] | undefined): void {
+  private setLastCallableLookupResult(key: string | undefined, value: MixinEntry[] | undefined): void {
     if (key === undefined) {
       return;
     }
-    this.registrylessLastMixinLookupKey = key;
-    this.registrylessLastMixinLookupValue = value;
+    this.lastCallableLookupKey = key;
+    this.lastCallableLookupValue = value;
   }
 
   private findVisibleExactCallableRulesetPath(
@@ -1727,9 +1727,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): MixinEntry[] | undefined {
     if (typeof keys === 'string') {
       const includeRulesets = filterType !== 'Mixin' && options.terminalMixinOnly !== true;
-      const cacheKey = this.getRegistrylessMixinCacheKey(keys, filterType, options);
-      if (cacheKey !== undefined && this.hasRegistrylessMixinCacheResult(cacheKey)) {
-        return this.getRegistrylessMixinCacheResult();
+      const cacheKey = this.getCallableLookupCacheKey(keys, filterType, options);
+      if (cacheKey !== undefined && this.hasLastCallableLookupResult(cacheKey)) {
+        return this.getLastCallableLookupResult();
       }
       const callableFrame = this._scopeFrame;
       if (callableFrame && !options.hasTarget && !options.local) {
@@ -1742,10 +1742,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           const pathKeys = splitStaticCallablePathKey(keys);
           if (pathKeys) {
             const result = this.findMixin(pathKeys, filterType, options);
-            this.setRegistrylessMixinCacheResult(cacheKey, result);
+            this.setLastCallableLookupResult(cacheKey, result);
             return result;
           }
-          this.setRegistrylessMixinCacheResult(cacheKey, undefined);
+          this.setLastCallableLookupResult(cacheKey, undefined);
           return undefined;
         }
         if (frameHit.kind === 'hit') {
@@ -1763,7 +1763,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             results.push(candidate);
           }
           if (results.length > 0) {
-            this.setRegistrylessMixinCacheResult(cacheKey, results);
+            this.setLastCallableLookupResult(cacheKey, results);
             return results;
           }
         }
@@ -1781,10 +1781,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           const pathKeys = splitStaticCallablePathKey(keys);
           if (pathKeys) {
             const result = this.findMixin(pathKeys, filterType, options);
-            this.setRegistrylessMixinCacheResult(cacheKey, result);
+            this.setLastCallableLookupResult(cacheKey, result);
             return result;
           }
-          this.setRegistrylessMixinCacheResult(cacheKey, undefined);
+          this.setLastCallableLookupResult(cacheKey, undefined);
           return undefined;
         }
         if (frameHit.kind === 'uncovered' && !currentFrameHasNoMixinChildSurface) {
@@ -1796,7 +1796,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             skipCurrentSurface: true
           });
           if (direct.length > 0) {
-            this.setRegistrylessMixinCacheResult(cacheKey, direct);
+            this.setLastCallableLookupResult(cacheKey, direct);
             return direct;
           }
         }
@@ -1830,7 +1830,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 results.push(candidate);
               }
               if (results.length > 0) {
-                this.setRegistrylessMixinCacheResult(cacheKey, results);
+                this.setLastCallableLookupResult(cacheKey, results);
                 return results;
               }
             }
@@ -1856,7 +1856,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 skipCurrentSurface: true
               });
               if (direct.length > 0) {
-                this.setRegistrylessMixinCacheResult(cacheKey, direct);
+                this.setLastCallableLookupResult(cacheKey, direct);
                 return direct;
               }
             }
@@ -1870,10 +1870,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             const pathKeys = splitStaticCallablePathKey(keys);
             if (pathKeys) {
               const result = this.findMixin(pathKeys, filterType, options);
-              this.setRegistrylessMixinCacheResult(cacheKey, result);
+              this.setLastCallableLookupResult(cacheKey, result);
               return result;
             }
-            this.setRegistrylessMixinCacheResult(cacheKey, undefined);
+            this.setLastCallableLookupResult(cacheKey, undefined);
             return undefined;
           }
         }
@@ -1881,7 +1881,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const pathKeys = splitStaticCallablePathKey(keys);
       if (pathKeys) {
         const result = this.findMixin(pathKeys, filterType, options);
-        this.setRegistrylessMixinCacheResult(cacheKey, result);
+        this.setLastCallableLookupResult(cacheKey, result);
         return result;
       }
       const direct = this.findMixinsFast(keys, {
@@ -1891,16 +1891,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         searchParents: options.searchParents
       });
       const result = direct.length > 0 ? direct : undefined;
-      this.setRegistrylessMixinCacheResult(cacheKey, result);
+      this.setLastCallableLookupResult(cacheKey, result);
       return result;
     } else if (isArray(keys) && keys.length === 0) {
       return undefined;
     } else if (isArray(keys) && keys.length === 1) {
       return this.findMixin(keys[0]!, filterType, options);
     } else if (isArray(keys) && keys.length > 1) {
-      const cacheKey = this.getRegistrylessMixinCacheKey(keys, filterType, options);
-      if (cacheKey !== undefined && this.hasRegistrylessMixinCacheResult(cacheKey)) {
-        return this.getRegistrylessMixinCacheResult();
+      const cacheKey = this.getCallableLookupCacheKey(keys, filterType, options);
+      if (cacheKey !== undefined && this.hasLastCallableLookupResult(cacheKey)) {
+        return this.getLastCallableLookupResult();
       }
       const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
       let compoundPrefixFast: MixinEntry[] | undefined;
@@ -1909,7 +1909,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
         if (rulesetNamespaceFast !== undefined && (rulesetNamespaceFast.length > 0 || options.terminalMixinOnly !== true)) {
           const result = rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
-          this.setRegistrylessMixinCacheResult(cacheKey, result);
+          this.setLastCallableLookupResult(cacheKey, result);
           return result;
         }
         const namespaceMixins = this.findMixinsFast(keys[0]!, {
@@ -1923,7 +1923,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             local: options.local
           });
           if (namespaceRulesets.length !== 0) {
-            this.setRegistrylessMixinCacheResult(cacheKey, undefined);
+            this.setLastCallableLookupResult(cacheKey, undefined);
             return undefined;
           }
           if (options.terminalMixinOnly !== true) {
@@ -1935,7 +1935,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               return exactRulesetPath;
             }
           }
-          this.setRegistrylessMixinCacheResult(cacheKey, undefined);
+          this.setLastCallableLookupResult(cacheKey, undefined);
           return undefined;
         }
         compoundPrefixFast = this.findCompoundPrefixCallableRulesetPathFast(keys, options);
@@ -1966,10 +1966,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       if (fast !== undefined) {
         const result = fast.length > 0 ? fast : undefined;
-        this.setRegistrylessMixinCacheResult(cacheKey, result);
+        this.setLastCallableLookupResult(cacheKey, result);
         return result;
       }
-      this.setRegistrylessMixinCacheResult(cacheKey, undefined);
+      this.setLastCallableLookupResult(cacheKey, undefined);
       return undefined;
     }
     return undefined;
@@ -2663,8 +2663,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
-    this.registrylessLastMixinLookupKey = undefined;
-    this.registrylessLastMixinLookupValue = undefined;
+    this.lastCallableLookupKey = undefined;
+    this.lastCallableLookupValue = undefined;
     const directChildRules = childCallableRulesOf(node);
     if (directChildRules && !isNode(node, N.Rules)) {
       this.addDirectChildRuleEntry(directChildRules);

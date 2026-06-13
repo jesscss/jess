@@ -80,7 +80,6 @@ export type DeclarationFindOptions = {
   semanticFilter?: boolean;
   candidates?: Set<Node>;
   optionalCandidates?: Set<Node>;
-  findAll?: boolean;
   /** This gets set if any parent is set to readonly */
   readonly?: boolean;
   searchParents?: boolean;
@@ -88,14 +87,14 @@ export type DeclarationFindOptions = {
   ignoreCurrentScopeStart?: boolean;
   ignoreParentScopeStart?: boolean;
   local?: boolean;
+  /** Whether this lookup has an explicit target, e.g. #ns[@foo]. */
+  hasTarget?: boolean;
 };
 
 export type FindOptions = DeclarationFindOptions & {
+  findAll?: boolean;
   childFilterType?: 'Mixin' | 'Ruleset' | undefined;
   context?: Context;
-  searchedRules?: Set<Rules>;
-  /** Whether this lookup has an explicit target, e.g. #ns[@foo]. */
-  hasTarget?: boolean;
   /** For mixin-ruleset calls with args, namespace containers may be rulesets but terminal hits must be mixins. */
   terminalMixinOnly?: boolean;
 };

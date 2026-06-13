@@ -675,107 +675,51 @@ describe('Call', () => {
     expect(rule.registrationPrepared).toBe(false);
   });
 
-  it('resolves simple function hits without opening a registry lookup', () => {
+  it('resolves simple function hits from direct function bindings', () => {
     const root = rules([]);
     root.register('function', new JsFunction({
       name: 'direct-hit',
       fn: () => any('ok')
     }));
-    const originalGetRegistry = Rules.prototype.getRegistry;
-    let registryHits = 0;
-    Rules.prototype.getRegistry = function countFunctionRegistry(
-      this: Rules,
-      ...args: Parameters<typeof originalGetRegistry>
-    ): ReturnType<typeof originalGetRegistry> {
-      registryHits++;
-      return originalGetRegistry.apply(this, args);
-    };
 
-    try {
-      expect(root.findFunction('direct-hit')?.type).toBe('JsFunction');
-      expect(registryHits).toBe(0);
-    } finally {
-      Rules.prototype.getRegistry = originalGetRegistry;
-    }
+    expect(root.findFunction('direct-hit')?.type).toBe('JsFunction');
   });
 
-  it('resolves simple function misses without opening a registry lookup', () => {
+  it('resolves simple function misses from direct function bindings', () => {
     const root = rules([]);
     root.register('function', new JsFunction({
       name: 'other',
       fn: () => any('ok')
     }));
-    const originalGetRegistry = Rules.prototype.getRegistry;
-    let registryHits = 0;
-    Rules.prototype.getRegistry = function countFunctionRegistry(
-      this: Rules,
-      ...args: Parameters<typeof originalGetRegistry>
-    ): ReturnType<typeof originalGetRegistry> {
-      registryHits++;
-      return originalGetRegistry.apply(this, args);
-    };
 
-    try {
-      expect(root.findFunction('missing')).toBeUndefined();
-      expect(registryHits).toBe(0);
-    } finally {
-      Rules.prototype.getRegistry = originalGetRegistry;
-    }
+    expect(root.findFunction('missing')).toBeUndefined();
   });
 
-  it('resolves option-shaped function lookup without opening a registry lookup', () => {
+  it('resolves option-shaped function lookup from direct function bindings', () => {
     const root = rules([]);
     const fnNode = new JsFunction({
       name: 'direct-options-hit',
       fn: () => any('ok')
     });
     root.register('function', fnNode);
-    const originalGetRegistry = Rules.prototype.getRegistry;
-    let registryHits = 0;
-    Rules.prototype.getRegistry = function countFunctionRegistry(
-      this: Rules,
-      ...args: Parameters<typeof originalGetRegistry>
-    ): ReturnType<typeof originalGetRegistry> {
-      registryHits++;
-      return originalGetRegistry.apply(this, args);
-    };
 
-    try {
-      expect(root.findFunction('direct-options-hit', 'ignored', {
-        candidates: new Set(),
-        optionalCandidates: new Set(),
-        findAll: true
-      })).toBe(fnNode);
-      expect(registryHits).toBe(0);
-    } finally {
-      Rules.prototype.getRegistry = originalGetRegistry;
-    }
+    expect(root.findFunction('direct-options-hit', 'ignored', {
+      candidates: new Set(),
+      optionalCandidates: new Set(),
+      findAll: true
+    })).toBe(fnNode);
   });
 
   it('preserves direct function bindings when cloning function maps', () => {
     const root = rules([]);
     const fn = new JsFunction({
-      name: 'registry-only',
+      name: 'clone-only',
       fn: () => any('ok')
     });
-    root.setFunctionBinding('registry-only', fn);
+    root.setFunctionBinding('clone-only', fn);
     const cloned = root.clone(false);
-    const originalGetRegistry = Rules.prototype.getRegistry;
-    let registryHits = 0;
-    Rules.prototype.getRegistry = function countFunctionRegistry(
-      this: Rules,
-      ...args: Parameters<typeof originalGetRegistry>
-    ): ReturnType<typeof originalGetRegistry> {
-      registryHits++;
-      return originalGetRegistry.apply(this, args);
-    };
 
-    try {
-      expect(cloned.findFunction('registry-only')).toBe(fn);
-      expect(registryHits).toBe(0);
-    } finally {
-      Rules.prototype.getRegistry = originalGetRegistry;
-    }
+    expect(cloned.findFunction('clone-only')).toBe(fn);
   });
 
   it('uses source args directly for plain dynamic JS function render and resolve', async () => {

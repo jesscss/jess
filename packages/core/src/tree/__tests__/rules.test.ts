@@ -1207,7 +1207,7 @@ describe('Rules', () => {
         ]);
 
         node = await node.eval(context);
-        // With registry-based setDefined, the Rules node stays at index 1 (no array changes)
+        // With direct setDefined lookup, the Rules node stays at index 1 (no array changes)
         let inherited = node.at(1);
         expect(getVar(node, 'one')?.toTrimmedString()).toBe('$one: three');
         expect(getVar(expectRulesNode(inherited), 'one')?.toTrimmedString()).toBe('$one := three');

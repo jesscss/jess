@@ -1309,17 +1309,57 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7af. [ ] Audit stale declaration-registry wording and test names that now refer
+7af. [x] Audit stale declaration-registry wording and test names that now refer
     to old registry concepts after the production deletion. This is docs/test
     cleanup only unless it reveals a live bridge.
+   Done. Current lookup tests no longer describe declaration-registry fallback
+   or registry bookkeeping as active behavior, and the dead `getRegistry`
+   monkeypatch tripwires were deleted from function lookup tests. Historical
+   completed handoff entries still mention the deleted registry machinery as
+   history.
 
-7ag. [ ] Revisit `DeclarationFindOptions.findAll`: split callable-only option
+7ag. [x] Revisit `DeclarationFindOptions.findAll`: split callable-only option
     shape from declaration lookup if TypeScript/API clarity is worth the churn,
     but do not reintroduce all-results declaration storage.
+   Done. `findAll` now lives on callable/general `FindOptions`, not
+   `DeclarationFindOptions`, and direct declaration lookup no longer branches
+   on it. The stale `searchedRules` option field was also deleted after grep
+   proved no source reads or writes it.
 
-7ah. [ ] Audit remaining `registrylessLastMixinLookup*` one-entry cache and
+7ah. [x] Audit remaining `registrylessLastMixinLookup*` one-entry cache and
     callable cache naming/shape after declaration registry deletion; keep only
     if measured or code-path evidence says it removes more work than it adds.
+   Done. The cache remains a single-entry callable lookup memo only for
+   cacheable un-targeted, non-local, non-current-context lookups; it is
+   invalidated on clone/reset and node registration. The prototype-era
+   `registrylessLastMixinLookup*` names are now `lastCallableLookup*`, with
+   matching callable cache key helpers and constants.
+
+Seeded next binding/lookup queue:
+
+7ai. [ ] Rename or split `registry-utils.ts` now that it contains lookup
+    traversal helpers and option types, not registries. Keep the cut import-only
+    unless code inspection shows dead helper surface.
+
+7aj. [ ] Audit `FindOptions` versus `DeclarationFindOptions` after the
+    `findAll` split; move callable-only fields out of declaration-facing
+    callsites where TypeScript can enforce it without adding wrapper helpers.
+
+7ak. [ ] Audit direct function binding names/comments (`register('function')`,
+    `setFunctionBinding`, function compat wording) and delete any stale registry
+    compatibility scaffolding that is not required for Less plugin behavior.
+
+7al. [ ] Inspect `Rules.findDeclaration(...)` string-dispatch shape after typed
+    `findVariable(...)` / `findProperty(...)` / any-declaration helpers; delete
+    or narrow generic branches if production callers no longer need them.
+
+7am. [ ] Audit callable lookup cache invalidation against live binding updates
+    and scope-frame callable buckets; keep the one-entry cache only if it cannot
+    return stale results across mixin-param/live-binding mutation paths.
+
+7an. [ ] Audit direct declaration lookup cache keys now that variable lookup
+    skips the recursive cache; remove cache key dimensions or helper surface
+    that no longer correspond to reachable declaration lookup modes.
 
 Parked secondary deep-cut queue:
 
@@ -1648,6 +1688,46 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Lookup registry residue cleanup pass: accepted as binding/lookup surface
+  deletion and naming cleanup, not as a speed claim. Files:
+  `packages/core/src/tree/util/registry-utils.ts`,
+  `packages/core/src/tree/util/direct-rules-lookup.ts`,
+  `packages/core/src/tree/rules.ts`, focused lookup tests, and this handoff.
+  - New traversal: none. The `isArray(keys) ? keys.join(...) : keys` danger
+    token is an existing callable cache-key path that was renamed from
+    `getRegistrylessMixinCacheKey(...)` to `getCallableLookupCacheKey(...)`;
+    this pass did not add a new array walk or recursive search.
+  - New node/materialization: none. No production node, wrapper `Rules`,
+    copied node, `.inherit(...)`, `.adopt(...)`, frozen/source metadata
+    mutation, helper output array, or render materialization was added. The
+    `MixinEntry[]` danger tokens are existing one-entry cache value types
+    renamed from `registrylessLastMixinLookupValue` to
+    `lastCallableLookupValue`; the cache still stores the result array already
+    produced by lookup. The `new Set()` danger tokens are existing focused test
+    candidate option sets that remained in a changed hunk; no production lookup
+    side map/set was added.
+  - Render path: unchanged. The pass changes lookup option typing, test
+    scaffolding, and callable cache names; rendered output still consumes the
+    same resolved declaration/callable values.
+  - Helper/API surface: net deletion/cleanup. `findAll` moved off
+    `DeclarationFindOptions` onto callable/general `FindOptions`; direct
+    declaration lookup no longer checks `findAll`; the dead `searchedRules`
+    option field was deleted; stale `Rules.prototype.getRegistry` monkeypatch
+    scaffolding was removed from function lookup tests. The remaining cache
+    helpers were renamed, not multiplied.
+  - Metadata mutations: none. Cache invalidation remains the same clone/reset
+    and node-registration invalidation points, now under `lastCallableLookup*`
+    names.
+  - Evidence: touched-file ESLint passed; `@jesscss/core` build passed with
+    only the pre-existing direct-`eval` warning in `js-expr.ts`; `jess` build
+    passed; `git diff --check` passed; focused
+    `reference`/`mixin`/`call`/`rules` lookup pattern tests passed
+    (`271` passed, `159` skipped); `audit:node-creation` passed. Aggressive
+    review passed with the danger tokens prosecuted in this block. One-iteration
+    hotpath smoke passed for `mixins-guards.less` (`22.73ms`) and
+    `scope-lookup-stress.less` (`77.22ms`); this is regression smoke, not a
+    speed claim.
 
 - Direct variable declaration walker completion pass: accepted as registry
   bridge deletion plus binding-frame correctness hardening, not as a speed

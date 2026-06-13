@@ -2137,7 +2137,7 @@ describe('Mixin', () => {
       }
     });
 
-    it('resolves lexical variable bindings without declaration-registry lookup', async () => {
+    it('resolves lexical variable bindings from scope frames', async () => {
       context.treeContext = new TreeContext({
         file: {
           name: 'test.less',
@@ -2195,7 +2195,7 @@ describe('Mixin', () => {
       }
     });
 
-    it('ScopeFrame declarationBucketsByName matches registry state after eval', async () => {
+    it('ScopeFrame declarationBucketsByName preserves declaration order after eval', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -2209,7 +2209,7 @@ describe('Mixin', () => {
 
       await root.eval(context);
 
-      // varsByName is populated after eval (via _indexRules during registry access)
+      // ScopeFrame buckets are populated after eval and preserve source order.
       const frame = root.getScopeFrame();
 
       // Frame should have both declared names
@@ -2221,7 +2221,7 @@ describe('Mixin', () => {
       expect(brandBucket).toHaveLength(2);
       expect(brandBucket[brandBucket.length - 1]!.cell.value.valueOf()).toBe('navy');
 
-      // resolveFrameCell should return the same winner as the registry
+      // resolveFrameCell should return the last declaration in source order.
       const frameResult = resolveFrameCell('brand', frame);
       expect(frameResult).toBeDefined();
       expect(frameResult!.cell.value.valueOf()).toBe('navy');

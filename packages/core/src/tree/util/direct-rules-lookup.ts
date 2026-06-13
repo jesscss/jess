@@ -259,10 +259,8 @@ function getRecursiveLookupCacheKey(
     || start !== undefined
     || readonly
     || options.filter
-    || options.findAll
     || options.candidates
     || options.optionalCandidates
-    || options.searchedRules
   ) {
     return undefined;
   }
@@ -525,8 +523,7 @@ function findDeclarationWithStrategy(
 ): DirectDeclarationLookupResult {
   const lookupOptions = options ?? EMPTY_DIRECT_DECLARATION_FIND_OPTIONS;
   if (
-    lookupOptions.findAll
-    || (!strategy.semanticFilterCovered && lookupOptions.semanticFilter)
+    !strategy.semanticFilterCovered && lookupOptions.semanticFilter
   ) {
     return DIRECT_DECLARATION_LOOKUP_UNCOVERED;
   }
