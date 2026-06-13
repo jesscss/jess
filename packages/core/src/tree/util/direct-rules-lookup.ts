@@ -14,7 +14,6 @@ import {
 } from './mixin-output-slot.js';
 import type { DeclarationFindOptions } from './registry-utils.js';
 
-type DeclarationFilterType = 'VarDeclaration' | 'Declaration' | undefined;
 type DirectDeclarationLookupResult = Declaration | undefined | typeof DIRECT_DECLARATION_LOOKUP_UNCOVERED;
 type DirectDeclarationFindOptions = DeclarationFindOptions & {
   context?: Context;
@@ -474,7 +473,7 @@ function findDeclarationWithStrategy(
 
   while (rules) {
     if (visitedParents.has(rules)) {
-      throw new Error('Circular parent chain detected in findDeclarationDirect');
+      throw new Error('Circular parent chain detected in direct declaration lookup');
     }
     visitedParents.add(rules);
 
@@ -549,19 +548,4 @@ export function findAnyDeclaration(
   options?: DirectDeclarationFindOptions
 ): DirectDeclarationLookupResult {
   return findDeclarationWithStrategy(startRules, key, ANY_DECLARATION_LOOKUP, options);
-}
-
-export function findDeclarationDirect(
-  startRules: Rules,
-  key: string,
-  filterType: DeclarationFilterType,
-  options?: DirectDeclarationFindOptions
-): DirectDeclarationLookupResult {
-  if (filterType === 'VarDeclaration') {
-    return findVariableDeclaration(startRules, key, options);
-  }
-  if (filterType === 'Declaration') {
-    return findPropertyDeclaration(startRules, key, options);
-  }
-  return findAnyDeclaration(startRules, key, options);
 }

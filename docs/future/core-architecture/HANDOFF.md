@@ -745,8 +745,8 @@ left for this branch.
 
 4. [x] Replace declaration/property registry bridges by mode.
    First selected mode complete: `Rules.findDeclaration(...,
-   'VarDeclaration', ...)` now uses `findDeclarationDirect(...)` by default,
-   falling back to
+   'VarDeclaration', ...)` now uses the selected variable declaration operation
+   by default, falling back to
    `DeclarationRegistry` only when the direct path returns explicit
    `UNCOVERED` for unsupported option shapes. The old env-gated
    declaration-direct experiment is deleted; `Rules.findVariable(...)` is a
@@ -769,8 +769,8 @@ left for this branch.
 
 4a. [x] Replace remaining unfiltered declaration/property registry bridges.
    Unfiltered exact `Declaration`/property lookup now uses
-   `findDeclarationDirect(...)` by default, so `findProperty(...)` and normal
-   property `Reference` covered hits/misses no longer open
+   the selected property declaration operation by default, so `findProperty(...)`
+   and normal property `Reference` covered hits/misses no longer open
    `DeclarationRegistry`. Lookup options distinguish default context/search
    filters from semantic filters, so assignment merge filters still return
    explicit `UNCOVERED` from the direct helper and remain registry-owned.
@@ -953,7 +953,7 @@ left for this branch.
     treats it as a second lookup map beside the unified current binding layer.
 
     Completion gate:
-    - Done: `findDeclarationDirect(...)` and `DeclarationRegistry.find(...)`
+    - Done: direct variable declaration lookup and `DeclarationRegistry.find(...)`
       read `currentBindingsByName.get(key)` for live `VarDeclaration` cells.
     - Done: focused tests make `liveSlotsByName.get` throw and prove both
       direct `findDeclaration(..., 'VarDeclaration', ...)` and registry
@@ -966,8 +966,8 @@ left for this branch.
    Direct declaration lookup no longer owns a private child-rules scan. `Rules`
    now carries declaration child entries alongside callable child entries during
    registration, including mixin body rules that declaration lookup can enter
-   through the existing mixin-output visibility gate. `findDeclarationDirect(...)`
-   reads that carried surface or asks `Rules` to populate it once.
+   through the existing mixin-output visibility gate. Typed direct declaration
+   lookup reads that carried surface or asks `Rules` to populate it once.
 
    Completion gate:
    - Done: deleted the direct declaration walker's local child-rules scanner
@@ -979,7 +979,7 @@ left for this branch.
 
 7d. [x] Stop registry recursion bookkeeping from forcing covered declaration
     lookup back to `DeclarationRegistry`.
-   `findDeclarationDirect(...)` now treats `searchedRules` as old registry loop
+   Typed direct declaration lookup now treats `searchedRules` as old registry loop
    bookkeeping, not an unsupported lookup mode. The direct walker already owns
    a per-call visited set, so covered exact variable/property hits and misses
    can remain on the direct path even when a caller carries `searchedRules`.
@@ -992,7 +992,7 @@ left for this branch.
 
 7e. [x] Keep empty registry candidate bookkeeping on the direct declaration
     path.
-   `findDeclarationDirect(...)` still treats non-empty `candidates` or
+   Typed direct declaration lookup still treats non-empty `candidates` or
    `optionalCandidates` as old registry comparison state and returns
    `UNCOVERED`, but empty candidate sets no longer force covered exact
    variable/property lookup into `DeclarationRegistry`.
@@ -1064,6 +1064,17 @@ left for this branch.
      interpolation does not call the `findVariable(...)` fallback lane.
    - Done: direct `VarDeclaration` tests now cover
      `findDeclaration(..., 'VarDeclaration')` and `findVariable(...)`.
+
+7j. [x] Delete the leftover `findDeclarationDirect(...)` string adapter.
+   After `7i`, the direct declaration utility only exposes typed direct
+   operations: variable, property, and any-declaration. The unused
+   `findDeclarationDirect(...)` adapter that switched on `'VarDeclaration'` /
+   `'Declaration'` was deleted, so the string discriminator remains only at the
+   cold `Rules.findDeclaration(...)` API boundary.
+
+   Completion gate:
+   - Done: `rg` finds no production `findDeclarationDirect(...)` call sites.
+   - Done: focused and expanded binding/selector tests pass.
 
 Parked secondary deep-cut queue:
 
@@ -1393,6 +1404,31 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- `findDeclarationDirect(...)` adapter deletion pass: accepted as leftover
+  string-discriminator surface deletion, not as a speed claim. Files:
+  `packages/core/src/tree/util/direct-rules-lookup.ts`,
+  `docs/future/core-architecture/HANDOFF.md`, and
+  `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`.
+  - New traversal: none. The pass deletes the unused adapter that branched on
+    `'VarDeclaration'` / `'Declaration'`; callers already use the typed direct
+    operations from the previous pass.
+  - New node/materialization: none.
+  - Render path: unchanged.
+  - Helper/API surface: one internal helper export is deleted. The remaining
+    direct declaration utility exports only typed operations for variable,
+    property, and any-declaration lookup.
+  - Metadata mutations: none.
+  - Routine error/control: no new throw/catch/Error path. The existing circular
+    parent-chain error message was renamed to avoid pointing at the deleted
+    adapter name.
+  - Evidence: touched-file ESLint passed; `rg` found no source
+    `findDeclarationDirect(...)` call sites; focused lookup tests passed
+    (`15` passed, `329` skipped); expanded binding/selector sweep passed
+    (`18` files, `720` passed, `9` skipped). `@jesscss/core` and `jess` builds
+    passed. Node-creation audit stayed at `new-node 310`, `with-surface 39`,
+    `derive 30`, `copy-leaves 28`. Hotpath sanity ran but all fixtures were
+    unstable/noisy, so this pass makes no speed claim.
+    `verify:aggressive-cutting-review` and `git diff --check` passed.
 - Declaration lookup lane reshaping pass: accepted as string-discriminator
   reduction and typed lane restoration, not as a speed claim. Files:
   `packages/core/src/tree/rules.ts`,
