@@ -10,6 +10,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Rules } from './rules.js';
 import { callableRulesEntry } from './util/callable-entry.js';
 import { MixinCollection } from './util/callable-collection.js';
+import { evaluateCallableCollection } from './util/callable-eval.js';
 import { Any } from './any.js';
 import { List, list } from './list.js';
 import { Reference } from './reference.js';
@@ -73,6 +74,8 @@ type CallEvalState = {
   contentNode?: Node;
   preservesRulesLikeVariableTarget: boolean;
 };
+
+const noCallArgs: readonly Node[] = [];
 
 type CallRawArgsPlacementState = {
   source: Call;
@@ -780,15 +783,17 @@ export class Call extends Node<CallValue, CallOptions> {
           if (state.args && state.args.value.length > 0) {
             throw new ReferenceError(`Cannot call ${evaluatedName.type} with arguments`);
           }
-          const collection = new MixinCollection([
-            callableRulesEntry(
-              { rules: evaluatedName },
-              evaluatedName.parent,
-              evaluatedName.index
-            )
-          ]);
+          const callableEntry = callableRulesEntry(
+            { rules: evaluatedName },
+            evaluatedName.parent,
+            evaluatedName.index
+          );
           const output = await this.runInCallFrame(context, { caller: true }, async () => {
-            const result = await collection.evalCall(context, state.args);
+            const result = await evaluateCallableCollection({
+              context,
+              mixinEntries: [callableEntry],
+              args: state.args?.value ?? noCallArgs
+            });
             if (isNode(result)) {
               let evald = result.eval(context);
               if (isThenable(evald)) {
@@ -1079,13 +1084,45 @@ export class Call extends Node<CallValue, CallOptions> {
       if (args && args.value.length > 0) {
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
-      n = new MixinCollection([
-        callableRulesEntry(
-          { rules: n },
-          n.parent,
-          n.index
-        )
-      ]);
+      const callableEntry = callableRulesEntry(
+        { rules: n },
+        n.parent,
+        n.index
+      );
+      return this.runAsCaller(context, async () => {
+        try {
+          const result = await evaluateCallableCollection({
+            context,
+            mixinEntries: [callableEntry],
+            args: args?.value ?? noCallArgs
+          });
+          if (isNode(result)) {
+            let evald = result.eval(context);
+            if (isThenable(evald)) {
+              evald = await evald;
+            }
+            if (markImportant && isNode(evald, N.Rules)) {
+              this.makeImportant(evald);
+            }
+            return this.markCallOutput(evald);
+          }
+          return this.markCallOutput(cast(result));
+        } catch (e) {
+          if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
+            if (this.parent?.type === 'SelectorCapture') {
+              return this.markCallOutput(new Any(stringifyValueOf(n), { role: 'ident' }));
+            }
+            if (isNode(name, N.Reference)) {
+              throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
+            }
+            throw e;
+          }
+          if (!this._options?.silentFail) {
+            throw e;
+          }
+          return this.evalOptionalFallbackCallSyntax(context, state, name, n);
+        }
+      });
     }
 
     if (n instanceof MixinCollection) {

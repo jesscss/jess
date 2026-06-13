@@ -7,7 +7,7 @@ import { type List, list } from './list.js';
 import type { Declaration } from './declaration.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { callableRulesEntry } from './util/callable-entry.js';
-import { MixinCollection } from './util/callable-collection.js';
+import { evaluateCallableCollection } from './util/callable-eval.js';
 
 /**
  * Stylesheet-defined function with a return value.
@@ -91,14 +91,17 @@ export class Func extends Node<FuncValue, FuncOptions> {
 
     const bodyRules = this.value.body;
 
-    const coll = new MixinCollection([
-      callableRulesEntry(
-        { rules: bodyRules, params: this.value.params },
-        this.parent,
-        this.index
-      )
-    ]);
-    const evaluated = await coll.evalCall(context, args);
+    const evaluated = await evaluateCallableCollection({
+      context,
+      mixinEntries: [
+        callableRulesEntry(
+          { rules: bodyRules, params: this.value.params },
+          this.parent,
+          this.index
+        )
+      ],
+      args: args.value
+    });
 
     if (!(evaluated instanceof Rules)) {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must evaluate to rules`);

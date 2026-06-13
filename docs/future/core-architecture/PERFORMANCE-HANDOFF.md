@@ -1991,6 +1991,32 @@ Interpretation: keep as machinery deletion with favorable usable hotpath
 signals, but do not call it a proven speedup because two lower medians were
 marked unstable and this was not a controlled performance-only run.
 
+### Immediate Callable Wrapper Cut
+
+Date: 2026-06-13.
+
+Change: `Call` direct `Rules`/`Collection` callable render/eval paths and
+`Func.evalCall(...)` now call `evaluateCallableCollection(...)` directly
+instead of allocating one-entry `MixinCollection` wrappers only to immediately
+call `.evalCall(...)`. `MixinCollection` remains live as a callable-value
+handoff surface; this pass only cut eval-only wrapper construction.
+
+Hotpath status:
+
+- Pre-pass `pnpm run measure:less:hotpath -- --stable` at `af2c6955`
+  reported: `functions` median `10.37ms` usable, `import-reference` median
+  `15.40ms` usable, `mixins-guards` median `14.67ms` usable,
+  `extend-chaining` median `4.56ms` unstable, and `media` median `4.35ms`
+  noisy.
+- Dirty post-pass `pnpm run measure:less:hotpath -- --stable` reported:
+  `functions` median `11.09ms` unstable, `import-reference` median `16.35ms`
+  unstable, `mixins-guards` median `14.43ms` usable,
+  `extend-chaining` median `4.36ms` usable, and `media` median `4.35ms`
+  usable.
+
+Interpretation: status only, not a speed claim. Keep as a small wrapper-node
+deletion backed by focused callable tests; the hotpath leash was mixed/noisy.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

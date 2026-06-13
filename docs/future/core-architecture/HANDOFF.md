@@ -813,52 +813,57 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: control-flow iteration scaffold cut.
+Current pass: immediate callable wrapper cut.
 
-- New traversal: none. `$for` already walked resolved iterable entries and
-  `$while` already scanned body declarations. This pass keeps those walks but
-  removes the async-generator state machine, per-entry `[value, key]` tuple
-  arrays, `sourceRules.value.map(...)`, `rules.value.some(...)`, and the
-  public-render closure wrapper. The new `visitResolvedEntries(...)` is the
-  same entry walk expressed as a direct async visitor. The flagged
-  `for (let i = 0; ...)` loops replace `.map(...)`, `.some(...)`, tuple
-  spread/adoption iteration, and binding-name `.map(...)`; they are not
-  additional source walks.
-- New node/materialization: no new node creation boundary was added. Existing
-  `$for`/`$while` iteration surfaces still copy body children through
-  `copyWithReusableLeaves(...)`; this pass changes the child-copy list builder
-  from `.map(...)` to a pre-sized loop and leaves that already-tested semantic
-  boundary intact. The flagged `new Array<Node>`,
-  `new Array<VarDeclaration>`, and `new Array<string>` replace existing
-  callback/spread-created arrays with explicit fixed-size arrays. The flagged
-  `.adopt(...)` calls replace adoption through an intermediate
-  `getBindingDeclarations(...)` array.
-- Render path: no render path routes through public string APIs. The control
-  render overloads now pass a fresh flat `RenderBuffer` directly to
-  `renderSelectedBranch(...)`/`renderIterations(...)` instead of allocating a
-  callback through `renderControlToString(...)`.
-- Helper/API surface: deleted `renderControlToString(...)`,
-  `deriveIterationChild(...)`, `getBindingDeclarations(...)`, and
-  `resolveEntries(...)`. Added one private `visitResolvedEntries(...)` helper
-  with JSDoc because it replaces the async generator and tuple materialization
-  in both `$for` eval and render paths. No public API changed.
-- Metadata mutations: none. No parent restoration, `frozen`, inherited
+- New traversal: none. `Call` and `Func` still evaluate the same callable
+  candidates. This pass only removes three one-entry `MixinCollection`
+  wrapper constructions that were immediately consumed by `.evalCall(...)`.
+- New node/materialization: deleted three transient `new MixinCollection(...)`
+  node wrappers from direct `Rules`/`Collection` callable paths in
+  `packages/core/src/tree/call.ts` and stylesheet function calls in
+  `packages/core/src/tree/function.ts`. The remaining one-entry
+  `mixinEntries: [...]` arrays replace the old wrapper argument arrays and are
+  still required by the existing `evaluateCallableCollection(...)` signature;
+  they are not a new semantic materialization boundary. The `callableRulesEntry`
+  objects already existed inside the deleted wrappers. The new module-level
+  `noCallArgs` sentinel replaces two hot-site `?? []` literals when an optional
+  call state has no argument list. `MixinCollection` remains live for actual
+  callable-value handoff and is not deleted wholesale until references/calls no
+  longer need that public value surface.
+- Render path: no render stringification path was changed into
+  resolve-then-stringify. The render-side dynamic `Rules`/`Collection` call path
+  now evaluates through `evaluateCallableCollection(...)` directly instead of
+  constructing a wrapper node first.
+- Helper/API surface: no public API or new helper was added. Existing
+  `evaluateCallableCollection(...)` is imported where the code was previously
+  manufacturing a `MixinCollection` only to invoke the same evaluator through
+  the wrapper method. The `Call` eval branch carries the existing
+  `ReferenceError`/fallback behavior locally to avoid the wrapper hop; that is
+  code surface growth, but not helper growth. The flagged `new Any(...)`,
+  `new ReferenceError(...)`, `try`, and `catch` in `Call` are moved fallback
+  behavior from the existing common callable branch, not new routine
+  success-path control flow.
+- Metadata mutations: no new parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
-  read, ownership probe, structural probe, or error-control-flow path was added.
+  read, `Reflect.*`, `Object.hasOwn`, or structural probe was added. Existing
+  parent/index inputs to `callableRulesEntry(...)` are preserved.
 - Evidence: focused tests passed after rerunning serially after build:
   `pnpm --filter @jesscss/core test --
-  src/tree/__tests__/control.test.ts src/tree/__tests__/reference.test.ts
-  src/tree/__tests__/mixin.test.ts src/tree/__tests__/scope-frame.test.ts`
-  (`315` tests). A parallel build/test attempt failed because build cleaned
-  `packages/core/lib` while Vitest was importing parser output; the same tests
-  passed serially. `pnpm --filter @jesscss/core build` passed with the existing
-  `js-expr.ts` direct-eval warning.
+  src/tree/__tests__/call.test.ts src/tree/__tests__/reference.test.ts
+  src/tree/__tests__/mixin.test.ts
+  src/tree/util/__tests__/callable-collection.test.ts
+  src/tree/util/__tests__/callable-eval.test.ts` (`331` tests). A parallel
+  build/test attempt failed because build cleaned `packages/core/lib` while
+  Vitest imported parser output; the same tests passed serially.
+  `pnpm --filter @jesscss/core build` passed with the existing `js-expr.ts`
+  direct-eval warning.
 - Hotpath leash: pre-pass `pnpm run measure:less:hotpath -- --stable` at
-  `4cd3718f` was status-only: `functions` `12.49ms`, `import-reference`
-  `20.14ms`, `mixins-guards` `17.28ms`, `extend-chaining` `5.15ms`, and
-  `media` `5.44ms`; all signals were usable. Post-pass status on the dirty
-  tree reported `functions` `12.12ms`, `import-reference` `18.53ms`, and
-  `mixins-guards` `15.90ms` as usable; `extend-chaining` `4.64ms` and `media`
-  `5.00ms` were lower but unstable.
-- Verdict: keep if gates and post-pass leash are acceptable as a machinery
-  deletion. Do not claim speed without a clean benchmark comparison.
+  `af2c6955` reported `functions` `10.37ms` usable,
+  `import-reference` `15.40ms` usable, `mixins-guards` `14.67ms` usable,
+  `extend-chaining` `4.56ms` unstable, and `media` `4.35ms` noisy. Dirty
+  post-pass status reported `functions` `11.09ms` unstable,
+  `import-reference` `16.35ms` unstable, `mixins-guards` `14.43ms` usable,
+  `extend-chaining` `4.36ms` usable, and `media` `4.35ms` usable.
+- Verdict: keep as a small wrapper-node deletion only if gates pass. Do not
+  claim speed; the hotpath leash was mixed/noisy and this was not a controlled
+  performance pass.
