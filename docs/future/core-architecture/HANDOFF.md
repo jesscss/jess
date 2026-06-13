@@ -723,6 +723,12 @@ the binding index/scope lookup refactor.
    callback deletion around the existing public materialization boundary; the
    owned `withResolvedValue(...)`/`withValue(...)` surfaces still exist and
    remain queued.
+   Sixth partial status: `findVarDeclarationFast(...)` no longer allocates the
+   recursive `findVarWithinScopeSurface(...)` helper per lookup, and
+   `lookupRuntimeVarBinding(...)` no longer allocates a local `searchChain(...)`
+   helper per runtime binding lookup. Both helpers are module-scope functions
+   that receive the same lookup state explicitly. This is closure/API-surface
+   deletion only; traversal, fallback, and lookup semantics are unchanged.
 17. [ ] Sweep `Ampersand` template placement next. Replace
    `toTrimmedString().includes(',')` and string splitting with selector-list
    structure and placement state; only final CSS output may stringify.
@@ -807,54 +813,53 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: list/sequence async render scaffold cut.
+Current pass: Reference lookup closure hoist.
 
-- New traversal: no new semantic traversal. The flagged loops in `List` and
-  `Sequence` are the same child-rest iterations that were previously inside
-  nested async `renderRest(...)` functions. They were moved to module/private
-  continuations so the sync path does not allocate those nested functions on
-  each render. No recursion, parent/source walk, side-map lookup, extra array
-  scan, or additional child pass was added.
-- New node/materialization: none added. No `Node`, copied node,
+- New traversal: no new semantic traversal. The child-surface and fallback
+  frame walks are the same loops as before; `findVarWithinScopeSurface(...)`
+  and `searchRuntimeVarBindingChain(...)` were moved to module scope so the
+  existing traversal does not require allocating local helper functions per
+  lookup. The flagged `for (let i = childEntries.length - 1; ...)` and
+  `while (f && !seen.has(f))` loops are moved existing loops, not additional
+  passes. No extra parent/source walk, side map, or cache was added.
+- New node/materialization: none added. No new `Node`, copied node,
   `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
   metadata mutation, side map, helper array, or materialized eval/render value
-  was added. The flagged `value: T[]` token is an existing list value array
-  passed into a cold async-rest continuation, not a newly materialized array.
-  `List[Symbol.iterator]` now returns `this.value.entries()` directly instead
-  of allocating a generator wrapper.
-- Render path: rendering still writes directly through the existing active
-  writer and returns the writer slice for the public render result. This pass
-  does not resolve into arrays/nodes just to stringify and does not add public
-  `toString(...)`/`toTrimmedString(...)` transport. The known remaining debt is
-  unchanged: dynamic list/sequence render still captures a string before buffer
-  writes, and trivia-backed source children still use public source transport
-  until boundary trivia emission is made explicit.
-- Helper/API surface: one module-local `renderListValueDirectMaybeRest(...)`
-  and two private `Sequence` async-rest methods were added to delete per-call
-  nested rest functions from the sync path. This is accepted only because the
-  helpers are cold continuations reached after a thenable; they are not public
-  API and do not wrap the ordinary sync render path. The local render-node
-  closures in `emitRenderedListItemMaybe(...)` and
-  `emitRenderedSequenceNodeMaybe(...)` were removed.
-- Metadata mutations: none. Existing boundary-trivia save/restore behavior in
-  `List` remains unchanged; no parent restoration, `frozen`, inherited
+  was added. The `RuntimeVarBinding` object returned on a live-slot hit is the
+  pre-existing semantic result object, only produced by a hoisted helper now.
+  The flagged `FindVarDeclarationFastOptions` and
+  `FindVarScopeSurfaceResult` are TypeScript aliases for the existing argument
+  and return shapes, not runtime objects.
+- Render path: no render behavior changed and no render path was routed through
+  public string APIs. This pass touches lookup helper allocation only; it does
+  not resolve into arrays/nodes just to stringify.
+- Helper/API surface: two module-scope helpers were added only to remove two
+  per-call local closures: `findVarDeclarationFast(...)` no longer creates the
+  recursive `findVarWithinScopeSurface(...)`, and
+  `lookupRuntimeVarBinding(...)` no longer creates `searchChain(...)`. The
+  helpers are private module functions and receive existing lookup state
+  positionally; no public API or wrapper object was added.
+- Metadata mutations: none. No parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
   read, ownership probe, structural probe, or error-control-flow path was added.
+  The flagged `scope.parent`, `scope.sourceNode`, `live.sourceNode`, and
+  `sourceNode: src` reads/assignment are moved existing lookup/result code, not
+  new metadata mutation. The flagged `visited: Set<Rules>` and
+  `seen: Set<ScopeFrame>` parameters reuse the Sets that were already created
+  by the caller before this pass; no new side map/set was added.
 - Evidence: focused tests passed: `pnpm --filter @jesscss/core test --
-  src/tree/__tests__/list.test.ts src/tree/__tests__/sequence.test.ts
-  src/tree/__tests__/spaced.test.ts
-  src/tree/__tests__/node-render-buffer.test.ts` (`84` tests). `pnpm --filter
+  src/tree/__tests__/reference.test.ts src/tree/__tests__/scope-frame.test.ts
+  src/tree/__tests__/mixin.test.ts` (`256` tests). `pnpm --filter
   @jesscss/core build` passed with the existing `js-expr.ts` direct-eval build
   warning.
-- Hotpath leash: pre-pass at `78a26349` was status-only, not a speed claim:
-  `functions` `12.93ms` usable, `import-reference` `20.57ms` usable,
-  `mixins-guards` `16.32ms` usable, `extend-chaining` `4.80ms` usable, and
-  `media` `5.31ms` usable. Final dirty post-pass leash was mixed and remains
-  status-only: `functions` `12.19ms` usable, `import-reference` `19.46ms`
-  usable, `mixins-guards` `16.64ms` usable, `extend-chaining` `5.61ms` usable,
-  and `media` `5.69ms` usable/noisy.
-- Verdict: keep if gates pass as behavior-preserving scaffold deletion, but do
-  not claim runtime improvement. Next pass should prefer the bigger measured
-  buckets: Reference/copy ownership pressure, callable/mixin repeated eval, and
-  selector/header materialization. The flagged `copyChild` token is a doc-only
-  queue target naming existing copy debt, not a new runtime call.
+- Hotpath leash: pre-pass at `8b4c1073` was status-only, not a speed claim:
+  `functions` `12.06ms` usable, `import-reference` `18.18ms` usable,
+  `mixins-guards` `16.46ms` usable, `extend-chaining` `5.02ms` unstable, and
+  `media` `5.10ms` usable. Final dirty post-pass leash was slower across most
+  medians and remains status-only: `functions` `12.58ms` usable,
+  `import-reference` `19.25ms` usable, `mixins-guards` `16.45ms` usable,
+  `extend-chaining` `5.33ms` usable, and `media` `5.54ms` usable.
+- Verdict: keep if gates pass as behavior-preserving closure deletion, but do
+  not claim runtime improvement. Remaining Reference work is still the real
+  copy/materialization pressure: rules-like surfaces, public value
+  materialization, merged assign normalization, and key conversion.

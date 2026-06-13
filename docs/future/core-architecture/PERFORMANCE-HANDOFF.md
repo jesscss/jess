@@ -1915,6 +1915,33 @@ extend/media regressed. Keep only as behavior-preserving scaffold deletion;
 future passes should keep pressure on larger measured buckets before polishing
 more local helper shape.
 
+### Reference Lookup Closure Hoist
+
+Date: 2026-06-13.
+
+Change: hoisted the recursive `findVarWithinScopeSurface(...)` helper out of
+`findVarDeclarationFast(...)`, and hoisted `lookupRuntimeVarBinding(...)`'s
+local `searchChain(...)` helper to module scope. The same lookup state is now
+passed explicitly; traversal and lookup behavior are unchanged.
+
+Hotpath status:
+
+- Pre-pass `pnpm run measure:less:hotpath -- --stable` at `8b4c1073`
+  reported: `functions` median `12.06ms` usable, `import-reference` median
+  `18.18ms` usable, `mixins-guards` median `16.46ms` usable,
+  `extend-chaining` median `5.02ms` unstable, and `media` median `5.10ms`
+  usable.
+- Final dirty post-pass `pnpm run measure:less:hotpath -- --stable` reported:
+  `functions` median `12.58ms` usable, `import-reference` median `19.25ms`
+  usable, `mixins-guards` median `16.45ms` usable,
+  `extend-chaining` median `5.33ms` usable, and `media` median `5.54ms`
+  usable.
+
+Interpretation: status only, not a runtime win claim. The post-pass leash was
+slower for functions, import-reference, extend-chaining, and media, while
+mixins-guards was roughly flat. Keep only as code-path deletion of per-lookup
+closure allocation; do not sell it as a speedup.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
