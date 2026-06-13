@@ -633,11 +633,14 @@ lookup should not call it. Its remaining responsibilities should be narrowed to
 complex search modes that the binding frame does not yet model.
 
 Production status: `VarDeclaration` lookup through
-`Rules.findDeclaration(..., 'VarDeclaration', ...)` and `Rules.findVariable(...)`
-uses direct declaration lookup by default. Unfiltered `Declaration`/property
-lookup also uses the direct path by default for covered exact hits and misses.
-Both fall back to `DeclarationRegistry` only when the direct path returns
-explicit `UNCOVERED` for unsupported option shapes.
+`Rules.findDeclaration(..., 'VarDeclaration', ...)` uses direct declaration
+lookup by default. The former `Rules.findVariable(...)` wrapper has been
+deleted, and the remaining selector-attribute interpolation caller reads
+covered variable declarations through `findDeclarationDirect(...)` before the
+typed fallback. Unfiltered `Declaration`/property lookup also uses the direct
+path by default for covered exact hits and misses. These paths fall back to
+`DeclarationRegistry` only when the direct path returns explicit `UNCOVERED`
+for unsupported option shapes.
 
 Production follow-up: direct declaration lookup no longer rediscover-scans
 child rule surfaces on every recursive lookup. `Rules` carries declaration

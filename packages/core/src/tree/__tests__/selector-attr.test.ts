@@ -1,4 +1,4 @@
-import { attr, any, quoted, mixin, rules, ruleset, decl, call, ref, list, el, vardecl } from '../index.js';
+import { attr, any, quoted, mixin, rules, ruleset, decl, call, ref, list, el, vardecl, Rules as RulesClass } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
@@ -165,6 +165,44 @@ describe('Attribute Selector', () => {
     expect(resolved.render(context)).toBe('[data=foo]');
     expect(sourceValue?.parent).toBe(attrNode);
     expect(attrNode.toTrimmedString()).toBe('[data=$attr-data]');
+  });
+
+  test('interpolated attribute values use direct variable declaration lookup', async () => {
+    const originalFindDeclaration = RulesClass.prototype.findDeclaration;
+    let declarationLookups = 0;
+    RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
+      const [key, filterType] = args;
+      if (key === 'attr-data' && filterType === 'VarDeclaration') {
+        declarationLookups++;
+      }
+      return originalFindDeclaration.apply(this, args);
+    };
+
+    try {
+      const node = rules([
+        vardecl({
+          name: 'attr-data',
+          value: any('foo')
+        }),
+        ruleset({
+          selector: attr({
+            name: 'data',
+            op: '=',
+            value: any('@{attr-data}')
+          }),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        })
+      ]);
+
+      const css = await renderNodeToString(node, context);
+
+      expect(css).toContain('[data="foo"]');
+      expect(declarationLookups).toBe(0);
+    } finally {
+      RulesClass.prototype.findDeclaration = originalFindDeclaration;
+    }
   });
 
   test('keeps interpolated attribute selector values isolated across repeated mixin calls', async () => {

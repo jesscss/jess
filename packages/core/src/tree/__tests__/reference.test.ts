@@ -2722,7 +2722,7 @@ describe('reference', () => {
       }
     });
 
-    it('findVariable uses direct VarDeclaration lookup without opening DeclarationRegistry', async () => {
+    it('findDeclaration VarDeclaration lookup avoids opening DeclarationRegistry', async () => {
       const originalGetRegistry = RulesClass.prototype.getRegistry;
       const registryHits: string[] = [];
       RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
@@ -2739,7 +2739,7 @@ describe('reference', () => {
         ]);
 
         await node.eval(context);
-        const found = node.findVariable('color');
+        const found = node.findDeclaration('color', 'VarDeclaration');
 
         expect(found?.value.value.valueOf()).toBe('red');
         expect(registryHits).toHaveLength(0);
@@ -2765,7 +2765,7 @@ describe('reference', () => {
       };
 
       try {
-        const found = node.findVariable('color');
+        const found = node.findDeclaration('color', 'VarDeclaration');
 
         expect(found).toBe(liveSource);
       } finally {
@@ -2868,7 +2868,7 @@ describe('reference', () => {
 
         await node.eval(context);
         const opts = { searchedRules: new Set([node]) };
-        const found = node.findVariable('color', opts);
+        const found = node.findDeclaration('color', 'VarDeclaration', opts);
 
         expect(found?.value.value.valueOf()).toBe('red');
         expect(registryHits).toHaveLength(0);
@@ -2925,7 +2925,7 @@ describe('reference', () => {
           candidates: new Set(),
           optionalCandidates: new Set()
         };
-        const found = node.findVariable('color', opts);
+        const found = node.findDeclaration('color', 'VarDeclaration', opts);
 
         expect(found?.value.value.valueOf()).toBe('red');
         expect(registryHits).toHaveLength(0);

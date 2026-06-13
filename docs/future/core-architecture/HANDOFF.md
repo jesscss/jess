@@ -745,20 +745,21 @@ left for this branch.
 
 4. [x] Replace declaration/property registry bridges by mode.
    First selected mode complete: `Rules.findDeclaration(...,
-   'VarDeclaration', ...)` and `Rules.findVariable(...)` now use
-   `findDeclarationDirect(...)` by default, falling back to
+   'VarDeclaration', ...)` now uses `findDeclarationDirect(...)` by default,
+   falling back to
    `DeclarationRegistry` only when the direct path returns explicit
    `UNCOVERED` for unsupported option shapes. The old env-gated
-   declaration-direct experiment is deleted; unsupported declaration/property
-   modes remain explicit `UNCOVERED` bridges instead of a global switch.
+   declaration-direct experiment and later `Rules.findVariable(...)` wrapper
+   are deleted; unsupported declaration/property modes remain explicit
+   `UNCOVERED` bridges instead of a global switch.
 
    Completion gate:
    - Done: selected mode is `VarDeclaration`; focused hit/miss/import/reference
      and source-order tests pass, plus declaration merge tests prove property
      modes were not accidentally switched.
-   - Done: covered `findVariable(...)` hits avoid opening
-     `DeclarationRegistry`; existing reference/import/mixin tests continue to
-     prove hot variable lookups avoid registry fallback.
+   - Done: covered `findDeclaration(..., 'VarDeclaration', ...)` hits avoid
+     opening `DeclarationRegistry`; existing reference/import/mixin tests
+     continue to prove hot variable lookups avoid registry fallback.
    - Done: no new traversal is added; the pass removes the env-only condition
      for an existing direct lookup path and keeps unsupported modes gated.
    - Done: the bridge ledger in `BINDING-INDEX-PROPOSAL.md` is updated for the
@@ -924,11 +925,13 @@ left for this branch.
 
 7a. [x] Delete generic declaration/function `Rules.find(...)` dispatch.
     The cold string-dispatch wrapper for declaration/function lookup is gone.
-    Internal callers and tests use typed methods directly:
-    `findDeclaration(...)`, `findVariable(...)`, `findProperty(...)`, and
-    `findFunction(...)`. The remaining declaration/function bridge debt is now
-    the registry fallback inside those typed methods, not an extra public-ish
-    dispatch layer above them.
+    Internal callers and tests use typed methods/direct helpers:
+    `findDeclaration(...)`, `findProperty(...)`, `findFunction(...)`, and
+    direct declaration lookup where the mode is already covered. The later
+    `Rules.findVariable(...)` wrapper was deleted, so it is no longer an
+    accepted production lookup surface. The remaining declaration/function
+    bridge debt is now the registry fallback inside typed methods, not an extra
+    public-ish dispatch layer above them.
 
     Completion gate:
     - Done: no production or test caller uses `find('declaration', ...)` or
@@ -951,8 +954,8 @@ left for this branch.
     - Done: `findDeclarationDirect(...)` and `DeclarationRegistry.find(...)`
       read `currentBindingsByName.get(key)` for live `VarDeclaration` cells.
     - Done: focused tests make `liveSlotsByName.get` throw and prove both
-      direct `findVariable(...)` and registry fallback lookup still resolve via
-      current bindings.
+      direct `findDeclaration(..., 'VarDeclaration', ...)` and registry
+      fallback lookup still resolve via current bindings.
     - Done: focused `scope-frame`, `reference`, `import-style`, and `mixin`
       lookup suites pass.
 
@@ -1042,6 +1045,20 @@ left for this branch.
      before or after handle invalidation.
    - Done: semantic filtered property lookup remains registry-owned.
    - Done: focused variable/property/direct fallback tests still pass.
+
+7i. [x] Delete `Rules.findVariable(...)` and route selector interpolation direct.
+   The last production callers of `Rules.findVariable(...)` were raw Less
+   attribute selector interpolation reads in `AttributeSelector`. They now call
+   `findDeclarationDirect(..., 'VarDeclaration')` first, with
+   `Rules.findDeclaration(..., 'VarDeclaration')` retained only as the
+   `UNCOVERED` fallback. The `Rules.findVariable(...)` wrapper is deleted.
+
+   Completion gate:
+   - Done: no production or test code calls `findVariable(...)`.
+   - Done: focused selector-attribute test proves covered raw `@{attr-data}`
+     interpolation does not call `Rules.findDeclaration(...)`.
+   - Done: direct `VarDeclaration` tests now cover
+     `findDeclaration(..., 'VarDeclaration')` rather than the deleted wrapper.
 
 Parked secondary deep-cut queue:
 
@@ -1371,6 +1388,41 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- `Rules.findVariable(...)` deletion pass: accepted as typed wrapper deletion
+  and direct selector lookup routing, not as a speed claim. Files:
+  `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/selector-attr.ts`,
+  `packages/core/src/tree/__tests__/reference.test.ts`,
+  `packages/core/src/tree/__tests__/selector-attr.test.ts`,
+  `docs/future/core-architecture/HANDOFF.md`, and
+  `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`.
+  - New traversal: none. Attribute selector interpolation now calls the
+    existing `findDeclarationDirect(..., 'VarDeclaration')` walker before the
+    typed fallback instead of calling the deleted `Rules.findVariable(...)`
+    wrapper, which itself only delegated to `findDeclaration(...)`.
+  - New node/materialization: none. No node, wrapper `Rules`, copy,
+    `.inherit(...)`, `.adopt(...)`, source metadata, parent mutation, output
+    array, or materialized render artifact was added.
+  - Render path: unchanged. The same variable declaration value resolves/evals
+    before attribute selector string output.
+  - Helper/API surface: one module-local selector helper was added to replace
+    two wrapper calls and keep fallback semantics local to the only remaining
+    production caller. The exported `Rules.findVariable(...)` method was
+    deleted.
+  - Metadata mutations: none.
+  - Routine error/control: no production throw/catch/Error path added. The new
+    selector test uses `try/finally` only to restore a monkey-patched typed
+    method sentinel.
+  - Evidence: touched-file ESLint passed; focused selector/reference coverage
+    passed (`13` tests, `159` skipped), including the raw interpolated
+    attribute lookup sentinel and direct `VarDeclaration` lookup modes. `rg`
+    found no remaining `findVariable(...)` calls in production or tests.
+    Expanded binding/selector sweep passed (`18` files, `719` passed,
+    `9` skipped). `@jesscss/core` and `jess` builds passed. Node-creation
+    audit stayed at `new-node 310`, `with-surface 39`, `derive 30`,
+    `copy-leaves 28`. `measure:less:hotpath` ran as sanity only with mixed
+    noisy/unstable/usable signals, so this pass makes no speed claim.
+    `verify:aggressive-cutting-review` and `git diff --check` passed.
 - Reference direct declaration bridge pass: accepted as a typed lookup method
   bridge deletion, not as a speed claim. Files:
   `packages/core/src/tree/reference.ts`,

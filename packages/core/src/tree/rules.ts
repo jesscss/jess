@@ -2026,14 +2026,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return this.getRegistry('declaration').find(keys, normalizedFilter, options);
   }
 
-  findVariable(
-    keys: string,
-    options?: Registries.DeclarationFindOptions
-  ): VarDeclaration | undefined {
-    const found = this.findDeclaration(keys, 'VarDeclaration', options);
-    return isNode(found, N.VarDeclaration) ? found : undefined;
-  }
-
   findProperty(
     keys: string,
     options?: Registries.DeclarationFindOptions

@@ -14,6 +14,12 @@ import {
   type RenderBuffer,
   writeRenderText
 } from './util/render-buffer.js';
+import type { Rules } from './rules.js';
+import type { VarDeclaration } from './declaration-var.js';
+import {
+  DIRECT_DECLARATION_LOOKUP_UNCOVERED,
+  findDeclarationDirect
+} from './util/direct-rules-lookup.js';
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -25,6 +31,14 @@ export type AttributeSelectorValue = {
   /** The modifier (case insensitivity) */
   mod?: string;
 };
+
+function findAttributeVarDeclaration(rules: Rules, key: string): VarDeclaration | undefined {
+  const direct = findDeclarationDirect(rules, key, 'VarDeclaration');
+  const found = direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED
+    ? direct
+    : rules.findDeclaration(key, 'VarDeclaration');
+  return isNode(found, N.VarDeclaration) ? found : undefined;
+}
 
 /**
  * An attribute selector
@@ -56,8 +70,8 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
         const key = m[1]!;
         const rules = this.rulesParent;
         if (rules) {
-          const decl = rules.findVariable(key);
-          if (decl && isNode(decl, N.VarDeclaration)) {
+          const decl = findAttributeVarDeclaration(rules, key);
+          if (decl) {
             const out = decl.value.value.resolve(context);
             if (isThenable(out)) {
               return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
@@ -123,8 +137,8 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
         const key = m[1]!;
         const rules = this.rulesParent;
         if (rules) {
-          const decl = rules.findVariable(key);
-          if (decl && isNode(decl, N.VarDeclaration)) {
+          const decl = findAttributeVarDeclaration(rules, key);
+          if (decl) {
             const out = decl.value.value.eval(context);
             if (isThenable(out)) {
               return (out as Promise<Node>).then((evaluated) => {
