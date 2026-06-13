@@ -17,9 +17,13 @@ import {
 import { isNonClassicImportBoundary } from './registry-utils.js';
 
 export type FindVarDeclarationFastOptions = {
+  /** Source-order boundary for contextual Less-style reads. */
   start?: number;
+  /** Active evaluation context, used for search-scope exclusion and caller rules state. */
   context: Context;
+  /** Whether the reference has an explicit target, which restricts mixin-output traversal. */
   hasTarget?: boolean;
+  /** Whether lookup is already inside a local child surface. */
   local?: boolean;
 };
 
@@ -28,6 +32,10 @@ type FindVarScopeSurfaceResult = {
   optionalMatch: Node | undefined;
 };
 
+/**
+ * Selects the newest declaration bucket entry that is visible before the
+ * optional source-order boundary and accepted by the caller's node filter.
+ */
 function selectVarBucketCandidate(
   bucket: BindingEntry[] | undefined,
   start: number | undefined,
@@ -48,6 +56,10 @@ function selectVarBucketCandidate(
   return undefined;
 }
 
+/**
+ * Chooses the later source candidate while tolerating partially owned runtime
+ * surfaces that may not have enough parent/index metadata for `comparePosition`.
+ */
 function laterVarMatch<T extends Node>(a: T | undefined, b: T | undefined): T | undefined {
   if (!a) {
     return b;
@@ -77,6 +89,14 @@ function laterVarMatch<T extends Node>(a: T | undefined, b: T | undefined): T | 
   return position !== undefined && position <= 0 ? b : a;
 }
 
+/**
+ * Moves pending dynamic variable declarations into a frame's static name bucket
+ * once their names have resolved to static values.
+ *
+ * The promotion keeps lookup on the binding-frame path for declarations that
+ * were dynamic during initial indexing but became statically addressable before
+ * the current reference lookup.
+ */
 export function promoteResolvedPendingVarDecls(
   scope: Rules,
   frame: ScopeFrame
@@ -135,6 +155,11 @@ export function promoteResolvedPendingVarDecls(
   }
 }
 
+/**
+ * Searches one Rules surface and its visible child surfaces for a variable
+ * declaration, preserving Less public/optional visibility and Jess local
+ * surface boundaries.
+ */
 function findVarWithinScopeSurface(
   scope: Rules,
   name: string,
@@ -245,6 +270,15 @@ function findVarWithinScopeSurface(
   return { publicMatch, optionalMatch };
 }
 
+/**
+ * Finds a static variable declaration by walking the Rules parent/fallback
+ * chain and using already-indexed declaration buckets instead of the generic
+ * declaration registry.
+ *
+ * This is the hot lookup path for ordinary Reference variable reads. It returns
+ * `undefined` for a real miss or for cases that must stay on the broader
+ * registry path because this helper does not model them yet.
+ */
 export function findVarDeclarationFast(
   startRules: Rules,
   name: string,
@@ -346,6 +380,11 @@ export function findVarDeclarationFast(
   return undefined;
 }
 
+/**
+ * Walks one ScopeFrame parent chain for a live runtime variable binding,
+ * skipping bindings whose source node is already in the active reference search
+ * scope.
+ */
 function searchRuntimeVarBindingChain(
   start: ScopeFrame | undefined,
   key: string,
@@ -374,6 +413,10 @@ function searchRuntimeVarBindingChain(
   return undefined;
 }
 
+/**
+ * Resolves a live runtime variable binding from the target rules frame, then
+ * from any fallback frame chain owned by that target.
+ */
 export function lookupRuntimeVarBinding(
   targetRules: Rules,
   key: string,
