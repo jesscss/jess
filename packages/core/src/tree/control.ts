@@ -43,10 +43,6 @@ function makeDirectiveRulesPublic(rules: Rules) {
   };
 }
 
-function renderControlToString(render: (buffer: RenderBuffer) => MaybePromise<string>): MaybePromise<string> {
-  return render(createRenderBuffer('flat'));
-}
-
 async function renderControlRules(
   rules: Rules,
   context: Context,
@@ -129,14 +125,14 @@ async function runWithRulesContext<T>(
   }
 }
 
-function deriveIterationChild(node: Node): Node {
-  return copyWithReusableLeaves(node);
-}
-
 function createIterationEvalSurface(sourceRules: Rules): Rules {
+  const childNodes = new Array<Node>(sourceRules.value.length);
+  for (let i = 0; i < sourceRules.value.length; i++) {
+    childNodes[i] = copyWithReusableLeaves(sourceRules.value[i]!);
+  }
   const iterationRules = createDerivedIterationRulesSurface(
     sourceRules,
-    sourceRules.value.map(deriveIterationChild),
+    childNodes,
     { preserveFunctionRegistry: true }
   );
   iterationRules.options.rulesVisibility = {
@@ -185,7 +181,12 @@ function createWhileIterationSurface(sourceRules: Rules, stateRules: Rules): Rul
 }
 
 function hasIterationStateMutation(rules: Rules): boolean {
-  return rules.value.some(node => isNode(node, N.VarDeclaration));
+  for (let i = 0; i < rules.value.length; i++) {
+    if (isNode(rules.value[i], N.VarDeclaration)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function getDirectIterationStateMutations(rules: Rules): VarDeclaration[] | undefined {
@@ -272,34 +273,32 @@ export type ForIterable =
     includeEnd: boolean;
   };
 
-function getBindingDeclarations(pattern: ForPattern): VarDeclaration[] {
-  if (pattern.kind === 'single') {
-    return [pattern.value];
-  }
-  if (pattern.kind === 'tuple') {
-    return [...pattern.values];
-  }
-  return [];
-}
-
-async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
+/**
+ * Visits each `$for` iterable entry without constructing async-generator state
+ * or `[value, key]` tuple arrays for every item.
+ */
+async function visitResolvedEntries(
+  input: Node,
+  context: Context,
+  visit: (value: Node, key: number | string | Node) => Promise<void>
+): Promise<void> {
   if (isNode(input, N.Expression)) {
-    yield* resolveEntries(await input.value.eval(context), context);
+    await visitResolvedEntries(await input.value.eval(context), context, visit);
     return;
   }
   if (isNode(input, N.Call)) {
     const evald = await input.eval(context);
     if (isNode(evald, N.Call)) {
-      yield [evald, 0];
+      await visit(evald, 0);
       return;
     }
-    yield* resolveEntries(evald, context);
+    await visitResolvedEntries(evald, context, visit);
     return;
   }
   if ((isNode(input, N.Sequence) || isNode(input, N.List)) && Array.isArray(input.value)) {
     for (let key = 0; key < input.value.length; key++) {
       const value = input.value[key]!;
-      yield [value, key];
+      await visit(value, key);
     }
     return;
   }
@@ -312,7 +311,7 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
       if (!isNode(rule, N.Declaration)) {
         continue;
       }
-      yield [rule.value.value, rule.value.name];
+      await visit(rule.value.value, rule.value.name);
     }
     return;
   }
@@ -325,11 +324,11 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
       if (!isNode(rule, N.Declaration)) {
         continue;
       }
-      yield [rule.value.value, rule.value.name];
+      await visit(rule.value.value, rule.value.name);
     }
     return;
   }
-  yield [input, 0];
+  await visit(input, 0);
 }
 
 function iterableToNode(iterable: ForIterable): Node {
@@ -353,13 +352,26 @@ function getForBindingInfo(pattern: ForPattern): {
   bindingDecls: VarDeclaration[];
   bindingNames: string[];
 } {
-  const bindingDecls = getBindingDeclarations(pattern);
-  if (bindingDecls.length === 0) {
+  if (pattern.kind === 'single') {
+    const value = pattern.value;
+    return {
+      bindingDecls: [value],
+      bindingNames: [value.value.name.valueOf()]
+    };
+  }
+  if (pattern.kind !== 'tuple' || pattern.values.length === 0) {
     throw new Error('Invalid $for header: missing binding variable');
+  }
+  const bindingDecls = new Array<VarDeclaration>(pattern.values.length);
+  const bindingNames = new Array<string>(bindingDecls.length);
+  for (let i = 0; i < pattern.values.length; i++) {
+    const decl = pattern.values[i]!;
+    bindingDecls[i] = decl;
+    bindingNames[i] = decl.value.name.valueOf();
   }
   return {
     bindingDecls,
-    bindingNames: bindingDecls.map(entry => entry.value.name.valueOf())
+    bindingNames
   };
 }
 
@@ -520,7 +532,7 @@ export class If extends Node<IfValue> {
     if (isRenderBuffer(bufferOrOptions)) {
       return this.renderSelectedBranch(context, bufferOrOptions, options);
     }
-    return renderControlToString(buffer => this.renderSelectedBranch(context, buffer, bufferOrOptions));
+    return this.renderSelectedBranch(context, createRenderBuffer('flat'), bufferOrOptions);
   }
 
   override resolve(_context: Context): this {
@@ -544,8 +556,13 @@ export class For extends Node<StructuredLoopValue> {
   constructor(value: StructuredLoopValue, options?: NodeOptions, location?: NodeLocation) {
     super(value, options, location);
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-    for (const decl of getBindingDeclarations(value.pattern)) {
-      this.adopt(decl);
+    if (value.pattern.kind === 'single') {
+      this.adopt(value.pattern.value);
+    } else {
+      const values = value.pattern.values;
+      for (let i = 0; i < values.length; i++) {
+        this.adopt(values[i]!);
+      }
     }
     if (value.iterable.kind === 'node') {
       this.adopt(value.iterable.value);
@@ -568,7 +585,7 @@ export class For extends Node<StructuredLoopValue> {
       let counter = 1;
       const originalRules = this.value.rules;
       const evaluatedIterable = await iterableToNode(iterable).eval(context);
-      for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
+      await visitResolvedEntries(evaluatedIterable, context, async (value, key) => {
         const iterationRules = await createForIterationSurface(
           originalRules,
           context,
@@ -589,7 +606,7 @@ export class For extends Node<StructuredLoopValue> {
         } else {
           outputRules.push(result);
         }
-      }
+      });
       if (outputRules.length === 0) {
         return createGeneratedOutputRulesSurface();
       }
@@ -663,7 +680,7 @@ export class For extends Node<StructuredLoopValue> {
     const evaluatedIterable = await iterableToNode(iterable).eval(context);
     let counter = 1;
     let output = '';
-    for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
+    await visitResolvedEntries(evaluatedIterable, context, async (value, key) => {
       const iterationRules = await createForIterationSurface(
         originalRules,
         context,
@@ -675,7 +692,7 @@ export class For extends Node<StructuredLoopValue> {
       );
       counter++;
       output += await iterationRules.render(context, buffer, options);
-    }
+    });
     return output;
   }
 
@@ -685,7 +702,7 @@ export class For extends Node<StructuredLoopValue> {
     if (isRenderBuffer(bufferOrOptions)) {
       return this.renderIterations(context, bufferOrOptions, options);
     }
-    return renderControlToString(buffer => this.renderIterations(context, buffer, bufferOrOptions));
+    return this.renderIterations(context, createRenderBuffer('flat'), bufferOrOptions);
   }
 }
 
@@ -820,7 +837,7 @@ export class While extends Node<WhileValue> {
     if (isRenderBuffer(bufferOrOptions)) {
       return this.renderIterations(context, bufferOrOptions, options);
     }
-    return renderControlToString(buffer => this.renderIterations(context, buffer, bufferOrOptions));
+    return this.renderIterations(context, createRenderBuffer('flat'), bufferOrOptions);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

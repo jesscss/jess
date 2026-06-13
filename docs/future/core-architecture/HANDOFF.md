@@ -813,44 +813,52 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Reference lookup utility placement correction.
+Current pass: control-flow iteration scaffold cut.
 
-- New traversal: none. The child-surface and fallback frame walks are the same
-  loops as before; their bodies moved from `Reference`'s node file into
-  `packages/core/src/tree/util/reference-lookup.ts`. No extra parent/source
-  walk, side map, cache, recursive pass, or lookup retry was added.
-- New node/materialization: none added. No new `Node`, copied node,
-  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
-  metadata mutation, side map, helper array, or materialized eval/render value
-  was added. The `RuntimeVarBinding` object returned on a live-slot hit is the
-  pre-existing semantic result object, only produced from the util module now.
-- Render path: no render behavior changed and no render path was routed through
-  public string APIs. This pass touches lookup helper placement only; it does
-  not resolve into arrays/nodes just to stringify.
-- Helper/API surface: public node method surface did not grow. Heavy lookup
-  utilities were moved out of `reference.ts` and into a tree util module so the
-  node file holds Reference behavior instead of shared lookup machinery. The
-  exported util functions are internal module utilities, not package API.
+- New traversal: none. `$for` already walked resolved iterable entries and
+  `$while` already scanned body declarations. This pass keeps those walks but
+  removes the async-generator state machine, per-entry `[value, key]` tuple
+  arrays, `sourceRules.value.map(...)`, `rules.value.some(...)`, and the
+  public-render closure wrapper. The new `visitResolvedEntries(...)` is the
+  same entry walk expressed as a direct async visitor. The flagged
+  `for (let i = 0; ...)` loops replace `.map(...)`, `.some(...)`, tuple
+  spread/adoption iteration, and binding-name `.map(...)`; they are not
+  additional source walks.
+- New node/materialization: no new node creation boundary was added. Existing
+  `$for`/`$while` iteration surfaces still copy body children through
+  `copyWithReusableLeaves(...)`; this pass changes the child-copy list builder
+  from `.map(...)` to a pre-sized loop and leaves that already-tested semantic
+  boundary intact. The flagged `new Array<Node>`,
+  `new Array<VarDeclaration>`, and `new Array<string>` replace existing
+  callback/spread-created arrays with explicit fixed-size arrays. The flagged
+  `.adopt(...)` calls replace adoption through an intermediate
+  `getBindingDeclarations(...)` array.
+- Render path: no render path routes through public string APIs. The control
+  render overloads now pass a fresh flat `RenderBuffer` directly to
+  `renderSelectedBranch(...)`/`renderIterations(...)` instead of allocating a
+  callback through `renderControlToString(...)`.
+- Helper/API surface: deleted `renderControlToString(...)`,
+  `deriveIterationChild(...)`, `getBindingDeclarations(...)`, and
+  `resolveEntries(...)`. Added one private `visitResolvedEntries(...)` helper
+  with JSDoc because it replaces the async generator and tuple materialization
+  in both `$for` eval and render paths. No public API changed.
 - Metadata mutations: none. No parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
   read, ownership probe, structural probe, or error-control-flow path was added.
-  The source/parent reads inside the util are moved existing lookup/result
-  code, not new metadata mutation.
-- Evidence: focused tests passed after fixing the util import boundary:
+- Evidence: focused tests passed after rerunning serially after build:
   `pnpm --filter @jesscss/core test --
-  src/tree/__tests__/reference.test.ts src/tree/__tests__/scope-frame.test.ts
-  src/tree/__tests__/mixin.test.ts` (`256` tests). `pnpm --filter
-  @jesscss/core build` passed with the existing `js-expr.ts` direct-eval
-  warning. `pnpm run verify:aggressive-cutting-review` and `git diff --check`
-  passed.
-- Hotpath leash: not a performance pass and no speed claim. If a hotpath run is
-  recorded for this correction, treat it as status only because the intended
-  change is file-boundary cleanup, not a measured algorithmic cut. Dirty
-  post-correction `pnpm run measure:less:hotpath -- --stable` at `327f3a2e`
-  reported: `functions` `12.34ms`, `import-reference` `19.23ms`,
-  `mixins-guards` `17.02ms`, `extend-chaining` `4.95ms`, and `media`
-  `5.34ms`; all signals were usable.
-- Verdict: keep only if gates pass as behavior-preserving placement cleanup.
-  Remaining Reference work is still the real copy/materialization pressure:
-  rules-like surfaces, public value materialization, merged assign
-  normalization, and key conversion.
+  src/tree/__tests__/control.test.ts src/tree/__tests__/reference.test.ts
+  src/tree/__tests__/mixin.test.ts src/tree/__tests__/scope-frame.test.ts`
+  (`315` tests). A parallel build/test attempt failed because build cleaned
+  `packages/core/lib` while Vitest was importing parser output; the same tests
+  passed serially. `pnpm --filter @jesscss/core build` passed with the existing
+  `js-expr.ts` direct-eval warning.
+- Hotpath leash: pre-pass `pnpm run measure:less:hotpath -- --stable` at
+  `4cd3718f` was status-only: `functions` `12.49ms`, `import-reference`
+  `20.14ms`, `mixins-guards` `17.28ms`, `extend-chaining` `5.15ms`, and
+  `media` `5.44ms`; all signals were usable. Post-pass status on the dirty
+  tree reported `functions` `12.12ms`, `import-reference` `18.53ms`, and
+  `mixins-guards` `15.90ms` as usable; `extend-chaining` `4.64ms` and `media`
+  `5.00ms` were lower but unstable.
+- Verdict: keep if gates and post-pass leash are acceptable as a machinery
+  deletion. Do not claim speed without a clean benchmark comparison.

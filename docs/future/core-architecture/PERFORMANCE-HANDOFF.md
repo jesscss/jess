@@ -1962,6 +1962,35 @@ Hotpath status:
 Interpretation: status only, not a runtime win claim. Keep as architecture
 placement cleanup: node files should not carry heavy reusable utility bodies.
 
+### Control-Flow Iteration Scaffold Cut
+
+Date: 2026-06-13.
+
+Change: removed `$for` async-generator entry iteration, per-entry tuple arrays,
+the `sourceRules.value.map(...)` iteration child copy path,
+`rules.value.some(...)` state-mutation probing, the constructor
+`getBindingDeclarations(...)` allocation path, and the public control-render
+callback wrapper. `$for` now uses a direct async visitor for resolved entries;
+`$if`/`$for`/`$while` public render overloads pass a flat `RenderBuffer`
+directly to their existing render routines.
+
+Hotpath status:
+
+- Pre-pass `pnpm run measure:less:hotpath -- --stable` at `4cd3718f`
+  reported: `functions` median `12.49ms` usable, `import-reference` median
+  `20.14ms` usable, `mixins-guards` median `17.28ms` usable,
+  `extend-chaining` median `5.15ms` usable, and `media` median `5.44ms`
+  usable.
+- Dirty post-pass `pnpm run measure:less:hotpath -- --stable` reported:
+  `functions` median `12.12ms` usable, `import-reference` median `18.53ms`
+  usable, `mixins-guards` median `15.90ms` usable,
+  `extend-chaining` median `4.64ms` unstable, and `media` median `5.00ms`
+  unstable.
+
+Interpretation: keep as machinery deletion with favorable usable hotpath
+signals, but do not call it a proven speedup because two lower medians were
+marked unstable and this was not a controlled performance-only run.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

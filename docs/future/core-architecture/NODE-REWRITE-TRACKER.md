@@ -213,14 +213,18 @@ Current hard leftovers after the broad hook sweep:
 - [x] `VarDeclaration`: local writer probe removed; preserve binding semantics.
   Broader declaration body staging remains on `Declaration`.
 - [ ] `For`: direct source syntax writer exists, range-bound closure removed,
-  and render path already emits body output directly; loop state/body surface
-  audit remains.
+  async-generator entry iteration is gone, per-entry tuple arrays are gone,
+  constructor binding adoption is direct, and render path already emits body
+  output directly. Loop state/body surface audit remains.
 - [ ] `While`: direct source syntax writer exists; render path already emits
-  body output directly, but loop state/body surface audit remains.
+  body output directly, the state-mutation probe uses a straight loop, and
+  public render no longer allocates the control string wrapper callback. Loop
+  state/body surface audit remains.
 - [ ] `If`: direct source syntax writer exists, branch serialization avoids
-  rest-array allocation, and selected branch buffer render passes the existing
+  rest-array allocation, selected branch buffer render passes the existing
   `RenderBuffer` through to `Rules.render(...)` instead of staging through a
-  detached rules string. Eval/body surface audit remains.
+  detached rules string, and public render no longer allocates the control
+  string wrapper callback. Eval/body surface audit remains.
 - [x] `Log`: side-effect render path stays direct; redundant public
   `toString(...)` override removed while cold empty `toTrimmedString(...)`
   remains.
@@ -250,9 +254,9 @@ Current hard leftovers after the broad hook sweep:
 | Expression | `packages/core/src/tree/expression.ts` | `Node` | direct child writer complete | Wrapper syntax writes directly and now calls child `writeSyntax(...)` instead of public `toString(...)`; eval/resolve rely on thenable narrowing, and scalar render uses `evalSync(...)` when the child is not may-async. Wrapper necessity remains. |
 | Extend | `packages/core/src/tree/extend.ts` | `Node` | writeSyntax hook complete | Extend syntax and selector/target child syntax write directly with no local public string wrapper; selector valueOf and resolved selector state remain. |
 | ExtendList | `packages/core/src/tree/extend-list.ts` | `Node` | writeSyntax hook complete | List wrapper writes through base child writer plus semicolon; public wrapper existence remains. |
-| For | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, pattern/iterable children use direct writers, and range-bound closure is gone. Loop state/body surface and async branch audit remain. |
+| For | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, pattern/iterable children use direct writers, range-bound closure is gone, async-generator entry iteration is replaced by a direct visitor, per-entry tuple arrays are gone, constructor binding adoption is direct, and child-copy list building uses a pre-sized loop instead of `.map(...)`. Loop state/body surface and async branch audit remain. |
 | Func | `packages/core/src/tree/function.ts` | `Node` | direct child writer complete | Public function syntax writes directly through name/params and body braced writer; function call/eval machinery remains. |
-| If | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, condition children use direct writers, branch serialization avoids rest-array allocation, and selected branch buffer render uses the existing `RenderBuffer` instead of a detached rules string. Eval/body surface audit remains. |
+| If | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, condition children use direct writers, branch serialization avoids rest-array allocation, selected branch buffer render uses the existing `RenderBuffer` instead of a detached rules string, and public render no longer allocates the control string wrapper callback. Eval/body surface audit remains. |
 | Interpolated | `packages/core/src/tree/interpolated.ts` | `Node` | partial | Direct source writer exists, public `replace(...)` uses a plain placeholder loop instead of regex callback scaffolding, live writer replacement emission uses `writeSyntax(...)` instead of public `toTrimmedString(...)` transport, and replacement plus selector/generic eval/resolve paths use thenable narrowing instead of local node/promise casts; high-priority selector eval, generic materialization, cold replacement capture, and replacement arrays remain. |
 | InterpolatedSelector | `packages/core/src/tree/selector-interpolated.ts` | `SimpleSelector` | direct writer/kind check complete | Source syntax writes directly through `Interpolated.writeSyntax(...)`; `isClass`/`isId`/`isTag` use first-character checks instead of regex, and eval/render selector output uses `MaybePromise` narrowing. |
 | JsArray | `packages/core/src/tree/js-array.ts` | `Node` | removal candidate | No Less/SCSS/Jess parser constructs it, `cast([...])` creates `List`, and only explicit public API/tests use it. Do not polish; remove only in a dedicated API-breaking host-wrapper pass. |
@@ -287,4 +291,4 @@ Current hard leftovers after the broad hook sweep:
 | StyleImport | `packages/core/src/tree/import-style.ts` | `Node` | queued | High priority: first-use placement copies and derived rules surfaces. |
 | Url | `packages/core/src/tree/url.ts` | `Node` | writeSyntax hook complete | URL wrapper and no-trivia child syntax write directly in source and context modes; render/eval use `evalSync(...)` for non-async child values and thenable narrowing for async values. Render/context normalization still uses localized mark/replace and remains queued. |
 | VarDeclaration | `packages/core/src/tree/declaration-var.ts` | `Declaration` | partial scalar wrapper complete | Bare parameter vars with nil defaults write the known `$name` token with no writer readback. General variable prefix syntax writes directly, but declaration body path remains. |
-| While | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists and condition uses direct writer. Loop state/body surface and async branch audit remain. |
+| While | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, condition uses direct writer, state-mutation probing uses a straight loop instead of `.some(...)`, and public render no longer allocates the control string wrapper callback. Loop state/body surface and async branch audit remain. |
