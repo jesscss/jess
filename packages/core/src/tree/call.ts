@@ -462,15 +462,23 @@ export class Call extends Node<CallValue, CallOptions> {
     options: PrintOptions
   ): MaybePromise<string> {
     const printOptions = getPrintOptions(options);
-    const w = printOptions.writer!;
-    const mark = w.mark();
+    const mark = printOptions.writer!.mark();
     if (!args) {
       return '';
     }
-    const rawArgs = args.value;
+    return this.serializeRenderedArgsFrom(args.value, context, printOptions, mark, 0);
+  }
+
+  private serializeRenderedArgsFrom(
+    rawArgs: Node[],
+    context: Context,
+    printOptions: ReturnType<typeof getPrintOptions>,
+    mark: number,
+    start: number
+  ): MaybePromise<string> {
+    const w = printOptions.writer!;
     const last = rawArgs.length - 1;
-    const serializeArgAt = (start: number): MaybePromise<string> => {
-      let i = start;
+    for (let i = start; i <= last;) {
       while (i <= last && !rawArgs[i]) {
         i++;
       }
@@ -483,65 +491,70 @@ export class Call extends Node<CallValue, CallOptions> {
         next++;
       }
       const hasNext = next <= last;
-      const writeArgSeparator = (): void => {
-        if (!hasNext) {
-          return;
-        }
-        emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
-        w.add(', ');
-      };
-      const finishArg = (argMark: number): MaybePromise<string> => {
-        w.trimHorizontalStartSince(argMark);
-        w.trimHorizontalEndSince(argMark);
-        writeArgSeparator();
-        return serializeArgAt(next);
-      };
       if (arg instanceof Paren && arg.options?.escaped) {
         w.add('(', arg);
         if (arg.value) {
           const innerMark = w.mark();
-          const finishParen = (): MaybePromise<string> => {
-            w.trimHorizontalStartSince(innerMark);
-            w.trimHorizontalEndSince(innerMark);
-            w.add(')', arg);
-            writeArgSeparator();
-            return serializeArgAt(next);
-          };
-          if (!arg.value.hasFlag(F_MAY_ASYNC)) {
-            arg.value.evalSync(context).writeSyntax(printOptions);
-            return finishParen();
-          }
-          const rendered = arg.value.eval(context);
+          const rendered = this.writeEvaluatedSyntax(arg.value, context, printOptions);
           if (isThenable(rendered)) {
-            return rendered.then((value) => {
-              value.writeSyntax(printOptions);
-              return finishParen();
+            return rendered.then(() => {
+              w.trimHorizontalStartSince(innerMark);
+              w.trimHorizontalEndSince(innerMark);
+              w.add(')', arg);
+              if (hasNext) {
+                emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
+                w.add(', ');
+              }
+              return this.serializeRenderedArgsFrom(rawArgs, context, printOptions, mark, next);
             });
           }
-          rendered.writeSyntax(printOptions);
-          return finishParen();
+          w.trimHorizontalStartSince(innerMark);
+          w.trimHorizontalEndSince(innerMark);
         }
         w.add(')', arg);
-        writeArgSeparator();
-        return serializeArgAt(next);
       } else {
         const argMark = w.mark();
-        if (!arg.hasFlag(F_MAY_ASYNC)) {
-          arg.evalSync(context).writeSyntax(printOptions);
-          return finishArg(argMark);
-        }
-        const rendered = arg.eval(context);
+        const rendered = this.writeEvaluatedSyntax(arg, context, printOptions);
         if (isThenable(rendered)) {
-          return rendered.then((value) => {
-            value.writeSyntax(printOptions);
-            return finishArg(argMark);
+          return rendered.then(() => {
+            w.trimHorizontalStartSince(argMark);
+            w.trimHorizontalEndSince(argMark);
+            if (hasNext) {
+              emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
+              w.add(', ');
+            }
+            return this.serializeRenderedArgsFrom(rawArgs, context, printOptions, mark, next);
           });
         }
-        rendered.writeSyntax(printOptions);
-        return finishArg(argMark);
+        w.trimHorizontalStartSince(argMark);
+        w.trimHorizontalEndSince(argMark);
       }
-    };
-    return serializeArgAt(0);
+      if (hasNext) {
+        emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
+        w.add(', ');
+      }
+      i = next;
+    }
+    return w.getSince(mark);
+  }
+
+  private writeEvaluatedSyntax(
+    node: Node,
+    context: Context,
+    printOptions: ReturnType<typeof getPrintOptions>
+  ): MaybePromise<void> {
+    if (!node.hasFlag(F_MAY_ASYNC)) {
+      node.evalSync(context).writeSyntax(printOptions);
+      return undefined;
+    }
+    const rendered = node.eval(context);
+    if (isThenable(rendered)) {
+      return rendered.then((value) => {
+        value.writeSyntax(printOptions);
+      });
+    }
+    rendered.writeSyntax(printOptions);
+    return undefined;
   }
 
   private renderPlainFunctionCall(
@@ -576,18 +589,12 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       if (contentNode) {
         w.add(': ');
-        if (!contentNode.hasFlag(F_MAY_ASYNC)) {
-          contentNode.evalSync(context).writeSyntax(printOptions);
-          return w.getSince(mark);
-        }
-        const renderedContent = contentNode.eval(context);
+        const renderedContent = this.writeEvaluatedSyntax(contentNode, context, printOptions);
         if (isThenable(renderedContent)) {
-          return renderedContent.then((value) => {
-            value.writeSyntax(printOptions);
+          return renderedContent.then(() => {
             return w.getSince(mark);
           });
         }
-        renderedContent.writeSyntax(printOptions);
         return w.getSince(mark);
       }
       return w.getSince(mark);
@@ -639,18 +646,12 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       if (contentNode) {
         w.add(': ');
-        if (!contentNode.hasFlag(F_MAY_ASYNC)) {
-          contentNode.evalSync(context).writeSyntax(printOptions);
-          return w.getSince(mark);
-        }
-        const renderedContent = contentNode.eval(context);
+        const renderedContent = this.writeEvaluatedSyntax(contentNode, context, printOptions);
         if (isThenable(renderedContent)) {
-          return renderedContent.then((value) => {
-            value.writeSyntax(printOptions);
+          return renderedContent.then(() => {
             return w.getSince(mark);
           });
         }
-        renderedContent.writeSyntax(printOptions);
         return w.getSince(mark);
       }
       return w.getSince(mark);

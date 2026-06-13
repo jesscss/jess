@@ -817,41 +817,47 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Ampersand placement state and BasicSelector append construction
+Current pass: Call arg serialization closure cut plus Sequence separator probe
 cut.
 
-- New traversal: none. No loop, recursion, callback array helper, parent walk,
-  source walk, or side-map lookup was added.
-- New node/materialization: no new node category or render-only
-  materialization was added. The existing append placement boundary still
-  creates an owned selector result because the parent selector text is changed.
-  For the hot `BasicSelector` case, that existing `BasicSelector` result is now
-  constructed directly instead of through generic `Reflect.construct(...)`.
-- Render path: no render path was changed. The pass only trims ampersand
-  eval/placement machinery; it does not resolve into arrays/nodes merely to
-  stringify.
-- Helper/API surface: no helper or public API was added. The
-  `AmpersandAppendPlacementState` object now carries only `appendValue`,
-  `templateMerge`, and `hoistToRoot`; dead `source`, `selector`, `result`, and
-  `selectorBits` fields are gone. `createAmpersandAppendPlacementState(...)`
-  also no longer accepts the unused `selector` or `context` arguments.
-- Metadata mutations: no parent restoration, `frozen`, lazy options/context
-  creation, `Object.hasOwn`, or defensive structural probe was added. One
-  existing `.inherit(...)` ownership boundary remains after constructing the
-  append result. The only `Reflect.construct(...)` change is a deletion from
-  the BasicSelector append path; non-basic selector subclasses still keep the
-  old generic fallback.
+- New traversal: `Call.serializeRenderedArgsFrom(...)` is a straight loop over
+  the same args previously walked by the recursive local `serializeArgAt(...)`
+  closure. It adds no second pass and resumes only after the first thenable.
+  `Sequence.hasNonWhitespaceTrivia(...)` now uses an indexed loop over the same
+  trivia tokens previously scanned by `.some(...)`; no source tree, parent
+  chain, or side-map lookup was added.
+- New node/materialization: none. No `new Node`, copied node, `.inherit(...)`,
+  `.adopt(...)`, wrapper `Rules`, materialized array, frozen state, parent
+  restoration, or source metadata mutation was added.
+- Render path: the changed `Call` path still evaluates each arg/content node
+  and writes syntax directly to the active writer; it does not materialize a
+  public string or replacement arg list before rendering. The changed
+  `Sequence` path only decides whether to queue a separator; it does not
+  resolve into arrays/nodes to stringify.
+- Helper/API surface: two private `Call` helpers were added:
+  `serializeRenderedArgsFrom(...)` and `writeEvaluatedSyntax(...)`. They delete
+  four per-call local closures (`serializeArgAt`, `writeArgSeparator`,
+  `finishArg`, `finishParen`) and two duplicated content eval/write blocks in
+  `renderPlainFunctionCall(...)` and `renderFinalizedCallSyntax(...)`. One
+  module-scope `Sequence` predicate, `startsWithIdentifierChar(...)`, replaces
+  three per-separator regex callback closures. No public API was added.
+- Metadata mutations: no parent restoration, `frozen`, inherited
+  location/source metadata, lazy options/context creation, `Reflect.*`,
+  `Object.hasOwn`, or defensive structural probe was added.
 - Evidence: focused tests passed:
   `pnpm --filter @jesscss/core test --
-  src/tree/__tests__/ampersand.test.ts
-  src/tree/util/__tests__/extend-ampersand.test.ts
-  src/tree/util/__tests__/extend-ampersand-boundary.test.ts` (`44` tests).
-  `pnpm exec eslint packages/core/src/tree/ampersand.ts` also passed.
-- Hotpath leash: pre-pass bounded status at `f00f1368` reported `functions`
-  `16.26ms` usable, `import-reference` `21.84ms` usable, `mixins-guards`
-  `18.09ms` usable, `extend-chaining` `11.62ms` noisy, and `media` `34.36ms`
-  noisy. Dirty post-pass bounded status reported `functions` `14.53ms`
-  usable, `import-reference` `21.06ms` usable, `mixins-guards` `18.17ms`
-  usable, `extend-chaining` `5.86ms` usable, and `media` `5.99ms` unstable.
-- Verdict: keep as an obvious dead-field/generic-construction deletion in
-  Ampersand placement. Do not claim measured speed; the leash is status-only.
+  src/tree/__tests__/call.test.ts
+  src/tree/__tests__/sequence.test.ts
+  src/tree/__tests__/list.test.ts
+  src/tree/__tests__/declaration.test.ts` (`199` tests).
+  `pnpm exec eslint packages/core/src/tree/call.ts
+  packages/core/src/tree/sequence.ts` also passed.
+- Hotpath leash: pre-pass bounded status at `36e16f73` reported `functions`
+  `14.16ms` usable, `import-reference` `21.17ms` usable, `mixins-guards`
+  `18.21ms` usable, `extend-chaining` `6.83ms` unstable, and `media`
+  `6.01ms` usable. Dirty post-pass bounded status reported `functions`
+  `14.15ms` usable, `import-reference` `20.55ms` usable, `mixins-guards`
+  `17.98ms` usable, `extend-chaining` `5.79ms` usable, and `media` `5.46ms`
+  unstable.
+- Verdict: keep as closure/regex/callback deletion in Call and Sequence
+  serialization paths. Do not claim measured speed; the leash is status-only.

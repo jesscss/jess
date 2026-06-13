@@ -82,8 +82,10 @@ first measured offenders after the selector pass.
   flat-buffer render writes syntax directly with one writer mark, and
   render/eval branches use `MaybePromise` narrowing. Async-capable dynamic
   render no longer allocates per-call nested rest functions or a local
-  render-node closure on the sync path. Trivia-backed child-boundary emission
-  still uses `toString(...)`.
+  render-node closure on the sync path. Boundary separator checks now use
+  numeric character tests, an indexed trivia scan, and one shared spacer
+  predicate instead of regex/callback probes. Trivia-backed
+  child-boundary emission still uses `toString(...)`.
 - [x] `Quoted`: direct quoted/interpolated emission; child node syntax uses
   `writeSyntax(...)` with no public `toTrimmedString(...)` transport, and
   render/eval value selection relies on `MaybePromise` narrowing instead of
@@ -187,9 +189,12 @@ Current hard leftovers after the broad hook sweep:
   `writeSyntax(...)` instead of public string transport. Direct
   `Rules`/`Collection` callable render/eval paths now call
   `evaluateCallableCollection(...)` without constructing a one-entry
-  `MixinCollection` wrapper. Remaining work is split callable output value
-  selection, `evalArgNodes(...)` copy pressure, whole-call mark/readback,
-  async/helper ladders, and repeated eval.
+  `MixinCollection` wrapper. CSS-call arg serialization now uses a straight
+  sync loop plus one async continuation instead of per-call nested recursive
+  closure helpers, and content eval/write shares the same node-local writer
+  helper. Remaining work is split callable output value selection,
+  `evalArgNodes(...)` copy pressure, whole-call mark/readback, async/helper
+  ladders, and repeated eval.
 - [x] `Func`: direct function signature/body writer, including name/params, if
   public syntax remains necessary. Stylesheet function calls now invoke
   `evaluateCallableCollection(...)` directly instead of allocating a
@@ -261,7 +266,7 @@ Current hard leftovers after the broad hook sweep:
 | BasicSelector | `packages/core/src/tree/selector-basic.ts` | `SimpleSelector` | writeSyntax complete | Direct source spelling emits authored `value`; kind checks use first-character tests, `valueOf()` remains normalized key text, and standalone eval now carries the existing selector-bit library from context. |
 | Block | `packages/core/src/tree/block.ts` | `Node` | writeSyntax hook complete | Bracket emission writes directly; no-trivia child syntax avoids public `toString(...)`, while trivia mode keeps source serialization for authored inner comments/spacing. Render/eval use `evalSync(...)` for non-async child values and thenable narrowing for async values. Render still captures for string/buffer return. |
 | Bool | `packages/core/src/tree/bool.ts` | `Node` | scalar wrapper complete | Scalar writer complete; public `toTrimmedString(...)` writes the known token directly with no writer readback. |
-| Call | `packages/core/src/tree/call.ts` | `Node` | partial | Source syntax writer exists, public call source stringification uses child `writeSyntax(...)`, empty string-name calls return their known source token without writer readback, node-valued names plus evaluated args/content in finalized/plain call syntax write directly instead of public `toTrimmedString(...)`, and direct `Rules`/`Collection` callable render/eval paths call `evaluateCallableCollection(...)` without constructing a one-entry `MixinCollection` wrapper. High priority remains for callable output, `evalArgNodes(...)` copy pressure, whole-call mark/readback, async path, helper ladders, and repeated eval. |
+| Call | `packages/core/src/tree/call.ts` | `Node` | partial | Source syntax writer exists, public call source stringification uses child `writeSyntax(...)`, empty string-name calls return their known source token without writer readback, node-valued names plus evaluated args/content in finalized/plain call syntax write directly instead of public `toTrimmedString(...)`, direct `Rules`/`Collection` callable render/eval paths call `evaluateCallableCollection(...)` without constructing a one-entry `MixinCollection` wrapper, and CSS-call arg serialization uses a straight sync loop plus one async continuation instead of per-call nested recursive closure helpers. High priority remains for callable output, `evalArgNodes(...)` copy pressure, whole-call mark/readback, async path, helper ladders, and repeated eval. |
 | Collection | `packages/core/src/tree/collection.ts` | `Rules` | direct braced writer complete | Live wrapper; `writeSyntax(...)` writes braced rules directly and public `toTrimmedString(...)` is the cold capture boundary. Broader wrapper necessity remains separate. |
 | Color | `packages/core/src/tree/color.ts` | `Node` | scalar serializer complete | Scalar/string-backed color emission uses one serializer for `writeSyntax(...)` and public string output with no writer readback; preserved node-backed color syntax still writes the child directly; hex serialization uses a straight loop instead of callback-array joining; broader conversion internals remain. |
 | Combinator | `packages/core/src/tree/combinator.ts` | `Selector` | scalar wrapper complete | Scalar selector writer avoids selector base punt, and public `toTrimmedString(...)` writes the known token directly with no writer readback. |
@@ -308,7 +313,7 @@ Current hard leftovers after the broad hook sweep:
 | Selector | `packages/core/src/tree/selector.ts` | `Node` | writeSyntax complete | Selector-family writer hook exists; broader metadata and keyset invalidation audit remains. |
 | SelectorCapture | `packages/core/src/tree/selector-capture.ts` | `Node` | child/buffer staging complete | Capture syntax writes directly through child `writeSyntax(...)`, cold private source-string wrapper is gone, and resolved buffer render delegates to the child buffer renderer instead of rendering to string then writing that string. Audit whether capture node should exist after render rewrite. |
 | SelectorList | `packages/core/src/tree/selector-list.ts` | `Selector` | writeSyntax complete | List item emission uses `writeSyntax`, cold private source-string wrapper is gone, and selector eval/resolve uses `MaybePromise` narrowing; flattening, temporary arrays, and valueOf joins remain queued. |
-| Sequence | `packages/core/src/tree/sequence.ts` | `Node` | partial | Direct sequence writer exists; no-trivia and custom-property raw source children use `writeSyntax(...)`; nil children are skipped in the writer so static render no longer materializes a filtered replacement array; static flat-buffer render writes syntax directly with one writer mark; render/eval branches use `MaybePromise` narrowing; async-capable dynamic render no longer allocates local render-node/rest closures on the sync path. Trivia-backed child `toString` transport and broader dynamic render capture remain until boundary-trivia emission is made explicit. |
+| Sequence | `packages/core/src/tree/sequence.ts` | `Node` | partial | Direct sequence writer exists; no-trivia and custom-property raw source children use `writeSyntax(...)`; nil children are skipped in the writer so static render no longer materializes a filtered replacement array; static flat-buffer render writes syntax directly with one writer mark; render/eval branches use `MaybePromise` narrowing; async-capable dynamic render no longer allocates local render-node/rest closures on the sync path; boundary separator checks now use numeric character tests, an indexed trivia scan, and one shared spacer predicate instead of regex/callback probes. Trivia-backed child `toString` transport and broader dynamic render capture remain until boundary-trivia emission is made explicit. |
 | SimpleSelector | `packages/core/src/tree/selector-simple.ts` | `Selector` | queued | Audit base class necessity and branches. |
 | StyleImport | `packages/core/src/tree/import-style.ts` | `Node` | queued | High priority: first-use placement copies and derived rules surfaces. |
 | Url | `packages/core/src/tree/url.ts` | `Node` | writeSyntax hook complete | URL wrapper and no-trivia child syntax write directly in source and context modes; render/eval use `evalSync(...)` for non-async child values and thenable narrowing for async values. Render/context normalization still uses localized mark/replace and remains queued. |

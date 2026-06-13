@@ -32,11 +32,38 @@ export type SequenceOptions = {
 };
 
 function isIdentifierChar(value: string | undefined): boolean {
-  return Boolean(value && /[A-Za-z_-]/u.test(value));
+  if (!value) {
+    return false;
+  }
+  const code = value.charCodeAt(0);
+  return (
+    code >= 65 && code <= 90
+  ) || (
+    code >= 97 && code <= 122
+  ) || code === 95 || code === 45;
+}
+
+function startsWithIdentifierChar(value: string): boolean {
+  if (isIdentifierChar(value[0])) {
+    return true;
+  }
+  if (value.length === 0) {
+    return false;
+  }
+  const code = value.charCodeAt(0);
+  return code >= 48 && code <= 57;
 }
 
 function hasNonWhitespaceTrivia(tokens: ReturnType<NonNullable<PrintOptions['trivia']>['lookup']>): boolean {
-  return Boolean(tokens?.some(token => token.tokenType.name !== 'WS'));
+  if (!tokens) {
+    return false;
+  }
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i]!.tokenType.name !== 'WS') {
+      return true;
+    }
+  }
+  return false;
 }
 
 function emitRenderedSequenceNode(
@@ -234,7 +261,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         && (!noSep || needsMergeGuard)
       ) {
         w.queueSpacer(' ', needsMergeGuard
-          ? nextText => /^[A-Za-z0-9_-]/u.test(nextText)
+          ? startsWithIdentifierChar
           : undefined);
       }
       const nodeSourceTrivia = printOptions.trivia ?? node.sourceRoot?._treeContext?.opts?.trivia;
@@ -309,7 +336,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
           && (!noSep || needsMergeGuard)
         ) {
           w.queueSpacer(' ', needsMergeGuard
-            ? nextText => /^[A-Za-z0-9_-]/u.test(nextText)
+            ? startsWithIdentifierChar
             : undefined);
         }
       }
@@ -435,7 +462,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       && (!noSep || needsMergeGuard)
     ) {
       w.queueSpacer(' ', needsMergeGuard
-        ? nextText => /^[A-Za-z0-9_-]/u.test(nextText)
+        ? startsWithIdentifierChar
         : undefined);
     }
   }

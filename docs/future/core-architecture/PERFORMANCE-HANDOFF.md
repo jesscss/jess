@@ -2187,6 +2187,35 @@ Interpretation: status only, not a speed claim. Keep as a dead-field and
 generic-construction deletion in Ampersand placement; no performance conclusion
 is claimed from the bounded leash.
 
+### Call Arg Serialization And Sequence Separator Probe Cut
+
+Date: 2026-06-13.
+
+Change: `Call.serializeRenderedArgs(...)` no longer allocates per-call nested
+recursive helper closures for CSS-call argument serialization. It uses a
+straight sync loop and resumes through one private continuation method only
+after a thenable appears. CSS-call content eval/write now shares the same
+node-local `writeEvaluatedSyntax(...)` helper instead of duplicating the
+eval/write branch in two call renderers. `Sequence` separator checks now use
+numeric character tests, an indexed trivia-token scan, and one shared spacer
+predicate instead of regex/callback probes.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `36e16f73` reported: `functions` median `14.16ms` usable,
+  `import-reference` median `21.17ms` usable, `mixins-guards` median `18.21ms`
+  usable, `extend-chaining` median `6.83ms` unstable, and `media` median
+  `6.01ms` usable.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `14.15ms` usable,
+  `import-reference` median `20.55ms` usable, `mixins-guards` median `17.98ms`
+  usable, `extend-chaining` median `5.79ms` usable, and `media` median
+  `5.46ms` unstable.
+
+Interpretation: status only, not a speed claim. Keep as closure, callback, and
+regex-probe deletion in Call/Sequence serialization paths.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
