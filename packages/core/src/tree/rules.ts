@@ -412,6 +412,21 @@ function rulesMayContainExactMixinSurface(rules: Rules): boolean {
   return false;
 }
 
+function rulesMayContainExactRulesetSurface(rules: Rules): boolean {
+  const value = rules.value;
+  for (let i = 0; i < value.length; i++) {
+    const node = value[i]!;
+    if (isNode(node, N.Ruleset)) {
+      return true;
+    }
+    const child = childCallableRulesOf(node);
+    if (child && rulesMayContainExactRulesetSurface(child)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function sourceRulesOf(rules: Rules): Rules {
   return isNode(rules.sourceNode, N.Rules) ? rules.sourceNode : rules;
 }
@@ -579,6 +594,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   hasDirectChildRuleSurface = false;
   hasExactCallableChildSurface = false;
   hasExactMixinChildSurface = false;
+  hasExactRulesetChildSurface = false;
   directDeclarationsByName: Map<string, Declaration[]> | undefined;
   directDeclarationLookupCache: Map<string, {
     optionalMatch: Declaration | undefined;
@@ -619,6 +635,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this.hasDirectChildRuleSurface = false;
         this.hasExactCallableChildSurface = false;
         this.hasExactMixinChildSurface = false;
+        this.hasExactRulesetChildSurface = false;
         this.directChildRuleEntries = undefined;
         this.directDeclarationChildEntries = undefined;
       }
@@ -700,6 +717,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.hasDirectChildRuleSurface = false;
     this.hasExactCallableChildSurface = false;
     this.hasExactMixinChildSurface = false;
+    this.hasExactRulesetChildSurface = false;
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
     this.registrylessLastMixinLookupKey = undefined;
@@ -1217,6 +1235,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (rulesMayContainExactMixinSurface(child)) {
       this.hasExactMixinChildSurface = true;
     }
+    if (rulesMayContainExactRulesetSurface(child)) {
+      this.hasExactRulesetChildSurface = true;
+    }
     const visibility: RulesOptions['rulesVisibility'] = {
       ...child.options.rulesVisibility,
       ...rulesVisibility
@@ -1314,7 +1335,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       const childEntries = scope.directChildRuleEntries !== undefined
         ? (scope.directChildRuleEntries ?? undefined)
-        : scope.rulesIndexed >= scope.value.length && !scope.hasExactCallableChildSurface
+        : scope.rulesIndexed >= scope.value.length && !scope.hasExactRulesetChildSurface
           ? undefined
           : scope.collectDirectChildRulesEntries();
       if (!childEntries?.length) {
@@ -1325,6 +1346,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       for (let i = childEntries.length - 1; i >= 0; i--) {
         const entry = childEntries[i]!;
         if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
+          continue;
+        }
+        if (!rulesMayContainExactRulesetSurface(entry.node)) {
           continue;
         }
         if (entry.node.options?.forward) {
@@ -1409,7 +1433,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       const childEntries = scope.directChildRuleEntries !== undefined
         ? (scope.directChildRuleEntries ?? undefined)
-        : scope.rulesIndexed >= scope.value.length && !scope.hasExactCallableChildSurface
+        : scope.rulesIndexed >= scope.value.length && !scope.hasExactRulesetChildSurface
           ? undefined
           : scope.collectDirectChildRulesEntries();
       if (!childEntries?.length) {
@@ -1420,6 +1444,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       for (let i = childEntries.length - 1; i >= 0; i--) {
         const entry = childEntries[i]!;
         if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
+          continue;
+        }
+        if (!rulesMayContainExactRulesetSurface(entry.node)) {
           continue;
         }
         if (entry.node.options?.forward) {

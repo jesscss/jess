@@ -2619,6 +2619,50 @@ describe('Mixin', () => {
       }
     });
 
+    it('ruleset path misses skip mixin-only child surfaces without a frame', async () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const childRules = rules([
+        mixin({
+          name: any('.only-mixin-child'),
+          rules: rules([decl({ name: 'color', value: any('blue') })])
+        })
+      ]);
+      const root = rules([
+        ruleset({
+          selector: el('.mixin-only-surface'),
+          rules: childRules
+        })
+      ]);
+
+      await root.eval(context);
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.warmup-missing-ruleset-path' || key === '.missing-ruleset-path') {
+          return [];
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      const descriptor = Object.getOwnPropertyDescriptor(childRules, 'value');
+      try {
+        expect(root.findMixin(['.warmup-missing-ruleset-path', '.leaf'], undefined)).toBeUndefined();
+        expect(root.hasExactRulesetChildSurface).toBe(false);
+
+        Object.defineProperty(childRules, 'value', {
+          configurable: true,
+          get() {
+            throw new Error('ruleset path lookup should skip mixin-only child surfaces');
+          }
+        });
+        expect(root.findMixin(['.missing-ruleset-path', '.leaf'], undefined)).toBeUndefined();
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        if (descriptor) {
+          Object.defineProperty(childRules, 'value', descriptor);
+        }
+      }
+    });
+
     it('callable lookup does not build a scope frame just to try the frame shortcut', () => {
       const mixinDef = mixin({
         name: any('.lazy-frame-mixin'),

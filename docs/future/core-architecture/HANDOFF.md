@@ -902,6 +902,22 @@ left for this branch.
    - Done: broader callable/reference/import/call suite passes after rerun
      without a concurrent build cleaning package artifacts.
 
+6b. [x] Narrow ruleset-path child-surface recursion for ruleset-capable
+    children only.
+   Exact and prefix ruleset-path lookup now use a carried
+   `hasExactRulesetChildSurface` fact instead of the broader exact-callable
+   child-surface fact. A child scope that can only contain mixin terminals no
+   longer keeps ruleset-path child recursion alive or forces child-entry
+   collection on a ruleset-path miss.
+
+   Completion gate:
+   - Done: focused no-frame test proves a ruleset-path miss does not read a
+     mixin-only child `Rules.value` surface.
+   - Done: existing frame terminal-mixin-only, namespace, and parameterized
+     mixin-ruleset tests still pass.
+   - Done: this is a traversal/work deletion claim only; no speed claim is made
+     without a clean before/after benchmark.
+
 7. [x] Refresh the binding proposal after each bridge deletion.
    `BINDING-INDEX-PROPOSAL.md` is the contract for which fallback bridges are
    still tolerated. Every production bridge left behind must name its allowed
@@ -1310,6 +1326,46 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Ruleset child-surface callable pass: accepted as callable direct-crawl work
+  reduction, not as a speed claim. Files:
+  `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/__tests__/mixin.test.ts`,
+  `docs/future/core-architecture/HANDOFF.md`, and
+  `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`.
+  - New traversal: one private predicate,
+    `rulesMayContainExactRulesetSurface(...)`, mirrors the existing
+    mixin-capable surface predicate and runs from the registration/lazy
+    child-entry edge that already classifies callable child surfaces. Lookup
+    then uses the carried `hasExactRulesetChildSurface` fact to avoid broader
+    child recursion; it does not add a second lookup-time crawl.
+  - New node/materialization: none. No node, wrapper `Rules`, copy,
+    `.inherit(...)`, `.adopt(...)`, source metadata, parent mutation, output
+    array, or materialized render artifact was added.
+  - Render path: unchanged. The pass only decides whether ruleset-path lookup
+    may enter a child scope.
+  - Helper/API surface: one private helper and one existing-`Rules` boolean
+    derived-state field were added. They narrow two private ruleset-path
+    walkers and do not expose a public compatibility method.
+  - Metadata mutations: no parent/source/frozen metadata mutation. Existing
+    derived-state reset/indexing now clears and repopulates the additional
+    boolean beside the existing callable/mixin child-surface booleans.
+  - Routine error/control: no production throw/catch/Error path added. The
+    focused test uses a temporary throwing `value` getter only as a tripwire and
+    restores the monkey-patch with `try/finally`.
+  - Evidence: touched-file ESLint passed; focused callable tests passed,
+    including ruleset-path misses, terminal mixin-only, namespace fast path,
+    parameterized mixin-ruleset terminal behavior, and ScopeFrame callable
+    buckets (`17` passed, `126` skipped). Broader binding sweep passed:
+    `reference`, `scope-frame`, `import-style`, `mixin`, `rules`,
+    `detached-rulesets`, `call`, and `control` plus matched utility suites
+    (`618` passed, `9` skipped). `@jesscss/core` and `jess` builds passed;
+    node-creation audit reported `new-node` `310`, `with-surface` `39`,
+    `derive` `30`, `copy-leaves` `28`; hotpath sanity was status only:
+    usable `functions` `15.30ms`, `import-reference` `20.19ms`,
+    `mixins-guards` `19.57ms`, `extend-chaining` `5.85ms`, and unstable
+    `media` `5.95ms`. `verify:aggressive-cutting-review` and
+    `git diff --check` passed; the verifier flagged the expected helper loop
+    and test-only `try`/`throw`/`return []` tripwires prosecuted above.
 - Declaration registry-bookkeeping bridge pass: accepted as a narrow
   declaration registry fallback deletion, not as a speed claim. Files:
   `packages/core/src/tree/util/direct-rules-lookup.ts`,
