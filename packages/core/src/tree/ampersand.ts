@@ -85,8 +85,8 @@ const isSingleAmpersandWrapper = (node: Node | undefined): boolean => {
   return false;
 };
 
-function splitTopLevelCommas(str: string): string[] {
-  const items: string[] = [];
+function splitTopLevelCommas(str: string): string[] | undefined {
+  let items: string[] | undefined;
   let depth = 0;
   let inQuote: string | null = null;
   let start = 0;
@@ -104,12 +104,16 @@ function splitTopLevelCommas(str: string): string[] {
     } else if (ch === ')' || ch === ']') {
       depth--;
     } else if (ch === ',' && depth === 0) {
+      items ??= [];
       const item = str.slice(start, i).trim();
       if (item) {
         items.push(item);
       }
       start = i + 1;
     }
+  }
+  if (!items) {
+    return undefined;
   }
   const last = str.slice(start).trim();
   if (last) {
@@ -180,40 +184,35 @@ function throwCannotAppendSelector(appendValue: string): never {
   throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
 }
 
-function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
-  if (
-    isNode(baseSelector, N.PseudoSelector)
-    && baseSelector.value.name === ':is'
-    && baseSelector.value.arg
-    && isNode(baseSelector.value.arg, N.SelectorList)
-  ) {
-    const source = baseSelector.value.arg.value;
-    const out = new Array<Selector>(source.length);
-    for (let i = 0; i < source.length; i++) {
-      out[i] = source[i]!;
+function mergeAmpersandTemplateItem(
+  item: Selector,
+  inheritSource: Selector,
+  appendValue: string,
+  templateMerge: boolean,
+  singleLeadingSuffix: string | undefined
+): Selector {
+  const value = item.toTrimmedString();
+  assertValidAmpersandTemplateJoin(appendValue, value);
+  if (singleLeadingSuffix) {
+    const result = appendSelector(item, singleLeadingSuffix);
+    if (result.appended) {
+      return result.selector;
     }
-    return out;
   }
-  if (isNode(baseSelector, N.SelectorList)) {
-    const source = baseSelector.value;
-    const out = new Array<Selector>(source.length);
-    for (let i = 0; i < source.length; i++) {
-      out[i] = source[i]!;
+  let mergedText = appendValue;
+  if (templateMerge) {
+    let out = '';
+    let start = 0;
+    let next = appendValue.indexOf('&');
+    while (next !== -1) {
+      out += appendValue.slice(start, next);
+      out += value;
+      start = next + 1;
+      next = appendValue.indexOf('&', start);
     }
-    return out;
+    mergedText = out + appendValue.slice(start);
   }
-
-  const selectorStr = baseSelector.toTrimmedString();
-  if (!selectorStr.includes(',')) {
-    return [baseSelector];
-  }
-
-  const splitItems = splitTopLevelCommas(selectorStr);
-  const out = new Array<Selector>(splitItems.length);
-  for (let i = 0; i < splitItems.length; i++) {
-    out[i] = new BasicSelector(splitItems[i]!).inherit(baseSelector);
-  }
-  return out;
+  return new BasicSelector(mergedText).inherit(inheritSource);
 }
 
 function mergeAmpersandTemplateSelector(
@@ -224,49 +223,59 @@ function mergeAmpersandTemplateSelector(
   if (appendValue === undefined) {
     return baseSelector;
   }
-  const replacements = getAmpersandTemplateReplacements(baseSelector);
-  const merged = new Array<Selector>(replacements.length);
   const singleLeadingSuffix = templateMerge
     && appendValue[0] === '&'
     && appendValue.indexOf('&', 1) === -1
     && appendValue.length > 1
     ? appendValue.slice(1)
     : undefined;
-  for (let i = 0; i < replacements.length; i++) {
-    const item = replacements[i]!;
-    const value = item.toTrimmedString();
-    assertValidAmpersandTemplateJoin(appendValue, value);
-    if (singleLeadingSuffix) {
-      const result = appendSelector(item, singleLeadingSuffix);
-      if (result.appended) {
-        merged[i] = result.selector;
-        continue;
-      }
-    }
-    let mergedText = appendValue;
-    if (templateMerge) {
-      let out = '';
-      let start = 0;
-      let next = appendValue.indexOf('&');
-      while (next !== -1) {
-        out += appendValue.slice(start, next);
-        out += value;
-        start = next + 1;
-        next = appendValue.indexOf('&', start);
-      }
-      mergedText = out + appendValue.slice(start);
-    }
-    merged[i] = new BasicSelector(mergedText).inherit(baseSelector);
+
+  if (
+    isNode(baseSelector, N.PseudoSelector)
+    && baseSelector.value.name === ':is'
+    && baseSelector.value.arg
+    && isNode(baseSelector.value.arg, N.SelectorList)
+  ) {
+    return mergeAmpersandTemplateSelectorList(baseSelector.value.arg, placement, baseSelector);
   }
-  if (merged.length === 1) {
-    return merged[0]!;
+
+  if (isNode(baseSelector, N.SelectorList)) {
+    return mergeAmpersandTemplateSelectorList(baseSelector, placement);
   }
-  return new SelectorList(merged).inherit(baseSelector);
+
+  const selectorStr = baseSelector.toTrimmedString();
+  const splitItems = splitTopLevelCommas(selectorStr);
+  if (splitItems) {
+    const merged = new Array<Selector>(splitItems.length);
+    for (let i = 0; i < splitItems.length; i++) {
+      const item = new BasicSelector(splitItems[i]!).inherit(baseSelector);
+      merged[i] = mergeAmpersandTemplateItem(
+        item,
+        baseSelector,
+        appendValue,
+        templateMerge,
+        singleLeadingSuffix
+      );
+    }
+    if (merged.length === 1) {
+      return merged[0]!;
+    }
+    return new SelectorList(merged).inherit(baseSelector);
+  }
+
+  return mergeAmpersandTemplateItem(
+    baseSelector,
+    baseSelector,
+    appendValue,
+    templateMerge,
+    singleLeadingSuffix
+  );
 }
 
 function mergeAmpersandTemplateSelectorList(
   selector: SelectorList,
-  placement: AmpersandAppendPlacementState
+  placement: AmpersandAppendPlacementState,
+  inheritSource: Selector = selector
 ): SelectorList {
   const mergedItems: Selector[] = [];
   for (let i = 0; i < selector.value.length; i++) {
@@ -279,7 +288,7 @@ function mergeAmpersandTemplateSelectorList(
       mergedItems.push(merged);
     }
   }
-  return new SelectorList(mergedItems).inherit(selector);
+  return new SelectorList(mergedItems).inherit(inheritSource);
 }
 
 function createAmpersandWithSelectorContainer(

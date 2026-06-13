@@ -164,9 +164,11 @@ Current hard leftovers after the broad hook sweep:
   branches use `MaybePromise` narrowing instead of local assertions.
 - [ ] `Ampersand`: direct source writer exists; append/template placement no
   longer stores dead selector text arrays, no longer splits template strings
-  into `templateParts`, and no longer uses selector-list iterator/spread
-  flattening. Structural selector replacement still has string/class
-  construction debt.
+  into `templateParts`, no longer uses selector-list iterator/spread
+  flattening, no longer copies selector-list parents into temporary replacement
+  arrays, and no longer does `toTrimmedString().includes(',')` before scanning
+  raw scalar comma selectors. Structural selector replacement, raw fallback
+  string assembly, and generic class construction remain.
 - [ ] `Interpolated`: direct source writer exists, public `replace(...)` no
   longer uses regex callback scaffolding, and live writer replacement emission
   uses `writeSyntax(...)` plus the existing trim window instead of public

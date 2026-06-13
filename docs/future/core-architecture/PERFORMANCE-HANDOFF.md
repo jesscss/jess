@@ -2130,6 +2130,36 @@ Interpretation: status only, not a speed claim. Keep as an obvious match-time
 array/copy deletion plus one removed param scan; the hotpath leash was too
 mixed/noisy for performance conclusions.
 
+### Ampersand Template Placement Comma-Scan Cut
+
+Date: 2026-06-13.
+
+Change: `Ampersand` merge-template placement no longer serializes a scalar
+parent selector, checks `includes(',')`, and then scans again to split top-level
+commas. `splitTopLevelCommas(...)` now performs the single fallback scan and
+allocates its result array only after the first top-level comma. Structured
+`SelectorList` and generated `:is(...)` parents now feed their existing child
+arrays directly into selector-list template merging instead of first copying
+them into a temporary replacement array. Raw scalar comma parents still
+materialize placement selectors because the source shape is a single selector
+string containing commas.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `b356ce19` reported: `functions` median `15.50ms` unstable,
+  `import-reference` median `24.40ms` unstable, `mixins-guards` median
+  `30.05ms` noisy, `extend-chaining` median `12.03ms` noisy, and `media`
+  median `10.00ms` noisy.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `17.52ms` noisy,
+  `import-reference` median `24.83ms` usable, `mixins-guards` median `19.05ms`
+  usable, `extend-chaining` median `5.84ms` usable, and `media` median
+  `8.08ms` noisy.
+
+Interpretation: status only, not a speed claim. Keep as an Ampersand placement
+machinery deletion; the hotpath leash was mixed/noisy.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

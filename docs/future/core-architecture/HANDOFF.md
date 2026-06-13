@@ -729,9 +729,13 @@ the binding index/scope lookup refactor.
    helper per runtime binding lookup. Both helpers are module-scope functions
    that receive the same lookup state explicitly. This is closure/API-surface
    deletion only; traversal, fallback, and lookup semantics are unchanged.
-17. [ ] Sweep `Ampersand` template placement next. Replace
-   `toTrimmedString().includes(',')` and string splitting with selector-list
-   structure and placement state; only final CSS output may stringify.
+17. [x] Sweep `Ampersand` template placement. Structured selector-list and
+   generated `:is(...)` parents now stay structural instead of being copied into
+   temporary replacement arrays, and raw comma text no longer pays
+   `toTrimmedString().includes(',')` followed by a second split scan. The
+   remaining raw-text fallback performs one top-level comma scan only after
+   serialization is unavoidable because the parent selector is a scalar
+   `BasicSelector` string containing commas.
 18. [ ] Sweep selector matching/extend equality. Replace hot `valueOf()` equality
    predicates with structural/keyset checks where possible, keeping
    `valueOf()` only as a measured, cached fast-path when it wins.
@@ -813,46 +817,56 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: callable rest binding match-time array cut.
+Current pass: Ampersand template placement comma-scan cut.
 
-- New traversal: no net new traversal. `matchCallableParams(...)` now uses one
-  parameter scan for rest detection plus required-position counting instead of
-  two scans. Rest matching no longer allocates and fills a copied `rest` array;
-  it carries `restStart` into the existing binding/signature helpers.
-  `getCallableRestSignature(...)` now loops over the original args from that
-  offset. `createRestBindingValue(...)` still performs the existing clone loop
-  only when the rest binding value is actually prepared.
-- New node/materialization: no new node, wrapper, copy, `.inherit(...)`,
-  `.adopt(...)`, frozen state, or render-only materialization was added. This
-  deletes the match-time `new Array<Node>(args.length - argPos)` and copy loop.
-  The actual rest `Sequence` materialization remains the named binding
-  ownership boundary and is still lazy.
-- Render path: no render path was changed, and nothing resolves into arrays or
-  nodes just to stringify.
-- Helper/API surface: no helper or public API was added. Existing helpers grew
-  one `start` argument so callers can pass the original arg surface instead of
-  manufacturing a rest-only array.
-- Metadata mutations: no parent restoration, `frozen`, inherited
-  location/source metadata, lazy options/context creation, generic defensive
-  read, `Reflect.*`, `Object.hasOwn`, or structural probe was added.
+- New traversal: `splitTopLevelCommas(...)` still performs a string scan, but
+  it now returns `undefined` when no top-level comma is found and allocates the
+  result array only after seeing the first real comma. This replaces the old
+  two-step `toTrimmedString().includes(',')` check plus second split scan. No
+  source tree, parent chain, or selector tree walk was added. The flagged
+  `while (next !== -1)` template-replacement loop is moved existing logic, not
+  a new traversal; it still runs only for template strings containing `&`. The
+  flagged `for (let i = 0; i < splitItems.length; i++)` loop exists only on the
+  raw scalar-comma fallback after a top-level comma has already been found.
+- New node/materialization: no render-only node materialization was added.
+  Structured selector-list and generated `:is(...)` parents now pass their
+  existing child arrays directly into `mergeAmpersandTemplateSelectorList(...)`
+  instead of first copying them into a temporary replacements array. Raw scalar
+  comma parents still create `BasicSelector` items and a `SelectorList` only at
+  the existing semantic placement boundary: the source is already one scalar
+  selector string containing comma-separated selectors, so the flagged
+  `new BasicSelector(...)` and `new SelectorList(...)` calls are the existing
+  semantic placement materialization before output/extend can treat them as
+  selectors. The flagged `new Array<Selector>(splitItems.length)` is likewise
+  raw scalar-comma placement storage; the structured selector-list path no
+  longer pays its former temporary replacement array.
+- Render path: no render path was changed. This pass only changes ampersand
+  eval/placement preparation for merge templates; it does not resolve into
+  arrays or nodes merely to stringify.
+- Helper/API surface: no public API was added. The deleted
+  `getAmpersandTemplateReplacements(...)` helper used to hide the temp-array
+  copy and single-item `[baseSelector]` allocation. One private
+  `mergeAmpersandTemplateItem(...)` helper remains to avoid duplicating the
+  existing per-item merge logic between raw-scalar and structured-list paths.
+  The flagged `slice(...)` calls are existing string assembly for template text,
+  now localized in that one per-item helper.
+- Metadata mutations: no parent restoration, `frozen`, lazy options/context
+  creation, `Reflect.*`, `Object.hasOwn`, or structural probe was added.
+  Existing `.inherit(...)` calls remain at selector placement ownership
+  boundaries and are not expanded by this pass.
 - Evidence: focused tests passed:
   `pnpm --filter @jesscss/core test --
-  src/tree/util/__tests__/callable-param-match.test.ts
-  src/tree/util/__tests__/callable-signature.test.ts
-  src/tree/util/__tests__/callable-binding.test.ts
-  src/tree/__tests__/mixin.test.ts src/tree/__tests__/call.test.ts
-  src/tree/__tests__/reference.test.ts` (`337` tests). A rejected experiment
-  tried to return the canonical empty `Call.evalArgNodes(...)` arg list; focused
-  tests showed the empty arg list was reparented during resolve, so no code from
-  that cut was kept. Empty-arg reuse needs a separate ownership split, not
-  parent restoration after the fact.
-- Hotpath leash: pre-pass bounded status at `50406d10` reported `functions`
-  `13.59ms` noisy, `import-reference` `23.24ms` unstable, `mixins-guards`
-  `18.22ms` unstable, `extend-chaining` `5.64ms` unstable, and `media`
-  `6.02ms` unstable. Dirty post-pass bounded status reported `functions`
-  `15.38ms` unstable, `import-reference` `89.22ms` noisy, `mixins-guards`
-  `19.76ms` usable, `extend-chaining` `6.17ms` usable, and `media` `6.28ms`
-  unstable.
-- Verdict: keep as an obvious match-time array/copy deletion plus one removed
-  parameter scan. Do not claim measured speed; the leash is status-only and
-  mixed/noisy.
+  src/tree/__tests__/ampersand.test.ts
+  src/tree/util/__tests__/extend-ampersand.test.ts
+  src/tree/__tests__/mixin.test.ts
+  src/tree/__tests__/nesting-collapse.test.ts` (`192` tests).
+- Hotpath leash: pre-pass bounded status at `b356ce19` reported `functions`
+  `15.50ms` unstable, `import-reference` `24.40ms` unstable,
+  `mixins-guards` `30.05ms` noisy, `extend-chaining` `12.03ms` noisy, and
+  `media` `10.00ms` noisy. Dirty post-pass bounded status reported
+  `functions` `17.52ms` noisy, `import-reference` `24.83ms` usable,
+  `mixins-guards` `19.05ms` usable, `extend-chaining` `5.84ms` usable, and
+  `media` `8.08ms` noisy.
+- Verdict: keep as an obvious serialize-check-scan and temporary-array deletion
+  in Ampersand template placement. Do not claim measured speed; the leash is
+  status-only and mixed/noisy.
