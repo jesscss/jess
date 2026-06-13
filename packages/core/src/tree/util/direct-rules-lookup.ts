@@ -420,8 +420,8 @@ export function findDeclarationDirect(
 ): DirectDeclarationLookupResult {
   if (
     options.findAll
-    || options.candidates
-    || options.optionalCandidates
+    || (options.candidates !== undefined && options.candidates.size > 0)
+    || (options.optionalCandidates !== undefined && options.optionalCandidates.size > 0)
     || (filterType !== 'VarDeclaration' && options.semanticFilter)
   ) {
     return DIRECT_DECLARATION_LOOKUP_UNCOVERED;

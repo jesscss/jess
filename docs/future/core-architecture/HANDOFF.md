@@ -970,6 +970,18 @@ left for this branch.
    - Done: direct lookup caching remains disabled for `searchedRules` shapes;
      this pass only deletes the registry fallback, not loop-state caching.
 
+7e. [x] Keep empty registry candidate bookkeeping on the direct declaration
+    path.
+   `findDeclarationDirect(...)` still treats non-empty `candidates` or
+   `optionalCandidates` as old registry comparison state and returns
+   `UNCOVERED`, but empty candidate sets no longer force covered exact
+   variable/property lookup into `DeclarationRegistry`.
+
+   Completion gate:
+   - Done: focused variable and property tests pass empty candidate sets while
+     proving `Rules.getRegistry('declaration')` is not opened.
+   - Done: non-empty candidate sets remain excluded from the direct path.
+
 Parked secondary deep-cut queue:
 
 Do not select this queue while the Focus Spec is registryless lookup/binding.
@@ -1298,33 +1310,37 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Declaration `searchedRules` bridge pass: accepted as a narrow declaration
-  registry fallback deletion, not as a speed claim. Files:
+- Declaration registry-bookkeeping bridge pass: accepted as a narrow
+  declaration registry fallback deletion, not as a speed claim. Files:
   `packages/core/src/tree/util/direct-rules-lookup.ts`,
   `packages/core/src/tree/__tests__/reference.test.ts`,
   `docs/future/core-architecture/HANDOFF.md`, and
   `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`.
   - New traversal: none. `findDeclarationDirect(...)` already creates and
     owns its direct-walk visited set. This pass only stops treating an incoming
-    registry `searchedRules` marker as an unsupported option shape.
+    registry `searchedRules` marker or empty registry candidate sets as
+    unsupported option shapes.
   - New node/materialization: none. No node, wrapper `Rules`, copy,
     `.inherit(...)`, `.adopt(...)`, source metadata, parent mutation, map/set,
     helper array, or materialized output was added in production. The only new
     `Set` allocation is in focused tests to simulate the old registry
-    `searchedRules` bookkeeping option.
+    bookkeeping options.
   - Render path: unchanged. This only changes whether covered exact declaration
     lookup can stay on the direct lookup path.
   - Helper/API surface: no helper or public method added. The tests carry
-    `searchedRules` through an existing options object shape to mirror registry
-    recursion bookkeeping rather than broadening the intended lookup API.
+    `searchedRules` and empty candidate sets through existing options object
+    shapes to mirror registry bookkeeping rather than broadening the intended
+    lookup API.
   - Metadata mutations: none.
   - Routine error/control: no production throw/catch/Error path added. Test-only
     `try/finally` restores monkey-patched `Rules.getRegistry(...)`, and
     `registryHits: string[]` records the tripwire count.
   - Evidence: touched-file ESLint passed; focused `reference.test.ts` lookup
-    tests passed (`13` passed, `121` skipped), including direct variable and
-    property lookup with `searchedRules` present and
-    `Rules.getRegistry('declaration')` monkey-patched as the tripwire.
+    tests passed (`14` passed, `122` skipped), including direct variable and
+    property lookup with `searchedRules` and empty candidate sets present, with
+    `Rules.getRegistry('declaration')` monkey-patched as the tripwire. The
+    broader binding sweep passed (`478` passed, `9` skipped). Non-empty
+    candidate sets still return `UNCOVERED`.
 - Declaration child-entry carry pass: accepted as binding/direct-lookup
   rediscovery deletion, not as a speed claim. Files:
   `packages/core/src/tree/rules.ts`,

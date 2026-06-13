@@ -2867,6 +2867,66 @@ describe('reference', () => {
       }
     });
 
+    it('direct VarDeclaration lookup ignores empty registry candidate bookkeeping', async () => {
+      const originalGetRegistry = RulesClass.prototype.getRegistry;
+      const registryHits: string[] = [];
+      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
+        const [type] = args;
+        if (type === 'declaration') {
+          registryHits.push(type);
+        }
+        return originalGetRegistry.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({ name: 'color', value: any('red') })
+        ]);
+
+        await node.eval(context);
+        const opts = {
+          candidates: new Set(),
+          optionalCandidates: new Set()
+        };
+        const found = node.findVariable('color', opts);
+
+        expect(found?.value.value.valueOf()).toBe('red');
+        expect(registryHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.getRegistry = originalGetRegistry;
+      }
+    });
+
+    it('direct property lookup ignores empty registry candidate bookkeeping', async () => {
+      const originalGetRegistry = RulesClass.prototype.getRegistry;
+      const registryHits: string[] = [];
+      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
+        const [type] = args;
+        if (type === 'declaration') {
+          registryHits.push(type);
+        }
+        return originalGetRegistry.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          decl({ name: any('color'), value: any('red') })
+        ]);
+
+        await node.eval(context);
+        const opts = {
+          candidates: new Set(),
+          optionalCandidates: new Set()
+        };
+        const found = node.findProperty('color', opts);
+
+        expect(found?.value.value.valueOf()).toBe('red');
+        expect(registryHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.getRegistry = originalGetRegistry;
+      }
+    });
+
     it('unfiltered property references use direct Declaration lookup without opening DeclarationRegistry', async () => {
       const originalGetRegistry = RulesClass.prototype.getRegistry;
       const registryHits: string[] = [];
