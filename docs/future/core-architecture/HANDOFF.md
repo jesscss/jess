@@ -732,6 +732,12 @@ the binding index/scope lookup refactor.
    helper per runtime binding lookup. Both helpers are module-scope functions
    that receive the same lookup state explicitly. This is closure/API-surface
    deletion only; traversal, fallback, and lookup semantics are unchanged.
+   Seventh partial status: runtime binding and declaration reference
+   finalization no longer allocate local `finalizeRuntimeBinding(...)` and
+   `finalize(...)` closures on the common synchronous lookup path. The same
+   reference-stack cleanup, search-scope cleanup, rules-like preservation, and
+   merged-assign normalization still run; the async branch keeps only the
+   continuation needed for actual thenables.
 17. [x] Sweep `Ampersand` template placement. Structured selector-list and
    generated `:is(...)` parents now stay structural instead of being copied into
    temporary replacement arrays, and raw comma text no longer pays
@@ -829,36 +835,39 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `StyleImport` placement-state bookkeeping cut.
+Current pass: `Reference` sync finalizer closure cut.
 
-- New traversal: none added. One defensive recursive-cycle `Set` allocation was
-  removed from `findImportPlacementValuePath(...)`; the same recursive value
-  walk remains because the public placement-source lookup still has to map an
-  evaluated placement descendant back to its source descendant.
-- New node/materialization: none added. The existing first-use import placement
-  copy path is still present and still open queue debt. This pass removed the
-  redundant top-level `sourceByPlacement` `Map` and an unused placement-state
-  flag; it did not add `new Node`, `.inherit(...)`, `.adopt(...)`, wrapper
-  `Rules`, copied nodes, frozen state, parent restoration, or source metadata
-  mutation.
-- Render path: no render path changed. Import rendering still goes through
-  existing evaluated `Rules` output. No arrays/nodes were added merely to
+- New traversal: none added. No loop, recursion, parent/source walk, side-map
+  lookup, object scan, array scan, `map/filter/sort`, or generator was added.
+- New node/materialization: none added. Existing rules-like public
+  materialization and merged-assign `.inherit(reference)` behavior stayed
+  exactly where it was; this pass did not add `new Node`, copied nodes,
+  `.adopt(...)`, wrapper `Rules`, frozen state, parent restoration, or source
+  metadata mutation.
+- Render path: no render path changed. Runtime binding and declaration
+  references still return/evaluate the same nodes and only render through the
+  existing resolved-node render path; no arrays/nodes were created just to
   stringify.
-- Helper/API surface: no helper, method, or public API was added. The attempted
-  direct `getImportPlacementChildSegments(...)` return was rejected and backed
-  out because focused tests prove evaluated placement children can replace the
-  initial segment output.
-- Metadata mutations: none added. This pass removed side bookkeeping rather
-  than adding parent/source restoration or defensive property reads.
-- Evidence: pre-pass hotpath leash at `3b1e60ff` was status-only:
-  `functions` `15.09ms` unstable, `import-reference` `22.94ms` usable,
-  `mixins-guards` `19.08ms` usable, `extend-chaining` `6.10ms` usable, and
-  `media` `6.07ms` usable. Focused import tests passed after the narrower cut:
-  `pnpm --filter @jesscss/core test -- src/tree/__tests__/import-style.test.ts`
-  (`84` passed, `1` skipped). The failed intermediate direct-segment return
-  was caught by the same test and removed.
-- Verdict: accept the bookkeeping deletion only. `StyleImport` first-use child
-  copies, `deriveRulesSurface(...)` wrappers, binding-handle reuse, `Reference`
-  materialization, `Rules` merge placement, selector/extend equality, and
-  callable evaluation audits remain open because they require deeper runtime
-  redesign instead of local bookkeeping cuts.
+- Helper/API surface: added two module-local finalizer functions only to delete
+  two per-call local closure allocations from the common synchronous Reference
+  lookup path: `finalizeRuntimeBinding(...)` and declaration `finalize(...)`.
+  This is private implementation surface, not public API. The async thenable
+  branches still allocate only their required continuation.
+- Metadata mutations: none added. Existing `context.popReference()`,
+  `context.searchScope.delete(...)`, rules-like preservation, and merged-assign
+  `.inherit(reference)` semantics are unchanged. Registration-prep
+  `try/catch` expected misses were audited and left open because converting
+  them properly needs a typed unresolved result from node registration prep,
+  not another wrapper around thrown misses.
+- Evidence: pre-pass hotpath leash at `304ed45f` was status-only:
+  `functions` `14.76ms` usable, `import-reference` `26.09ms` unstable,
+  `mixins-guards` `16.98ms` usable, `extend-chaining` `5.38ms` usable, and
+  `media` `5.71ms` noisy. Focused Reference tests passed after each closure
+  cut: `pnpm --filter @jesscss/core test --
+  src/tree/__tests__/reference.test.ts` (`117` passed).
+- Verdict: accept the sync closure deletion only. `Reference`
+  `createRulesLikeReferenceSurface(...)`, public
+  `evaluateReferenceValueNode(...)` materialization, merged assign
+  normalization, `StyleImport` placement copies, registration-prep typed
+  misses, `Rules` merge placement, and selector/extend equality remain open
+  because they need semantic runtime changes.

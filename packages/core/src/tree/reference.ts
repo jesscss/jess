@@ -1196,31 +1196,6 @@ function finalizeRuntimeVarBindingResult(
   textOnly = false
 ): MaybePromise<Node> {
   const bindingSource = binding.sourceNode;
-  const finalizeRuntimeBinding = (evald: Node) => {
-    if (
-      referenceNode.options?.preserveRulesLike === true
-      && isRulesLikeReferenceValue(evald)
-    ) {
-      context.popReference();
-      return (
-        isNode(bindingSource, N.VarDeclaration)
-        && !bindingSource.options?.paramVar
-        && evald.sourceNode === undefined
-      )
-        ? createRulesLikeReferenceSurface(evald)
-        : evald;
-    }
-    if (canReturnReferenceValue(evald)) {
-      context.popReference();
-      return evald;
-    }
-    if (textOnly) {
-      context.popReference();
-      return evald;
-    }
-    context.popReference();
-    return evald;
-  };
   const shouldUseDefinitionRulesContext = isNode(bindingSource, N.VarDeclaration) && (
     bindingSource.options?.paramVar
     || (
@@ -1252,9 +1227,53 @@ function finalizeRuntimeVarBindingResult(
   );
 
   if (isThenable(evaluatedBinding)) {
-    return Promise.resolve(evaluatedBinding).then(finalizeRuntimeBinding);
+    return Promise.resolve(evaluatedBinding).then(evald => finalizeRuntimeVarBindingNode(
+      referenceNode,
+      bindingSource,
+      evald,
+      context,
+      textOnly
+    ));
   }
-  return finalizeRuntimeBinding(evaluatedBinding);
+  return finalizeRuntimeVarBindingNode(
+    referenceNode,
+    bindingSource,
+    evaluatedBinding,
+    context,
+    textOnly
+  );
+}
+
+function finalizeRuntimeVarBindingNode(
+  referenceNode: Reference,
+  bindingSource: RuntimeVarBinding['sourceNode'],
+  evald: Node,
+  context: Context,
+  textOnly: boolean
+): Node {
+  if (
+    referenceNode.options?.preserveRulesLike === true
+    && isRulesLikeReferenceValue(evald)
+  ) {
+    context.popReference();
+    return (
+      isNode(bindingSource, N.VarDeclaration)
+      && !bindingSource.options?.paramVar
+      && evald.sourceNode === undefined
+    )
+      ? createRulesLikeReferenceSurface(evald)
+      : evald;
+  }
+  if (canReturnReferenceValue(evald)) {
+    context.popReference();
+    return evald;
+  }
+  if (textOnly) {
+    context.popReference();
+    return evald;
+  }
+  context.popReference();
+  return evald;
 }
 
 function evaluateRuntimeVarBindingValue(
@@ -1353,37 +1372,59 @@ function finalizeDeclarationReferenceResult(
       context.pushImportantSource();
     }
     const evaluated = evaluateReferenceValueNode(declarationValue, context);
-    const finalize = (evaluatedNode: Node): Node => {
-      try {
-        if (textOnly && !isMergedAssign) {
-          context.popReference();
-          return evaluatedNode;
-        }
-        if (!isMergedAssign) {
-          context.popReference();
-          return evaluatedNode;
-        }
-        const normalized = normalizeMergedAssignReferenceResult(evaluatedNode, true);
-        const finalized = normalized.inherit(referenceNode);
-        context.popReference();
-        return finalized;
-      } finally {
-        context.searchScope.delete(declaration);
-      }
-    };
     if (isThenable(evaluated)) {
       return Promise.resolve(evaluated).then(
-        finalize,
+        evaluatedNode => finalizeDeclarationReferenceNode(
+          referenceNode,
+          declaration,
+          evaluatedNode,
+          context,
+          textOnly,
+          isMergedAssign
+        ),
         (error) => {
           context.searchScope.delete(declaration);
           throw error;
         }
       );
     }
-    return finalize(evaluated);
+    return finalizeDeclarationReferenceNode(
+      referenceNode,
+      declaration,
+      evaluated,
+      context,
+      textOnly,
+      isMergedAssign
+    );
   } catch (error) {
     context.searchScope.delete(declaration);
     throw error;
+  }
+}
+
+function finalizeDeclarationReferenceNode(
+  referenceNode: Reference,
+  declaration: Declaration | VarDeclaration,
+  evaluatedNode: Node,
+  context: Context,
+  textOnly: boolean,
+  isMergedAssign: boolean
+): Node {
+  try {
+    if (textOnly && !isMergedAssign) {
+      context.popReference();
+      return evaluatedNode;
+    }
+    if (!isMergedAssign) {
+      context.popReference();
+      return evaluatedNode;
+    }
+    const normalized = normalizeMergedAssignReferenceResult(evaluatedNode, true);
+    const finalized = normalized.inherit(referenceNode);
+    context.popReference();
+    return finalized;
+  } finally {
+    context.searchScope.delete(declaration);
   }
 }
 
