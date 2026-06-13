@@ -341,10 +341,9 @@ function findVarDeclarationFast(
       return { publicMatch, optionalMatch };
     }
 
-    const childEntries = scope._rulesSet as Array<{
-      node: Rules;
-      rulesVisibility?: RulesOptions['rulesVisibility'];
-    }> | undefined;
+    const childEntries = scope.directDeclarationChildEntries !== undefined
+      ? (scope.directDeclarationChildEntries ?? undefined)
+      : scope.collectDirectDeclarationChildEntries();
     if (!childEntries?.length) {
       return { publicMatch, optionalMatch };
     }

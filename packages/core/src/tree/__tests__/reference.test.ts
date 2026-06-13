@@ -1263,6 +1263,43 @@ describe('reference', () => {
       expect(context.referenceStack).toBe(0);
     });
 
+    it('explicit target variable fallback uses carried declaration child entries', async () => {
+      const childRules = rules([
+        vardecl({ name: 'target-color', value: any('blue') })
+      ]);
+      const targetRules = rules([
+        childRules
+      ]);
+      const node = rules([
+        vardecl({ name: 'targetRules', value: targetRules })
+      ]);
+      setRulesContext(await node.eval(context));
+
+      targetRules.collectDirectDeclarationChildEntries();
+      targetRules.getScopeFrame();
+      childRules.getScopeFrame();
+      const descriptor = Object.getOwnPropertyDescriptor(targetRules, '_rulesSet');
+      Object.defineProperty(targetRules, '_rulesSet', {
+        configurable: true,
+        get() {
+          throw new Error('explicit target variable fallback should not read _rulesSet');
+        }
+      });
+
+      try {
+        await expect(Promise.resolve(ref({
+          target: ref({ key: 'targetRules' }, { type: 'variable' }),
+          key: 'target-color'
+        }, { type: 'variable' }).render(context))).resolves.toBe('blue');
+      } finally {
+        if (descriptor) {
+          Object.defineProperty(targetRules, '_rulesSet', descriptor);
+        } else {
+          delete (targetRules as { _rulesSet?: unknown })._rulesSet;
+        }
+      }
+    });
+
     it('renders source-free direct index scalar hits without applying reference metadata', async () => {
       const targetArray = new JsArray([any('one'), any('two')]);
       const targetObject = new JsObject({ tone: any('green') });

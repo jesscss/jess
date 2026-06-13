@@ -1013,6 +1013,20 @@ left for this branch.
      property lookup still enters the registry-owned bridge.
    - Done: no semantic filtered declaration/property lookup was forced direct.
 
+7g. [x] Move `Reference` variable fallback off `_rulesSet`.
+   The remaining `Reference` variable fallback (`findVarDeclarationFast(...)`)
+   no longer reads registry-shaped `_rulesSet` child storage. It uses the same
+   carried `Rules.directDeclarationChildEntries` / `collectDirectDeclarationChildEntries()`
+   layer as direct declaration lookup. `_rulesSet` remains only in old
+   declaration-registry utility code and `Rules` registration internals.
+
+   Completion gate:
+   - Done: no `Reference` production code reads `_rulesSet` or `rulesSet`.
+   - Done: focused explicit-target variable reference proves the fallback can
+     resolve a child-surface variable after `_rulesSet` is poisoned.
+   - Done: direct index/target, fallback-frame, property direct, semantic
+     filtered bridge, and nested static variable focused tests still pass.
+
 Parked secondary deep-cut queue:
 
 Do not select this queue while the Focus Spec is registryless lookup/binding.
@@ -1341,6 +1355,36 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Reference variable fallback child-entry pass: accepted as registry-shaped
+  lookup storage deletion, not as a speed claim. Files:
+  `packages/core/src/tree/reference.ts`,
+  `packages/core/src/tree/__tests__/reference.test.ts`,
+  `docs/future/core-architecture/HANDOFF.md`, and
+  `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`.
+  - New traversal: none. `findVarDeclarationFast(...)` keeps its existing child
+    loop but now reads child entries from carried declaration child-surface
+    state instead of `_rulesSet`.
+  - New node/materialization: none. No node, wrapper `Rules`, copy,
+    `.inherit(...)`, `.adopt(...)`, source metadata, parent mutation, output
+    array, or materialized render artifact was added.
+  - Render path: unchanged. This only changes where variable fallback lookup
+    reads child-surface entries before returning the same source declaration.
+  - Helper/API surface: no helper or public method added. The pass reuses
+    existing `Rules.collectDirectDeclarationChildEntries()`.
+  - Metadata mutations: none.
+  - Routine error/control: no production throw/catch/Error path added. The new
+    focused test uses a temporary throwing `_rulesSet` getter and `try/finally`
+    restore to prove lookup does not read the old registry-shaped storage.
+  - Evidence: touched-file ESLint passed; focused reference tests passed
+    (`7` passed, `131` skipped), covering explicit-target variable fallback,
+    direct index/target semantics, semantic filtered property bridge,
+    unfiltered property direct lookup, nested static variable lookup, and
+    fallback-frame declarations. Broader binding sweep passed (`14` files,
+    `685` passed, `9` skipped). `@jesscss/core` and `jess` builds passed.
+    Node-creation audit stayed at `new-node 310`, `with-surface 39`,
+    `derive 30`, `copy-leaves 28`. `measure:less:hotpath` ran as sanity only
+    with mixed usable/noisy signals, so this pass makes no speed claim.
+    `verify:aggressive-cutting-review` and `git diff --check` passed.
 - Direct-declaration env deletion pass: accepted as transitional lookup
   experiment deletion, not as a speed claim. Files:
   `packages/core/src/tree/rules.ts`,
