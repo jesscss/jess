@@ -12,7 +12,7 @@ import { atIndex } from './util/collections.js';
 import type { Num } from './number.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import type { Rules, RulesOptions, RuntimeVarBinding } from './rules.js';
+import type { Rules, RuntimeVarBinding } from './rules.js';
 import type { Interpolated } from './interpolated.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 import type { Declaration } from './declaration.js';
@@ -22,7 +22,6 @@ import { JsObject } from './js-object.js';
 import { JsExpression } from './js-expr.js';
 import { List } from './list.js';
 import { Nil } from './nil.js';
-import { comparePosition } from './util/compare.js';
 import {
   getBindingCellValue,
   lookupScopeFrameVariable,
@@ -31,17 +30,13 @@ import {
   type ScopeFrame
 } from './scope-frame.js';
 import type { VarDeclaration } from './declaration-var.js';
-import { getOrderedSelectorKeys, isNonClassicImportBoundary } from './util/registry-utils.js';
+import { getOrderedSelectorKeys } from './util/registry-utils.js';
 import {
   isRenderBuffer,
   writeRenderTextResult,
   type RenderBuffer
 } from './util/render-buffer.js';
-import {
-  blocksAmbientMixinOutputLookup,
-  canEnterMixinOutputForLookup,
-  getRulesEntryVisibility
-} from './util/mixin-output-slot.js';
+import { blocksAmbientMixinOutputLookup } from './util/mixin-output-slot.js';
 import { MixinCollection } from './util/callable-collection.js';
 import type { MixinEntry } from './util/callable-entry.js';
 import {
@@ -144,55 +139,6 @@ const isRuntimeVarBinding = (value: unknown): value is RuntimeVarBinding => (
 const REF_EVAL_PRESERVE_RULES_LIKE = 1;
 const REF_EVAL_REUSE_SOURCE_FREE = 1 << 1;
 
-function selectVarBucketCandidate(
-  bucket: BindingEntry[] | undefined,
-  start: number | undefined,
-  filter: (n: Node) => boolean
-): Node | undefined {
-  if (!bucket?.length) {
-    return undefined;
-  }
-  for (let i = bucket.length - 1; i >= 0; i--) {
-    const candidate = bucket[i]!;
-    if (start !== undefined && !(candidate.sourceNode.index !== undefined && candidate.sourceNode.index < start)) {
-      continue;
-    }
-    if (filter(candidate.sourceNode)) {
-      return candidate.sourceNode;
-    }
-  }
-  return undefined;
-}
-
-function laterVarMatch<T extends Node>(a: T | undefined, b: T | undefined): T | undefined {
-  if (!a) {
-    return b;
-  }
-  if (!b) {
-    return a;
-  }
-  if (!a.parent && b.parent) {
-    return b;
-  }
-  if (a.parent && !b.parent) {
-    return a;
-  }
-  if (
-    a.parent === b.parent
-    && a.index !== undefined
-    && b.index !== undefined
-  ) {
-    return a.index <= b.index ? b : a;
-  }
-  let position: ReturnType<typeof comparePosition>;
-  try {
-    position = comparePosition(a, b);
-  } catch {
-    return a.parent || !b.parent ? a : b;
-  }
-  return position !== undefined && position <= 0 ? b : a;
-}
-
 function promoteResolvedPendingVarDecls(
   scope: Rules,
   frame: ScopeFrame
@@ -256,222 +202,6 @@ function promoteResolvedPendingVarDecls(
   if (mutated) {
     frame.pendingDeclarationNames = remaining;
   }
-}
-
-/**
- * Fast parent-chain walk for ordinary VarDeclaration lookup.
- *
- * Bypasses the full declaration-registry machinery (Set creation, indexPendingItems,
- * Set→Array conversion, sort, _searchRulesChildren) for the dominant hot case:
- * lexical variables looked up from nested scopes.
- *
- * Invariant: `varsByName === undefined` means the scope has not yet been indexed
- * by `_indexRules`. `varsByName` is initialized to an empty Map at the start of
- * `_indexRules` so that "indexed with no vars" is distinguishable from "not indexed".
- *
- * When `varsByName` is undefined the fast path bails immediately (returns undefined),
- * causing the caller to fall back to the full declaration registry which will trigger
- * indexing and warm up `varsByName` for all visited scopes. Subsequent lookups then
- * use the fast path for the entire chain.
- *
- * Last entry in varsByName wins (Less "last definition wins" / contextual semantics).
- */
-function findVarDeclarationFast(
-  startRules: Rules,
-  name: string,
-  filter: (n: Node) => boolean,
-  options: {
-    start?: number;
-    context: Context;
-    hasTarget?: boolean;
-    local?: boolean;
-  }
-): Node | undefined {
-  const findVarWithinScopeSurface = (
-    scope: Rules,
-    scopeStart: number | undefined,
-    localContext: boolean | undefined,
-    visited: Set<Rules>,
-    visibilityOverride?: NonNullable<RulesOptions['rulesVisibility']>['VarDeclaration'],
-    includeChildSurfaces = true
-  ): {
-    publicMatch: Node | undefined;
-    optionalMatch: Node | undefined;
-  } => {
-    if (visited.has(scope)) {
-      return {
-        publicMatch: undefined,
-        optionalMatch: undefined
-      };
-    }
-    visited.add(scope);
-
-    if (scope.rulesIndexed < scope.value.length) {
-      scope._indexRules();
-    }
-    const frame = scope.getScopeFrame();
-    promoteResolvedPendingVarDecls(scope, frame);
-    let publicMatch: Node | undefined;
-    let optionalMatch: Node | undefined;
-    const currentCandidate = selectVarBucketCandidate(frame.declarationBucketsByName.get(name), undefined, filter);
-    if (currentCandidate) {
-      const scopeVisibility = visibilityOverride ?? scope.options.rulesVisibility?.VarDeclaration;
-      const isRulesetBodyScope = isNode(scope.parent, N.Ruleset) || isNode(scope.sourceNode, N.Ruleset);
-      const isOptionalCurrentScope = visibilityOverride === undefined
-        ? scopeVisibility === 'optional' && !isRulesetBodyScope
-        : scopeVisibility === 'optional';
-      if (isOptionalCurrentScope) {
-        optionalMatch = currentCandidate;
-      } else {
-        publicMatch = currentCandidate;
-      }
-    }
-    const lexicalParentRules = frame.parent?.rulesNode;
-    const astRulesParent = scope.rulesParent;
-    if (
-      isNode(lexicalParentRules, N.Rules)
-      && lexicalParentRules !== scope
-      && lexicalParentRules !== astRulesParent
-    ) {
-      const lexicalResult = findVarWithinScopeSurface(
-        lexicalParentRules as Rules,
-        undefined,
-        localContext,
-        visited
-      );
-      publicMatch = laterVarMatch(publicMatch, lexicalResult.publicMatch);
-      optionalMatch = laterVarMatch(optionalMatch, lexicalResult.optionalMatch);
-    }
-
-    if (!includeChildSurfaces) {
-      return { publicMatch, optionalMatch };
-    }
-
-    const childEntries = scope.directDeclarationChildEntries !== undefined
-      ? (scope.directDeclarationChildEntries ?? undefined)
-      : scope.collectDirectDeclarationChildEntries();
-    if (!childEntries?.length) {
-      return { publicMatch, optionalMatch };
-    }
-
-    for (let i = childEntries.length - 1; i >= 0; i--) {
-      const entry = childEntries[i]!;
-      const visibility = getRulesEntryVisibility(entry, 'VarDeclaration');
-      if (visibility !== 'public' && visibility !== 'optional') {
-        continue;
-      }
-      if (!canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: options.hasTarget })) {
-        continue;
-      }
-      if (options.context.rulesContext === scope && entry.node.options?.forward) {
-        continue;
-      }
-      if (localContext && entry.node.options?.local) {
-        continue;
-      }
-      if (
-        scopeStart !== undefined
-        && !(entry.node.index !== undefined && entry.node.index < scopeStart)
-      ) {
-        continue;
-      }
-
-      const childResult = findVarWithinScopeSurface(
-        entry.node,
-        scopeStart,
-        localContext || Boolean(entry.node.options?.local),
-        visited,
-        visibility
-      );
-      publicMatch = laterVarMatch(publicMatch, childResult.publicMatch);
-      optionalMatch = laterVarMatch(optionalMatch, childResult.optionalMatch);
-    }
-
-    return { publicMatch, optionalMatch };
-  };
-
-  let cursor: Node | undefined = startRules;
-  let first = true;
-  let publicMatch: Node | undefined;
-  let optionalMatch: Node | undefined;
-  while (cursor) {
-    if (isNode(cursor, N.Rules)) {
-      const scope = cursor as Rules;
-      const scopeStart = first ? options.start : undefined;
-      const applyCurrentScopeStart = first;
-      if (!first) {
-        if (isNonClassicImportBoundary(scope)) {
-          const boundaryResult = findVarWithinScopeSurface(
-            scope,
-            undefined,
-            options.local,
-            new Set<Rules>(),
-            undefined,
-            false
-          );
-          publicMatch = laterVarMatch(publicMatch, boundaryResult.publicMatch);
-          optionalMatch = laterVarMatch(optionalMatch, boundaryResult.optionalMatch);
-          break;
-        }
-      }
-      first = false;
-      const result = findVarWithinScopeSurface(
-        scope,
-        applyCurrentScopeStart ? scopeStart : undefined,
-        options.local,
-        new Set<Rules>()
-      );
-      publicMatch = laterVarMatch(publicMatch, result.publicMatch);
-      optionalMatch = laterVarMatch(optionalMatch, result.optionalMatch);
-      // No match at this scope; continue up the chain
-    }
-    cursor = cursor.parent;
-  }
-  const fallbackFrame = startRules._scopeFrame?.fallbackFrame;
-  const fallbackRules = fallbackFrame?.rulesNode;
-  if (publicMatch === undefined && optionalMatch === undefined && isNode(fallbackRules, N.Rules)) {
-    cursor = fallbackRules as Rules;
-    while (cursor) {
-      if (isNode(cursor, N.Rules)) {
-        const scope = cursor as Rules;
-        if (isNonClassicImportBoundary(scope)) {
-          const boundaryResult = findVarWithinScopeSurface(
-            scope,
-            undefined,
-            options.local,
-            new Set<Rules>(),
-            undefined,
-            false
-          );
-          publicMatch = laterVarMatch(publicMatch, boundaryResult.publicMatch);
-          optionalMatch = laterVarMatch(optionalMatch, boundaryResult.optionalMatch);
-          break;
-        }
-        const result = findVarWithinScopeSurface(
-          scope,
-          undefined,
-          options.local,
-          new Set<Rules>()
-        );
-        publicMatch = laterVarMatch(publicMatch, result.publicMatch);
-        optionalMatch = laterVarMatch(optionalMatch, result.optionalMatch);
-      }
-      const fallbackCandidate: unknown = isNode(cursor, N.Rules)
-        ? cursor._scopeFrame?.fallbackFrame?.rulesNode
-        : undefined;
-      const nextFallbackRules: Rules | undefined = isNode(fallbackCandidate, N.Rules)
-        ? fallbackCandidate as Rules
-        : undefined;
-      cursor = nextFallbackRules ?? cursor.parent;
-    }
-  }
-  if (publicMatch !== undefined) {
-    return publicMatch;
-  }
-  if (optionalMatch !== undefined) {
-    return optionalMatch;
-  }
-  return undefined;
 }
 
 const { isArray } = Array;
@@ -904,13 +634,16 @@ function lookupVariableReference(
       return live;
     }
   }
-  const fast = findVarDeclarationFast(targetRules, keyStr, env.filter, {
+  const direct = findVariableDeclaration(targetRules, keyStr, {
     start: opts.start,
     context: env.context,
     hasTarget: env.hasTarget,
-    local: opts.local
+    local: opts.local,
+    filter: env.filter,
+    ignoreCurrentScopeStart: true,
+    ignoreParentScopeStart: opts.ignoreParentScopeStart === true
   });
-  return fast;
+  return direct === DIRECT_DECLARATION_LOOKUP_UNCOVERED ? undefined : direct;
 }
 
 function lookupDeclarationReference(

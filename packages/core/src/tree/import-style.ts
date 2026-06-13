@@ -746,6 +746,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (!didAdd) {
       return;
     }
+    const existingFallbackFrame = targetRules._scopeFrame?.fallbackFrame;
     targetRules.scopeFrame = buildScopeFrame(
       undefined,
       targetRules,
@@ -753,6 +754,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       liveSlots,
       targetRules._scopeFrame?.pendingDeclarationNames
     );
+    targetRules.scopeFrame.fallbackFrame = existingFallbackFrame;
   }
 
   private toImportPathNode(node: Node): Quoted | Url {

@@ -1200,12 +1200,29 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7v. [ ] Move fallback-frame traversal and explicit-target/reference-filter
+7v. [x] Move fallback-frame traversal and explicit-target/reference-filter
     semantics into the direct variable declaration walker, then delete
     `findVarDeclarationFast(...)`.
+   The old `Reference`-local `findVarDeclarationFast(...)`,
+   `selectVarBucketCandidate(...)`, and `laterVarMatch(...)` helpers are gone.
+   Variable references now use `findVariableDeclaration(...)` directly with the
+   reference filter, explicit-target bit, current-scope Less start relaxation,
+   parent-scope start relaxation, fallback-frame traversal, and scope-frame
+   live binding semantics modeled in `direct-rules-lookup.ts`. The direct
+   walker keeps separate local-declaration and child-surface start boundaries
+   so later same-scope Less variables remain visible while later child surfaces
+   do not leak backward. Live variable lookup no longer uses the recursive
+   declaration cache. Configured import variable frames preserve existing
+   fallback frames during live-slot rebuilds. Generic any-declaration lookup is
+   not on the live-binding lane; use `findVariable(...)` for live variables.
+
 7w. [ ] Replace `Registry._searchRulesChildren(...)` declaration recursion with
     carried `directDeclarationChildEntries`/frame facts so declaration lookup no
     longer reads `_rulesSet` during search.
+   Next pass should start here. Live grep still shows `_searchRulesChildren(...)`
+   and `_rulesSet` under the legacy `DeclarationRegistry.find(...)` bridge for
+   uncovered `findAll`, non-empty `candidates`/`optionalCandidates`, and
+   semantic-filtered declaration shapes.
 7x. [ ] Model non-empty declaration candidate/optional-candidate accumulation
     as direct lookup match state, then remove that `UNCOVERED` gate.
 7y. [ ] Add property occurrence slots for pre-normalized merge-chain
@@ -1544,6 +1561,55 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Direct variable declaration walker completion pass: accepted as registry
+  bridge deletion plus binding-frame correctness hardening, not as a speed
+  claim. Files: `packages/core/src/tree/reference.ts`,
+  `packages/core/src/tree/util/direct-rules-lookup.ts`,
+  `packages/core/src/tree/import-style.ts`, and this handoff.
+  - New traversal: the direct variable strategy now owns fallback-frame
+    traversal after normal parent search, and `findWithinScopeSurface(...)`
+    carries both local-declaration start and child-surface start so later
+    same-scope Less variables can be read without letting later child surfaces
+    leak backward. Variable lookup can recurse through the scope-frame parent
+    chain to reach configured/imported live bindings; the per-surface
+    `new Set<Rules>()` already used by the direct recursive walk prevents
+    loops. The new `while (fallbackRules)` loop replaces the deleted
+    `findVarDeclarationFast(...)` fallback-frame loop instead of adding a
+    second fallback search. Generic any-declaration lookup was removed from
+    the live-binding lane after focused compound-prefix tests proved live
+    frame climbing is wrong for that path.
+  - New node/materialization: none. No production node, wrapper `Rules`, copy,
+    `.inherit(...)`, `.adopt(...)`, frozen/source metadata mutation, helper
+    output array, or render materialization was added.
+  - Render path: unchanged. The pass changes lookup ownership before the same
+    reference/render paths run.
+  - Helper/API surface: deleted the old `Reference`-local
+    `findVarDeclarationFast(...)`, `selectVarBucketCandidate(...)`, and
+    `laterVarMatch(...)` helpers. No compatibility shim was kept. The direct
+    declaration utility remains typed by operation (`findVariableDeclaration`,
+    `findPropertyDeclaration`, `findAnyDeclaration`) instead of reintroducing a
+    string-dispatch helper.
+  - Metadata mutations: configured import live-slot rebuilds now preserve an
+    existing `fallbackFrame`; this keeps replacement `set` configs visible to
+    imported guarded mixins and detached ruleset closures. Variable lookup no
+    longer reads/writes the recursive direct declaration cache because
+    `currentBindingsByName` live entries can change without a lookup-version
+    bump. Property lookup can still use that cache.
+  - Routine error/control: no new hot-path exception for ordinary misses. The
+    new `Circular fallback frame chain detected in direct declaration lookup`
+    error mirrors the existing circular parent-chain guard and is only for
+    structurally invalid frame cycles, not a miss/control-flow result.
+  - Evidence: touched-file ESLint passed. Focused import replacement and
+    variable/reference cases passed. Full focused lookup suite passed:
+    `reference`, `rules`, `import-style`, and `detached-rulesets` with
+    `269` passing and `30` skipped. The first full focused run exposed a real
+    regression where generic any-declaration lookup climbed live binding frames
+    and broke compound-prefix precedence (`red` became `cyan`); narrowing
+    `ANY_DECLARATION_LOOKUP` off live bindings fixed it. `@jesscss/core` build,
+    `git diff --check`, aggressive cutting review, and node-creation audit
+    passed. One-iteration hotpath smoke passed with usable signals:
+    `mixins-guards.less` median `27.74ms`; `scope-lookup-stress.less` median
+    `82.49ms`. This pass makes no speed claim from that one-iteration smoke.
 - `findDeclarationDirect(...)` adapter deletion pass: accepted as leftover
   string-discriminator surface deletion, not as a speed claim. Files:
   `packages/core/src/tree/util/direct-rules-lookup.ts`,

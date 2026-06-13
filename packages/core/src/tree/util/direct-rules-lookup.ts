@@ -26,6 +26,8 @@ type DeclarationLookupStrategy = {
   lookupVisibility: LookupVisibility;
   visibilityKey: 'VarDeclaration' | 'Declaration' | undefined;
   includeLiveBindings: boolean;
+  includeFallbackFrames: boolean;
+  prepareScopeFrame: boolean;
   semanticFilterCovered: boolean;
   acceptsNode: (node: Node) => node is Declaration;
   skipVarsAfterBindingHit: boolean;
@@ -36,6 +38,8 @@ const VARIABLE_LOOKUP: DeclarationLookupStrategy = {
   lookupVisibility: 'VarDeclaration',
   visibilityKey: 'VarDeclaration',
   includeLiveBindings: true,
+  includeFallbackFrames: true,
+  prepareScopeFrame: true,
   semanticFilterCovered: true,
   acceptsNode: (node): node is Declaration => isNode(node, N.VarDeclaration),
   skipVarsAfterBindingHit: true
@@ -46,6 +50,8 @@ const PROPERTY_LOOKUP: DeclarationLookupStrategy = {
   lookupVisibility: 'Declaration',
   visibilityKey: 'Declaration',
   includeLiveBindings: false,
+  includeFallbackFrames: false,
+  prepareScopeFrame: false,
   semanticFilterCovered: false,
   acceptsNode: (node): node is Declaration => isNode(node, N.Declaration),
   skipVarsAfterBindingHit: false
@@ -55,10 +61,12 @@ const ANY_DECLARATION_LOOKUP: DeclarationLookupStrategy = {
   cacheTag: 'd',
   lookupVisibility: 'Declaration',
   visibilityKey: undefined,
-  includeLiveBindings: true,
+  includeLiveBindings: false,
+  includeFallbackFrames: false,
+  prepareScopeFrame: false,
   semanticFilterCovered: false,
   acceptsNode: (node): node is Declaration => isNode(node, N.Declaration | N.VarDeclaration),
-  skipVarsAfterBindingHit: true
+  skipVarsAfterBindingHit: false
 };
 const EMPTY_DIRECT_DECLARATION_FIND_OPTIONS: DirectDeclarationFindOptions = {};
 
@@ -219,7 +227,8 @@ function getRecursiveLookupCacheKey(
   readonly: boolean
 ): string | undefined {
   if (
-    start !== undefined
+    strategy.includeLiveBindings
+    || start !== undefined
     || readonly
     || options.filter
     || options.findAll
@@ -325,6 +334,7 @@ function findWithinScopeSurface(
   strategy: DeclarationLookupStrategy,
   options: DirectDeclarationFindOptions,
   start: number | undefined,
+  childStart: number | undefined,
   local: boolean,
   readonly: boolean,
   visited: Set<Rules>
@@ -338,6 +348,15 @@ function findWithinScopeSurface(
     return cached;
   }
   visited.add(scope);
+
+  if (strategy.prepareScopeFrame) {
+    if (!scope._scopeFrame) {
+      if (scope.rulesIndexed < scope.value.length) {
+        scope._indexRules();
+      }
+      scope.getScopeFrame();
+    }
+  }
 
   const state = createEmptyState(readonly || Boolean(scope.options.readonly));
   if (strategy.includeLiveBindings) {
@@ -391,6 +410,27 @@ function findWithinScopeSurface(
     }
   }
 
+  const lexicalParentRules = strategy.includeLiveBindings
+    ? scope._scopeFrame?.parent?.rulesNode
+    : undefined;
+  if (
+    isNode(lexicalParentRules, N.Rules)
+    && lexicalParentRules !== scope
+  ) {
+    const lexicalState = findWithinScopeSurface(
+      lexicalParentRules as Rules,
+      key,
+      strategy,
+      options,
+      undefined,
+      undefined,
+      local,
+      state.readonly,
+      visited
+    );
+    mergeMatch(state, lexicalState, false);
+  }
+
   const childEntries = scope.directDeclarationChildEntries !== undefined
     ? (scope.directDeclarationChildEntries ?? undefined)
     : scope.collectDirectDeclarationChildEntries();
@@ -421,7 +461,7 @@ function findWithinScopeSurface(
     if (local && entry.node.options.local) {
       continue;
     }
-    if (start !== undefined && !(entry.node.index !== undefined && entry.node.index < start)) {
+    if (childStart !== undefined && !(entry.node.index !== undefined && entry.node.index < childStart)) {
       continue;
     }
 
@@ -431,6 +471,7 @@ function findWithinScopeSurface(
       strategy,
       options,
       start,
+      childStart,
       local || Boolean(entry.node.options.local),
       state.readonly || Boolean(entry.readonly),
       visited
@@ -478,6 +519,7 @@ function findDeclarationWithStrategy(
     visitedParents.add(rules);
 
     const currentStart = ignoreCurrentScopeStart ? undefined : start;
+    const currentChildStart = start;
     ignoreCurrentScopeStart = false;
     const state = findWithinScopeSurface(
       rules,
@@ -485,6 +527,7 @@ function findDeclarationWithStrategy(
       strategy,
       lookupOptions,
       currentStart,
+      currentChildStart,
       Boolean(lookupOptions.local),
       readonly,
       new Set<Rules>()
@@ -512,6 +555,38 @@ function findDeclarationWithStrategy(
     );
     rules = parentStep.rules;
     start = parentStep.start;
+  }
+
+  let fallbackRules = strategy.includeFallbackFrames
+    && optionalMatch === undefined
+    ? startRules._scopeFrame?.fallbackFrame?.rulesNode
+    : undefined;
+  while (fallbackRules) {
+    if (visitedParents.has(fallbackRules)) {
+      throw new Error('Circular fallback frame chain detected in direct declaration lookup');
+    }
+    visitedParents.add(fallbackRules);
+    const state = findWithinScopeSurface(
+      fallbackRules,
+      key,
+      strategy,
+      lookupOptions,
+      undefined,
+      undefined,
+      Boolean(lookupOptions.local),
+      readonly,
+      new Set<Rules>()
+    );
+    readonly ||= state.readonly;
+    if (state.publicMatch) {
+      if (readonly && options) {
+        options.readonly = true;
+      }
+      return state.publicMatch;
+    }
+    optionalMatch = chooseTraversalMatch(optionalMatch, state.optionalMatch);
+    fallbackRules = fallbackRules._scopeFrame?.fallbackFrame?.rulesNode
+      ?? (isNode(fallbackRules.parent, N.Rules) ? fallbackRules.parent : undefined);
   }
 
   if (readonly && options) {
