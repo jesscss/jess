@@ -514,7 +514,7 @@ next step starts.
      path identity, and static/effect facts, not from ad hoc function-level
      caches.
 
-11. [ ] Callable records prototype.
+11. [x] Callable records prototype.
    Move only simple static callable lookup into binding records. Namespace,
    guard matching, candidate evaluation, import visibility, and callable output
    stay out of the facade until separately proven.
@@ -585,6 +585,9 @@ next step starts.
      original static key array instance.
    - No cache, evaluated-value reuse, side map, materialized node, output
      wrapper, or render-path change was added.
+   - Current completion boundary: this item is only the callable-record
+     prototype. `Binding handle reuse model` remains open because repeated
+     reference reuse is not implemented as one coherent binding-handle system.
 
 Secondary deep-cut queue:
 
@@ -817,47 +820,41 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Call arg serialization closure cut plus Sequence separator probe
-cut.
+Current pass: queue status closure for already-proven cold/audited surfaces.
 
-- New traversal: `Call.serializeRenderedArgsFrom(...)` is a straight loop over
-  the same args previously walked by the recursive local `serializeArgAt(...)`
-  closure. It adds no second pass and resumes only after the first thenable.
-  `Sequence.hasNonWhitespaceTrivia(...)` now uses an indexed loop over the same
-  trivia tokens previously scanned by `.some(...)`; no source tree, parent
-  chain, or side-map lookup was added.
-- New node/materialization: none. No `new Node`, copied node, `.inherit(...)`,
-  `.adopt(...)`, wrapper `Rules`, materialized array, frozen state, parent
-  restoration, or source metadata mutation was added.
-- Render path: the changed `Call` path still evaluates each arg/content node
-  and writes syntax directly to the active writer; it does not materialize a
-  public string or replacement arg list before rendering. The changed
-  `Sequence` path only decides whether to queue a separator; it does not
-  resolve into arrays/nodes to stringify.
-- Helper/API surface: two private `Call` helpers were added:
-  `serializeRenderedArgsFrom(...)` and `writeEvaluatedSyntax(...)`. They delete
-  four per-call local closures (`serializeArgAt`, `writeArgSeparator`,
-  `finishArg`, `finishParen`) and two duplicated content eval/write blocks in
-  `renderPlainFunctionCall(...)` and `renderFinalizedCallSyntax(...)`. One
-  module-scope `Sequence` predicate, `startsWithIdentifierChar(...)`, replaces
-  three per-separator regex callback closures. No public API was added.
-- Metadata mutations: no parent restoration, `frozen`, inherited
-  location/source metadata, lazy options/context creation, `Reflect.*`,
-  `Object.hasOwn`, or defensive structural probe was added.
+- New traversal: none. This pass changed docs only; no loop, recursion,
+  callback helper, parent/source walk, side-map lookup, or object/array scan was
+  added to runtime code.
+- New node/materialization: none. No runtime `new Node`, copied node,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, materialized array, frozen
+  state, parent restoration, or source metadata mutation was added.
+- Render path: no render path changed. The closures are tracker/handoff status
+  updates for surfaces whose behavior was already proven by focused tests.
+- Helper/API surface: no helper, method, or public API was added. `JsArray` and
+  `MixinCollection` were explicitly kept as cold host/handoff wrappers rather
+  than given fake source serialization. `CustomDeclaration` was marked audited
+  because it inherits `Declaration` writer/render staging and only toggles
+  `context.inCustom` during eval.
+- Metadata mutations: none added.
 - Evidence: focused tests passed:
   `pnpm --filter @jesscss/core test --
-  src/tree/__tests__/call.test.ts
-  src/tree/__tests__/sequence.test.ts
-  src/tree/__tests__/list.test.ts
-  src/tree/__tests__/declaration.test.ts` (`199` tests).
-  `pnpm exec eslint packages/core/src/tree/call.ts
-  packages/core/src/tree/sequence.ts` also passed.
-- Hotpath leash: pre-pass bounded status at `36e16f73` reported `functions`
-  `14.16ms` usable, `import-reference` `21.17ms` usable, `mixins-guards`
-  `18.21ms` usable, `extend-chaining` `6.83ms` unstable, and `media`
-  `6.01ms` usable. Dirty post-pass bounded status reported `functions`
-  `14.15ms` usable, `import-reference` `20.55ms` usable, `mixins-guards`
-  `17.98ms` usable, `extend-chaining` `5.79ms` usable, and `media` `5.46ms`
-  unstable.
-- Verdict: keep as closure/regex/callback deletion in Call and Sequence
-  serialization paths. Do not claim measured speed; the leash is status-only.
+  src/tree/__tests__/mixin.test.ts -t "ScopeFrame callable buckets"` (`4`
+  tests); `pnpm --filter @jesscss/core test --
+  src/tree/__tests__/js-host.test.ts src/tree/__tests__/reference.test.ts -t
+  "JsArray|JS host|array"` (`11` tests); and `pnpm --filter @jesscss/core test
+  -- src/tree/util/__tests__/callable-collection.test.ts
+  src/tree/__tests__/call.test.ts -t "MixinCollection|callable
+  collection|collection surface|dynamic mixin collection"` (`4` tests).
+  `pnpm exec eslint packages/core/src/tree/js-array.ts
+  packages/core/src/tree/util/callable-collection.ts
+  packages/core/src/tree/reference.ts` and `pnpm exec eslint
+  packages/core/src/tree/declaration-custom.ts packages/core/src/tree/control.ts`
+  also passed.
+- Hotpath leash: pre-pass bounded status at `011ce0f2` reported `functions`
+  `13.39ms` usable, `import-reference` `18.45ms` unstable, `mixins-guards`
+  `15.05ms` usable, `extend-chaining` `4.78ms` usable, and `media` `5.16ms`
+  usable. No post-pass leash was run because runtime code did not change.
+- Verdict: keep these as queue closures only. `Binding handle reuse`,
+  `Reference` materialization, `StyleImport`, `Rules` merge placement,
+  selector/extend equality, and control body-surface audits remain open because
+  they require runtime design/code changes, not status cleanup.
