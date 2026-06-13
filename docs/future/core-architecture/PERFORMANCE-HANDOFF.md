@@ -2069,6 +2069,36 @@ Interpretation: status only, not a speed claim. Keep as a code-path deletion:
 reusable-leaf checks no longer pay a recursive child scan to rediscover a flag
 already carried by node construction/adoption.
 
+### Callable Arguments Binding Flag/Allocation Cut
+
+Date: 2026-06-13.
+
+Change: `createArgumentsBindingValue(...)` now marks its intentionally
+unadopted child contents with `F_HAS_NODE_CHILD`, preserving the child-flag
+contract without reparenting caller argument nodes. `getArgumentsBindingValues(...)`
+now returns the original arg array when no rest `Sequence` needs flattening,
+deleting the unconditional intermediate `@arguments` array allocation on the
+common path.
+
+Hotpath status:
+
+- Pre-pass `pnpm run measure:less:hotpath -- --stable` at `bc3e4884`
+  reported: `functions` median `13.87ms` noisy,
+  `import-reference` median `23.07ms` unstable,
+  `mixins-guards` median `18.10ms` noisy,
+  `extend-chaining` median `5.60ms` unstable, and `media` median `5.67ms`
+  noisy.
+- Dirty post-pass `pnpm run measure:less:hotpath -- --stable` reported:
+  `functions` median `14.13ms` usable,
+  `import-reference` median `22.01ms` usable,
+  `mixins-guards` median `17.20ms` unstable,
+  `extend-chaining` median `5.52ms` usable, and `media` median `5.70ms`
+  unstable.
+
+Interpretation: status only, not a speed claim. Keep as a flag-invariant fix
+and unconditional allocation deletion in callable binding; the hotpath leash was
+mixed.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

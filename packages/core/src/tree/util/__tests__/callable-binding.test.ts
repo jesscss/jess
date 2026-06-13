@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { any } from '../../any.js';
+import { F_HAS_NODE_CHILD } from '../../node.js';
 import { list } from '../../list.js';
 import { createArgumentsBindingValue, createRestBindingValue, getArgumentsBindingValues } from '../callable-binding.js';
 
@@ -20,6 +21,21 @@ describe('callable binding helpers', () => {
     const args = createArgumentsBindingValue([value]);
 
     expect(args.value).toEqual([value]);
+    expect(args.hasFlag(F_HAS_NODE_CHILD)).toBe(true);
+  });
+
+  it('keeps empty arguments binding values childless', () => {
+    const args = createArgumentsBindingValue([]);
+
+    expect(args.value).toEqual([]);
+    expect(args.hasFlag(F_HAS_NODE_CHILD)).toBe(false);
+  });
+
+  it('returns original argument values when no rest sequence needs flattening', () => {
+    const value = any('2px');
+    const args = [value];
+
+    expect(getArgumentsBindingValues(args)).toBe(args);
   });
 
   it('flattens rest sequences before creating @arguments bindings', () => {

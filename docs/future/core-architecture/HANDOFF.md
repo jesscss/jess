@@ -813,36 +813,43 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: reusable-leaf child-flag trust cut.
+Current pass: callable arguments binding flag/allocation cut.
 
-- New traversal: none. This pass deletes the recursive `hasNodeChild(...)`
-  value crawl from `packages/core/src/tree/util/cloning.ts`. `canReuseLeaf(...)`
-  now trusts the constructor/adoption-maintained `F_HAS_NODE_CHILD` bit.
-- New node/materialization: no new node, copy, wrapper, array, or object
-  materialization was added. The reusable-leaf decision is the same ownership
-  boundary, but child existence is read from node state instead of rediscovered
-  from `node.value`.
+- New traversal: no net new hot traversal. `getArgumentsBindingValues(...)`
+  already walked every argument and allocated an output array unconditionally.
+  It now scans until the first rest `Sequence`; if none exists, it returns the
+  original args array with no output allocation. If a rest sequence exists, it
+  performs the required flatten from that point.
+- New node/materialization: no new node copy, wrapper, or render-only
+  materialization was added. `createArgumentsBindingValue(...)` still creates
+  one `Sequence` binding surface for `@arguments`; this pass only marks
+  unadopted child contents with `F_HAS_NODE_CHILD` so the state flag remains
+  truthful without reparenting caller arg nodes. The flagged `new Array<Node>()`
+  is now only allocated when rest flattening is actually needed; the previous
+  code allocated an array for every call.
 - Render path: no render path was changed, and nothing resolves into arrays or
   nodes just to stringify.
-- Helper/API surface: deleted exported `hasNodeChild(...)`; added no helper and
-  no public replacement API. Existing `F_HAS_NODE_CHILD` is the sole source of
-  truth for this decision. Whole-value `Node.set(null, ...)` now clears the
-  flag before re-processing the new value so the bit is not stale when a child
-  value is replaced by a primitive.
+- Helper/API surface: no helper or public API was added. The helper behavior is
+  narrower: no-rest `@arguments` returns the existing arg list to the caller
+  instead of manufacturing an identical intermediate array.
 - Metadata mutations: no parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
   read, `Reflect.*`, `Object.hasOwn`, or structural probe was added. The only
-  state mutation added is the direct `F_HAS_NODE_CHILD` refresh in
-  `Node.set(null, ...)`, which maintains the existing flag contract.
+  state mutation added is `F_HAS_NODE_CHILD` on an `@arguments` `Sequence` that
+  intentionally contains unadopted child nodes.
 - Evidence: focused tests passed:
   `pnpm --filter @jesscss/core test --
-  src/tree/__tests__/node-flags.test.ts
-  src/tree/util/__tests__/cloning.test.ts src/tree/__tests__/mixin.test.ts
-  src/tree/__tests__/reference.test.ts src/tree/__tests__/call.test.ts`
-  (`384` tests). `rg -n "hasNodeChild" packages/core/src` returns no source
-  hits after the deletion.
-- Hotpath leash: dirty status at `8e5281f1` reported `functions` `13.35ms`
-  unstable, `import-reference` `21.47ms` unstable, `mixins-guards` `17.04ms`
-  unstable, `extend-chaining` `5.56ms` noisy, and `media` `5.91ms` unstable.
-- Verdict: keep as a correctness-backed hot-path crawl deletion. Do not claim
-  measured speed; the leash was status-only and unstable/noisy.
+  src/tree/util/__tests__/callable-binding.test.ts
+  src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts
+  src/tree/__tests__/call.test.ts src/tree/__tests__/node-flags.test.ts`
+  (`389` tests).
+- Hotpath leash: pre-pass `pnpm run measure:less:hotpath -- --stable` at
+  `bc3e4884` reported `functions` `13.87ms` noisy,
+  `import-reference` `23.07ms` unstable, `mixins-guards` `18.10ms` noisy,
+  `extend-chaining` `5.60ms` unstable, and `media` `5.67ms` noisy. Dirty
+  post-pass status reported `functions` `14.13ms` usable,
+  `import-reference` `22.01ms` usable, `mixins-guards` `17.20ms` unstable,
+  `extend-chaining` `5.52ms` usable, and `media` `5.70ms` unstable.
+- Verdict: keep as a flag-invariant fix plus unconditional allocation deletion
+  in callable binding. Do not claim measured speed; the leash is status-only
+  and still mixed.

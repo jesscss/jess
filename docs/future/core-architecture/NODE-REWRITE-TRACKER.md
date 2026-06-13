@@ -137,9 +137,11 @@ Current hard leftovers after the broad hook sweep:
   use straight indexed loops instead of `.map(...)`, `.some(...)`, and metadata
   spread copies. `canReuseLeaf(...)` now trusts `F_HAS_NODE_CHILD` instead of
   recursively rediscovering child nodes, and `Node.set(null, ...)` refreshes
-  that bit on whole-value replacement. This does not complete any node family;
-  it removes callback/crawl scaffolding from existing cast/copy ownership
-  boundaries.
+  that bit on whole-value replacement. Callable `@arguments` binding now marks
+  unadopted child contents with `F_HAS_NODE_CHILD` and skips the intermediate
+  flatten array when no rest `Sequence` is present. This does not complete any
+  node family; it removes callback/crawl/allocation scaffolding from existing
+  cast/copy/binding ownership boundaries.
 - `Sequence` and `List` have writer hooks, but are not complete until resolved
   render paths stop capturing strings before writing buffers and child emission
   stops routing through public `toString(...)` where direct hooks preserve

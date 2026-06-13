@@ -25,6 +25,9 @@ export function createRestBindingValue(args: Node[]): Sequence {
 
 export function createArgumentsBindingValue(args: Node[]): Sequence {
   const value = new Sequence([]);
+  if (args.length > 0) {
+    value.addFlag(F_HAS_NODE_CHILD);
+  }
   for (let i = 0; i < args.length; i++) {
     value.value.push(args[i]!);
   }
@@ -32,16 +35,28 @@ export function createArgumentsBindingValue(args: Node[]): Sequence {
 }
 
 export function getArgumentsBindingValues(args: Node[]): Node[] {
-  const argumentNodes: Node[] = [];
   for (let i = 0; i < args.length; i++) {
     const argNode = args[i]!;
     if (argNode instanceof Sequence) {
+      const argumentNodes = new Array<Node>();
+      for (let j = 0; j < i; j++) {
+        argumentNodes.push(args[j]!);
+      }
       for (let j = 0; j < argNode.value.length; j++) {
         argumentNodes.push(argNode.value[j]!);
       }
-    } else {
-      argumentNodes.push(argNode);
+      for (let j = i + 1; j < args.length; j++) {
+        const nextArg = args[j]!;
+        if (nextArg instanceof Sequence) {
+          for (let k = 0; k < nextArg.value.length; k++) {
+            argumentNodes.push(nextArg.value[k]!);
+          }
+        } else {
+          argumentNodes.push(nextArg);
+        }
+      }
+      return argumentNodes;
     }
   }
-  return argumentNodes;
+  return args;
 }
