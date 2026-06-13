@@ -49,13 +49,13 @@ function expectDeclarationNode(node: Node | undefined): Declaration {
 function getPropWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
-  return n.findDeclaration(key, 'Declaration', opts);
+  return n.findProperty(key, opts);
 }
 
 function getVarWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
-  let decl = n.findDeclaration(key, 'VarDeclaration', opts);
+  let decl = n.findVariable(key, opts);
   return decl;
 }
 
@@ -81,13 +81,6 @@ class WholeBufferCountingWriter extends OutputWriter {
     return super.capture(fn);
   }
 }
-
-// function getSelectorWithContext(context: Context, n: Rules, key: Selector, opts: FindOptions = {}, start?: number) {
-//   context.rulesContext = n;
-//   opts.searchParents = true;
-//   let decl = n.findDeclaration(key, 'VarDeclaration', opts);
-//   return decl;
-// }
 
 describe('Rules', () => {
   beforeAll(() => {
@@ -1086,7 +1079,7 @@ describe('Rules', () => {
         }
         const scope3Rules = scope3.value.rules;
         expect(getVar(scope3Rules, 'z', { start: 0 })?.toTrimmedString()).toBe('$z: black');
-        const scope3Found = scope3Rules.findDeclaration('z', 'VarDeclaration', {
+        const scope3Found = scope3Rules.findVariable('z', {
           filter: () => true,
           context,
           hasTarget: false,

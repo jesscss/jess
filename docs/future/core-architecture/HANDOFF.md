@@ -1120,29 +1120,101 @@ left for this branch.
 
 Seeded next binding/lookup queue:
 
-7n. [ ] Audit remaining production `Rules.findDeclaration(...)` callers and
+7n. [x] Audit remaining production `Rules.findDeclaration(...)` callers and
     classify each as cold any-declaration boundary, semantic-filter bridge, or
     removable typed-lane caller.
-7o. [ ] Move helper/test call sites that still express variable/property
+   Remaining production callers after this pass:
+   - `Reference.lookupAnyDeclarationOrFind(...)` uses
+     `findDeclaration(..., undefined, ...)` for the explicit any-declaration
+     reference lane.
+   - `Registry._searchRulesChildren(...)` uses
+     `findDeclaration(..., undefined, ...)` only when child recursion is also
+     any-declaration/unfiltered.
+   - `Rules.findDeclaration(...)` itself is now the typed cold boundary for
+     `VarDeclaration`, `Declaration`, or any-declaration lookup.
+   No production caller still asks for variable/property lookup through a
+   generic string-dispatch helper.
+
+7o. [x] Move helper/test call sites that still express variable/property
     lookup through `findDeclaration(..., 'VarDeclaration'|'Declaration')` onto
     typed lanes where the test is not explicitly exercising the cold boundary.
-7p. [ ] Narrow or delete the remaining `normalizeDeclarationFilter(...)`
+   Rules/import/detached-ruleset helper lookups now call `findVariable(...)` or
+   `findProperty(...)`. Reference tests that were asserting variable direct
+   option behavior now call `findVariable(...)`. The remaining literal
+   `findDeclaration(..., 'VarDeclaration')` test is intentionally named
+   boundary coverage for `Rules.findDeclaration(...)` itself; the remaining
+   `findDeclaration(..., undefined)` test covers source-order any-declaration
+   behavior.
+
+7p. [x] Narrow or delete the remaining `normalizeDeclarationFilter(...)`
     boundary if no production caller needs arbitrary string filters after
     `7n`.
-7q. [ ] Audit `findVarDeclarationFast(...)` against the direct variable
+   Deleted. `Rules.findDeclaration(...)` now accepts only
+   `'VarDeclaration' | 'Declaration' | undefined` and no longer normalizes
+   arbitrary strings at runtime.
+
+7q. [x] Audit `findVarDeclarationFast(...)` against the direct variable
     declaration walker and either merge the duplicate walk or document the
     concrete remaining reason it differs.
-7r. [ ] Audit declaration lookup options that still force `UNCOVERED`
+   Do not merge it blindly. `findVarDeclarationFast(...)` still covers
+   `Reference`'s variable fallback after the scope-frame facade declines:
+   explicit targets, interpolated variables, non-snapshot start constraints,
+   fallback-frame chains, custom reference filters, import-boundary handling,
+   and child-surface visibility. The direct declaration walker shares several
+   facts but does not yet own fallback-frame traversal or the exact
+   `Reference` fallback semantics. Next implementation should move those facts
+   into the direct variable declaration walker, then delete
+   `findVarDeclarationFast(...)` instead of keeping two recursive walkers.
+
+7r. [x] Audit declaration lookup options that still force `UNCOVERED`
     (`filter`, non-empty candidate sets, semantic filters) and split them into
     frame-owned occurrence facts versus truly cold registry compatibility.
-7s. [ ] Model property merge-chain occurrence slots enough to remove the
+   Direct declaration lookup handles filters but disables recursive caching when
+   a filter is present. Empty `candidates` / `optionalCandidates` are covered;
+   non-empty sets still represent registry comparison/accumulation state and
+   force `UNCOVERED`. `semanticFilter` remains uncovered for property and
+   any-declaration lookup because merge-chain semantics need
+   pre-normalization/source-order occurrence facts.
+
+7s. [x] Model property merge-chain occurrence slots enough to remove the
     semantic filtered property bridge, or record the exact source-order fact
     still missing before implementation.
-7t. [ ] Audit remaining `_rulesSet` reads/writes and separate unavoidable
+   Not implemented in this pass. Required fact is now explicit:
+   property merge-chain lookup needs frame-owned declaration occurrence slots
+   that preserve pre-normalization assignment entries, merge anchors, optional
+   visibility, readonly propagation, and source-order comparison. Without that
+   fact, semantic filtered property lookup must stay on the registry bridge.
+
+7t. [x] Audit remaining `_rulesSet` reads/writes and separate unavoidable
     legacy registry construction from lookup-time recursion debt.
-7u. [ ] Re-run the binding-focused grep suite after each pass and reseed this
+   Production `Reference` no longer reads `_rulesSet`. Remaining production
+   uses are old registry construction/reset in `Rules` and old registry child
+   recursion in `Registry._searchRulesChildren(...)`. That is lookup-time
+   recursion debt, but it is isolated to the legacy registry bridge and should
+   be deleted by replacing the bridge with carried `directDeclarationChildEntries`
+   / frame occurrence facts, not by adding another side registry.
+
+7u. [x] Re-run the binding-focused grep suite after each pass and reseed this
     queue before commit; do not continue into parked cutting/performance work
     while any item above remains unchecked.
+
+Seeded next binding/lookup queue:
+
+7v. [ ] Move fallback-frame traversal and explicit-target/reference-filter
+    semantics into the direct variable declaration walker, then delete
+    `findVarDeclarationFast(...)`.
+7w. [ ] Replace `Registry._searchRulesChildren(...)` declaration recursion with
+    carried `directDeclarationChildEntries`/frame facts so declaration lookup no
+    longer reads `_rulesSet` during search.
+7x. [ ] Model non-empty declaration candidate/optional-candidate accumulation
+    as direct lookup match state, then remove that `UNCOVERED` gate.
+7y. [ ] Add property occurrence slots for pre-normalized merge-chain
+    declarations and remove the semantic-filtered property registry bridge.
+7z. [ ] Delete or quarantine `Rules.rulesSet` / `_rulesSet` once child
+    declaration and callable registry bridges no longer require it.
+7aa. [ ] Audit `DeclarationRegistry.find(...)` remaining callers after `7v-7z`
+    and collapse it to a test-only or deleted path if no production lookup uses
+    it.
 
 Parked secondary deep-cut queue:
 
@@ -4427,3 +4499,32 @@ the gate passed.
   workspace because it skipped package test setup, and the first hotpath
   attempt used a nonexistent `--files` option; the successful
   package-relative/tested commands are the behavioral evidence.
+- Typed declaration boundary cleanup/audit pass: accepted as lookup surface
+  narrowing plus bridge classification, not as a speed claim. New traversal:
+  none. The pass deletes `normalizeDeclarationFilter(...)`, narrows
+  `Rules.findDeclaration(...)` from arbitrary string filters to
+  `'VarDeclaration' | 'Declaration' | undefined`, moves non-boundary helper and
+  variable-option tests to `findVariable(...)` / `findProperty(...)`, and
+  records the remaining bridge facts for `findVarDeclarationFast(...)`,
+  non-empty registry candidate accumulation, semantic filtered property merge
+  lookup, and `_rulesSet`. New node/materialization: no production node,
+  wrapper `Rules`, copied node, `.inherit(...)`, `.adopt(...)`, frozen state,
+  source metadata, parent mutation, cache, side map, helper array, or
+  materialized output was added. Render path: unchanged; this changes lookup
+  entry selection and docs only. Helper/API surface: one runtime helper was
+  deleted, no replacement helper or compatibility shim was added, and the
+  cold `findDeclaration(...)` boundary was narrowed instead of preserved for
+  compatibility. Metadata mutations: none. Evidence: binding grep shows no
+  production `normalizeDeclarationFilter(...)`, no production literal
+  `findDeclaration(..., 'VarDeclaration'|'Declaration')` caller, and only two
+  production `findDeclaration(..., undefined, ...)` any-declaration bridge
+  callers (`Reference` any-declaration and registry child any-declaration).
+  One remaining test-only `findDeclaration(..., 'VarDeclaration')` hit is the
+  intentional cold-boundary coverage test. Focused `reference`, `rules`,
+  `import-style`, and `detached-rulesets` tests passed (`268` tests, `31`
+  skipped) after moving helper tests to typed lanes; touched-file ESLint,
+  `@jesscss/core` build, `git diff --check`, aggressive cutting review, and
+  node-creation audit passed. Hotpath sanity ran for `mixins-guards.less` and
+  `scope-lookup-stress.less` with one iteration only; it is regression smoke,
+  not speed evidence. Remaining implementation work is explicitly seeded as
+  `7v-7aa`.

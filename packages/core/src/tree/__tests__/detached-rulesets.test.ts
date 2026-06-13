@@ -14,7 +14,7 @@ import type { FindOptions } from '../util/registry-utils.js';
 function getVar(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
-  return n.findDeclaration(key, 'VarDeclaration', opts);
+  return n.findVariable(key, opts);
 }
 
 describe('Detached Rulesets - Variable Lookups', () => {

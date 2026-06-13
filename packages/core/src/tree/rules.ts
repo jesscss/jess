@@ -444,10 +444,6 @@ function hasFlagMethod(value: unknown): value is FlagLikeNode {
     && typeof value.hasFlag === 'function';
 }
 
-function normalizeDeclarationFilter(filterType: string | undefined): 'VarDeclaration' | 'Declaration' | undefined {
-  return filterType === 'VarDeclaration' || filterType === 'Declaration' ? filterType : undefined;
-}
-
 function consumeLeadingTrivia(node: Node, options: PrintOptions): string {
   const trivia = (options.trivia ?? node.sourceRoot?._treeContext?.opts?.trivia) as
     | TreeContext['opts']['trivia']
@@ -2004,15 +2000,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   findDeclaration(
     keys: string,
-    filterType?: string,
+    filterType?: 'VarDeclaration' | 'Declaration',
     options?: Registries.DeclarationFindOptions
   ): ReturnType<Registries.DeclarationRegistry['find']> | undefined {
-    const normalizedFilter = normalizeDeclarationFilter(filterType);
-    const directLookup = normalizedFilter === 'VarDeclaration'
+    const directLookup = filterType === 'VarDeclaration'
       ? findVariableDeclaration
-      : normalizedFilter === 'Declaration' && !options?.semanticFilter
+      : filterType === 'Declaration' && !options?.semanticFilter
         ? findPropertyDeclaration
-        : normalizedFilter === undefined
+        : filterType === undefined
           ? findAnyDeclaration
           : undefined;
     const direct = directLookup
@@ -2021,7 +2016,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
       return direct;
     }
-    return this.getRegistry('declaration').find(keys, normalizedFilter, options);
+    return this.getRegistry('declaration').find(keys, filterType, options);
   }
 
   findVariable(

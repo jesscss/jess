@@ -2815,7 +2815,7 @@ describe('reference', () => {
         ]);
 
         await node.eval(context);
-        const found = node.findDeclaration('color', 'VarDeclaration');
+        const found = node.findVariable('color');
 
         expect(found?.value.value.valueOf()).toBe('red');
         expect(registryHits).toHaveLength(0);
@@ -2970,7 +2970,7 @@ describe('reference', () => {
 
         await node.eval(context);
         const opts = { searchedRules: new Set([node]) };
-        const found = node.findDeclaration('color', 'VarDeclaration', opts);
+        const found = node.findVariable('color', opts);
 
         expect(found?.value.value.valueOf()).toBe('red');
         expect(registryHits).toHaveLength(0);
@@ -3027,7 +3027,7 @@ describe('reference', () => {
           candidates: new Set(),
           optionalCandidates: new Set()
         };
-        const found = node.findDeclaration('color', 'VarDeclaration', opts);
+        const found = node.findVariable('color', opts);
 
         expect(found?.value.value.valueOf()).toBe('red');
         expect(registryHits).toHaveLength(0);

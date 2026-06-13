@@ -49,7 +49,7 @@ function getVarWithContext(context: Context, n: Rules, key: string, opts: FindOp
   context.rulesContext = n;
   opts.context ??= context;
   opts.searchParents = true;
-  return n.findDeclaration(key, 'VarDeclaration', opts);
+  return n.findVariable(key, opts);
 }
 
 function getMixinWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
