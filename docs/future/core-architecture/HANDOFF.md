@@ -813,53 +813,44 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Reference lookup closure hoist.
+Current pass: Reference lookup utility placement correction.
 
-- New traversal: no new semantic traversal. The child-surface and fallback
-  frame walks are the same loops as before; `findVarWithinScopeSurface(...)`
-  and `searchRuntimeVarBindingChain(...)` were moved to module scope so the
-  existing traversal does not require allocating local helper functions per
-  lookup. The flagged `for (let i = childEntries.length - 1; ...)` and
-  `while (f && !seen.has(f))` loops are moved existing loops, not additional
-  passes. No extra parent/source walk, side map, or cache was added.
+- New traversal: none. The child-surface and fallback frame walks are the same
+  loops as before; their bodies moved from `Reference`'s node file into
+  `packages/core/src/tree/util/reference-lookup.ts`. No extra parent/source
+  walk, side map, cache, recursive pass, or lookup retry was added.
 - New node/materialization: none added. No new `Node`, copied node,
   `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
   metadata mutation, side map, helper array, or materialized eval/render value
   was added. The `RuntimeVarBinding` object returned on a live-slot hit is the
-  pre-existing semantic result object, only produced by a hoisted helper now.
-  The flagged `FindVarDeclarationFastOptions` and
-  `FindVarScopeSurfaceResult` are TypeScript aliases for the existing argument
-  and return shapes, not runtime objects.
+  pre-existing semantic result object, only produced from the util module now.
 - Render path: no render behavior changed and no render path was routed through
-  public string APIs. This pass touches lookup helper allocation only; it does
+  public string APIs. This pass touches lookup helper placement only; it does
   not resolve into arrays/nodes just to stringify.
-- Helper/API surface: two module-scope helpers were added only to remove two
-  per-call local closures: `findVarDeclarationFast(...)` no longer creates the
-  recursive `findVarWithinScopeSurface(...)`, and
-  `lookupRuntimeVarBinding(...)` no longer creates `searchChain(...)`. The
-  helpers are private module functions and receive existing lookup state
-  positionally; no public API or wrapper object was added.
+- Helper/API surface: public node method surface did not grow. Heavy lookup
+  utilities were moved out of `reference.ts` and into a tree util module so the
+  node file holds Reference behavior instead of shared lookup machinery. The
+  exported util functions are internal module utilities, not package API.
 - Metadata mutations: none. No parent restoration, `frozen`, inherited
   location/source metadata, lazy options/context creation, generic defensive
   read, ownership probe, structural probe, or error-control-flow path was added.
-  The flagged `scope.parent`, `scope.sourceNode`, `live.sourceNode`, and
-  `sourceNode: src` reads/assignment are moved existing lookup/result code, not
-  new metadata mutation. The flagged `visited: Set<Rules>` and
-  `seen: Set<ScopeFrame>` parameters reuse the Sets that were already created
-  by the caller before this pass; no new side map/set was added.
-- Evidence: focused tests passed: `pnpm --filter @jesscss/core test --
+  The source/parent reads inside the util are moved existing lookup/result
+  code, not new metadata mutation.
+- Evidence: focused tests passed after fixing the util import boundary:
+  `pnpm --filter @jesscss/core test --
   src/tree/__tests__/reference.test.ts src/tree/__tests__/scope-frame.test.ts
   src/tree/__tests__/mixin.test.ts` (`256` tests). `pnpm --filter
-  @jesscss/core build` passed with the existing `js-expr.ts` direct-eval build
-  warning.
-- Hotpath leash: pre-pass at `8b4c1073` was status-only, not a speed claim:
-  `functions` `12.06ms` usable, `import-reference` `18.18ms` usable,
-  `mixins-guards` `16.46ms` usable, `extend-chaining` `5.02ms` unstable, and
-  `media` `5.10ms` usable. Final dirty post-pass leash was slower across most
-  medians and remains status-only: `functions` `12.58ms` usable,
-  `import-reference` `19.25ms` usable, `mixins-guards` `16.45ms` usable,
-  `extend-chaining` `5.33ms` usable, and `media` `5.54ms` usable.
-- Verdict: keep if gates pass as behavior-preserving closure deletion, but do
-  not claim runtime improvement. Remaining Reference work is still the real
-  copy/materialization pressure: rules-like surfaces, public value
-  materialization, merged assign normalization, and key conversion.
+  @jesscss/core build` passed with the existing `js-expr.ts` direct-eval
+  warning. `pnpm run verify:aggressive-cutting-review` and `git diff --check`
+  passed.
+- Hotpath leash: not a performance pass and no speed claim. If a hotpath run is
+  recorded for this correction, treat it as status only because the intended
+  change is file-boundary cleanup, not a measured algorithmic cut. Dirty
+  post-correction `pnpm run measure:less:hotpath -- --stable` at `327f3a2e`
+  reported: `functions` `12.34ms`, `import-reference` `19.23ms`,
+  `mixins-guards` `17.02ms`, `extend-chaining` `4.95ms`, and `media`
+  `5.34ms`; all signals were usable.
+- Verdict: keep only if gates pass as behavior-preserving placement cleanup.
+  Remaining Reference work is still the real copy/materialization pressure:
+  rules-like surfaces, public value materialization, merged assign
+  normalization, and key conversion.

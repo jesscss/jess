@@ -1942,6 +1942,26 @@ slower for functions, import-reference, extend-chaining, and media, while
 mixins-guards was roughly flat. Keep only as code-path deletion of per-lookup
 closure allocation; do not sell it as a speedup.
 
+### Reference Lookup Utility Placement Correction
+
+Date: 2026-06-13.
+
+Change: moved the heavy Reference lookup helper bodies from
+`packages/core/src/tree/reference.ts` to
+`packages/core/src/tree/util/reference-lookup.ts`. This is a file-boundary and
+node-file cleanup pass; traversal and lookup behavior are unchanged.
+
+Hotpath status:
+
+- Dirty post-correction `pnpm run measure:less:hotpath -- --stable` at
+  `327f3a2e` reported: `functions` median `12.34ms` usable,
+  `import-reference` median `19.23ms` usable, `mixins-guards` median
+  `17.02ms` usable, `extend-chaining` median `4.95ms` usable, and `media`
+  median `5.34ms` usable.
+
+Interpretation: status only, not a runtime win claim. Keep as architecture
+placement cleanup: node files should not carry heavy reusable utility bodies.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
