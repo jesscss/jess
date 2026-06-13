@@ -1027,6 +1027,22 @@ left for this branch.
    - Done: direct index/target, fallback-frame, property direct, semantic
      filtered bridge, and nested static variable focused tests still pass.
 
+7h. [x] Route covered `Reference` declaration/property reads directly.
+   Static `Reference` declaration, property, index-declaration, direct-rules
+   target, and function-fallback declaration lookups now call
+   `findDeclarationDirect(...)` before falling back to `Rules.findDeclaration(...)`.
+   Covered reference reads skip the typed `Rules.findProperty(...)` /
+   `Rules.findDeclaration(...)` method layer entirely; semantic filtered and
+   otherwise unsupported shapes still return `UNCOVERED` and use the existing
+   declaration bridge.
+
+   Completion gate:
+   - Done: focused static property/declaration reference tests prove covered
+     reads do not call `Rules.findProperty(...)` or `Rules.findDeclaration(...)`
+     before or after handle invalidation.
+   - Done: semantic filtered property lookup remains registry-owned.
+   - Done: focused variable/property/direct fallback tests still pass.
+
 Parked secondary deep-cut queue:
 
 Do not select this queue while the Focus Spec is registryless lookup/binding.
@@ -1355,6 +1371,40 @@ the gate passed.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Reference direct declaration bridge pass: accepted as a typed lookup method
+  bridge deletion, not as a speed claim. Files:
+  `packages/core/src/tree/reference.ts`,
+  `packages/core/src/tree/__tests__/reference.test.ts`,
+  `docs/future/core-architecture/HANDOFF.md`, and
+  `docs/future/core-architecture/BINDING-INDEX-PROPOSAL.md`.
+  - New traversal: none. The pass routes covered `Reference` declaration,
+    property, index-declaration, direct-rules-target, and function-fallback
+    declaration reads into the existing `findDeclarationDirect(...)` walker
+    before the typed `Rules.findDeclaration(...)`/`Rules.findProperty(...)`
+    method layer. Unsupported shapes still fall back through the existing
+    `UNCOVERED` branch.
+  - New node/materialization: none. No node, wrapper `Rules`, copy,
+    `.inherit(...)`, `.adopt(...)`, source metadata, parent mutation, output
+    array, or materialized render artifact was added.
+  - Render path: unchanged. The same declaration node or runtime binding is
+    returned before normal value eval/render.
+  - Helper/API surface: one module-local helper was added in `Reference` to
+    centralize "direct first, typed fallback" lookup and delete repeated typed
+    method calls from covered reference adapters. No public API was added.
+  - Metadata mutations: none.
+  - Routine error/control: no production throw/catch/Error path added. Focused
+    tests still use monkey-patched typed methods only to prove they are not
+    called for covered reference reads.
+  - Evidence: touched-file ESLint passed; focused `reference.test.ts` passed
+    (`8` passed, `130` skipped), covering static property/declaration reference
+    direct lookup, explicit-target variable fallback, direct variable/property
+    lookup, unfiltered property references, and semantic filtered property
+    registry fallback. Broader binding sweep passed (`14` files, `685` passed,
+    `9` skipped). `@jesscss/core` and `jess` builds passed. Node-creation audit
+    stayed at `new-node 310`, `with-surface 39`, `derive 30`, `copy-leaves 28`.
+    `measure:less:hotpath` ran as sanity only with mixed noisy/unstable/usable
+    signals, so this pass makes no speed claim. `verify:aggressive-cutting-review`
+    and `git diff --check` passed.
 - Reference variable fallback child-entry pass: accepted as registry-shaped
   lookup storage deletion, not as a speed claim. Files:
   `packages/core/src/tree/reference.ts`,

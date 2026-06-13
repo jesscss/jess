@@ -4212,7 +4212,7 @@ describe('reference', () => {
       }
     });
 
-    it('reuses static property binding handles until the target rules version changes', async () => {
+    it('static property references use direct declaration lookup before binding handle reuse', async () => {
       const originalFindProperty = RulesClass.prototype.findProperty;
       let propertyLookups = 0;
       RulesClass.prototype.findProperty = function(...args: Parameters<typeof originalFindProperty>) {
@@ -4231,20 +4231,20 @@ describe('reference', () => {
         const lookupRef = ref({ key: 'color' }, { type: 'property' });
 
         expect(lookupRef.eval(context).valueOf()).toBe('blue');
-        expect(propertyLookups).toBe(1);
+        expect(propertyLookups).toBe(0);
 
         expect(lookupRef.eval(context).valueOf()).toBe('blue');
-        expect(propertyLookups).toBe(1);
+        expect(propertyLookups).toBe(0);
 
         node.push(decl({ name: 'unrelated', value: any('1') }));
         expect(lookupRef.eval(context).valueOf()).toBe('blue');
-        expect(propertyLookups).toBe(2);
+        expect(propertyLookups).toBe(0);
       } finally {
         RulesClass.prototype.findProperty = originalFindProperty;
       }
     });
 
-    it('reuses static declaration binding handles until the target rules version changes', async () => {
+    it('static declaration references use direct declaration lookup before binding handle reuse', async () => {
       const originalFindDeclaration = RulesClass.prototype.findDeclaration;
       let declarationLookups = 0;
       RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
@@ -4263,14 +4263,14 @@ describe('reference', () => {
         const lookupRef = ref({ key: 'color' }, { type: 'declaration' });
 
         expect(lookupRef.eval(context).valueOf()).toBe('blue');
-        expect(declarationLookups).toBe(1);
+        expect(declarationLookups).toBe(0);
 
         expect(lookupRef.eval(context).valueOf()).toBe('blue');
-        expect(declarationLookups).toBe(1);
+        expect(declarationLookups).toBe(0);
 
         node.push(decl({ name: 'unrelated', value: any('1') }));
         expect(lookupRef.eval(context).valueOf()).toBe('blue');
-        expect(declarationLookups).toBe(2);
+        expect(declarationLookups).toBe(0);
       } finally {
         RulesClass.prototype.findDeclaration = originalFindDeclaration;
       }

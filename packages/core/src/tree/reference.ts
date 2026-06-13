@@ -44,6 +44,10 @@ import {
 } from './util/mixin-output-slot.js';
 import { MixinCollection } from './util/callable-collection.js';
 import type { MixinEntry } from './util/callable-entry.js';
+import {
+  DIRECT_DECLARATION_LOOKUP_UNCOVERED,
+  findDeclarationDirect
+} from './util/direct-rules-lookup.js';
 /**
  * The type is determined by syntax
  * and location.
@@ -863,7 +867,12 @@ function lookupIndexReference(
     }
   }
   const keyStr = getLookupKeyString(valueKey);
-  return targetRules.findDeclaration(keyStr, getIndexReferenceFilterType(env.keyNode), opts);
+  return lookupDeclarationDirectOrFind(
+    targetRules,
+    keyStr,
+    getIndexReferenceFilterType(env.keyNode),
+    opts
+  );
 }
 
 function lookupPropertyReference(
@@ -871,7 +880,7 @@ function lookupPropertyReference(
   valueKey: NormalizedLookupKey,
   opts: FindOptions
 ): RulesLookupResult {
-  return targetRules.findProperty(getLookupKeyString(valueKey), opts);
+  return lookupDeclarationDirectOrFind(targetRules, getLookupKeyString(valueKey), 'Declaration', opts);
 }
 
 function lookupVariableReference(
@@ -910,7 +919,7 @@ function lookupDeclarationReference(
   valueKey: NormalizedLookupKey,
   opts: FindOptions
 ): RulesLookupResult {
-  return targetRules.findDeclaration(getLookupKeyString(valueKey), undefined, opts);
+  return lookupDeclarationDirectOrFind(targetRules, getLookupKeyString(valueKey), undefined, opts);
 }
 
 function lookupFunctionReference(
@@ -923,13 +932,26 @@ function lookupFunctionReference(
   if (env.inCall) {
     return (
       targetRules.findFunction(keyStr, undefined, opts)
-      ?? targetRules.findDeclaration(keyStr, undefined, opts)
+      ?? lookupDeclarationDirectOrFind(targetRules, keyStr, undefined, opts)
     );
   }
   return (
-    targetRules.findDeclaration(keyStr, undefined, opts)
+    lookupDeclarationDirectOrFind(targetRules, keyStr, undefined, opts)
     ?? targetRules.findFunction(keyStr, undefined, opts)
   );
+}
+
+function lookupDeclarationDirectOrFind(
+  targetRules: Rules,
+  key: string,
+  filterType: 'Declaration' | 'VarDeclaration' | undefined,
+  opts: FindOptions
+): RulesLookupResult {
+  const direct = findDeclarationDirect(targetRules, key, filterType, opts);
+  if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
+    return direct;
+  }
+  return targetRules.findDeclaration(key, filterType, opts);
 }
 
 function lookupCallableReference(
@@ -1387,7 +1409,12 @@ function lookupDirectRulesTarget(
   key: string,
   keyNode: ReferenceValue['key']
 ): RulesLookupResult {
-  return targetNode.findDeclaration(key, getDirectRulesIndexFilterType(keyNode));
+  return lookupDeclarationDirectOrFind(
+    targetNode,
+    key,
+    getDirectRulesIndexFilterType(keyNode),
+    {}
+  );
 }
 
 function lookupDirectNamedTarget(
