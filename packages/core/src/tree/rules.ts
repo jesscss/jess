@@ -2788,8 +2788,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // Don't use start when searching parents - we want to find variables in parent regardless of position
         // start is only relevant for finding variables before the current node in the same Rules
         opts.start = undefined;
-        // node.type is 'VarDeclaration' or 'Declaration', use it directly as filterType
-        let result = this.findDeclaration(key, normalizeDeclarationFilter(node.type), opts);
+        let result = isNode(node, N.VarDeclaration)
+          ? this.findVariable(key, opts)
+          : this.findProperty(key, opts);
         if (result) {
           if (result.options?.readonly || opts.readonly) {
             throw new ReferenceError(`"${key}" is readonly`);

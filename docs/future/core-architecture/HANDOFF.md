@@ -48,7 +48,9 @@ Active implementation specs:
 9. Run focused tests first, then the required gates.
 10. Keep, reshape, or revert based on the benchmark evidence and the aggressive
    cutting self-prosecution.
-11. Commit and push the completed pass.
+11. Before committing, update the completed items and seed the next explicit
+    binding/lookup queue from live remaining code smells. Commit and push only
+    after that full swath is complete and the next queue is visible.
 
 ## Focus Spec
 
@@ -1075,6 +1077,72 @@ left for this branch.
    Completion gate:
    - Done: `rg` finds no production `findDeclarationDirect(...)` call sites.
    - Done: focused and expanded binding/selector tests pass.
+
+7k. [x] Split `Reference` declaration fallback by selected typed lane.
+   `Reference` no longer routes property, index, declaration, direct-rules
+   target, or function-fallback declaration lookup through one helper carrying
+   `'VarDeclaration'` / `'Declaration'` / `undefined`. Each path now calls the
+   selected direct declaration operation first, then the typed fallback method
+   for that lane: `findVariable(...)`, `findProperty(...)`, or the remaining
+   cold `findDeclaration(..., undefined, ...)` boundary for any-declaration
+   lookup.
+
+   Completion gate:
+   - Done: production `Reference` has no
+     `lookupDeclarationDirectOrFind(...)`, `getIndexReferenceFilterType(...)`,
+     or `getDirectRulesIndexFilterType(...)` helpers.
+   - Done: focused tests prove plain index references and direct `Rules` index
+     targets do not call generic `Rules.findDeclaration(...)` for already
+     selected variable/property keys.
+
+7l. [x] Route `setDefined` assignment lookup through typed declaration lanes.
+   `Rules.evalNode(...)` no longer normalizes `node.type` back into a
+   declaration-filter string before assignment. `VarDeclaration` assignments
+   call `findVariable(...)`; property declarations call `findProperty(...)`.
+
+   Completion gate:
+   - Done: no production caller uses
+     `findDeclaration(key, normalizeDeclarationFilter(node.type), opts)`.
+   - Done: focused `setDefined`/scope tests still pass.
+
+7m. [x] Stop child-registry declaration recursion from string-dispatching
+    selected declaration modes.
+   The remaining declaration-registry child-recursion bridge now calls
+   `findVariable(...)` or `findProperty(...)` when
+   `actualChildFilterType` has already selected that mode. The generic
+   `findDeclaration(..., undefined, ...)` fallback remains only for the
+   unfiltered any-declaration bridge.
+
+   Completion gate:
+   - Done: production `registry-utils` no longer calls
+     `findDeclaration(...)` with `actualChildFilterType`.
+   - Done: focused import/reference/rules/detached-ruleset lookup tests pass.
+
+Seeded next binding/lookup queue:
+
+7n. [ ] Audit remaining production `Rules.findDeclaration(...)` callers and
+    classify each as cold any-declaration boundary, semantic-filter bridge, or
+    removable typed-lane caller.
+7o. [ ] Move helper/test call sites that still express variable/property
+    lookup through `findDeclaration(..., 'VarDeclaration'|'Declaration')` onto
+    typed lanes where the test is not explicitly exercising the cold boundary.
+7p. [ ] Narrow or delete the remaining `normalizeDeclarationFilter(...)`
+    boundary if no production caller needs arbitrary string filters after
+    `7n`.
+7q. [ ] Audit `findVarDeclarationFast(...)` against the direct variable
+    declaration walker and either merge the duplicate walk or document the
+    concrete remaining reason it differs.
+7r. [ ] Audit declaration lookup options that still force `UNCOVERED`
+    (`filter`, non-empty candidate sets, semantic filters) and split them into
+    frame-owned occurrence facts versus truly cold registry compatibility.
+7s. [ ] Model property merge-chain occurrence slots enough to remove the
+    semantic filtered property bridge, or record the exact source-order fact
+    still missing before implementation.
+7t. [ ] Audit remaining `_rulesSet` reads/writes and separate unavoidable
+    legacy registry construction from lookup-time recursion debt.
+7u. [ ] Re-run the binding-focused grep suite after each pass and reseed this
+    queue before commit; do not continue into parked cutting/performance work
+    while any item above remains unchecked.
 
 Parked secondary deep-cut queue:
 
@@ -4330,3 +4398,32 @@ the gate passed.
   `measure:less:hotpath` sanity, and direct `scope-lookup-stress.less` render
   (`8822` bytes) passed. The hotpath run had mixed usable/unstable signals, so
   no speed claim is made.
+- Typed declaration fallback split pass: accepted as binding/lookup machinery
+  deletion, not as a speed claim. New traversal: none. `Reference` now selects
+  variable/property/any-declaration operations at the call site and uses the
+  typed fallback method for that lane; `setDefined` assignment lookup calls
+  `findVariable(...)` or `findProperty(...)`; and the old declaration-registry
+  child-recursion bridge calls typed child lookup when the child filter is
+  already selected. New node/materialization: no production node, wrapper
+  `Rules`, copied node, `.inherit(...)`, `.adopt(...)`, frozen state, source
+  metadata, parent mutation, cache, side map, or helper array was added.
+  Render path: unchanged; references still render the resolved source/value
+  through existing render paths. Helper/API surface: deleted one generic
+  `Reference` string-dispatch helper and two filter-type helpers; added three
+  typed private fallback helpers that expose the already selected lane instead
+  of hiding a discriminator. Metadata mutations: none. Evidence: production
+  grep finds no `lookupDeclarationDirectOrFind(...)`,
+  `getIndexReferenceFilterType(...)`, `getDirectRulesIndexFilterType(...)`,
+  `findDeclaration(key, normalizeDeclarationFilter(node.type), opts)`, or
+  `findDeclaration(...)` calls with `actualChildFilterType`; focused
+  `reference`, `rules`, `import-style`, and `detached-rulesets` tests passed
+  (`268` tests, `31` skipped), including new guards proving plain index and
+  direct `Rules` index targets avoid generic `Rules.findDeclaration(...)` for
+  selected variable/property keys; touched-file ESLint, `@jesscss/core` build,
+  `git diff --check`, aggressive cutting review, and node-creation audit
+  passed. Hotpath sanity ran for `mixins-guards.less` and
+  `scope-lookup-stress.less` with one iteration only; it is regression smoke,
+  not speed evidence. The first root-level vitest attempt was invalid for this
+  workspace because it skipped package test setup, and the first hotpath
+  attempt used a nonexistent `--files` option; the successful
+  package-relative/tested commands are the behavioral evidence.

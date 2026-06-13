@@ -869,12 +869,9 @@ function lookupIndexReference(
     }
   }
   const keyStr = getLookupKeyString(valueKey);
-  return lookupDeclarationDirectOrFind(
-    targetRules,
-    keyStr,
-    getIndexReferenceFilterType(env.keyNode),
-    opts
-  );
+  return isNode(env.keyNode, N.Quoted)
+    ? lookupPropertyDeclarationOrFind(targetRules, keyStr, opts)
+    : lookupVariableDeclarationOrFind(targetRules, keyStr, opts);
 }
 
 function lookupPropertyReference(
@@ -882,7 +879,7 @@ function lookupPropertyReference(
   valueKey: NormalizedLookupKey,
   opts: FindOptions
 ): RulesLookupResult {
-  return lookupDeclarationDirectOrFind(targetRules, getLookupKeyString(valueKey), 'Declaration', opts);
+  return lookupPropertyDeclarationOrFind(targetRules, getLookupKeyString(valueKey), opts);
 }
 
 function lookupVariableReference(
@@ -921,7 +918,7 @@ function lookupDeclarationReference(
   valueKey: NormalizedLookupKey,
   opts: FindOptions
 ): RulesLookupResult {
-  return lookupDeclarationDirectOrFind(targetRules, getLookupKeyString(valueKey), undefined, opts);
+  return lookupAnyDeclarationOrFind(targetRules, getLookupKeyString(valueKey), opts);
 }
 
 function lookupFunctionReference(
@@ -934,31 +931,49 @@ function lookupFunctionReference(
   if (env.inCall) {
     return (
       targetRules.findFunction(keyStr, undefined, opts)
-      ?? lookupDeclarationDirectOrFind(targetRules, keyStr, undefined, opts)
+      ?? lookupAnyDeclarationOrFind(targetRules, keyStr, opts)
     );
   }
   return (
-    lookupDeclarationDirectOrFind(targetRules, keyStr, undefined, opts)
+    lookupAnyDeclarationOrFind(targetRules, keyStr, opts)
     ?? targetRules.findFunction(keyStr, undefined, opts)
   );
 }
 
-function lookupDeclarationDirectOrFind(
+function lookupVariableDeclarationOrFind(
   targetRules: Rules,
   key: string,
-  filterType: 'Declaration' | 'VarDeclaration' | undefined,
   opts: FindOptions
 ): RulesLookupResult {
-  const directLookup = filterType === 'VarDeclaration'
-    ? findVariableDeclaration
-    : filterType === 'Declaration'
-      ? findPropertyDeclaration
-      : findAnyDeclaration;
-  const direct = directLookup(targetRules, key, opts);
+  const direct = findVariableDeclaration(targetRules, key, opts);
   if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
     return direct;
   }
-  return targetRules.findDeclaration(key, filterType, opts);
+  return targetRules.findVariable(key, opts);
+}
+
+function lookupPropertyDeclarationOrFind(
+  targetRules: Rules,
+  key: string,
+  opts: FindOptions
+): RulesLookupResult {
+  const direct = findPropertyDeclaration(targetRules, key, opts);
+  if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
+    return direct;
+  }
+  return targetRules.findProperty(key, opts);
+}
+
+function lookupAnyDeclarationOrFind(
+  targetRules: Rules,
+  key: string,
+  opts: FindOptions
+): RulesLookupResult {
+  const direct = findAnyDeclaration(targetRules, key, opts);
+  if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
+    return direct;
+  }
+  return targetRules.findDeclaration(key, undefined, opts);
 }
 
 function lookupCallableReference(
@@ -980,12 +995,6 @@ function lookupCallableReference(
     return targetRules.findFunction(getLookupKeyString(valueKey), undefined, opts);
   }
   return undefined;
-}
-
-function getIndexReferenceFilterType(
-  keyNode: ReferenceValue['key']
-): 'Declaration' | 'VarDeclaration' {
-  return isNode(keyNode, N.Quoted) ? 'Declaration' : 'VarDeclaration';
 }
 
 const RULES_LOOKUP_ADAPTERS: Record<LookupType, RulesLookupAdapter> = {
@@ -1405,23 +1414,14 @@ function lookupDirectArrayIndexTarget(
   return atIndex(targetNode.value, valueKey);
 }
 
-function getDirectRulesIndexFilterType(
-  keyNode: ReferenceValue['key']
-): 'Declaration' | 'VarDeclaration' {
-  return isNode(keyNode, N.Quoted) ? 'Declaration' : 'VarDeclaration';
-}
-
 function lookupDirectRulesTarget(
   targetNode: Rules,
   key: string,
   keyNode: ReferenceValue['key']
 ): RulesLookupResult {
-  return lookupDeclarationDirectOrFind(
-    targetNode,
-    key,
-    getDirectRulesIndexFilterType(keyNode),
-    {}
-  );
+  return isNode(keyNode, N.Quoted)
+    ? lookupPropertyDeclarationOrFind(targetNode, key, {})
+    : lookupVariableDeclarationOrFind(targetNode, key, {});
 }
 
 function lookupDirectNamedTarget(

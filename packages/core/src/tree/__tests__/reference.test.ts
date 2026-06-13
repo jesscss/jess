@@ -1263,6 +1263,82 @@ describe('reference', () => {
       expect(context.referenceStack).toBe(0);
     });
 
+    it('index references use typed declaration lanes without generic declaration fallback', async () => {
+      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
+      let genericDeclarationLookups = 0;
+      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
+        const [key] = args;
+        if (key === 'tone' || key === 'tone-var') {
+          genericDeclarationLookups++;
+        }
+        return originalFindDeclaration.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({ name: 'tone-var', value: any('purple') }),
+          decl({ name: 'tone', value: any('orange') }),
+          decl({
+            name: any('seen-var'),
+            value: ref({ key: 'tone-var' }, { type: 'index' })
+          }),
+          decl({
+            name: any('seen-prop'),
+            value: ref({ key: quoted('tone') }, { type: 'index' })
+          })
+        ]);
+
+        const css = await renderNodeToString(node, context);
+
+        expect(css).toBeString(`
+          tone: orange;
+          seen-var: purple;
+          seen-prop: orange;
+        `);
+        expect(genericDeclarationLookups).toBe(0);
+      } finally {
+        RulesClass.prototype.findDeclaration = originalFindDeclaration;
+      }
+    });
+
+    it('direct Rules index targets use typed declaration lanes without generic declaration fallback', async () => {
+      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
+      let genericDeclarationLookups = 0;
+      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
+        const [key] = args;
+        if (key === 'tone' || key === 'toneVar') {
+          genericDeclarationLookups++;
+        }
+        return originalFindDeclaration.apply(this, args);
+      };
+
+      try {
+        const targetRules = rules([
+          decl({ name: 'tone', value: any('orange') }),
+          vardecl({ name: 'toneVar', value: any('purple') })
+        ]);
+        const node = rules([
+          vardecl({ name: 'targetRules', value: targetRules })
+        ]);
+        setRulesContext(await node.eval(context));
+
+        await expect(Promise.resolve(ref({
+          target: ref({ key: 'targetRules' }, { type: 'variable' }),
+          key: quoted('tone')
+        }, { type: 'index' }).render(context))).resolves.toBe('orange');
+
+        await expect(Promise.resolve(ref({
+          target: ref({ key: 'targetRules' }, { type: 'variable' }),
+          key: 'toneVar'
+        }, { type: 'index' }).render(context))).resolves.toBe('purple');
+
+        expect(genericDeclarationLookups).toBe(0);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        RulesClass.prototype.findDeclaration = originalFindDeclaration;
+      }
+    });
+
     it('explicit target variable fallback uses carried declaration child entries', async () => {
       const childRules = rules([
         vardecl({ name: 'target-color', value: any('blue') })

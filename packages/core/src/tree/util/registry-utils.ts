@@ -236,13 +236,11 @@ export abstract class Registry<
           // filterType selects the lookup family; actualChildFilterType filters results.
           let result = filterType === 'Mixin'
             ? r.node.findMixin(key, actualChildFilterType === 'Mixin' ? 'Mixin' : undefined, newOpts)
-            : r.node.findDeclaration(
-                key,
-                actualChildFilterType === 'VarDeclaration' || actualChildFilterType === 'Declaration'
-                  ? actualChildFilterType
-                  : undefined,
-                newOpts
-              );
+            : actualChildFilterType === 'VarDeclaration'
+              ? r.node.findVariable(key, newOpts)
+              : actualChildFilterType === 'Declaration'
+                ? r.node.findProperty(key, newOpts)
+                : r.node.findDeclaration(key, undefined, newOpts);
           if (result) {
             const isOptional = filterType !== undefined && isOptionalRulesEntry(r, filterType);
             const optionalCandidates = options?.optionalCandidates;
