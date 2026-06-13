@@ -64,7 +64,7 @@ const ANY_DECLARATION_LOOKUP: DeclarationLookupStrategy = {
   includeLiveBindings: false,
   includeFallbackFrames: false,
   prepareScopeFrame: false,
-  semanticFilterCovered: false,
+  semanticFilterCovered: true,
   acceptsNode: (node): node is Declaration => isNode(node, N.Declaration | N.VarDeclaration),
   skipVarsAfterBindingHit: false
 };
@@ -224,7 +224,7 @@ function getDeclarationParentSearchStep(
     if (cursor && ignoreParentScopeStart) {
       start = undefined;
     } else if (cursor && preserveLinearStart) {
-      start = containingNode?.index;
+      start = containingNode?.index ?? start;
     }
   } while (cursor && !isNode(cursor, N.Rules));
 

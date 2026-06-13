@@ -471,10 +471,16 @@ function buildReferenceLookupOptions(args: {
         }
       }
     } else if (!target && adapter.applyContextualStart) {
-      const startIndex = getLookupStartIndex(referenceNode);
+      const startIndex = getLookupStartIndex(referenceNode) ?? (
+        referenceNode.options.type === 'variable' || referenceNode.options.type === undefined
+          ? undefined
+          : context.rulesContext?.index
+      );
       if (startIndex !== undefined) {
         opts.start = startIndex;
-        opts.ignoreParentScopeStart = true;
+        if (referenceNode.options.type === 'variable' || referenceNode.options.type === undefined) {
+          opts.ignoreParentScopeStart = true;
+        }
       }
     }
   }
@@ -697,10 +703,7 @@ function lookupAnyDeclarationOrFind(
   opts: FindOptions
 ): RulesLookupResult {
   const direct = findAnyDeclaration(targetRules, key, opts);
-  if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
-    return direct;
-  }
-  return targetRules.findDeclaration(key, undefined, opts);
+  return direct === DIRECT_DECLARATION_LOOKUP_UNCOVERED ? undefined : direct;
 }
 
 function lookupCallableReference(

@@ -2699,7 +2699,7 @@ describe('reference', () => {
       await expect(async () => await node.eval(context)).rejects.toThrow();
     });
 
-    it('plain lexical misses do not fall back to DeclarationRegistry.find when no child scopes are searchable', async () => {
+    it('plain lexical misses do not fall back to broad declaration find when no child scopes are searchable', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];
       RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
@@ -2724,7 +2724,7 @@ describe('reference', () => {
       }
     });
 
-    it('snapshot reads avoid DeclarationRegistry.find for covered same-frame source-order lookup', async () => {
+    it('snapshot reads avoid broad declaration find for covered same-frame source-order lookup', async () => {
       const originalFind = RulesClass.prototype.find;
       let declarationHits = 0;
       RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
@@ -2784,30 +2784,15 @@ describe('reference', () => {
       }
     });
 
-    it('findDeclaration VarDeclaration lookup avoids opening DeclarationRegistry', async () => {
-      const originalGetRegistry = RulesClass.prototype.getRegistry;
-      const registryHits: string[] = [];
-      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
-        const [type] = args;
-        if (type === 'declaration') {
-          registryHits.push(type);
-        }
-        return originalGetRegistry.apply(this, args);
-      };
+    it('findDeclaration VarDeclaration lookup uses direct lookup', async () => {
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') })
+      ]);
 
-      try {
-        const node = rules([
-          vardecl({ name: 'color', value: any('red') })
-        ]);
+      await node.eval(context);
+      const found = node.findVariable('color');
 
-        await node.eval(context);
-        const found = node.findVariable('color');
-
-        expect(found?.value.value.valueOf()).toBe('red');
-        expect(registryHits).toHaveLength(0);
-      } finally {
-        RulesClass.prototype.getRegistry = originalGetRegistry;
-      }
+      expect(found?.value.value.valueOf()).toBe('red');
     });
 
     it('findVariable uses the variable lane without calling findDeclaration', async () => {
@@ -2861,13 +2846,12 @@ describe('reference', () => {
       }
     });
 
-    it('declaration registry fallback reads live cells through current bindings', async () => {
+    it('findDeclaration reads live cells through current bindings without declaration registry fallback', async () => {
       const liveSource = vardecl({ name: 'color', value: any('blue') });
       const node = rules([
         vardecl({ name: 'color', value: any('red') })
       ]);
       await node.eval(context);
-      const registry = node.getRegistry('declaration');
       const frame = node.getScopeFrame();
       setScopeFrameLiveBinding(frame, 'color', {
         value: liveSource.value.value,
@@ -2875,11 +2859,11 @@ describe('reference', () => {
       });
       const originalGet = frame.liveSlotsByName.get;
       frame.liveSlotsByName.get = () => {
-        throw new Error('registry fallback should read currentBindingsByName');
+        throw new Error('direct lookup should read currentBindingsByName');
       };
 
       try {
-        const found = registry.find('color', 'VarDeclaration');
+        const found = node.findDeclaration('color', 'VarDeclaration');
 
         expect(found).toBe(liveSource);
       } finally {
@@ -2887,266 +2871,131 @@ describe('reference', () => {
       }
     });
 
-    it('findProperty uses direct Declaration lookup without opening DeclarationRegistry for unfiltered exact hits', async () => {
-      const originalGetRegistry = RulesClass.prototype.getRegistry;
-      const registryHits: string[] = [];
-      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
-        const [type] = args;
-        if (type === 'declaration') {
-          registryHits.push(type);
-        }
-        return originalGetRegistry.apply(this, args);
-      };
+    it('findProperty uses direct Declaration lookup for unfiltered exact hits', async () => {
+      const node = rules([
+        decl({ name: any('color'), value: any('red') })
+      ]);
 
-      try {
-        const node = rules([
-          decl({ name: any('color'), value: any('red') })
-        ]);
+      await node.eval(context);
+      const found = node.findProperty('color');
 
-        await node.eval(context);
-        const found = node.findProperty('color');
-
-        expect(found?.value.value.valueOf()).toBe('red');
-        expect(registryHits).toHaveLength(0);
-      } finally {
-        RulesClass.prototype.getRegistry = originalGetRegistry;
-      }
+      expect(found?.value.value.valueOf()).toBe('red');
     });
 
-    it('findProperty uses direct Declaration lookup without opening DeclarationRegistry for covered unfiltered misses', async () => {
-      const originalGetRegistry = RulesClass.prototype.getRegistry;
-      const registryHits: string[] = [];
-      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
-        const [type] = args;
-        if (type === 'declaration') {
-          registryHits.push(type);
-        }
-        return originalGetRegistry.apply(this, args);
-      };
+    it('findProperty uses direct Declaration lookup for covered unfiltered misses', async () => {
+      const node = rules([
+        decl({ name: any('color'), value: any('red') })
+      ]);
 
-      try {
-        const node = rules([
-          decl({ name: any('color'), value: any('red') })
-        ]);
+      await node.eval(context);
 
-        await node.eval(context);
-
-        expect(node.findProperty('missing')).toBeUndefined();
-        expect(registryHits).toHaveLength(0);
-      } finally {
-        RulesClass.prototype.getRegistry = originalGetRegistry;
-      }
+      expect(node.findProperty('missing')).toBeUndefined();
     });
 
     it('direct VarDeclaration lookup ignores registry searchedRules bookkeeping', async () => {
-      const originalGetRegistry = RulesClass.prototype.getRegistry;
-      const registryHits: string[] = [];
-      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
-        const [type] = args;
-        if (type === 'declaration') {
-          registryHits.push(type);
-        }
-        return originalGetRegistry.apply(this, args);
-      };
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') })
+      ]);
 
-      try {
-        const node = rules([
-          vardecl({ name: 'color', value: any('red') })
-        ]);
+      await node.eval(context);
+      const opts = { searchedRules: new Set([node]) };
+      const found = node.findVariable('color', opts);
 
-        await node.eval(context);
-        const opts = { searchedRules: new Set([node]) };
-        const found = node.findVariable('color', opts);
-
-        expect(found?.value.value.valueOf()).toBe('red');
-        expect(registryHits).toHaveLength(0);
-      } finally {
-        RulesClass.prototype.getRegistry = originalGetRegistry;
-      }
+      expect(found?.value.value.valueOf()).toBe('red');
     });
 
     it('direct property lookup ignores registry searchedRules bookkeeping', async () => {
-      const originalGetRegistry = RulesClass.prototype.getRegistry;
-      const registryHits: string[] = [];
-      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
-        const [type] = args;
-        if (type === 'declaration') {
-          registryHits.push(type);
-        }
-        return originalGetRegistry.apply(this, args);
-      };
+      const node = rules([
+        decl({ name: any('color'), value: any('red') })
+      ]);
 
-      try {
-        const node = rules([
-          decl({ name: any('color'), value: any('red') })
-        ]);
+      await node.eval(context);
+      const opts = { searchedRules: new Set([node]) };
+      const found = node.findProperty('color', opts);
 
-        await node.eval(context);
-        const opts = { searchedRules: new Set([node]) };
-        const found = node.findProperty('color', opts);
-
-        expect(found?.value.value.valueOf()).toBe('red');
-        expect(registryHits).toHaveLength(0);
-      } finally {
-        RulesClass.prototype.getRegistry = originalGetRegistry;
-      }
+      expect(found?.value.value.valueOf()).toBe('red');
     });
 
     it('direct VarDeclaration lookup ignores empty registry candidate bookkeeping', async () => {
-      const originalGetRegistry = RulesClass.prototype.getRegistry;
-      const registryHits: string[] = [];
-      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
-        const [type] = args;
-        if (type === 'declaration') {
-          registryHits.push(type);
-        }
-        return originalGetRegistry.apply(this, args);
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') })
+      ]);
+
+      await node.eval(context);
+      const opts = {
+        candidates: new Set(),
+        optionalCandidates: new Set()
       };
+      const found = node.findVariable('color', opts);
 
-      try {
-        const node = rules([
-          vardecl({ name: 'color', value: any('red') })
-        ]);
-
-        await node.eval(context);
-        const opts = {
-          candidates: new Set(),
-          optionalCandidates: new Set()
-        };
-        const found = node.findVariable('color', opts);
-
-        expect(found?.value.value.valueOf()).toBe('red');
-        expect(registryHits).toHaveLength(0);
-      } finally {
-        RulesClass.prototype.getRegistry = originalGetRegistry;
-      }
+      expect(found?.value.value.valueOf()).toBe('red');
     });
 
     it('direct property lookup ignores empty registry candidate bookkeeping', async () => {
-      const originalGetRegistry = RulesClass.prototype.getRegistry;
-      const registryHits: string[] = [];
-      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
-        const [type] = args;
-        if (type === 'declaration') {
-          registryHits.push(type);
-        }
-        return originalGetRegistry.apply(this, args);
+      const node = rules([
+        decl({ name: any('color'), value: any('red') })
+      ]);
+
+      await node.eval(context);
+      const opts = {
+        candidates: new Set(),
+        optionalCandidates: new Set()
       };
+      const found = node.findProperty('color', opts);
 
-      try {
-        const node = rules([
-          decl({ name: any('color'), value: any('red') })
-        ]);
-
-        await node.eval(context);
-        const opts = {
-          candidates: new Set(),
-          optionalCandidates: new Set()
-        };
-        const found = node.findProperty('color', opts);
-
-        expect(found?.value.value.valueOf()).toBe('red');
-        expect(registryHits).toHaveLength(0);
-      } finally {
-        RulesClass.prototype.getRegistry = originalGetRegistry;
-      }
+      expect(found?.value.value.valueOf()).toBe('red');
     });
 
     it('direct property lookup models non-empty candidate bookkeeping without registry fallback', async () => {
-      const originalGetRegistry = RulesClass.prototype.getRegistry;
-      const registryHits: string[] = [];
-      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
-        const [type] = args;
-        if (type === 'declaration') {
-          registryHits.push(type);
-        }
-        return originalGetRegistry.apply(this, args);
-      };
+      const stale = decl({ name: any('other-color'), value: any('black') });
+      const node = rules([
+        decl({ name: any('color'), value: any('red') })
+      ]);
 
-      try {
-        const stale = decl({ name: any('other-color'), value: any('black') });
-        const node = rules([
-          decl({ name: any('color'), value: any('red') })
-        ]);
+      await node.eval(context);
+      const candidates = new Set<Node>([stale]);
+      const optionalCandidates = new Set<Node>();
+      const found = node.findProperty('color', {
+        candidates,
+        optionalCandidates
+      });
 
-        await node.eval(context);
-        const candidates = new Set<Node>([stale]);
-        const optionalCandidates = new Set<Node>();
-        const found = node.findProperty('color', {
-          candidates,
-          optionalCandidates
-        });
-
-        expect(found?.value.value.valueOf()).toBe('red');
-        expect(found).toBeDefined();
-        expect(candidates.has(found!)).toBe(true);
-        expect(candidates.has(stale)).toBe(true);
-        expect(optionalCandidates.size).toBe(0);
-        expect(registryHits).toHaveLength(0);
-      } finally {
-        RulesClass.prototype.getRegistry = originalGetRegistry;
-      }
+      expect(found?.value.value.valueOf()).toBe('red');
+      expect(found).toBeDefined();
+      expect(candidates.has(found!)).toBe(true);
+      expect(candidates.has(stale)).toBe(true);
+      expect(optionalCandidates.size).toBe(0);
     });
 
-    it('unfiltered property references use direct Declaration lookup without opening DeclarationRegistry', async () => {
-      const originalGetRegistry = RulesClass.prototype.getRegistry;
-      const registryHits: string[] = [];
-      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
-        const [type] = args;
-        if (type === 'declaration') {
-          registryHits.push(type);
-        }
-        return originalGetRegistry.apply(this, args);
-      };
+    it('unfiltered property references use direct Declaration lookup', async () => {
+      const node = rules([
+        decl({ name: any('color'), value: any('red') }),
+        decl({
+          name: any('seen'),
+          value: ref({ key: 'color' }, { type: 'property' })
+        })
+      ]);
 
-      try {
-        const node = rules([
-          decl({ name: any('color'), value: any('red') }),
-          decl({
-            name: any('seen'),
-            value: ref({ key: 'color' }, { type: 'property' })
-          })
-        ]);
+      const css = await renderNodeToString(node, context);
 
-        const css = await renderNodeToString(node, context);
-
-        expect(css).toBeString(`
-          color: red;
-          seen: red;
-        `);
-        expect(registryHits).toHaveLength(0);
-      } finally {
-        RulesClass.prototype.getRegistry = originalGetRegistry;
-      }
+      expect(css).toBeString(`
+        color: red;
+        seen: red;
+      `);
     });
 
-    it('semantic filtered property lookup uses direct declaration lookup without opening DeclarationRegistry', async () => {
-      const originalGetRegistry = RulesClass.prototype.getRegistry;
-      const registryHits: string[] = [];
-      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
-        const [type] = args;
-        if (type === 'declaration') {
-          registryHits.push(type);
-        }
-        return originalGetRegistry.apply(this, args);
-      };
+    it('semantic filtered property lookup uses direct declaration lookup', async () => {
+      const node = rules([
+        decl({ name: any('color'), value: any('red') })
+      ]);
 
-      try {
-        const node = rules([
-          decl({ name: any('color'), value: any('red') })
-        ]);
+      await node.eval(context);
+      const found = node.findProperty('color', {
+        semanticFilter: true,
+        filter: () => true
+      });
 
-        await node.eval(context);
-        const found = node.findProperty('color', {
-          semanticFilter: true,
-          filter: () => true
-        });
-
-        expect(found?.value.value.valueOf()).toBe('red');
-        expect(registryHits).toHaveLength(0);
-      } finally {
-        RulesClass.prototype.getRegistry = originalGetRegistry;
-      }
+      expect(found?.value.value.valueOf()).toBe('red');
     });
 
     it('semantic filtered child declaration fallback uses carried child entries without rulesSet storage', async () => {

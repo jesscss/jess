@@ -1270,28 +1270,56 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7ab. [ ] Model direct any-declaration ordering well enough to delete
+7ab. [x] Model direct any-declaration ordering well enough to delete
     `Reference.lookupAnyDeclarationOrFind(...)` fallback to
     `Rules.findDeclaration(..., undefined, ...)`.
-   Required fact: same source-order and optional/public/read-only candidate
-   selection across variable and property declarations without rebuilding a
-   registry list and sorting by `comparePosition(...)`.
+   Direct any-declaration lookup now covers semantic-filtered declaration
+   references and the `Reference` helper returns the direct result/miss without
+   bouncing into `Rules.findDeclaration(...)`. The ordering fix was not a side
+   registry: contextual property/declaration reads preserve parent source
+   boundaries, and the direct parent step no longer erases an existing start
+   boundary when generated mixin/call output lacks its own containing index.
 
-7ac. [ ] Replace any-declaration child recursion in
+7ac. [x] Replace any-declaration child recursion in
     `Registry._searchRulesChildren(...)` with a direct typed result path or
     delete the any-declaration child lane if no production caller needs it.
-   The direct child-entry surface is already available; the missing piece is
-   result accumulation semantics for mixed variable/property candidates.
+   Deleted with `DeclarationRegistry`: any-declaration child lookup is now the
+   direct declaration walker over carried child-entry surfaces. There is no
+   `Registry._searchRulesChildren(...)` declaration lane left to recurse into
+   children and then back into parents.
 
-7ad. [ ] Decide whether declaration `findAll` is production semantics or
+7ad. [x] Decide whether declaration `findAll` is production semantics or
     test-only/callable-only residue; then either model direct all-results or
     remove it from declaration lookup options before deleting
     `DeclarationRegistry.find(...)`.
+   Production grep shows declaration lookup has no `findAll: true` caller; the
+   remaining `findAll` option is shared option surface used by callable tests.
+   Direct declaration lookup still declines `findAll`, and with no declaration
+   registry fallback that cold shape returns miss instead of preserving dead
+   declaration all-results behavior.
 
-7ae. [ ] After `7ab-7ad`, delete `declarationRegistry`,
+7ae. [x] After `7ab-7ad`, delete `declarationRegistry`,
     `_ensureDeclarationRegistry()`, `getRegistry('declaration')`, declaration
     `register(...)`, and `DeclarationRegistry` if production grep shows no
     lookup caller remains.
+   Deleted. `Rules` keeps only function binding registration, production grep
+   finds no `declarationRegistry`, `_ensureDeclarationRegistry`,
+   `getRegistry(...)`, `register('declaration', ...)`, `DeclarationRegistry`,
+   generic `Registry`, or `JESS_TRACE_DIRECT_DECL` debug hook in core source.
+
+Seeded next binding/lookup queue:
+
+7af. [ ] Audit stale declaration-registry wording and test names that now refer
+    to old registry concepts after the production deletion. This is docs/test
+    cleanup only unless it reveals a live bridge.
+
+7ag. [ ] Revisit `DeclarationFindOptions.findAll`: split callable-only option
+    shape from declaration lookup if TypeScript/API clarity is worth the churn,
+    but do not reintroduce all-results declaration storage.
+
+7ah. [ ] Audit remaining `registrylessLastMixinLookup*` one-entry cache and
+    callable cache naming/shape after declaration registry deletion; keep only
+    if measured or code-path evidence says it removes more work than it adds.
 
 Parked secondary deep-cut queue:
 
@@ -4725,3 +4753,47 @@ the gate passed.
   `mixins-guards.less` and `scope-lookup-stress.less` with one iteration only;
   this is regression smoke, not speed evidence. No speed claim is made by this
   pass.
+- Declaration registry deletion pass: accepted as binding/lookup registry
+  deletion, not as a speed claim. Files:
+  `packages/core/src/tree/reference.ts`, `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/util/direct-rules-lookup.ts`,
+  `packages/core/src/tree/util/registry-utils.ts`, focused lookup tests, and
+  this handoff. New traversal: no new child-tree scan was added; direct
+  any-declaration lookup now uses the existing direct declaration walker and
+  carried child-entry surfaces for semantic-filtered declaration references.
+  The parent-walk helper was corrected to preserve an existing start boundary
+  when generated mixin/call output lacks a containing index, preventing child
+  or call-output lookups from reopening later parent siblings. `Reference`
+  contextual property/declaration lookup now preserves parent source-order
+  boundaries; only variable/default lookup keeps the old parent-boundary
+  relaxation. New node/materialization: no production node, wrapper `Rules`,
+  copied node, `.inherit(...)`, `.adopt(...)`, frozen state, source metadata,
+  parent mutation, render materialization, cache, side map, helper array, or
+  registry-shaped declaration store was added. Render path: unchanged; the
+  same resolved declaration values feed existing eval/render and merge
+  coalescing paths. Helper/API surface: net deletion. Removed
+  `Rules.declarationRegistry`, `_ensureDeclarationRegistry()`,
+  `getRegistry('declaration')`, `register('declaration', ...)`, the generic
+  `Registry` base, `DeclarationRegistry`, and the remaining
+  `Reference.lookupAnyDeclarationOrFind(...)` fallback into
+  `Rules.findDeclaration(...)`. `Rules.register(...)` now accepts only
+  function bindings. Metadata mutations: none. Test-only danger tokens:
+  `reference.test.ts` still allocates `Set` option shapes to prove old
+  registry-loop/candidate bookkeeping is ignored by direct lookup, and one
+  monkey-patched live-slot getter throws only as a tripwire if the wrong test
+  path executes. Those objects/errors are not production lookup control flow.
+  Rejected compatibility work:
+  no shim was kept for old public-looking declaration registry methods; these
+  were unreleased/self-invented lookup surfaces. `findAll` is treated as
+  callable/test-only shared option residue for declaration lookup; no
+  declaration all-results storage was rebuilt. Evidence so far: touched-file
+  ESLint passed; production grep finds no declaration registry shape or
+  temporary debug hook; focused declaration merge/coalescing tests passed
+  (`19` passed), reference lookup suite passed (`143` passed), import-style
+  lookup/import-reference pattern passed (`38` passed, `47` skipped), broader
+  rules/mixin/detached lookup suite passed (`156` passed, `60` skipped), and
+  call/function/findAll pattern passed (`27` passed, `53` skipped).
+  Touched-file ESLint, `@jesscss/core` build, `jess` build,
+  `git diff --check`, aggressive-cutting review, node-creation audit, and
+  one-iteration hotpath smoke for `mixins-guards.less` and
+  `scope-lookup-stress.less` passed. No speed claim is made.

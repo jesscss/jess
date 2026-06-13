@@ -2188,7 +2188,7 @@ describe('Mixin', () => {
           }
         `);
         // Lexical contextual lookups should now resolve from ScopeFrame buckets
-        // without touching DeclarationRegistry.find at all.
+        // without touching broad declaration lookup at all.
         expect(declarationHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.find = originalFind;

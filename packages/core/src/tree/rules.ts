@@ -582,7 +582,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override allowRuleRoot = true;
   override allowRoot = true;
 
-  declarationRegistry: Registries.DeclarationRegistry | undefined;
   functionsByName: Map<string, JsFunction | Func> | undefined;
   /** Fast map: var name → ordered list of VarDeclarations registered in this scope. */
   varsByName: Map<string, VarDeclaration[]> | undefined;
@@ -820,13 +819,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return false;
   }
 
-  /**
-   * Lazily create registries for types as needed.
-   */
-  private _ensureDeclarationRegistry(): Registries.DeclarationRegistry {
-    return (this.declarationRegistry ??= new Registries.DeclarationRegistry(this));
-  }
-
   setFunctionBinding(name: string | undefined, node: JsFunction | Func): void {
     if (!name) {
       return;
@@ -834,19 +826,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     (this.functionsByName ??= new Map()).set(name, node);
   }
 
-  register(type: 'declaration', node: Declaration): void;
   register(type: 'function', node: Func | JsFunction): void;
   register(
-    type: 'declaration' | 'function',
-    node: Declaration | Func | JsFunction
+    type: 'function',
+    node: Func | JsFunction
   ): void {
     switch (type) {
-      case 'declaration':
-        if (!isNode(node, N.Declaration) && !isNode(node, N.VarDeclaration)) {
-          throw new TypeError(`Expected declaration registry node, got ${node.type}`);
-        }
-        this._ensureDeclarationRegistry().add(node);
-        return;
       case 'function':
         if (!isNode(node, N.Func) && !isNode(node, N.JsFunction)) {
           throw new TypeError(`Expected function registry node, got ${node.type}`);
@@ -856,20 +841,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           node
         );
     }
-  }
-
-  getRegistry(type: 'declaration'): Registries.DeclarationRegistry;
-  getRegistry(_type: 'declaration'): Registries.DeclarationRegistry {
-    const registry = this._ensureDeclarationRegistry();
-    if (this.rulesIndexed < this.value.length) {
-      this._indexRules();
-    } else {
-      // Even when no re-indexing is needed (empty or fully indexed), ensure
-      // fast maps are defined so the hot-path can distinguish an indexed scope
-      // from one that has never been accessed via getRegistry at all.
-      this.varsByName ??= new Map();
-    }
-    return registry;
   }
 
   /**
@@ -2008,7 +1979,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     keys: string,
     filterType?: 'VarDeclaration' | 'Declaration',
     options?: Registries.DeclarationFindOptions
-  ): ReturnType<Registries.DeclarationRegistry['find']> | undefined {
+  ): Declaration | VarDeclaration | undefined {
     const directLookup = filterType === 'VarDeclaration'
       ? findVariableDeclaration
       : filterType === 'Declaration'
@@ -2022,7 +1993,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
       return direct;
     }
-    return this.getRegistry('declaration').find(keys, filterType, options);
+    return undefined;
   }
 
   findVariable(
@@ -2828,7 +2799,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
 
-      this.register('declaration', node);
       if (isNode(node, N.VarDeclaration)) {
         if (this._hasStaticName(node)) {
           if (this._scopeFrame) {

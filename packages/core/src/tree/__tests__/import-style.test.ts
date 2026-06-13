@@ -252,7 +252,7 @@ describe('Style import', () => {
       expect(resolved.toTrimmedString()).toBe('color: green');
     });
 
-    it('import type variables visible to parent do not fall back to DeclarationRegistry.find', async () => {
+    it('import type variables visible to parent do not fall back to broad declaration find', async () => {
       context.sourceTrees.set('imported.jess', rules([
         vardecl({ name: 'importedVar', value: any('green') })
       ]));
@@ -322,7 +322,7 @@ describe('Style import', () => {
       expect(resolved.toTrimmedString()).toBe('color: purple');
     });
 
-    it('compose type variables visible to parent do not fall back to DeclarationRegistry.find', async () => {
+    it('compose type variables visible to parent do not fall back to broad declaration find', async () => {
       const composedPath = resolve(process.cwd(), 'composed.jess');
       context.sourceTrees.set(composedPath, rules([
         vardecl({ name: 'composedVar', value: any('purple') })
