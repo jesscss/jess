@@ -162,8 +162,11 @@ export abstract class Registry<
     // Note: childFilterType can be undefined to mean "don't filter" (accept both Mixin and Ruleset)
     const actualChildFilterType = 'childFilterType' in options ? childFilterType : filterType;
     let firstValue = candidates.values().next().value;
-    if (rules._rulesSet) {
-      let { rulesSet } = rules;
+    const childRuleEntries = filterType === 'Mixin'
+      ? (rules._rulesSet ? rules.rulesSet : undefined)
+      : rules.collectDirectDeclarationChildEntries();
+    if (childRuleEntries) {
+      let rulesSet = childRuleEntries;
       /**
        * Only consider rules after the last found declaration (if relevant)
        * and before the start position (if relevant)
@@ -217,7 +220,8 @@ export abstract class Registry<
           }
           /** Locals can be searched once but not twice */
           let newLocal = local || Boolean(r.node.options?.local);
-          let newOpts = options ? { ...options, readonly: readonly || r.readonly } : { readonly: readonly || r.readonly };
+          const entryReadonly = (r as { readonly?: boolean }).readonly;
+          let newOpts = options ? { ...options, readonly: readonly || entryReadonly } : { readonly: readonly || entryReadonly };
           newOpts.local = newLocal;
           // Preserve source-order constraints when looking "through" child Rules.
           // This prevents an earlier sibling declaration from seeing vars emitted by

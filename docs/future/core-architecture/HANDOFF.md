@@ -1216,22 +1216,49 @@ Seeded next binding/lookup queue:
    fallback frames during live-slot rebuilds. Generic any-declaration lookup is
    not on the live-binding lane; use `findVariable(...)` for live variables.
 
-7w. [ ] Replace `Registry._searchRulesChildren(...)` declaration recursion with
+7w. [x] Replace `Registry._searchRulesChildren(...)` declaration recursion with
     carried `directDeclarationChildEntries`/frame facts so declaration lookup no
     longer reads `_rulesSet` during search.
-   Next pass should start here. Live grep still shows `_searchRulesChildren(...)`
-   and `_rulesSet` under the legacy `DeclarationRegistry.find(...)` bridge for
-   uncovered `findAll`, non-empty `candidates`/`optionalCandidates`, and
-   semantic-filtered declaration shapes.
-7x. [ ] Model non-empty declaration candidate/optional-candidate accumulation
+   Declaration-family child recursion in the remaining
+   `DeclarationRegistry.find(...)` bridge now iterates
+   `collectDirectDeclarationChildEntries()` instead of `Rules.rulesSet`.
+   Focused coverage poisons `_rulesSet` while resolving a semantic-filtered
+   child property and still resolves through carried direct child entries.
+   `_rulesSet` remains for mixin lookup and the `Rules.rulesSet` public-ish
+   child surface until `7z`.
+7x. [x] Model non-empty declaration candidate/optional-candidate accumulation
     as direct lookup match state, then remove that `UNCOVERED` gate.
-7y. [ ] Add property occurrence slots for pre-normalized merge-chain
+   Direct declaration lookup now seeds public/optional matches from provided
+   candidate sets and appends direct local/child matches back into the caller's
+   candidate sets. Non-empty declaration candidate sets no longer force the
+   direct walker into `UNCOVERED`. `findAll` remains an explicit uncovered
+   shape because the direct result model returns one winner, not all matches;
+   live production grep still shows `findAll` only in callable test coverage,
+   not production declaration lookup.
+7y. [x] Add property occurrence slots for pre-normalized merge-chain
     declarations and remove the semantic-filtered property registry bridge.
+   The property lane now treats semantic filters as covered by the same direct
+   declaration walker; merge-chain filters are ordinary predicates over direct
+   candidates. Focused declaration/reference merge tests and Less property
+   merge coverage pass, so `Rules.findProperty(...)`,
+   `Rules.findDeclaration(..., 'Declaration', ...)`, and property references
+   no longer route semantic-filtered property lookup through
+   `DeclarationRegistry.find(...)`.
 7z. [ ] Delete or quarantine `Rules.rulesSet` / `_rulesSet` once child
     declaration and callable registry bridges no longer require it.
+   Next pass should start here. Live grep still shows `Rules.rulesSet` used by
+   mixin child lookup, registration, and export/import compatibility surfaces.
+   Do not delete it until callable child lookup and any export/import logic have
+   direct carried facts or a cold quarantine boundary.
 7aa. [ ] Audit `DeclarationRegistry.find(...)` remaining callers after `7v-7z`
     and collapse it to a test-only or deleted path if no production lookup uses
     it.
+   Current remaining production callers are the explicit fallback in
+   `Rules.findDeclaration(...)`/`findVariable(...)`/`findProperty(...)` for
+   `findAll` or any-declaration uncovered shapes, plus generic declaration
+   fallback from `Reference` function/any-declaration lookup. Re-audit after
+   `7z` and after deciding whether any-declaration lookup gets a typed direct
+   model or is deleted.
 
 Parked secondary deep-cut queue:
 
@@ -4594,3 +4621,40 @@ the gate passed.
   `scope-lookup-stress.less` with one iteration only; it is regression smoke,
   not speed evidence. Remaining implementation work is explicitly seeded as
   `7v-7aa`.
+- Declaration child/candidate/property-filter direct lookup pass: accepted as
+  registry bridge deletion, not as a speed claim. New traversal: direct lookup
+  now scans provided `candidates` / `optionalCandidates` sets when callers pass
+  non-empty candidate state; this replaces falling back to
+  `DeclarationRegistry.find(...)` for candidate accumulation. The existing
+  declaration child recursion inside `Registry._searchRulesChildren(...)` now
+  iterates `collectDirectDeclarationChildEntries()` for declaration-family
+  lookup instead of `_rulesSet`; mixin lookup still uses `Rules.rulesSet` and
+  remains queued. Property semantic-filter lookup now uses the direct
+  declaration walker, and property/variable `Reference` helpers plus attribute
+  selector variable interpolation stop bouncing from direct lookup back into
+  `Rules.findProperty(...)` / `Rules.findVariable(...)` for covered production
+  shapes. New node/materialization: no production node, wrapper `Rules`, copied
+  node, source metadata, parent mutation, or render materialization was added.
+  New state/allocation: two module-local direct lookup helpers for candidate
+  seeding/accumulation; they mutate only caller-provided candidate sets that
+  already existed in the lookup contract and remove an `UNCOVERED` registry
+  bridge. The new production loop is the direct candidate-set scan in
+  `chooseCandidateMatch(...)`, which replaces the older registry candidate
+  accumulation path. Test-only danger tokens are the candidate `Set`
+  construction, `registryHits` arrays, and monkeypatch `try/finally` plus a
+  throwing `_rulesSet` getter used as a tripwire. Render path: unchanged;
+  the same resolved declarations feed existing eval/render paths. Helper/API
+  surface: no public API added; one dead fallback import/path was deleted from
+  `selector-attr.ts`, and `Reference` typed variable/property helpers no longer
+  call the `Rules.find*` fallback on direct covered shapes. Metadata mutations:
+  none. Rejected broader cut: `findAll` remains uncovered because direct
+  declaration lookup returns one winner, not all matches; `Rules.rulesSet` /
+  `_rulesSet` remains for mixin child lookup and import/export compatibility
+  until `7z`. Evidence: touched-file ESLint passed; focused
+  `reference`/`rules` semantic-filter/property/direct tests passed; wider
+  `reference`, `rules`, `import-style`, `detached-rulesets`, and `declaration`
+  lookup pattern suite passed (`322` tests, `38` skipped); focused core
+  declaration/reference merge tests passed (`21` tests, `181` skipped); Less
+  `functions.test.ts` property merge coverage passed (`2` executed in the
+  selected pattern, with unrelated not-run cases preserved). No speed claim is
+  made before the closing hotpath sanity/gates.

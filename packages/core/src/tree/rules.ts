@@ -2005,7 +2005,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): ReturnType<Registries.DeclarationRegistry['find']> | undefined {
     const directLookup = filterType === 'VarDeclaration'
       ? findVariableDeclaration
-      : filterType === 'Declaration' && !options?.semanticFilter
+      : filterType === 'Declaration'
         ? findPropertyDeclaration
         : filterType === undefined
           ? findAnyDeclaration
@@ -2035,9 +2035,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     keys: string,
     options?: Registries.DeclarationFindOptions
   ): Declaration | undefined {
-    const direct = !options?.semanticFilter
-      ? findPropertyDeclaration(this, keys, options)
-      : DIRECT_DECLARATION_LOOKUP_UNCOVERED;
+    const direct = findPropertyDeclaration(this, keys, options);
     const found = direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED
       ? direct
       : this.getRegistry('declaration').find(keys, 'Declaration', options);

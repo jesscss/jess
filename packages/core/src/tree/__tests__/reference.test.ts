@@ -3066,6 +3066,42 @@ describe('reference', () => {
       }
     });
 
+    it('direct property lookup models non-empty candidate bookkeeping without registry fallback', async () => {
+      const originalGetRegistry = RulesClass.prototype.getRegistry;
+      const registryHits: string[] = [];
+      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
+        const [type] = args;
+        if (type === 'declaration') {
+          registryHits.push(type);
+        }
+        return originalGetRegistry.apply(this, args);
+      };
+
+      try {
+        const stale = decl({ name: any('other-color'), value: any('black') });
+        const node = rules([
+          decl({ name: any('color'), value: any('red') })
+        ]);
+
+        await node.eval(context);
+        const candidates = new Set<Node>([stale]);
+        const optionalCandidates = new Set<Node>();
+        const found = node.findProperty('color', {
+          candidates,
+          optionalCandidates
+        });
+
+        expect(found?.value.value.valueOf()).toBe('red');
+        expect(found).toBeDefined();
+        expect(candidates.has(found!)).toBe(true);
+        expect(candidates.has(stale)).toBe(true);
+        expect(optionalCandidates.size).toBe(0);
+        expect(registryHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.getRegistry = originalGetRegistry;
+      }
+    });
+
     it('unfiltered property references use direct Declaration lookup without opening DeclarationRegistry', async () => {
       const originalGetRegistry = RulesClass.prototype.getRegistry;
       const registryHits: string[] = [];
@@ -3098,8 +3134,7 @@ describe('reference', () => {
       }
     });
 
-    it('semantic filtered property lookup ignores stale direct-lookup env and stays registry-owned', async () => {
-      const originalEnv = process.env.JESS_DIRECT_DECLARATION_LOOKUP;
+    it('semantic filtered property lookup uses direct declaration lookup without opening DeclarationRegistry', async () => {
       const originalGetRegistry = RulesClass.prototype.getRegistry;
       const registryHits: string[] = [];
       RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
@@ -3109,7 +3144,6 @@ describe('reference', () => {
         }
         return originalGetRegistry.apply(this, args);
       };
-      process.env.JESS_DIRECT_DECLARATION_LOOKUP = '1';
 
       try {
         const node = rules([
@@ -3123,14 +3157,45 @@ describe('reference', () => {
         });
 
         expect(found?.value.value.valueOf()).toBe('red');
-        expect(registryHits.length).toBeGreaterThan(0);
+        expect(registryHits).toHaveLength(0);
       } finally {
-        if (originalEnv === undefined) {
-          delete process.env.JESS_DIRECT_DECLARATION_LOOKUP;
-        } else {
-          process.env.JESS_DIRECT_DECLARATION_LOOKUP = originalEnv;
-        }
         RulesClass.prototype.getRegistry = originalGetRegistry;
+      }
+    });
+
+    it('semantic filtered child declaration fallback uses carried child entries without _rulesSet', async () => {
+      const childRules = rules([
+        decl({ name: any('child-color'), value: any('blue') })
+      ]);
+      const root = rules([
+        ruleset({
+          selector: el('.scope'),
+          rules: childRules
+        })
+      ]);
+      await root.eval(context);
+
+      const descriptor = Object.getOwnPropertyDescriptor(root, '_rulesSet');
+      Object.defineProperty(root, '_rulesSet', {
+        configurable: true,
+        get() {
+          throw new Error('semantic declaration child fallback should not read _rulesSet');
+        }
+      });
+
+      try {
+        const found = root.findProperty('child-color', {
+          searchParents: false,
+          semanticFilter: true,
+          filter: () => true
+        });
+        expect(found?.value.value.valueOf()).toBe('blue');
+      } finally {
+        if (descriptor) {
+          Object.defineProperty(root, '_rulesSet', descriptor);
+        } else {
+          delete (root as { _rulesSet?: unknown })._rulesSet;
+        }
       }
     });
 

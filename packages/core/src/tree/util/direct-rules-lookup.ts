@@ -52,7 +52,7 @@ const PROPERTY_LOOKUP: DeclarationLookupStrategy = {
   includeLiveBindings: false,
   includeFallbackFrames: false,
   prepareScopeFrame: false,
-  semanticFilterCovered: false,
+  semanticFilterCovered: true,
   acceptsNode: (node): node is Declaration => isNode(node, N.Declaration),
   skipVarsAfterBindingHit: false
 };
@@ -167,6 +167,34 @@ function chooseTraversalMatch(
     return current.index < next.index ? next : current;
   }
   return current;
+}
+
+function chooseCandidateMatch(
+  current: Declaration | undefined,
+  candidates: Set<Node> | undefined,
+  key: string,
+  strategy: DeclarationLookupStrategy,
+  filter: DeclarationFindOptions['filter'] | undefined
+): Declaration | undefined {
+  if (!candidates?.size) {
+    return current;
+  }
+  let out = current;
+  for (const candidate of candidates) {
+    if (passesDeclarationFilter(candidate, key, strategy, filter, undefined)) {
+      out = chooseTraversalMatch(out, candidate);
+    }
+  }
+  return out;
+}
+
+function addCandidateMatch(
+  candidates: Set<Node> | undefined,
+  match: Declaration | undefined
+): void {
+  if (candidates && match) {
+    candidates.add(match);
+  }
 }
 
 function createEmptyState(readonly = false): MatchState {
@@ -405,8 +433,10 @@ function findWithinScopeSurface(
     const visibility = getDeclarationVisibility(scope, strategy);
     if (visibility === 'optional' && !isRulesetBodyScope(scope)) {
       state.optionalMatch = chooseTraversalMatch(state.optionalMatch, localMatch);
+      addCandidateMatch(options.optionalCandidates, localMatch);
     } else {
       state.publicMatch = chooseTraversalMatch(state.publicMatch, localMatch);
+      addCandidateMatch(options.candidates, localMatch);
     }
   }
 
@@ -496,8 +526,6 @@ function findDeclarationWithStrategy(
   const lookupOptions = options ?? EMPTY_DIRECT_DECLARATION_FIND_OPTIONS;
   if (
     lookupOptions.findAll
-    || (lookupOptions.candidates !== undefined && lookupOptions.candidates.size > 0)
-    || (lookupOptions.optionalCandidates !== undefined && lookupOptions.optionalCandidates.size > 0)
     || (!strategy.semanticFilterCovered && lookupOptions.semanticFilter)
   ) {
     return DIRECT_DECLARATION_LOOKUP_UNCOVERED;
@@ -509,7 +537,8 @@ function findDeclarationWithStrategy(
   let ignoreCurrentScopeStart = lookupOptions.ignoreCurrentScopeStart === true;
   let start = lookupOptions.start;
   let rules: Rules | undefined = startRules;
-  let optionalMatch: Declaration | undefined;
+  let optionalMatch = chooseCandidateMatch(undefined, lookupOptions.optionalCandidates, key, strategy, lookupOptions.filter);
+  let publicMatch = chooseCandidateMatch(undefined, lookupOptions.candidates, key, strategy, lookupOptions.filter);
   let readonly = Boolean(lookupOptions.readonly);
 
   while (rules) {
@@ -533,11 +562,12 @@ function findDeclarationWithStrategy(
       new Set<Rules>()
     );
     readonly ||= state.readonly;
-    if (state.publicMatch) {
+    publicMatch = chooseTraversalMatch(publicMatch, state.publicMatch);
+    if (publicMatch) {
       if (readonly && options) {
         options.readonly = true;
       }
-      return state.publicMatch;
+      return publicMatch;
     }
     optionalMatch = chooseTraversalMatch(optionalMatch, state.optionalMatch);
     if (!searchParents) {

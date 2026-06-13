@@ -679,10 +679,7 @@ function lookupVariableDeclarationOrFind(
   opts: FindOptions
 ): RulesLookupResult {
   const direct = findVariableDeclaration(targetRules, key, opts);
-  if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
-    return direct;
-  }
-  return targetRules.findVariable(key, opts);
+  return direct === DIRECT_DECLARATION_LOOKUP_UNCOVERED ? undefined : direct;
 }
 
 function lookupPropertyDeclarationOrFind(
@@ -691,10 +688,7 @@ function lookupPropertyDeclarationOrFind(
   opts: FindOptions
 ): RulesLookupResult {
   const direct = findPropertyDeclaration(targetRules, key, opts);
-  if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
-    return direct;
-  }
-  return targetRules.findProperty(key, opts);
+  return direct === DIRECT_DECLARATION_LOOKUP_UNCOVERED ? undefined : direct;
 }
 
 function lookupAnyDeclarationOrFind(
