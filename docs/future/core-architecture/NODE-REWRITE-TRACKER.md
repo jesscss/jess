@@ -149,8 +149,10 @@ first measured offenders after the selector pass.
 - [x] `Extend`: direct extend writer; side-effect eval branch uses
   `MaybePromise` narrowing. Recursive selector extend search now carries one
   local path stack through indexed descent instead of allocating child path
-  arrays through callback/spread recursion. Audit selector comparison/string
-  keys.
+  arrays through callback/spread recursion, and selector equality predicates
+  now use indexed loops instead of `some(...)`, `every(...)`, `filter(...)`,
+  or a temporary numeric-segment array for common selector matching checks.
+  Audit selector comparison/string keys.
 
 Current hard leftovers after the broad hook sweep:
 
@@ -185,6 +187,12 @@ Current hard leftovers after the broad hook sweep:
   descent; path arrays are copied only when a match location is stored. This
   does not complete selector equality because value-key matching and factory
   remainder materialization remain.
+- Selector equality/classification predicates now avoid callback helper scans
+  in `determineExtensionType(...)`, `componentsMatch(...)`,
+  `areSelectorArgumentsEquivalent(...)`, and
+  `areCompoundSelectorsEquivalent(...)`. This does not complete selector
+  equality because value-key matching and factory remainder materialization
+  remain.
 - [x] `ExtendList`: direct list writer; remove super-string wrapper.
 - [x] `SelectorCapture`: direct capture syntax writer, child writer, and direct
   resolved buffer render; audit whether node still needs to exist.

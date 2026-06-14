@@ -192,6 +192,50 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-14 Selector Equality Predicate Callback Cut
+
+Hypothesis: common selector equality and extension-type predicates should not
+pay callback closures or a temporary filtered numeric path array when straight
+loops over the existing selector/path arrays express the same checks.
+
+Before patch, bounded hot-path leash:
+
+- `functions`: `14.41ms`, `usable`;
+- `import-reference`: `21.29ms`, `usable`;
+- `mixins-guards`: `17.79ms`, `unstable`;
+- `extend-chaining`: `5.51ms`, `usable`;
+- `media`: `5.68ms`, `unstable`.
+
+Patch shape:
+
+- `determineExtensionType(...)` counts `arg` and numeric path segments in one
+  loop instead of `some(...)` plus `filter(...)`;
+- compound/simple and simple/compound `componentsMatch(...)` paths use cached
+  scalar keys plus loops instead of `some(...)`;
+- selector-list argument and compound equivalence checks use nested loops
+  instead of `every(...)` + `some(...)`;
+- no selector nodes, side maps, caches, helpers, or public APIs were added.
+
+After patch, first bounded run:
+
+- `functions`: `14.85ms`, `unstable`;
+- `import-reference`: `21.09ms`, `unstable`;
+- `mixins-guards`: `17.62ms`, `usable`;
+- `extend-chaining`: `5.57ms`, `usable`;
+- `media`: `5.74ms`, `unstable`.
+
+Confirmatory after run:
+
+- `functions`: `14.08ms`, `unstable`;
+- `import-reference`: `19.55ms`, `usable`;
+- `mixins-guards`: `17.43ms`, `usable`;
+- `extend-chaining`: `5.30ms`, `usable`;
+- `media`: `5.19ms`, `unstable`.
+
+Decision: keep as machinery deletion. No speed claim: the first after-run lost
+some decision-quality signal, while the confirmatory run restored the usable
+selector/import signals and showed no stable regression.
+
 ### 2026-06-14 Selector Extend Path-Stack Cut
 
 Hypothesis: full recursive selector extend search should not allocate a new

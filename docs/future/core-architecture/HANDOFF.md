@@ -309,6 +309,11 @@ Open tasks:
    child path arrays with `forEach(...)` and `[...currentPath, segment]` before
    a match exists. Stored match locations still copy the path at the ownership
    boundary.
+   Additional partial status: selector equality predicates now use straight
+   loops for `determineExtensionType(...)`, `componentsMatch(...)`,
+   `areSelectorArgumentsEquivalent(...)`, and
+   `areCompoundSelectorsEquivalent(...)`, removing callback closures and one
+   temporary `numericSegments` array from common selector matching checks.
 19. [x] Split sync immediate eval/render from cold public materialization so
    routine sync render replacement does not imply `.inherit(...)`. `evalSync`
    remains the public sync value API and still uses the public materialization
@@ -352,6 +357,10 @@ Open tasks:
    complex, and pseudo-selector descent. This removes per-child callback
    closures and speculative path-array allocation from the full-search walk
    while keeping location-path copies only at stored-match boundaries.
+   Additional partial status: selector comparison predicates now avoid
+   `some(...)`, `every(...)`, and `filter(...)` in the extension-type,
+   compound-vs-simple, selector-list argument, and compound equivalence
+   checks. Remainder factory paths still allocate and remain open.
 25. [ ] Replace callable binding copies for static containers with explicit
    binding/placement state. Static containers should not be copied merely
    because they contain child nodes; `F_HAS_NODE_CHILD` is only a cheap current
@@ -432,26 +441,26 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: selector extend recursive path-stack cut in
+Current pass: selector equality predicate callback cut in
 `packages/core/src/tree/util/selector-match-core.ts`.
 
-- New traversal: none. Existing selector-list, compound, complex, and
-  pseudo-selector recursive walks were rewritten from callback/spread descent
-  to indexed loops over the same children.
+- New traversal: none. Existing selector equality/classification scans were
+  rewritten from `some(...)`, `every(...)`, and `filter(...)` callbacks to
+  indexed loops over the same arrays.
 - New node/materialization: none. No nodes, wrapper selectors, copies,
-  `.inherit`, `.adopt`, side maps, or metadata mutations were added.
+  `.inherit`, `.adopt`, side maps, temporary arrays, or metadata mutations were
+  added. The `numericSegments` temporary array in `determineExtensionType(...)`
+  was removed.
 - Render path: not touched. This pass cuts selector/extend matching machinery,
   not render output.
 - Helper/API surface: no helper, public API, or method added.
-- Metadata mutations: one existing local `currentPath` array is now used as a
-  push/pop stack during recursive search. Stored `ExtendLocation.path` values
-  still receive their own copied array at the match boundary, so no external
-  mutable path state leaks.
+- Metadata mutations: none.
 - Error/control flow: none added.
 - Evidence: focused selector-match, selector-compare, process-extends, and
   extend-eval-integration tests pass; `@jesscss/core` build passes; bounded
-  hot-path benchmark was run before and after as a regression leash. Treat the
-  benchmark as sanity evidence, not a speed claim.
+  hot-path benchmark was run before and after, with a second after-run because
+  the first after-run was noisy. Treat the benchmark as sanity evidence, not a
+  speed claim.
 - Verdict: accept as partial items 18 and 24 progress. Keep selector/extend
   equality open because value-key matching, selector factory remainders, and
   broader selector string decisions remain.
