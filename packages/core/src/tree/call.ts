@@ -544,7 +544,7 @@ export class Call extends Node<CallValue, CallOptions> {
     printOptions: ReturnType<typeof getPrintOptions>
   ): MaybePromise<void> {
     if (!node.hasFlag(F_MAY_ASYNC)) {
-      node.evalSync(context).writeSyntax(printOptions);
+      node.evalImmediateSync(context).writeSyntax(printOptions);
       return undefined;
     }
     const rendered = node.eval(context);

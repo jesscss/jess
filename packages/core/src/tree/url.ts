@@ -87,7 +87,7 @@ export class Url extends Node<Node> {
       ? this.value
       : this.value.hasFlag(F_MAY_ASYNC)
         ? this.value.eval(context)
-        : this.value.evalSync(context);
+        : this.value.evalImmediateSync(context);
     if (isThenable(value)) {
       return value.then((resolved) => {
         const out = this.renderUrlSyntax(resolved, prepared);
@@ -112,7 +112,7 @@ export class Url extends Node<Node> {
     }
     const value = this.value.hasFlag(F_MAY_ASYNC)
       ? this.value.eval(context)
-      : this.value.evalSync(context);
+      : this.value.evalImmediateSync(context);
     const finalize = (resolvedValue: Node): Node => {
       if (resolvedValue === this.value) {
         return this;

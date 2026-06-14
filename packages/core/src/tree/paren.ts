@@ -149,7 +149,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     };
     try {
       if (!currentValue.hasFlag(F_MAY_ASYNC)) {
-        return finish(currentValue.evalSync(context));
+        return finish(currentValue.evalImmediateSync(context));
       }
       const maybeEvald = currentValue.eval(context);
       if (isThenable(maybeEvald)) {

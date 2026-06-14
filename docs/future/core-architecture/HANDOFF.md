@@ -819,8 +819,18 @@ the binding index/scope lookup refactor.
    closures for `Any` coercion. They share the internal compare normalizers in
    `tree/util/compare.ts`. This does not complete selector matching/extend
    equality or remove value/string serialization as a decision mechanism.
-19. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
-   materialization so routine eval replacement does not imply `.inherit(...)`.
+19. [x] Split sync immediate eval/render from cold public materialization so
+   routine sync render replacement does not imply `.inherit(...)`. `evalSync`
+   remains the public sync value API and still uses the public materialization
+   finalizer; `evalImmediateSync(...)` is the render-only sync boundary that
+   evaluates through the base `evalNode(...)` path, marks the immediate result
+   evaluated, and skips `.inherit(...)`. The tree has zero non-test
+   `.evalSync(...)` call sites; `Block`, `Url`, `Negative`, `Expression`,
+   `Call`, and `Paren` now use `evalImmediateSync(...)` for their non-async
+   immediate render/value paths. The helper keeps a cold instance-override
+   fallback because focused `Call` tests prove API-mutated nodes may override
+   `eval(...)`; the first attempted direct `evalNode(...)` helper rendered
+   source placeholders instead of evaluated values.
 20. [ ] Replace `StyleImport` first-use placement copies with placement state
    that points at canonical source children and preserves import visibility.
    Partial status: first-use placement state no longer stores a redundant
@@ -909,34 +919,49 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: loop-control node rewrite audit under the node `writeSyntax`
-whole-task item.
+Current pass: sync immediate eval/materialization split under queue item 19.
 
-- New traversal: no new traversal semantics. The diff shows existing `If`
-  branch iteration and existing `While` loop iteration from the previous
-  control callback cut; this docs-only audit adds no traversal.
-- New node/materialization: none added. This pass did not add `new Node`,
-  copied nodes, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen state,
-  parent restoration, source metadata mutation, or materialized arrays.
-- Render path: no code path changed in this audit. Evidence confirms
-  `For.render(...)` and `While.render(...)` stream iteration body output
-  directly into the provided `RenderBuffer`; their owned iteration surfaces are
-  semantic placement/eval state for bindings and repeated execution, not
-  render-only materialization.
-- Helper/API surface: none added.
-- Metadata mutations: no new metadata mutations. Existing `Rules.scopeFrame`
-  cleanup and `context.rulesContext` save/restore semantics are preserved.
-- Error/control flow: none added.
-- Evidence: existing focused tests cover the loop-control boundary:
-  `pnpm --filter @jesscss/core test -- src/tree/__tests__/control.test.ts src/tree/__tests__/node-render-buffer.test.ts`
-  proves direct control render, no public resolve/eval wrapper for buffers, no
-  `Rules.clone`, scalar leaf reuse, canonical source body parenting, live/stateful
-  loop bindings, render/eval output alignment, and rules-context restoration on
-  throw. Pre-pass hotpath leash at `8e0142fb`: `functions` `14.62ms` unstable,
-  `import-reference` `22.32ms` unstable, `mixins-guards` `17.54ms` usable,
-  `extend-chaining` `5.98ms` usable, `media` `5.77ms` unstable. This is status
-  only, not a speed claim.
-- Verdict: accept. `If`, `For`, and `While` are complete for the
-  `writeSyntax`/render rewrite tracker lane; any future loop iteration surface
-  reduction belongs to placement/copy architecture work, not stringification
-  cleanup.
+- New traversal: none. The pass adds no loop, recursion, source walk, parent
+  walk, side-map lookup, object scan, or array scan.
+- New node/materialization: no runtime materialization added. The pass adds no
+  production `new Node`, copied node, `.inherit(...)`, `.adopt(...)`, wrapper
+  `Rules`, frozen mutation, parent restoration, source metadata mutation, or
+  materialized array. The only new node construction is
+  `new ReplacementAny(...)` inside `node-mutation.test.ts`, a focused test
+  fixture that proves the immediate sync boundary can return a replacement
+  value without public inheritance.
+- Render path: accepted. Non-async render/value paths in `Block`, `Url`,
+  `Negative`, `Expression`, `Call`, and `Paren` no longer enter public
+  `evalSync(...)`/`Node._evalStaticSync(...)`, so immediate stringification
+  does not pay public result `.inherit(...)` finalization. Async paths and
+  public `eval(...)`/`evalSync(...)` semantics are unchanged.
+- Helper/API surface: one method added, `Node.evalImmediateSync(...)`. It is
+  accepted because it replaces all non-test tree `.evalSync(...)` call sites
+  and isolates public materialization from render-only immediate evaluation.
+  The helper keeps one override branch because focused `Call` tests prove
+  API-mutated node instances can override `eval(...)`; the rejected first
+  version bypassed that and rendered source placeholders.
+- Metadata mutations: no new metadata mutation beyond the existing
+  `evaluated = true` marking also used by public eval. The new helper
+  deliberately omits `.inherit(...)`; no lazy options/context allocation,
+  `Reflect.*`, `Object.hasOwn`, structural probe, parent restoration, or
+  source-parent mutation was added.
+- Error/control flow: one synchronous thenable guard exists only for the
+  instance-override fallback, matching the public `evalSync(...)` exceptional
+  contract. It is not used for ordinary misses or branch results. The added
+  `try/finally` is test-only restoration for a monkey-patched `inherit`
+  method, not runtime control flow.
+- Evidence: focused tests passed with
+  `pnpm --filter @jesscss/core test -- src/tree/__tests__/node-mutation.test.ts src/tree/__tests__/block.test.ts src/tree/__tests__/url.test.ts src/tree/__tests__/negative.test.ts src/tree/__tests__/expression.test.ts src/tree/__tests__/call.test.ts src/tree/__tests__/paren.test.ts src/tree/__tests__/node-render-buffer.test.ts`.
+  `rg -n "\\.evalSync\\(" packages/core/src/tree --glob '!**/__tests__/**'`
+  returns no matches; `rg -n "\\.evalImmediateSync\\(" packages/core/src/tree --glob '!**/__tests__/**'`
+  reports the nine intended render/immediate sync call sites. Pre-pass hotpath
+  leash at `7ebd04f2`: `functions` `15.16ms` usable, `import-reference`
+  `23.60ms` usable, `mixins-guards` `17.84ms` usable, `extend-chaining`
+  `5.78ms` usable, `media` `5.88ms` unstable. Dirty post-pass leash reported
+  `functions` `15.14ms` unstable, `import-reference` `20.19ms` usable,
+  `mixins-guards` `17.13ms` usable, `extend-chaining` `6.11ms` usable, and
+  `media` `5.37ms` usable. This is status only, not a speed claim.
+- Verdict: accept and close item 19. Future async public materialization cuts
+  need their own proof surface; they should not reopen routine sync render
+  paths to `.inherit(...)`.

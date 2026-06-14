@@ -1152,6 +1152,27 @@ export abstract class Node<
   }
 
   /**
+   * Synchronous eval boundary for render-only callers that immediately
+   * stringify the result and do not need public result ownership metadata.
+   */
+  evalImmediateSync<T extends this>(this: T, context: Context): EvalSyncResult<T>;
+  evalImmediateSync(context: Context): Node {
+    if (this.eval !== Node.prototype.eval) {
+      const evaluated = this.eval(context);
+      if (isThenable(evaluated)) {
+        throw new TypeError('Expected synchronous eval result.');
+      }
+      return evaluated;
+    }
+    const needsReeval = this.frozen && !this.hasFlag(F_STATIC);
+    const evaluated = !this.evaluated || needsReeval
+      ? mustBeNode(this.evalNode(context))
+      : this;
+    evaluated.evaluated = true;
+    return evaluated;
+  }
+
+  /**
    * Value-returning sibling of `render(context)`.
    *
    * This resolves the node in context without writing to the print buffer.

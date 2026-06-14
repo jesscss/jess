@@ -53,7 +53,7 @@ export class Expression extends Node<Node> {
         : this.value.render(context, bufferOrOptions);
     }
     if (!this.value.hasFlag(F_MAY_ASYNC)) {
-      const node = this.value.evalSync(context);
+      const node = this.value.evalImmediateSync(context);
       return isRenderBuffer(bufferOrOptions)
         ? node.render(context, bufferOrOptions, options)
         : node.render(context, bufferOrOptions);

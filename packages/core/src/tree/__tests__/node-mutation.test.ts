@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Any, F_MAY_ASYNC, Rules, any, paren } from '../index.js';
+import { Any, F_MAY_ASYNC, Node, Rules, any, paren } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 
 class AsyncAny extends Any<string> {
@@ -10,6 +10,19 @@ class AsyncAny extends Any<string> {
 
   override eval() {
     return Promise.resolve(any(this.value));
+  }
+}
+
+class ReplacementAny extends Any<string> {
+  constructor(
+    value: string,
+    private readonly replacement: Any<string>
+  ) {
+    super(value);
+  }
+
+  override evalNode() {
+    return this.replacement;
   }
 }
 
@@ -67,5 +80,29 @@ describe('Node mutation', () => {
     const node = new AsyncAny('10px');
 
     expect(() => node.evalSync(new Context())).toThrow('Expected synchronous eval result.');
+  });
+
+  it('evaluates immediate sync results without public inheritance', () => {
+    const replacement = any('20px');
+    const node = new ReplacementAny('10px', replacement);
+    const originalInherit = replacement.inherit;
+    let inheritCalls = 0;
+    replacement.inherit = function inheritForCounting(
+      this: typeof replacement,
+      source: Node
+    ) {
+      inheritCalls++;
+      return originalInherit.call(this, source);
+    };
+
+    try {
+      const evald = node.evalImmediateSync(new Context());
+
+      expect(evald).toBe(replacement);
+      expect(evald.evaluated).toBe(true);
+      expect(inheritCalls).toBe(0);
+    } finally {
+      replacement.inherit = originalInherit;
+    }
   });
 });

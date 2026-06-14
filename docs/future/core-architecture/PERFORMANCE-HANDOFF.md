@@ -2421,6 +2421,38 @@ Interpretation: status only, not a speed claim. No post-pass leash is required
 for the docs-only audit; preserve the pre-pass snapshot as the latest queue
 starting state.
 
+### Sync Immediate Eval Materialization Split
+
+Date: 2026-06-13.
+
+Change: non-test tree code no longer calls public `evalSync(...)` from routine
+sync render/value paths. `Node.evalImmediateSync(...)` is the render-only sync
+boundary for immediate stringification; it evaluates through the base eval node
+path and skips public `.inherit(...)` finalization. `Block`, `Url`, `Negative`,
+`Expression`, `Call`, and `Paren` now use it for their non-async immediate
+paths. Public `eval(...)` and `evalSync(...)` semantics remain unchanged. A
+first direct-only helper attempt was rejected because focused `Call` tests
+proved API-mutated node instances can override `eval(...)`; the helper keeps a
+cold override fallback for that case.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `7ebd04f2` reported: `functions` median `15.16ms` usable,
+  `import-reference` median `23.60ms` usable, `mixins-guards` median
+  `17.84ms` usable, `extend-chaining` median `5.78ms` usable, and `media`
+  median `5.88ms` unstable.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `15.14ms` unstable,
+  `import-reference` median `20.19ms` usable, `mixins-guards` median
+  `17.13ms` usable, `extend-chaining` median `6.11ms` usable, and `media`
+  median `5.37ms` usable.
+
+Interpretation: status only, not a speed claim. Keep this as a public
+materialization boundary cut. The next measured profile should watch whether
+`.inherit(...)` and `Node._evalStaticSync(...)` fall out of sync render stacks
+before broadening the split to async/public materialization boundaries.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

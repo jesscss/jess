@@ -88,7 +88,7 @@ export class Block extends Node<Node, BlockOptions> {
       ? this.value
       : this.value.hasFlag(F_MAY_ASYNC)
         ? this.value.eval(context)
-        : this.value.evalSync(context);
+        : this.value.evalImmediateSync(context);
     if (isThenable(value)) {
       return value.then((resolved) => {
         const out = this.renderBlockSyntax(resolved, prepared);
@@ -117,7 +117,7 @@ export class Block extends Node<Node, BlockOptions> {
     }
     const value = this.value.hasFlag(F_MAY_ASYNC)
       ? this.value.eval(context)
-      : this.value.evalSync(context);
+      : this.value.evalImmediateSync(context);
     const finalize = (resolvedValue: Node): Block => {
       if (resolvedValue === this.value) {
         return this;

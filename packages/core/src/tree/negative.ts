@@ -43,7 +43,7 @@ export class Negative extends Node<Node> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (!this.value.hasFlag(F_MAY_ASYNC)) {
-      const evaluated = this.value.evalSync(context);
+      const evaluated = this.value.evalImmediateSync(context);
       return this.renderEvaluatedValue(context, evaluated, bufferOrOptions, options);
     }
     const value = this.value.eval(context);
@@ -90,7 +90,7 @@ export class Negative extends Node<Node> {
 
   override evalNode(context: Context): MaybePromise<Node> {
     if (!this.value.hasFlag(F_MAY_ASYNC)) {
-      const evaluated = this.value.evalSync(context);
+      const evaluated = this.value.evalImmediateSync(context);
       return this.operateNegativeValue(evaluated, context);
     }
     const value = this.value.eval(context);
