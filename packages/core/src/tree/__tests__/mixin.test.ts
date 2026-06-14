@@ -1058,7 +1058,7 @@ describe('Mixin', () => {
         ])
       });
 
-      // Wire the imported root into the main root via push so the registry can find the mixin
+      // Wire the imported root into the main root via push so lookup can find the mixin.
       const mainRoot = rules([importedRoot, component]);
       context.root = mainRoot;
 
@@ -3135,6 +3135,42 @@ describe('Mixin', () => {
       `);
     });
 
+    it('mixin-ruleset calls with args keep only the recursive namespace terminal mixin-only', async () => {
+      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const parser = new Parser();
+      const tree = parser.parse(`
+        #theme {
+          .dark {
+            .button {
+              color: ruleset;
+            }
+            .button(@color) {
+              color: @color;
+            }
+          }
+        }
+
+        .a {
+          #theme > .dark > .button(red);
+        }
+      `).tree;
+      context.root = tree;
+
+      const css = await renderNodeToString(tree, context, { context });
+      expect(css).toBeString(`
+        #theme {
+          .dark {
+            .button {
+              color: ruleset;
+            }
+          }
+        }
+        .a {
+          color: red;
+        }
+      `);
+    });
+
     it('mixin-ruleset calls with args reject exact ruleset terminals after namespace resolution', () => {
       const root = rules([
         ruleset({
@@ -3156,7 +3192,7 @@ describe('Mixin', () => {
 
       // Prove params and @arguments are in liveSlotsByName by testing their output.
       // If either were missing from the frame, the reference lookup would fail or
-      // fall through to a stale registry path that no longer exists.
+      // fall through to the slower declaration/callable lookup path.
       const mixinDef = mixin({
         name: any('.parameterized'),
         params: list([any('color', { role: 'property' })]),

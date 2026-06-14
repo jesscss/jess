@@ -1291,7 +1291,7 @@ describe('Control Nodes', () => {
 
   it('resolves $for iteration vars via ScopeFrame live slots without declaration lookup', async () => {
     const context = new Context();
-    const registryHits: string[] = [];
+    const declarationLookupHits: string[] = [];
     const originalFind = Rules.prototype.find;
     Rules.prototype.find = function(...args: Parameters<typeof originalFind>) {
       const [type, key] = args;
@@ -1300,7 +1300,7 @@ describe('Control Nodes', () => {
         && typeof key === 'string'
         && (key === 'value' || key === 'key' || key === 'index')
       ) {
-        registryHits.push(key);
+        declarationLookupHits.push(key);
       }
       return originalFind.apply(this, args);
     };
@@ -1310,7 +1310,7 @@ describe('Control Nodes', () => {
       const css = await renderNodeToString(root, context);
       expect(css).toContain('item: a');
       expect(css).toContain('item: b');
-      expect(registryHits).toEqual([]);
+      expect(declarationLookupHits).toEqual([]);
     } finally {
       Rules.prototype.find = originalFind;
     }

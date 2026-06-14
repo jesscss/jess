@@ -1560,36 +1560,93 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7bj. [ ] Audit callable `findMixin(...)` array recursion after normalized key
+7bj. [x] Audit callable `findMixin(...)` array recursion after normalized key
     carry: delete any helper/remainder branch that is not exercised by focused
     namespace-chain tests.
+   Done. The recursive namespace branches are still exercised by focused
+   namespace tests, including a new parameterized recursive terminal case. No
+   branch was deleted without semantic replacement.
 
-7bk. [ ] Split or inline `getCallableLookupKeyRemainder(...)` if the separator
+7bk. [x] Split or inline `getCallableLookupKeyRemainder(...)` if the separator
     scan shows up as a helper tax; keep it only if it prevents repeated string
     joins in real recursive callable paths.
+   Done as an audit. The helper remains because it scans an already-carried
+   normalized key to avoid rebuilding joined suffix keys inside recursive
+   callable namespace paths. No broader wrapper object was added.
 
-7bl. [ ] Inspect `ReferenceLookupOptions` nesting after the split; keep the
+7bl. [x] Inspect `ReferenceLookupOptions` nesting after the split; keep the
     nested object only if it removes more per-helper literal allocation than it
     adds in dispatch indirection.
+   Done. The nested declaration/callable shapes remain, but the remaining
+   parameterized mixin-ruleset spread was deleted: terminal-only callable state
+   is now carried during reference option preparation and reused by lookup.
 
-7bm. [ ] Add or tighten focused tests for recursive namespace/ruleset callable
+7bm. [x] Add or tighten focused tests for recursive namespace/ruleset callable
     lookup with parameters so `terminalMixinOnly` and normalized key carry stay
     locked to Less semantics.
+   Done. Added a recursive `#theme > .dark > .button(red)` Less fixture that
+   keeps rulesets as namespace containers while admitting only the terminal
+   parameterized mixin result.
 
-7bn. [ ] Audit `findAnyDeclaration(...)` callers and tests: keep it as the
+7bn. [x] Audit `findAnyDeclaration(...)` callers and tests: keep it as the
     explicit cold any-declaration boundary only if no hot-path reference caller
     can use typed variable/property lanes.
+   Done as an audit. `Reference` uses typed variable/property lanes for those
+   lookup types and reaches `findAnyDeclaration(...)` only for declaration and
+   function fallback semantics; the source-order test remains the cold boundary.
 
-7bo. [ ] Re-check direct declaration bucket invalidation for dynamic-name
+7bo. [x] Re-check direct declaration bucket invalidation for dynamic-name
     promotion and `setDefined` after the option split; prove with focused tests
     before changing cache shape.
+   Done. Focused dynamic declaration-name promotion and setDefined tests pass
+   after the option split. No cache shape changed in this pass.
 
-7bp. [ ] Inspect function binding handle cache invalidation after deleting
+7bp. [x] Inspect function binding handle cache invalidation after deleting
     `register('function')`; remove any remaining comments or tests that imply
     a registry-backed function surface.
+   Done. Focused static function binding handle tests still prove version
+   invalidation after `setFunctionBinding(...)` and structural writes. Stale
+   lookup-registry wording in tests was removed.
 
-7bq. [ ] Run the binding-only production grep again after the next changes and
+7bq. [x] Run the binding-only production grep again after the next changes and
     delete any stale registry-shaped lookup wording in code comments.
+   Done. Grep found no `register('function')`, `findFunctionDirect`,
+   `ReferenceFindOptions`, undefined-filter `findDeclaration(...)`, registry
+   utility names, or stale lookup-registry comments in the searched
+   core/plugin/language-service surfaces.
+
+Seeded next binding/lookup queue:
+
+7br. [ ] Audit `RulesLookupAdapter` signatures after the option split; remove
+    unused env/options parameters from adapters only if it deletes dispatch
+    churn without adding wrapper functions.
+
+7bs. [ ] Audit duplicate `mixinRulesetCallHasArgs` state now that
+    `terminalMixinOnly` is carried in callable options; keep the handle key bit
+    only if cached reference handles need it independently.
+
+7bt. [ ] Inspect `Rules.find(...)` generic test hooks and remaining production
+    callsites; replace lookup-type string dispatch with typed finders where the
+    caller already knows the lane.
+
+7bu. [ ] Audit `findMixinsFast(...)` naming and role after registry removal;
+    rename, narrow, or inline only if it reduces old-architecture confusion
+    without hiding traversal cost.
+
+7bv. [ ] Audit callable namespace prefix sort paths; avoid sorting when a
+    single match is found and prove multi-prefix ordering with focused tests
+    before changing semantics.
+
+7bw. [ ] Inspect declaration child-entry visibility object allocation in
+    `collectDirectDeclarationChildEntries(...)`; carry or reuse visibility only
+    where it does not make child-surface mutation stale.
+
+7bx. [ ] Audit scope-frame callable bucket coverage after the recursive
+    namespace tests; ensure simple exact names still skip child-surface crawls
+    unless the frame marks callable child surfaces.
+
+7by. [ ] Re-run the binding-only grep after the next queue and delete stale
+    registry-shaped lookup wording that is not part of extend-root machinery.
 
 Parked secondary deep-cut queue:
 
@@ -1918,6 +1975,42 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Terminal callable option carry and recursive namespace proof pass: accepted
+  as binding/lookup cleanup and focused semantic coverage, not as a speed
+  claim. Files: `packages/core/src/tree/reference.ts`,
+  `packages/core/src/tree/__tests__/mixin.test.ts`,
+  `packages/core/src/tree/__tests__/control.test.ts`, and this handoff.
+  - New traversal: none in production. The new test exercises existing
+    recursive callable namespace lookup. `getCallableLookupKeyRemainder(...)`
+    remains from the prior pass because it scans a carried key instead of
+    rebuilding suffix strings during recursive array lookup.
+  - New node/materialization: none in production. The new Less fixture builds
+    parser test nodes only. No runtime node copy, wrapper `Rules`,
+    `.inherit(...)`, `.adopt(...)`, materialized output array, or metadata
+    mutation was added.
+  - Render path: unchanged. The new test renders a recursive namespace call to
+    prove parameterized terminal lookup semantics; production rendering still
+    consumes the same resolved callable output.
+  - Helper/API surface: net cleanup. No helper was added. Reference lookup now
+    carries `terminalMixinOnly` in the prepared callable options and deletes
+    the per-call spread object in `lookupCallableReference(...)`.
+  - Metadata mutations: none. Function binding and declaration lookup version
+    invalidation paths were audited by focused tests and left unchanged.
+  - Danger-token prosecution: the current diff has parser-test node
+    construction and handoff wording only; no new production traversal or node
+    creation was introduced. Stale lookup-registry test wording was removed,
+    while unrelated extend-root registry wording remains out of scope.
+  - Evidence: focused mixin/reference/control/rules suite passed (`4` files,
+    `33` passed, `377` skipped). Binding grep found no registry-shaped lookup
+    API/comment residue in the searched core/plugin/language-service surfaces.
+    Touched-file ESLint, `git diff --check`, `@jesscss/core` build,
+    `verify:aggressive-cutting-review`, `audit:node-creation`, and `jess`
+    build passed. The review gate reported only current-diff test/parser and
+    handoff danger tokens, prosecuted above. One-iteration hotpath smoke passed
+    with usable signal: `mixins-guards.less` `22.50ms`,
+    `scope-lookup-stress.less` `78.70ms`. No speed claim is made from this
+    pass.
 
 - Function register deletion and reference option split pass: accepted as
   binding/lookup surface cleanup and recursive callable key-carry cleanup, not

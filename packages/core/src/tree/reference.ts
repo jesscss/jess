@@ -492,7 +492,8 @@ function buildReferenceLookupOptions(args: {
     callable: {
       context,
       hasTarget,
-      local
+      local,
+      terminalMixinOnly: referenceNode.options.mixinRulesetCallHasArgs === true || undefined
     }
   };
 }
@@ -729,15 +730,12 @@ function lookupCallableReference(
   filterType?: 'Mixin'
 ): RulesLookupResult {
   const callableKey = Array.isArray(valueKey) ? valueKey : getLookupKeyString(valueKey);
-  const lookupOptions = env.mixinRulesetCallHasArgs
-    ? { ...opts.callable, terminalMixinOnly: true }
-    : opts.callable;
-  const callable = targetRules.findMixin(callableKey, filterType, lookupOptions);
+  const callable = targetRules.findMixin(callableKey, filterType, opts.callable);
   if (callable) {
     return callable;
   }
   if (env.inCall) {
-    return targetRules.findFunction(getLookupKeyString(valueKey), undefined, lookupOptions);
+    return targetRules.findFunction(getLookupKeyString(valueKey), undefined, opts.callable);
   }
   return undefined;
 }
