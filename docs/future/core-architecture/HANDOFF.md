@@ -723,13 +723,16 @@ the binding index/scope lookup refactor.
    - `Declaration` formatting and custom interpolated replacement evaluation
      have regex/iterator cuts, but custom-property raw source, duplicate
      comparison/materialization, and merge-state boundaries remain open.
-   - Control-family partial: `If`, `For`, and `While` eval no longer allocate
-     local `run` async closures. `While` eval/render no longer allocate the
-     generic `runWithRulesContext(...)` callback wrapper just to save/restore
-     `context.rulesContext`. `If` is complete for this tracker lane; `For` and
-     `While` stay open because loop state/body surfaces still create owned
-     iteration surfaces and copy/reuse children at real semantic placement
-     boundaries.
+   - Control-family complete for this node rewrite lane: `If`, `For`, and
+     `While` have direct source writers and direct render paths. `If`, `For`,
+     and `While` eval no longer allocate local `run` async closures, and
+     `While` eval/render no longer allocate the generic
+     `runWithRulesContext(...)` callback wrapper just to save/restore
+     `context.rulesContext`. The remaining `For`/`While` owned iteration
+     `Rules` surfaces are documented as semantic placement/eval state, not
+     render/string transport; focused tests prove no `Rules.clone`, scalar leaf
+     reuse, canonical body parenting, live/stateful bindings, render/eval
+     alignment, and rules-context restoration on throw.
    - Rejected local cut: `QueryCondition` static shared-flat-buffer render
      still needs the returned full string while keeping split buffer parts, so
      deleting that `getSince(...)` requires a render-buffer return-contract task
@@ -906,46 +909,34 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: control-node eval/render callback scaffold cut under the node
-`writeSyntax` whole-task item.
+Current pass: loop-control node rewrite audit under the node `writeSyntax`
+whole-task item.
 
 - New traversal: no new traversal semantics. The diff shows existing `If`
-  branch iteration and existing `While` loop iteration because those loops moved
-  out of deleted local `run` closures into the method bodies. The loop counts,
-  visited nodes, and branch order are unchanged.
+  branch iteration and existing `While` loop iteration from the previous
+  control callback cut; this docs-only audit adds no traversal.
 - New node/materialization: none added. This pass did not add `new Node`,
   copied nodes, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen state,
-  parent restoration, source metadata mutation, or materialized arrays. The two
-  `outputRules: Node[]` arrays are existing eval output accumulators moved out
-  of deleted local `run` closures; no new array allocation site or ownership
-  boundary was introduced.
-- Render path: `While.renderIterations(...)` now saves/restores
-  `context.rulesContext` directly instead of calling the generic
-  `runWithRulesContext(...)` async callback wrapper. It still writes body
-  output directly into the provided `RenderBuffer`; no render path resolves
-  into arrays/nodes just to stringify.
-- Helper/API surface: deleted the module-local `runWithRulesContext(...)`
-  helper. `If.evalNode(...)`, `For.evalNode(...)`, and `While.evalNode(...)`
-  now execute directly as async methods instead of allocating per-call local
-  `run` closures. `For.evalNode(...)` also collapsed a duplicated push branch
-  after clearing `Rules.scopeFrame`.
+  parent restoration, source metadata mutation, or materialized arrays.
+- Render path: no code path changed in this audit. Evidence confirms
+  `For.render(...)` and `While.render(...)` stream iteration body output
+  directly into the provided `RenderBuffer`; their owned iteration surfaces are
+  semantic placement/eval state for bindings and repeated execution, not
+  render-only materialization.
+- Helper/API surface: none added.
 - Metadata mutations: no new metadata mutations. Existing `Rules.scopeFrame`
   cleanup and `context.rulesContext` save/restore semantics are preserved.
-- Error/control flow: no new routine error-control semantics. The diff shows
-  two `try/finally` blocks because the existing `runWithRulesContext(...)`
-  restore guard moved inline into `While.evalNode(...)` and
-  `While.renderIterations(...)`; the guard restores `context.rulesContext`
-  after loop eval/render and does not encode expected misses or branch results
-  as errors.
-- Evidence: focused tests passed:
+- Error/control flow: none added.
+- Evidence: existing focused tests cover the loop-control boundary:
   `pnpm --filter @jesscss/core test -- src/tree/__tests__/control.test.ts src/tree/__tests__/node-render-buffer.test.ts`
-  (`81` passed). Pre-pass hotpath leash at `05461114`: `functions` `13.91ms`
-  unstable, `import-reference` `19.60ms` usable, `mixins-guards` `17.48ms`
-  unstable, `extend-chaining` `5.39ms` usable, `media` `5.11ms` usable. Dirty
-  post-pass leash: `functions` `14.40ms` usable, `import-reference` `19.80ms`
-  usable, `mixins-guards` `17.15ms` usable, `extend-chaining` `5.19ms`
-  usable, `media` `5.32ms` usable. This is status only, not a speed claim.
-- Verdict: accept as partial progress under the open node
-  `writeSyntax`/render rewrite task. `If` is complete for this tracker lane;
-  `For` and `While` remain open because loop state/body surfaces still require
-  a separate placement/copy audit.
+  proves direct control render, no public resolve/eval wrapper for buffers, no
+  `Rules.clone`, scalar leaf reuse, canonical source body parenting, live/stateful
+  loop bindings, render/eval output alignment, and rules-context restoration on
+  throw. Pre-pass hotpath leash at `8e0142fb`: `functions` `14.62ms` unstable,
+  `import-reference` `22.32ms` unstable, `mixins-guards` `17.54ms` usable,
+  `extend-chaining` `5.98ms` usable, `media` `5.77ms` unstable. This is status
+  only, not a speed claim.
+- Verdict: accept. `If`, `For`, and `While` are complete for the
+  `writeSyntax`/render rewrite tracker lane; any future loop iteration surface
+  reduction belongs to placement/copy architecture work, not stringification
+  cleanup.

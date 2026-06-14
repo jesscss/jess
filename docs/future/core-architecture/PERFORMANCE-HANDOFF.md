@@ -2397,6 +2397,30 @@ callback/helper deletion under the node rewrite task. `If` is complete for the
 tracker lane; `For` and `While` still need loop state/body-surface placement
 work before their node-family checkboxes can close.
 
+### Loop-Control Node Rewrite Audit
+
+Date: 2026-06-13.
+
+Change: no runtime code changed in this audit. The node rewrite tracker now
+closes `For` and `While` for the `writeSyntax`/render lane because the
+remaining owned iteration `Rules` surfaces are semantic placement/eval state,
+not render/string transport. Existing focused tests prove direct render,
+render-buffer output, no public resolve/eval wrapper, no `Rules.clone`, scalar
+leaf reuse, canonical body parenting, live/stateful loop bindings,
+render/eval output alignment, and rules-context restoration on throw.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `8e0142fb` reported: `functions` median `14.62ms` unstable,
+  `import-reference` median `22.32ms` unstable, `mixins-guards` median
+  `17.54ms` usable, `extend-chaining` median `5.98ms` usable, and `media`
+  median `5.77ms` unstable.
+
+Interpretation: status only, not a speed claim. No post-pass leash is required
+for the docs-only audit; preserve the pre-pass snapshot as the latest queue
+starting state.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

@@ -145,7 +145,7 @@ first measured offenders after the selector pass.
 Current hard leftovers after the broad hook sweep:
 
 - `Rules`, `Ruleset`, `Declaration`, `AtRule`, `Call`, `Reference`,
-  `QueryCondition`, `Interpolated`, `Mixin`, `Ampersand`, and loop control nodes
+  `QueryCondition`, `Interpolated`, `Mixin`, and `Ampersand`
   still own meaningful render/eval string-transport or branch-heavy paths.
 - Shared utility cleanup: `cast([...])` and cloning/reusable-leaf helpers now
   use straight indexed loops instead of `.map(...)`, `.some(...)`, and metadata
@@ -262,16 +262,22 @@ Current hard leftovers after the broad hook sweep:
   output and streaming behavior.
 - [x] `VarDeclaration`: local writer probe removed; preserve binding semantics.
   Broader declaration body staging remains on `Declaration`.
-- [ ] `For`: direct source syntax writer exists, range-bound closure removed,
+- [x] `For`: direct source syntax writer exists, range-bound closure removed,
   async-generator entry iteration is gone, per-entry tuple arrays are gone,
   constructor binding adoption is direct, eval no longer allocates a local
-  `run` closure, and render path already emits body output directly. Loop
-  state/body surface audit remains.
-- [ ] `While`: direct source syntax writer exists; render path already emits
+  `run` closure, and render path already emits body output directly. Remaining
+  owned iteration `Rules` surfaces are semantic placement/eval state, not
+  render/string transport; focused tests prove no `Rules.clone`, scalar leaf
+  reuse, canonical body parenting, live loop bindings, and render/eval output
+  alignment.
+- [x] `While`: direct source syntax writer exists; render path already emits
   body output directly, the state-mutation probe uses a straight loop, and
   public render no longer allocates the control string wrapper callback. Eval
   no longer allocates a local `run` closure, and eval/render no longer allocate
-  a rules-context callback wrapper. Loop state/body surface audit remains.
+  a rules-context callback wrapper. Remaining state/iteration `Rules` surfaces
+  are semantic placement/eval state, not render/string transport; focused tests
+  prove no `Rules.clone`, scalar leaf reuse, canonical body parenting,
+  stateful loop render/eval alignment, and rules-context restoration on throw.
 - [x] `If`: direct source syntax writer exists, branch serialization avoids
   rest-array allocation, selected branch buffer render passes the existing
   `RenderBuffer` through to `Rules.render(...)` instead of staging through a
