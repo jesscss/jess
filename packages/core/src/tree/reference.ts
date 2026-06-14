@@ -280,11 +280,6 @@ type LookupType = NonNullable<ReferenceOptions['type']>;
 type NormalizedLookupKey = string | string[] | number;
 type RulesLookupResult = RuntimeVarBinding | Node | MixinEntry[] | undefined;
 const SCOPE_FRAME_VARIABLE_MISS = Symbol('scope-frame-variable-miss');
-type RuntimeVarBindingWithCell = RuntimeVarBinding & {
-  cell?: BindingCell;
-  ownerFrame?: ScopeFrame;
-};
-type ScopeFrameVariableBindingResult = RuntimeVarBindingWithCell | typeof SCOPE_FRAME_VARIABLE_MISS | undefined;
 type ScopeFrameVariableBindingHandle = {
   kind: 'scope-frame-variable-binding-handle';
   cell: BindingCell;
@@ -292,6 +287,7 @@ type ScopeFrameVariableBindingHandle = {
   sourceNode?: Node;
   rulesContext?: Rules;
 };
+type ScopeFrameVariableBindingResult = ScopeFrameVariableBindingHandle | typeof SCOPE_FRAME_VARIABLE_MISS | undefined;
 type DeclarationOccurrenceHandle = {
   kind: 'declaration-occurrence-handle';
   node: Declaration | VarDeclaration;
@@ -342,19 +338,17 @@ function isDeclarationOccurrenceHandle(value: unknown): value is DeclarationOccu
   );
 }
 
-function runtimeBindingFromCell(
+function createScopeFrameVariableBindingHandle(
   cell: BindingCell,
   sourceNode: Node | undefined,
-  ownerFrame?: ScopeFrame
-): RuntimeVarBindingWithCell {
+  ownerFrame: ScopeFrame
+): ScopeFrameVariableBindingHandle {
   return {
-    kind: 'runtime-var-binding',
-    value: getBindingCellValue(cell),
-    readonly: cell.readonly,
-    sourceNode,
-    rulesContext: isNode(cell.rulesContext, N.Rules) ? cell.rulesContext : undefined,
+    kind: 'scope-frame-variable-binding-handle',
     cell,
-    ownerFrame
+    ownerFrame,
+    sourceNode,
+    rulesContext: isNode(cell.rulesContext, N.Rules) ? cell.rulesContext : undefined
   };
 }
 
@@ -636,7 +630,7 @@ function lookupScopeFrameVariableBinding(
     return undefined;
   }
   const { cell, sourceNode, frame: ownerFrame } = hit;
-  return runtimeBindingFromCell(cell, sourceNode, ownerFrame);
+  return createScopeFrameVariableBindingHandle(cell, sourceNode, ownerFrame);
 }
 
 function lookupIndexReference(
@@ -644,7 +638,7 @@ function lookupIndexReference(
   valueKey: NormalizedLookupKey,
   opts: ReferenceDeclarationFindOptions,
   env: RulesLookupAdapterEnv
-): RulesLookupResult {
+): ReferenceLookupReturnValue {
   if (typeof valueKey === 'number') {
     return targetRules.at(valueKey);
   }
@@ -674,7 +668,7 @@ function lookupVariableReference(
   valueKey: NormalizedLookupKey,
   opts: ReferenceDeclarationFindOptions,
   env: RulesLookupAdapterEnv
-): RulesLookupResult {
+): ReferenceLookupReturnValue {
   const keyStr = getLookupKeyString(valueKey);
   if (typeof valueKey === 'string') {
     const frameHit = lookupScopeFrameVariableBinding(targetRules, keyStr, opts, env);
@@ -809,7 +803,7 @@ function lookupReferenceTarget(args: {
 function performRulesReferenceLookup(
   scope: Rules,
   lookupContext: RulesReferenceLookupContext
-): RulesLookupResult {
+): ReferenceLookupReturnValue {
   const {
     referenceNode,
     target,
@@ -1027,7 +1021,7 @@ function writeRulesLookupHandle(args: {
   env: RulesLookupAdapterEnv;
   context: Context;
   shape: RulesLookupHandleShape;
-  returnVal: RulesLookupResult;
+  returnVal: ReferenceLookupReturnValue;
 }): void {
   if (!canUseRulesLookupHandle(args)) {
     args.referenceNode._rulesLookupHandle = undefined;
@@ -1037,18 +1031,8 @@ function writeRulesLookupHandle(args: {
   if (args.lookupType === 'variable') {
     if (args.returnVal === undefined) {
       returnVal = SCOPE_FRAME_VARIABLE_MISS;
-    } else if (isRuntimeVarBinding(args.returnVal) && 'cell' in args.returnVal && args.returnVal.cell) {
-      if (!('ownerFrame' in args.returnVal) || !args.returnVal.ownerFrame) {
-        args.referenceNode._rulesLookupHandle = undefined;
-        return;
-      }
-      returnVal = {
-        kind: 'scope-frame-variable-binding-handle',
-        cell: args.returnVal.cell,
-        ownerFrame: args.returnVal.ownerFrame,
-        sourceNode: args.returnVal.sourceNode,
-        rulesContext: args.returnVal.rulesContext
-      };
+    } else if (isScopeFrameVariableBindingHandle(args.returnVal)) {
+      returnVal = args.returnVal;
     } else {
       args.referenceNode._rulesLookupHandle = undefined;
       return;

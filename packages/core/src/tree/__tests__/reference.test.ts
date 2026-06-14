@@ -3068,6 +3068,13 @@ describe('reference', () => {
 
       expect(root.findProperty('child-color', { searchParents: false })?.value.value.valueOf()).toBe('blue');
       expect(root.directDeclarationChildEntries?.map(entry => entry.node)).toEqual([childRules]);
+      const cachedMatch = [...(root.directDeclarationLookupCache?.values() ?? [])]
+        .find(entry => entry.publicMatch?.node === childRules.value[0]);
+      expect(cachedMatch?.publicMatch).toMatchObject({
+        node: childRules.value[0],
+        ownerRules: childRules,
+        index: 0
+      });
 
       const originalValue = root.value;
       Object.defineProperty(root, 'value', {

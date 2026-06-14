@@ -64,9 +64,16 @@ const ANY_DECLARATION_LOOKUP: DeclarationLookupStrategy = {
 };
 const EMPTY_DIRECT_DECLARATION_FIND_OPTIONS: DirectDeclarationFindOptions = {};
 
+export type DirectDeclarationOccurrence = {
+  readonly node: Declaration;
+  readonly ownerRules: Rules | undefined;
+  readonly ownerLookupVersion: number | undefined;
+  readonly index: number | undefined;
+};
+
 type DeclarationMatchState = {
-  optionalMatch: Declaration | undefined;
-  publicMatch: Declaration | undefined;
+  optionalMatch: DirectDeclarationOccurrence | undefined;
+  publicMatch: DirectDeclarationOccurrence | undefined;
   readonly: boolean;
 };
 
@@ -158,9 +165,9 @@ function getDirectDeclarationBucket(
 }
 
 function chooseTraversalMatch(
-  current: Declaration | undefined,
-  next: Declaration | undefined
-): Declaration | undefined {
+  current: DirectDeclarationOccurrence | undefined,
+  next: DirectDeclarationOccurrence | undefined
+): DirectDeclarationOccurrence | undefined {
   if (!next) {
     return current;
   }
@@ -168,7 +175,7 @@ function chooseTraversalMatch(
     return next;
   }
   if (
-    current.parent === next.parent
+    current.node.parent === next.node.parent
     && typeof current.index === 'number'
     && typeof next.index === 'number'
   ) {
@@ -177,20 +184,40 @@ function chooseTraversalMatch(
   return current;
 }
 
+function createDeclarationOccurrence(node: Declaration): DirectDeclarationOccurrence {
+  const ownerRules = isNode(node.parent, N.Rules) ? node.parent : undefined;
+  return {
+    node,
+    ownerRules,
+    ownerLookupVersion: ownerRules?.lookupVersion,
+    index: node.index
+  };
+}
+
+export function isDirectDeclarationOccurrenceCurrent(
+  occurrence: DirectDeclarationOccurrence
+): boolean {
+  return (
+    occurrence.node.parent === occurrence.ownerRules
+    && occurrence.ownerRules?.lookupVersion === occurrence.ownerLookupVersion
+    && occurrence.node.index === occurrence.index
+  );
+}
+
 function chooseCandidateMatch(
-  current: Declaration | undefined,
+  current: DirectDeclarationOccurrence | undefined,
   candidates: Set<Node> | undefined,
   key: string,
   strategy: DeclarationLookupStrategy,
   filter: DeclarationFindOptions['filter'] | undefined
-): Declaration | undefined {
+): DirectDeclarationOccurrence | undefined {
   if (!candidates?.size) {
     return current;
   }
   let out = current;
   for (const candidate of candidates) {
     if (passesDeclarationFilter(candidate, key, strategy, filter, undefined)) {
-      out = chooseTraversalMatch(out, candidate);
+      out = chooseTraversalMatch(out, createDeclarationOccurrence(candidate));
     }
   }
   return out;
@@ -198,10 +225,10 @@ function chooseCandidateMatch(
 
 function addCandidateMatch(
   candidates: Set<Node> | undefined,
-  match: Declaration | undefined
+  match: DirectDeclarationOccurrence | undefined
 ): void {
   if (candidates && match) {
-    candidates.add(match);
+    candidates.add(match.node);
   }
 }
 
@@ -292,6 +319,13 @@ function readCachedMatch(scope: Rules, cacheKey: string | undefined): CachedDecl
   if (!cached) {
     return undefined;
   }
+  if (
+    (cached.optionalMatch && !isDirectDeclarationOccurrenceCurrent(cached.optionalMatch))
+    || (cached.publicMatch && !isDirectDeclarationOccurrenceCurrent(cached.publicMatch))
+  ) {
+    scope.directDeclarationLookupCache?.delete(cacheKey);
+    return undefined;
+  }
   return cached;
 }
 
@@ -313,7 +347,7 @@ function findLocalDeclaration(
   filter: DeclarationFindOptions['filter'] | undefined,
   start: number | undefined,
   skipVarDeclarations = false
-): Declaration | undefined {
+): DirectDeclarationOccurrence | undefined {
   const bucket = getDirectDeclarationBucket(scope, key);
   if (!bucket?.length) {
     return undefined;
@@ -324,7 +358,7 @@ function findLocalDeclaration(
       continue;
     }
     if (passesDeclarationFilter(node, key, strategy, filter, start)) {
-      return node;
+      return createDeclarationOccurrence(node);
     }
   }
   return undefined;
@@ -335,7 +369,7 @@ function findScopeBindingDeclaration(
   key: string,
   filter: DeclarationFindOptions['filter'] | undefined,
   start: number | undefined
-): Declaration | undefined {
+): DirectDeclarationOccurrence | undefined {
   const frame = scope._scopeFrame;
   if (!frame?.declarationsCovered) {
     return undefined;
@@ -356,7 +390,7 @@ function findScopeBindingDeclaration(
       continue;
     }
     if (!filter || filter(sourceNode)) {
-      return sourceNode;
+      return createDeclarationOccurrence(sourceNode);
     }
   }
   return undefined;
@@ -413,22 +447,23 @@ function findWithinScopeSurface(
       && isNode(liveSource, N.VarDeclaration)
       && (!options.filter || options.filter(liveSource))
     ) {
+      const liveOccurrence = createDeclarationOccurrence(liveSource);
       state.readonly ||= Boolean(live.readonly || liveSource.options?.readonly);
       const visibility = scope.options.rulesVisibility?.VarDeclaration ?? '';
       if (visibility === 'optional' && !isRulesetBodyScope(scope)) {
-        state.optionalMatch = liveSource;
+        state.optionalMatch = liveOccurrence;
       } else {
-        state.publicMatch = liveSource;
+        state.publicMatch = liveOccurrence;
         return state;
       }
     }
   }
 
-  let localMatch: Declaration | undefined;
+  let localMatch: DirectDeclarationOccurrence | undefined;
   if (includeLiveBindings) {
     const bindingMatch = findScopeBindingDeclaration(scope, key, options.filter, start);
     if (bindingMatch) {
-      state.readonly ||= Boolean(bindingMatch.options.readonly);
+      state.readonly ||= Boolean(bindingMatch.node.options.readonly);
       localMatch = bindingMatch;
     }
   }
@@ -447,7 +482,7 @@ function findWithinScopeSurface(
   }
 
   if (localMatch) {
-    state.readonly ||= Boolean(localMatch.options.readonly);
+    state.readonly ||= Boolean(localMatch.node.options.readonly);
     const visibility = getDeclarationVisibility(scope, strategy);
     if (visibility === 'optional' && !isRulesetBodyScope(scope)) {
       state.optionalMatch = chooseTraversalMatch(state.optionalMatch, localMatch);
@@ -601,7 +636,7 @@ function findDeclarationWithStrategy(
       if (readonly && options) {
         options.readonly = true;
       }
-      return publicMatch;
+      return publicMatch.node;
     }
     optionalMatch = chooseTraversalMatch(optionalMatch, state.optionalMatch);
     if (searchingFallback) {
@@ -633,7 +668,7 @@ function findDeclarationWithStrategy(
   if (readonly && options) {
     options.readonly = true;
   }
-  return optionalMatch;
+  return optionalMatch?.node;
 }
 
 export function findVariableDeclaration(

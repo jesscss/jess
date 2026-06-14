@@ -2541,6 +2541,37 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: guarded namespace mixin start skips direct crawl when frame hit is covered', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '#guarded-frame-namespace') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const leaf = mixin({
+          name: any('.leaf'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        });
+        const namespace = mixin({
+          name: any('#guarded-frame-namespace'),
+          guard: bool(true),
+          rules: rules([leaf])
+        });
+        const root = rules([namespace]);
+        root.getScopeFrame();
+
+        expect(root.findMixin(['#guarded-frame-namespace', '.leaf'], undefined)).toEqual([leaf]);
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('ScopeFrame callable buckets: static miss coverage stays false for reference imports', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];

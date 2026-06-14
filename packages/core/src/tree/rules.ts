@@ -72,6 +72,7 @@ import type { CallableLookupEntry, MixinEntry } from './util/callable-entry.js';
 import { isIndexedRuleChild } from './util/callable-surface.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
+  type DirectDeclarationOccurrence,
   findAnyDeclaration as findAnyDeclarationDirect,
   findPropertyDeclaration,
   findVariableDeclaration
@@ -684,8 +685,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   hasExactRulesetChildSurface = false;
   directDeclarationsByName: Map<string, Declaration[] | null> | undefined;
   directDeclarationLookupCache: Map<string, {
-    readonly optionalMatch: Declaration | undefined;
-    readonly publicMatch: Declaration | undefined;
+    readonly optionalMatch: DirectDeclarationOccurrence | undefined;
+    readonly publicMatch: DirectDeclarationOccurrence | undefined;
     readonly readonly: boolean;
   }> | undefined;
 
@@ -1953,7 +1954,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (rulesetNamespaceFast !== undefined && (rulesetNamespaceFast.length > 0 || options.terminalMixinOnly !== true)) {
           return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
         }
-        const namespaceMixins = this.findMixinsFast(keys[0]!, {
+        let namespaceMixins: MixinEntry[] | undefined;
+        if (this._scopeFrame && !options.hasTarget && !options.local) {
+          const namespaceKey = keys[0]!;
+          this.prepareCallableLookupFrame(this._scopeFrame, namespaceKey, false);
+          const frameHit = lookupScopeFrameCallable(this._scopeFrame, namespaceKey, {
+            includeRulesets: false
+          });
+          if (frameHit.kind === 'hit') {
+            namespaceMixins = collectCallableBucketResults(frameHit.bucket, false) ?? [];
+          } else if (frameHit.kind === 'miss') {
+            namespaceMixins = [];
+          }
+        }
+        namespaceMixins ??= this.findMixinsFast(keys[0]!, {
           hasTarget: options.hasTarget,
           local: options.local,
           includeRulesets: false
