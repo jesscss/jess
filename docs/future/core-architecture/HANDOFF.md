@@ -56,6 +56,16 @@ user-direction until the `writeSyntax` node queue in
 Do not let binding cleanup, generic smell sweeps, or unrelated performance
 experiments overrule the `writeSyntax` queue while this mode is active.
 
+Focus lock: Jess core work has one active focus at a time. The current focus is
+the repo-wide node serialization rewrite, spanning all remaining node families.
+No secondary queue may compete for the front of the line. Do not start
+selector/equality cleanup, binding-index work, lookup redesign,
+copy/materialization cleanup, benchmark tuning, or general smell sweeps as
+separate work while this focus is active. If one of those areas is touched, it
+must be only because the currently selected node-family serialization task
+cannot be completed without that exact local edit, and the self-prosecution
+must name the selected node row it serves.
+
 The goal is the fastest credible path from parsed Less to CSS output:
 
 - one canonical source tree;
@@ -72,10 +82,10 @@ concrete and cheap or isolated behind cold extension boundaries.
 Work shape while `writeSyntax` is active: run full queue batches, not one-node
 dribbles. A full pass must choose from the unfinished node/family rows in
 `NODE-REWRITE-TRACKER.md` and should leave one or more whole families complete
-or materially closer to complete against that tracker. Selector/equality
-cleanup, benchmark-chasing, and generic smell sweeps are paused unless they are
-directly required to finish the selected node-family serialization work or to
-fix a correctness blocker exposed by that work.
+or materially closer to complete against that tracker. The pass is invalid if
+its primary result is selector/equality cleanup, benchmark-chasing, lookup
+cleanup, copy cleanup, or generic helper polish instead of node serialization
+completion.
 
 Queue items must be **entire tasks**, not micro-items. A queue item is a
 meaningful node-family or runtime-path objective with its own proof surface,
@@ -115,9 +125,9 @@ Serialization contract for this lane:
 - public `toString(...)` / `toTrimmedString(...)`: cold capture wrappers only.
   They may use `mark/getSince`; render-only paths may not.
 - no render-only `mark/getSince`, `capture`, `preview`, writer readback,
-  helper object, temporary syntax array, or detached writer allocation remains
-  unless the row documents a cold public materialization boundary or a semantic
-  blocker.
+  helper object, temporary syntax array, or detached writer allocation remains;
+  if one cannot be removed in this focus, the node row must document the cold
+  public materialization boundary or semantic blocker before moving on.
 
 ## Active Work
 
@@ -137,7 +147,8 @@ Performance leash:
    status after the patch.
 4. Keep the patch only if it completes or materially advances the selected
    serialization row and does not violate the benchmark leash. Performance is
-   a gate here, not the active queue.
+   a gate here, not the active queue, and a benchmark result does not justify
+   switching focus.
 
 Immediate benchmark commands are defined in `PERFORMANCE-HANDOFF.md`.
 Performance evidence/history stays parked there; this handoff owns the active
@@ -312,7 +323,7 @@ Open tasks:
    remaining raw-text fallback performs one top-level comma scan only after
    serialization is unavoidable because the parent selector is a scalar
    `BasicSelector` string containing commas.
-18. [ ] Parked while `writeSyntax` queue is active: sweep selector
+18. [ ] Locked out while `writeSyntax` queue is active: sweep selector
    matching/extend equality. Replace hot `valueOf()` equality
    predicates with structural/keyset checks where possible, keeping
    `valueOf()` only as a measured, cached fast-path when it wins.
@@ -372,7 +383,7 @@ Open tasks:
    rules/import coverage proves charset output-order handling still skips child
    registration prep and does not allocate an empty charset `_location`. This
    does not remove the pending-registration `try/catch` miss path.
-24. [ ] Parked while `writeSyntax` queue is active: continue selector/extend
+24. [ ] Locked out while `writeSyntax` queue is active: continue selector/extend
    factory cuts separately; do not hide selector placement copies inside
    another generic copy helper.
    Partial status: `selector-match-core.ts` recursive search walkers now use
@@ -485,9 +496,12 @@ Current pass: handoff priority correction for node serialization completion.
 - Metadata mutations: none.
 - Error/control flow: none.
 - Evidence: user direction plus the live `HANDOFF.md` and
-  `NODE-REWRITE-TRACKER.md` showed selector/performance side work could be
-  selected while unfinished node-family serialization rows remain.
+  `NODE-REWRITE-TRACKER.md` showed the prior wording still allowed secondary
+  queues to compete with the active focus.
 - Verdict: accept. The next queue pass must choose unfinished node/family
-  serialization work from `NODE-REWRITE-TRACKER.md`; selector/equality and
-  standalone performance cleanup remain parked unless directly required by
-  that node-family work or correctness.
+  serialization work from `NODE-REWRITE-TRACKER.md`. Selector/equality,
+  binding-index, lookup, copy/materialization, benchmark-tuning, and generic
+  smell cleanup are not queue candidates until this focus is explicitly
+  switched or completed. Local edits in those areas are allowed only as
+  implementation details of the selected node-family serialization row and
+  must be documented that way.

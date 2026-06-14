@@ -24,14 +24,16 @@ Only selector-family syntax transport has been cut so far. A checkbox means the
 node has been reviewed specifically for this contract, not merely that one
 helper changed.
 
-Current queue priority: finish unfinished node/family serialization rows before
-selector/equality cleanup, standalone performance experiments, or generic smell
-sweeps. A pass should complete or materially advance a whole node family:
-direct `writeSyntax(...)`, direct `render(...)` emission after value selection,
-cold public string wrappers only, and removal or documented isolation of
-render-only `mark/getSince`, writer capture/readback, detached writers,
-temporary syntax arrays, and public string transport. Selector/equality work is
-parked unless it directly supports a selected node row.
+Current focus lock: this queue is the active focus. Finish unfinished
+node/family serialization rows across the repo before selecting any other core
+architecture work. A pass should complete or materially advance a whole node
+family: direct `writeSyntax(...)`, direct `render(...)` emission after value
+selection, cold public string wrappers only, and removal or documented
+isolation of render-only `mark/getSince`, writer capture/readback, detached
+writers, temporary syntax arrays, and public string transport. Selector/equality
+cleanup, binding-index work, lookup redesign, copy/materialization cleanup,
+benchmark tuning, and generic smell sweeps are not separate queue candidates
+while this focus is active.
 
 Completion contract for each checkbox:
 
