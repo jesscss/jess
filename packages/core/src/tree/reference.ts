@@ -289,10 +289,10 @@ type ReferenceRulesLookupHandle = {
   valueKey: string | string[];
   lookupType: 'declaration' | 'function' | 'mixin' | 'mixin-ruleset' | 'property';
   inCall: boolean;
-  mixinRulesetCallHasArgs: boolean;
   start: number | undefined;
   local: boolean;
   ignoreParentScopeStart: boolean;
+  terminalMixinOnly: boolean;
   returnVal: RulesLookupResult;
 };
 
@@ -306,7 +306,6 @@ type RulesLookupAdapterEnv = {
   readMode: ReferenceOptions['readMode'];
   hasTarget: boolean;
   inCall: boolean;
-  mixinRulesetCallHasArgs: boolean;
   isInterpolatedVariable: boolean;
   filter: (n: Node) => boolean;
   semanticFilter: boolean;
@@ -529,7 +528,6 @@ function prepareReferenceLookup(args: {
       readMode: referenceNode.options.readMode,
       hasTarget,
       inCall: isNode(referenceNode.parent, N.Call),
-      mixinRulesetCallHasArgs: referenceNode.options.mixinRulesetCallHasArgs === true,
       isInterpolatedVariable,
       filter,
       semanticFilter
@@ -925,6 +923,7 @@ type RulesLookupHandleShape = {
   start: number | undefined;
   local: boolean;
   ignoreParentScopeStart: boolean;
+  terminalMixinOnly: boolean;
 };
 
 function getRulesLookupHandleShape(args: {
@@ -946,7 +945,8 @@ function getRulesLookupHandleShape(args: {
   return {
     start: opts.declaration.start,
     local: opts.declaration.local === true,
-    ignoreParentScopeStart: opts.declaration.ignoreParentScopeStart === true
+    ignoreParentScopeStart: opts.declaration.ignoreParentScopeStart === true,
+    terminalMixinOnly: opts.callable.terminalMixinOnly === true
   };
 }
 
@@ -971,10 +971,10 @@ function readRulesLookupHandle(args: {
     || handle.targetLookupVersion !== args.targetRules.lookupVersion
     || handle.lookupType !== args.lookupType
     || handle.inCall !== args.env.inCall
-    || handle.mixinRulesetCallHasArgs !== args.env.mixinRulesetCallHasArgs
     || handle.start !== args.shape.start
     || handle.local !== args.shape.local
     || handle.ignoreParentScopeStart !== args.shape.ignoreParentScopeStart
+    || handle.terminalMixinOnly !== args.shape.terminalMixinOnly
     || handle.valueKey !== args.valueKey
   ) {
     return undefined;
@@ -1004,10 +1004,10 @@ function writeRulesLookupHandle(args: {
     valueKey: args.valueKey,
     lookupType: args.lookupType,
     inCall: args.env.inCall,
-    mixinRulesetCallHasArgs: args.env.mixinRulesetCallHasArgs,
     start: args.shape.start,
     local: args.shape.local,
     ignoreParentScopeStart: args.shape.ignoreParentScopeStart,
+    terminalMixinOnly: args.shape.terminalMixinOnly,
     returnVal: args.returnVal
   };
 }

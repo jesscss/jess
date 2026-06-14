@@ -1617,36 +1617,94 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7br. [ ] Audit `RulesLookupAdapter` signatures after the option split; remove
+7br. [x] Audit `RulesLookupAdapter` signatures after the option split; remove
     unused env/options parameters from adapters only if it deletes dispatch
     churn without adding wrapper functions.
+   Done as an audit. The uniform adapter signature stays because splitting it
+   would add wrapper dispatch for the two adapters that do not read `env`.
+   No new adapter wrapper was added.
 
-7bs. [ ] Audit duplicate `mixinRulesetCallHasArgs` state now that
+7bs. [x] Audit duplicate `mixinRulesetCallHasArgs` state now that
     `terminalMixinOnly` is carried in callable options; keep the handle key bit
     only if cached reference handles need it independently.
+   Done. The duplicate env/handle field was deleted. Cached reference handles
+   now compare the prepared `terminalMixinOnly` shape directly.
 
-7bt. [ ] Inspect `Rules.find(...)` generic test hooks and remaining production
+7bt. [x] Inspect `Rules.find(...)` generic test hooks and remaining production
     callsites; replace lookup-type string dispatch with typed finders where the
     caller already knows the lane.
+   Done as an audit. Production grep finds no `Rules.find(...)` lookup method
+   or production `Rules.prototype.find` monkeypatch; remaining hits are tests
+   or array `.find(...)`. No production string-dispatch lookup replacement was
+   available in this pass.
 
-7bu. [ ] Audit `findMixinsFast(...)` naming and role after registry removal;
+7bu. [x] Audit `findMixinsFast(...)` naming and role after registry removal;
     rename, narrow, or inline only if it reduces old-architecture confusion
     without hiding traversal cost.
+   Done. `findMixinsFast(...)` remains the simple exact-name callable
+   parent-chain path used by scope-frame and namespace lookup. The stale
+   comment saying namespace cases use `find(...)` now says `findMixin(...)`.
 
-7bv. [ ] Audit callable namespace prefix sort paths; avoid sorting when a
+7bv. [x] Audit callable namespace prefix sort paths; avoid sorting when a
     single match is found and prove multi-prefix ordering with focused tests
     before changing semantics.
+   Done as an audit. Both prefix paths already guard sorting behind
+   `prefixMatches.length > 1`; compound-prefix precedence tests remain the
+   semantic coverage, so no extra sorting change was made.
 
-7bw. [ ] Inspect declaration child-entry visibility object allocation in
+7bw. [x] Inspect declaration child-entry visibility object allocation in
     `collectDirectDeclarationChildEntries(...)`; carry or reuse visibility only
     where it does not make child-surface mutation stale.
+   Done. Collected callable/declaration child entries now reuse a shared
+   default visibility object when the child has no explicit visibility
+   overrides. Explicit visibility still gets a cloned object.
 
-7bx. [ ] Audit scope-frame callable bucket coverage after the recursive
+7bx. [x] Audit scope-frame callable bucket coverage after the recursive
     namespace tests; ensure simple exact names still skip child-surface crawls
     unless the frame marks callable child surfaces.
+   Done. Existing focused scope-frame callable bucket tests cover static hits,
+   no-child misses, ruleset-only terminal misses, child-surface bridges, and
+   parent/fallback frame climbs. They passed after this pass.
 
-7by. [ ] Re-run the binding-only grep after the next queue and delete stale
+7by. [x] Re-run the binding-only grep after the next queue and delete stale
     registry-shaped lookup wording that is not part of extend-root machinery.
+   Done. Grep found no `register('function')`, `findFunctionDirect`,
+   `ReferenceFindOptions`, registry utility names, registryless residue, or
+   stale lookup-registry comments in the searched core/plugin/language-service
+   surfaces. Remaining `mixinRulesetCallHasArgs` hits are the source option and
+   call-site marker, not duplicate handle/env state.
+
+Seeded next binding/lookup queue:
+
+7bz. [ ] Audit whether `RulesLookupAdapterEnv` can be split into declaration,
+    callable, and index env shapes without wrapper churn; only change it if the
+    callsite can pass the lane-specific shape directly.
+
+7ca. [ ] Audit `findMixinsFast(...)` callers for `Parameters<Rules['findMixinsFast']>`
+    type extraction and replace with a named exact-callable option type if it
+    shrinks callsite/readability overhead.
+
+7cb. [ ] Inspect callable child-entry visibility allocation for explicit
+    visibility overrides; reuse carried registration visibility only if it
+    cannot go stale after `registerNode(...)`.
+
+7cc. [ ] Audit namespace prefix-match result allocation. Keep the
+    `{ ruleset, consumed }` object array only if a lighter pair/inline walk
+    would obscure ordering or duplicate traversal.
+
+7cd. [ ] Re-check reference handle shape construction: avoid rebuilding full
+    declaration/callable options only to compute cache shape if the shape facts
+    can be carried from `performRulesReferenceLookup(...)`.
+
+7ce. [ ] Inspect `findAnyDeclaration(...)` cold fallback from function
+    reference lookup; decide whether function lookup should attempt
+    any-declaration fallback only for non-call references.
+
+7cf. [ ] Re-run focused scope-frame callable bucket and recursive namespace
+    tests after the next changes.
+
+7cg. [ ] Re-run binding-only grep for registry-shaped lookup wording, excluding
+    extend-root registry machinery.
 
 Parked secondary deep-cut queue:
 
@@ -1975,6 +2033,46 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Reference handle terminal-shape and child-entry visibility pass: accepted as
+  binding/lookup cleanup and default child-entry allocation reduction, not as a
+  speed claim. Files: `packages/core/src/tree/reference.ts`,
+  `packages/core/src/tree/rules.ts`, focused lookup tests, and this handoff.
+  - New traversal: one direct-property helper check for visibility overrides.
+    It replaces unconditional visibility object allocation for collected child
+    entries when no override exists. No new parent walk, child walk, sort,
+    filter, generator, or lookup recursion was added.
+  - New node/materialization: none. No production node, wrapper `Rules`, copied
+    node, `.inherit(...)`, `.adopt(...)`, materialized output array, source
+    metadata, parent mutation, or frozen state was added.
+  - Render path: unchanged. The pass changes lookup handle shape comparison and
+    child-entry metadata reuse; rendering still consumes existing resolved
+    values.
+  - Helper/API surface: small net cleanup. Deleted duplicate
+    `mixinRulesetCallHasArgs` env/handle state and reused the existing prepared
+    `terminalMixinOnly` callable option for handle shape comparison. Added one
+    tiny local visibility override predicate and one shared default visibility
+    object; `findMixinsFast(...)` role stayed explicit and only a stale comment
+    changed.
+  - Metadata mutations: none. The shared default visibility object is used only
+    for child entries with no explicit visibility overrides; explicit
+    visibility still clones into per-entry state, so registration-time
+    visibility mutation does not share stale mutable state.
+  - Danger-token prosecution: any current-diff array/object warnings are the
+    shared default visibility object, the direct property predicate, and
+    handoff text. They reduce per-collected-child object allocation in the
+    no-override case and do not add lookup storage or registry shape.
+  - Evidence: focused lookup suite passed (`5` files, `121` passed, `374`
+    skipped); narrower reference/mixin handle suite passed (`2` files, `27`
+    passed, `258` skipped); touched-file ESLint passed; binding grep found no
+    stale registry-shaped lookup residue in the searched surfaces.
+    `git diff --check`, `@jesscss/core` build,
+    `verify:aggressive-cutting-review`, `audit:node-creation`, and `jess`
+    build passed. The review gate reported only the shared default visibility
+    object and handoff danger-token wording, prosecuted above. One-iteration
+    hotpath smoke passed with usable signal: `mixins-guards.less` `26.14ms`,
+    `scope-lookup-stress.less` `81.40ms`. No speed claim is made from this
+    pass.
 
 - Terminal callable option carry and recursive namespace proof pass: accepted
   as binding/lookup cleanup and focused semantic coverage, not as a speed

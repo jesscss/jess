@@ -586,6 +586,25 @@ export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
   });
   eval(context: Context): MaybePromise<this>;
 }
+
+const DEFAULT_DIRECT_CHILD_RULES_VISIBILITY: RulesOptions['rulesVisibility'] = {
+  Declaration: 'public',
+  Ruleset: 'public',
+  Mixin: 'public'
+};
+
+function hasRulesVisibilityOverrides(rulesVisibility: RulesOptions['rulesVisibility'] | undefined): boolean {
+  return (
+    rulesVisibility !== undefined
+    && (
+      rulesVisibility.Declaration !== undefined
+      || rulesVisibility.Ruleset !== undefined
+      || rulesVisibility.Mixin !== undefined
+      || rulesVisibility.VarDeclaration !== undefined
+    )
+  );
+}
+
 /**
  * The class representing a "declaration list".
  * CSS calls it this even though CSS Nesting
@@ -852,7 +871,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Covers callable entries from the lazy callable cache:
    * static Mixins plus static Ruleset-as-mixin keys.
    * Compound / namespace cases use the direct namespace path in
-   * `find(...)`.
+   * `findMixin(...)`.
    */
   findMixinsFast(
     key: string,
@@ -1125,15 +1144,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!rulesMayContainExactCallableSurface(child)) {
         continue;
       }
-      const rulesVisibility: RulesOptions['rulesVisibility'] = {
-        ...child.options.rulesVisibility
-      };
-      rulesVisibility.Declaration ??= 'public';
-      rulesVisibility.Ruleset ??= 'public';
-      rulesVisibility.Mixin ??= 'public';
       (out ??= []).push({
         node: child,
-        rulesVisibility,
+        rulesVisibility: this.getDirectChildRulesVisibility(child),
         readonly: Boolean(child.options.readonly)
       });
     }
@@ -1158,7 +1171,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       (out ??= []).push({
         node: child,
-        rulesVisibility: this.getDirectDeclarationChildRulesVisibility(child),
+        rulesVisibility: this.getDirectChildRulesVisibility(child),
         readonly: Boolean(child.options.readonly)
       });
     }
@@ -1166,7 +1179,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return out;
   }
 
-  private getDirectDeclarationChildRulesVisibility(child: Rules): RulesOptions['rulesVisibility'] {
+  private getDirectChildRulesVisibility(child: Rules): RulesOptions['rulesVisibility'] {
+    if (!hasRulesVisibilityOverrides(child.options.rulesVisibility)) {
+      return DEFAULT_DIRECT_CHILD_RULES_VISIBILITY;
+    }
     const rulesVisibility: RulesOptions['rulesVisibility'] = {
       ...child.options.rulesVisibility
     };
