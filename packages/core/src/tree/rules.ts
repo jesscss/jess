@@ -115,6 +115,8 @@ type CallableRulesetPathResult = {
   entries: MixinEntry[];
   owned: boolean;
 };
+const DEFINITE_MIXIN_NAMESPACE_MISS = Symbol('definite-mixin-namespace-miss');
+type CallableNamespaceFastResult = CallableRulesetPathResult | typeof DEFINITE_MIXIN_NAMESPACE_MISS | undefined;
 
 function isStyleImportRegistrationNode(node: Node): node is StyleImportRegistrationNode {
   return node.type === 'StyleImport';
@@ -1539,19 +1541,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return undefined;
     }
 
-    const DEFINITE_MISS = Symbol('definite-mixin-namespace-miss');
-    type NamespaceFastResult = MixinEntry[] | typeof DEFINITE_MISS | undefined;
-
     const walk = (
       scope: Rules,
       path: string[],
       offset: number,
       searchParents: boolean
-    ): NamespaceFastResult => {
+    ): CallableNamespaceFastResult => {
       const segment = path[offset];
       const restLength = path.length - offset - 1;
       if (!segment) {
-        return DEFINITE_MISS;
+        return DEFINITE_MIXIN_NAMESPACE_MISS;
       }
 
       const matches = scope.findMixinsFast(segment, {
@@ -1562,10 +1561,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       });
 
       if (matches.length === 0) {
-        return DEFINITE_MISS;
+        return DEFINITE_MIXIN_NAMESPACE_MISS;
       }
       if (restLength === 0) {
-        return matches;
+        return { entries: matches, owned: true };
       }
 
       let nestedResults: MixinEntry[] | undefined;
@@ -1583,31 +1582,35 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (resolved === undefined) {
           return undefined;
         }
-        if (resolved === DEFINITE_MISS) {
+        if (resolved === DEFINITE_MIXIN_NAMESPACE_MISS) {
           sawDefiniteMiss = true;
           continue;
         }
         if (nestedResults === undefined) {
-          nestedResults = resolved;
+          nestedResults = resolved.entries;
+          nestedResultsOwned = resolved.owned;
           continue;
         }
         if (!nestedResultsOwned) {
           nestedResults = [...nestedResults];
           nestedResultsOwned = true;
         }
-        for (let resolvedIndex = 0; resolvedIndex < resolved.length; resolvedIndex++) {
-          nestedResults.push(resolved[resolvedIndex]!);
+        for (let resolvedIndex = 0; resolvedIndex < resolved.entries.length; resolvedIndex++) {
+          nestedResults.push(resolved.entries[resolvedIndex]!);
         }
       }
 
       if (nestedResults !== undefined && nestedResults.length > 0) {
-        return nestedResults;
+        return {
+          entries: nestedResults,
+          owned: nestedResultsOwned
+        };
       }
-      return sawDefiniteMiss ? DEFINITE_MISS : undefined;
+      return sawDefiniteMiss ? DEFINITE_MIXIN_NAMESPACE_MISS : undefined;
     };
 
     const result = walk(this, keys, 0, true);
-    return result === DEFINITE_MISS ? [] : result;
+    return result === DEFINITE_MIXIN_NAMESPACE_MISS ? [] : result?.entries;
   }
 
   private findRulesetNamespacePathFast(

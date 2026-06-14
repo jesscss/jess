@@ -81,37 +81,42 @@ for two-segment mixin namespace descent.
 Current pass keeps direct declaration parent-cycle tracking scalar through two
 distinct surfaces, audits live-slot map ownership, and tags callable namespace
 prefix results with ownership so union append only copies shared/cached arrays.
+Current pass propagates callable namespace result ownership through recursive
+mixin descent, collapses duplicated direct declaration parent/fallback loops,
+and documents `liveSlotsByName` as construction/clone ownership state rather
+than the ordinary read path.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7ex. [ ] ScopeFrame live-slot owner reduction.
-Scope: `liveSlotsByName`, import configured variables, loop/control live
-bindings, callable params, clone/derive, and tests that inspect live slots.
-Goal: move one remaining production read/write to `currentBindingsByName` or a
-construction-only owner without breaking live binding sharing. If no deletion is
-safe, make the semantic owner explicit in code comments/tests and seed the next
-larger migration task.
+7fa. [ ] Callable bucket result ownership.
+Scope: `collectCallableBucketResults(...)`, frame-hit cache writes, retry-frame
+cache writes, and `lastCallableLookupValue`.
+Goal: decide whether frame bucket results should carry owned/shared metadata or
+avoid caching freshly materialized arrays. Remove one copy/cache hazard or
+document why bucket arrays are still the cache boundary.
+Acceptance: static callable binding, namespace, recursive namespace,
+compound-prefix, terminal mixin-only, ruleset namespace with args, lint, builds,
+aggressive review.
+
+7fb. [ ] Live-slot construction map migration plan.
+Scope: `liveSlotsByName`, `buildScopeFrame(...)`, `wireCallableScopeFrames(...)`,
+configured imports, loop/control live bindings, clone/derive, and tests that
+inspect live slots.
+Goal: either replace the map with a construction-only binding-owner object or
+prove the smallest transition step. Do not add dual storage that makes ordinary
+reads slower.
 Acceptance: mixin params, `@arguments`, import configured variables, iteration
 vars, readonly assignment, snapshot/live reads, clone/derive tests, lint,
 builds, aggressive review.
 
-7ey. [ ] Callable result ownership propagation.
-Scope: `collectCallableBucketResults(...)`, `findMixinNamespacePathFast(...)`,
-`findCallableDescendantsWithinMixinNamespaces(...)`, compound-prefix union, and
-last-callable result cache writes.
-Goal: extend explicit owned/shared result metadata far enough to remove another
-defensive array copy or prove the cache boundary that still requires it.
-Acceptance: namespace, recursive namespace, compound-prefix, terminal
-mixin-only, ruleset namespace with args, import/reference tests, lint, builds,
-aggressive review.
-
-7ez. [ ] Direct declaration traversal state consolidation.
-Scope: `findWithinScopeSurface(...)`, `findDeclarationWithStrategy(...)`,
-fallback traversal, local/start handling, and readonly propagation.
-Goal: collapse duplicated parent/fallback state handling while preserving the
-two-scalar circular guard and avoiding a new helper ladder in the hot path.
+7fc. [ ] Direct declaration recursive visited-state follow-up.
+Scope: `findWithinScopeSurface(...)`, lexical parent recursion, child surface
+recursion, recursive cache keys, and readonly propagation.
+Goal: apply the scalar-first cycle-state pattern inside recursive child/lexical
+descent or prove the remaining recursive `Set` allocation is only paid when a
+child/lexical surface is actually entered.
 Acceptance: parent/fallback circular protection, fallback-frame, source-order,
 readonly, property/variable tests, lint, builds, aggressive review.
 
@@ -163,30 +168,26 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: parent-cycle scalar state and callable namespace ownership.
+- Latest pass: recursive namespace ownership and declaration traversal collapse.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
-- New traversal: no new recursion. The existing callable namespace union still
-  scans for duplicate entries before appending; this pass only lets that append
-  reuse owned compound-prefix arrays.
+- New traversal: no new recursion. Existing recursive mixin namespace descent
+  now carries ownership metadata through its return value. Existing direct
+  declaration parent and fallback traversal now share one loop instead of two.
 - New node/materialization: no nodes. New materialization is one small internal
-  ownership record for compound-prefix lookup results plus the owned empty or
-  single-entry arrays already returned by that path. The record prevents
-  mutating arrays that may come from nested/cached `findMixin(...)` results while
-  allowing in-place append for fresh terminal/prefix arrays.
+  ownership record for recursive mixin namespace lookup results, reusing the
+  same owned/shared result shape as compound-prefix lookup. It prevents mutating
+  shared/cached arrays while allowing in-place append for freshly built descent
+  arrays.
 - Render path: unchanged.
-- Helper/API surface: one private result-shape type only; no public method or
+- Helper/API surface: one private namespace result type; no public method or
   compatibility shim added.
-- Metadata mutations: none. The runtime initial-target check now reads
-  `currentBindingsByName.get(key)?.live` instead of probing `liveSlotsByName`.
-- Allocation changes: parent-cycle tracking keeps two scalar `Rules` slots and
-  only allocates a `Set` on the third distinct parent/fallback surface, so the
-  common one- and two-surface lookups do not allocate cycle state. Callable
-  namespace descent reuses existing `searchParents:false` options instead of
-  cloning an equivalent options object. Compound-prefix union skips a defensive
-  spread when the prefix result is freshly owned. Live-slot storage audit kept
-  `liveSlotsByName`: imports, loop/control slots, callable scope wiring, and
-  derived rules still use it as the construction/clone ownership map while reads
-  move through `currentBindingsByName`.
+- Metadata mutations: none. `liveSlotsByName` is documented as construction and
+  clone owner state; ordinary reads stay on `currentBindingsByName`.
+- Allocation changes: recursive mixin namespace descent no longer spreads a
+  first nested result when that result was freshly owned by the current descent.
+  Direct declaration fallback traversal no longer repeats the parent-loop visit
+  and readonly machinery. The remaining `liveSlotsByName` map is retained for
+  imports, loop/control slots, callable scope wiring, and derived-rule sharing.
 - Evidence: focused lint passed; focused lookup suite passed (`7` files,
   `306` passed, `272` skipped). Affected reference/scope/mixin/live-slot subset
   passed (`4` files, `42` passed, `256` skipped). Residue grep and
@@ -194,5 +195,5 @@ At the end of a pass:
   `js-expr.ts` direct-eval warning. Aggressive review passed with documented
   scoped danger tokens; node-creation audit passed; `jess` build passed.
   One-iteration hotpath smoke passed with usable signal:
-  `mixins-guards.less` `21.30ms`, `scope-lookup-stress.less` `74.05ms`. No
+  `mixins-guards.less` `24.69ms`, `scope-lookup-stress.less` `81.36ms`. No
   speed claim is made.

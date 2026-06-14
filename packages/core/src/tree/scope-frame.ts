@@ -113,8 +113,9 @@ export interface ScopeFrame {
   fallbackFrame?: ScopeFrame | undefined;
 
   /**
-   * Live binding cells: mixin params and loop counters.
-   * O(1) Map.get; populated at call time, not from the AST.
+   * Construction/clone owner for live binding cells: mixin params, configured
+   * import variables, and loop counters. Ordinary reads use
+   * currentBindingsByName so static declarations and live cells share one path.
    */
   liveSlotsByName: Map<string, BindingCell>;
 

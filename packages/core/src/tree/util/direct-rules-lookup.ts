@@ -537,13 +537,16 @@ function findDeclarationWithStrategy(
   let ignoreCurrentScopeStart = lookupOptions.ignoreCurrentScopeStart === true;
   let start = lookupOptions.start;
   let rules: Rules | undefined = startRules;
+  let searchingFallback = false;
   let optionalMatch = chooseCandidateMatch(undefined, lookupOptions.optionalCandidates, key, strategy, lookupOptions.filter);
   let publicMatch = chooseCandidateMatch(undefined, lookupOptions.candidates, key, strategy, lookupOptions.filter);
   let readonly = Boolean(lookupOptions.readonly);
 
   while (rules) {
     if (firstVisitedRules === rules || secondVisitedRules === rules || visitedParents?.has(rules)) {
-      throw new Error('Circular parent chain detected in direct declaration lookup');
+      throw new Error(searchingFallback
+        ? 'Circular fallback frame chain detected in direct declaration lookup'
+        : 'Circular parent chain detected in direct declaration lookup');
     }
     if (firstVisitedRules === undefined) {
       firstVisitedRules = rules;
@@ -554,8 +557,8 @@ function findDeclarationWithStrategy(
       visitedParents.add(rules);
     }
 
-    const currentStart = ignoreCurrentScopeStart ? undefined : start;
-    const currentChildStart = start;
+    const currentStart = searchingFallback || ignoreCurrentScopeStart ? undefined : start;
+    const currentChildStart = searchingFallback ? undefined : start;
     ignoreCurrentScopeStart = false;
     const state = findWithinScopeSurface(
       rules,
@@ -576,6 +579,11 @@ function findDeclarationWithStrategy(
       return publicMatch;
     }
     optionalMatch = chooseTraversalMatch(optionalMatch, state.optionalMatch);
+    if (searchingFallback) {
+      rules = rules._scopeFrame?.fallbackFrame?.rulesNode
+        ?? (isNode(rules.parent, N.Rules) ? rules.parent : undefined);
+      continue;
+    }
     if (!searchParents) {
       if (readonly && options) {
         options.readonly = true;
@@ -591,48 +599,10 @@ function findDeclarationWithStrategy(
     );
     rules = parentStep.rules;
     start = parentStep.start;
-  }
-
-  let fallbackRules = strategy.includeFallbackFrames
-    && optionalMatch === undefined
-    ? startRules._scopeFrame?.fallbackFrame?.rulesNode
-    : undefined;
-  while (fallbackRules) {
-    if (
-      firstVisitedRules === fallbackRules
-      || secondVisitedRules === fallbackRules
-      || visitedParents?.has(fallbackRules)
-    ) {
-      throw new Error('Circular fallback frame chain detected in direct declaration lookup');
+    if (!rules && strategy.includeFallbackFrames && optionalMatch === undefined) {
+      rules = startRules._scopeFrame?.fallbackFrame?.rulesNode;
+      searchingFallback = true;
     }
-    if (firstVisitedRules === undefined) {
-      firstVisitedRules = fallbackRules;
-    } else if (secondVisitedRules === undefined) {
-      secondVisitedRules = fallbackRules;
-    } else {
-      visitedParents ??= new Set<Rules>([firstVisitedRules, secondVisitedRules]);
-      visitedParents.add(fallbackRules);
-    }
-    const state = findWithinScopeSurface(
-      fallbackRules,
-      key,
-      strategy,
-      lookupOptions,
-      undefined,
-      undefined,
-      Boolean(lookupOptions.local),
-      readonly
-    );
-    readonly ||= state.readonly;
-    if (state.publicMatch) {
-      if (readonly && options) {
-        options.readonly = true;
-      }
-      return state.publicMatch;
-    }
-    optionalMatch = chooseTraversalMatch(optionalMatch, state.optionalMatch);
-    fallbackRules = fallbackRules._scopeFrame?.fallbackFrame?.rulesNode
-      ?? (isNode(fallbackRules.parent, N.Rules) ? fallbackRules.parent : undefined);
   }
 
   if (readonly && options) {
