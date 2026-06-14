@@ -192,6 +192,76 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-14 Rejected Selector Remainder-Factory Loop Cut
+
+Hypothesis: `trySmallCompoundExtendMatch(...)` should avoid callback closures
+in subset detection and remainder construction by using indexed loops, and
+avoid allocating a remainder array when there are no remainders.
+
+Patch shape tested:
+
+- replaced `find.value.every(... target.value.some(...))` with nested loops;
+- replaced `target.value.filter(... find.value.some(...))` with a lazy
+  remainder array pushed only for unmatched components;
+- no helper, public API, selector cache, side map, or new selector creation
+  boundary was added beyond existing semantic remainder construction.
+
+Focused proof during attempt:
+
+- `pnpm --filter @jesscss/core test -- selector-match-unit`;
+- `pnpm --filter @jesscss/core test -- selector-compare`;
+- `pnpm --filter @jesscss/core test -- process-extends`;
+- `pnpm --filter @jesscss/core test -- extend-eval-integration`;
+- `pnpm --filter @jesscss/core build`.
+
+Before patch, bounded hot-path leash:
+
+- `functions`: `14.56ms`, `usable`;
+- `import-reference`: `19.97ms`, `usable`;
+- `mixins-guards`: `17.08ms`, `usable`;
+- `extend-chaining`: `5.65ms`, `usable`;
+- `media`: `5.56ms`, `unstable`.
+
+After patch, first bounded run:
+
+- `functions`: `15.05ms`, `unstable`;
+- `import-reference`: `21.50ms`, `unstable`;
+- `mixins-guards`: `17.17ms`, `usable`;
+- `extend-chaining`: `5.63ms`, `usable`;
+- `media`: `5.68ms`, `usable`.
+
+Confirmatory after run:
+
+- `functions`: `15.11ms`, `unstable`;
+- `import-reference`: `22.36ms`, `usable`;
+- `mixins-guards`: `16.98ms`, `usable`;
+- `extend-chaining`: `5.49ms`, `usable`;
+- `media`: `5.82ms`, `unstable`.
+
+Third after run:
+
+- `functions`: `15.00ms`, `unstable`;
+- `import-reference`: `20.25ms`, `usable`;
+- `mixins-guards`: `18.40ms`, `unstable`;
+- `extend-chaining`: `6.21ms`, `usable`;
+- `media`: `6.32ms`, `usable`.
+
+Decision: rejected and reverted. The third run showed usable regressions on
+`extend-chaining` and `media`; this exact local loop rewrite should not be
+repeated without a broader structural change or profile evidence that explains
+why it should win.
+
+False assumption to preserve: this pass assumed callback removal would be a
+local win because `every(...)`, `some(...)`, and `filter(...)` allocate
+closures and, in the remainder case, an intermediate array. That was too
+object-count-driven. The hand-written version added more explicit loop state,
+extra branches, lazy-array checks, and repeated manual matching in a V8-sensitive
+selector path. The benchmark says the old callback shape was not the dominant
+cost, or V8 optimized it well enough that the manual rewrite lost. Do not
+replace small callback predicates in this area on style/object-count intuition
+alone; first prove a profile hotspot and then change the larger selector
+matching shape that causes the repeated subset/remainder checks.
+
 ### 2026-06-14 Selector Equality Predicate Callback Cut
 
 Hypothesis: common selector equality and extension-type predicates should not

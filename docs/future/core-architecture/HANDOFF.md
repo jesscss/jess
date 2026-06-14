@@ -361,6 +361,15 @@ Open tasks:
    `some(...)`, `every(...)`, and `filter(...)` in the extension-type,
    compound-vs-simple, selector-list argument, and compound equivalence
    checks. Remainder factory paths still allocate and remain open.
+   Rejected local cut: rewriting `trySmallCompoundExtendMatch(...)` subset and
+   remainder factory callbacks into manual loops was tested and reverted. The
+   third bounded benchmark showed usable regressions on `extend-chaining` and
+   `media`; do not retry this exact shape without a stronger structural change
+   or stable profile evidence. The false assumption was that fewer callback
+   closures and one fewer temporary array would be a local win; benchmark
+   evidence showed the manual loop shape was worse, likely because the real
+   cost is repeated selector matching/branching rather than the callback
+   wrappers themselves.
 25. [ ] Replace callable binding copies for static containers with explicit
    binding/placement state. Static containers should not be copied merely
    because they contain child nodes; `F_HAS_NODE_CHILD` is only a cheap current
@@ -441,26 +450,28 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: selector equality predicate callback cut in
+Current pass: rejected selector remainder-factory loop cut in
 `packages/core/src/tree/util/selector-match-core.ts`.
 
-- New traversal: none. Existing selector equality/classification scans were
-  rewritten from `some(...)`, `every(...)`, and `filter(...)` callbacks to
-  indexed loops over the same arrays.
-- New node/materialization: none. No nodes, wrapper selectors, copies,
-  `.inherit`, `.adopt`, side maps, temporary arrays, or metadata mutations were
-  added. The `numericSegments` temporary array in `determineExtensionType(...)`
-  was removed.
-- Render path: not touched. This pass cuts selector/extend matching machinery,
-  not render output.
-- Helper/API surface: no helper, public API, or method added.
+- New traversal: rejected. The attempted indexed-loop rewrite would have
+  replaced existing `every(...)` / `some(...)` subset checks and
+  `filter(...)` remainder construction in `trySmallCompoundExtendMatch(...)`.
+  The code was reverted after benchmark evidence.
+- New node/materialization: none kept. The attempted patch did not add nodes,
+  side maps, wrappers, or public APIs, but it touched the selector remainder
+  factory boundary and was removed.
+- Render path: not touched.
+- Helper/API surface: none added.
 - Metadata mutations: none.
 - Error/control flow: none added.
 - Evidence: focused selector-match, selector-compare, process-extends, and
-  extend-eval-integration tests pass; `@jesscss/core` build passes; bounded
-  hot-path benchmark was run before and after, with a second after-run because
-  the first after-run was noisy. Treat the benchmark as sanity evidence, not a
-  speed claim.
-- Verdict: accept as partial items 18 and 24 progress. Keep selector/extend
-  equality open because value-key matching, selector factory remainders, and
-  broader selector string decisions remain.
+  extend-eval-integration tests passed during the attempted patch; `@jesscss/core`
+  build passed. Bounded hot-path benchmark was run before and three times after
+  because the first after-run was noisy. The third after-run showed usable
+  regressions on `extend-chaining` and `media`.
+- Verdict: reject and revert the code. Record as item 24 evidence only. Keep
+  selector factory cuts open, but do not retry this local loop rewrite without
+  a broader structural change or stable profile evidence. The bad assumption
+  was object-count intuition: callback/array removal looked cheaper locally,
+  but the benchmark says the manual loop/branch shape lost and the real target
+  is the repeated selector matching/remainder algorithm.

@@ -193,6 +193,13 @@ Current hard leftovers after the broad hook sweep:
   `areCompoundSelectorsEquivalent(...)`. This does not complete selector
   equality because value-key matching and factory remainder materialization
   remain.
+- Rejected: `trySmallCompoundExtendMatch(...)` subset/remainder factory
+  callback removal was tried and reverted after bounded benchmarks showed
+  usable regressions on `extend-chaining` and `media`. Do not retry the same
+  local loop rewrite without a broader structural change or profile evidence.
+  The false assumption was that fewer callback closures/temporary arrays would
+  automatically beat V8's existing optimized callback shape; the benchmark
+  showed the real cost is broader repeated selector matching/remainder logic.
 - [x] `ExtendList`: direct list writer; remove super-string wrapper.
 - [x] `SelectorCapture`: direct capture syntax writer, child writer, and direct
   resolved buffer render; audit whether node still needs to exist.
