@@ -2,6 +2,7 @@ import { any, attr, co, compound, el, pseudo, ref, rules, Rules as RulesClass, s
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { OutputWriter } from '../util/print.js';
+import { F_EXTENDED, F_EXTEND_TARGET } from '../node.js';
 
 class CountingWriter extends OutputWriter {
   reads = 0;
@@ -46,6 +47,39 @@ describe('Selector list', () => {
       expect(sellist([]).toTrimmedString({ writer })).toBe('');
       expect(writer.toString()).toBe('');
       expect(writer.reads).toBe(0);
+    });
+
+    test('writes top-level :is selector-list items directly', () => {
+      const node = sellist([
+        pseudo({
+          name: ':is',
+          arg: sellist([el('.a'), el('.b')])
+        }),
+        el('.c')
+      ]);
+
+      expect(node.toTrimmedString()).toBe('.a,\n.b,\n.c');
+    });
+
+    test('filters flattened reference-mode selector-list items directly', () => {
+      const target = el('.target');
+      target.addFlag(F_EXTENDED);
+      target.addFlag(F_EXTEND_TARGET);
+      const added = el('.added');
+      added.addFlag(F_EXTENDED);
+      const node = sellist([
+        pseudo({
+          name: ':is',
+          arg: sellist([target, added])
+        }),
+        el('.plain')
+      ]);
+
+      expect(node.toTrimmedString({
+        referenceMode: true,
+        referenceRenderEnabled: true,
+        referenceFilterTargets: true
+      })).toBe('.added');
     });
 
     /** @todo - add test for non-equality */

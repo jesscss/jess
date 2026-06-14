@@ -2983,6 +2983,36 @@ not move at decision-quality resolution. Keep `AtRule` open for non-scalar
 header/leaf readback, body-state staging, and custom eval/import/render
 branches.
 
+### SelectorList Direct Flattened Emission
+
+Date: 2026-06-14.
+
+Change: `SelectorList.writeSyntax(...)` no longer builds a temporary flattened
+selector array before serializing top-level `:is(...)` selector-list
+expansions. Normal writes emit candidates directly from the source list and
+existing nested selector-list arrays. Reference-mode target filtering keeps the
+old "filter only when at least one extended non-target exists" behavior with a
+pre-scan only when reference filtering is active, then writes matching
+candidates directly.
+
+Hotpath status:
+
+- Focused `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/selector-list.test.ts --run` passed.
+- Broader selector-focused `vitest --run` suite passed 9 files / 189 tests.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `14.81ms` unstable,
+  `import-reference` median `21.89ms` usable, `mixins-guards` median
+  `17.64ms` usable, `extend-chaining` median `6.03ms` unstable, and `media`
+  median `6.26ms` unstable.
+- Dirty post-pass `node scripts/profile-less-benchmark.mjs --file=benchmark.less`
+  still reported broad `OutputWriter.mark` `50044` and
+  `OutputWriter.getSince` `45048`.
+
+Interpretation: machinery deletion only, not a speed claim. The selected writer
+path no longer materializes a flatten/filter array, but broad benchmark
+signals were mixed/noisy and the writer counters did not move.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

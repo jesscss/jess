@@ -34,6 +34,32 @@ function emitSelectorListItem(
   }
 }
 
+function flattenedSelectorListValue(item: Selector): readonly Selector[] | undefined {
+  if (isNode(item, N.PseudoSelector) && item.value.name === ':is') {
+    const arg = item.value.arg;
+    return arg && isNode(arg, N.SelectorList) ? arg.value : undefined;
+  }
+  if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
+    const only = item.value[0]!;
+    if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
+      const arg = only.value.arg;
+      return arg && isNode(arg, N.SelectorList) ? arg.value : undefined;
+    }
+  }
+  if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
+    const only = item.value[0]!;
+    if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
+      const arg = only.value.arg;
+      return arg && isNode(arg, N.SelectorList) ? arg.value : undefined;
+    }
+  }
+  return undefined;
+}
+
+function shouldEmitReferenceFilteredItem(item: Selector): boolean {
+  return item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET);
+}
+
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
   private ownSelector(item: Selector): Selector {
@@ -84,77 +110,84 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   override writeSyntax(printOptions: FinalPrintOptions): void {
-    const w = printOptions.writer;
-    let depth = printOptions.depth;
-    let space = ''.padStart(depth * 2);
-    const value: Selector[] = [];
-    for (const item of this.value) {
-      if (isNode(item, N.PseudoSelector) && item.value.name === ':is') {
-        const arg = item.value.arg;
-        if (arg && isNode(arg, N.SelectorList)) {
-          value.push(...arg.value);
-          continue;
-        }
-      }
-      if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
-          const arg = only.value.arg;
-          if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.value);
-            continue;
-          }
-        }
-      }
-      if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
-          const arg = only.value.arg;
-          if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.value);
-            continue;
-          }
-        }
-      }
-      value.push(item);
-    }
-    if (
+    const onlyReferenceFiltered = (
       printOptions.referenceMode === true
       && printOptions.referenceRenderEnabled === true
       && printOptions.referenceFilterTargets === true
-    ) {
-      let extendedCount = 0;
-      for (let i = 0; i < value.length; i++) {
-        const item = value[i]!;
-        if (item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
-          value[extendedCount++] = item;
+      && this.hasReferenceFilteredItems(this.value)
+    );
+    this.writeSelectorListItems(this.value, printOptions, onlyReferenceFiltered);
+  }
+
+  private hasReferenceFilteredItems(value: readonly Selector[]): boolean {
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i]!;
+      const flattened = flattenedSelectorListValue(item);
+      if (flattened) {
+        for (let j = 0; j < flattened.length; j++) {
+          if (shouldEmitReferenceFilteredItem(flattened[j]!)) {
+            return true;
+          }
+        }
+      } else if (shouldEmitReferenceFilteredItem(item)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private writeSelectorListItems(
+    value: readonly Selector[],
+    printOptions: FinalPrintOptions,
+    onlyReferenceFiltered: boolean
+  ): void {
+    const w = printOptions.writer;
+    const space = ''.padStart(printOptions.depth * 2);
+    let previous: Selector | undefined;
+    let emitted = 0;
+    for (let i = 0; i < value.length; i++) {
+      const sourceItem = value[i]!;
+      const flattened = flattenedSelectorListValue(sourceItem);
+      if (flattened) {
+        for (let j = 0; j < flattened.length; j++) {
+          const item = flattened[j]!;
+          if (onlyReferenceFiltered && !shouldEmitReferenceFilteredItem(item)) {
+            continue;
+          }
+          if (emitted > 0) {
+            emitCommentTriviaBeforeDelimiter(previous!, item, printOptions);
+            w.add(`,\n${space}`);
+            if (printOptions.trivia) {
+              emitTriviaTokens(
+                consumeTrivia(printOptions.trivia, item.location[0], 'before', printOptions),
+                printOptions,
+                { skipLeadingWhitespace: true }
+              );
+            }
+          }
+          emitSelectorListItem(item, printOptions, emitted > 0);
+          previous = item;
+          emitted++;
+        }
+        continue;
+      }
+      if (onlyReferenceFiltered && !shouldEmitReferenceFilteredItem(sourceItem)) {
+        continue;
+      }
+      if (emitted > 0) {
+        emitCommentTriviaBeforeDelimiter(previous!, sourceItem, printOptions);
+        w.add(`,\n${space}`);
+        if (printOptions.trivia) {
+          emitTriviaTokens(
+            consumeTrivia(printOptions.trivia, sourceItem.location[0], 'before', printOptions),
+            printOptions,
+            { skipLeadingWhitespace: true }
+          );
         }
       }
-      if (extendedCount > 0) {
-        value.length = extendedCount;
-      }
-    }
-    let length = value.length;
-    if (length === 0) {
-      return;
-    }
-    let item = value[0]!;
-
-    emitSelectorListItem(item, printOptions);
-
-    for (let i = 1; i < length; i++) {
-      const prevItem = item;
-      item = value[i]!;
-      emitCommentTriviaBeforeDelimiter(prevItem, item, printOptions);
-      w.add(`,\n${space}`);
-      if (printOptions.trivia) {
-        emitTriviaTokens(
-          consumeTrivia(printOptions.trivia, item.location[0], 'before', printOptions),
-          printOptions,
-          { skipLeadingWhitespace: true }
-        );
-      }
-      emitSelectorListItem(item, printOptions, true);
+      emitSelectorListItem(sourceItem, printOptions, emitted > 0);
+      previous = sourceItem;
+      emitted++;
     }
   }
 
@@ -320,37 +353,15 @@ export class SelectorList extends Selector<Selector[]> {
   private appendFlattenedSelector(item: Selector, flattened: Selector[]): void {
     // Flatten top-level `:is(a, b)` items into the selector list.
     // This is safe in SelectorList context (it is equivalent to `a, b`).
-    if (isNode(item, N.PseudoSelector) && item.value.name === ':is') {
-      const arg = item.value.arg;
-      if (arg && isNode(arg, N.SelectorList)) {
-        this.appendSelectorListValue(arg.value, flattened);
-        return;
-      }
-    }
-    if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
-      const only = item.value[0]!;
-      if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
-        const arg = only.value.arg;
-        if (arg && isNode(arg, N.SelectorList)) {
-          this.appendSelectorListValue(arg.value, flattened);
-          return;
-        }
-      }
-    }
-    if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
-      const only = item.value[0]!;
-      if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
-        const arg = only.value.arg;
-        if (arg && isNode(arg, N.SelectorList)) {
-          this.appendSelectorListValue(arg.value, flattened);
-          return;
-        }
-      }
+    const flattenedValue = flattenedSelectorListValue(item);
+    if (flattenedValue) {
+      this.appendSelectorListValue(flattenedValue, flattened);
+      return;
     }
     flattened.push(item);
   }
 
-  private appendSelectorListValue(value: Selector[], out: Selector[]): void {
+  private appendSelectorListValue(value: readonly Selector[], out: Selector[]): void {
     for (let i = 0; i < value.length; i++) {
       out.push(value[i]!);
     }

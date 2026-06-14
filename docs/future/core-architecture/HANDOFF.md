@@ -311,6 +311,15 @@ Open tasks:
    the name value key directly instead of routing the name through public
    `toString(...)`.
 
+   Additional partial status: `SelectorList.writeSyntax(...)` now emits
+   top-level `:is(...)` selector-list expansions directly instead of first
+   building a temporary flattened selector array. Reference-mode filtering now
+   does the old extended-target pre-scan only when reference filtering is active
+   and then writes matching candidates directly. `SimpleSelector` base-class
+   deletion was audited and rejected: its `resolve(context)` override calls
+   `evalNode(context)` directly, while inherited `Node.resolve(...)` would enter
+   the public eval ownership path.
+
    Evidence pointer: use `NODE-REWRITE-TRACKER.md` for per-node status and
    `PERFORMANCE-HANDOFF.md` for benchmark/profile history. Do not add queue
    entries for one-line cuts inside this item.
@@ -497,32 +506,38 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `AtRule` scalar header readback cut.
+Current pass: `SelectorList` direct flattened emission plus `SimpleSelector`
+base audit.
 
-- New traversal: none. The existing header path still serializes exactly the
-  selected name, optional prelude, and optional body opener.
+- New traversal: `SelectorList.writeSyntax(...)` now writes flattened
+  top-level `:is(...)` candidates directly. Normal selector-list writing is one
+  pass over the source list and any existing nested selector-list arrays. The
+  only extra scan is `hasReferenceFilteredItems(...)`, and it runs only when
+  `referenceMode`, `referenceRenderEnabled`, and `referenceFilterTargets` are
+  all active; it preserves the old behavior where filtering applies only if at
+  least one extended non-target candidate exists.
 - New node/materialization: no runtime nodes, copies, wrappers, arrays, or
-  materialized render values. The only new construction is test instrumentation
-  in the AtRule suite's `CountingWriter` plus focused fixture nodes created by
-  existing test factories: an empty rules body and scalar keyword children.
-- Render path: selected node row is `AtRule`. `getHeaderString(...)` now reads
-  scalar no-trivia `Any` name/prelude text directly instead of opening writer
-  mark/getSince/restore windows just to recover the text. The no-trivia path
-  also skips the post-prelude trivia probe. Complex/trivia-backed pieces stay
-  on the existing direct `writeSyntax(...)` readback path until boundary trivia
-  can be emitted without capture.
-- Helper/API surface: none added.
-- Metadata mutations: none.
-- Error/control flow: no new runtime error/control-flow branch. The two
-  `try/finally` blocks visible in the diff are the existing writer restore
-  guards kept on the non-scalar/trivia readback path and moved under the new
-  scalar fast-path guards.
-- Evidence: focused `at-rule` tests prove scalar frame headers produce the same
-  string while using zero writer mark/getSince/restore/capture/preview calls,
-  and non-scalar prelude headers still stream child syntax through the active
-  writer with one localized readback window. Final hotpath/profile status is
-  in `PERFORMANCE-HANDOFF.md`; broad profiler mark/getSince counts did not
-  move at decision-quality resolution, so no speed claim.
-- Verdict: accept as a bounded `AtRule` serialization cut. No speed claim.
-  Keep the `AtRule` tracker row open because non-scalar header/leaf readback,
-  body-state staging, and custom eval/import/render branches remain.
+  materialized render values. The changed render path removed the old
+  render-time flatten/filter output array. `readonly Selector[]` types visible
+  in the diff are existing child arrays from nested selector-list nodes, not
+  newly materialized syntax containers. New test nodes are focused fixtures
+  only.
+- Render path: selected node row is `SelectorList`. Rendering/stringification
+  still writes direct selector syntax to the active writer; it no longer
+  materializes a flattened selector array just to iterate and stringify it.
+  Evaluated selector materialization still uses its existing ownership array
+  and remains a separate public/eval boundary.
+- Helper/API surface: added two file-local classifier helpers and two private
+  writer helpers to replace duplicated shape checks plus render-time array
+  construction. They do not allocate syntax containers or expose public API.
+- Metadata mutations: test-only selector flag setup for the reference-filter
+  fixture. No runtime parent/source/frozen/options/context mutation added.
+- Error/control flow: no new runtime error/control-flow branch.
+- Evidence: focused `selector-list` tests prove direct top-level `:is(...)`
+  flatten output and reference-mode filtering over flattened candidates. Broader
+  selector-focused `vitest --run` suite passed 9 files / 189 tests. Final
+  hotpath/profile status is in `PERFORMANCE-HANDOFF.md`; no speed claim.
+- Verdict: accept as a bounded `SelectorList` serialization cut and
+  `SimpleSelector` audit. Keep `SelectorList` open for valueOf joins,
+  flattening/materialization outside `writeSyntax(...)`, and temporary arrays
+  beyond this direct writer path.
