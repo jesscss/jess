@@ -1746,6 +1746,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let remainder: string[] | undefined;
     let nestedOptions: CallableFindOptions | undefined;
     let resolved: MixinEntry[] | undefined;
+    let resolvedOwned = false;
     for (let i = 0; i < namespaceMixins.length; i++) {
       const entry = namespaceMixins[i]!;
       if (!isNode(entry, N.Mixin)) {
@@ -1766,7 +1767,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         getCallableLookupKeyRemainder(normalizedPathKey, 1)
       );
       if (nested?.length) {
-        resolved ??= [];
+        if (resolved === undefined) {
+          resolved = nested;
+          continue;
+        }
+        if (!resolvedOwned) {
+          resolved = [...resolved];
+          resolvedOwned = true;
+        }
         for (let nestedIndex = 0; nestedIndex < nested.length; nestedIndex++) {
           resolved.push(nested[nestedIndex]!);
         }

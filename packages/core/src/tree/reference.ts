@@ -676,14 +676,6 @@ function lookupDeclarationReference(
   return lookupAnyDeclarationOrFind(targetRules, getLookupKeyString(valueKey), opts.declaration);
 }
 
-function lookupFunctionReference(
-  targetRules: Rules,
-  valueKey: NormalizedLookupKey,
-  opts: CallableFindOptions
-): RulesLookupResult {
-  return targetRules.findFunction(getLookupKeyString(valueKey), undefined, opts);
-}
-
 function lookupVariableDeclarationOrFind(
   targetRules: Rules,
   key: string,
@@ -709,20 +701,6 @@ function lookupAnyDeclarationOrFind(
 ): RulesLookupResult {
   const direct = findAnyDeclaration(targetRules, key, opts);
   return direct === DIRECT_DECLARATION_LOOKUP_UNCOVERED ? undefined : direct;
-}
-
-function lookupCallableReference(
-  targetRules: Rules,
-  valueKey: NormalizedLookupKey,
-  opts: CallableFindOptions,
-  filterType?: 'Mixin'
-): RulesLookupResult {
-  const callableKey = Array.isArray(valueKey) ? valueKey : getLookupKeyString(valueKey);
-  const callable = targetRules.findMixin(callableKey, filterType, opts);
-  if (callable) {
-    return callable;
-  }
-  return undefined;
 }
 
 function lookupRulesReferenceTarget(args: {
@@ -852,11 +830,19 @@ function performRulesReferenceLookup(
     case 'declaration':
       return lookupDeclarationReference(scope, valueKey, opts, env);
     case 'function':
-      return lookupFunctionReference(scope, valueKey, opts.callable);
+      return scope.findFunction(getLookupKeyString(valueKey), undefined, opts.callable);
     case 'mixin':
-      return lookupCallableReference(scope, valueKey, opts.callable, 'Mixin');
+      return scope.findMixin(
+        Array.isArray(valueKey) ? valueKey : getLookupKeyString(valueKey),
+        'Mixin',
+        opts.callable
+      );
     case 'mixin-ruleset':
-      return lookupCallableReference(scope, valueKey, opts.callable);
+      return scope.findMixin(
+        Array.isArray(valueKey) ? valueKey : getLookupKeyString(valueKey),
+        undefined,
+        opts.callable
+      );
   }
 }
 

@@ -1864,26 +1864,60 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7db. [ ] Inspect whether `lookupFunctionReference(...)` and
+7db. [x] Inspect whether `lookupFunctionReference(...)` and
     `lookupCallableReference(...)` should become direct `case` bodies now that
     their signatures are tiny; inline only if it deletes functions without
     making the switch branchier.
+   Done. Deleted both helpers and made the direct switch call
+   `Rules.findFunction(...)` / `Rules.findMixin(...)`.
 
-7dc. [ ] Revisit `ReferenceLookupOptions` after callable/function signature
+7dc. [x] Revisit `ReferenceLookupOptions` after callable/function signature
     narrowing; split only if declaration lanes can avoid callable option
     construction and callable lanes can avoid declaration option construction
     without changing handle shape caching.
+   Done as an audit-only no-op. Handle shape caching still reads both
+   declaration and callable shape bits from one prepared target option record;
+   splitting now would duplicate shape construction or add wrapper records.
 
-7dd. [ ] Audit `findCallableDescendantsWithinMixinNamespaces(...)` result
+7dd. [x] Audit `findCallableDescendantsWithinMixinNamespaces(...)` result
     accumulation for the same lazy-first-hit pattern used by
     `findMixinNamespacePathFast(...)`; avoid mutating cached nested results.
+   Done. The first nested hit is now returned directly; a second hit clones
+   before appending so cached nested results are not mutated.
 
-7de. [ ] Inspect current-frame direct fallback after `frameHit.kind ===
+7de. [x] Inspect current-frame direct fallback after `frameHit.kind ===
     'uncovered'`; avoid `findMixinsFast(...)` only when the frame proves no
     exact callable child surface for the requested lane.
+   Done as an audit-only no-op. The existing skip already uses
+   `hasDirectLookupChildSurface(false)` for mixin-only lookup. For
+   ruleset-inclusive lookup, frame miss coverage is built with the callable
+   surface included, so broadening the check would duplicate coverage state.
 
-7df. [ ] Re-run focused callable bucket, recursive namespace, function
+7df. [x] Re-run focused callable bucket, recursive namespace, function
     fallback, and binding grep checks.
+   Done. Focused reference/mixin/call/rules/import/control suite passed after
+   the edits.
+
+Seeded next binding/lookup queue:
+
+7dg. [ ] Inspect `ReferenceLookupOptions`/handle shape one more time after
+    helper inlining; split only if handle shape can become its own prepared
+    record and remove unused lane option construction.
+
+7dh. [ ] Audit `getLookupKeyString(valueKey)` calls in direct switch branches;
+    carry string keys only if it avoids repeated conversion without widening
+    key handling or adding per-lane wrappers.
+
+7di. [ ] Inspect `findMixin(...)` array namespace union path for mutating
+    `compoundPrefixFast`; clone only if a cached compound-prefix result can be
+    reused elsewhere and mutated.
+
+7dj. [ ] Re-check `findMixinsFast(...)` current-surface collection for lazy
+    result allocation; cut only if it avoids array creation on no-hit paths
+    without changing public return shape.
+
+7dk. [ ] Re-run focused reference/callable namespace/function fallback tests,
+    binding-only grep, and standard lookup gates.
 
 Parked secondary deep-cut queue:
 
@@ -2212,6 +2246,41 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Direct callable switch and lazy namespace descendant pass: accepted as
+  binding/lookup cleanup, not as a speed claim. Files:
+  `packages/core/src/tree/reference.ts`, `packages/core/src/tree/rules.ts`,
+  focused lookup tests, and this handoff.
+  - New traversal: none. `findCallableDescendantsWithinMixinNamespaces(...)`
+    keeps the same namespace-mixin loop and nested `findMixin(...)` calls, but
+    avoids allocating an accumulator for the single-hit path. The direct
+    reference switch now calls `findFunction(...)` / `findMixin(...)` itself
+    instead of going through two tiny helpers.
+  - New node/materialization: none. No production node, wrapper `Rules`, copied
+    node, source metadata, parent mutation, or frozen state was added. The
+    namespace descendant path clones the first nested result only when a second
+    nested hit must be appended, preserving cached result arrays.
+  - Render path: unchanged. The pass only changes lookup dispatch and callable
+    namespace accumulation.
+  - Helper/API surface: net deletion. Removed private
+    `lookupFunctionReference(...)` and `lookupCallableReference(...)`. Rejected
+    `ReferenceLookupOptions` splitting because handle shape caching still needs
+    declaration and callable shape bits from one prepared target record.
+  - Metadata mutations: none. No lookup registry, side map, parent/source
+    restoration, lazy context creation, or structural probe was added.
+  - Danger-token prosecution: the lazy namespace clone is limited to the
+    multiple-hit append case and prevents mutation of cached nested results.
+    The existing current-frame direct fallback was audited and left unchanged
+    because the mixin-only child-surface skip is already lane-specific.
+  - Evidence: focused reference/callable namespace/function fallback suite
+    passed after edits (`6` files, `189` passed, `386` skipped).
+    Touched-file ESLint passed; `git diff --check` passed; binding grep found
+    no registry/adapter/helper residue; `@jesscss/core` build passed;
+    `verify:aggressive-cutting-review` passed with no scoped-diff danger
+    tokens; `audit:node-creation` passed; `jess` build passed. One-iteration
+    hotpath smoke passed with usable signal: `mixins-guards.less` `27.44ms`,
+    `scope-lookup-stress.less` `88.50ms`. No speed claim is made from this
+    pass.
 
 - Callable fallback deletion and bucket-result collector pass: accepted as
   binding/lookup cleanup, not as a speed claim. Files:
