@@ -109,7 +109,8 @@ export class Extend extends Node<ExtendValue> {
   // Don't prepare Extend early; evaluate it when the ruleset is in the frame.
   // This ensures the ampersand resolves to the correct ruleset selector, not the parent frame
 
-  private runExtendEffect(context: Context): MaybePromise<void> {
+  /** @internal Run the invisible extend registration effect without public render/eval materialization. */
+  runEffect(context: Context): MaybePromise<void> {
     let { selector, target, flag } = this.value;
     const { selectorBits } = context;
     attachSelectorBitLibrary(target, selectorBits);
@@ -158,7 +159,7 @@ export class Extend extends Node<ExtendValue> {
   }
 
   override evalNode(context: Context): MaybePromise<Nil> {
-    const effect = this.runExtendEffect(context);
+    const effect = this.runEffect(context);
     return isThenable(effect)
       ? effect.then(createPublicNil)
       : createPublicNil();
@@ -171,7 +172,7 @@ export class Extend extends Node<ExtendValue> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
-    return renderInvisibleEffect(this.runExtendEffect(context), bufferOrOptions);
+    return renderInvisibleEffect(this.runEffect(context), bufferOrOptions);
   }
 }
 

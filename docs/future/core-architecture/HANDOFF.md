@@ -345,6 +345,12 @@ Open tasks:
    final string without opening writer mark/getSince scaffolding; trivia-backed
    or dynamic child paths stay on existing render boundaries.
 
+   Additional partial status: `ExtendList` render now runs child extend effects
+   directly instead of calling each child's public `render(...)` path through
+   generic `serialForEach(...)` callback iteration. `Extend.runEffect(...)` is
+   the semantic side-effect boundary; focused tests prove list render does not
+   call public list eval or child render.
+
    Evidence pointer: use `NODE-REWRITE-TRACKER.md` for per-node status and
    `PERFORMANCE-HANDOFF.md` for benchmark/profile history. Do not add queue
    entries for one-line cuts inside this item.
@@ -531,32 +537,29 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Block`, `Paren`, `Quoted`, and `AttributeSelector` known-wrapper
-render cuts.
+Current pass: `Extend` / `ExtendList` invisible-effect render cut.
 
-- New traversal: none added. The pass adds only early known-output checks before
-  existing writer setup. No loops, recursion, parent/source walks, side maps, or
-  array scans were added.
-- New node/materialization: no runtime nodes, copies, wrappers, arrays, or
-  materialized render values added. Review-script danger tokens are test-only
-  counting-writer fixtures and literal expected-output arrays that prove known
-  wrapper output does not open readback scaffolding.
-- Render path: selected rows are `Block`, `Paren`, `Quoted`, and
-  `AttributeSelector`. Nil block delimiters, empty/nil parens, literal
-  non-escaped quoted strings, and bare string-name attributes now write or
-  buffer known final text directly. Dynamic children, trivia-backed syntax, and
-  non-scalar attribute/quote paths keep existing render boundaries.
-- Helper/API surface: two private helpers, `Block.nilBlockText(...)` and
-  `Paren.emptyParenText(...)`, replace duplicated source/render literal
-  assembly for the same scalar cases. No public API or node method surface was
-  added. `Quoted` and `AttributeSelector` added no helper.
-- Metadata mutations: none added. `Block.nilBlockText(...)` reads the same
-  existing source-trivia edge already used by `renderBlockSyntax(...)` so it
-  does not skip authored trivia; it does not mutate parent/source/frozen or
-  context state.
-- Error/control flow: no new runtime error/control-flow branch.
-- Evidence: focused `Block`, `Paren`, `Quoted`, `AttributeSelector`, and
-  render-buffer alignment tests passed. Final hotpath/profile status is in
-  `PERFORMANCE-HANDOFF.md`; no speed claim.
-- Verdict: accept bounded known-wrapper render cuts. Keep non-scalar/dynamic
-  render capture and selector valueOf/materialization work open.
+- New traversal: no new source/tree traversal. `ExtendList` still iterates its
+  own child array once, but now uses a plain sync-first loop instead of
+  `serialForEach(...)` plus a callback. This deletes generic iteration
+  machinery on the selected node-family path.
+- New node/materialization: no runtime nodes, copies, wrappers, arrays, side
+  maps, output strings, or materialized render values added.
+- Render path: selected rows are `Extend` and `ExtendList`. `ExtendList.render`
+  now runs `Extend.runEffect(...)` directly and returns invisible output through
+  `renderInvisibleEffect(...)`; it no longer calls each child's public
+  `render(...)` as transport for an effect-only node.
+- Helper/API surface: `Extend.runExtendEffect(...)` became the intentionally
+  callable `runEffect(...)` semantic boundary. One private async continuation
+  method in `ExtendList` replaces package-generic callback iteration and only
+  runs after the first async child effect.
+- Metadata mutations: no new parent/source/frozen/context metadata mutation.
+  Existing extend registration semantics are unchanged.
+- Error/control flow: no new routine error objects or throw/catch control flow.
+- Evidence: focused `extend.test.ts` now proves `ExtendList.render(...)` does
+  not call public list eval or child render, and `node-render-buffer.test.ts`
+  stayed green. Final hotpath/profile status is in `PERFORMANCE-HANDOFF.md`;
+  no speed claim.
+- Verdict: accept as a bounded effect-boundary cut. `ExtendList` public wrapper
+  existence and broader extend selector/matching work remain separate; do not
+  let that overtake node serialization focus.

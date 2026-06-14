@@ -216,7 +216,8 @@ Current hard leftovers after the broad hook sweep:
   The false assumption was that fewer callback closures/temporary arrays would
   automatically beat V8's existing optimized callback shape; the benchmark
   showed the real cost is broader repeated selector matching/remainder logic.
-- [x] `ExtendList`: direct list writer; remove super-string wrapper.
+- [x] `ExtendList`: direct list writer; remove super-string wrapper; render
+  runs child extend effects directly instead of public child render.
 - [x] `SelectorCapture`: direct capture syntax writer, child writer, and direct
   resolved buffer render; audit whether node still needs to exist.
 - [x] `AttributeSelector`: direct attribute writer and child writer; avoid
@@ -356,8 +357,8 @@ Current hard leftovers after the broad hook sweep:
 | DefaultGuard | `packages/core/src/tree/default-guard.ts` | `Node` | scalar wrapper complete | Scalar guard writer complete; public source string writes the known `default` token directly with no writer readback. |
 | Dimension | `packages/core/src/tree/dimension.ts` | `Node` | scalar serializer complete | Number/unit emission uses one scalar serializer for `writeSyntax(...)` and public string output with no writer readback; preserve-mode compound unit serialization uses a straight loop instead of `map(...).join(...)`; regex/unit conversion and operation paths remain. |
 | Expression | `packages/core/src/tree/expression.ts` | `Node` | direct child writer complete | Wrapper syntax writes directly and now calls child `writeSyntax(...)` instead of public `toString(...)`; eval/resolve rely on thenable narrowing, and scalar render uses `evalImmediateSync(...)` when the child is not may-async. Wrapper necessity remains. |
-| Extend | `packages/core/src/tree/extend.ts` | `Node` | writeSyntax hook complete | Extend syntax and selector/target child syntax write directly with no local public string wrapper; selector valueOf and resolved selector state remain. |
-| ExtendList | `packages/core/src/tree/extend-list.ts` | `Node` | writeSyntax hook complete | List wrapper writes through base child writer plus semicolon; public wrapper existence remains. |
+| Extend | `packages/core/src/tree/extend.ts` | `Node` | writeSyntax/effect boundary complete | Extend syntax and selector/target child syntax write directly with no local public string wrapper; invisible render runs the direct `runEffect(...)` boundary. Selector valueOf and resolved selector state remain. |
+| ExtendList | `packages/core/src/tree/extend-list.ts` | `Node` | writeSyntax/effect boundary complete | List wrapper writes through base child writer plus semicolon, and render walks child extend effects directly with a sync-first loop instead of `serialForEach(...)` plus child public render. Public wrapper existence remains. |
 | For | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, pattern/iterable children use direct writers, range-bound closure is gone, async-generator entry iteration is replaced by a direct visitor, per-entry tuple arrays are gone, constructor binding adoption is direct, and child-copy list building uses a pre-sized loop instead of `.map(...)`. Loop state/body surface and async branch audit remain. |
 | Func | `packages/core/src/tree/function.ts` | `Node` | direct child writer complete | Public function syntax writes directly through name/params and body braced writer; function calls now invoke `evaluateCallableCollection(...)` directly instead of allocating a one-entry `MixinCollection` wrapper. |
 | If | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, condition children use direct writers, branch serialization avoids rest-array allocation, selected branch buffer render uses the existing `RenderBuffer` instead of a detached rules string, and public render no longer allocates the control string wrapper callback. Eval/body surface audit remains. |

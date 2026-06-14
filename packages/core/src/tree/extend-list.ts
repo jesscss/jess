@@ -2,7 +2,7 @@ import { Node, F_VISIBLE, defineType, type NodeLocation, type NodeOptions } from
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Extend } from './extend.js';
 import type { Context } from '../context.js';
-import { serialForEach, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   type RenderBuffer,
   renderInvisibleEffect
@@ -56,7 +56,26 @@ export class ExtendList extends Node<Extend[]> {
   }
 
   private renderExtendEffects(context: Context): MaybePromise<void> {
-    return serialForEach(this.value, node => node.render(context));
+    const nodes = this.value;
+    for (let i = 0; i < nodes.length; i++) {
+      const out = nodes[i]!.runEffect(context);
+      if (isThenable(out)) {
+        return this.renderRemainingExtendEffects(context, out, i + 1);
+      }
+    }
+    return undefined;
+  }
+
+  private async renderRemainingExtendEffects(
+    context: Context,
+    pending: Promise<void>,
+    index: number
+  ): Promise<void> {
+    await pending;
+    const nodes = this.value;
+    for (let i = index; i < nodes.length; i++) {
+      await nodes[i]!.runEffect(context);
+    }
   }
 }
 

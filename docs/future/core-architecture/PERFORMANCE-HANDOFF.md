@@ -3127,6 +3127,37 @@ Interpretation: machinery deletion only, not a speed claim. The selected writer
 path no longer materializes a flatten/filter array, but broad benchmark
 signals were mixed/noisy and the writer counters did not move.
 
+### ExtendList Direct Effect Render
+
+Date: 2026-06-14.
+
+Change: `ExtendList.render(...)` now runs child `Extend.runEffect(...)`
+directly with a sync-first loop instead of calling each child public
+`render(...)` through `serialForEach(...)`. This keeps extend-list rendering on
+the invisible side-effect boundary and removes a generic callback/child-render
+ladder for the selected node family.
+
+Hotpath status:
+
+- Focused `pnpm exec vitest run packages/core/src/tree/__tests__/extend.test.ts
+  packages/core/src/tree/__tests__/node-render-buffer.test.ts` passed before
+  final gates. `extend.test.ts` now proves `ExtendList.render(...)` does not
+  call child `render(...)`.
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `16.70ms` unstable, `import-reference` median
+  `22.22ms` usable, `mixins-guards` median `17.08ms` usable,
+  `extend-chaining` median `5.86ms` unstable, and `media` median `6.19ms`
+  usable.
+- Final `node scripts/profile-less-benchmark.mjs --file=benchmark.less`
+  reported broad `OutputWriter.mark` `50002`, `OutputWriter.getSince` `45006`,
+  `Reference.evalNode` `3619` calls / `67.46ms`, and `Rules.find` `1013`
+  calls / `25.74ms`.
+
+Interpretation: accept only if final gates stay green and the bounded
+benchmark/profile leash does not expose a regression. Broader extend matching,
+selector stringification, and wrapper existence remain outside this
+serialization pass.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

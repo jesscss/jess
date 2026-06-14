@@ -42,7 +42,11 @@ describe('Extend render', () => {
 
   it('renders extend lists by running child side effects directly', () => {
     const context = new Context();
-    const node = extendList([extend({ target: el('.base') })]);
+    const child = extend({ target: el('.base') });
+    child.render = () => {
+      throw new Error('ExtendList.render should not call child render');
+    };
+    const node = extendList([child]);
     node.evalNode = () => {
       throw new Error('ExtendList.render should not materialize public eval output');
     };
