@@ -72,7 +72,7 @@ import { isIndexedRuleChild } from './util/callable-surface.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
   DIRECT_DECLARATION_LOOKUP_UNCOVERED,
-  findAnyDeclaration,
+  findAnyDeclaration as findAnyDeclarationDirect,
   findPropertyDeclaration,
   findVariableDeclaration
 } from './util/direct-rules-lookup.js';
@@ -825,6 +825,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (!name) {
       return;
     }
+    this.lookupVersion++;
     (this.functionsByName ??= new Map()).set(name, node);
   }
 
@@ -1231,14 +1232,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private getCallableLookupCacheKey(
-    keys: string | string[],
+    lookupKey: string,
     filterType: string | undefined,
     options: CallableFindOptions
   ): string | undefined {
     if (options.hasTarget || options.local || options.context?.rulesContext === this) {
       return undefined;
     }
-    const lookupKey = isArray(keys) ? keys.join(CALLABLE_LOOKUP_PATH_KEY_SEPARATOR) : keys;
     return lookupKey
       + CALLABLE_LOOKUP_CACHE_KEY_SEPARATOR
       + (filterType ?? '')
@@ -1722,7 +1722,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   findMixin(
     keys: string | string[],
     filterType?: string,
-    options: CallableFindOptions = {}
+    options: CallableFindOptions = {},
+    normalizedPathKey?: string
   ): MixinEntry[] | undefined {
     if (typeof keys === 'string') {
       const includeRulesets = filterType !== 'Mixin' && options.terminalMixinOnly !== true;
@@ -1740,7 +1741,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (frameHit.kind === 'miss' && options.searchParents === false) {
           const pathKeys = splitStaticCallablePathKey(keys);
           if (pathKeys) {
-            const result = this.findMixin(pathKeys, filterType, options);
+            const result = this.findMixin(pathKeys, filterType, options, keys);
             this.setLastCallableLookupResult(cacheKey, result);
             return result;
           }
@@ -1779,7 +1780,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ) {
           const pathKeys = splitStaticCallablePathKey(keys);
           if (pathKeys) {
-            const result = this.findMixin(pathKeys, filterType, options);
+            const result = this.findMixin(pathKeys, filterType, options, keys);
             this.setLastCallableLookupResult(cacheKey, result);
             return result;
           }
@@ -1868,7 +1869,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (frameHit.kind === 'miss' && this.parent === undefined) {
             const pathKeys = splitStaticCallablePathKey(keys);
             if (pathKeys) {
-              const result = this.findMixin(pathKeys, filterType, options);
+              const result = this.findMixin(pathKeys, filterType, options, keys);
               this.setLastCallableLookupResult(cacheKey, result);
               return result;
             }
@@ -1879,7 +1880,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       const pathKeys = splitStaticCallablePathKey(keys);
       if (pathKeys) {
-        const result = this.findMixin(pathKeys, filterType, options);
+        const result = this.findMixin(pathKeys, filterType, options, keys);
         this.setLastCallableLookupResult(cacheKey, result);
         return result;
       }
@@ -1897,7 +1898,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     } else if (isArray(keys) && keys.length === 1) {
       return this.findMixin(keys[0]!, filterType, options);
     } else if (isArray(keys) && keys.length > 1) {
-      const cacheKey = this.getCallableLookupCacheKey(keys, filterType, options);
+      const lookupKey = normalizedPathKey ?? keys.join(CALLABLE_LOOKUP_PATH_KEY_SEPARATOR);
+      const cacheKey = this.getCallableLookupCacheKey(lookupKey, filterType, options);
       if (cacheKey !== undefined && this.hasLastCallableLookupResult(cacheKey)) {
         return this.getLastCallableLookupResult();
       }
@@ -1976,14 +1978,33 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   findDeclaration(
     keys: string,
-    filterType?: 'VarDeclaration' | 'Declaration',
+    filterType: 'VarDeclaration',
+    options?: DeclarationFindOptions
+  ): VarDeclaration | undefined;
+  findDeclaration(
+    keys: string,
+    filterType: 'Declaration',
+    options?: DeclarationFindOptions
+  ): Declaration | undefined;
+  findDeclaration(
+    keys: string,
+    filterType: 'VarDeclaration' | 'Declaration',
     options?: DeclarationFindOptions
   ): Declaration | VarDeclaration | undefined {
     const direct = filterType === 'VarDeclaration'
       ? findVariableDeclaration(this, keys, options)
-      : filterType === 'Declaration'
-        ? findPropertyDeclaration(this, keys, options)
-        : findAnyDeclaration(this, keys, options);
+      : findPropertyDeclaration(this, keys, options);
+    if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
+      return direct;
+    }
+    return undefined;
+  }
+
+  findAnyDeclaration(
+    keys: string,
+    options?: DeclarationFindOptions
+  ): Declaration | VarDeclaration | undefined {
+    const direct = findAnyDeclarationDirect(this, keys, options);
     if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
       return direct;
     }
@@ -2010,10 +2031,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return isNode(found, N.Declaration) ? found : undefined;
   }
 
-  private findFunctionDirect(
+  findFunction(
     keys: string,
+    filterType?: string,
     options?: CallableFindOptions
   ): JsFunction | Func | undefined {
+    void filterType;
     let rules: Rules | undefined = this;
     const { searchParents = true } = options ?? {};
     let findRoot = false;
@@ -2046,14 +2069,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       } while (!findRoot && rules && rules.type !== 'Rules');
     }
     return undefined;
-  }
-
-  findFunction(
-    keys: string,
-    filterType?: string,
-    options?: CallableFindOptions
-  ): JsFunction | Func | undefined {
-    return this.findFunctionDirect(keys, options);
   }
 
   override toString(options?: PrintOptions): string {
@@ -2866,7 +2881,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     } else if (isNode(node, N.Ruleset) || isNode(node, N.Mixin)) {
       // Callable lookup crawls Rules.value directly and filters candidates at lookup/call time.
     } else if (isNode(node, N.Func)) {
-      this.setFunctionBinding(node.nameKey, node);
+      if (node.nameKey) {
+        (this.functionsByName ??= new Map()).set(node.nameKey, node);
+      }
     }
     if (rebuildCallableCache && !this._indexing && this._scopeFrame) {
       this._scopeFrame.callableBucketsByName = this.callableLookupCache;

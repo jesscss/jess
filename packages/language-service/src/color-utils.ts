@@ -248,7 +248,7 @@ function isColorFunction(call: Call): boolean {
  */
 async function createEvaluationContext(): Promise<Context> {
   const context = new ContextClass();
-  const tree = RulesClass.create([]);
+  const tree: Rules = new RulesClass([]);
 
   try {
     // Dynamically import functions
@@ -257,11 +257,11 @@ async function createEvaluationContext(): Promise<Context> {
     // Register all Less functions (including color functions like rgb, hsl, etc.)
     for (const [key, value] of Object.entries(lessFunctions)) {
       if (typeof value === 'function') {
-        tree.register('function', new JsFunction({ name: key, fn: value }));
+        tree.setFunctionBinding(key, new JsFunction({ name: key, fn: value }));
       } else if (value && typeof value === 'object' && 'default' in value && typeof value.default === 'function') {
         const defaultFn = value.default;
         const fn = (...args: unknown[]) => defaultFn(...args);
-        tree.register('function', new JsFunction({ name: key, fn }));
+        tree.setFunctionBinding(key, new JsFunction({ name: key, fn }));
       }
     }
   } catch {

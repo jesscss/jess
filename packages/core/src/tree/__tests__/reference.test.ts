@@ -4166,13 +4166,24 @@ describe('reference', () => {
         }
         expect(functionLookups).toBe(1);
 
-        node.push(decl({ name: 'unrelated', value: any('1') }));
+        node.setFunctionBinding('paint', new JsFunction({
+          name: 'paint',
+          fn: () => any('green')
+        }));
         const third = lookupRef.eval(context);
         expect(isNode(third)).toBe(true);
         if (isNode(third)) {
           expect(third.type).toBe('JsFunction');
         }
         expect(functionLookups).toBe(2);
+
+        node.push(decl({ name: 'unrelated', value: any('1') }));
+        const fourth = lookupRef.eval(context);
+        expect(isNode(fourth)).toBe(true);
+        if (isNode(fourth)) {
+          expect(fourth.type).toBe('JsFunction');
+        }
+        expect(functionLookups).toBe(3);
       } finally {
         RulesClass.prototype.findFunction = originalFindFunction;
       }

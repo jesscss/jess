@@ -84,7 +84,7 @@ export class LessPlugin extends AbstractPlugin {
         continue;
       }
       const runtimeName = value.name || key;
-      tree.register('function', new JsFunction({ name: runtimeName, fn: value }));
+      tree.setFunctionBinding(runtimeName, new JsFunction({ name: runtimeName, fn: value }));
       registeredNames.push(runtimeName);
     }
   }

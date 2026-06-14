@@ -59,7 +59,7 @@ function getVarWithContext(context: Context, n: Rules, key: string, opts: Declar
 
 function getDeclEitherWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
-  return n.findDeclaration(key, undefined, { ...opts, searchParents: true });
+  return n.findAnyDeclaration(key, { ...opts, searchParents: true });
 }
 
 class WholeBufferCountingWriter extends OutputWriter {
@@ -647,7 +647,7 @@ describe('Rules', () => {
         expect(getVar(node, 'foo')?.toTrimmedString()).toBe('$foo: bar');
       });
 
-      it('find(declaration, key, undefined) picks VarDeclaration or Declaration by source order', async () => {
+      it('findAnyDeclaration picks VarDeclaration or Declaration by source order', async () => {
         let node = rules([
           vardecl({ name: any('n'), value: any('from-var') }),
           decl({ name: any('n'), value: any('from-decl') })

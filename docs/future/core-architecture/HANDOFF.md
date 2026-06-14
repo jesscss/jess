@@ -1431,42 +1431,103 @@ Seeded next binding/lookup queue:
    The next queue carries the real cut forward as explicit key propagation
    rather than hiding a new helper layer in this pass.
 
-Seeded next binding/lookup queue:
-
-7at. [ ] Replace external package plugin adapters that still call
+7at. [x] Replace external package plugin adapters that still call
     `register('function', ...)` with `setFunctionBinding(...)` so function
     registration no longer looks registry-shaped outside core tests.
+   Done. `packages/jess-plugin-less/src/index.ts` and
+   `packages/language-service/src/color-utils.ts` now publish Less/global
+   functions through `setFunctionBinding(...)`. Grep finds
+   `register('function')` only in core fixture tests.
 
-7au. [ ] Split the remaining `rules.test.ts` any-declaration helper into a
+7au. [x] Split the remaining `rules.test.ts` any-declaration helper into a
     named `findAnyDeclaration`-style local helper or production method, then
     decide whether `findDeclaration(key, undefined, ...)` should be deleted or
     kept as the single cold boundary.
+   Done. `Rules.findAnyDeclaration(...)` is now the explicit any-declaration
+   boundary, `rules.test.ts` uses it, and `Rules.findDeclaration(...)` no
+   longer accepts the undefined-filter path.
 
-7av. [ ] Split `ReferenceFindOptions` at the final dispatch point so
+7av. [x] Split `ReferenceFindOptions` at the final dispatch point so
     declaration lookup receives only declaration fields and callable lookup
     receives only callable fields; reject the cut if it adds wrapper churn on
     the hot path.
+   Done. Reference keeps the mixed object only until lookup dispatch, then
+   passes declaration-shaped literals to direct declaration lookup and
+   callable-shaped literals to `findMixin(...)`/`findFunction(...)`.
 
-7aw. [ ] Carry a normalized callable path key beside `string[]` namespace
+7aw. [x] Carry a normalized callable path key beside `string[]` namespace
     lookups where preparation already computed it, and use it for
     `lastCallableLookup*` without joining inside recursive `findMixin(...)`
     paths.
+   Done for the currently carried case. `findMixin(...)` now accepts an
+   internal normalized path key so recursive string-to-array lookup reuses the
+   original key instead of joining at the array boundary. Fresh external array
+   keys still join once because no earlier normalized key exists there.
 
-7ax. [ ] Audit `findFunctionDirect(...)` naming and call path; either fold the
+7ax. [x] Audit `findFunctionDirect(...)` naming and call path; either fold the
     direct function binding walk into `findFunction(...)` or rename/remove the
     extra method if it is just old-architecture residue.
+   Done. The private wrapper is deleted; `findFunction(...)` owns the direct
+   parent-chain function binding walk.
 
-7ay. [ ] Audit `functionsByName` clone preservation versus plugin binding
+7ay. [x] Audit `functionsByName` clone preservation versus plugin binding
     writes; keep only the clone state needed for explicit plugin function
     bindings and remove any registry-era commentary or shape.
+   Done. Clone/iteration preservation remains a `Map` copy only for explicit
+   function bindings; zero-iteration `$for` output still drops function maps,
+   and iteration-surface focused tests cover the preserved case. No registry
+   wording was added.
 
-7az. [ ] Audit `directDeclarationsByName` memory shape after promotion
+7az. [x] Audit `directDeclarationsByName` memory shape after promotion
     invalidation: prove the multi-entry map still beats a one-entry
     declaration memo for real lookup tests, or narrow it.
+   Done as an audit. The map remains because real focused lookup tests exercise
+   repeated distinct property/variable names, child entries, and source-order
+   modes; a one-entry memo would churn across those names and would not replace
+   the bucket reuse already proven by direct declaration child-entry tests.
 
-7ba. [ ] Inspect `lookupVersion` increments around declaration/function
+7ba. [x] Inspect `lookupVersion` increments around declaration/function
     binding writes and pending-name promotion; remove redundant increments only
     where binding-handle invalidation remains provably correct.
+   Done. External `setFunctionBinding(...)` now bumps `lookupVersion` so
+   cached static function handles invalidate after function binding writes.
+   `registerNode(Func)` writes the function map directly because
+   `registerNode(...)` already bumps once for structural writes.
+
+Seeded next binding/lookup queue:
+
+7bb. [ ] Audit remaining core test `register('function')` fixture callsites;
+    convert any test that is not specifically proving plugin-style registration
+    to `setFunctionBinding(...)`.
+
+7bc. [ ] Decide whether `Rules.register('function', ...)` itself still belongs
+    in core after external adapters moved to `setFunctionBinding(...)`; delete
+    or isolate it if only tests use it.
+
+7bd. [ ] Split `ReferenceFindOptions` further so the mixed type is no longer
+    needed beyond reference preparation, or document the exact shared fields
+    that make a single prepared object cheaper.
+
+7be. [ ] Carry normalized callable path keys through array remainder recursion
+    (`collectKeyRemainder(...)` paths) where the source key is already known,
+    without adding a broad wrapper object.
+
+7bf. [ ] Audit direct declaration option literal allocation in `Reference`;
+    assign lookup functions or option builders only if the result deletes more
+    dispatch/object churn than it adds.
+
+7bg. [ ] Audit function binding versioning in clone/derived iteration surfaces;
+    ensure copied `functionsByName` maps cannot reuse stale binding handles
+    across output surfaces.
+
+7bh. [ ] Audit `directDeclarationsByName` buckets against `directDeclarationLookupCache`;
+    collapse either layer only if focused lookup tests prove no regression in
+    repeated multi-name lookups.
+
+7bi. [ ] Re-run production grep for registry-shaped lookup APIs
+    (`register('function')`, `findDeclaration(..., undefined)`,
+    `findFunctionDirect`, registry utility names) and delete any remaining
+    non-test residue.
 
 Parked secondary deep-cut queue:
 
@@ -1795,6 +1856,61 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Function binding and option-dispatch split pass: accepted as binding/lookup
+  surface cleanup and one function-handle invalidation fix, not as a speed
+  claim. Files: `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/reference.ts`, focused lookup tests, Less plugin and
+  language-service function adapters, and this handoff.
+  - New traversal: none. `findFunctionDirect(...)` was folded into
+    `findFunction(...)`, preserving the existing parent-chain walk rather than
+    adding another walk. Reference dispatch now passes typed declaration or
+    callable option literals into existing lookup functions; no new recursive
+    child or parent search was introduced. Callable path-key carry only reuses
+    an already-known normalized key when string lookup recurses into array
+    lookup.
+  - New node/materialization: none in production hot lookup. External function
+    adapters still construct `new JsFunction(...)` fixture/runtime function
+    nodes as before, but now publish them with `setFunctionBinding(...)` rather
+    than `register('function', ...)`. `new RulesClass([])` in
+    `color-utils.ts` replaces the generic `RulesClass.create([])` inference so
+    the existing evaluation root is typed as `Rules`; it is not a new runtime
+    surface. No copied node, wrapper `Rules`, `.inherit(...)`, `.adopt(...)`,
+    frozen/source/parent metadata mutation, or render materialization was
+    added.
+  - Render path: unchanged. The pass changes lookup dispatch and binding
+    publication; rendering still consumes the same resolved values and does not
+    allocate nodes just to stringify.
+  - Helper/API surface: net cleanup. Added `Rules.findAnyDeclaration(...)` as
+    the explicit any-declaration boundary and deleted the
+    `findDeclaration(key, undefined, ...)` path. Deleted the private
+    `findFunctionDirect(...)` method. `findMixin(...)` gained one internal
+    optional normalized-key parameter to avoid a join on recursive
+    string-to-array lookup; the next queue audits remainder recursion before
+    widening that shape.
+  - Metadata mutations: one necessary version bump. `setFunctionBinding(...)`
+    now increments `lookupVersion` so static function binding handles refresh
+    after plugin/function writes. `registerNode(Func)` writes `functionsByName`
+    directly because `registerNode(...)` already increments once for structural
+    writes.
+  - Danger-token prosecution: `string[]` and array-path wording appears in
+    queue/prosecution text and in existing callable key paths; this pass avoids
+    one join when a string key has already been split. `new Map(...)` remains
+    the existing function-binding clone/iteration preservation path, covered by
+    focused `$for` and clone tests; no new map layer was added.
+  - Evidence: focused lookup/function suite passed (`245` passed, `101`
+    skipped); `@jesscss/core` build passed with the pre-existing direct-`eval`
+    warning in `js-expr.ts`; `@jesscss/plugin-less` build passed; touched-file
+    ESLint passed with existing warnings only in plugin/language-service files;
+    `git diff --check` passed; aggressive review passed; `audit:node-creation`
+    passed; `jess` build passed with the existing unused `linecraft` bundle
+    note; one-iteration hotpath smoke passed for `mixins-guards.less`
+    (`30.72ms`) and `scope-lookup-stress.less` (`81.89ms`). The
+    language-service build still fails on unrelated existing issues
+    (`getValues` export, `TreeContext` type-only value use, missing
+    `@jesscss/scss-parser` types, and Rules/Node generic mismatches), but the
+    two `setFunctionBinding` errors from this pass are gone. No speed claim is
+    made from this pass.
 
 - Binding option/cache audit pass: accepted as lookup surface cleanup and a
   stale-cache correctness fix, not as a speed claim. Files:
