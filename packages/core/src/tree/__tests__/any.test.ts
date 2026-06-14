@@ -1,4 +1,4 @@
-import { any, keyword } from '../index.js';
+import { any, keyword, seq } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -70,5 +70,17 @@ describe('Any and Keyword', () => {
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(resolveContext.printState.writer).toBeUndefined();
+  });
+
+  it('compares fallback text without public string transport for the left Any node', () => {
+    const node = any('foo');
+    let stringCalls = 0;
+    node.toString = () => {
+      stringCalls++;
+      return 'not-foo';
+    };
+
+    expect(node.compare(seq([any('foo')]))).toBe(0);
+    expect(stringCalls).toBe(0);
   });
 });

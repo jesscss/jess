@@ -182,7 +182,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     if (other.type === 'Any') {
       const left = normalizeComparableWhitespace(this.toString());
-      const right = normalizeComparableWhitespace(other.toString());
+      const right = normalizeComparableWhitespace(other.value);
       return left === right ? 0 : undefined;
     }
     return undefined;

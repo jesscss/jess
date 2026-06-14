@@ -68,6 +68,18 @@ describe('Sequence', () => {
     expect(rule.toTrimmedString()).toBe('10 20 30');
   });
 
+  it('compares against Any without public string transport for the Any operand', () => {
+    const other = any('10 20 30');
+    let stringCalls = 0;
+    other.toString = () => {
+      stringCalls++;
+      return 'not-10-20-30';
+    };
+
+    expect(seq([num(10), num(20), num(30)]).compare(other)).toBe(0);
+    expect(stringCalls).toBe(0);
+  });
+
   it('does not allocate options when resolving a default single-item sequence', async () => {
     const rule = seq([num(10)]);
 

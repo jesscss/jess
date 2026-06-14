@@ -59,6 +59,18 @@ describe('List compare', () => {
     const semicolonList = list([num(1), num(2), num(3)], { sep: ';' }, undefined, coerceContext);
     expect(commaList.compare(semicolonList)).toBe(0);
   });
+
+  it('compares against Any without public string transport for the Any operand', () => {
+    const other = any('foo');
+    let stringCalls = 0;
+    other.toString = () => {
+      stringCalls++;
+      return 'not-foo';
+    };
+
+    expect(list([any('foo')]).compare(other)).toBe(0);
+    expect(stringCalls).toBe(0);
+  });
 });
 
 let context: Context;

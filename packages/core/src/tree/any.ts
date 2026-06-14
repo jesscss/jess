@@ -103,7 +103,7 @@ export class Any<
       }
       return Number(text) === otherNumber ? 0 : undefined;
     }
-    return normalizeComparableText(this.toString()) === normalizeComparableText(other.toString()) ? 0 : undefined;
+    return normalizeComparableText(this.value) === normalizeComparableText(other.toString()) ? 0 : undefined;
   }
 }
 

@@ -79,7 +79,9 @@ first measured offenders after the selector pass.
   duplicate-comparison/materialization, and merge-state boundaries remain.
 - [x] `Any` / `Keyword` / `Anonymous`: move scalar token emission to generic
   `writeSyntax`; compare-time `Any` coercion uses the shared compare
-  normalizer instead of a per-call local closure.
+  normalizer instead of a per-call local closure, and fallback comparison reads
+  the owned scalar `Any.value` instead of serializing the left token through
+  public `toString(...)`.
 - [x] `Dimension` / `Num`: numeric/unit emission uses one scalar serializer
   shared by `writeSyntax(...)` and public string output; audit regex/unit
   formatting and operation paths.
@@ -99,7 +101,8 @@ first measured offenders after the selector pass.
   render-node closure on the sync path. Boundary separator checks now use
   numeric character tests, an indexed trivia scan, and one shared spacer
   predicate instead of regex/callback probes, and compare-time `Any` coercion
-  uses the shared whitespace normalizer. Trivia-backed
+  uses the shared whitespace normalizer plus direct `Any.value` reads for the
+  right operand. Trivia-backed
   child-boundary emission still uses `toString(...)`.
 - [x] `Quoted`: direct quoted/interpolated emission; child node syntax uses
   `writeSyntax(...)` with no public `toTrimmedString(...)` transport, and
@@ -111,9 +114,9 @@ first measured offenders after the selector pass.
   Async-capable dynamic render no longer allocates a local render-node closure
   or nested rest function on the sync path, and the public iterator no longer
   uses a generator wrapper. Compare-time `Any` coercion uses the shared compare
-  normalizer instead of a per-call local closure. Trivia-backed item emission still uses
-  `toString(...)`, and dynamic render still captures string output before
-  buffer writes.
+  normalizer plus direct `Any.value` reads for the right operand. Trivia-backed
+  item emission still uses `toString(...)`, and dynamic render still captures
+  string output before buffer writes.
 - [ ] `QueryCondition`: direct condition syntax writer exists, source/static
   children use `writeSyntax(...)` instead of public `toString(...)`, static
   flat-buffer render writes syntax directly with one writer mark, static child

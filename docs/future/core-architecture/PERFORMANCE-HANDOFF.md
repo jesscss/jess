@@ -192,6 +192,40 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-14 Any Compare Scalar Transport Cut
+
+Hypothesis: compare branches that already know an operand is `Any` should read
+the owned scalar value directly instead of routing that scalar through public
+`toString(...)` transport. This is a machinery deletion, not a performance
+claim.
+
+Before patch, bounded hot-path leash:
+
+- `functions`: `15.68ms`, `unstable`;
+- `import-reference`: `18.57ms`, `usable`;
+- `mixins-guards`: `14.49ms`, `usable`;
+- `extend-chaining`: `4.88ms`, `usable`;
+- `media`: `4.62ms`, `unstable`.
+
+Patch shape:
+
+- `Any.compare(...)` fallback normalizes `this.value` directly;
+- `List.compare(...)` and `Sequence.compare(...)` normalize `other.value`
+  directly in the `other.type === 'Any'` branch;
+- focused tests prove these paths do not call public `Any.toString(...)` as
+  transport.
+
+After patch:
+
+- `functions`: `12.29ms`, `unstable`;
+- `import-reference`: `17.45ms`, `unstable`;
+- `mixins-guards`: `14.33ms`, `usable`;
+- `extend-chaining`: `4.63ms`, `usable`;
+- `media`: `4.42ms`, `unstable`.
+
+Decision: keep as machinery deletion. No speed claim: import-reference lost
+decision-quality signal, and the stable-ish fixtures did not show a regression.
+
 ### 2026-06-06 ScopeFrame Callable Hit/Miss Prototype
 
 Hypothesis: simple static callable hits, and the subset of simple misses whose

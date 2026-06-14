@@ -299,6 +299,11 @@ Open tasks:
    closures for `Any` coercion. They share the internal compare normalizers in
    `tree/util/compare.ts`. This does not complete selector matching/extend
    equality or remove value/string serialization as a decision mechanism.
+   Additional partial status: compare-time `Any` scalar coercion now reads the
+   owned `Any.value` directly in `Any.compare(...)`, `List.compare(...)`, and
+   `Sequence.compare(...)` instead of routing that already-owned scalar through
+   public `toString(...)` transport. Container left-hand serialization remains
+   because structural equality keys for list/sequence values are not finished.
 19. [x] Split sync immediate eval/render from cold public materialization so
    routine sync render replacement does not imply `.inherit(...)`. `evalSync`
    remains the public sync value API and still uses the public materialization
@@ -417,29 +422,25 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: declaration duplicate pre-render gate in
-`packages/core/src/tree/util/serialize-helper.ts`.
+Current pass: compare-time `Any` scalar transport cut in
+`packages/core/src/tree/any.ts`, `list.ts`, and `sequence.ts`.
 
-- New traversal: one declaration-property pre-scan over the already-materialized
-  `rulesToRender` list. This replaces routine detached declaration
-  pre-rendering for every declaration; the expensive writer/trivia render path
-  now runs only for properties that actually repeat and can affect duplicate
-  suppression.
+- New traversal: none. No loop, recursion, callback scan, parent/source walk,
+  side-map lookup, or object/array scan was added.
 - New node/materialization: none. No nodes, wrapper rules, copies, `.inherit`,
-  `.adopt`, side maps, or metadata surfaces were added. Two small Sets are
-  allocated only while a container has declarations; they prevent per-unique
-  declaration `OutputWriter`, trivia `Set`, cache entry, and rendered string
-  allocation.
-- Render path: accepts. Unique declarations render once at their normal leaf
-  emission boundary instead of being rendered once for duplicate comparison and
-  then replayed from cache.
+  `.adopt`, frozen/source metadata, or materialized arrays were added.
+- Render path: accepts. This pass does not render; it removes public string
+  transport from comparison branches that already know `other.type === 'Any'`
+  or already own the left `Any.value`.
 - Helper/API surface: no helper, public API, or method added.
-- Metadata mutations: no parent/source/frozen/options/context metadata
-  mutations added.
+- Metadata mutations: none. No parent/source/options/context reads or writes
+  were added.
 - Error/control flow: none added.
-- Evidence: focused `ruleset`, `declaration`, `rules`, `at-rule`, and `mixin`
-  tests pass; `@jesscss/core` build passes; bounded hot-path benchmark was run
-  before and after. Treat the benchmark as sanity evidence, not a speed claim.
-- Verdict: accept as partial item 14 progress. Keep `Ruleset` open because
-  `getHeaderString(...)` comparison strings and same-property duplicate
-  declaration pre-rendering remain.
+- Evidence: focused Any/List/Sequence tests prove the touched branches do not
+  call the public `Any.toString(...)` transport; `@jesscss/core` build passes;
+  bounded hot-path benchmark was run before and after as a regression leash.
+  Treat the benchmark as sanity evidence, not a speed claim.
+- Verdict: accept as partial item 18 progress. Keep selector matching/extend
+  equality open because List/Sequence still serialize their own container text
+  for this comparison path and broader selector equality still has string-key
+  work.
