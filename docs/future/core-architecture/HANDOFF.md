@@ -2015,29 +2015,71 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7dn. [ ] Callable result ownership and union task. Scope: compound-prefix
+7dn. [x] Callable result ownership and union task. Scope: compound-prefix
     unioning in `findMixin(...)`, `compoundPrefixFast` ownership, duplicate
     suppression, and cached result reuse. Goal: avoid mutating any cached or
     reused result arrays while deleting unnecessary duplicate checks only if
     ownership is local and provable. Acceptance: namespace union,
     compound-prefix precedence, callable cache, and recursive namespace tests
     plus standard gates.
+   Done. Compound-prefix results now stay borrowed until the first appended
+   namespace result; `findMixin(...)` clones lazily before mutation so nested
+   cached arrays returned by `findCompoundPrefixCallableRulesetPathFast(...)`
+   are not mutated during unioning. Duplicate suppression remains because it is
+   required to preserve union semantics.
 
-7do. [ ] Reference handle miss semantics task. Scope: `_rulesLookupHandle`,
+7do. [x] Reference handle miss semantics task. Scope: `_rulesLookupHandle`,
     `RulesLookupHandleReadResult`, `SCOPE_FRAME_VARIABLE_MISS`, undefined
     result handling, and lookup-version invalidation. Goal: simplify the
     miss/hit sentinel shape without conflating cached miss with unhandled lookup
     or adding a second handle record. Acceptance: static variable/property/
     function/callable handle tests, source-order tests, binding grep, lint,
     builds, and aggressive review.
+   Done. `_rulesLookupHandle.returnVal` now stores the existing miss sentinel
+   directly for cached misses, so `readRulesLookupHandle(...)` returns the
+   stored handle value without reinterpreting `undefined`. The handle still uses
+   lookup-version invalidation and does not add a second record or cache layer.
 
-7dp. [ ] Direct child-surface cache task. Scope: `directChildRuleEntries`,
+7dp. [x] Direct child-surface cache task. Scope: `directChildRuleEntries`,
     `directDeclarationChildEntries`, exact callable/ruleset/mixin child flags,
     and reference-import invalidation. Goal: determine whether child-surface
     flags can replace more child entry materialization on covered misses without
     hiding import/reference visibility semantics. Acceptance: callable bucket,
     rulesVisibility, import/reference, declaration lookup, and namespace tests
     plus standard gates.
+   Done. `findMixinsFast(...)`, `findVisibleExactCallableRulesetPath(...)`, and
+   `findVisibleCallableRulesetPrefixMatches(...)` now consult lane-specific
+   child-surface flags before reusing or collecting direct child entries. This
+   skips already-materialized broad child-entry scans when the requested lane
+   has no possible child surface, while `_hasReferenceImports` still forces the
+   callable child-surface predicate to remain conservative.
+
+Seeded next binding/lookup queue:
+
+7dq. [ ] Callable miss caching task. Scope: `lastCallableLookupKey`,
+    `lastCallableLookupValue`, cache keys for string and namespace callable
+    lookups, and cached miss representation. Goal: prove whether cached
+    undefined misses need a separate presence bit or can use the existing key
+    equality without hiding distinct option shapes. Acceptance: callable cache,
+    terminal mixin-only, namespace miss, ruleset path miss, binding grep, lint,
+    builds, and aggressive review.
+
+7dr. [ ] Reference prepared-shape propagation task. Scope:
+    `buildRulesLookupHandleShape(...)`, `performRulesReferenceLookup(...)`,
+    leaky fallback lookup, and target/source-parent fallback scopes. Goal:
+    delete repeated shape construction only where target `Rules` facts are
+    identical or already carried, without sharing shape across scopes with
+    different ambient output blocking. Acceptance: leaky-rules, source-order,
+    handle, import/reference, function/callable tests plus standard gates.
+
+7ds. [ ] Declaration child-entry lane task. Scope:
+    `collectDirectDeclarationChildEntries(...)`, direct declaration lookup in
+    `util/direct-rules-lookup.ts`, `hasDirectChildRuleSurface`, and
+    declaration/property visibility. Goal: use existing child-surface facts to
+    avoid declaration child-entry collection on covered misses, without
+    weakening optional/public visibility or reference-import semantics.
+    Acceptance: variable/property/reference/import/rulesVisibility tests plus
+    binding grep, lint, builds, and aggressive review.
 
 Parked secondary deep-cut queue:
 
@@ -2366,6 +2408,47 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Callable union ownership, handle miss sentinel, and child-surface flag pass:
+  accepted as binding/lookup cleanup, not as a speed claim. Files:
+  `packages/core/src/tree/reference.ts`, `packages/core/src/tree/rules.ts`,
+  focused lookup tests, and this handoff.
+  - New traversal: none. The compound-prefix union keeps the existing duplicate
+    check loop, but switches the destination from the possibly borrowed
+    `compoundPrefixFast` array to a lazily owned clone only when an append is
+    required. Child-surface checks use existing flags before existing child-entry
+    loops; they skip scans when the requested lane cannot have child hits.
+  - New node/materialization: one lazy array clone can occur only when
+    compound-prefix results and namespace results are both present and a
+    non-duplicate namespace result must be appended. This is semantic result
+    ownership: it prevents mutating arrays returned by nested callable lookup.
+    No production node, wrapper `Rules`, copied AST node, source metadata,
+    parent mutation, or frozen state was added.
+  - Render path: unchanged. This is lookup-only ownership and miss handling.
+  - Helper/API surface: none added. `_rulesLookupHandle.returnVal` now stores
+    the existing miss sentinel directly, deleting the read-time undefined-to-miss
+    reinterpretation. No second handle record, side map, or registry-like cache
+    was added.
+  - Metadata mutations: none. Child-surface flags and reference-import
+    conservatism are existing `Rules` state; this pass only consults them before
+    child-entry materialization.
+  - Danger-token prosecution: the `[...]` clone is lazy semantic placement state
+    for result ownership, not render materialization. The flagged
+    `for (let existing = 0; existing < compoundUnion.length; existing++)` loop
+    is the pre-existing duplicate suppression loop with an owned destination
+    variable; it does not add a second traversal. The new early returns avoid
+    entry scans only when existing lane-specific flags prove no child surface is
+    possible.
+  - Evidence: focused reference/mixin/call/rules/import/control suite passed
+    after the edit (`6` files, `210` passed, `365` skipped). Touched-file ESLint
+    passed; binding grep found no old registry-adapter or deleted bridge residue
+    beyond existing lane-specific reference option builders; `git diff --check`
+    passed; `@jesscss/core` build passed with only the existing `js-expr.ts`
+    direct-eval warning; `verify:aggressive-cutting-review` passed after
+    flagging only the prosecuted duplicate-suppression loop; `audit:node-creation`
+    passed; `jess` build passed. One-iteration hotpath smoke passed with usable
+    signal: `mixins-guards.less` `22.25ms`, `scope-lookup-stress.less`
+    `86.17ms`. No speed claim is made from this pass.
 
 - Leaky fallback duplicate-scope and callable frame bridge deletion pass:
   accepted as binding/lookup cleanup, not as a speed claim. Files:

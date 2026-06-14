@@ -954,11 +954,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
 
       const includeRulesets = options?.includeRulesets !== false;
+      if (scope.rulesIndexed >= scope.value.length && !scope.hasDirectLookupChildSurface(includeRulesets)) {
+        return visited;
+      }
       const childEntries = scope.directChildRuleEntries !== undefined
         ? (scope.directChildRuleEntries ?? undefined)
-        : scope.rulesIndexed >= scope.value.length && !scope.hasDirectLookupChildSurface(includeRulesets)
-          ? undefined
-          : scope.collectDirectChildRulesEntries();
+        : scope.collectDirectChildRulesEntries();
       if (!childEntries?.length) {
         return visited;
       }
@@ -1351,11 +1352,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
 
+      if (scope.rulesIndexed >= scope.value.length && !scope.hasExactRulesetChildSurface) {
+        return;
+      }
       const childEntries = scope.directChildRuleEntries !== undefined
         ? (scope.directChildRuleEntries ?? undefined)
-        : scope.rulesIndexed >= scope.value.length && !scope.hasExactRulesetChildSurface
-          ? undefined
-          : scope.collectDirectChildRulesEntries();
+        : scope.collectDirectChildRulesEntries();
       if (!childEntries?.length) {
         return;
       }
@@ -1449,11 +1451,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
 
+      if (scope.rulesIndexed >= scope.value.length && !scope.hasExactRulesetChildSurface) {
+        return;
+      }
       const childEntries = scope.directChildRuleEntries !== undefined
         ? (scope.directChildRuleEntries ?? undefined)
-        : scope.rulesIndexed >= scope.value.length && !scope.hasExactRulesetChildSurface
-          ? undefined
-          : scope.collectDirectChildRulesEntries();
+        : scope.collectDirectChildRulesEntries();
       if (!childEntries?.length) {
         return;
       }
@@ -1966,22 +1969,28 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       const fast = mixinNamespaceFast ?? this.findMixinNamespacePathFast(keys, mixinFilterType, options);
       if (compoundPrefixFast !== undefined && compoundPrefixFast.length > 0) {
+        let compoundUnion = compoundPrefixFast;
+        let compoundUnionOwned = false;
         if (fast !== undefined && fast.length > 0) {
           for (let i = 0; i < fast.length; i++) {
             const node = fast[i]!;
             let found = false;
-            for (let existing = 0; existing < compoundPrefixFast.length; existing++) {
-              if (compoundPrefixFast[existing] === node) {
+            for (let existing = 0; existing < compoundUnion.length; existing++) {
+              if (compoundUnion[existing] === node) {
                 found = true;
                 break;
               }
             }
             if (!found) {
-              compoundPrefixFast.push(node);
+              if (!compoundUnionOwned) {
+                compoundUnion = [...compoundUnion];
+                compoundUnionOwned = true;
+              }
+              compoundUnion.push(node);
             }
           }
         }
-        return compoundPrefixFast;
+        return compoundUnion;
       }
       if (fast !== undefined) {
         const result = fast.length > 0 ? fast : undefined;

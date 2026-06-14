@@ -281,7 +281,8 @@ type NormalizedLookupKey = string | string[] | number;
 type RulesLookupResult = RuntimeVarBinding | Node | MixinEntry[] | undefined;
 const SCOPE_FRAME_VARIABLE_MISS = Symbol('scope-frame-variable-miss');
 type ScopeFrameVariableBindingResult = RuntimeVarBinding | typeof SCOPE_FRAME_VARIABLE_MISS | undefined;
-type RulesLookupHandleReadResult = RulesLookupResult | typeof SCOPE_FRAME_VARIABLE_MISS;
+type RulesLookupHandleValue = Exclude<RulesLookupResult, undefined> | typeof SCOPE_FRAME_VARIABLE_MISS;
+type RulesLookupHandleReadResult = RulesLookupHandleValue | undefined;
 
 type ReferenceRulesLookupHandle = {
   targetRules: Rules;
@@ -293,7 +294,7 @@ type ReferenceRulesLookupHandle = {
   local: boolean;
   ignoreParentScopeStart: boolean;
   terminalMixinOnly: boolean;
-  returnVal: RulesLookupResult;
+  returnVal: RulesLookupHandleValue;
 };
 
 function isRulesLookupResult(value: unknown): value is Exclude<RulesLookupResult, undefined> {
@@ -947,7 +948,7 @@ function readRulesLookupHandle(args: {
   ) {
     return undefined;
   }
-  return handle.returnVal ?? SCOPE_FRAME_VARIABLE_MISS;
+  return handle.returnVal;
 }
 
 function writeRulesLookupHandle(args: {
@@ -976,7 +977,7 @@ function writeRulesLookupHandle(args: {
     local: args.shape.local,
     ignoreParentScopeStart: args.shape.ignoreParentScopeStart,
     terminalMixinOnly: args.shape.terminalMixinOnly,
-    returnVal: args.returnVal
+    returnVal: args.returnVal ?? SCOPE_FRAME_VARIABLE_MISS
   };
 }
 
