@@ -703,6 +703,16 @@ the binding index/scope lookup refactor.
    reached only after a thenable is observed. Focused list/sequence/spaced and
    render-buffer tests passed. Hotpath leash was mixed and status-only; see
    `PERFORMANCE-HANDOFF.md`.
+15a. [x] Continue node `writeSyntax`/render pass across Call, AtRule, and
+   Ruleset. `Call.serializeRenderedArgs(...)` now returns immediately for
+   zero-arg calls without opening a writer mark. `AtRule.render(...)` and
+   `Ruleset.render(...)` no longer allocate their sync-path local
+   render/result helper closures on every render; the same staging lives on
+   class methods, with async continuations only after a thenable appears.
+   `Ruleset` ampersand composition replaced selector `slice(...)`, spread
+   merge, and push-spread flattening with indexed loops and pre-sized arrays.
+   Focused call/at-rule/ruleset/selector/extend tests passed. Hotpath leash was
+   status-only; see `PERFORMANCE-HANDOFF.md`.
 16. [ ] Continue `Reference` before moving to the next node. Audit and cut the
    remaining copy/materialization pressure: `createRulesLikeReferenceSurface`,
    public `evaluateReferenceValueNode(...)` materialization, merged assign
@@ -869,29 +879,53 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Rules callable lookup visited-set reuse.
+Current pass: Call/AtRule/Ruleset render closure and selector array-factory
+cuts.
 
-- New traversal: none added. Existing callable/ruleset namespace parent walks
-  and recursive child-surface searches are unchanged. This pass reuses one
-  `Set<Rules>` per helper invocation and clears it before each independent
-  surface walk instead of allocating a fresh set per parent scope.
-- New node/materialization: none added. This pass did not add `new Node`,
+- New traversal: no semantic traversal added. `Ruleset` ampersand composition
+  replaces existing `slice(...)`, spread merge, and push-spread flattening with
+  indexed loops over the same selector arrays. The loops are not additional
+  discovery; they are the same copy/flatten work without iterator/spread
+  machinery.
+- New node/materialization: no new node ownership boundary added.
+  `Ruleset._prependParent(...)` and `_substituteAmpInCompound(...)` still
+  create the same selector result nodes as before; this pass only changes the
+  temporary array construction used to feed those existing factories. No
   copied nodes, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen state,
-  parent restoration, or source metadata mutation.
-- Render path: no render output path changed. The edited paths are callable
-  and ruleset namespace lookup helpers only; they do not create arrays/nodes
-  just to stringify.
-- Helper/API surface: no helper added. The same local recursive lookup
-  functions remain; only their visited-set allocation site changed.
-- Metadata mutations: none added. No parent/source/context metadata changed.
-- Evidence: hotpath leash at `d2276993` was status-only:
-  `functions` `17.22ms` unstable, `import-reference` `31.90ms` usable,
-  `mixins-guards` `20.41ms` unstable, `extend-chaining` `6.84ms` usable, and
-  `media` `7.24ms` usable. Focused lookup/callable tests passed:
+  parent restoration, or source metadata mutation was added.
+- Render path: `Call.serializeRenderedArgs(...)` no longer opens a writer mark
+  for zero-argument calls. `AtRule.render(...)` and `Ruleset.render(...)` no
+  longer allocate sync-path local render/result closures before rendering. No
+  render path now resolves into arrays/nodes just to stringify because of this
+  pass.
+- Helper/API surface: class-private render helpers were added to delete
+  per-render local helper closures. This is accepted only because they replace
+  closures allocated on every sync render with stable methods and do not widen
+  public API. The remaining local helper closures in `AtRule`/`Ruleset` eval
+  paths stay queued rather than hidden.
+- Metadata mutations: none added. The existing selector result `.inherit(...)`
+  calls remain as pre-existing selector composition ownership; no parent/source
+  restoration or lazy option/context creation was introduced.
+- Error/control flow: no new routine error-control path was added. The
+  `TypeError` and `try/finally` text in the diff moved existing at-rule render
+  state validation/restoration out of a per-call local closure into class
+  methods; it still guards exceptional invalid state and restores print-state
+  overrides, not ordinary lookup/render misses.
+- Evidence: pre-pass hotpath leash at `0fa37690`: `functions` `16.65ms`
+  unstable, `import-reference` `29.40ms` usable, `mixins-guards` `21.04ms`
+  unstable, `extend-chaining` `7.11ms` unstable, `media` `6.92ms` usable.
+  Dirty post-pass leash: `functions` `15.07ms` usable, `import-reference`
+  `24.23ms` usable, `mixins-guards` `19.35ms` usable, `extend-chaining`
+  `5.83ms` usable, `media` `5.96ms` unstable. This is status only, not a
+  speed claim. Focused tests passed:
   `pnpm --filter @jesscss/core test --
-  src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts
-  src/tree/__tests__/mixin.test.ts` (`304` passed, `8` skipped).
-- Verdict: accept the Rules callable/ruleset lookup visited-set reuse only.
-  The coherent binding-handle model, repeated compound-reference reuse,
-  evaluated-value/text reuse, selector/extend equality, copy/materialization
-  boundaries, and `StyleImport` placement copies remain open.
+  src/tree/__tests__/call.test.ts src/tree/__tests__/at-rule.test.ts
+  src/tree/__tests__/ruleset.test.ts src/tree/__tests__/selector.test.ts
+  src/tree/__tests__/extend.test.ts src/tree/__tests__/extend-rules.test.ts`
+  (`228` passed).
+- Verdict: accept the writer-mark zero-arg cut, sync render closure lift, and
+  selector array-factory deletion. Remaining open work: `AtRule` direct
+  header/body writer and header-capture scaffolding, `Ruleset.getHeaderString`
+  capture/comparison paths, `Call.evalArgNodes(...)` copy pressure, whole-call
+  mark/readback, `Reference` materialization, selector/extend equality,
+  `StyleImport` placement copies, and the coherent binding-handle model.

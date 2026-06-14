@@ -461,11 +461,11 @@ export class Call extends Node<CallValue, CallOptions> {
     context: Context,
     options: PrintOptions
   ): MaybePromise<string> {
-    const printOptions = getPrintOptions(options);
-    const mark = printOptions.writer!.mark();
     if (!args) {
       return '';
     }
+    const printOptions = getPrintOptions(options);
+    const mark = printOptions.writer!.mark();
     return this.serializeRenderedArgsFrom(args.value, context, printOptions, mark, 0);
   }
 

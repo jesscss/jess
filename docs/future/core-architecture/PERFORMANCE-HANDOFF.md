@@ -2216,6 +2216,35 @@ Hotpath status:
 Interpretation: status only, not a speed claim. Keep as closure, callback, and
 regex-probe deletion in Call/Sequence serialization paths.
 
+### Ruleset/AtRule Render Closure And Selector Array-Factory Cut
+
+Date: 2026-06-13.
+
+Change: `Call.serializeRenderedArgs(...)` no longer opens a writer mark for
+zero-argument calls. `AtRule.render(...)` and `Ruleset.render(...)` no longer
+allocate their sync-path local render/result helper closures on every render;
+the same staging now lives on class methods, with async continuations only
+after a thenable appears. `Ruleset` ampersand composition replaced selector
+`slice(...)`, spread merge, and push-spread flattening with indexed loops and
+pre-sized arrays.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `0fa37690` reported: `functions` median `16.65ms` unstable,
+  `import-reference` median `29.40ms` usable, `mixins-guards` median
+  `21.04ms` unstable, `extend-chaining` median `7.11ms` unstable, and `media`
+  median `6.92ms` usable.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `15.07ms` usable,
+  `import-reference` median `24.23ms` usable, `mixins-guards` median
+  `19.35ms` usable, `extend-chaining` median `5.83ms` usable, and `media`
+  median `5.96ms` unstable.
+
+Interpretation: status only, not a speed claim. Keep as writer-capture,
+sync-path closure, and selector array-factory deletion; the sample is bounded
+and not a stable benchmark proof.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

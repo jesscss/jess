@@ -279,20 +279,41 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
 
   private static _prependParent(parent: Selector, child: Selector): Selector {
     const library = child.keySetLibrary ?? parent.keySetLibrary;
-    const leading: ComplexSelectorComponent[] = isNode(parent, N.ComplexSelector)
-      ? parent.value.slice()
+    const leadingSource = isNode(parent, N.ComplexSelector) ? parent.value : undefined;
+    const leadingScalar = leadingSource
+      ? undefined
       : isNode(parent, N.SelectorList)
-        ? [Ruleset._wrapIs(parent)]
-        : [Ruleset._toComplexComponent(parent)];
+        ? Ruleset._wrapIs(parent)
+        : Ruleset._toComplexComponent(parent);
+    const leadingLength = leadingSource ? leadingSource.length : 1;
+    const trailingSource = isNode(child, N.ComplexSelector) ? child.value : undefined;
+    const trailingScalar = trailingSource ? undefined : Ruleset._toComplexComponent(child);
+    const trailingLength = trailingSource ? trailingSource.length : 1;
+    const childStartsWithCombinator = trailingLength > 0 && isNode(
+      trailingSource ? trailingSource[0]! : trailingScalar!,
+      N.Combinator
+    );
+    const addDescendant = childStartsWithCombinator ? 0 : 1;
+    const merged = new Array<ComplexSelectorComponent>(leadingLength + addDescendant + trailingLength);
+    let index = 0;
 
-    const trailing: ComplexSelectorComponent[] = isNode(child, N.ComplexSelector)
-      ? child.value.slice()
-      : [Ruleset._toComplexComponent(child)];
-
-    const childStartsWithCombinator = trailing.length > 0 && isNode(trailing[0]!, N.Combinator);
-    const merged = childStartsWithCombinator
-      ? [...leading, ...trailing]
-      : [...leading, Combinator.create(' '), ...trailing];
+    if (leadingSource) {
+      for (let i = 0; i < leadingSource.length; i++) {
+        merged[index++] = leadingSource[i]!;
+      }
+    } else {
+      merged[index++] = leadingScalar!;
+    }
+    if (addDescendant) {
+      merged[index++] = Combinator.create(' ');
+    }
+    if (trailingSource) {
+      for (let i = 0; i < trailingSource.length; i++) {
+        merged[index++] = trailingSource[i]!;
+      }
+    } else {
+      merged[index++] = trailingScalar!;
+    }
 
     return attachSelectorBitLibrary(ComplexSelector.create(merged).inherit(child), library);
   }
@@ -359,13 +380,23 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     const canSmartSplice = ampCount === 1 && firstAmpIdx === 0 && !insideComplex;
 
     if (canSmartSplice) {
-      const suffix = components.slice(1);
+      const suffixLength = components.length - 1;
       // Simple / Compound parent — splice directly into the compound.
       if (!isNode(parent, N.ComplexSelector) && !isNode(parent, N.SelectorList)) {
-        const parentComponents: SimpleSelector[] = isNode(parent, N.CompoundSelector)
-          ? parent.value
-          : [Ruleset._toSimpleSelector(parent)];
-        const merged = [...parentComponents, ...suffix];
+        const parentComponents = isNode(parent, N.CompoundSelector) ? parent.value : undefined;
+        const parentLength = parentComponents ? parentComponents.length : 1;
+        const merged = new Array<SimpleSelector>(parentLength + suffixLength);
+        let index = 0;
+        if (parentComponents) {
+          for (let i = 0; i < parentComponents.length; i++) {
+            merged[index++] = parentComponents[i]!;
+          }
+        } else {
+          merged[index++] = Ruleset._toSimpleSelector(parent);
+        }
+        for (let i = 1; i < components.length; i++) {
+          merged[index++] = components[i]!;
+        }
         if (merged.length === 1) {
           return attachSelectorBitLibrary(merged[0]!, library);
         }
@@ -374,7 +405,10 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       // ComplexSelector parent — attach the suffix to the parent's last
       // non-combinator part, returning a new complex.
       if (isNode(parent, N.ComplexSelector)) {
-        const parentParts = parent.value.slice();
+        const parentParts = new Array<ComplexSelectorComponent>(parent.value.length);
+        for (let i = 0; i < parent.value.length; i++) {
+          parentParts[i] = parent.value[i]!;
+        }
         let lastIdx = -1;
         for (let i = parentParts.length - 1; i >= 0; i--) {
           if (!isNode(parentParts[i]!, N.Combinator)) {
@@ -382,12 +416,22 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
             break;
           }
         }
-        if (lastIdx !== -1 && suffix.length > 0) {
+        if (lastIdx !== -1 && suffixLength > 0) {
           const lastPart = parentParts[lastIdx]!;
-          const existing: SimpleSelector[] = isNode(lastPart, N.CompoundSelector)
-            ? lastPart.value
-            : [Ruleset._toSimpleSelector(lastPart)];
-          const merged = [...existing, ...suffix];
+          const existing = isNode(lastPart, N.CompoundSelector) ? lastPart.value : undefined;
+          const existingLength = existing ? existing.length : 1;
+          const merged = new Array<SimpleSelector>(existingLength + suffixLength);
+          let index = 0;
+          if (existing) {
+            for (let i = 0; i < existing.length; i++) {
+              merged[index++] = existing[i]!;
+            }
+          } else {
+            merged[index++] = Ruleset._toSimpleSelector(lastPart);
+          }
+          for (let i = 1; i < components.length; i++) {
+            merged[index++] = components[i]!;
+          }
           parentParts[lastIdx] = merged.length === 1
             ? Ruleset._toComplexComponent(merged[0]!)
             : CompoundSelector.create(merged);
@@ -405,7 +449,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
         if (isNode(parent, N.ComplexSelector) || isNode(parent, N.SelectorList)) {
           newComponents.push(Ruleset._wrapIs(parent));
         } else if (isNode(parent, N.CompoundSelector)) {
-          newComponents.push(...parent.value);
+          for (let i = 0; i < parent.value.length; i++) {
+            newComponents.push(parent.value[i]!);
+          }
         } else {
           newComponents.push(Ruleset._toSimpleSelector(parent));
         }
@@ -413,7 +459,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
         // `&` is nested deeper (e.g. inside a pseudo arg).
         const sub = Ruleset._substituteAmpersand(comp, parent);
         if (isNode(sub, N.CompoundSelector)) {
-          newComponents.push(...sub.value);
+          for (let i = 0; i < sub.value.length; i++) {
+            newComponents.push(sub.value[i]!);
+          }
         } else {
           newComponents.push(Ruleset._toSimpleSelector(sub));
         }
@@ -445,7 +493,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
             // the parent chain; wrap in `:is()` to preserve meaning.
             newParts.push(Ruleset._wrapIs(parent));
           } else {
-            newParts.push(...parent.value);
+            for (let parentIndex = 0; parentIndex < parent.value.length; parentIndex++) {
+              newParts.push(parent.value[parentIndex]!);
+            }
           }
         } else {
           // Simple or Compound parent: single-component insertion, always safe.
@@ -461,7 +511,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
         );
         if (isNode(sub, N.ComplexSelector)) {
           // Flatten a complex sub into this complex's components.
-          newParts.push(...sub.value);
+          for (let subIndex = 0; subIndex < sub.value.length; subIndex++) {
+            newParts.push(sub.value[subIndex]!);
+          }
         } else {
           newParts.push(Ruleset._toComplexComponent(sub));
         }
@@ -689,72 +741,92 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       : finishGuard(guardResult);
   }
 
+  private finishNilSelectorBodyRender(rendered: string, buffer?: RenderBuffer): string {
+    if (rendered.endsWith('\n')) {
+      return rendered;
+    }
+    if (buffer) {
+      writeRenderText(buffer, '\n');
+    }
+    return `${rendered}\n`;
+  }
+
+  private renderNilSelectorBodyDirectly(
+    context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): MaybePromise<string> {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const rendered = buffer
+      ? this.value.rules.render(context, buffer, options)
+      : this.value.rules.render(context, bufferOrOptions);
+    return isThenable(rendered)
+      ? rendered.then(value => this.finishNilSelectorBodyRender(value, buffer))
+      : this.finishNilSelectorBodyRender(rendered, buffer);
+  }
+
+  private renderEvaluatedRuleset(
+    node: Ruleset,
+    context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
+    if (isRenderBuffer(bufferOrOptions)) {
+      const prepared = prepareBufferPrintState(context, options, bufferOrOptions);
+      const mark = prepared.writer.mark();
+      return writePreparedRenderText(bufferOrOptions, prepared, mark, serializeRulesContainer(node, prepared));
+    }
+    return serializeRulesContainer(node, prepareRenderPrintState(context, bufferOrOptions));
+  }
+
+  private renderEvaluatedForRender(
+    node: Node,
+    context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): MaybePromise<string> {
+    if (node instanceof Nil) {
+      return '';
+    }
+    if (node instanceof Ruleset) {
+      return this.renderEvaluatedRuleset(node, context, bufferOrOptions, options);
+    }
+    return isRenderBuffer(bufferOrOptions)
+      ? node.render(context, bufferOrOptions, options)
+      : node.render(context, bufferOrOptions);
+  }
+
+  private evalForRender(context: Context): MaybePromise<Node> {
+    if (this.evaluated) {
+      return this;
+    }
+    if (this.canRenderSourceDirectly(context)) {
+      return this;
+    }
+    if (
+      this.value.selector instanceof Nil
+      && !this.registrationPrepared
+    ) {
+      return this.evalNilSelectorForRender(context);
+    }
+    return this.registrationPrepared
+      ? this.eval(context)
+      : this.evalPrepared(context, { ownRules: true });
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    const finishNilSelectorBodyRender = (rendered: string): string => {
-      if (rendered.endsWith('\n')) {
-        return rendered;
-      }
-      if (isRenderBuffer(bufferOrOptions)) {
-        writeRenderText(bufferOrOptions, '\n');
-      }
-      return `${rendered}\n`;
-    };
-    const renderNilSelectorBodyDirectly = (): MaybePromise<string> => {
-      const rendered = isRenderBuffer(bufferOrOptions)
-        ? this.value.rules.render(context, bufferOrOptions, options)
-        : this.value.rules.render(context, bufferOrOptions);
-      return isThenable(rendered)
-        ? rendered.then(finishNilSelectorBodyRender)
-        : finishNilSelectorBodyRender(rendered);
-    };
-    const renderEvaluatedRuleset = (node: Ruleset) => {
-      if (isRenderBuffer(bufferOrOptions)) {
-        const prepared = prepareBufferPrintState(context, options, bufferOrOptions);
-        const mark = prepared.writer.mark();
-        return writePreparedRenderText(bufferOrOptions, prepared, mark, serializeRulesContainer(node, prepared));
-      }
-      return serializeRulesContainer(node, prepareRenderPrintState(context, bufferOrOptions));
-    };
-    const renderEvaluated = (node: Node) => {
-      if (node instanceof Nil) {
-        return '';
-      }
-      if (node instanceof Ruleset) {
-        return renderEvaluatedRuleset(node);
-      }
-      return isRenderBuffer(bufferOrOptions)
-        ? node.render(context, bufferOrOptions, options)
-        : node.render(context, bufferOrOptions);
-    };
     if (
       this.value.selector instanceof Nil
       && this.canRenderNilSelectorBodyDirectly()
     ) {
-      return renderNilSelectorBodyDirectly();
+      return this.renderNilSelectorBodyDirectly(context, bufferOrOptions, options);
     }
-    const evalForRender = (): MaybePromise<Node> => {
-      if (this.evaluated) {
-        return this;
-      }
-      if (this.canRenderSourceDirectly(context)) {
-        return this;
-      }
-      if (
-        this.value.selector instanceof Nil
-        && !this.registrationPrepared
-      ) {
-        return this.evalNilSelectorForRender(context);
-      }
-      return this.registrationPrepared
-        ? this.eval(context)
-        : this.evalPrepared(context, { ownRules: true });
-    };
-    const node = evalForRender();
+    const node = this.evalForRender(context);
     return isThenable(node)
-      ? node.then(renderEvaluated)
-      : renderEvaluated(node);
+      ? node.then(resolved => this.renderEvaluatedForRender(resolved, context, bufferOrOptions, options))
+      : this.renderEvaluatedForRender(node, context, bufferOrOptions, options);
   }
 
   override resolve(context: Context): MaybePromise<Node> {
