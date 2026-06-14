@@ -104,6 +104,17 @@ only duplicates covered miss state.
 Acceptance: callable bucket, static miss, fallback-frame, namespace,
 terminal mixin-only tests, lint, builds, aggressive review.
 
+## Backlog Sources
+
+When the active queue is empty, pull the next binding/lookup task from:
+
+- `BINDING-INDEX-PROPOSAL.md` for the larger binding-index migration agenda.
+- `PERFORMANCE-HANDOFF.md` for measured lookup/profile follow-ups.
+- `AGGRESSIVE-CUTTING-REVIEW.md` for rejected patch shapes to avoid.
+
+Keep only the selected next tasks here. Do not copy backlog history or old
+evidence into this file.
+
 ## Gates
 
 Use focused commands first. Current usual focused set:
@@ -134,7 +145,8 @@ At the end of a pass:
 
 1. Replace completed queue items with one concise baseline note if needed.
 2. Seed only the next active binding/lookup queue.
-3. Keep this file small. If old evidence matters, put it in the commit or
+3. Keep this file small. Pointers to backlog docs are good; copied backlog
+   content is not. If old evidence matters, put it in the commit or
    `PERFORMANCE-HANDOFF.md`, not here.
 4. Keep `Aggressive Cutting Self-Prosecution` to the latest pass only.
 
