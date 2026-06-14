@@ -648,8 +648,6 @@ function collectCallableBucketResults(
   return results;
 }
 
-const EMPTY_CALLABLE_LOOKUP_BUCKET: CallableLookupEntry[] = [];
-
 /**
  * The class representing a "declaration list".
  * CSS calls it this even though CSS Nesting
@@ -672,14 +670,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /** Fast map: var name → ordered list of VarDeclarations registered in this scope. */
   varsByName: Map<string, VarDeclaration[]> | undefined;
   /** Per-request cache: callable start-key -> ordered entries with remaining path keys. */
-  callableLookupCache: Map<string, CallableLookupEntry[]> | undefined;
+  callableLookupCache: Map<string, CallableLookupEntry[] | null> | undefined;
   directChildRuleEntries: Array<RulesEntryLike> | null | undefined;
   directDeclarationChildEntries: Array<RulesEntryLike> | null | undefined;
   hasDirectChildRuleSurface = false;
   hasExactCallableChildSurface = false;
   hasExactMixinChildSurface = false;
   hasExactRulesetChildSurface = false;
-  directDeclarationsByName: Map<string, Declaration[]> | undefined;
+  directDeclarationsByName: Map<string, Declaration[] | null> | undefined;
   directDeclarationLookupCache: Map<string, {
     optionalMatch: Declaration | undefined;
     publicMatch: Declaration | undefined;
@@ -1136,9 +1134,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     updateFrameMissCoverage = true
   ): CallableLookupEntry[] {
     const entries = this.callableLookupCache;
-    const cached = entries?.get(lookupKey);
-    if (cached) {
-      return cached;
+    if (entries?.has(lookupKey)) {
+      return entries.get(lookupKey) ?? [];
     }
 
     const bucket: CallableLookupEntry[] = [];
@@ -1149,7 +1146,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     (this.callableLookupCache ??= new Map()).set(
       lookupKey,
-      bucket.length === 0 ? EMPTY_CALLABLE_LOOKUP_BUCKET : bucket
+      bucket.length === 0 ? null : bucket
     );
     if (this._scopeFrame) {
       this._scopeFrame.callableBucketsByName = this.callableLookupCache;

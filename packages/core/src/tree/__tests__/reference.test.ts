@@ -3394,7 +3394,7 @@ describe('reference', () => {
 
         const frame = node.getScopeFrame();
         expect(node.findProperty('x', { searchParents: false })).toBeUndefined();
-        expect(node.directDeclarationsByName).toBeDefined();
+        expect(node.directDeclarationsByName?.get('x')).toBeNull();
         const dynamicDecl = node.at(0)!;
         dynamicDecl.set('name', any('x'));
 

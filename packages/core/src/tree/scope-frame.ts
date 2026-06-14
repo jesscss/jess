@@ -144,7 +144,7 @@ export interface ScopeFrame {
   /**
    * Static callable buckets for this scope.
    */
-  callableBucketsByName: Map<string, CallableLookupEntry[]> | undefined;
+  callableBucketsByName: Map<string, CallableLookupEntry[] | null> | undefined;
 
   /**
    * True when declarationBucketsByName represents every static declaration on
@@ -212,7 +212,7 @@ export function buildScopeFrame(
   liveSlots?: Map<string, BindingCell>,
   pendingDeclarationNames?: VarDeclaration[],
   declarationsCovered = varsByName !== undefined,
-  callableEntriesByName?: Map<string, CallableLookupEntry[]>,
+  callableEntriesByName?: Map<string, CallableLookupEntry[] | null>,
   callablesCovered = callableEntriesByName !== undefined,
   callableMissesCovered = callablesCovered,
   mixinCallableMissesCovered = callableMissesCovered

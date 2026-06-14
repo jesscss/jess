@@ -69,7 +69,6 @@ const ANY_DECLARATION_LOOKUP: DeclarationLookupStrategy = {
   skipVarsAfterBindingHit: false
 };
 const EMPTY_DIRECT_DECLARATION_FIND_OPTIONS: DirectDeclarationFindOptions = {};
-const EMPTY_DIRECT_DECLARATION_BUCKET: Declaration[] = [];
 
 type MatchState = {
   optionalMatch: Declaration | undefined;
@@ -122,7 +121,7 @@ function getDirectDeclarationBucket(
   scope: Rules,
   key: string
 ): Declaration[] | undefined {
-  const buckets = scope.directDeclarationsByName ??= new Map<string, Declaration[]>();
+  const buckets = scope.directDeclarationsByName ??= new Map<string, Declaration[] | null>();
   const cached = buckets.get(key);
   if (cached) {
     return cached;
@@ -147,7 +146,7 @@ function getDirectDeclarationBucket(
     }
   }
   if (!bucket) {
-    buckets.set(key, EMPTY_DIRECT_DECLARATION_BUCKET);
+    buckets.set(key, null);
     return undefined;
   }
   buckets.set(key, bucket);

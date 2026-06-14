@@ -61,46 +61,48 @@ Registryless lookup is the active runtime direction.
   `uncovered`; a prepared key with no hits is a covered miss.
 - Reference lookup carries prepared target shape when the target `Rules`
   identity is known.
-- Current shared empty miss buckets:
-  - `EMPTY_DIRECT_DECLARATION_BUCKET`
-  - `EMPTY_CALLABLE_LOOKUP_BUCKET`
+- Current miss sentinel: `null` inside existing direct declaration and
+  callable lookup maps means the key was prepared and missed. Absent key means
+  uncovered.
 - Current narrow helper to audit:
   - `prepareRulesLookupTarget(...)`
 
-Recent baseline commit: `31396ec4` shared lookup miss sentinels and pushed
-`feature/jess-scope-lookup-experiment`. Last smoke was usable but not a speed
-claim: `mixins-guards.less` `27.09ms`, `scope-lookup-stress.less` `73.58ms`.
+Recent baseline commit: `054fc959` trimmed this handoff to active guidance.
+Last smoke from the lookup pass was usable but not a speed claim:
+`mixins-guards.less` `27.09ms`, `scope-lookup-stress.less` `73.58ms`.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7ec. [ ] Reference prepared-shape helper audit.
-Scope: `prepareRulesLookupTarget(...)`, `performRulesReferenceLookup(...)`,
-and `readRulesLookupHandle(...)`.
-Goal: prove the helper is a net deletion of repeated shape work, or inline a
-cheaper path if the helper adds avoidable hot-path calls.
+7ef. [ ] Prepared-shape lookup-context shape audit.
+Scope: `preparedTarget`, `preparedRulesParent`, `preparedSourceRulesParent`,
+and `performRulesReferenceLookup(...)`.
+Goal: determine whether the three prepared-shape slots should collapse into
+one tiny current-scope shape path without reintroducing repeated object
+construction or generic helper branching.
 Acceptance: reference callable/function handle, leaky fallback,
 ambient-output, import/reference tests, lint, builds, aggressive review.
 
-7ed. [ ] Direct declaration empty-bucket sentinel audit.
-Scope: `EMPTY_DIRECT_DECLARATION_BUCKET`, `directDeclarationsByName`,
-`getDirectDeclarationBucket(...)`, and dynamic-name promotion.
-Goal: prove the shared empty declaration bucket cannot be mutated or mistaken
-for a hit bucket; replace it with a cheaper sentinel only if that reduces work
-without adding a new map or side registry.
-Acceptance: property/variable source-order, same-key miss, child-surface,
-dynamic-name, `setDefined(...)`, readonly tests, lint, builds, aggressive
-review.
+7eg. [ ] Null miss sentinel type containment.
+Scope: `directDeclarationsByName`, `callableLookupCache`,
+`callableBucketsByName`, `getDirectDeclarationBucket(...)`,
+`getCallableEntriesForKey(...)`, and `lookupScopeFrameCallable(...)`.
+Goal: keep the `null` covered-miss sentinel private to lookup internals; if it
+leaks into more callers, wrap it behind narrower accessors or split covered
+miss state without adding a registry-like side map.
+Acceptance: property/variable same-key miss, callable static miss,
+fallback-frame, terminal mixin-only, dynamic-name, and import/reference tests,
+lint, builds, aggressive review.
 
-7ee. [ ] Callable empty-bucket sentinel audit.
-Scope: `EMPTY_CALLABLE_LOOKUP_BUCKET`, `callableLookupCache`,
-`lookupScopeFrameCallable(...)`, and last-callable lookup results.
-Goal: prove the shared empty callable bucket cannot leak as a mutable hit
-bucket; replace it with a cheaper sentinel only if the result path stays
-branch-light and key-covered.
-Acceptance: callable bucket, static miss, fallback-frame, terminal mixin-only,
-namespace, import/reference tests, lint, builds, aggressive review.
+7eh. [ ] Last-callable miss cache audit.
+Scope: `lastCallableLookupKey`, `lastCallableLookupValue`,
+`setLastCallableLookupResult(...)`, and covered frame miss paths.
+Goal: prove last-callable result caching still saves work now that per-key
+misses are represented in `callableLookupCache`, and delete or narrow it if it
+only duplicates covered miss state.
+Acceptance: callable bucket, static miss, fallback-frame, namespace,
+terminal mixin-only tests, lint, builds, aggressive review.
 
 ## Gates
 
@@ -138,14 +140,19 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-Latest pass: handoff size discipline correction.
-
-- Verdict: accepted as documentation discipline cleanup; it deletes stale
-  history and keeps this file as an operational guide.
+- Latest pass: helper/sentinel audit.
+- Verdict: accepted as binding/lookup cleanup, not as a speed claim.
 - New traversal: none.
-- New node/materialization: none.
+- New node/materialization: none. The retained empty-array sentinels were
+  deleted; `null` now represents covered misses in the existing maps.
 - Render path: unchanged.
-- Helper/API surface: none.
+- Helper/API surface: `prepareRulesLookupTarget(...)` kept; it remains a net
+  deletion versus four repeated prepared-shape literals and has no public API.
 - Metadata mutations: none.
-- Evidence: this edit deletes stale completed-task history and keeps only the
-  active lookup focus, current baseline, active queue, gates, and update rule.
+- Evidence: focused lint and lookup suite passed (`6` files, `285` passed,
+  `290` skipped); binding residue grep and `git diff --check` passed;
+  `@jesscss/core` build passed with only the existing `js-expr.ts` direct-eval
+  warning; aggressive review passed with prosecuted existing-map/null-sentinel
+  danger tokens; node-creation audit passed; `jess` build passed; one-iteration
+  hotpath smoke passed with usable signal: `mixins-guards.less` `19.67ms`,
+  `scope-lookup-stress.less` `69.51ms`. No speed claim is made.
