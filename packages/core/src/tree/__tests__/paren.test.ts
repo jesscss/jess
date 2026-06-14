@@ -20,11 +20,17 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  marks = 0;
   reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
   }
 
   override getSince(mark: number): string {
@@ -135,6 +141,36 @@ describe('Paren', () => {
     expect(parenResolveCalls).toBe(0);
     expect(parenNode.evaluated).toBe(false);
     expect(parenNode.registrationPrepared).toBe(false);
+  });
+
+  it('renders empty paren syntax without writer readback', () => {
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+    const parenNode = paren(undefined, { escaped: true });
+
+    expect(parenNode.render(context, { writer })).toBe('~()');
+    expect(writer.toString()).toBe('~()');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(parenNode.render(context, buffer, { writer })).toBe('~()');
+    expect(buffer.parts).toEqual(['~()']);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
+  it('renders nil paren syntax without writer readback when trivia is inactive', () => {
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+    const parenNode = paren(nil(), { delimiter: 'square' });
+
+    expect(parenNode.render(context, { writer })).toBe('[]');
+    expect(writer.toString()).toBe('[]');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(parenNode.render(context, buffer, { writer })).toBe('[]');
+    expect(buffer.parts).toEqual(['[]']);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('renders dynamic paren values without materializing a replacement paren', async () => {

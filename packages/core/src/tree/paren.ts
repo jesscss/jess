@@ -96,12 +96,8 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
 
   override toTrimmedString(options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
-    const isEmptyValue = !this.value || (this.value instanceof Nil && !printOptions.trivia);
-    if (isEmptyValue) {
-      const escapeChar = this._options?.escaped ? '~' : '';
-      const out = this._options?.delimiter === 'square'
-        ? `${escapeChar}[]`
-        : `${escapeChar}()`;
+    const out = this.emptyParenText(printOptions);
+    if (out !== undefined) {
       printOptions.writer.add(out, this);
       return out;
     }
@@ -114,6 +110,15 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const emptyText = this.emptyParenText(buffer ? options : bufferOrOptions);
+    if (emptyText !== undefined) {
+      if (buffer) {
+        return writeRenderText(buffer, emptyText);
+      }
+      getPrintOptions(bufferOrOptions).writer.add(emptyText, this);
+      return emptyText;
+    }
     const guardValue = getDefaultGuardValue(this.value, context);
     if (guardValue !== undefined) {
       const out = String(guardValue);
@@ -122,6 +127,16 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         : out;
     }
     return this.renderResolvedValue(context, bufferOrOptions, options);
+  }
+
+  private emptyParenText(options?: PrintOptions): string | undefined {
+    if (this.value && (!(this.value instanceof Nil) || options?.trivia)) {
+      return undefined;
+    }
+    const escapeChar = this._options?.escaped ? '~' : '';
+    return this._options?.delimiter === 'square'
+      ? `${escapeChar}[]`
+      : `${escapeChar}()`;
   }
 
   private renderResolvedValue(

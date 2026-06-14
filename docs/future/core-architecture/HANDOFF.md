@@ -338,6 +338,13 @@ Open tasks:
    `Call` output selection and `List`/`Sequence` buffer string capture remain
    open.
 
+   Additional partial status: `Block`, `Paren`, `Quoted`, and
+   `AttributeSelector` render now use known wrapper text directly for safe
+   scalar/empty forms: nil blocks, empty/nil parens, literal non-escaped quoted
+   strings, and bare string-name attributes. These paths write or buffer the
+   final string without opening writer mark/getSince scaffolding; trivia-backed
+   or dynamic child paths stay on existing render boundaries.
+
    Evidence pointer: use `NODE-REWRITE-TRACKER.md` for per-node status and
    `PERFORMANCE-HANDOFF.md` for benchmark/profile history. Do not add queue
    entries for one-line cuts inside this item.
@@ -524,32 +531,32 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Call`, `List`, and `Sequence` known-empty serialization cuts.
+Current pass: `Block`, `Paren`, `Quoted`, and `AttributeSelector` known-wrapper
+render cuts.
 
 - New traversal: none added. The pass adds only early known-output checks before
   existing writer setup. No loops, recursion, parent/source walks, side maps, or
   array scans were added.
 - New node/materialization: no runtime nodes, copies, wrappers, arrays, or
   materialized render values added. Review-script danger tokens are test-only
-  counting-writer fixtures and empty list/sequence fixture constructors that
-  prove known-empty output does not open readback scaffolding.
-- Render path: selected rows are `Call`, `List`, and `Sequence`. Empty
-  string-name calls now write or buffer the known call text directly in render
-  and public string paths. Empty lists/sequences now return known empty output
-  before preparing writer state or buffer mark/readback. Non-empty dynamic
-  `List`/`Sequence` buffer render still captures the emitted string for the
-  current render-buffer contract and remains open.
-- Helper/API surface: one private `Call.emptyStringNameCallText(...)` helper
-  replaces duplicated source/render literal assembly for the same scalar case.
-  No public API or node method surface was added. `List` and `Sequence` added no
-  helper.
-- Metadata mutations: none added. No parent/source/frozen/options/context
-  mutation, reflective defensive access, or own-property guard added.
+  counting-writer fixtures and literal expected-output arrays that prove known
+  wrapper output does not open readback scaffolding.
+- Render path: selected rows are `Block`, `Paren`, `Quoted`, and
+  `AttributeSelector`. Nil block delimiters, empty/nil parens, literal
+  non-escaped quoted strings, and bare string-name attributes now write or
+  buffer known final text directly. Dynamic children, trivia-backed syntax, and
+  non-scalar attribute/quote paths keep existing render boundaries.
+- Helper/API surface: two private helpers, `Block.nilBlockText(...)` and
+  `Paren.emptyParenText(...)`, replace duplicated source/render literal
+  assembly for the same scalar cases. No public API or node method surface was
+  added. `Quoted` and `AttributeSelector` added no helper.
+- Metadata mutations: none added. `Block.nilBlockText(...)` reads the same
+  existing source-trivia edge already used by `renderBlockSyntax(...)` so it
+  does not skip authored trivia; it does not mutate parent/source/frozen or
+  context state.
 - Error/control flow: no new runtime error/control-flow branch.
-- Evidence: focused `Call`, `List`, `Sequence`, and render-buffer alignment
-  tests passed. Final hotpath/profile status is in `PERFORMANCE-HANDOFF.md`; no
-  speed claim.
-- Verdict: accept bounded known-output cuts. Keep `Call` open for callable
-  output selection, async path, and non-empty whole-call readback. Keep
-  `List`/`Sequence` open for dynamic buffer capture and trivia-backed child
-  transport.
+- Evidence: focused `Block`, `Paren`, `Quoted`, `AttributeSelector`, and
+  render-buffer alignment tests passed. Final hotpath/profile status is in
+  `PERFORMANCE-HANDOFF.md`; no speed claim.
+- Verdict: accept bounded known-wrapper render cuts. Keep non-scalar/dynamic
+  render capture and selector valueOf/materialization work open.

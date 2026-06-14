@@ -6,7 +6,13 @@ import { OutputWriter } from '../util/print.js';
 let context: Context;
 
 class CountingWriter extends OutputWriter {
+  marks = 0;
   reads = 0;
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
 
   override getSince(mark: number): string {
     this.reads++;
@@ -35,6 +41,21 @@ describe('Attribute Selector', () => {
 
       expect(attr({ name: 'data' }).toTrimmedString({ writer })).toBe('[data]');
       expect(writer.toString()).toBe('[data]');
+      expect(writer.reads).toBe(0);
+    });
+
+    test('renders bare attribute selector syntax without writer readback', () => {
+      const writer = new CountingWriter();
+      const buffer = createRenderBuffer('flat');
+      const attrNode = attr({ name: 'data' });
+
+      expect(attrNode.render(context, { writer })).toBe('[data]');
+      expect(writer.toString()).toBe('[data]');
+      expect(writer.marks).toBe(0);
+      expect(writer.reads).toBe(0);
+      expect(attrNode.render(context, buffer, { writer })).toBe('[data]');
+      expect(buffer.parts).toEqual(['[data]']);
+      expect(writer.marks).toBe(0);
       expect(writer.reads).toBe(0);
     });
 

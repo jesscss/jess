@@ -12,7 +12,8 @@ import {
   isRenderBuffer,
   prepareBufferPrintState,
   type RenderBuffer,
-  writePreparedRenderText
+  writePreparedRenderText,
+  writeRenderText
 } from './util/render-buffer.js';
 
 export type AttributeSelectorValue = {
@@ -192,6 +193,19 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const printOptions = isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions;
     const currentName = this.value.name;
+    if (
+      typeof currentName === 'string'
+      && !this.value.op
+      && !this.value.value
+      && !this.value.mod
+    ) {
+      const out = `[${currentName}]`;
+      if (buffer) {
+        return writeRenderText(buffer, out);
+      }
+      getPrintOptions(printOptions).writer.add(out, this);
+      return out;
+    }
     const name = typeof currentName === 'string' ? currentName : currentName.resolve(context);
     const value = this.resolveAttributeValue(context);
     const finalize = (resolvedName: string | Node, resolvedValue: Node | undefined): string => {

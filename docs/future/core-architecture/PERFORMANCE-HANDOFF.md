@@ -200,6 +200,44 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-14 Block Paren Quoted Attribute Known-Wrapper Render Pass
+
+Hypothesis: known wrapper render output should write or buffer final text
+directly instead of preparing writer state and reading it back. This applies
+only when the wrapper text is already known and no child/trivia work is needed.
+
+Patch shape:
+
+- nil `Block` render writes/buffers known curly or square delimiter text
+  directly when authored trivia is not active;
+- empty/nil `Paren` render writes/buffers known paren, square, or escaped
+  delimiter text directly when trivia is not active;
+- non-escaped literal `Quoted` render writes/buffers the quoted scalar directly;
+- bare string-name `AttributeSelector` render writes/buffers `[name]`
+  directly;
+- dynamic children, trivia-backed syntax, escaped quoted render semantics, and
+  non-bare attribute render stay on existing paths.
+
+After patch, bounded hot-path leash:
+
+- `functions`: `16.54ms`, `noisy`;
+- `import-reference`: `25.09ms`, `unstable`;
+- `mixins-guards`: `18.20ms`, `usable`;
+- `extend-chaining`: `7.13ms`, `unstable`;
+- `media`: `5.92ms`, `noisy`.
+
+Broad `benchmark.less` profiler status after the patch:
+
+- `OutputWriter.mark`: `50002`;
+- `OutputWriter.getSince`: `45006`;
+- `OutputWriter.restore`: `29542`;
+- `Reference.evalNode`: `3619`;
+- `Rules.find`: `1013`.
+
+Decision: keep as bounded known-wrapper machinery deletion only. No speed
+claim: the hot-path leash was noisy/unstable and broad profile counters stayed
+on the same lookup/eval and writer surfaces.
+
 ### 2026-06-14 Call List Sequence Known-Empty Serialization Pass
 
 Hypothesis: known-empty call/list/sequence output should return directly before

@@ -10,11 +10,17 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  marks = 0;
   reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
   }
 
   override getSince(mark: number): string {
@@ -116,6 +122,21 @@ describe('quoted', () => {
     expect(quotedResolveCalls).toBe(0);
     expect(quotedNode.evaluated).toBe(false);
     expect(quotedNode.registrationPrepared).toBe(false);
+  });
+
+  it('renders literal quoted values without writer readback', () => {
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+    const quotedNode = quoted('hello', { quote: '\'' });
+
+    expect(quotedNode.render(context, { writer })).toBe('\'hello\'');
+    expect(writer.toString()).toBe('\'hello\'');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(quotedNode.render(context, buffer, { writer })).toBe('\'hello\'');
+    expect(buffer.parts).toEqual(['\'hello\'']);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('renders resolved quoted values without materializing a replacement quote', async () => {

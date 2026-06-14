@@ -122,6 +122,14 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     if (value instanceof Node && !(value instanceof Any) && !(value instanceof Interpolated)) {
       return this.renderOutput(context, value, bufferOrOptions, options);
     }
+    const scalar = this._options?.escaped ? undefined : this.serializeScalarSyntax(value);
+    if (scalar !== undefined) {
+      if (isRenderBuffer(bufferOrOptions)) {
+        return writeRenderText(bufferOrOptions, scalar);
+      }
+      getPrintOptions(bufferOrOptions).writer.add(scalar, this);
+      return scalar;
+    }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options, buffer)

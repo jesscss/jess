@@ -7,6 +7,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
+  writeRenderText,
   writePreparedRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
@@ -68,6 +69,14 @@ export class Block extends Node<Node, BlockOptions> {
     return w.getSince(mark);
   }
 
+  private nilBlockText(options?: PrintOptions): string | undefined {
+    const trivia = options?.trivia ?? this.sourceRoot?._treeContext?.opts?.trivia;
+    if (!(this.value instanceof Nil) || trivia) {
+      return undefined;
+    }
+    return this._options?.type === 'square' ? '[]' : '{}';
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     return this.renderBlockSyntax(this.value, options);
   }
@@ -80,6 +89,14 @@ export class Block extends Node<Node, BlockOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const nilText = this.nilBlockText(buffer ? options : bufferOrOptions);
+    if (nilText !== undefined) {
+      if (buffer) {
+        return writeRenderText(buffer, nilText);
+      }
+      getPrintOptions(bufferOrOptions).writer.add(nilText, this);
+      return nilText;
+    }
     const prepared = buffer
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);

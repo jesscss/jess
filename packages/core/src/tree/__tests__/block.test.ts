@@ -21,7 +21,13 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
 });
 
 class CountingWriter extends OutputWriter {
+  marks = 0;
   reads = 0;
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
 
   override getSince(mark: number): string {
     this.reads++;
@@ -144,6 +150,21 @@ describe('Block', () => {
     expect(resolveCalls).toBe(0);
     expect(blockNode.evaluated).toBe(false);
     expect(blockNode.registrationPrepared).toBe(false);
+  });
+
+  it('renders nil block delimiters without writer readback', () => {
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+    const blockNode = block(nil(), { type: 'square' });
+
+    expect(blockNode.render(context, { writer })).toBe('[]');
+    expect(writer.toString()).toBe('[]');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(blockNode.render(context, buffer, { writer })).toBe('[]');
+    expect(buffer.parts).toEqual(['[]']);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('renders resolved block values without materializing a replacement block', async () => {
