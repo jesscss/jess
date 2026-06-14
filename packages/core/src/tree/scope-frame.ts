@@ -33,6 +33,7 @@ export interface BindingCell {
   /** Runtime rules frame that owns this live binding. */
   rulesContext?: object;
   readonly?: boolean;
+  live?: boolean;
 }
 
 export function getBindingCellValue(cell: BindingCell): Node {
@@ -58,17 +59,6 @@ export interface BindingEntry {
   sourceNode: Node;
 }
 
-export type CurrentBindingEntry =
-  | {
-    kind: 'live';
-    cell: BindingCell;
-    sourceNode?: Node;
-  }
-  | {
-    kind: 'declaration';
-    entry: BindingEntry;
-  };
-
 export type ScopeFrameVariableLookupResult =
   | {
     kind: 'live';
@@ -77,7 +67,8 @@ export type ScopeFrameVariableLookupResult =
   }
   | {
     kind: 'declaration';
-    entry: BindingEntry;
+    cell: BindingCell;
+    sourceNode: Node;
   }
   | {
     kind: 'miss';
@@ -132,7 +123,7 @@ export interface ScopeFrame {
    * Static declaration source-order history stays in declarationBucketsByName;
    * this map is the direct path for "what is the current value of this name?"
    */
-  currentBindingsByName: Map<string, CurrentBindingEntry>;
+  currentBindingsByName: Map<string, BindingCell>;
 
   /**
    * Contextual variable declarations with static (non-interpolated) keys.
@@ -232,7 +223,7 @@ export function buildScopeFrame(
   mixinCallableMissCoverageKnown = callableMissCoverageKnown
 ): ScopeFrame {
   const declarationBucketsByName = new Map<string, BindingEntry[]>();
-  const currentBindingsByName = new Map<string, CurrentBindingEntry>();
+  const currentBindingsByName = new Map<string, BindingCell>();
 
   if (varsByName) {
     for (const [name, decls] of varsByName) {
@@ -251,21 +242,15 @@ export function buildScopeFrame(
       declarationBucketsByName.set(name, entries);
       const currentEntry = entries[entries.length - 1];
       if (currentEntry) {
-        currentBindingsByName.set(name, {
-          kind: 'declaration',
-          entry: currentEntry
-        });
+        currentBindingsByName.set(name, currentEntry.cell);
       }
     }
   }
 
   const liveSlotsByName = liveSlots ?? new Map<string, BindingCell>();
   for (const [name, cell] of liveSlotsByName) {
-    currentBindingsByName.set(name, {
-      kind: 'live',
-      cell,
-      sourceNode: cell.sourceNode
-    });
+    cell.live = true;
+    currentBindingsByName.set(name, cell);
   }
 
   return {
@@ -291,12 +276,9 @@ export function setScopeFrameLiveBinding(
   name: string,
   cell: BindingCell
 ): void {
+  cell.live = true;
   frame.liveSlotsByName.set(name, cell);
-  frame.currentBindingsByName.set(name, {
-    kind: 'live',
-    cell,
-    sourceNode: cell.sourceNode
-  });
+  frame.currentBindingsByName.set(name, cell);
 }
 
 export function setScopeFrameDeclarationBinding(
@@ -304,10 +286,7 @@ export function setScopeFrameDeclarationBinding(
   name: string,
   entry: BindingEntry
 ): void {
-  frame.currentBindingsByName.set(name, {
-    kind: 'declaration',
-    entry
-  });
+  frame.currentBindingsByName.set(name, entry.cell);
 }
 
 /**
@@ -323,12 +302,10 @@ export function resolveFrameCell(
 ): BindingEntry | undefined {
   let f = frame;
   while (f) {
-    const current = f.currentBindingsByName.get(name);
-    if (current) {
-      if (current.kind === 'live') {
-        return { cell: current.cell, sourceNode: current.sourceNode ?? getBindingCellValue(current.cell) };
-      }
-      return current.entry;
+    const cell = f.currentBindingsByName.get(name);
+    if (cell) {
+      const sourceNode = cell.sourceNode ?? getBindingCellValue(cell);
+      return { cell, sourceNode };
     }
 
     f = f.parent;
@@ -354,25 +331,31 @@ export function lookupScopeFrameVariable(
   while (true) {
     while (f) {
       if (start === undefined) {
-        const current = f.currentBindingsByName.get(name);
-        if (current?.kind === 'live' && options?.includeLive !== false) {
-          const sourceNode = current.sourceNode;
+        const currentCell = f.currentBindingsByName.get(name);
+        if (
+          currentCell
+          && currentCell.live === true
+          && options?.includeLive !== false
+        ) {
+          const sourceNode = currentCell.sourceNode;
           if (!sourceNode || !options?.blockedSource?.(sourceNode)) {
             return {
               kind: 'live',
-              cell: current.cell,
+              cell: currentCell,
               sourceNode
             };
           }
         } else if (
-          current?.kind === 'declaration'
+          currentCell
           && options?.includeDeclarations !== false
           && f.declarationsCovered
-          && (!options?.filter || options.filter(current.entry.sourceNode))
+          && currentCell.sourceNode
+          && (!options?.filter || options.filter(currentCell.sourceNode))
         ) {
           return {
             kind: 'declaration',
-            entry: current.entry
+            cell: currentCell,
+            sourceNode: currentCell.sourceNode
           };
         }
       }
@@ -403,7 +386,8 @@ export function lookupScopeFrameVariable(
           if (!options?.filter || options.filter(entry.sourceNode)) {
             return {
               kind: 'declaration',
-              entry
+              cell: entry.cell,
+              sourceNode: entry.sourceNode
             };
           }
         }
@@ -482,7 +466,7 @@ export function assignScopeFrameVariable(
   if (hit.kind === 'live') {
     hit.cell.value = value;
   } else {
-    hit.entry.cell.value = value;
+    hit.cell.value = value;
   }
   return hit;
 }

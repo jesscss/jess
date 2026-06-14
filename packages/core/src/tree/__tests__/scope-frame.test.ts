@@ -20,9 +20,9 @@ describe('ScopeFrame variable facade', () => {
     const occurrence = lookupScopeFrameVariable(frame, 'x', { start: 1 });
 
     expect(current?.kind).toBe('declaration');
-    expect(current?.kind === 'declaration' && current.entry.cell.value?.valueOf()).toBe('blue');
+    expect(current?.kind === 'declaration' && current.cell.value?.valueOf()).toBe('blue');
     expect(occurrence?.kind).toBe('declaration');
-    expect(occurrence?.kind === 'declaration' && occurrence.entry.cell.value?.valueOf()).toBe('red');
+    expect(occurrence?.kind === 'declaration' && occurrence.cell.value?.valueOf()).toBe('red');
   });
 
   it('lets snapshot occurrence reads ignore live current cells', async () => {
@@ -42,7 +42,7 @@ describe('ScopeFrame variable facade', () => {
     expect(current?.kind).toBe('live');
     expect(current?.kind === 'live' && current.cell.value?.valueOf()).toBe('blue');
     expect(snapshot?.kind).toBe('declaration');
-    expect(snapshot?.kind === 'declaration' && snapshot.entry.cell.value?.valueOf()).toBe('red');
+    expect(snapshot?.kind === 'declaration' && snapshot.cell.value?.valueOf()).toBe('red');
   });
 
   it('shadows child declarations locally without mutating parent cells', async () => {
@@ -60,9 +60,9 @@ describe('ScopeFrame variable facade', () => {
     const child = lookupScopeFrameVariable(childRules.scopeFrame, 'y');
 
     expect(parent?.kind).toBe('declaration');
-    expect(parent?.kind === 'declaration' && parent.entry.cell.value?.valueOf()).toBe('black');
+    expect(parent?.kind === 'declaration' && parent.cell.value?.valueOf()).toBe('black');
     expect(child?.kind).toBe('declaration');
-    expect(child?.kind === 'declaration' && child.entry.cell.value?.valueOf()).toBe('white');
+    expect(child?.kind === 'declaration' && child.cell.value?.valueOf()).toBe('white');
   });
 
   it('assignment writes mutate the resolved scoped binding cell', async () => {
@@ -79,7 +79,7 @@ describe('ScopeFrame variable facade', () => {
 
     expect(assigned?.kind).toBe('declaration');
     expect(parent?.kind).toBe('declaration');
-    expect(parent?.kind === 'declaration' && parent.entry.cell.value?.valueOf()).toBe('blue');
+    expect(parent?.kind === 'declaration' && parent.cell.value?.valueOf()).toBe('blue');
   });
 
   it('returns a covered miss when indexed frames have no matching binding', async () => {
@@ -158,7 +158,7 @@ describe('ScopeFrame variable facade', () => {
     const hit = lookupScopeFrameVariable(frame, 'x');
 
     expect(hit.kind).toBe('declaration');
-    expect(hit.kind === 'declaration' && hit.entry.cell.value?.valueOf()).toBe('blue');
+    expect(hit.kind === 'declaration' && hit.cell.value?.valueOf()).toBe('blue');
   });
 
   it('returns a covered miss across fallback frames', async () => {

@@ -3408,7 +3408,7 @@ describe('reference', () => {
           bailOnPendingDeclarations: true
         });
         expect(promotedHit.kind).toBe('declaration');
-        expect(promotedHit.kind === 'declaration' && promotedHit.entry.sourceNode).toBe(dynamicDecl);
+        expect(promotedHit.kind === 'declaration' && promotedHit.sourceNode).toBe(dynamicDecl);
       } finally {
         RulesClass.prototype.find = originalFind;
       }

@@ -1962,15 +1962,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           includeRulesets: false
         });
         if (namespaceMixins.length === 0) {
-          const namespaceRulesets = this.findVisibleExactCallableRulesetPath([keys[0]!], {
-            hasTarget: options.hasTarget,
-            local: options.local
-          });
-          if (namespaceRulesets.length !== 0) {
-            this.setLastCallableLookupResult(cacheKey, undefined);
-            return undefined;
-          }
           if (options.terminalMixinOnly !== true) {
+            const namespaceRulesets = this.findVisibleExactCallableRulesetPath([keys[0]!], {
+              hasTarget: options.hasTarget,
+              local: options.local
+            });
+            if (namespaceRulesets.length !== 0) {
+              this.setLastCallableLookupResult(cacheKey, undefined);
+              return undefined;
+            }
             const exactRulesetPath = this.findVisibleExactCallableRulesetPath(keys, {
               hasTarget: options.hasTarget,
               local: options.local

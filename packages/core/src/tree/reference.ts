@@ -561,8 +561,7 @@ function lookupScopeFrameVariableBinding(
   if (hit.kind === 'miss') {
     return SCOPE_FRAME_VARIABLE_MISS;
   }
-  const cell = hit.kind === 'declaration' ? hit.entry.cell : hit.cell;
-  const sourceNode = hit.kind === 'declaration' ? hit.entry.sourceNode : hit.sourceNode;
+  const { cell, sourceNode } = hit;
   const value = getBindingCellValue(cell);
   return {
     kind: 'runtime-var-binding',
@@ -612,8 +611,8 @@ function lookupIndexReference(
   }
   const keyStr = getLookupKeyString(valueKey);
   return isNode(env.keyNode, N.Quoted)
-    ? lookupPropertyDeclarationOrFind(targetRules, keyStr, opts)
-    : lookupVariableDeclarationOrFind(targetRules, keyStr, opts);
+    ? findPropertyDeclaration(targetRules, keyStr, opts)
+    : findVariableDeclaration(targetRules, keyStr, opts);
 }
 
 function lookupPropertyReference(
@@ -622,7 +621,7 @@ function lookupPropertyReference(
   opts: ReferenceDeclarationFindOptions,
   _env: RulesLookupAdapterEnv
 ): RulesLookupResult {
-  return lookupPropertyDeclarationOrFind(targetRules, getLookupKeyString(valueKey), opts);
+  return findPropertyDeclaration(targetRules, getLookupKeyString(valueKey), opts);
 }
 
 function lookupVariableReference(
@@ -668,31 +667,7 @@ function lookupDeclarationReference(
   opts: ReferenceDeclarationFindOptions,
   _env: RulesLookupAdapterEnv
 ): RulesLookupResult {
-  return lookupAnyDeclarationOrFind(targetRules, getLookupKeyString(valueKey), opts);
-}
-
-function lookupVariableDeclarationOrFind(
-  targetRules: Rules,
-  key: string,
-  opts: DeclarationFindOptions
-): RulesLookupResult {
-  return findVariableDeclaration(targetRules, key, opts);
-}
-
-function lookupPropertyDeclarationOrFind(
-  targetRules: Rules,
-  key: string,
-  opts: DeclarationFindOptions
-): RulesLookupResult {
-  return findPropertyDeclaration(targetRules, key, opts);
-}
-
-function lookupAnyDeclarationOrFind(
-  targetRules: Rules,
-  key: string,
-  opts: DeclarationFindOptions
-): RulesLookupResult {
-  return findAnyDeclaration(targetRules, key, opts);
+  return findAnyDeclaration(targetRules, getLookupKeyString(valueKey), opts);
 }
 
 function lookupRulesReferenceTarget(args: {
@@ -1153,8 +1128,8 @@ function lookupDirectRulesTarget(
   keyNode: ReferenceValue['key']
 ): RulesLookupResult {
   return isNode(keyNode, N.Quoted)
-    ? lookupPropertyDeclarationOrFind(targetNode, key, {})
-    : lookupVariableDeclarationOrFind(targetNode, key, {});
+    ? findPropertyDeclaration(targetNode, key, {})
+    : findVariableDeclaration(targetNode, key, {});
 }
 
 function lookupDirectNamedTarget(

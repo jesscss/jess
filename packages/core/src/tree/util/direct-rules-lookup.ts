@@ -381,13 +381,15 @@ function findWithinScopeSurface(
   const state = createEmptyState(readonly || Boolean(scope.options.readonly));
   if (includeLiveBindings) {
     const live = scope._scopeFrame?.currentBindingsByName.get(key);
-    const liveSource = live?.kind === 'live' ? live.sourceNode : undefined;
+    const liveSource = live?.live === true
+      ? live.sourceNode
+      : undefined;
     if (
       liveSource
       && isNode(liveSource, N.VarDeclaration)
       && (!options.filter || options.filter(liveSource))
     ) {
-      state.readonly ||= Boolean(live.cell.readonly || liveSource.options?.readonly);
+      state.readonly ||= Boolean(live.readonly || liveSource.options?.readonly);
       const visibility = scope.options.rulesVisibility?.VarDeclaration ?? '';
       if (visibility === 'optional' && !isRulesetBodyScope(scope)) {
         state.optionalMatch = liveSource;
