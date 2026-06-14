@@ -612,6 +612,23 @@ function hasRulesVisibilityOverrides(rulesVisibility: RulesOptions['rulesVisibil
   );
 }
 
+function mergeDirectChildRulesVisibility(
+  childVisibility: RulesOptions['rulesVisibility'] | undefined,
+  rulesVisibility: RulesOptions['rulesVisibility'] | undefined
+): RulesOptions['rulesVisibility'] {
+  if (!hasRulesVisibilityOverrides(childVisibility) && !hasRulesVisibilityOverrides(rulesVisibility)) {
+    return DEFAULT_DIRECT_CHILD_RULES_VISIBILITY;
+  }
+  const merged: RulesOptions['rulesVisibility'] = {
+    ...childVisibility,
+    ...rulesVisibility
+  };
+  merged.Declaration ??= 'public';
+  merged.Ruleset ??= 'public';
+  merged.Mixin ??= 'public';
+  return merged;
+}
+
 /**
  * The class representing a "declaration list".
  * CSS calls it this even though CSS Nesting
@@ -1181,16 +1198,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private getDirectChildRulesVisibility(child: Rules): RulesOptions['rulesVisibility'] {
-    if (!hasRulesVisibilityOverrides(child.options.rulesVisibility)) {
-      return DEFAULT_DIRECT_CHILD_RULES_VISIBILITY;
-    }
-    const rulesVisibility: RulesOptions['rulesVisibility'] = {
-      ...child.options.rulesVisibility
-    };
-    rulesVisibility.Declaration ??= 'public';
-    rulesVisibility.Ruleset ??= 'public';
-    rulesVisibility.Mixin ??= 'public';
-    return rulesVisibility;
+    return mergeDirectChildRulesVisibility(child.options.rulesVisibility, undefined);
   }
 
   private addDirectDeclarationChildRuleEntry(
@@ -1202,13 +1210,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (this.directDeclarationChildEntries === undefined) {
       return;
     }
-    const visibility: RulesOptions['rulesVisibility'] = {
-      ...child.options.rulesVisibility,
-      ...rulesVisibility
-    };
-    visibility.Declaration ??= 'public';
-    visibility.Ruleset ??= 'public';
-    visibility.Mixin ??= 'public';
+    const visibility = mergeDirectChildRulesVisibility(child.options.rulesVisibility, rulesVisibility);
     const entries = this.directDeclarationChildEntries ?? (this.directDeclarationChildEntries = []);
     entries.push({
       node: child,
@@ -1232,13 +1234,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (rulesMayContainExactRulesetSurface(child)) {
       this.hasExactRulesetChildSurface = true;
     }
-    const visibility: RulesOptions['rulesVisibility'] = {
-      ...child.options.rulesVisibility,
-      ...rulesVisibility
-    };
-    visibility.Declaration ??= 'public';
-    visibility.Ruleset ??= 'public';
-    visibility.Mixin ??= 'public';
+    const visibility = mergeDirectChildRulesVisibility(child.options.rulesVisibility, rulesVisibility);
 
     if (this.directChildRuleEntries === undefined) {
       return;

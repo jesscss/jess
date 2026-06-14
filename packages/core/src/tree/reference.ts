@@ -333,13 +333,17 @@ type RulesReferenceLookupContext = {
   adapter: RulesLookupAdapter;
   valueKey: NormalizedLookupKey;
   env: RulesLookupAdapterEnv;
-  preparedTargetRules?: Rules;
-  preparedTargetOptions?: ReferenceLookupOptions;
+  preparedTarget?: PreparedTargetLookup;
 };
 
 type PreparedReferenceLookup = {
   adapter: RulesLookupAdapter;
   env: RulesLookupAdapterEnv;
+};
+
+type PreparedTargetLookup = {
+  rules: Rules;
+  options: ReferenceLookupOptions;
 };
 
 type ReferenceLookupOptions = {
@@ -680,16 +684,9 @@ function lookupFunctionReference(
   targetRules: Rules,
   valueKey: NormalizedLookupKey,
   opts: ReferenceLookupOptions,
-  env: RulesLookupAdapterEnv
+  _env: RulesLookupAdapterEnv
 ): RulesLookupResult {
-  const keyStr = getLookupKeyString(valueKey);
-  if (env.inCall) {
-    return targetRules.findFunction(keyStr, undefined, opts.callable);
-  }
-  return (
-    lookupAnyDeclarationOrFind(targetRules, keyStr, opts.declaration)
-    ?? targetRules.findFunction(keyStr, undefined, opts.callable)
-  );
+  return targetRules.findFunction(getLookupKeyString(valueKey), undefined, opts.callable);
 }
 
 function lookupVariableDeclarationOrFind(
@@ -862,8 +859,8 @@ function performRulesReferenceLookup(
     valueKey,
     env
   } = lookupContext;
-  const opts = lookupContext.preparedTargetRules === scope
-    ? lookupContext.preparedTargetOptions!
+  const opts = lookupContext.preparedTarget?.rules === scope
+    ? lookupContext.preparedTarget.options
     : buildReferenceLookupOptions({
         referenceNode,
         target,
@@ -1057,8 +1054,10 @@ function lookupResolvedReference(args: {
       hasTarget: lookupContext.hasTarget,
       adapter
     });
-    lookupContext.preparedTargetRules = targetRules;
-    lookupContext.preparedTargetOptions = preparedTargetOptions;
+    lookupContext.preparedTarget = {
+      rules: targetRules,
+      options: preparedTargetOptions
+    };
     handleShape = getRulesLookupHandleShape(preparedTargetOptions);
     const handleResult = readRulesLookupHandle({
       referenceNode,
