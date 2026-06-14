@@ -2540,6 +2540,33 @@ deletion in the measured copy stack. It does not complete
 `copyWithReusableLeaves(...)`, `constructCopy(...)`, or `.inherit(...)`
 removal.
 
+### Callable Copy Wrapper And Lazy Metadata Cut
+
+Date: 2026-06-13.
+
+Change: `copyCallableRulesNode(...)` now handles ampersand, comment, and
+reusable-leaf cases directly instead of bouncing through three one-call helper
+wrappers. Callable copy construction now reads `_options` and `_location`
+directly instead of allocating through the public `options` and `location`
+getters merely to pass constructor metadata.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `3eba2742` reported: `functions` median `16.12ms` usable,
+  `import-reference` median `24.51ms` usable, `mixins-guards` median
+  `17.66ms` unstable, `extend-chaining` median `6.24ms` unstable, and `media`
+  median `5.19ms` unstable.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `15.60ms` usable,
+  `import-reference` median `20.42ms` usable, `mixins-guards` median
+  `18.08ms` usable, `extend-chaining` median `5.87ms` unstable, and `media`
+  median `5.85ms` unstable.
+
+Interpretation: status only, not a speed claim. Keep this as helper-call and
+lazy metadata allocation deletion inside the measured callable/copy stack. It
+does not remove the `copyCallableRulesValue(...)` recursive copy boundary.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

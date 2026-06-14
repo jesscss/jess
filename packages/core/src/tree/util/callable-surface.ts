@@ -49,33 +49,15 @@ function copyCallableRulesValue(value: unknown): unknown {
   return value;
 }
 
-function copyCallableAmpersand(node: Node): Node | undefined {
-  if (!isNode(node, N.Ampersand)) {
-    return undefined;
-  }
-  const copied = node.derive();
-  return copied instanceof Node ? copied : undefined;
-}
-
-function copyCallableCommentNode(node: Comment): Node {
-  return new Comment(
-    node.value,
-    node.options ? { ...node.options } : undefined,
-    node.location.length === 0 ? undefined : node.location
-  ).inherit(node);
-}
-
-function copyCallableReusableLeaf(node: Node): Node | undefined {
-  return canReuseLeaf(node) ? reuseLeaf(node) : undefined;
-}
-
 function constructCallableRulesNode(node: Node, value: unknown): Node {
+  const location = node._location;
+  const options = node._options;
   const copy = Reflect.construct(
     node.constructor,
     [
       value,
-      node.options ? { ...node.options } : undefined,
-      node.location.length === 0 ? undefined : node.location
+      options ? { ...options } : undefined,
+      location && location.length !== 0 ? location : undefined
     ]
   );
   if (!(copy instanceof Node)) {
@@ -86,15 +68,22 @@ function constructCallableRulesNode(node: Node, value: unknown): Node {
 
 function copyCallableRulesNode(node: Node): Node {
   if (isNode(node, N.Comment)) {
-    return copyCallableCommentNode(node);
+    const location = node._location;
+    const options = node._options;
+    return new Comment(
+      node.value,
+      options ? { ...options } : undefined,
+      location && location.length !== 0 ? location : undefined
+    ).inherit(node);
   }
-  const copiedAmpersand = copyCallableAmpersand(node);
-  if (copiedAmpersand) {
-    return copiedAmpersand;
+  if (isNode(node, N.Ampersand)) {
+    const derived = node.derive();
+    if (derived instanceof Node) {
+      return derived;
+    }
   }
-  const reusableLeaf = copyCallableReusableLeaf(node);
-  if (reusableLeaf) {
-    return reusableLeaf;
+  if (canReuseLeaf(node)) {
+    return reuseLeaf(node);
   }
   return constructCallableRulesNode(node, copyCallableRulesValue(node.value));
 }

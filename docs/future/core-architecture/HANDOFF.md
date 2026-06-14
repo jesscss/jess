@@ -882,6 +882,14 @@ the binding index/scope lookup refactor.
    descriptor helper.
    Focused cloning coverage proves optionless source containers stay
    optionless after `copyWithReusableLeaves(...)`.
+   Third partial status: `callable-surface.ts` no longer keeps separate
+   one-call wrappers for callable ampersand, comment, and reusable-leaf copies.
+   `copyCallableRulesNode(...)` owns those cases directly, and callable copies
+   read `_options`/`_location` instead of the allocating `options`/`location`
+   getters. Focused callable output/candidate tests still pass. This deletes
+   helper hops and lazy metadata allocation inside the callable copy path; it
+   does not remove `copyCallableRulesValue(...)` recursion or the copied
+   callable surface boundary.
 27. [ ] Audit repeated callable/mixin evaluation from the profile before making
    more local helper cuts. If a mixin candidate or output body is evaluated
    more than the semantic call count requires, carry placement/binding state or
@@ -942,40 +950,41 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: generic copy options descriptor-probe cut under queue item 26.
+Current pass: callable copy wrapper and lazy metadata cut under queue item 26.
 
 - New traversal: none. The pass adds no loop, recursion, source walk, parent
   walk, side-map lookup, object scan, or array scan.
-- New node/materialization: none added. The pass adds no `new Node`, copied
-  node, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen mutation,
-  parent restoration, source metadata mutation, or materialized array.
+- New node/materialization: none added. Existing callable copy materialization
+  remains: comments still construct placement-owned comments, generic callable
+  children still flow through `constructCallableRulesNode(...)`, and copied
+  nodes still `.inherit(...)`. This pass deletes wrapper functions and lazy
+  metadata allocation inside that existing boundary; it does not add a new
+  copied node, wrapper `Rules`, `.adopt(...)`, frozen mutation, parent
+  restoration, source metadata mutation, or materialized array.
 - Render path: no render semantics changed. The cut is in
-  `tree/util/cloning.ts` and affects generic copy construction used by list,
-  sequence, operation, callable/import output, and reference materialization
-  paths; rendering still stringifies through the existing node-family paths.
-- Helper/API surface: one private helper, `nodeOptions(...)`, was deleted.
-  `constructCopy(...)` now reads the owned `_options` slot directly through a
-  non-allocating node slot instead of calling
-  `Object.getOwnPropertyDescriptor(...)` for every copied node. This also makes
-  `Node._options` an intentionally readable slot so internal utilities do not
-  need descriptor probes or type-cast games to avoid the allocating `options`
-  getter.
-- Metadata mutations: no new metadata mutations. The pass preserves the
-  existing no-lazy-options behavior while avoiding the defensive descriptor
-  probe; optionless source containers stay optionless after copy. Existing
-  `reuseLeaf(...)` frozen marking remains unchanged and is still part of the
-  broader copy-stack debt.
+  `tree/util/callable-surface.ts`, which builds callable/mixin output surfaces;
+  render still stringifies through the existing node-family paths.
+- Helper/API surface: three private one-call helpers were deleted:
+  `copyCallableAmpersand(...)`, `copyCallableCommentNode(...)`, and
+  `copyCallableReusableLeaf(...)`. Their branches now sit directly in
+  `copyCallableRulesNode(...)`, removing helper hops without adding public API
+  or replacement helpers.
+- Metadata mutations: no new metadata mutations. Callable copies now read
+  `_options` and `_location` directly so they do not allocate node options or
+  empty location arrays merely to decide copy constructor arguments. Existing
+  `.inherit(...)` calls remain and are still part of the broader copy-stack
+  debt.
 - Error/control flow: none added.
 - Evidence: focused tests passed with
-  `pnpm --filter @jesscss/core test -- src/tree/util/__tests__/cloning.test.ts src/tree/__tests__/list.test.ts src/tree/__tests__/sequence.test.ts src/tree/__tests__/operation.test.ts`.
-  Pre-pass hotpath leash at `0406552f`: `functions` `17.00ms` noisy,
-  `import-reference` `26.61ms` noisy, `mixins-guards` `18.38ms` usable,
-  `extend-chaining` `6.08ms` unstable, `media` `6.05ms` usable. Dirty
-  post-pass leash reported `functions` `16.23ms` unstable,
-  `import-reference` `22.79ms` usable, `mixins-guards` `17.93ms` usable,
-  `extend-chaining` `6.11ms` unstable, and `media` `5.90ms` usable. This is
-  status only, not a speed claim.
-- Verdict: accept as partial item 26 progress. This removes hidden allocation
-  and helper/probe overhead from the measured copy stack; it does not complete
-  `copyWithReusableLeaves(...)`, `constructCopy(...)`, or `.inherit(...)`
-  deletion.
+  `pnpm --filter @jesscss/core test -- src/tree/util/__tests__/callable-output.test.ts src/tree/util/__tests__/callable-candidate-loop.test.ts src/tree/util/__tests__/cloning.test.ts`.
+  Pre-pass hotpath leash at `3eba2742`: `functions` `16.12ms` usable,
+  `import-reference` `24.51ms` usable, `mixins-guards` `17.66ms` unstable,
+  `extend-chaining` `6.24ms` unstable, `media` `5.19ms` unstable. Dirty
+  post-pass leash reported `functions` `15.60ms` usable, `import-reference`
+  `20.42ms` usable, `mixins-guards` `18.08ms` usable, `extend-chaining`
+  `5.87ms` unstable, and `media` `5.85ms` unstable. This is status only, not a
+  speed claim.
+- Verdict: accept as partial item 26 progress. This removes helper-call and
+  lazy metadata allocation overhead from the callable copy path; it does not
+  complete `copyCallableRulesValue(...)`, `copyWithReusableLeaves(...)`,
+  `constructCopy(...)`, or `.inherit(...)` deletion.
