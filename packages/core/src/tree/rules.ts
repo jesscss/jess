@@ -47,6 +47,7 @@ import type { AtRule } from './at-rule.js';
 import {
   assignScopeFrameVariable,
   buildScopeFrame,
+  copyLiveBindingSlots,
   lookupScopeFrameCallable,
   setScopeFrameDeclarationBinding,
   type ScopeFrame
@@ -820,7 +821,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         undefined,
         this,
         source._scopeFrame.parent,
-        new Map(source._scopeFrame.liveSlotsByName),
+        copyLiveBindingSlots(source._scopeFrame.liveSlotsByName),
         undefined,
         false,
         undefined,
@@ -1871,7 +1872,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             skipCurrentSurface: true
           });
           if (direct.length > 0) {
-            this.setLastCallableLookupResult(cacheKey, direct);
             return direct;
           }
         }
@@ -1908,7 +1908,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                   skipCurrentSurface: true
                 });
                 if (direct.length > 0) {
-                  this.setLastCallableLookupResult(cacheKey, direct);
                   return direct;
                 }
               }
@@ -1944,7 +1943,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         searchParents: options.searchParents
       });
       const result = direct.length > 0 ? direct : undefined;
-      this.setLastCallableLookupResult(cacheKey, result);
+      if (result === undefined) {
+        this.setLastCallableLookupResult(cacheKey, undefined);
+      }
       return result;
     } else if (isArray(keys) && keys.length === 0) {
       return undefined;

@@ -285,10 +285,7 @@ function writeCachedMatch(scope: Rules, cacheKey: string | undefined, state: Mat
   if (!cacheKey) {
     return;
   }
-  const cached = createEmptyState(state.readonly);
-  cached.optionalMatch = state.optionalMatch;
-  cached.publicMatch = state.publicMatch;
-  (scope.directDeclarationLookupCache ??= new Map()).set(cacheKey, cached);
+  (scope.directDeclarationLookupCache ??= new Map()).set(cacheKey, state);
 }
 
 function findLocalDeclaration(

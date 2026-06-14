@@ -88,38 +88,40 @@ than the ordinary read path.
 Current pass stops caching arrays materialized from scope-frame callable
 buckets, moves production live-slot presence checks to `ScopeFrame.hasLiveBindings`,
 and keeps recursive direct declaration visited state scalar through two surfaces.
+Current pass stops caching direct `findMixinsFast(...)` arrays, centralizes
+live-slot owner map cloning behind `copyLiveBindingSlots(...)`, and stores
+terminal direct declaration cache states without copying them.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7fd. [ ] Callable cache ownership boundary.
-Scope: `lastCallableLookupValue`, direct `findMixinsFast(...)` cache writes,
-path lookup cache writes, compound-prefix/nested shared-result handling, and
-callable result consumers.
-Goal: make cache values explicitly shared or stop caching one more owned array
-source without adding defensive copies to ordinary hit paths.
-Acceptance: static callable binding, namespace, recursive namespace,
-compound-prefix, terminal mixin-only, ruleset namespace with args, lint, builds,
+7fg. [ ] Callable path cache ownership.
+Scope: array-key `findMixin(...)`, `findRulesetNamespacePathFast(...)`,
+`findMixinNamespacePathFast(...)`, compound-prefix union, and
+`lastCallableLookupValue`.
+Goal: stop caching one path result that is known owned, or mark path cache
+values as shared so later union/append code never has to infer ownership.
+Acceptance: namespace, recursive namespace, compound-prefix, terminal
+mixin-only, ruleset namespace with args, static callable binding, lint, builds,
 aggressive review.
 
-7fe. [ ] Live-slot owner-map API narrowing.
+7fh. [ ] Live-slot owner-map mutation narrowing.
 Scope: `liveSlotsByName`, `setScopeFrameLiveBinding(...)`, configured imports,
 loop/control live bindings, callable scope wiring, clone/derive, and tests that
 inspect live slots.
-Goal: hide direct live-slot map mutation behind construction/update APIs or
-replace one direct map clone with a narrower owner-copy helper, without changing
-ordinary read paths.
+Goal: move one remaining direct mutation/read of `liveSlotsByName` behind a
+construction/update API without changing ordinary reads through
+`currentBindingsByName`.
 Acceptance: mixin params, `@arguments`, import configured variables, iteration
 vars, readonly assignment, snapshot/live reads, clone/derive tests, lint,
 builds, aggressive review.
 
-7ff. [ ] Direct declaration recursive cache-state audit.
-Scope: recursive declaration cache keys, readonly propagation,
-`optionalCandidates`/`candidates`, lexical parent recursion, and child surface
-recursion.
-Goal: remove one cache-state object allocation or prove the cached `MatchState`
-copy is required to avoid shared mutation across recursive reads.
+7fi. [ ] Direct declaration state object follow-up.
+Scope: `MatchState`, `createEmptyState(...)`, `mergeMatch(...)`, recursive cache
+storage, readonly propagation, and optional/public candidate handling.
+Goal: collapse one `MatchState` allocation or prove the state object is the
+smallest safe carrier for public/optional/readonly results across recursion.
 Acceptance: parent/fallback circular protection, fallback-frame, source-order,
 readonly, property/variable tests, lint, builds, aggressive review.
 
@@ -171,25 +173,22 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: callable bucket cache ownership and scalar recursive visits.
+- Latest pass: callable/direct declaration cache narrowing.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
-- New traversal: no new recursion. Recursive direct declaration lookup now
-  carries two visited surfaces as scalars before promoting to a `Set`; the
-  existing child-entry loop remains the point where recursive child surfaces are
-  entered.
-- New node/materialization: no nodes. `ScopeFrame.hasLiveBindings` is semantic
-  placement state copied from live-slot construction, not a read-path mirror.
-  Scope-frame callable bucket hits still materialize result arrays for return,
-  but this pass no longer stores those fresh arrays in `lastCallableLookupValue`.
+- New traversal: none.
+- New node/materialization: no nodes. New helper `copyLiveBindingSlots(...)`
+  centralizes existing live-slot map clones for construction/clone ownership.
+  Direct declaration cache writes now store the terminal `MatchState` object
+  directly; each write is immediately followed by return, so the cached object is
+  no longer mutated after storage.
 - Render path: unchanged.
-- Helper/API surface: no public method or compatibility shim added.
-- Metadata mutations: `hasLiveBindings` is updated when live slots are built or
-  added through `setScopeFrameLiveBinding(...)`; it replaces production
-  `liveSlotsByName.size` probes in clone/prep paths.
-- Allocation changes: scope-frame callable bucket arrays are no longer cached as
-  shared last-callable lookup values. Direct declaration recursive cycle state
-  avoids `Set` allocation for one- and two-surface recursive paths, promoting
-  only on the third distinct surface.
+- Helper/API surface: one internal live-slot copy helper; it replaces repeated
+  direct `new Map(liveSlots...)` clones in rules, imports, and callable scope
+  wiring.
+- Metadata mutations: none.
+- Allocation changes: direct `findMixinsFast(...)` result arrays are no longer
+  stored in `lastCallableLookupValue`; misses still clear the last cache key.
+  Direct declaration cache writes no longer allocate a copied `MatchState`.
 - Evidence: focused lint passed; focused lookup suite passed (`7` files,
   `306` passed, `272` skipped). Affected reference/scope/mixin/live-slot subset
   passed (`4` files, `42` passed, `256` skipped). Residue grep and
@@ -197,5 +196,5 @@ At the end of a pass:
   `js-expr.ts` direct-eval warning. Aggressive review passed with documented
   scoped danger tokens; node-creation audit passed; `jess` build passed.
   One-iteration hotpath smoke passed with usable signal:
-  `mixins-guards.less` `27.11ms`, `scope-lookup-stress.less` `105.04ms`. No
+  `mixins-guards.less` `24.65ms`, `scope-lookup-stress.less` `75.77ms`. No
   speed claim is made.
