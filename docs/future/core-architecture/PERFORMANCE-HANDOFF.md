@@ -2453,6 +2453,36 @@ materialization boundary cut. The next measured profile should watch whether
 `.inherit(...)` and `Node._evalStaticSync(...)` fall out of sync render stacks
 before broadening the split to async/public materialization boundaries.
 
+### Operation Operand Closure/Catch Scaffold Cut
+
+Date: 2026-06-13.
+
+Change: `Operation.render(...)`, `Operation.evalNode(...)`, and
+`Operation.resolve(...)` no longer allocate local `finalize`, `handleLeft`,
+`renderOperands`, `finish`, or `combine` closures on each operand evaluation.
+Non-preserve arithmetic also no longer wraps `operate(...)` in
+`try/catch { throw error }`. Preserve-mode dimension arithmetic still catches
+`TypeError` because that is the existing semantic boundary for producing the
+`calc(...)` fallback.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `c92f5dfd` reported: `functions` median `15.36ms` unstable,
+  `import-reference` median `23.46ms` usable, `mixins-guards` median
+  `18.96ms` usable, `extend-chaining` median `5.91ms` usable, and `media`
+  median `5.93ms` usable.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `16.09ms` usable,
+  `import-reference` median `22.55ms` unstable, `mixins-guards` median
+  `18.43ms` usable, `extend-chaining` median `5.95ms` unstable, and `media`
+  median `6.01ms` unstable.
+
+Interpretation: status only, not a speed claim. Keep this as a node-family
+closure/error-control cleanup. The mixed/noisy leash does not prove a speed
+movement; Operation's remaining real debt is `withOperands(...)` copying and
+calc fallback ownership.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

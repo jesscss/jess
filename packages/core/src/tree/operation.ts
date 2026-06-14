@@ -101,58 +101,51 @@ export class Operation extends Node<OperationValue> {
   }
 
   private evaluateRenderOperands(context: Context): MaybePromise<OperationRenderResult> {
-    let [left, op, right] = this.value;
+    const [left] = this.value;
     const maybeLeft = left.eval(context);
-    const finalize = (l: Node, r: Node): MaybePromise<OperationRenderResult> => {
-      const renderOperands = (): OperationRenderResult => {
-        return l === left && r === right
-          ? this
-          : { left: l, right: r };
-      };
-      if (Operation.isPreservedSlashList(l) || Operation.isPreservedSlashList(r)) {
-        return renderOperands();
-      }
-      if (context.shouldOperate(op, l, r)) {
-        if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
-          return renderOperands();
-        }
-        const unitMode = context?.opts?.unitMode ?? 'preserve';
-        const isPreserveMode = unitMode === 'preserve';
-        if (isPreserveMode && isNode(l, N.Dimension) && isNode(r, N.Dimension)) {
-          try {
-            let out = l.operate(r, op, context);
-            out.inherit(this);
-            return out;
-          } catch (error) {
-            if (error instanceof TypeError) {
-              return this.createCalcFallback(l, r, left, right);
-            }
-            throw error;
-          }
-        }
-        let out: Node;
-        try {
-          out = l.operate(r, op, context);
-        } catch (error) {
-          throw error;
-        }
-        return out.inherit(this);
-      }
-      return renderOperands();
-    };
-    const handleLeft = (l: Node): MaybePromise<OperationRenderResult> => {
-      const maybeRight = right.eval(context);
-      if (isThenable(maybeRight)) {
-        return maybeRight.then((r) => {
-          return finalize(l, r);
-        });
-      }
-      return finalize(l, maybeRight);
-    };
     if (isThenable(maybeLeft)) {
-      return maybeLeft.then(handleLeft);
+      return maybeLeft.then(leftNode => this.evaluateRenderRight(context, leftNode));
     }
-    return handleLeft(maybeLeft);
+    return this.evaluateRenderRight(context, maybeLeft);
+  }
+
+  private evaluateRenderRight(context: Context, left: Node): MaybePromise<OperationRenderResult> {
+    const right = this.value[2];
+    const maybeRight = right.eval(context);
+    return isThenable(maybeRight)
+      ? maybeRight.then(rightNode => this.finalizeRenderOperands(context, left, rightNode))
+      : this.finalizeRenderOperands(context, left, maybeRight);
+  }
+
+  private finalizeRenderOperands(context: Context, left: Node, right: Node): OperationRenderResult {
+    const [sourceLeft, op, sourceRight] = this.value;
+    if (
+      Operation.isPreservedSlashList(left)
+      || Operation.isPreservedSlashList(right)
+      || isNode(left, N.Operation)
+      || isNode(right, N.Operation)
+      || !context.shouldOperate(op, left, right)
+    ) {
+      return left === sourceLeft && right === sourceRight
+        ? this
+        : { left, right };
+    }
+    if (
+      (context.opts.unitMode ?? 'preserve') === 'preserve'
+      && isNode(left, N.Dimension)
+      && isNode(right, N.Dimension)
+    ) {
+      try {
+        const out = left.operate(right, op, context);
+        return out.inherit(this);
+      } catch (error) {
+        if (error instanceof TypeError) {
+          return this.createCalcFallback(left, right, sourceLeft, sourceRight);
+        }
+        throw error;
+      }
+    }
+    return left.operate(right, op, context).inherit(this);
   }
 
   private renderEvaluatedOutput(
@@ -165,17 +158,10 @@ export class Operation extends Node<OperationValue> {
       return this.renderOutput(context, output, bufferOrOptions, options);
     }
     const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
-    const finish = (leftOut: string): MaybePromise<string> => {
-      const right = output.right.render(context, printOptions);
-      const combine = (rightOut: string): string => `${leftOut} ${this.value[1]} ${rightOut}`;
-      return isThenable(right)
-        ? right.then(combine)
-        : combine(right);
-    };
     const left = output.left.render(context, printOptions);
     const rendered = isThenable(left)
-      ? left.then(finish)
-      : finish(left);
+      ? left.then(leftOut => this.renderEvaluatedRight(output.right, leftOut, context, printOptions))
+      : this.renderEvaluatedRight(output.right, left, context, printOptions);
     if (!isRenderBuffer(bufferOrOptions)) {
       return rendered;
     }
@@ -184,71 +170,64 @@ export class Operation extends Node<OperationValue> {
       : writeRenderText(bufferOrOptions, rendered);
   }
 
+  private renderEvaluatedRight(
+    right: Node,
+    leftOut: string,
+    context: Context,
+    options?: PrintOptions
+  ): MaybePromise<string> {
+    const rendered = right.render(context, options);
+    return isThenable(rendered)
+      ? rendered.then(rightOut => `${leftOut} ${this.value[1]} ${rightOut}`)
+      : `${leftOut} ${this.value[1]} ${rendered}`;
+  }
+
   private evaluateOperands(context: Context): MaybePromise<Node> {
-    let n = this;
-    let [left, op, right] = n.value;
+    const [left] = this.value;
     const maybeLeft = left.eval(context);
-    const finalize = (l: Node, r: Node): MaybePromise<Node> => {
-      if (Operation.isPreservedSlashList(l) || Operation.isPreservedSlashList(r)) {
-        if (l === left && r === right) {
-          return n;
-        }
-        return n.withOperands(l, r);
-      }
-      if (context.shouldOperate(op, l, r)) {
-        if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
-          // Preserve composite expressions such as `10px / 2 * 2` when a nested
-          // operation intentionally remains unevaluated under current math mode.
-          if (l === left && r === right) {
-            return n;
-          }
-          return n.withOperands(l, r);
-        }
-        const unitMode = context?.opts?.unitMode ?? 'preserve';
-        const isPreserveMode = unitMode === 'preserve';
-
-        // In preserve mode, catch unit errors and return calc() call
-        if (isPreserveMode && isNode(l, N.Dimension) && isNode(r, N.Dimension)) {
-          try {
-            let out = l.operate(r, op, context);
-            out.inherit(n);
-            return out;
-          } catch (error) {
-            // If it's a unit error (TypeError), return calc(operation)
-            if (error instanceof TypeError) {
-              return n.createCalcFallback(l, r, left, right);
-            }
-            // Re-throw non-unit errors
-            throw error;
-          }
-        }
-
-        let out: Node;
-        try {
-          out = l.operate(r, op, context);
-        } catch (error) {
-          throw error;
-        }
-        return out.inherit(n);
-      }
-      if (l === left && r === right) {
-        return n;
-      }
-      return n.withOperands(l, r);
-    };
-    const handleLeft = (l: Node): MaybePromise<Node> => {
-      const maybeRight = right.eval(context);
-      if (isThenable(maybeRight)) {
-        return maybeRight.then((r) => {
-          return finalize(l, r);
-        });
-      }
-      return finalize(l, maybeRight);
-    };
     if (isThenable(maybeLeft)) {
-      return maybeLeft.then(handleLeft);
+      return maybeLeft.then(leftNode => this.evaluateRight(context, leftNode));
     }
-    return handleLeft(maybeLeft);
+    return this.evaluateRight(context, maybeLeft);
+  }
+
+  private evaluateRight(context: Context, left: Node): MaybePromise<Node> {
+    const right = this.value[2];
+    const maybeRight = right.eval(context);
+    return isThenable(maybeRight)
+      ? maybeRight.then(rightNode => this.finalizeOperands(context, left, rightNode))
+      : this.finalizeOperands(context, left, maybeRight);
+  }
+
+  private finalizeOperands(context: Context, left: Node, right: Node): Node {
+    const [sourceLeft, op, sourceRight] = this.value;
+    if (
+      Operation.isPreservedSlashList(left)
+      || Operation.isPreservedSlashList(right)
+      || isNode(left, N.Operation)
+      || isNode(right, N.Operation)
+      || !context.shouldOperate(op, left, right)
+    ) {
+      return left === sourceLeft && right === sourceRight
+        ? this
+        : this.withOperands(left, right);
+    }
+    if (
+      (context.opts.unitMode ?? 'preserve') === 'preserve'
+      && isNode(left, N.Dimension)
+      && isNode(right, N.Dimension)
+    ) {
+      try {
+        const out = left.operate(right, op, context);
+        return out.inherit(this);
+      } catch (error) {
+        if (error instanceof TypeError) {
+          return this.createCalcFallback(left, right, sourceLeft, sourceRight);
+        }
+        throw error;
+      }
+    }
+    return left.operate(right, op, context).inherit(this);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
