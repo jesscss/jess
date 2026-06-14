@@ -111,6 +111,10 @@ type ExactCallableFindOptions = {
   searchParents?: boolean;
   skipCurrentSurface?: boolean;
 };
+type CallableRulesetPathResult = {
+  entries: MixinEntry[];
+  owned: boolean;
+};
 
 function isStyleImportRegistrationNode(node: Node): node is StyleImportRegistrationNode {
   return node.type === 'StyleImport';
@@ -1721,7 +1725,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     keys: string[],
     options: CallableFindOptions = {},
     normalizedPathKey?: string
-  ): MixinEntry[] | undefined {
+  ): CallableRulesetPathResult | undefined {
     if (keys.length < 2) {
       return undefined;
     }
@@ -1731,7 +1735,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       local: options.local
     });
     if (prefixMatches.length === 0) {
-      return [];
+      return { entries: [], owned: true };
     }
 
     if (prefixMatches.length > 1) {
@@ -1743,7 +1747,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     for (const { ruleset, consumed } of prefixMatches) {
       const remainderLength = keys.length - consumed.length;
       if (remainderLength === 0) {
-        return options.terminalMixinOnly === true ? [] : [ruleset];
+        return {
+          entries: options.terminalMixinOnly === true ? [] : [ruleset],
+          owned: true
+        };
       }
       nestedOptions ??= existingNoParentOptions ?? {
         ...options,
@@ -1758,11 +1765,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           : getCallableLookupKeyRemainder(normalizedPathKey, consumed.length)
       );
       if (resolved?.length) {
-        return resolved;
+        return { entries: resolved, owned: false };
       }
     }
 
-    return [];
+    return { entries: [], owned: true };
   }
 
   private findCallableDescendantsWithinMixinNamespaces(
@@ -1949,7 +1956,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return this.getLastCallableLookupResult();
       }
       const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
-      let compoundPrefixFast: MixinEntry[] | undefined;
+      let compoundPrefixFast: CallableRulesetPathResult | undefined;
       let mixinNamespaceFast: MixinEntry[] | undefined;
       if (mixinFilterType !== 'Mixin') {
         const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options, lookupKey);
@@ -1993,9 +2000,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         );
       }
       const fast = mixinNamespaceFast ?? this.findMixinNamespacePathFast(keys, mixinFilterType, options);
-      if (compoundPrefixFast !== undefined && compoundPrefixFast.length > 0) {
-        let compoundUnion = compoundPrefixFast;
-        let compoundUnionOwned = false;
+      if (compoundPrefixFast !== undefined && compoundPrefixFast.entries.length > 0) {
+        let compoundUnion = compoundPrefixFast.entries;
+        let compoundUnionOwned = compoundPrefixFast.owned;
         if (fast !== undefined && fast.length > 0) {
           for (let i = 0; i < fast.length; i++) {
             const node = fast[i]!;

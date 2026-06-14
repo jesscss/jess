@@ -532,6 +532,7 @@ function findDeclarationWithStrategy(
   const searchParents = lookupOptions.searchParents ?? true;
   const preserveLinearStart = lookupOptions.start !== undefined;
   let firstVisitedRules: Rules | undefined;
+  let secondVisitedRules: Rules | undefined;
   let visitedParents: Set<Rules> | undefined;
   let ignoreCurrentScopeStart = lookupOptions.ignoreCurrentScopeStart === true;
   let start = lookupOptions.start;
@@ -541,13 +542,15 @@ function findDeclarationWithStrategy(
   let readonly = Boolean(lookupOptions.readonly);
 
   while (rules) {
-    if (firstVisitedRules === rules || visitedParents?.has(rules)) {
+    if (firstVisitedRules === rules || secondVisitedRules === rules || visitedParents?.has(rules)) {
       throw new Error('Circular parent chain detected in direct declaration lookup');
     }
     if (firstVisitedRules === undefined) {
       firstVisitedRules = rules;
+    } else if (secondVisitedRules === undefined) {
+      secondVisitedRules = rules;
     } else {
-      visitedParents ??= new Set<Rules>([firstVisitedRules]);
+      visitedParents ??= new Set<Rules>([firstVisitedRules, secondVisitedRules]);
       visitedParents.add(rules);
     }
 
@@ -595,13 +598,19 @@ function findDeclarationWithStrategy(
     ? startRules._scopeFrame?.fallbackFrame?.rulesNode
     : undefined;
   while (fallbackRules) {
-    if (firstVisitedRules === fallbackRules || visitedParents?.has(fallbackRules)) {
+    if (
+      firstVisitedRules === fallbackRules
+      || secondVisitedRules === fallbackRules
+      || visitedParents?.has(fallbackRules)
+    ) {
       throw new Error('Circular fallback frame chain detected in direct declaration lookup');
     }
     if (firstVisitedRules === undefined) {
       firstVisitedRules = fallbackRules;
+    } else if (secondVisitedRules === undefined) {
+      secondVisitedRules = fallbackRules;
     } else {
-      visitedParents ??= new Set<Rules>([firstVisitedRules]);
+      visitedParents ??= new Set<Rules>([firstVisitedRules, secondVisitedRules]);
       visitedParents.add(fallbackRules);
     }
     const state = findWithinScopeSurface(
