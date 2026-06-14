@@ -320,6 +320,16 @@ Open tasks:
    `evalNode(context)` directly, while inherited `Node.resolve(...)` would enter
    the public eval ownership path.
 
+   Additional partial status: `Url` scalar `Any` render/context normalization
+   now writes the final `url(...)` text directly and avoids writer
+   mark/getSince/replace scaffolding for the common scalar path; trivia-backed
+   or non-scalar values keep the localized fallback. `Rest.name` no longer uses
+   public `toString(...)` transport for node-valued names. `StyleImport` sync
+   render no longer allocates a local finalizer closure; first-use placement
+   copies and derived `Rules` surfaces were audited and kept as semantic
+   placement state because focused tests require owned placement children plus
+   source-child mapping, not because copying is acceptable as convenience.
+
    Evidence pointer: use `NODE-REWRITE-TRACKER.md` for per-node status and
    `PERFORMANCE-HANDOFF.md` for benchmark/profile history. Do not add queue
    entries for one-line cuts inside this item.
@@ -506,38 +516,33 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `SelectorList` direct flattened emission plus `SimpleSelector`
-base audit.
+Current pass: `Url`, `Rest`, and `StyleImport` serialization/materialization
+audit.
 
-- New traversal: `SelectorList.writeSyntax(...)` now writes flattened
-  top-level `:is(...)` candidates directly. Normal selector-list writing is one
-  pass over the source list and any existing nested selector-list arrays. The
-  only extra scan is `hasReferenceFilteredItems(...)`, and it runs only when
-  `referenceMode`, `referenceRenderEnabled`, and `referenceFilterTargets` are
-  all active; it preserves the old behavior where filtering applies only if at
-  least one extended non-target candidate exists.
+- New traversal: none added. `Url` scalar normalization uses the existing string
+  normalization expression on already-owned scalar text. `StyleImport` removes a
+  sync-path closure, and `Rest.name` changes scalar transport only.
 - New node/materialization: no runtime nodes, copies, wrappers, arrays, or
-  materialized render values. The changed render path removed the old
-  render-time flatten/filter output array. `readonly Selector[]` types visible
-  in the diff are existing child arrays from nested selector-list nodes, not
-  newly materialized syntax containers. New test nodes are focused fixtures
-  only.
-- Render path: selected node row is `SelectorList`. Rendering/stringification
-  still writes direct selector syntax to the active writer; it no longer
-  materializes a flattened selector array just to iterate and stringify it.
-  Evaluated selector materialization still uses its existing ownership array
-  and remains a separate public/eval boundary.
-- Helper/API surface: added two file-local classifier helpers and two private
-  writer helpers to replace duplicated shape checks plus render-time array
-  construction. They do not allocate syntax containers or expose public API.
-- Metadata mutations: test-only selector flag setup for the reference-filter
-  fixture. No runtime parent/source/frozen/options/context mutation added.
+  materialized render values added. `StyleImport` placement copies were audited
+  and kept as existing semantic placement state; tests prove placement children
+  are owned and mapped back to canonical source children.
+- Render path: selected rows are `Url`, `Rest`, and `StyleImport`. Scalar
+  `url(Any)` render/context output now writes directly without writer
+  mark/getSince/replace. `StyleImport` still evals to `Rules` and renders that
+  result directly, but the sync path no longer pays a local finalizer closure.
+  `Rest.name` is a cold public getter, not render output.
+- Helper/API surface: one private `Url.normalizeUrlValue(...)` helper replaces
+  duplicated regex normalizer text and enables the scalar direct path. No public
+  API or node method surface was added. `StyleImport` helper closure was
+  removed; `Rest` added no helper.
+- Metadata mutations: none added. Existing `StyleImport` placement
+  parent/source state remains because focused tests assert that semantic
+  boundary. Test-only monkey-patching of `toString` proves `Rest.name` avoids
+  public string transport.
 - Error/control flow: no new runtime error/control-flow branch.
-- Evidence: focused `selector-list` tests prove direct top-level `:is(...)`
-  flatten output and reference-mode filtering over flattened candidates. Broader
-  selector-focused `vitest --run` suite passed 9 files / 189 tests. Final
+- Evidence: focused `Url`, `Rest`, and `StyleImport` tests passed. Final
   hotpath/profile status is in `PERFORMANCE-HANDOFF.md`; no speed claim.
-- Verdict: accept as a bounded `SelectorList` serialization cut and
-  `SimpleSelector` audit. Keep `SelectorList` open for valueOf joins,
-  flattening/materialization outside `writeSyntax(...)`, and temporary arrays
-  beyond this direct writer path.
+- Verdict: accept bounded serialization cuts. Keep `Url` open only for
+  non-scalar/trivia fallback readback; keep `Rest` wrapper necessity open; treat
+  `StyleImport` placement-copy deletion as rejected until a replacement
+  placement-state model preserves owned placement children and source mapping.

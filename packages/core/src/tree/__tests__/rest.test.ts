@@ -34,6 +34,18 @@ describe('Rest', () => {
     expect(writer.reads).toBe(0);
   });
 
+  it('reads node rest names without public toString transport', () => {
+    const value = any('items');
+    let toStringCalls = 0;
+    value.toString = () => {
+      toStringCalls++;
+      return '';
+    };
+
+    expect(rest(value).name).toBe('items');
+    expect(toStringCalls).toBe(0);
+  });
+
   it('renders rest values through render(context)', () => {
     const named = rest('items');
     const nodeNamed = rest(any('items'));

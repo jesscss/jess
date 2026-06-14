@@ -9,6 +9,7 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 class CountingWriter extends OutputWriter {
   captures = 0;
   reads = 0;
+  replacements = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
@@ -18,6 +19,11 @@ class CountingWriter extends OutputWriter {
   override getSince(mark: number): string {
     this.reads++;
     return super.getSince(mark);
+  }
+
+  override replaceSince(mark: number, replacer: (text: string) => string, origin?: unknown): void {
+    this.replacements++;
+    return super.replaceSince(mark, replacer, origin);
   }
 }
 
@@ -163,6 +169,8 @@ describe('url', () => {
 
     expect(node.render(context, { writer })).toBe('url(data:image/png;base64,\n  aaa\n  bbb)');
     expect(writer.toString()).toBe('url(data:image/png;base64,\n  aaa\n  bbb)');
+    expect(writer.reads).toBe(0);
+    expect(writer.replacements).toBe(0);
     expect(writer.captures).toBe(0);
   });
 

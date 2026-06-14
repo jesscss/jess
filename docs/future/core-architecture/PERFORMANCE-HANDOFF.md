@@ -200,6 +200,44 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-14 Url Rest StyleImport Serialization Pass
+
+Hypothesis: scalar `Url` render/context output, cold `Rest.name`, and
+`StyleImport` sync render can delete string-transport or closure machinery
+without adding nodes, arrays, traversal, or public API surface.
+
+Patch shape:
+
+- scalar `url(Any)` render/context output writes the final string directly and
+  avoids writer mark/getSince/replace scaffolding;
+- trivia-backed or non-scalar URL values keep the localized fallback readback;
+- `Rest.name` reads node values through `valueOf()` instead of public
+  `toString(...)` transport;
+- `StyleImport` sync render no longer allocates a local finalizer closure;
+- first-use `StyleImport` placement copies were audited and kept as existing
+  semantic placement state because focused tests assert owned placement
+  children and source-child mapping.
+
+After patch, bounded hot-path leash:
+
+- `functions`: `14.26ms`, `usable`;
+- `import-reference`: `19.51ms`, `usable`;
+- `mixins-guards`: `18.07ms`, `usable`;
+- `extend-chaining`: `5.36ms`, `usable`;
+- `media`: `6.14ms`, `noisy`.
+
+Broad `benchmark.less` profiler status after the patch:
+
+- `OutputWriter.mark`: `50002`;
+- `OutputWriter.getSince`: `45006`;
+- `OutputWriter.restore`: `29542`;
+- `Reference.evalNode`: `3619`;
+- `Rules.find`: `1013`.
+
+Decision: keep as bounded serialization machinery deletion only. No speed
+claim: the hot-path run had one noisy fixture, and broad profile counters show
+this pass did not materially touch the dominant lookup/eval surfaces.
+
 ### 2026-06-14 AtRule Scalar Dynamic Leaf Readback And Key Cut
 
 Hypothesis: dynamic leaf at-rule render should not use child

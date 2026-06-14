@@ -15,8 +15,20 @@ export class Url extends Node<Node> {
     return new Url(value).inherit(this);
   }
 
+  private normalizeUrlValue(value: string): string {
+    return value
+      .replace(/^[ \t\r\n\f]+|[ \t\r\n\f]+$/g, '')
+      .replace(/\n[ \t\r\f]+/g, '\n  ');
+  }
+
   private writeUrlSyntax(value: Node, options: FinalPrintOptions): void {
     const w = options.writer;
+    if (isNode(value, N.Any) && typeof value.value === 'string') {
+      w.add('url(', this);
+      w.add(options.context ? this.normalizeUrlValue(value.value) : value.value, value);
+      w.add(')');
+      return;
+    }
     w.add('url(');
     if (options.context) {
       const valueMark = w.mark();
@@ -28,9 +40,7 @@ export class Url extends Node<Node> {
       }
       w.replaceSince(
         valueMark,
-        value => value
-          .replace(/^[ \t\r\n\f]+|[ \t\r\n\f]+$/g, '')
-          .replace(/\n[ \t\r\f]+/g, '\n  '),
+        value => this.normalizeUrlValue(value),
         value
       );
     } else {
@@ -41,8 +51,9 @@ export class Url extends Node<Node> {
 
   private renderUrlSyntax(value = this.value, options?: PrintOptions): string {
     options = getPrintOptions(options);
-    if (!options.context && isNode(value, N.Any) && typeof value.value === 'string') {
-      const out = `url(${value.value})`;
+    if (isNode(value, N.Any) && typeof value.value === 'string') {
+      const urlValue = options.context ? this.normalizeUrlValue(value.value) : value.value;
+      const out = `url(${urlValue})`;
       options.writer.add(out, this);
       return out;
     }

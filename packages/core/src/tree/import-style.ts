@@ -1188,12 +1188,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const node = this.evalNode(context);
-    const renderNode = (resolved: Rules): MaybePromise<string> => isRenderBuffer(bufferOrOptions)
-      ? resolved.render(context, bufferOrOptions, options)
-      : resolved.render(context, bufferOrOptions);
     return isThenable(node)
-      ? node.then(renderNode)
-      : renderNode(node);
+      ? node.then(resolved => isRenderBuffer(bufferOrOptions)
+          ? resolved.render(context, bufferOrOptions, options)
+          : resolved.render(context, bufferOrOptions))
+      : isRenderBuffer(bufferOrOptions)
+        ? node.render(context, bufferOrOptions, options)
+        : node.render(context, bufferOrOptions);
   }
 
   private wrapRulesWithPostlude(rules: Rules, postlude?: Node): Rules {

@@ -13,7 +13,7 @@ export class Rest extends Node<Node | string | undefined> {
     let { value } = this;
     if (value) {
       if (isNode(value)) {
-        return value.toString();
+        return String(value.valueOf());
       }
       return `$${value}`;
     }
