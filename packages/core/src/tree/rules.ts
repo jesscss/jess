@@ -815,7 +815,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Ordinary declaration-only ScopeFrames should be rebuilt lazily on the clone so they
     // re-wire against the clone's actual parent chain. Reusing an empty frame from the
     // source tree can shadow a live wrapper frame that actually carries live slots.
-    if (source._scopeFrame?.liveSlotsByName.size || source._scopeFrame?.fallbackFrame) {
+    if (source._scopeFrame?.hasLiveBindings || source._scopeFrame?.fallbackFrame) {
       this.scopeFrame = buildScopeFrame(
         undefined,
         this,
@@ -1859,7 +1859,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (frameHit.kind === 'hit') {
           const results = collectCallableBucketResults(frameHit.bucket, includeRulesets);
           if (results) {
-            this.setLastCallableLookupResult(cacheKey, results);
             return results;
           }
         }
@@ -1896,7 +1895,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             if (retryHit.kind === 'hit') {
               const results = collectCallableBucketResults(retryHit.bucket, includeRulesets);
               if (results) {
-                this.setLastCallableLookupResult(cacheKey, results);
                 return results;
               }
             }
@@ -3246,7 +3244,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     node.index = nodeIndex;
     // After prep, check if it still has a static name.
     if (this._hasStaticName(node)) {
-      const registrationContext = rules._scopeFrame?.liveSlotsByName.size
+      const registrationContext = rules._scopeFrame?.hasLiveBindings
         ? context
         : undefined;
       this._registerNodeIfEligible(rules, node, registrationContext);

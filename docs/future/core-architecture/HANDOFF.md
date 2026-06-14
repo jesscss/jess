@@ -85,38 +85,41 @@ Current pass propagates callable namespace result ownership through recursive
 mixin descent, collapses duplicated direct declaration parent/fallback loops,
 and documents `liveSlotsByName` as construction/clone ownership state rather
 than the ordinary read path.
+Current pass stops caching arrays materialized from scope-frame callable
+buckets, moves production live-slot presence checks to `ScopeFrame.hasLiveBindings`,
+and keeps recursive direct declaration visited state scalar through two surfaces.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7fa. [ ] Callable bucket result ownership.
-Scope: `collectCallableBucketResults(...)`, frame-hit cache writes, retry-frame
-cache writes, and `lastCallableLookupValue`.
-Goal: decide whether frame bucket results should carry owned/shared metadata or
-avoid caching freshly materialized arrays. Remove one copy/cache hazard or
-document why bucket arrays are still the cache boundary.
+7fd. [ ] Callable cache ownership boundary.
+Scope: `lastCallableLookupValue`, direct `findMixinsFast(...)` cache writes,
+path lookup cache writes, compound-prefix/nested shared-result handling, and
+callable result consumers.
+Goal: make cache values explicitly shared or stop caching one more owned array
+source without adding defensive copies to ordinary hit paths.
 Acceptance: static callable binding, namespace, recursive namespace,
 compound-prefix, terminal mixin-only, ruleset namespace with args, lint, builds,
 aggressive review.
 
-7fb. [ ] Live-slot construction map migration plan.
-Scope: `liveSlotsByName`, `buildScopeFrame(...)`, `wireCallableScopeFrames(...)`,
-configured imports, loop/control live bindings, clone/derive, and tests that
+7fe. [ ] Live-slot owner-map API narrowing.
+Scope: `liveSlotsByName`, `setScopeFrameLiveBinding(...)`, configured imports,
+loop/control live bindings, callable scope wiring, clone/derive, and tests that
 inspect live slots.
-Goal: either replace the map with a construction-only binding-owner object or
-prove the smallest transition step. Do not add dual storage that makes ordinary
-reads slower.
+Goal: hide direct live-slot map mutation behind construction/update APIs or
+replace one direct map clone with a narrower owner-copy helper, without changing
+ordinary read paths.
 Acceptance: mixin params, `@arguments`, import configured variables, iteration
 vars, readonly assignment, snapshot/live reads, clone/derive tests, lint,
 builds, aggressive review.
 
-7fc. [ ] Direct declaration recursive visited-state follow-up.
-Scope: `findWithinScopeSurface(...)`, lexical parent recursion, child surface
-recursion, recursive cache keys, and readonly propagation.
-Goal: apply the scalar-first cycle-state pattern inside recursive child/lexical
-descent or prove the remaining recursive `Set` allocation is only paid when a
-child/lexical surface is actually entered.
+7ff. [ ] Direct declaration recursive cache-state audit.
+Scope: recursive declaration cache keys, readonly propagation,
+`optionalCandidates`/`candidates`, lexical parent recursion, and child surface
+recursion.
+Goal: remove one cache-state object allocation or prove the cached `MatchState`
+copy is required to avoid shared mutation across recursive reads.
 Acceptance: parent/fallback circular protection, fallback-frame, source-order,
 readonly, property/variable tests, lint, builds, aggressive review.
 
@@ -168,26 +171,25 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: recursive namespace ownership and declaration traversal collapse.
+- Latest pass: callable bucket cache ownership and scalar recursive visits.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
-- New traversal: no new recursion. Existing recursive mixin namespace descent
-  now carries ownership metadata through its return value. Existing direct
-  declaration parent and fallback traversal now share one loop instead of two.
-- New node/materialization: no nodes. New materialization is one small internal
-  ownership record for recursive mixin namespace lookup results, reusing the
-  same owned/shared result shape as compound-prefix lookup. It prevents mutating
-  shared/cached arrays while allowing in-place append for freshly built descent
-  arrays.
+- New traversal: no new recursion. Recursive direct declaration lookup now
+  carries two visited surfaces as scalars before promoting to a `Set`; the
+  existing child-entry loop remains the point where recursive child surfaces are
+  entered.
+- New node/materialization: no nodes. `ScopeFrame.hasLiveBindings` is semantic
+  placement state copied from live-slot construction, not a read-path mirror.
+  Scope-frame callable bucket hits still materialize result arrays for return,
+  but this pass no longer stores those fresh arrays in `lastCallableLookupValue`.
 - Render path: unchanged.
-- Helper/API surface: one private namespace result type; no public method or
-  compatibility shim added.
-- Metadata mutations: none. `liveSlotsByName` is documented as construction and
-  clone owner state; ordinary reads stay on `currentBindingsByName`.
-- Allocation changes: recursive mixin namespace descent no longer spreads a
-  first nested result when that result was freshly owned by the current descent.
-  Direct declaration fallback traversal no longer repeats the parent-loop visit
-  and readonly machinery. The remaining `liveSlotsByName` map is retained for
-  imports, loop/control slots, callable scope wiring, and derived-rule sharing.
+- Helper/API surface: no public method or compatibility shim added.
+- Metadata mutations: `hasLiveBindings` is updated when live slots are built or
+  added through `setScopeFrameLiveBinding(...)`; it replaces production
+  `liveSlotsByName.size` probes in clone/prep paths.
+- Allocation changes: scope-frame callable bucket arrays are no longer cached as
+  shared last-callable lookup values. Direct declaration recursive cycle state
+  avoids `Set` allocation for one- and two-surface recursive paths, promoting
+  only on the third distinct surface.
 - Evidence: focused lint passed; focused lookup suite passed (`7` files,
   `306` passed, `272` skipped). Affected reference/scope/mixin/live-slot subset
   passed (`4` files, `42` passed, `256` skipped). Residue grep and
@@ -195,5 +197,5 @@ At the end of a pass:
   `js-expr.ts` direct-eval warning. Aggressive review passed with documented
   scoped danger tokens; node-creation audit passed; `jess` build passed.
   One-iteration hotpath smoke passed with usable signal:
-  `mixins-guards.less` `24.69ms`, `scope-lookup-stress.less` `81.36ms`. No
+  `mixins-guards.less` `27.11ms`, `scope-lookup-stress.less` `105.04ms`. No
   speed claim is made.

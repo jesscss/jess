@@ -127,6 +127,12 @@ export interface ScopeFrame {
   currentBindingsByName: Map<string, BindingCell>;
 
   /**
+   * True when this frame owns live cells in liveSlotsByName. This keeps clone
+   * and prep paths from probing the live-slot map as a read-path signal.
+   */
+  hasLiveBindings: boolean;
+
+  /**
    * Contextual variable declarations with static (non-interpolated) keys.
    * Populated from Rules.varsByName when the frame is first accessed.
    * Entries are in source order; last entry wins (Less semantics).
@@ -249,9 +255,11 @@ export function buildScopeFrame(
   }
 
   const liveSlotsByName = liveSlots ?? new Map<string, BindingCell>();
+  let hasLiveBindings = false;
   for (const [name, cell] of liveSlotsByName) {
     cell.live = true;
     currentBindingsByName.set(name, cell);
+    hasLiveBindings = true;
   }
 
   return {
@@ -259,6 +267,7 @@ export function buildScopeFrame(
     fallbackFrame: undefined,
     liveSlotsByName,
     currentBindingsByName,
+    hasLiveBindings,
     declarationBucketsByName,
     callableBucketsByName: callableEntriesByName,
     declarationsCovered,
@@ -280,6 +289,7 @@ export function setScopeFrameLiveBinding(
   cell.live = true;
   frame.liveSlotsByName.set(name, cell);
   frame.currentBindingsByName.set(name, cell);
+  frame.hasLiveBindings = true;
 }
 
 export function setScopeFrameDeclarationBinding(

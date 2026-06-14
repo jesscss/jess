@@ -356,10 +356,20 @@ function findWithinScopeSurface(
   childStart: number | undefined,
   local: boolean,
   readonly: boolean,
+  firstVisitedRules?: Rules,
+  secondVisitedRules?: Rules,
   visited?: Set<Rules>
 ): MatchState {
-  if (visited?.has(scope)) {
+  if (firstVisitedRules === scope || secondVisitedRules === scope || visited?.has(scope)) {
     return createEmptyState(readonly);
+  }
+  if (firstVisitedRules === undefined) {
+    firstVisitedRules = scope;
+  } else if (secondVisitedRules === undefined) {
+    secondVisitedRules = scope;
+  } else {
+    visited ??= new Set<Rules>([firstVisitedRules, secondVisitedRules]);
+    visited.add(scope);
   }
   const cacheKey = getRecursiveLookupCacheKey(key, strategy, options, start, local, readonly);
   const cached = readCachedMatch(scope, cacheKey);
@@ -440,8 +450,6 @@ function findWithinScopeSurface(
     isNode(lexicalParentRules, N.Rules)
     && lexicalParentRules !== scope
   ) {
-    visited ??= new Set<Rules>();
-    visited.add(scope);
     const lexicalState = findWithinScopeSurface(
       lexicalParentRules as Rules,
       key,
@@ -451,6 +459,8 @@ function findWithinScopeSurface(
       undefined,
       local,
       state.readonly,
+      firstVisitedRules,
+      secondVisitedRules,
       visited
     );
     mergeMatch(state, lexicalState, false);
@@ -474,8 +484,6 @@ function findWithinScopeSurface(
 
   const lookupType = strategy.lookupVisibility;
   const context = options.context;
-  visited ??= new Set<Rules>();
-  visited.add(scope);
   for (let i = childEntries.length - 1; i >= 0; i--) {
     const entry = childEntries[i]!;
     if (!canEnterRulesEntryForLookup(entry, {
@@ -509,6 +517,8 @@ function findWithinScopeSurface(
       childStart,
       local || Boolean(entry.node.options.local),
       state.readonly || Boolean(entry.readonly),
+      firstVisitedRules,
+      secondVisitedRules,
       visited
     );
     const optionalOnly = isOptionalRulesEntry(entry, lookupType);
