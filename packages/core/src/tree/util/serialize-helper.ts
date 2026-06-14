@@ -59,7 +59,15 @@ export function hasPrintableTriviaAt(
   }
   const tokens = trivia.lookup(boundaryOffset(node, side), side);
   const printable = getPrintableTriviaTokens(tokens, options);
-  return Boolean(printable?.some(token => token.image.trim() !== ''));
+  if (!printable) {
+    return false;
+  }
+  for (let i = 0; i < printable.length; i++) {
+    if (printable[i]!.image.trim() !== '') {
+      return true;
+    }
+  }
+  return false;
 }
 
 function hasPrintableTrivia(
@@ -113,7 +121,12 @@ function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'c
   if (!tokens) {
     return false;
   }
-  return tokens.some(isBlockCommentTriviaToken);
+  for (let i = 0; i < tokens.length; i++) {
+    if (isBlockCommentTriviaToken(tokens[i]!)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function getContainerRules(node: AtRule | Ruleset, options?: FinalPrintOptions): Rules | undefined {
@@ -147,7 +160,12 @@ function containsNodeType(value: unknown, type: string): boolean {
   }
   const childValue = node.value;
   if (Array.isArray(childValue)) {
-    return childValue.some(child => containsNodeType(child, type));
+    for (let i = 0; i < childValue.length; i++) {
+      if (containsNodeType(childValue[i], type)) {
+        return true;
+      }
+    }
+    return false;
   }
   return containsNodeType(childValue, type);
 }
@@ -230,14 +248,24 @@ export function flattenVisibleRulesForRender(
           && Ruleset.isBareAmpersandSelector(ownSelector)
           && !Ruleset.isBareAmpersandSelector(child.value.selector)
         ) {
-          const visibleChildren = getContainerRules(child)!.value.filter(node => node.visible || node.fullRender);
-          const hasVisibleContainers = visibleChildren.some(node => isNode(node, N.Rules | N.Ruleset | N.AtRule));
-          if (!hasVisibleContainers) {
-            for (const leaf of visibleChildren) {
-              pushLeaf(leaf, true);
+          const leadingLength = leadingLeafEntries.length;
+          const childRules = getContainerRules(child)!.value;
+          let hasVisibleContainer = false;
+          for (let i = 0; i < childRules.length; i++) {
+            const node = childRules[i]!;
+            if (!node.visible && !node.fullRender) {
+              continue;
             }
+            if (isNode(node, N.Rules | N.Ruleset | N.AtRule)) {
+              hasVisibleContainer = true;
+              break;
+            }
+            pushLeaf(node, true);
+          }
+          if (!hasVisibleContainer) {
             continue;
           }
+          leadingLeafEntries.length = leadingLength;
         }
       }
       if (
@@ -346,14 +374,18 @@ function getHoistedParent(
     return undefined;
   }
   const renderFrames = runtimeFrames ?? atRule.getRenderFrames();
-  const rulesetFrames = (renderFrames ?? []).filter(frame => isNode(frame, N.Ruleset));
-  if (rulesetFrames.length === 0) {
+  if (!renderFrames) {
     return undefined;
   }
-  const frame = rulesetFrames[rulesetFrames.length - 1]!;
+  let frame: Ruleset | undefined;
   let parentSelector: Selector | undefined;
-  for (let i = 0; i < rulesetFrames.length; i++) {
-    const currentFrame = rulesetFrames[i]!;
+  for (let i = 0; i < renderFrames.length; i++) {
+    const current = renderFrames[i]!;
+    if (!isNode(current, N.Ruleset)) {
+      continue;
+    }
+    const currentFrame = current as Ruleset;
+    frame = currentFrame;
     const currentSelector = currentFrame.value.selector;
     if (!currentSelector || currentSelector instanceof Nil) {
       continue;
@@ -363,7 +395,7 @@ function getHoistedParent(
       ? Ruleset.composeSelector(nextSelector, parentSelector)
       : nextSelector;
   }
-  return parentSelector ? { frame, selector: parentSelector } : undefined;
+  return frame && parentSelector ? { frame, selector: parentSelector } : undefined;
 }
 
 function renderHoistedParentHeader(
@@ -457,8 +489,8 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     const sourceChainHas = (start: any, predicate: (n: any) => boolean): boolean => {
       const seen = new Set<any>();
       const queue: any[] = [start];
-      while (queue.length > 0) {
-        const current = queue.shift();
+      for (let readIndex = 0; readIndex < queue.length; readIndex++) {
+        const current = queue[readIndex];
         if (!current || seen.has(current)) {
           continue;
         }
@@ -658,11 +690,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           const leading = captureNodeTrivia(n, 'before', options);
           restorePrintState(options, leadingSaved);
           if (!/^\s*$/.test(leading)) {
-            let leafFrames = inFrames;
+            const leafFramesLength = inFrames.length;
             if (hoistedParent) {
-              leafFrames = [...inFrames, hoistedParent.frame];
+              inFrames.push(hoistedParent.frame);
             }
-            ensureRenderedFrames(leafFrames);
+            ensureRenderedFrames(inFrames);
+            inFrames.length = leafFramesLength;
             const idt = indent(lastRenderedFrames.length);
             const normalized = /\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt);
             w.add(normalized);
@@ -679,17 +712,24 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
         /** Re-widen type after accumulated isNode narrowing above */
         const nn = n as Node;
-        let leafFrames = inFrames;
+        const leafFramesLength = inFrames.length;
         if (hoistedParent) {
-          leafFrames = [...inFrames, hoistedParent.frame];
+          inFrames.push(hoistedParent.frame);
         }
+        const leafFrames = inFrames;
         let renderedRulesOutput: string | undefined;
         let renderedRulesTrivia: Set<IToken[]> | undefined;
         if (isNode(nn, N.Rules)) {
-          const hasRenderableChild = nn.value.some(child =>
-            child.visible || child.fullRender || hasPrintableTrivia(child, options)
-          );
+          let hasRenderableChild = false;
+          for (let i = 0; i < nn.value.length; i++) {
+            const child = nn.value[i]!;
+            if (child.visible || child.fullRender || hasPrintableTrivia(child, options)) {
+              hasRenderableChild = true;
+              break;
+            }
+          }
           if (!hasRenderableChild && !hasPrintableTrivia(nn, options)) {
+            inFrames.length = leafFramesLength;
             continue;
           }
           const ownReferenceMode = (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
@@ -725,10 +765,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           }
           restorePrintState(options, rulesSaved);
           if (!renderedRulesOutput && !hasPrintableTrivia(nn, options)) {
+            inFrames.length = leafFramesLength;
             continue;
           }
         }
         ensureRenderedFrames(leafFrames);
+        inFrames.length = leafFramesLength;
 
         // if (isNode(n, N.Declaration)) {
         const leafDepth = lastRenderedFrames.length;
@@ -916,8 +958,15 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       // in `treeFrames` and cause nested output like:
       //   .header { :is(.header-nav, .footer .footer-nav) { ... } }
       // even though the current node is hoisted to root.
-      const atRulesOnly = treeFrames.filter(f => isNode(f, N.AtRule));
-      treeFrames.splice(0, treeFrames.length, ...atRulesOnly, node);
+      let writeIndex = 0;
+      for (let readIndex = 0; readIndex < treeFrames.length; readIndex++) {
+        const frame = treeFrames[readIndex]!;
+        if (isNode(frame, N.AtRule)) {
+          treeFrames[writeIndex++] = frame;
+        }
+      }
+      treeFrames.length = writeIndex;
+      treeFrames[writeIndex] = node;
       options.inFrames = inFrames = treeFrames;
       const out = renderRulesBody();
       restoreArrayState(treeFrames, savedFrames);

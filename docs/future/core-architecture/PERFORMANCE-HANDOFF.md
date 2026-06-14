@@ -2620,6 +2620,36 @@ Interpretation: status only, not a speed claim. Keep this as lazy metadata
 allocation deletion in registration scanning. It does not remove
 registration-prep expected-miss `try/catch` control flow.
 
+### Ruleset Serializer Array/Callback Cut
+
+Date: 2026-06-14.
+
+Change: `serialize-helper.ts` removed callback-array machinery from Ruleset
+render serialization. Transparent bare-ampersand flattening now uses one
+indexed pass with rollback instead of `filter(...)`, `some(...)`, and a third
+leaf pass. Hoisted parent lookup composes directly over the existing frame
+array instead of allocating a filtered ruleset-frame array. Renderable-child
+checks and trivia token checks use indexed loops. Hoisted frame reset compacts
+the existing frame array instead of allocating `atRulesOnly`, and source-chain
+scan no longer pays `queue.shift()`.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `9c49832` reported: `functions` median `15.42ms` usable,
+  `import-reference` median `22.09ms` usable, `mixins-guards` median
+  `19.76ms` usable, `extend-chaining` median `5.88ms` usable, and `media`
+  median `5.95ms` unstable.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `12.14ms` usable,
+  `import-reference` median `17.97ms` usable, `mixins-guards` median
+  `14.20ms` usable, `extend-chaining` median `4.69ms` unstable, and `media`
+  median `4.51ms` unstable.
+
+Interpretation: sanity status only, not a speed claim. Keep this as render-path
+array/callback deletion inside the Ruleset serialization lane. It does not
+remove header string comparison keys or duplicate declaration pre-rendering.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

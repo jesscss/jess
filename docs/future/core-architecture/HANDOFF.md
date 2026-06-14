@@ -246,8 +246,19 @@ Open tasks:
    semantic/benchmark blockers. Known blockers include `Call` output selection,
    `evalArgNodes(...)` copy pressure, whole-call mark/readback, `AtRule`
    body-state staging, `Ruleset.getHeaderString(...)` capture/comparison,
-   custom-property raw source, merge-state boundaries, `Operation.withOperands`
-   ownership, and `QueryCondition` shared-flat-buffer return contract.
+   duplicate declaration pre-render/materialization, custom-property raw
+   source, merge-state boundaries, `Operation.withOperands` ownership, and
+   `QueryCondition` shared-flat-buffer return contract.
+
+   Current partial status: `serialize-helper.ts` now removes callback-array
+   scans and temporary arrays from Ruleset render flattening and hoisted-frame
+   setup. Transparent bare-ampersand flattening uses one pass with rollback
+   instead of `filter(...)` + `some(...)` + a third leaf pass; hoisted parent
+   lookup and renderable-child checks use indexed loops; hoisted frame reset
+   compacts the existing frame array instead of allocating `atRulesOnly`; and
+   source-chain scan no longer uses `queue.shift()`. This does not complete
+   `Ruleset`, because header comparison still needs string keys and duplicate
+   declaration handling still pre-renders declarations.
 
    Evidence pointer: use `NODE-REWRITE-TRACKER.md` for per-node status and
    `PERFORMANCE-HANDOFF.md` for benchmark/profile history. Do not add queue
@@ -400,20 +411,28 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: handoff document discipline cleanup.
+Current pass: Ruleset serializer array/callback cut in
+`packages/core/src/tree/util/serialize-helper.ts`.
 
-- New traversal: none. Documentation only.
-- New node/materialization: none. Documentation only.
-- Render path: no render/eval code changed.
-- Helper/API surface: no code helper or public API changed. The handoff now
-  keeps completed binding and secondary-pass history as compact status instead
-  of long pass logs.
-- Metadata mutations: none.
+- New traversal: none. Existing scans now use indexed loops. Transparent
+  bare-ampersand flattening is one pass with rollback instead of
+  `filter(...)`, `some(...)`, and a third leaf pass. Hoisted parent lookup is
+  one pass over the existing frame array instead of allocating a filtered
+  ruleset-frame array. Source-chain scanning keeps the existing queue but reads
+  by index instead of `shift()`.
+- New node/materialization: none. No nodes, wrapper rules, copies, `.inherit`,
+  `.adopt`, arrays, side maps, or metadata surfaces were added.
+- Render path: accepts. The change deletes render-path array/callback
+  factories only; it does not make render resolve into arrays/nodes just to
+  stringify.
+- Helper/API surface: no helper, public API, or method added.
+- Metadata mutations: no parent/source/frozen/options/context metadata
+  mutations added. Existing temporary frame-array mutation is still restored
+  through the pre-existing `saveArrayState(...)` boundary.
 - Error/control flow: none added.
-- Evidence: `HANDOFF.md` was reduced from 996 lines to 419 lines while keeping
-  active focus, active binding facts, open queue items, gates, and current
-  pass self-prosecution. No benchmark was needed because no runtime code
-  changed.
-- Verdict: accept. The handoff should now inform the next swaths of work
-  without carrying full historical pass logs that belong in git history,
-  `PERFORMANCE-HANDOFF.md`, or `NODE-REWRITE-TRACKER.md`.
+- Evidence: focused `ruleset` and `rules-streaming` tests pass; `@jesscss/core`
+  build passes; bounded hot-path benchmark was run before and after. Treat the
+  benchmark as sanity evidence, not a speed claim.
+- Verdict: accept as partial item 14 progress. Keep `Ruleset` open because
+  `getHeaderString(...)` comparison strings and duplicate declaration
+  pre-rendering remain.
