@@ -263,7 +263,7 @@ export function lookupScopeFrameVariable(
   options?: {
     start?: number;
     filter?: (node: Node) => boolean;
-    blockedSource?: (node: Node) => boolean;
+    blockedSources?: Set<Node>;
     includeLive?: boolean;
     includeDeclarations?: boolean;
     bailOnPendingDeclarations?: boolean;
@@ -279,7 +279,7 @@ export function lookupScopeFrameVariable(
         : f.liveSlotsByName.get(name);
       if (live) {
         const sourceNode = live.sourceNode;
-        if (!sourceNode || !options?.blockedSource?.(sourceNode)) {
+        if (!sourceNode || !options?.blockedSources?.has(sourceNode)) {
           return {
             kind: 'live',
             cell: live,

@@ -581,6 +581,12 @@ next step starts.
      fact the reference already owns.
    - Callable namespace lookup now walks static path arrays by offset instead
      of allocating `[segment, ...rest]` at every namespace hop.
+   - Runtime variable binding lookup no longer allocates a defensive
+     `Set<ScopeFrame>` on every lookup, and scope-frame variable lookup no
+     longer allocates a per-call `blockedSource` closure just to test
+     `context.searchScope.has(...)`. Check-only recursion probes read the
+     existing `_searchScope` field directly so misses do not lazily create the
+     set.
    - A focused reference test proves the mixin array-path lookup receives the
      original static key array instance.
    - No cache, evaluated-value reuse, side map, materialized node, output
@@ -850,30 +856,33 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: shared compare normalization cut.
+Current pass: binding lookup allocation cut.
 
 - New traversal: none added. No loop, recursion, parent/source walk, side-map
   lookup, object scan, array scan, `map/filter/sort`, or generator was added.
 - New node/materialization: none added. This pass did not add `new Node`,
   copied nodes, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen state,
   parent restoration, or source metadata mutation.
-- Render path: no render/eval path changed. The edited paths are comparison
-  paths only; they still use the existing public strings for `Any` coercion and
-  do not create arrays/nodes just to stringify.
-- Helper/API surface: added two internal utility functions in
-  `packages/core/src/tree/util/compare.ts` only to remove three repeated
-  per-call local normalization closures from `Any.compare(...)`,
-  `List.compare(...)`, and `Sequence.compare(...)`. This is not public package
-  API and does not add a generic hot-path dispatch ladder.
-- Metadata mutations: none added. No parent, source, option, context, frozen,
-  defensive `Reflect.*`, or `Object.hasOwn` behavior changed.
-- Evidence: hotpath leash at `847fe59a` was status-only:
-  `functions` `15.68ms` unstable, `import-reference` `26.15ms` usable,
-  `mixins-guards` `17.83ms` usable, `extend-chaining` `5.89ms` usable, and
-  `media` `5.87ms` unstable. Focused compare-adjacent tests passed:
+- Render path: no render output path changed. The edited paths are variable
+  lookup/recursion-filter checks only; they do not create arrays/nodes just to
+  stringify.
+- Helper/API surface: no helper added. `searchRuntimeVarBindingChain(...)`
+  lost its `Set<ScopeFrame>` parameter, `lookupScopeFrameVariable(...)` now
+  accepts an existing `blockedSources` set instead of a callback, and
+  `Context._searchScope` is readable by core check-only paths so they do not
+  call the lazy `searchScope` getter.
+- Metadata mutations: none added. No parent/source metadata changed. Making
+  `_searchScope` readable exposes existing context state to core internals; it
+  does not add a new setter or allocate new runtime state.
+- Evidence: hotpath leash at `e0772af7` was status-only:
+  `functions` `14.14ms` usable, `import-reference` `20.84ms` usable,
+  `mixins-guards` `17.70ms` unstable, `extend-chaining` `5.98ms` unstable, and
+  `media` `5.99ms` unstable. Focused lookup/scope tests passed:
   `pnpm --filter @jesscss/core test --
-  src/tree/__tests__/any.test.ts src/tree/__tests__/list.test.ts
-  src/tree/__tests__/sequence.test.ts` (`64` passed).
-- Verdict: accept the repeated local compare-normalization closure deletion
-  only. The broader selector/extend equality work, `valueOf()` decision paths,
-  and render-time string-to-decide paths remain open.
+  src/tree/__tests__/reference.test.ts src/tree/__tests__/scope-frame.test.ts
+  src/tree/util/__tests__/callable-live-slots.test.ts
+  src/tree/util/__tests__/callable-scope-frame.test.ts` (`133` passed).
+- Verdict: accept the binding lookup allocation deletion only. The coherent
+  binding-handle model, repeated compound-reference reuse, evaluated-value/text
+  reuse, selector/extend equality, copy/materialization boundaries, and
+  `StyleImport` placement copies remain open.

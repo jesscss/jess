@@ -270,7 +270,7 @@ export class Context {
    * We use a set here because we look it up for filtering.
    * Also used to track mixins currently being evaluated to prevent infinite recursion.
    */
-  private _searchScope: Set<Node> | undefined;
+  _searchScope: Set<Node> | undefined;
   get searchScope() {
     return (this._searchScope ??= new Set());
   }

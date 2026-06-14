@@ -388,17 +388,15 @@ export function findVarDeclarationFast(
 function searchRuntimeVarBindingChain(
   start: ScopeFrame | undefined,
   key: string,
-  context: Context,
-  seen: Set<ScopeFrame>
+  context: Context
 ): RuntimeVarBinding | undefined {
   let f = start;
-  while (f && !seen.has(f)) {
-    seen.add(f);
+  while (f) {
     const live = f.liveSlotsByName.get(key);
     if (live) {
       const src = live.sourceNode as Node | undefined;
       const value = getBindingCellValue(live);
-      if (!src || !context.searchScope.has(src)) {
+      if (!src || !context._searchScope?.has(src)) {
         return {
           kind: 'runtime-var-binding',
           value,
@@ -423,16 +421,14 @@ export function lookupRuntimeVarBinding(
   context: Context
 ): RuntimeVarBinding | undefined {
   const frame = targetRules.getScopeFrame();
-  const seen = new Set<ScopeFrame>();
-
-  const direct = searchRuntimeVarBindingChain(frame, key, context, seen);
+  const direct = searchRuntimeVarBindingChain(frame, key, context);
   if (direct) {
     return direct;
   }
 
   let fallback = frame.fallbackFrame;
   while (fallback) {
-    const resolved = searchRuntimeVarBindingChain(fallback, key, context, seen);
+    const resolved = searchRuntimeVarBindingChain(fallback, key, context);
     if (resolved) {
       return resolved;
     }

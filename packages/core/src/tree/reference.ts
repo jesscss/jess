@@ -310,7 +310,7 @@ function isBlockedReferenceSearchScope(
   node: Node,
   context: Context
 ): boolean {
-  return context.searchScope.has(node);
+  return context._searchScope?.has(node) === true;
 }
 
 function buildReferenceFilter(
@@ -443,7 +443,7 @@ function lookupScopeFrameVariableBinding(
   const hit = lookupScopeFrameVariable(frame, key, {
     start: opts.start,
     filter: env.filter,
-    blockedSource: node => env.context.searchScope.has(node),
+    blockedSources: env.context._searchScope,
     includeLive: env.readMode !== 'snapshot',
     bailOnPendingDeclarations: true
   });
