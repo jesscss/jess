@@ -461,7 +461,7 @@ export class Call extends Node<CallValue, CallOptions> {
     context: Context,
     options: PrintOptions
   ): MaybePromise<string> {
-    if (!args) {
+    if (!args || args.value.length === 0) {
       return '';
     }
     const printOptions = getPrintOptions(options);
@@ -902,7 +902,8 @@ export class Call extends Node<CallValue, CallOptions> {
 
   override toTrimmedString(options?: PrintOptions) {
     const { name, args, contentNode } = this.value;
-    if (typeof name === 'string' && !args && !contentNode) {
+    const hasArgs = args !== undefined && args.value.length > 0;
+    if (typeof name === 'string' && !hasArgs && !contentNode) {
       const silentFail = this._options?.silentFail === true;
       const markImportant = this._options?.markImportant === true;
       const out = `${name}${silentFail ? '?' : ''}()${markImportant ? ' !important' : ''}`;
@@ -930,7 +931,7 @@ export class Call extends Node<CallValue, CallOptions> {
       w.add('?');
     }
     w.add('(');
-    if (args) {
+    if (args && args.value.length > 0) {
       const argsMark = w.mark();
       args.writeSyntax(options);
       w.trimHorizontalStartSince(argsMark);

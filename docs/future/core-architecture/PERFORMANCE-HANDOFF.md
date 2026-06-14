@@ -2309,6 +2309,32 @@ Hotpath status:
 Interpretation: status only, not a speed claim. Keep as regex-result and
 iterator deletion in declaration formatting/render staging.
 
+### Call Empty-Arg Mark Cut
+
+Date: 2026-06-13.
+
+Change: explicit empty call argument lists now use the same empty-call fast
+path as missing args. `Call.serializeRenderedArgs(...)` returns before opening
+a writer mark for `args.value.length === 0`, `Call.toTrimmedString(...)`
+recognizes empty lists as no rendered args, and `Call.writeSyntax(...)` skips
+the argument mark/trim window for empty lists.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `71da758a` reported: `functions` median `15.93ms` unstable,
+  `import-reference` median `21.74ms` usable, `mixins-guards` median
+  `18.46ms` usable, `extend-chaining` median `6.79ms` noisy, and `media`
+  median `6.50ms` unstable.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `15.72ms` unstable,
+  `import-reference` median `23.82ms` usable, `mixins-guards` median
+  `18.77ms` unstable, `extend-chaining` median `6.53ms` unstable, and `media`
+  median `6.63ms` usable.
+
+Interpretation: status only, not a speed claim. Keep as a dead writer
+mark/trim-window deletion for explicit empty argument lists.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

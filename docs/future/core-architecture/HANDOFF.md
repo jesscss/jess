@@ -730,6 +730,13 @@ the binding index/scope lookup refactor.
    `replacements.entries()`. Focused declaration/var-declaration/list/sequence
    tests passed. Hotpath leash was status-only; see
    `PERFORMANCE-HANDOFF.md`.
+15d. [x] Continue Call empty-arg pass. Explicit empty argument lists now use
+   the same empty-call fast path as missing args: render serialization returns
+   before opening an argument writer mark, source `toTrimmedString(...)`
+   recognizes empty lists as no rendered args, and source `writeSyntax(...)`
+   skips the argument mark/trim window for empty lists. Focused call tests
+   passed. Hotpath leash was mixed/noisy and status-only; see
+   `PERFORMANCE-HANDOFF.md`.
 16. [ ] Continue `Reference` before moving to the next node. Audit and cut the
    remaining copy/materialization pressure: `createRulesLikeReferenceSurface`,
    public `evaluateReferenceValueNode(...)` materialization, merged assign
@@ -896,50 +903,35 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Declaration formatting regex/iterator cuts.
+Current pass: Call explicit-empty-argument mark cuts.
 
-- New traversal: three small character loops were added in
-  `leadingHorizontalWhitespaceLength(...)`, `trimLeadingSpacesAndTabs(...)`,
-  and `isClosingDeclarationLine(...)`. They replace regex `match(...)` result
-  arrays and regex leading-space replacement in the same declaration string
-  formatting path. `evalCustomInterpolatedRenderValue(...)` now uses an
-  indexed loop over the already-copied `replacements` array instead of
-  `replacements.entries()`, deleting iterator/tuple churn without changing the
-  evaluation order. The two `slice(...)` calls in the diff produce required
-  output substrings after the whitespace scan; they are not array copies or
-  throwaway materialization.
+- New traversal: none added.
 - New node/materialization: none added. This pass did not add `new Node`,
   copied nodes, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen state,
-  parent restoration, source metadata mutation, or new declaration/list/sequence
+  parent restoration, source metadata mutation, or new callable/call
   materialization.
-- Render path: declaration render still writes/captures the final declaration
-  string at the existing boundary. This pass only changes formatting internals
-  from regex/iterator allocation to character checks; it does not resolve into
-  arrays/nodes just to stringify.
-- Helper/API surface: three module-local character helpers were added to delete
-  regex result allocation from `formatNonCustomValue(...)` and custom fallback
-  leading-whitespace preservation. They do not widen public API or hide generic
-  branching.
+- Render path: `Call.serializeRenderedArgs(...)` now returns before opening a
+  writer mark when the args list exists but has zero items. Source
+  `toTrimmedString(...)` and `writeSyntax(...)` now treat explicit empty arg
+  lists as empty, skipping dead argument mark/trim windows. No render path
+  resolves into arrays/nodes just to stringify.
+- Helper/API surface: none added.
 - Metadata mutations: none added.
 - Error/control flow: none added.
-- Evidence: pre-pass hotpath leash at `9a5488a4`: `functions` `15.02ms`
-  usable, `import-reference` `22.22ms` usable, `mixins-guards` `18.14ms`
-  usable, `extend-chaining` `6.06ms` unstable, `media` `5.55ms` unstable.
-  Dirty post-pass leash: `functions` `15.05ms` usable, `import-reference`
-  `22.62ms` usable, `mixins-guards` `18.59ms` usable, `extend-chaining`
-  `5.85ms` usable, `media` `5.72ms` usable. This is status only, not a speed
-  claim. A local Node `v24.11.1` microbench over declaration-shaped strings
-  showed the exact character predicates faster than the regex forms they
-  replaced, but that evidence is limited to the micro-operations. Focused tests
-  passed:
-  `pnpm --filter @jesscss/core test --
-  src/tree/__tests__/declaration.test.ts
-  src/tree/__tests__/var-declaration.test.ts src/tree/__tests__/list.test.ts
-  src/tree/__tests__/sequence.test.ts` (`125` passed).
-- Verdict: accept the declaration regex/iterator deletion. Remaining open
-  work: custom-property raw source branches, merge-state/materialization
-  boundaries, the final `serializeRulesContainer(...)` string-header boundary,
-  deeper `Ruleset.getHeaderString(...)` capture/comparison paths, `AtRule`
-  body-state branch ladders, `Call.evalArgNodes(...)` copy pressure, whole-call
-  mark/readback, `Reference` materialization, selector/extend equality,
+- Evidence: pre-pass hotpath leash at `71da758a`: `functions` `15.93ms`
+  unstable, `import-reference` `21.74ms` usable, `mixins-guards` `18.46ms`
+  usable, `extend-chaining` `6.79ms` noisy, `media` `6.50ms` unstable. Dirty
+  post-pass leash: `functions` `15.72ms` unstable, `import-reference`
+  `23.82ms` usable, `mixins-guards` `18.77ms` unstable, `extend-chaining`
+  `6.53ms` unstable, `media` `6.63ms` usable. This is status only, not a speed
+  claim. Focused tests passed:
+  `pnpm --filter @jesscss/core test -- src/tree/__tests__/call.test.ts`
+  (`81` passed).
+- Verdict: accept the explicit-empty-argument writer mark/trim-window deletion.
+  Remaining open work: `Call.evalArgNodes(...)` copy pressure, whole-call
+  mark/readback, callable output selection, custom-property raw source
+  branches, merge-state/materialization boundaries, the final
+  `serializeRulesContainer(...)` string-header boundary, deeper
+  `Ruleset.getHeaderString(...)` capture/comparison paths, `AtRule` body-state
+  branch ladders, `Reference` materialization, selector/extend equality,
   `StyleImport` placement copies, and the coherent binding-handle model.
