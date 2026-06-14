@@ -787,6 +787,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
 
     const results: MixinEntry[] = [];
+    const visited = new Set<Rules>();
     let cursor: Node | undefined = this;
     let first = true;
     while (cursor) {
@@ -798,7 +799,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         first = false;
-        const surfaceResults = findWithinScopeSurface(scope, options?.local, new Set<Rules>());
+        visited.clear();
+        const surfaceResults = findWithinScopeSurface(scope, options?.local, visited);
         for (let resultIndex = 0; resultIndex < surfaceResults.length; resultIndex++) {
           results.push(surfaceResults[resultIndex]!);
         }
@@ -880,6 +882,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
 
     const results: MixinEntry[] = [];
+    const visited = new Set<Rules>();
     let cursor: Node | undefined = this;
     let first = true;
     while (cursor) {
@@ -889,7 +892,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           break;
         }
         first = false;
-        const surfaceResults = findWithinScopeSurface(scope, options?.local, new Set<Rules>());
+        visited.clear();
+        const surfaceResults = findWithinScopeSurface(scope, options?.local, visited);
         for (let resultIndex = 0; resultIndex < surfaceResults.length; resultIndex++) {
           results.push(surfaceResults[resultIndex]!);
         }
@@ -978,6 +982,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
 
     let cursor: Node | undefined = this;
+    const visited = new Set<Rules>();
     let first = true;
     while (cursor) {
       if (isNode(cursor, N.Rules)) {
@@ -988,7 +993,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         first = false;
-        if (searchSurface(scope, options?.local, new Set<Rules>())) {
+        visited.clear();
+        if (searchSurface(scope, options?.local, visited)) {
           return true;
         }
       }
@@ -1066,6 +1072,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
 
     let cursor: Node | undefined = this;
+    const visited = new Set<Rules>();
     let first = true;
     while (cursor) {
       if (isNode(cursor, N.Rules)) {
@@ -1076,7 +1083,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         first = false;
-        if (searchSurface(scope, options?.local, new Set<Rules>())) {
+        visited.clear();
+        if (searchSurface(scope, options?.local, visited)) {
           return true;
         }
       }
@@ -1158,6 +1166,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
 
     const results: Ruleset[] = [];
+    const visited = new Set<Rules>();
     let cursor: Node | undefined = this;
     let first = true;
     while (cursor) {
@@ -1169,7 +1178,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         first = false;
-        const surfaceResults = searchSurface(scope, options?.local, new Set<Rules>());
+        visited.clear();
+        const surfaceResults = searchSurface(scope, options?.local, visited);
         for (let resultIndex = 0; resultIndex < surfaceResults.length; resultIndex++) {
           results.push(surfaceResults[resultIndex]!);
         }
@@ -1253,6 +1263,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
 
     const results: Array<{ ruleset: Ruleset; consumed: string[] }> = [];
+    const visited = new Set<Rules>();
     let cursor: Node | undefined = this;
     let first = true;
     while (cursor) {
@@ -1264,7 +1275,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         first = false;
-        const surfaceResults = searchSurface(scope, options?.local, new Set<Rules>());
+        visited.clear();
+        const surfaceResults = searchSurface(scope, options?.local, visited);
         for (let resultIndex = 0; resultIndex < surfaceResults.length; resultIndex++) {
           results.push(surfaceResults[resultIndex]!);
         }

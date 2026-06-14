@@ -597,6 +597,9 @@ next step starts.
      original caller filter, `_searchScope`, and param-var rules context as
      fields and only synthesizes a registry callback for non-variable
      `Rules.find(...)` paths.
+   - `Rules` callable/ruleset namespace helpers now reuse one `Set<Rules>` per
+     helper invocation for their independent surface searches instead of
+     allocating a fresh visited set for each parent scope.
    - A focused reference test proves the mixin array-path lookup receives the
      original static key array instance.
    - No cache, evaluated-value reuse, side map, materialized node, output
@@ -866,34 +869,29 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: variable lookup filter-state cut.
+Current pass: Rules callable lookup visited-set reuse.
 
-- New traversal: none added. The existing param-var parent/source walk moved
-  from `Reference` into the scope-frame utility so both binding-frame and fast
-  declaration lookup use the same check. No new loop runs on paths that did not
-  already perform the param-var visibility check.
+- New traversal: none added. Existing callable/ruleset namespace parent walks
+  and recursive child-surface searches are unchanged. This pass reuses one
+  `Set<Rules>` per helper invocation and clears it before each independent
+  surface walk instead of allocating a fresh set per parent scope.
 - New node/materialization: none added. This pass did not add `new Node`,
   copied nodes, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen state,
   parent restoration, or source metadata mutation.
-- Render path: no render output path changed. The edited paths are variable
-  lookup/recursion-filter checks only; they do not create arrays/nodes just to
-  stringify.
-- Helper/API surface: moved the param-var visibility predicate to
-  `scope-frame.ts` and reused it from `Reference`/`reference-lookup` instead
-  of keeping duplicate local helpers. Ordinary variable lookup now carries
-  original filter/search-scope/rules-context fields through the existing env
-  and avoids allocating the Reference filter callback unless a non-variable
-  registry `Rules.find(...)` path needs it.
+- Render path: no render output path changed. The edited paths are callable
+  and ruleset namespace lookup helpers only; they do not create arrays/nodes
+  just to stringify.
+- Helper/API surface: no helper added. The same local recursive lookup
+  functions remain; only their visited-set allocation site changed.
 - Metadata mutations: none added. No parent/source/context metadata changed.
-- Evidence: hotpath leash at `1a67c965` was status-only:
-  `functions` `17.80ms` unstable, `import-reference` `23.66ms` usable,
-  `mixins-guards` `19.34ms` unstable, `extend-chaining` `6.34ms` usable, and
-  `media` `7.23ms` usable. Focused lookup/scope tests passed:
+- Evidence: hotpath leash at `d2276993` was status-only:
+  `functions` `17.22ms` unstable, `import-reference` `31.90ms` usable,
+  `mixins-guards` `20.41ms` unstable, `extend-chaining` `6.84ms` usable, and
+  `media` `7.24ms` usable. Focused lookup/callable tests passed:
   `pnpm --filter @jesscss/core test --
-  src/tree/__tests__/reference.test.ts src/tree/__tests__/scope-frame.test.ts
-  src/tree/util/__tests__/callable-live-slots.test.ts
-  src/tree/util/__tests__/callable-scope-frame.test.ts` (`133` passed).
-- Verdict: accept the variable lookup filter-state cut only. The coherent
-  binding-handle model, repeated compound-reference reuse, evaluated-value/text
-  reuse, selector/extend equality, copy/materialization boundaries, and
-  `StyleImport` placement copies remain open.
+  src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts
+  src/tree/__tests__/mixin.test.ts` (`304` passed, `8` skipped).
+- Verdict: accept the Rules callable/ruleset lookup visited-set reuse only.
+  The coherent binding-handle model, repeated compound-reference reuse,
+  evaluated-value/text reuse, selector/extend equality, copy/materialization
+  boundaries, and `StyleImport` placement copies remain open.
