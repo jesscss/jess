@@ -344,6 +344,11 @@ Open tasks:
    an extra args-level `mark/getSince` readback; focused tests prove the whole
    call still reads back once for the current call syntax boundary.
 
+   Additional partial status: `VarDeclaration` bare parameter syntax no longer
+   uses public `String(name)` transport in `writeSyntax(...)`. `Any` names read
+   the owned scalar value directly, and non-`Any` names write through
+   `writeSyntax(...)` with writer trim.
+
    Additional partial status: `Block`, `Paren`, `Quoted`, and
    `AttributeSelector` render now use known wrapper text directly for safe
    scalar/empty forms: nil blocks, empty/nil parens, literal non-escaped quoted
@@ -543,28 +548,25 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Call` rendered-argument readback cut.
+Current pass: `VarDeclaration` bare-parameter name transport cut.
 
-- New traversal: none. The existing arg loop remains; no loop, recursion,
-  parent/source walk, side-map lookup, or object/array scan was added.
+- New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
+  or object/array scan was added.
 - New node/materialization: no runtime nodes, copies, wrappers, arrays, side
   maps, output strings, or materialized render values added.
-- Render path: selected row is `Call`. `serializeRenderedArgs(...)` now writes
-  args and returns only completion (`void` or promise), because callers only
-  awaited it before finishing the call syntax. Rendering still writes the same
-  evaluated arg syntax directly; it no longer reads back an args string that is
-  immediately discarded.
-- Helper/API surface: no helper or public method added. The existing helper
-  signature shrank from `MaybePromise<string>` to `MaybePromise<void>` and the
-  recursive continuation stopped carrying the unused mark.
+- Render path: selected row is `VarDeclaration`. Bare parameter var syntax now
+  writes the `$` prefix and owned name syntax directly; it no longer routes an
+  `Any` name through public `String(name)`/`toString(...)` transport just to
+  print `$name`.
+- Helper/API surface: no helper, public method, or node method added.
 - Metadata mutations: none. No parent/source/frozen/context metadata mutation,
-  lazy options/context creation, reflection call, or generic own-property
-  helper added.
+  lazy options/context creation, reflection call, generic own-property helper,
+  or structural probe added.
 - Error/control flow: no new routine error objects or throw/catch control flow.
-- Evidence: package-scoped `call.test.ts` passed, with a `CountingWriter`
-  assertion that rendered CSS call args no longer add an extra readback beyond
-  the current whole-call syntax boundary. Final hotpath/profile status is in
-  `PERFORMANCE-HANDOFF.md`; no speed claim.
-- Verdict: accept as a bounded `Call` render-transport deletion. Keep `Call`
-  open for callable output, `evalArgNodes(...)` copy pressure, non-empty
-  whole-call readback, async path shape, helper ladders, and repeated eval.
+- Evidence: package-scoped `var-declaration.test.ts` passed, with a
+  `CountingWriter` proof that bare parameter vars still avoid readback and a
+  direct `writeSyntax(...)` proof that name `toString(...)` is not called.
+  Final hotpath/profile status is in `PERFORMANCE-HANDOFF.md`; no speed claim.
+- Verdict: accept as a bounded `VarDeclaration` serialization cut. General
+  declaration body rendering, custom-property raw source, merge state, and
+  duplicate-comparison materialization remain open under `Declaration`.

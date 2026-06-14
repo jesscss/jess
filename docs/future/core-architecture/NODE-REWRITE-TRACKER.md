@@ -307,7 +307,8 @@ Current hard leftovers after the broad hook sweep:
   declaration writer/render staging and only wraps eval with `context.inCustom`
   state; focused declaration tests prove custom declaration resolve/render
   output and streaming behavior.
-- [x] `VarDeclaration`: local writer probe removed; preserve binding semantics.
+- [x] `VarDeclaration`: local writer probe removed; preserve binding semantics;
+  bare parameter names avoid public string transport.
   Broader declaration body staging remains on `Declaration`.
 - [x] `For`: direct source syntax writer exists, range-bound closure removed,
   async-generator entry iteration is gone, per-entry tuple arrays are gone,
@@ -395,5 +396,5 @@ Current hard leftovers after the broad hook sweep:
 | SimpleSelector | `packages/core/src/tree/selector-simple.ts` | `Selector` | base resolve audit complete | Base class remains: `resolve(context)` intentionally calls `evalNode(context)` directly, while inherited `Node.resolve(...)` would enter the public eval ownership path. No direct writer body needed here; subclasses own syntax. |
 | StyleImport | `packages/core/src/tree/import-style.ts` | `Node` | placement audit complete | Sync render no longer allocates a local finalizer closure. First-use placement copies and derived `Rules` surfaces were audited and kept as semantic placement state: focused tests require owned placement children and source-child mapping. Do not remove them as a convenience-copy cut without a replacement placement-state model. |
 | Url | `packages/core/src/tree/url.ts` | `Node` | scalar render readback cut | URL wrapper and no-trivia child syntax write directly in source and context modes; render/eval use `evalImmediateSync(...)` for non-async child values and thenable narrowing for async values. Scalar `Any` render/context normalization now writes `url(...)` directly with no writer mark/getSince/replace; trivia-backed or non-scalar normalization still uses localized fallback readback. |
-| VarDeclaration | `packages/core/src/tree/declaration-var.ts` | `Declaration` | partial scalar wrapper complete | Bare parameter vars with nil defaults write the known `$name` token with no writer readback. General variable prefix syntax writes directly, but declaration body path remains. |
+| VarDeclaration | `packages/core/src/tree/declaration-var.ts` | `Declaration` | scalar wrapper complete | Bare parameter vars with nil defaults write the known `$name` token with no writer readback, and bare parameter name syntax uses owned `Any.value` or child `writeSyntax(...)` instead of public `String(name)` transport. General variable prefix syntax writes directly, but declaration body path remains on `Declaration`. |
 | While | `packages/core/src/tree/control.ts` | `Node` | partial | Source syntax writer exists, condition uses direct writer, state-mutation probing uses a straight loop instead of `.some(...)`, and public render no longer allocates the control string wrapper callback. Loop state/body surface and async branch audit remain. |

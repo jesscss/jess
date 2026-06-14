@@ -51,8 +51,14 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     // print `$name` (no `: <value>`).
     if (this._options?.paramVar && this.value.value instanceof Nil) {
       w.add('$', this);
-      const normalizedName = String(this.value.name).replace(/\s+$/, '');
-      w.add(normalizedName, this.value.name);
+      const name = this.value.name;
+      if (name instanceof Any) {
+        w.add(name.value.replace(/\s+$/, ''), name);
+      } else {
+        const mark = w.mark();
+        name.writeSyntax(options);
+        w.trimEndSince(mark);
+      }
       return;
     }
 

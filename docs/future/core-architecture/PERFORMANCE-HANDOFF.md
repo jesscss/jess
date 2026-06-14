@@ -3187,6 +3187,34 @@ Interpretation: machinery deletion only, not a speed claim. Keep `Call` open:
 whole-call readback, callable output, `evalArgNodes(...)` copy pressure, async
 path shape, helper ladders, and repeated eval remain.
 
+### VarDeclaration Bare Parameter Name Transport Cut
+
+Date: 2026-06-14.
+
+Change: `VarDeclaration.writeSyntax(...)` no longer calls public
+`String(name)`/`toString(...)` to print bare parameter variable names. `Any`
+names read owned scalar text directly; non-`Any` names write syntax into the
+existing writer and trim that writer range.
+
+Hotpath status:
+
+- Focused `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/var-declaration.test.ts --run` passed. The test now proves
+  direct bare-parameter `writeSyntax(...)` does not call name `toString(...)`.
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `14.89ms` usable, `import-reference` median
+  `18.28ms` usable, `mixins-guards` median `19.87ms` usable,
+  `extend-chaining` median `5.29ms` usable, and `media` median `5.61ms`
+  unstable.
+- Final `node scripts/profile-less-benchmark.mjs --file=benchmark.less`
+  reported broad `OutputWriter.mark` `49969`, `OutputWriter.getSince` `44973`,
+  `Reference.evalNode` `3619` calls / `73.62ms`, and `Rules.find` `1013`
+  calls / `27.87ms`.
+
+Interpretation: accept as a small node-family serialization completion slice.
+Broader declaration body rendering, raw custom property source, merge state,
+and duplicate declaration materialization remain on the `Declaration` row.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
