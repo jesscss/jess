@@ -890,6 +890,13 @@ the binding index/scope lookup refactor.
    helper hops and lazy metadata allocation inside the callable copy path; it
    does not remove `copyCallableRulesValue(...)` recursion or the copied
    callable surface boundary.
+   Fourth partial status: callable reuse predicates no longer call lazy
+   metadata getters for assignment/source checks. `canReuseStaticScalarLeaf(...)`
+   reads `_location` instead of `location`, and
+   `canReuseStaticCallableChildren(...)` reads `_options?.assign` instead of
+   `options?.assign`. Focused callable binding/output/candidate coverage still
+   passes. This deletes hidden metadata allocation in the callable reuse
+   decision path; it does not remove copied callable surfaces.
 27. [ ] Audit repeated callable/mixin evaluation from the profile before making
    more local helper cuts. If a mixin candidate or output body is evaluated
    more than the semantic call count requires, carry placement/binding state or
@@ -950,41 +957,34 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: callable copy wrapper and lazy metadata cut under queue item 26.
+Current pass: callable reuse lazy metadata cut under queue item 26.
 
 - New traversal: none. The pass adds no loop, recursion, source walk, parent
   walk, side-map lookup, object scan, or array scan.
-- New node/materialization: none added. Existing callable copy materialization
-  remains: comments still construct placement-owned comments, generic callable
-  children still flow through `constructCallableRulesNode(...)`, and copied
-  nodes still `.inherit(...)`. This pass deletes wrapper functions and lazy
-  metadata allocation inside that existing boundary; it does not add a new
-  copied node, wrapper `Rules`, `.adopt(...)`, frozen mutation, parent
-  restoration, source metadata mutation, or materialized array.
+- New node/materialization: none added. Existing callable copy/materialization
+  remains unchanged; this pass only changes reuse predicates from allocating
+  getters to existing non-allocating slots.
 - Render path: no render semantics changed. The cut is in
-  `tree/util/callable-surface.ts`, which builds callable/mixin output surfaces;
-  render still stringifies through the existing node-family paths.
-- Helper/API surface: three private one-call helpers were deleted:
-  `copyCallableAmpersand(...)`, `copyCallableCommentNode(...)`, and
-  `copyCallableReusableLeaf(...)`. Their branches now sit directly in
-  `copyCallableRulesNode(...)`, removing helper hops without adding public API
-  or replacement helpers.
-- Metadata mutations: no new metadata mutations. Callable copies now read
-  `_options` and `_location` directly so they do not allocate node options or
-  empty location arrays merely to decide copy constructor arguments. Existing
-  `.inherit(...)` calls remain and are still part of the broader copy-stack
-  debt.
+  `tree/util/callable-binding.ts` and `tree/util/callable-surface.ts`, which
+  decide whether callable binding/surface values can reuse static source
+  values; rendering still stringifies through existing node-family paths.
+- Helper/API surface: none added and none removed. The pass is a direct
+  property-read cut.
+- Metadata mutations: no new metadata mutations. `canReuseStaticScalarLeaf(...)`
+  now checks `_location` directly, and `canReuseStaticCallableChildren(...)`
+  checks `_options?.assign` directly. This avoids allocating node options or
+  empty location arrays merely to reject/reuse callable values.
 - Error/control flow: none added.
 - Evidence: focused tests passed with
-  `pnpm --filter @jesscss/core test -- src/tree/util/__tests__/callable-output.test.ts src/tree/util/__tests__/callable-candidate-loop.test.ts src/tree/util/__tests__/cloning.test.ts`.
-  Pre-pass hotpath leash at `3eba2742`: `functions` `16.12ms` usable,
-  `import-reference` `24.51ms` usable, `mixins-guards` `17.66ms` unstable,
-  `extend-chaining` `6.24ms` unstable, `media` `5.19ms` unstable. Dirty
-  post-pass leash reported `functions` `15.60ms` usable, `import-reference`
-  `20.42ms` usable, `mixins-guards` `18.08ms` usable, `extend-chaining`
-  `5.87ms` unstable, and `media` `5.85ms` unstable. This is status only, not a
+  `pnpm --filter @jesscss/core test -- src/tree/util/__tests__/callable-output.test.ts src/tree/util/__tests__/callable-candidate-loop.test.ts src/tree/util/__tests__/cloning.test.ts src/tree/util/__tests__/callable-live-slots.test.ts`.
+  Pre-pass hotpath leash at `9227bb6b`: `functions` `14.95ms` usable,
+  `import-reference` `22.93ms` unstable, `mixins-guards` `17.30ms` unstable,
+  `extend-chaining` `5.70ms` usable, `media` `5.32ms` unstable. Dirty
+  post-pass leash reported `functions` `14.72ms` usable, `import-reference`
+  `20.23ms` usable, `mixins-guards` `19.45ms` usable, `extend-chaining`
+  `6.52ms` unstable, and `media` `6.56ms` unstable. This is status only, not a
   speed claim.
-- Verdict: accept as partial item 26 progress. This removes helper-call and
-  lazy metadata allocation overhead from the callable copy path; it does not
-  complete `copyCallableRulesValue(...)`, `copyWithReusableLeaves(...)`,
+- Verdict: accept as partial item 26 progress. This removes hidden lazy
+  metadata allocation from callable reuse predicates; it does not complete
+  `copyCallableRulesValue(...)`, `copyWithReusableLeaves(...)`,
   `constructCopy(...)`, or `.inherit(...)` deletion.

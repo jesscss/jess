@@ -4,7 +4,7 @@ import { copyWithReusableLeaves } from './cloning.js';
 
 function canReuseStaticScalarLeaf(value: Node): boolean {
   return value.hasFlag(F_STATIC)
-    && value.location.length === 0
+    && (value._location?.length ?? 0) === 0
     && !value.hasFlag(F_HAS_NODE_CHILD);
 }
 

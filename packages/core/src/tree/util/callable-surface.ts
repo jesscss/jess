@@ -118,7 +118,7 @@ function canReuseStaticCallableChildren(sourceRules: Rules): boolean {
     const child = value[i]!;
     if (
       isNode(child, N.Ruleset | N.AtRule)
-      || child.options?.assign !== undefined
+      || child._options?.assign !== undefined
     ) {
       return false;
     }

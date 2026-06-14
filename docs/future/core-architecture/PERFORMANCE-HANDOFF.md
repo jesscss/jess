@@ -2567,6 +2567,32 @@ Interpretation: status only, not a speed claim. Keep this as helper-call and
 lazy metadata allocation deletion inside the measured callable/copy stack. It
 does not remove the `copyCallableRulesValue(...)` recursive copy boundary.
 
+### Callable Reuse Lazy Metadata Cut
+
+Date: 2026-06-13.
+
+Change: callable reuse predicates now read existing node metadata slots instead
+of public lazy getters. `canReuseStaticScalarLeaf(...)` checks `_location`
+instead of `location`, and `canReuseStaticCallableChildren(...)` checks
+`_options?.assign` instead of `options?.assign`.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `9227bb6b` reported: `functions` median `14.95ms` usable,
+  `import-reference` median `22.93ms` unstable, `mixins-guards` median
+  `17.30ms` unstable, `extend-chaining` median `5.70ms` usable, and `media`
+  median `5.32ms` unstable.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `14.72ms` usable,
+  `import-reference` median `20.23ms` usable, `mixins-guards` median
+  `19.45ms` usable, `extend-chaining` median `6.52ms` unstable, and `media`
+  median `6.56ms` unstable.
+
+Interpretation: status only, not a speed claim. Keep this as lazy metadata
+allocation deletion in callable reuse decisions. It does not remove copied
+callable surfaces.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
