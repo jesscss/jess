@@ -9,9 +9,12 @@ specific benchmark leash applied to the queue. Use
 for benchmark protocol, measured targets, rejected experiments, historical
 evidence, active performance queues, and reactivation thresholds.
 
-Current mode: **benchmark-leashed aggressive cutting**. Performance is no
-longer merely parked. The active handoff decides the next target, but the
-target must be tied back to this file's benchmark/profile evidence rules.
+Current mode: **benchmark leash for node serialization completion**. Performance
+is active as a gate, not as the queue. The active handoff currently chooses
+unfinished `writeSyntax(...)` / `render(...)` / public string wrapper node
+families from `NODE-REWRITE-TRACKER.md`; this file supplies the benchmark and
+profile rules that decide whether a hot-path patch is kept, reshaped, or
+reverted.
 
 ## Preserved Lesson
 
@@ -70,7 +73,10 @@ Carry this forward as the performance thesis:
 
 ## Current Policy
 
-Performance is active again as a leash on aggressive cutting. The next broad
+Performance is active as a leash on node serialization cutting. Do not select
+standalone selector/equality cleanup, callback rewrites, or micro-performance
+rounds while the handoff is in `writeSyntax` mode unless they directly finish a
+selected node-family serialization row or fix correctness. The next broad
 eval/render/lookup/copy/rules/render-buffer change must start from a current
 benchmark or profile target and end with the same benchmark/profile rerun.
 

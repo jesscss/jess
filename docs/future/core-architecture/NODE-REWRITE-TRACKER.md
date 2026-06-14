@@ -24,6 +24,15 @@ Only selector-family syntax transport has been cut so far. A checkbox means the
 node has been reviewed specifically for this contract, not merely that one
 helper changed.
 
+Current queue priority: finish unfinished node/family serialization rows before
+selector/equality cleanup, standalone performance experiments, or generic smell
+sweeps. A pass should complete or materially advance a whole node family:
+direct `writeSyntax(...)`, direct `render(...)` emission after value selection,
+cold public string wrappers only, and removal or documented isolation of
+render-only `mark/getSince`, writer capture/readback, detached writers,
+temporary syntax arrays, and public string transport. Selector/equality work is
+parked unless it directly supports a selected node row.
+
 Completion contract for each checkbox:
 
 - direct syntax emission lives in `writeSyntax(options): void` or an equivalent
@@ -36,10 +45,11 @@ Completion contract for each checkbox:
 - focused tests prove direct render and public string output still match the
   expected behavior for that node.
 
-Priority comes from the latest broad `benchmark.less` caller-stack evidence:
-`Ruleset.getHeaderString`, declaration duplicate pre-rendering, `Any.toString`,
-`Dimension`/`Num`, `Color`, `PseudoSelector`, `Sequence`, and `Quoted` are the
-first measured offenders after the selector pass.
+Priority comes from the latest broad `benchmark.less` caller-stack evidence
+when choosing among unfinished serialization rows. Hot unfinished rows include
+`Ruleset.getHeaderString`, declaration duplicate pre-rendering/materialization,
+`Sequence`, `List`, `QueryCondition`, `Call`, `Rules`, `AtRule`, `Reference`,
+`Mixin`, `Ampersand`, and `Interpolated`.
 
 - [ ] `Node` base: generic `writeSyntax(options): void` hook exists. Global
   base render dispatch is deliberately still off until the remaining node

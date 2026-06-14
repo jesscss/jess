@@ -70,7 +70,12 @@ Less is the optimizing path. Preserve SCSS-enabling seams only when they are
 concrete and cheap or isolated behind cold extension boundaries.
 
 Work shape while `writeSyntax` is active: run full queue batches, not one-node
-dribbles.
+dribbles. A full pass must choose from the unfinished node/family rows in
+`NODE-REWRITE-TRACKER.md` and should leave one or more whole families complete
+or materially closer to complete against that tracker. Selector/equality
+cleanup, benchmark-chasing, and generic smell sweeps are paused unless they are
+directly required to finish the selected node-family serialization work or to
+fix a correctness blocker exposed by that work.
 
 Queue items must be **entire tasks**, not micro-items. A queue item is a
 meaningful node-family or runtime-path objective with its own proof surface,
@@ -100,6 +105,20 @@ and push the whole coherent batch. Reject changes that make `render(...)` call
 public `toString(...)`/`toTrimmedString(...)` as transport, or that add helper
 objects/arrays only to describe syntax.
 
+Serialization contract for this lane:
+
+- `writeSyntax(...)`: direct syntax/source emission to the provided writer,
+  with no returned string and no public string API as transport.
+- `render(...)`: select/evaluate the runtime value, then write directly to the
+  writer or render buffer. Render must not capture a public string just to
+  write it back out.
+- public `toString(...)` / `toTrimmedString(...)`: cold capture wrappers only.
+  They may use `mark/getSince`; render-only paths may not.
+- no render-only `mark/getSince`, `capture`, `preview`, writer readback,
+  helper object, temporary syntax array, or detached writer allocation remains
+  unless the row documents a cold public materialization boundary or a semantic
+  blocker.
+
 ## Active Work
 
 Correctness queue: no active correctness blockers. If a `.less` fixture fails
@@ -111,12 +130,14 @@ Performance leash:
 1. Start from the current selector `writeSyntax` baseline:
    broad `benchmark.less` profiler status had `OutputWriter.mark` `54534` and
    `OutputWriter.getSince` `49502`.
-2. Choose the next node from `NODE-REWRITE-TRACKER.md`; use caller-stack
-   evidence for priority when several unchecked nodes are available.
+2. Choose the next node/family task from `NODE-REWRITE-TRACKER.md`; use
+   caller-stack evidence for priority when several unchecked serialization rows
+   are available.
 3. Rerun focused tests and, for hot nodes, broad `benchmark.less` profiler
    status after the patch.
-4. Keep the patch only if it improves real runtime cost, removes measured
-   object/memory pressure without slowing runtime, or fixes correctness.
+4. Keep the patch only if it completes or materially advances the selected
+   serialization row and does not violate the benchmark leash. Performance is
+   a gate here, not the active queue.
 
 Immediate benchmark commands are defined in `PERFORMANCE-HANDOFF.md`.
 Performance evidence/history stays parked there; this handoff owns the active
@@ -291,7 +312,8 @@ Open tasks:
    remaining raw-text fallback performs one top-level comma scan only after
    serialization is unavoidable because the parent selector is a scalar
    `BasicSelector` string containing commas.
-18. [ ] Sweep selector matching/extend equality. Replace hot `valueOf()` equality
+18. [ ] Parked while `writeSyntax` queue is active: sweep selector
+   matching/extend equality. Replace hot `valueOf()` equality
    predicates with structural/keyset checks where possible, keeping
    `valueOf()` only as a measured, cached fast-path when it wins.
    Partial status: `Any.compare(...)`, `List.compare(...)`, and
@@ -350,8 +372,9 @@ Open tasks:
    rules/import coverage proves charset output-order handling still skips child
    registration prep and does not allocate an empty charset `_location`. This
    does not remove the pending-registration `try/catch` miss path.
-24. [ ] Continue selector/extend factory cuts separately; do not hide selector
-   placement copies inside another generic copy helper.
+24. [ ] Parked while `writeSyntax` queue is active: continue selector/extend
+   factory cuts separately; do not hide selector placement copies inside
+   another generic copy helper.
    Partial status: `selector-match-core.ts` recursive search walkers now use
    indexed loops plus push/pop path-stack state for selector-list, compound,
    complex, and pseudo-selector descent. This removes per-child callback
@@ -450,28 +473,21 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: rejected selector remainder-factory loop cut in
-`packages/core/src/tree/util/selector-match-core.ts`.
+Current pass: handoff priority correction for node serialization completion.
 
-- New traversal: rejected. The attempted indexed-loop rewrite would have
-  replaced existing `every(...)` / `some(...)` subset checks and
-  `filter(...)` remainder construction in `trySmallCompoundExtendMatch(...)`.
-  The code was reverted after benchmark evidence.
-- New node/materialization: none kept. The attempted patch did not add nodes,
-  side maps, wrappers, or public APIs, but it touched the selector remainder
-  factory boundary and was removed.
-- Render path: not touched.
-- Helper/API surface: none added.
+- New traversal: none; docs-only.
+- New node/materialization: none.
+- Render path: refocuses the active lane on the
+  `writeSyntax(...)`/`render(...)`/public string wrapper split. It forbids
+  render-only public string transport and render-only `mark/getSince` unless a
+  node row documents a cold public boundary or semantic blocker.
+- Helper/API surface: none.
 - Metadata mutations: none.
-- Error/control flow: none added.
-- Evidence: focused selector-match, selector-compare, process-extends, and
-  extend-eval-integration tests passed during the attempted patch; `@jesscss/core`
-  build passed. Bounded hot-path benchmark was run before and three times after
-  because the first after-run was noisy. The third after-run showed usable
-  regressions on `extend-chaining` and `media`.
-- Verdict: reject and revert the code. Record as item 24 evidence only. Keep
-  selector factory cuts open, but do not retry this local loop rewrite without
-  a broader structural change or stable profile evidence. The bad assumption
-  was object-count intuition: callback/array removal looked cheaper locally,
-  but the benchmark says the manual loop/branch shape lost and the real target
-  is the repeated selector matching/remainder algorithm.
+- Error/control flow: none.
+- Evidence: user direction plus the live `HANDOFF.md` and
+  `NODE-REWRITE-TRACKER.md` showed selector/performance side work could be
+  selected while unfinished node-family serialization rows remain.
+- Verdict: accept. The next queue pass must choose unfinished node/family
+  serialization work from `NODE-REWRITE-TRACKER.md`; selector/equality and
+  standalone performance cleanup remain parked unless directly required by
+  that node-family work or correctness.
