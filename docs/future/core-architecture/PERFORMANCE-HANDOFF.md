@@ -2952,6 +2952,37 @@ Interpretation: sanity status only, not a speed claim. Keep this as deletion
 of routine declaration prerender/materialization for unique properties. It
 does not remove the same-property duplicate comparison boundary.
 
+### AtRule Scalar Header Readback Cut
+
+Date: 2026-06-14.
+
+Change: `AtRule.getHeaderString(...)` now reads scalar no-trivia `Any`
+name/prelude text directly instead of opening writer `mark/getSince/restore`
+windows to recover the same string. The common no-trivia header path also
+skips the post-prelude writer probe because no trivia map exists. Non-scalar
+and trivia-backed headers stay on the existing direct `writeSyntax(...)`
+readback path.
+
+Hotpath status:
+
+- Focused `pnpm --filter @jesscss/core test -- at-rule` passed with a
+  `CountingWriter` proof that scalar headers use zero mark/getSince/restore
+  calls and non-scalar prelude headers use one localized readback window.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `14.76ms` usable,
+  `import-reference` median `20.08ms` usable, `mixins-guards` median
+  `18.98ms` unstable, `extend-chaining` median `5.95ms` noisy, and `media`
+  median `5.14ms` unstable.
+- Dirty post-pass `node scripts/profile-less-benchmark.mjs --file=benchmark.less`
+  still reported broad `OutputWriter.mark` `50044` and
+  `OutputWriter.getSince` `45048`.
+
+Interpretation: machinery deletion only, not a speed claim. The focused writer
+counters prove the selected AtRule path is cleaner, but the broad profile did
+not move at decision-quality resolution. Keep `AtRule` open for non-scalar
+header/leaf readback, body-state staging, and custom eval/import/render
+branches.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

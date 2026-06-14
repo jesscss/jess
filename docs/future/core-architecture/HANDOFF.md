@@ -303,12 +303,13 @@ Open tasks:
    and the remaining custom/instance-render fallback uses
    `hasContentSince(mark)` instead of a second `mark()` check.
 
-   Additional partial status: `AtRule` dynamic leaf render now returns scalar
-   `Any` name/prelude text directly when no trivia is active, avoiding child
-   mark/getSince/restore readback for common resolved leaf at-rules such as
-   `@namespace @var;` after the prelude resolves to a scalar. `AtRule.valueOf()`
-   also reads the name value key directly instead of routing the name through
-   public `toString(...)`.
+   Additional partial status: `AtRule` dynamic leaf render and scalar header
+   assembly now return scalar `Any` name/prelude text directly when no trivia is
+   active, avoiding child mark/getSince/restore readback for common resolved
+   leaf at-rules and scalar frame headers. `getHeaderString(...)` also skips the
+   post-prelude writer probe when no trivia map exists. `AtRule.valueOf()` reads
+   the name value key directly instead of routing the name through public
+   `toString(...)`.
 
    Evidence pointer: use `NODE-REWRITE-TRACKER.md` for per-node status and
    `PERFORMANCE-HANDOFF.md` for benchmark/profile history. Do not add queue
@@ -496,32 +497,32 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `AtRule` scalar dynamic leaf render/key transport cut.
+Current pass: `AtRule` scalar header readback cut.
 
-- New traversal: none. The existing leaf render path still renders exactly the
-  evaluated name and optional prelude.
+- New traversal: none. The existing header path still serializes exactly the
+  selected name, optional prelude, and optional body opener.
 - New node/materialization: no runtime nodes, copies, wrappers, arrays, or
   materialized render values. The only new construction is test instrumentation
-  already present in the AtRule suite's `CountingWriter` class plus focused
-  fixture nodes created by existing test factories.
-- Render path: selected node row is `AtRule`. `renderLeafNodeToString(...)`
-  now returns owned `Any.value` directly when no trivia is active, so common
-  scalar leaf name/prelude pieces do not pay child `mark()` / `getSince()` /
-  `restore()` just to assemble final leaf output. Complex/trivia-backed leaf
-  pieces stay on the old readback path. `AtRule.valueOf()` also reads
-  `name.valueOf()` instead of public `name.toString()` for equality/key text.
+  in the AtRule suite's `CountingWriter` plus focused fixture nodes created by
+  existing test factories: an empty rules body and scalar keyword children.
+- Render path: selected node row is `AtRule`. `getHeaderString(...)` now reads
+  scalar no-trivia `Any` name/prelude text directly instead of opening writer
+  mark/getSince/restore windows just to recover the text. The no-trivia path
+  also skips the post-prelude trivia probe. Complex/trivia-backed pieces stay
+  on the existing direct `writeSyntax(...)` readback path until boundary trivia
+  can be emitted without capture.
 - Helper/API surface: none added.
 - Metadata mutations: none.
-- Error/control flow: no runtime error/control-flow change. The only new
-  `Error` is a focused test hook that makes `name.toString()` throw if
-  `AtRule.valueOf()` regresses to public string transport.
-- Evidence: focused `at-rule` tests prove dynamic leaf at-rules still render
-  without evaluating an at-rule surface, scalar dynamic leaf output does not
-  use child mark/readback/restore/capture/preview, and `AtRule.valueOf()` does
-  not call public name `toString(...)`. Final hotpath smoke after the patch had
-  one unstable fixture and no decision-quality speed claim; broad
-  `benchmark.less` profiler counts stayed at `OutputWriter.mark` `50044` and
-  `OutputWriter.getSince` `45048`.
+- Error/control flow: no new runtime error/control-flow branch. The two
+  `try/finally` blocks visible in the diff are the existing writer restore
+  guards kept on the non-scalar/trivia readback path and moved under the new
+  scalar fast-path guards.
+- Evidence: focused `at-rule` tests prove scalar frame headers produce the same
+  string while using zero writer mark/getSince/restore/capture/preview calls,
+  and non-scalar prelude headers still stream child syntax through the active
+  writer with one localized readback window. Final hotpath/profile status is
+  in `PERFORMANCE-HANDOFF.md`; broad profiler mark/getSince counts did not
+  move at decision-quality resolution, so no speed claim.
 - Verdict: accept as a bounded `AtRule` serialization cut. No speed claim.
-  Keep the `AtRule` tracker row open because non-scalar leaf/header readback,
+  Keep the `AtRule` tracker row open because non-scalar header/leaf readback,
   body-state staging, and custom eval/import/render branches remain.

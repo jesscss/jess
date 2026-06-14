@@ -1111,14 +1111,19 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (withoutComments) {
       options.trivia = createTriviaMap();
     }
-    let mark = options.writer.mark();
     let nameOut: string;
-    try {
-      name.writeSyntax(options);
-      nameOut = options.writer.getSince(mark);
-    } finally {
-      options.writer.restore(mark);
+    if (!withoutComments && !options.trivia && name instanceof Any) {
+      nameOut = name.value;
       options.trivia = savedTrivia;
+    } else {
+      const mark = options.writer.mark();
+      try {
+        name.writeSyntax(options);
+        nameOut = options.writer.getSince(mark);
+      } finally {
+        options.writer.restore(mark);
+        options.trivia = savedTrivia;
+      }
     }
     const nameEndsWithSpace = /\s$/.test(nameOut);
     if (prelude) {
@@ -1137,18 +1142,23 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       if (withoutComments) {
         preludePrintOptions.trivia = createTriviaMap();
       }
-      mark = preludePrintOptions.writer.mark();
       let preludeOut: string;
-      try {
-        emitTriviaTokens(
-          consumeTrivia(preludeTrivia, prelude.location[0], 'before', preludePrintOptions),
-          preludePrintOptions
-        );
-        prelude.writeSyntax(preludePrintOptions);
-        preludeOut = preludePrintOptions.writer.getSince(mark);
-      } finally {
-        preludePrintOptions.writer.restore(mark);
+      if (!withoutComments && !preludeTrivia && prelude instanceof Any) {
+        preludeOut = prelude.value;
         preludePrintOptions.trivia = savedTrivia;
+      } else {
+        const mark = preludePrintOptions.writer.mark();
+        try {
+          emitTriviaTokens(
+            consumeTrivia(preludeTrivia, prelude.location[0], 'before', preludePrintOptions),
+            preludePrintOptions
+          );
+          prelude.writeSyntax(preludePrintOptions);
+          preludeOut = preludePrintOptions.writer.getSince(mark);
+        } finally {
+          preludePrintOptions.writer.restore(mark);
+          preludePrintOptions.trivia = savedTrivia;
+        }
       }
       if (!preludeOut.trim()) {
         out += nameOut;
@@ -1172,8 +1182,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
       out += finalPreludeOut;
       let preludePost = '';
-      if (!withoutComments) {
-        mark = options.writer.mark();
+      if (!withoutComments && preludeTrivia) {
+        const mark = options.writer.mark();
         try {
           emitCommentTriviaAfterNode(prelude, options);
           preludePost = options.writer.getSince(mark);

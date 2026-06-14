@@ -1655,12 +1655,32 @@ describe('AtRule', () => {
       expect(writer.toString()).toBe('');
       expect(writer.captures).toBe(0);
       expect(writer.previews).toBe(0);
-      expect(nameUsedActiveWriter).toBe(true);
+      expect(writer.marks).toBe(1);
+      expect(writer.reads).toBe(1);
+      expect(writer.restores).toBe(1);
+      expect(nameUsedActiveWriter).toBe(false);
       expect(preludeUsedActiveWriter).toBe(true);
     } finally {
       name.writeSyntax = originalNameWriteSyntax;
       prelude.writeSyntax = originalPreludeWriteSyntax;
     }
+  });
+
+  it('streams scalar at-rule headers without writer readback', () => {
+    const writer = new CountingWriter();
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: any('screen', { role: 'keyword' }),
+      rules: rules([])
+    });
+
+    expect(node.getHeaderString(getPrintOptions({ writer }))).toBe('@media screen {\n');
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(writer.restores).toBe(0);
+    expect(writer.captures).toBe(0);
+    expect(writer.previews).toBe(0);
   });
 
   it('renders leaf at-rules without preview scaffolding', () => {
