@@ -574,7 +574,7 @@ describe('Declaration', () => {
 
   it('preserves Less-style function calls in custom property values during render(context)', () => {
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('rgba', new JsFunction({
       name: 'rgba',
       fn: () => any('rgb(0, 30, 0)')
     }));

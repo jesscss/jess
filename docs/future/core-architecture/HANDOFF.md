@@ -1496,38 +1496,100 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7bb. [ ] Audit remaining core test `register('function')` fixture callsites;
+7bb. [x] Audit remaining core test `register('function')` fixture callsites;
     convert any test that is not specifically proving plugin-style registration
     to `setFunctionBinding(...)`.
+   Done. Core function/call/control/declaration/mixin/reference fixtures now
+   publish direct JS functions with `setFunctionBinding(...)`; no core lookup
+   test needs the generic register entry point for function binding setup.
 
-7bc. [ ] Decide whether `Rules.register('function', ...)` itself still belongs
+7bc. [x] Decide whether `Rules.register('function', ...)` itself still belongs
     in core after external adapters moved to `setFunctionBinding(...)`; delete
     or isolate it if only tests use it.
+   Done. `Rules.register('function', ...)` was deleted. The only direct
+   function-binding writer is `setFunctionBinding(...)`; structural
+   `registerNode(Func)` still writes the same map from the node-adoption path.
 
-7bd. [ ] Split `ReferenceFindOptions` further so the mixed type is no longer
+7bd. [x] Split `ReferenceFindOptions` further so the mixed type is no longer
     needed beyond reference preparation, or document the exact shared fields
     that make a single prepared object cheaper.
+   Done. `ReferenceFindOptions` was deleted. Reference lookup preparation now
+   returns explicit `declaration` and `callable` option shapes so declaration
+   helpers do not carry callable-only fields and callable lookup does not carry
+   declaration filters/start semantics.
 
-7be. [ ] Carry normalized callable path keys through array remainder recursion
+7be. [x] Carry normalized callable path keys through array remainder recursion
     (`collectKeyRemainder(...)` paths) where the source key is already known,
     without adding a broad wrapper object.
+   Done. `findMixin(...)` carries the normalized path key into namespace and
+   compound-prefix recursion, and nested lookups use a separator scan to pass
+   the existing remainder key instead of rebuilding the joined key at each
+   recursive array boundary.
 
-7bf. [ ] Audit direct declaration option literal allocation in `Reference`;
+7bf. [x] Audit direct declaration option literal allocation in `Reference`;
     assign lookup functions or option builders only if the result deletes more
     dispatch/object churn than it adds.
+   Done. The pass did not add option builders or assigned-function dispatch.
+   Reference lookup now builds one prepared object with lane-specific nested
+   option shapes, and declaration helpers receive that prepared declaration
+   object directly instead of reassembling equivalent literals per helper.
 
-7bg. [ ] Audit function binding versioning in clone/derived iteration surfaces;
+7bg. [x] Audit function binding versioning in clone/derived iteration surfaces;
     ensure copied `functionsByName` maps cannot reuse stale binding handles
     across output surfaces.
+   Done. No clone/derived iteration invalidation change was needed. Explicit
+   `setFunctionBinding(...)` writes increment `lookupVersion`; structural
+   `registerNode(Func)` still rides the existing structural invalidation, and
+   copied function maps remain isolated per clone/iteration output surface.
 
-7bh. [ ] Audit `directDeclarationsByName` buckets against `directDeclarationLookupCache`;
+7bh. [x] Audit `directDeclarationsByName` buckets against `directDeclarationLookupCache`;
     collapse either layer only if focused lookup tests prove no regression in
     repeated multi-name lookups.
+   Done as an audit. Both layers remain: declaration buckets avoid repeated
+   child scans by name, while the lookup cache memoizes strategy/local/target
+   outcomes above those buckets. No collapse was made without a focused
+   regression-proofing benchmark.
 
-7bi. [ ] Re-run production grep for registry-shaped lookup APIs
+7bi. [x] Re-run production grep for registry-shaped lookup APIs
     (`register('function')`, `findDeclaration(..., undefined)`,
     `findFunctionDirect`, registry utility names) and delete any remaining
     non-test residue.
+   Done. Grep across core/plugin/language-service lookup surfaces finds no
+   `register('function')`, `findFunctionDirect`, `ReferenceFindOptions`, or
+   undefined-filter `findDeclaration(...)` residue.
+
+Seeded next binding/lookup queue:
+
+7bj. [ ] Audit callable `findMixin(...)` array recursion after normalized key
+    carry: delete any helper/remainder branch that is not exercised by focused
+    namespace-chain tests.
+
+7bk. [ ] Split or inline `getCallableLookupKeyRemainder(...)` if the separator
+    scan shows up as a helper tax; keep it only if it prevents repeated string
+    joins in real recursive callable paths.
+
+7bl. [ ] Inspect `ReferenceLookupOptions` nesting after the split; keep the
+    nested object only if it removes more per-helper literal allocation than it
+    adds in dispatch indirection.
+
+7bm. [ ] Add or tighten focused tests for recursive namespace/ruleset callable
+    lookup with parameters so `terminalMixinOnly` and normalized key carry stay
+    locked to Less semantics.
+
+7bn. [ ] Audit `findAnyDeclaration(...)` callers and tests: keep it as the
+    explicit cold any-declaration boundary only if no hot-path reference caller
+    can use typed variable/property lanes.
+
+7bo. [ ] Re-check direct declaration bucket invalidation for dynamic-name
+    promotion and `setDefined` after the option split; prove with focused tests
+    before changing cache shape.
+
+7bp. [ ] Inspect function binding handle cache invalidation after deleting
+    `register('function')`; remove any remaining comments or tests that imply
+    a registry-backed function surface.
+
+7bq. [ ] Run the binding-only production grep again after the next changes and
+    delete any stale registry-shaped lookup wording in code comments.
 
 Parked secondary deep-cut queue:
 
@@ -1856,6 +1918,49 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Function register deletion and reference option split pass: accepted as
+  binding/lookup surface cleanup and recursive callable key-carry cleanup, not
+  as a speed claim. Files: `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/reference.ts`,
+  `packages/core/src/tree/util/lookup-utils.ts`, focused core lookup/function
+  tests, and this handoff.
+  - New traversal: one bounded string separator scan in
+    `getCallableLookupKeyRemainder(...)`, used only when a normalized callable
+    path key is already available and recursive array lookup needs the suffix
+    key. It replaces repeated remainder joins in namespace/compound callable
+    recursion. No new parent walk, child walk, sort, filter, generator, or
+    declaration lookup recursion was added.
+  - New node/materialization: none. Tests still construct the same
+    `new JsFunction(...)` fixture nodes, now publishing them through
+    `setFunctionBinding(...)`. No production node, copied node, wrapper
+    `Rules`, `.inherit(...)`, `.adopt(...)`, materialized array, or
+    frozen/source/parent mutation was added.
+  - Render path: unchanged. This pass changes lookup publication and prepared
+    option shapes; it does not resolve arrays or nodes simply to stringify.
+  - Helper/API surface: net cleanup. Deleted `Rules.register('function', ...)`
+    and deleted the exported `ReferenceFindOptions` mixed type. Added one local
+    `ReferenceLookupOptions` type and one private callable path-key suffix
+    helper; both are scoped to existing lookup recursion/dispatch and queued
+    for the next pass's helper-tax audit.
+  - Metadata mutations: none added. The existing `setFunctionBinding(...)`
+    `lookupVersion` invalidation remains the function binding writer boundary;
+    structural `registerNode(Func)` still uses the structural invalidation path.
+  - Danger-token prosecution: remaining registry wording is historical handoff
+    context or explicit grep targets. `directDeclarationsByName`,
+    `directDeclarationLookupCache`, and `functionsByName` remain binding/cache
+    structures, not a global lookup registry. The next queue audits whether any
+    comment wording still implies otherwise.
+  - Evidence: focused lookup/function suite passed (`7` files, `368` passed,
+    `265` skipped). Production grep found no `register('function')`,
+    `findFunctionDirect`, `ReferenceFindOptions`, or undefined-filter
+    `findDeclaration(...)` residue. Touched-file ESLint, `git diff --check`,
+    `@jesscss/core` build, `audit:node-creation`, `jess` build, and
+    `verify:aggressive-cutting-review` all passed; the review gate reported
+    danger tokens and the bullets above prosecute each current-diff token.
+    One-iteration hotpath smoke passed with usable signal:
+    `mixins-guards.less` `29.03ms`, `scope-lookup-stress.less` `117.14ms`.
+    No speed claim is made from this pass.
 
 - Function binding and option-dispatch split pass: accepted as binding/lookup
   surface cleanup and one function-handle invalidation fix, not as a speed

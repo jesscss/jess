@@ -104,5 +104,3 @@ export type CallableFindOptions = {
   /** For mixin-ruleset calls with args, namespace containers may be rulesets but terminal hits must be mixins. */
   terminalMixinOnly?: boolean;
 };
-
-export type ReferenceFindOptions = DeclarationFindOptions & CallableFindOptions;

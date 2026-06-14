@@ -667,7 +667,7 @@ describe('Mixin', () => {
       });
 
       const root = rules([mixinDef, component]);
-      root.register('function', new JsFunction({
+      root.setFunctionBinding('derive-border', new JsFunction({
         name: 'derive-border',
         fn: (value: Node) => value
       }));

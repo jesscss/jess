@@ -961,7 +961,7 @@ describe('Control Nodes', () => {
   it('evaluates $for with call iterable branch', async () => {
     const context = new Context();
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('mkList', new JsFunction({
       name: 'mkList',
       fn: () => list([new Any('x'), new Any('y')])
     }));
@@ -980,7 +980,7 @@ describe('Control Nodes', () => {
   it('keeps $for live bindings visible in nested rulesets with call iterables', async () => {
     const context = new Context();
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('mkList', new JsFunction({
       name: 'mkList',
       fn: () => list([new Any('x'), new Any('y')])
     }));
@@ -1097,7 +1097,7 @@ describe('Control Nodes', () => {
     const loopRules = rules([
       decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
     ]);
-    loopRules.register('function', new JsFunction({
+    loopRules.setFunctionBinding('make-blue', new JsFunction({
       name: 'make-blue',
       fn: () => any('blue')
     }));
@@ -1251,7 +1251,7 @@ describe('Control Nodes', () => {
     const loopRules = rules([
       decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
     ]);
-    loopRules.register('function', new JsFunction({
+    loopRules.setFunctionBinding('make-blue', new JsFunction({
       name: 'make-blue',
       fn: () => any('blue')
     }));
@@ -1280,7 +1280,7 @@ describe('Control Nodes', () => {
         })
       })
     ]);
-    loopRules.register('function', new JsFunction({
+    loopRules.setFunctionBinding('make-blue', new JsFunction({
       name: 'make-blue',
       fn: () => any('blue')
     }));

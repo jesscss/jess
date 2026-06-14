@@ -3480,7 +3480,7 @@ describe('reference', () => {
             value: ref({ key: 'x' }, { type: 'variable' })
           })
         ]);
-        node.register('function', new JsFunction({
+        node.setFunctionBinding('async-name', new JsFunction({
           name: 'async-name',
           fn: async () => any('x')
         }));
@@ -4145,7 +4145,7 @@ describe('reference', () => {
 
       try {
         const node = rules([]);
-        node.register('function', new JsFunction({
+        node.setFunctionBinding('paint', new JsFunction({
           name: 'paint',
           fn: () => any('blue')
         }));

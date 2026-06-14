@@ -626,7 +626,7 @@ describe('Call', () => {
 
   it('writes resolved non-string call render output into flat buffers', async () => {
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('empty', new JsFunction({
       name: 'empty',
       fn: () => any('ok')
     }));
@@ -656,7 +656,7 @@ describe('Call', () => {
 
   it('renders resolved non-string call output directly without public resolve', async () => {
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('empty', new JsFunction({
       name: 'empty',
       fn: () => any('ok')
     }));
@@ -740,7 +740,7 @@ describe('Call', () => {
     const originalLeaf = any('red');
     const originalValue = new CountingSequence([originalLeaf, dimension(10, 'px')]);
     const originalArgs = list([originalValue]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('echo', new JsFunction({
       name: 'echo',
       fn: (value: Sequence) => any(value === originalValue ? 'ok' : 'bad')
     }));
@@ -1146,7 +1146,7 @@ describe('Call', () => {
 
   it('marks declaration-only JS call output without call-site back-pointers', async () => {
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('decls', new JsFunction({
       name: 'decls',
       fn: () => rules([
         decl({ name: new Any('color', { role: 'property' }), value: any('red') })
@@ -1171,7 +1171,7 @@ describe('Call', () => {
 
   it('does not copy empty positional JS function args', async () => {
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('empty', new JsFunction({
       name: 'empty',
       fn: () => any('ok')
     }));
@@ -1199,7 +1199,7 @@ describe('Call', () => {
 
   it('does not clone childless source-free scalar leaves when copying positional JS function args', async () => {
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('echo', new JsFunction({
       name: 'echo',
       fn: (value: Any) => any(value.valueOf() === 'red' ? 'ok' : 'bad')
     }));
@@ -1233,7 +1233,7 @@ describe('Call', () => {
   it('passes plain positional JS function containers without copying them', async () => {
     let received: Sequence | undefined;
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('echo', new JsFunction({
       name: 'echo',
       fn: (value: Sequence) => {
         received = value;
@@ -1259,7 +1259,7 @@ describe('Call', () => {
 
   it('does not clone childless source-free scalar leaves for callback arg lists', async () => {
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('first', new JsFunction({
       name: 'first',
       fn: defineFunction(
         'first',
@@ -1311,7 +1311,7 @@ describe('Call', () => {
 
     let rawArg: Node | undefined;
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('first', new JsFunction({
       name: 'first',
       fn: defineFunction(
         'first',
@@ -1353,7 +1353,7 @@ describe('Call', () => {
   it('keeps metadata rawArgs mutations isolated from source call arguments', async () => {
     let rawArgsDuringCall: List | undefined;
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('mutate-raw', new JsFunction({
       name: 'mutate-raw',
       fn: defineFunction(
         'mutate-raw',
@@ -1388,7 +1388,7 @@ describe('Call', () => {
   it('records metadata rawArgs placement beside the owned argument surface', async () => {
     let rawArgsDuringCall: List | undefined;
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('inspect-raw', new JsFunction({
       name: 'inspect-raw',
       fn: defineFunction(
         'inspect-raw',
@@ -1433,7 +1433,7 @@ describe('Call', () => {
   it('keeps metadata rawArgs owned across dynamic render and resolve', async () => {
     const seenRawArgs: List[] = [];
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('mutate-raw', new JsFunction({
       name: 'mutate-raw',
       fn: defineFunction(
         'mutate-raw',
@@ -1485,7 +1485,7 @@ describe('Call', () => {
 
   it('renders metadata dynamic functions without evaluating the dynamic name twice', async () => {
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('raw-length', new JsFunction({
       name: 'raw-length',
       fn: defineFunction(
         'raw-length',
@@ -1530,7 +1530,7 @@ describe('Call', () => {
 
     const seenRawArgs: List[] = [];
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('mutate-raw', new JsFunction({
       name: 'mutate-raw',
       fn: defineFunction(
         'mutate-raw',
@@ -1590,7 +1590,7 @@ describe('Call', () => {
   it('keeps optional metadata failures on the owned rawArgs surface before rethrowing', async () => {
     let rawArgsDuringCall: List | undefined;
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('badMeta', new JsFunction({
       name: 'badMeta',
       fn: defineFunction(
         'badMeta',
@@ -1625,7 +1625,7 @@ describe('Call', () => {
     const originalValue = seq([any('red'), dimension(10, 'px')]);
     const originalArgs = list([originalValue]);
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('inspect-owned', new JsFunction({
       name: 'inspect-owned',
       fn: defineFunction(
         'inspect-owned',
@@ -1656,7 +1656,7 @@ describe('Call', () => {
 
   it('does not clone childless source-free scalar leaves before resolving referenced JS function calls', async () => {
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('echo', new JsFunction({
       name: 'echo',
       fn: (value: Any) => any(value.valueOf() === 'red' ? 'ok' : 'bad')
     }));
@@ -1693,7 +1693,7 @@ describe('Call', () => {
 
   it('does not clone source-free scalar leaves in nested args before resolving referenced JS function calls', async () => {
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('echo', new JsFunction({
       name: 'echo',
       fn: defineFunction(
         'echo',
@@ -1738,7 +1738,7 @@ describe('Call', () => {
 
   it('derives referenced JS function calls without reconstructing the source call', async () => {
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('echo', new JsFunction({
       name: 'echo',
       fn: (value: Any) => any(value.valueOf() === 'red' ? 'ok' : 'bad')
     }));
@@ -1980,7 +1980,7 @@ describe('Call', () => {
     };
     let calls = 0;
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('bad', new JsFunction({
       name: 'bad',
       fn: () => {
         calls++;
@@ -2022,7 +2022,7 @@ describe('Call', () => {
   it('does not probe optional JS calls with content before rendering them', async () => {
     let calls = 0;
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('wrap', new JsFunction({
       name: 'wrap',
       fn: () => {
         calls++;
@@ -2059,7 +2059,7 @@ describe('Call', () => {
     const derivedCalls = countDeriveCallUse();
     let calls = 0;
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('ok', new JsFunction({
       name: 'ok',
       fn: () => {
         calls++;
@@ -2113,7 +2113,7 @@ describe('Call', () => {
 
   it('resolves optional JS failure fallback without shallow-cloning the source call', async () => {
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('bad', new JsFunction({
       name: 'bad',
       fn: () => {
         throw new Error('bad function');
@@ -2155,7 +2155,7 @@ describe('Call', () => {
     const derivedCalls = countDeriveCallUse();
     let calls = 0;
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('bad', new JsFunction({
       name: 'bad',
       fn: () => {
         calls++;
@@ -2193,7 +2193,7 @@ describe('Call', () => {
 
   it('does not clone childless source-free scalar leaves before resolving callback arg lists', async () => {
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('first', new JsFunction({
       name: 'first',
       fn: defineFunction(
         'first',
