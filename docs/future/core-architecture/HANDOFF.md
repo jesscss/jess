@@ -722,6 +722,14 @@ the binding index/scope lookup refactor.
    of `valueOf().match(...)` array allocation. Focused at-rule/ruleset/
    selector/extend tests passed. Hotpath leash was status-only; see
    `PERFORMANCE-HANDOFF.md`.
+15c. [x] Continue Declaration formatting pass. Multiline declaration value
+   formatting no longer allocates regex `match(...)` arrays for indentation or
+   closing-line checks, custom fallback formatting no longer calls
+   `valueOut.match(...)` just to preserve leading whitespace, and custom
+   interpolated render replacement evaluation uses an indexed loop instead of
+   `replacements.entries()`. Focused declaration/var-declaration/list/sequence
+   tests passed. Hotpath leash was status-only; see
+   `PERFORMANCE-HANDOFF.md`.
 16. [ ] Continue `Reference` before moving to the next node. Audit and cut the
    remaining copy/materialization pressure: `createRulesLikeReferenceSurface`,
    public `evaluateReferenceValueNode(...)` materialization, merged assign
@@ -888,50 +896,50 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: AtRule header direct syntax and Ruleset ampersand-count cut.
+Current pass: Declaration formatting regex/iterator cuts.
 
-- New traversal: one bounded character loop was added in `countAmpersands(...)`
-  to replace `valueOf().match(/&/g)`, which allocated a regex result array just
-  to count ampersands. One prelude trivia lookup was added to preserve the same
-  boundary trivia that `Node.toString(...)` previously emitted; it consumes the
-  existing trivia run and does not scan child nodes.
+- New traversal: three small character loops were added in
+  `leadingHorizontalWhitespaceLength(...)`, `trimLeadingSpacesAndTabs(...)`,
+  and `isClosingDeclarationLine(...)`. They replace regex `match(...)` result
+  arrays and regex leading-space replacement in the same declaration string
+  formatting path. `evalCustomInterpolatedRenderValue(...)` now uses an
+  indexed loop over the already-copied `replacements` array instead of
+  `replacements.entries()`, deleting iterator/tuple churn without changing the
+  evaluation order. The two `slice(...)` calls in the diff produce required
+  output substrings after the whitespace scan; they are not array copies or
+  throwaway materialization.
 - New node/materialization: none added. This pass did not add `new Node`,
   copied nodes, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen state,
-  parent restoration, source metadata mutation, or new owned selector/rules
+  parent restoration, source metadata mutation, or new declaration/list/sequence
   materialization.
-- Render path: `AtRule.writeSyntax(...)` is source serialization only.
-  `AtRule.getHeaderString(...)` still captures the final header text because
-  `serializeRulesContainer(...)` currently consumes string headers, but child
-  name/prelude emission inside that capture now writes direct syntax instead
-  of calling public `toString(...)`.
-- Helper/API surface: one node-local public override,
-  `AtRule.writeSyntax(...)`, was added to satisfy the existing node writer
-  contract and delete base generic value-walk/public-string fallback use for
-  at-rule source syntax. No new public eval/resolve/materialization API was
-  added. The `Ruleset` ampersand counter is a small module helper that replaces
-  regex allocation; it does not hide traversal.
-- Metadata mutations: none added. Existing trivia emission uses
-  `options.emittedTrivia`, the same print-state mechanism used by source
-  serialization, and does not mutate nodes.
-- Error/control flow: no new routine error-control path was added. The
-  `try/finally` blocks in `AtRule.getHeaderString(...)` restore writer marks
-  and temporary trivia state after direct header fragment emission; they do not
-  throw/catch expected misses or branch outcomes.
-- Evidence: pre-pass hotpath leash at `3f641b78`: `functions` `14.97ms`
-  unstable, `import-reference` `23.39ms` usable, `mixins-guards` `17.71ms`
-  usable, `extend-chaining` `5.87ms` usable, `media` `6.33ms` unstable.
-  Dirty post-pass leash: `functions` `14.79ms` usable, `import-reference`
-  `24.00ms` usable, `mixins-guards` `17.62ms` usable, `extend-chaining`
-  `5.78ms` usable, `media` `6.08ms` unstable. This is status only, not a
-  speed claim. Focused tests passed:
+- Render path: declaration render still writes/captures the final declaration
+  string at the existing boundary. This pass only changes formatting internals
+  from regex/iterator allocation to character checks; it does not resolve into
+  arrays/nodes just to stringify.
+- Helper/API surface: three module-local character helpers were added to delete
+  regex result allocation from `formatNonCustomValue(...)` and custom fallback
+  leading-whitespace preservation. They do not widen public API or hide generic
+  branching.
+- Metadata mutations: none added.
+- Error/control flow: none added.
+- Evidence: pre-pass hotpath leash at `9a5488a4`: `functions` `15.02ms`
+  usable, `import-reference` `22.22ms` usable, `mixins-guards` `18.14ms`
+  usable, `extend-chaining` `6.06ms` unstable, `media` `5.55ms` unstable.
+  Dirty post-pass leash: `functions` `15.05ms` usable, `import-reference`
+  `22.62ms` usable, `mixins-guards` `18.59ms` usable, `extend-chaining`
+  `5.85ms` usable, `media` `5.72ms` usable. This is status only, not a speed
+  claim. A local Node `v24.11.1` microbench over declaration-shaped strings
+  showed the exact character predicates faster than the regex forms they
+  replaced, but that evidence is limited to the micro-operations. Focused tests
+  passed:
   `pnpm --filter @jesscss/core test --
-  src/tree/__tests__/at-rule.test.ts src/tree/__tests__/ruleset.test.ts
-  src/tree/__tests__/selector.test.ts src/tree/__tests__/extend.test.ts
-  src/tree/__tests__/extend-rules.test.ts` (`147` passed).
-- Verdict: accept the AtRule direct syntax/header child-transport cut and the
-  Ruleset regex-result allocation cut. Remaining open work: the final
-  `serializeRulesContainer(...)` string-header boundary, deeper
-  `Ruleset.getHeaderString(...)` capture/comparison paths, `AtRule` body-state
-  branch ladders, `Call.evalArgNodes(...)` copy pressure, whole-call
+  src/tree/__tests__/declaration.test.ts
+  src/tree/__tests__/var-declaration.test.ts src/tree/__tests__/list.test.ts
+  src/tree/__tests__/sequence.test.ts` (`125` passed).
+- Verdict: accept the declaration regex/iterator deletion. Remaining open
+  work: custom-property raw source branches, merge-state/materialization
+  boundaries, the final `serializeRulesContainer(...)` string-header boundary,
+  deeper `Ruleset.getHeaderString(...)` capture/comparison paths, `AtRule`
+  body-state branch ladders, `Call.evalArgNodes(...)` copy pressure, whole-call
   mark/readback, `Reference` materialization, selector/extend equality,
   `StyleImport` placement copies, and the coherent binding-handle model.

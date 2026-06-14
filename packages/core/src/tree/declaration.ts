@@ -38,6 +38,47 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
 
+function isHorizontalWhitespaceCode(code: number): boolean {
+  return code === 32 || code === 9 || code === 13 || code === 12;
+}
+
+function leadingHorizontalWhitespaceLength(value: string): number {
+  let i = 0;
+  while (i < value.length && isHorizontalWhitespaceCode(value.charCodeAt(i))) {
+    i++;
+  }
+  return i;
+}
+
+function trimLeadingSpacesAndTabs(value: string): string {
+  let i = 0;
+  while (i < value.length) {
+    const code = value.charCodeAt(i);
+    if (code !== 32 && code !== 9) {
+      break;
+    }
+    i++;
+  }
+  return i === 0 ? value : value.slice(i);
+}
+
+function isClosingDeclarationLine(value: string): boolean {
+  const length = value.length;
+  if (length === 0 || length > 2) {
+    return false;
+  }
+  const first = value.charCodeAt(0);
+  const closes = first === 125 || first === 41 || first === 93;
+  if (!closes) {
+    return false;
+  }
+  if (length === 1) {
+    return true;
+  }
+  const second = value.charCodeAt(1);
+  return second === 44 || second === 59;
+}
+
 export const enum AssignmentType {
   Default = ':',
   Add = '+:',              // similar to += in JS, but merges lists / sequences / collections
@@ -427,7 +468,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private formatNonCustomValue(valOut: string, _options: PrintOptions) {
     const trimmedEnd = valOut.replace(/\s+$/g, '');
     if (!trimmedEnd.includes('\n')) {
-      return ` ${trimmedEnd.replace(/^[ \t]+/g, '')}`;
+      return ` ${trimLeadingSpacesAndTabs(trimmedEnd)}`;
     }
 
     // Authored multiline declaration values keep their line breaks. We normalize
@@ -436,22 +477,23 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const continuationIndent = '  ';
     const lines = trimmedEnd.split('\n');
     let out = '';
-    const [firstLine = '', ...restLines] = lines;
-    const firstContent = firstLine.replace(/^[ \t]+/g, '').trimEnd();
+    const firstLine = lines[0] ?? '';
+    const firstContent = trimLeadingSpacesAndTabs(firstLine).trimEnd();
 
     if (firstContent) {
       out = ` ${firstContent}`;
     }
 
-    for (const line of restLines) {
+    for (let lineIndex = 1; lineIndex < lines.length; lineIndex++) {
+      const line = lines[lineIndex]!;
       if (!line.trim()) {
         out += '\n';
         continue;
       }
 
-      const lineIndent = line.match(/^[ \t]*/)?.[0].length ?? 0;
-      const content = line.replace(/^[ \t]+/g, '').trimEnd();
-      const isClosingLine = /^[}\])]([,;])?$/.test(content);
+      const lineIndent = leadingHorizontalWhitespaceLength(line);
+      const content = trimLeadingSpacesAndTabs(line).trimEnd();
+      const isClosingLine = isClosingDeclarationLine(content);
       const normalizedIndent = ' '.repeat(
         isClosingLine ? lineIndent : Math.max(continuationIndent.length, lineIndent)
       );
@@ -523,7 +565,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         const fallbackOut = stringifyCustomFallbackFunctionCall(value, options);
         const customOut = fallbackOut === undefined
           ? valueOut
-          : `${valueOut.match(/^[ \t\r\f]*/)?.[0] ?? ''}${fallbackOut}`;
+          : `${valueOut.slice(0, leadingHorizontalWhitespaceLength(valueOut))}${fallbackOut}`;
         return customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
       }, value);
       restorePrintState(options, saved);
@@ -818,7 +860,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       replacements[index] = out;
     };
-    for (const [index, replacement] of replacements.entries()) {
+    for (let index = 0; index < replacements.length; index++) {
+      const replacement = replacements[index]!;
       if (chain) {
         chain = chain.then(() => evaluateReplacement(replacement, index));
         continue;

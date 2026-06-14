@@ -2274,6 +2274,41 @@ Interpretation: status only, not a speed claim. Keep as public-string transport
 and regex-result allocation deletion; the bounded leash is mixed but not
 regressive enough to reject the simpler path.
 
+### Declaration Formatting Regex/Iterator Cut
+
+Date: 2026-06-13.
+
+Change: `Declaration.formatNonCustomValue(...)` no longer uses regex
+`match(...)` arrays to measure line indentation or closing-line shape, and
+custom fallback rendering no longer uses `valueOut.match(...)` to preserve
+leading horizontal whitespace. The same formatting now uses small character
+scans. `evalCustomInterpolatedRenderValue(...)` also uses an indexed loop
+instead of `replacements.entries()`.
+
+Micro-operation check: a local Node `v24.11.1` microbench over
+declaration-shaped strings showed the character loops faster for these exact
+operations: leading trim median `29.49ms` vs regex replace `55.53ms`, leading
+whitespace length median `20.62ms` vs regex match `55.14ms`, and closing-line
+predicate median `34.46ms` vs regex test `50.41ms` over `2,000,000`
+iterations. This supports keeping the formatting predicate rewrite, but it is
+not a whole-render speed claim.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `9a5488a4` reported: `functions` median `15.02ms` usable,
+  `import-reference` median `22.22ms` usable, `mixins-guards` median
+  `18.14ms` usable, `extend-chaining` median `6.06ms` unstable, and `media`
+  median `5.55ms` unstable.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `15.05ms` usable,
+  `import-reference` median `22.62ms` usable, `mixins-guards` median
+  `18.59ms` usable, `extend-chaining` median `5.85ms` usable, and `media`
+  median `5.72ms` usable.
+
+Interpretation: status only, not a speed claim. Keep as regex-result and
+iterator deletion in declaration formatting/render staging.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
