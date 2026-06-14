@@ -35,22 +35,28 @@ Active implementation specs:
    binding/lookup work blocks benchmark cutting, node cleanup, selector cleanup,
    and smell sweeps. Do not seed the active queue from secondary cutting or
    performance items.
-5. Treat "full queue pass" as a full binding/lookup swath: complete as many
-   related binding/lookup items as can be safely proven before a commit. Only
-   after the binding/lookup queue is fully complete and exhausted may this
-   worktree return to cutting/performance work, unless the user explicitly
-   redirects the lane.
-6. Start each non-correctness binding/lookup pass from the benchmark leash below
+5. Queue items must be whole, distinct tasks, not one-line checks, obvious
+   follow-up edits, verification commands, or audit bullets. A valid queue item
+   names a coherent code area, the architectural question, the expected kind of
+   cut, and its acceptance evidence. Put small checks inside that task's notes;
+   do not promote them to top-level queue entries.
+6. Treat "full queue pass" as completing every active binding/lookup task that
+   can be safely proven before a commit. Only after the binding/lookup queue is
+   fully complete and exhausted may this worktree return to cutting/performance
+   work, unless the user explicitly redirects the lane.
+7. Start each non-correctness binding/lookup pass from the benchmark leash below
    when the selected lane touches measured hot paths.
-7. State one hypothesis before editing.
-8. Make the smallest behavior-preserving cut that removes measured work or
+8. State one hypothesis before editing.
+9. Make the smallest behavior-preserving cut that removes measured work or
    clearly wrong machinery.
-9. Run focused tests first, then the required gates.
-10. Keep, reshape, or revert based on the benchmark evidence and the aggressive
+10. Run focused tests first, then the required gates.
+11. Keep, reshape, or revert based on the benchmark evidence and the aggressive
    cutting self-prosecution.
-11. Before committing, update the completed items and seed the next explicit
-    binding/lookup queue from live remaining code smells. Commit and push only
-    after that full swath is complete and the next queue is visible.
+12. Before committing, update the completed tasks and seed the next explicit
+    binding/lookup queue from live remaining code smells. The next queue must
+    contain real tasks with acceptance evidence, not micro-items. Commit and
+    push only after that full task set is complete and the next queue is
+    visible.
 
 ## Focus Spec
 
@@ -1900,24 +1906,44 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7dg. [ ] Inspect `ReferenceLookupOptions`/handle shape one more time after
-    helper inlining; split only if handle shape can become its own prepared
-    record and remove unused lane option construction.
+7dg. [x] Callable lookup result-allocation task. Inspect the direct reference
+    switch, handle/option shape, callable namespace union ownership, and
+    `findMixinsFast(...)` result collection as one allocation/removal task.
+   Done. The actual cut was lazy result allocation in `findMixinsFast(...)`,
+   preserving public `[]` misses while avoiding eager arrays on no-hit paths.
+   Subchecks rejected as non-cuts: handle shape still needs one prepared target
+   record carrying declaration/callable bits; direct switch key conversion is
+   once per selected lane; `compoundPrefixFast` is fresh for the current lookup
+   and not cached before union append. Focused reference/mixin/call/rules/import
+   /control suite passed after the edit.
 
-7dh. [ ] Audit `getLookupKeyString(valueKey)` calls in direct switch branches;
-    carry string keys only if it avoids repeated conversion without widening
-    key handling or adding per-lane wrappers.
+Seeded next binding/lookup queue:
 
-7di. [ ] Inspect `findMixin(...)` array namespace union path for mutating
-    `compoundPrefixFast`; clone only if a cached compound-prefix result can be
-    reused elsewhere and mutated.
+7dh. [ ] Reference lookup preparation task. Scope:
+    `ReferenceLookupOptions`, `PreparedTargetLookup`, handle read/write shape,
+    direct switch dispatch, and key normalization. Goal: remove unused lane
+    option construction or duplicated key conversion only if the handle cache
+    can keep one clear shape without adapter/wrapper records. Acceptance:
+    focused reference/function/callable tests, binding grep, lint, builds, and
+    aggressive review.
 
-7dj. [ ] Re-check `findMixinsFast(...)` current-surface collection for lazy
-    result allocation; cut only if it avoids array creation on no-hit paths
-    without changing public return shape.
+7di. [ ] Callable namespace/cache ownership task. Scope:
+    `findRulesetNamespacePathFast(...)`, `findMixinNamespacePathFast(...)`,
+    `findCompoundPrefixCallableRulesetPathFast(...)`,
+    `findCallableDescendantsWithinMixinNamespaces(...)`, and
+    `lastCallableLookup*` cache ownership. Goal: prove cached arrays are never
+    mutated or make fresh/lazy copies where necessary. Acceptance: recursive
+    namespace, compound-prefix precedence, terminal mixin-only, and callable
+    cache focused tests plus binding grep and standard gates.
 
-7dk. [ ] Re-run focused reference/callable namespace/function fallback tests,
-    binding-only grep, and standard lookup gates.
+7dj. [ ] Callable frame and child-surface task. Scope:
+    `findMixinsFast(...)`, `collectCallableBucketResults(...)`,
+    `lookupScopeFrameCallable(...)`, `prepareCallableLookupFrame(...)`, and
+    child-surface skip logic. Goal: reduce hit/miss allocation or avoid child
+    traversal when frame coverage proves it safe, without weakening live/frame
+    binding semantics. Acceptance: callable bucket, rulesVisibility, import,
+    function fallback, and recursive namespace focused tests plus standard
+    gates.
 
 Parked secondary deep-cut queue:
 
@@ -2246,6 +2272,37 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Full-queue granularity correction and lazy `findMixinsFast(...)` result pass:
+  accepted as binding/lookup cleanup, not as a speed claim. Files:
+  `packages/core/src/tree/rules.ts`, focused lookup tests, and this handoff.
+  - New traversal: none. `findMixinsFast(...)` keeps the same parent/child
+    callable traversal and current-surface scan, but delays allocating the
+    result array until a candidate survives filtering.
+  - New node/materialization: none. No production node, wrapper `Rules`, copied
+    node, source metadata, parent mutation, or frozen state was added.
+    The public no-hit return shape remains `[]`; internally the array is now
+    allocated only on hit.
+  - Render path: unchanged. This is lookup-only result collection.
+  - Helper/API surface: none added. The pass also corrected queue granularity:
+    the next active queue is three real binding tasks with acceptance evidence,
+    not micro-items or verification-only entries.
+  - Metadata mutations: none. No lookup registry, side map, parent/source
+    restoration, lazy context creation, or structural probe was added.
+  - Danger-token prosecution: the lazy `results` variable replaces eager
+    allocation and does not introduce traversal. Handle-shape splitting,
+    switch key carry, and compound-prefix cloning were audited and rejected
+    because each would add wrapper/prepared records or duplicate fresh-array
+    state.
+  - Evidence: focused reference/callable namespace/function fallback suite
+    passed after edit (`6` files, `189` passed, `386` skipped).
+    Touched-file ESLint passed; `git diff --check` passed; binding grep found
+    no registry/adapter/helper residue; `@jesscss/core` build passed;
+    `verify:aggressive-cutting-review` passed after flagging only the
+    prosecuted lazy result-array tokens; `audit:node-creation` passed; `jess`
+    build passed. One-iteration hotpath smoke passed with usable signal:
+    `mixins-guards.less` `22.03ms`, `scope-lookup-stress.less` `74.58ms`. No
+    speed claim is made from this pass.
 
 - Direct callable switch and lazy namespace descendant pass: accepted as
   binding/lookup cleanup, not as a speed claim. Files:

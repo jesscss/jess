@@ -920,10 +920,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     key: string,
     options?: ExactCallableFindOptions
   ): MixinEntry[] {
+    let results: MixinEntry[] | undefined;
     const collectWithinScopeSurface = (
       scope: Rules,
       localContext: boolean | undefined,
-      results: MixinEntry[],
       visited?: Set<Rules>,
       includeCurrentSurface = true
     ): Set<Rules> | undefined => {
@@ -946,7 +946,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             if (!options?.includeRulesets && isNode(candidate, N.Ruleset)) {
               continue;
             }
-            results.push(candidate);
+            (results ??= []).push(candidate);
           }
         }
       }
@@ -980,7 +980,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         visited = collectWithinScopeSurface(
           entry.node,
           localContext || Boolean(entry.node.options?.local),
-          results,
           visited,
           true
         );
@@ -989,7 +988,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return visited;
     };
 
-    const results: MixinEntry[] = [];
     let cursor: Node | undefined = this;
     let first = true;
     while (cursor) {
@@ -1004,7 +1002,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         collectWithinScopeSurface(
           scope,
           options?.local,
-          results,
           undefined,
           options?.skipCurrentSurface !== true
         );
@@ -1014,7 +1011,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         break;
       }
     }
-    return results;
+    return results ?? [];
   }
 
   private addCallableEntry(
