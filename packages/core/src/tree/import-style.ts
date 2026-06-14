@@ -14,7 +14,7 @@ import { AtRule } from './at-rule.js';
 import { Any } from './any.js';
 import { Sequence } from './sequence.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
-import { buildScopeFrame, copyLiveBindingSlots, type BindingCell } from './scope-frame.js';
+import { buildScopeFrame, copyScopeFrameLiveBindingSlots, type BindingCell } from './scope-frame.js';
 import { canReuseLeaf, reuseLeaf } from './util/cloning.js';
 import { Comment } from './comment.js';
 import {
@@ -726,7 +726,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 
   private attachConfiguredVarBindings(targetRules: Rules, variableNodes: Node[]): void {
-    const liveSlots = copyLiveBindingSlots(targetRules._scopeFrame?.liveSlotsByName);
+    const liveSlots = copyScopeFrameLiveBindingSlots(targetRules._scopeFrame);
     let didAdd = false;
     for (const node of variableNodes) {
       if (!isNode(node, N.VarDeclaration)) {

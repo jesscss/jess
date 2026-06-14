@@ -91,37 +91,40 @@ and keeps recursive direct declaration visited state scalar through two surfaces
 Current pass stops caching direct `findMixinsFast(...)` arrays, centralizes
 live-slot owner map cloning behind `copyLiveBindingSlots(...)`, and stores
 terminal direct declaration cache states without copying them.
+Current pass stops caching positive fast path lookup arrays, hides frame
+live-slot owner reads behind `copyScopeFrameLiveBindingSlots(...)`, and reuses a
+shared empty direct declaration miss state for readonly-free recursive misses.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7fg. [ ] Callable path cache ownership.
-Scope: array-key `findMixin(...)`, `findRulesetNamespacePathFast(...)`,
-`findMixinNamespacePathFast(...)`, compound-prefix union, and
-`lastCallableLookupValue`.
-Goal: stop caching one path result that is known owned, or mark path cache
-values as shared so later union/append code never has to infer ownership.
+7fj. [ ] Callable path shared-result marking.
+Scope: `lastCallableLookupValue`, path-key `findMixin(...)`, path namespace
+fast helpers, compound-prefix union, and callable result consumers.
+Goal: either mark cached positive path arrays as shared at the type boundary or
+remove one remaining positive path cache write without hurting ordinary direct
+callable hits.
 Acceptance: namespace, recursive namespace, compound-prefix, terminal
 mixin-only, ruleset namespace with args, static callable binding, lint, builds,
 aggressive review.
 
-7fh. [ ] Live-slot owner-map mutation narrowing.
+7fk. [ ] Live-slot owner mutation API.
 Scope: `liveSlotsByName`, `setScopeFrameLiveBinding(...)`, configured imports,
 loop/control live bindings, callable scope wiring, clone/derive, and tests that
 inspect live slots.
-Goal: move one remaining direct mutation/read of `liveSlotsByName` behind a
-construction/update API without changing ordinary reads through
-`currentBindingsByName`.
+Goal: move the remaining direct `liveSlotsByName.set(...)` into an owner helper
+or prove it is already the minimal update API for synchronized live/current
+binding state.
 Acceptance: mixin params, `@arguments`, import configured variables, iteration
 vars, readonly assignment, snapshot/live reads, clone/derive tests, lint,
 builds, aggressive review.
 
-7fi. [ ] Direct declaration state object follow-up.
-Scope: `MatchState`, `createEmptyState(...)`, `mergeMatch(...)`, recursive cache
-storage, readonly propagation, and optional/public candidate handling.
-Goal: collapse one `MatchState` allocation or prove the state object is the
-smallest safe carrier for public/optional/readonly results across recursion.
+7fl. [ ] Direct declaration mutable state split.
+Scope: `MatchState`, `createMutableState(...)`, `mergeMatch(...)`, recursive
+cache storage, readonly propagation, and optional/public candidate handling.
+Goal: split immutable miss state from mutable traversal state more clearly, or
+collapse another allocation without sharing mutable state across recursion.
 Acceptance: parent/fallback circular protection, fallback-frame, source-order,
 readonly, property/variable tests, lint, builds, aggressive review.
 
@@ -173,22 +176,21 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: callable/direct declaration cache narrowing.
+- Latest pass: fast path cache and empty-state narrowing.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
 - New traversal: none.
-- New node/materialization: no nodes. New helper `copyLiveBindingSlots(...)`
-  centralizes existing live-slot map clones for construction/clone ownership.
-  Direct declaration cache writes now store the terminal `MatchState` object
-  directly; each write is immediately followed by return, so the cached object is
-  no longer mutated after storage.
+- New node/materialization: no nodes. `copyScopeFrameLiveBindingSlots(...)`
+  hides frame owner-map reads for existing live-slot map clones.
+  `EMPTY_MATCH_STATE` is immutable miss state for readonly-free recursive cycle
+  misses; mutable traversal still uses `createMutableState(...)`.
 - Render path: unchanged.
-- Helper/API surface: one internal live-slot copy helper; it replaces repeated
-  direct `new Map(liveSlots...)` clones in rules, imports, and callable scope
-  wiring.
+- Helper/API surface: one internal frame-level live-slot copy helper; it moves
+  rules/imports away from reading `liveSlotsByName` directly.
 - Metadata mutations: none.
-- Allocation changes: direct `findMixinsFast(...)` result arrays are no longer
-  stored in `lastCallableLookupValue`; misses still clear the last cache key.
-  Direct declaration cache writes no longer allocate a copied `MatchState`.
+- Allocation changes: positive fast-path array-key results are no longer stored
+  in `lastCallableLookupValue`; misses still clear the last cache key. Recursive
+  direct declaration cycle misses reuse `EMPTY_MATCH_STATE` when readonly is
+  false instead of allocating an empty state object.
 - Evidence: focused lint passed; focused lookup suite passed (`7` files,
   `306` passed, `272` skipped). Affected reference/scope/mixin/live-slot subset
   passed (`4` files, `42` passed, `256` skipped). Residue grep and
@@ -196,5 +198,5 @@ At the end of a pass:
   `js-expr.ts` direct-eval warning. Aggressive review passed with documented
   scoped danger tokens; node-creation audit passed; `jess` build passed.
   One-iteration hotpath smoke passed with usable signal:
-  `mixins-guards.less` `24.65ms`, `scope-lookup-stress.less` `75.77ms`. No
+  `mixins-guards.less` `27.16ms`, `scope-lookup-stress.less` `102.05ms`. No
   speed claim is made.

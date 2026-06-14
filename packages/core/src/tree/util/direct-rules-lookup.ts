@@ -71,6 +71,11 @@ type MatchState = {
 };
 
 type CachedMatch = MatchState;
+const EMPTY_MATCH_STATE: MatchState = {
+  optionalMatch: undefined,
+  publicMatch: undefined,
+  readonly: false
+};
 
 function isNonClassicImportBoundary(rules: Rules | undefined): boolean {
   return rules?.options.importBoundary === true;
@@ -196,6 +201,17 @@ function addCandidateMatch(
 }
 
 function createEmptyState(readonly = false): MatchState {
+  if (!readonly) {
+    return EMPTY_MATCH_STATE;
+  }
+  return {
+    optionalMatch: undefined,
+    publicMatch: undefined,
+    readonly
+  };
+}
+
+function createMutableState(readonly = false): MatchState {
   return {
     optionalMatch: undefined,
     publicMatch: undefined,
@@ -384,7 +400,7 @@ function findWithinScopeSurface(
     }
   }
 
-  const state = createEmptyState(readonly || Boolean(scope.options.readonly));
+  const state = createMutableState(readonly || Boolean(scope.options.readonly));
   if (includeLiveBindings) {
     const live = scope._scopeFrame?.currentBindingsByName.get(key);
     const liveSource = live?.live === true
