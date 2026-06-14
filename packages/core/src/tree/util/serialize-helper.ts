@@ -526,9 +526,27 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     if (serializeProfileCounters) {
       incrementSerializeProfileCounter('duplicateDeclarationComparisonContainers');
     }
+    let seenDeclarationProps: Set<unknown> | undefined;
+    let duplicateDeclarationProps: Set<unknown> | undefined;
+    for (let i = 0; i < rulesToRender.length; i++) {
+      const node = rulesToRender[i]!.node;
+      if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
+        continue;
+      }
+      const prop = node.value.name.valueOf();
+      if (seenDeclarationProps?.has(prop)) {
+        (duplicateDeclarationProps ??= new Set()).add(prop);
+        continue;
+      }
+      (seenDeclarationProps ??= new Set()).add(prop);
+    }
     for (let i = rulesToRender.length - 1; i >= 0; i--) {
       const node = rulesToRender[i]!.node;
       if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
+        continue;
+      }
+      const declProp = node.value.name.valueOf();
+      if (!duplicateDeclarationProps?.has(declProp)) {
         continue;
       }
       const declWriter = new OutputWriter();
@@ -547,7 +565,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       declarationOutputCache.set(i, declOut);
       declarationTriviaCache.set(i, declEmittedTrivia);
       const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
-      const declProp = node.value.name.valueOf();
       let seenValues = seenDeclarationsByProp.get(declProp);
       if (!seenValues) {
         seenValues = new Set<string>();

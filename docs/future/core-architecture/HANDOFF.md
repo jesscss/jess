@@ -258,7 +258,13 @@ Open tasks:
    compacts the existing frame array instead of allocating `atRulesOnly`; and
    source-chain scan no longer uses `queue.shift()`. This does not complete
    `Ruleset`, because header comparison still needs string keys and duplicate
-   declaration handling still pre-renders declarations.
+   declaration handling still pre-renders same-property declarations.
+
+   Additional partial status: duplicate declaration handling now does a cheap
+   declaration-property pre-scan and only opens detached declaration writers for
+   properties that repeat in the visible render list. Unique declaration
+   properties render once at the normal leaf emission boundary instead of being
+   pre-rendered into `declarationOutputCache` first.
 
    Evidence pointer: use `NODE-REWRITE-TRACKER.md` for per-node status and
    `PERFORMANCE-HANDOFF.md` for benchmark/profile history. Do not add queue
@@ -411,28 +417,29 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Ruleset serializer array/callback cut in
+Current pass: declaration duplicate pre-render gate in
 `packages/core/src/tree/util/serialize-helper.ts`.
 
-- New traversal: none. Existing scans now use indexed loops. Transparent
-  bare-ampersand flattening is one pass with rollback instead of
-  `filter(...)`, `some(...)`, and a third leaf pass. Hoisted parent lookup is
-  one pass over the existing frame array instead of allocating a filtered
-  ruleset-frame array. Source-chain scanning keeps the existing queue but reads
-  by index instead of `shift()`.
+- New traversal: one declaration-property pre-scan over the already-materialized
+  `rulesToRender` list. This replaces routine detached declaration
+  pre-rendering for every declaration; the expensive writer/trivia render path
+  now runs only for properties that actually repeat and can affect duplicate
+  suppression.
 - New node/materialization: none. No nodes, wrapper rules, copies, `.inherit`,
-  `.adopt`, arrays, side maps, or metadata surfaces were added.
-- Render path: accepts. The change deletes render-path array/callback
-  factories only; it does not make render resolve into arrays/nodes just to
-  stringify.
+  `.adopt`, side maps, or metadata surfaces were added. Two small Sets are
+  allocated only while a container has declarations; they prevent per-unique
+  declaration `OutputWriter`, trivia `Set`, cache entry, and rendered string
+  allocation.
+- Render path: accepts. Unique declarations render once at their normal leaf
+  emission boundary instead of being rendered once for duplicate comparison and
+  then replayed from cache.
 - Helper/API surface: no helper, public API, or method added.
 - Metadata mutations: no parent/source/frozen/options/context metadata
-  mutations added. Existing temporary frame-array mutation is still restored
-  through the pre-existing `saveArrayState(...)` boundary.
+  mutations added.
 - Error/control flow: none added.
-- Evidence: focused `ruleset` and `rules-streaming` tests pass; `@jesscss/core`
-  build passes; bounded hot-path benchmark was run before and after. Treat the
-  benchmark as sanity evidence, not a speed claim.
+- Evidence: focused `ruleset`, `declaration`, `rules`, `at-rule`, and `mixin`
+  tests pass; `@jesscss/core` build passes; bounded hot-path benchmark was run
+  before and after. Treat the benchmark as sanity evidence, not a speed claim.
 - Verdict: accept as partial item 14 progress. Keep `Ruleset` open because
-  `getHeaderString(...)` comparison strings and duplicate declaration
-  pre-rendering remain.
+  `getHeaderString(...)` comparison strings and same-property duplicate
+  declaration pre-rendering remain.

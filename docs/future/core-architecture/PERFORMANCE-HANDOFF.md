@@ -2650,6 +2650,34 @@ Interpretation: sanity status only, not a speed claim. Keep this as render-path
 array/callback deletion inside the Ruleset serialization lane. It does not
 remove header string comparison keys or duplicate declaration pre-rendering.
 
+### Duplicate Declaration Pre-Render Gate
+
+Date: 2026-06-14.
+
+Change: duplicate declaration suppression in `serialize-helper.ts` now does a
+cheap declaration-property pre-scan and only opens detached declaration
+writers for properties that repeat in the visible render list. Unique
+declaration properties render once at normal leaf emission instead of first
+being pre-rendered into `declarationOutputCache` with a detached
+`OutputWriter`, emitted-trivia `Set`, and serialized string.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `3562f9a6` reported: `functions` median `12.11ms` usable,
+  `import-reference` median `18.08ms` usable, `mixins-guards` median
+  `14.79ms` usable, `extend-chaining` median `4.80ms` usable, and `media`
+  median `4.29ms` unstable.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `12.52ms` usable,
+  `import-reference` median `17.12ms` usable, `mixins-guards` median
+  `14.90ms` usable, `extend-chaining` median `4.74ms` usable, and `media`
+  median `4.26ms` unstable.
+
+Interpretation: sanity status only, not a speed claim. Keep this as deletion
+of routine declaration prerender/materialization for unique properties. It
+does not remove the same-property duplicate comparison boundary.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
