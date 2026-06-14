@@ -2448,6 +2448,7 @@ describe('Mixin', () => {
     it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when no child surfaces exist', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];
+      let rediscoveredChildSurface = false;
       RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.frame-missing') {
@@ -2464,8 +2465,16 @@ describe('Mixin', () => {
           })
         ]);
         root.getScopeFrame();
+        Object.defineProperty(root, 'hasDirectLookupChildSurface', {
+          configurable: true,
+          value() {
+            rediscoveredChildSurface = true;
+            return false;
+          }
+        });
 
         expect(root.findMixin('.frame-missing', 'Mixin')).toBeUndefined();
+        expect(rediscoveredChildSurface).toBe(false);
         expect(fastPathHits).toHaveLength(0);
         expect(root.callableLookupCache?.get('.frame-missing')).toBeNull();
         expect(root.lastCallableLookupKey).toBeUndefined();

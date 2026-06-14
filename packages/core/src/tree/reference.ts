@@ -40,7 +40,6 @@ import { blocksAmbientMixinOutputLookup } from './util/mixin-output-slot.js';
 import { MixinCollection } from './util/callable-collection.js';
 import type { MixinEntry } from './util/callable-entry.js';
 import {
-  DIRECT_DECLARATION_LOOKUP_UNCOVERED,
   findAnyDeclaration,
   findPropertyDeclaration,
   findVariableDeclaration
@@ -651,7 +650,7 @@ function lookupVariableReference(
       return live;
     }
   }
-  const direct = findVariableDeclaration(targetRules, keyStr, {
+  return findVariableDeclaration(targetRules, keyStr, {
     start: opts.start,
     context: env.context,
     hasTarget: env.hasTarget,
@@ -661,7 +660,6 @@ function lookupVariableReference(
     ignoreCurrentScopeStart: true,
     ignoreParentScopeStart: opts.ignoreParentScopeStart === true
   });
-  return direct === DIRECT_DECLARATION_LOOKUP_UNCOVERED ? undefined : direct;
 }
 
 function lookupDeclarationReference(
@@ -678,8 +676,7 @@ function lookupVariableDeclarationOrFind(
   key: string,
   opts: DeclarationFindOptions
 ): RulesLookupResult {
-  const direct = findVariableDeclaration(targetRules, key, opts);
-  return direct === DIRECT_DECLARATION_LOOKUP_UNCOVERED ? undefined : direct;
+  return findVariableDeclaration(targetRules, key, opts);
 }
 
 function lookupPropertyDeclarationOrFind(
@@ -687,8 +684,7 @@ function lookupPropertyDeclarationOrFind(
   key: string,
   opts: DeclarationFindOptions
 ): RulesLookupResult {
-  const direct = findPropertyDeclaration(targetRules, key, opts);
-  return direct === DIRECT_DECLARATION_LOOKUP_UNCOVERED ? undefined : direct;
+  return findPropertyDeclaration(targetRules, key, opts);
 }
 
 function lookupAnyDeclarationOrFind(
@@ -696,8 +692,7 @@ function lookupAnyDeclarationOrFind(
   key: string,
   opts: DeclarationFindOptions
 ): RulesLookupResult {
-  const direct = findAnyDeclaration(targetRules, key, opts);
-  return direct === DIRECT_DECLARATION_LOOKUP_UNCOVERED ? undefined : direct;
+  return findAnyDeclaration(targetRules, key, opts);
 }
 
 function lookupRulesReferenceTarget(args: {

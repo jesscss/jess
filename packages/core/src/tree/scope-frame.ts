@@ -169,11 +169,23 @@ export interface ScopeFrame {
   callableMissesCovered: boolean;
 
   /**
+   * True when callableMissesCovered is a computed frame fact instead of an
+   * unknown value left by cache invalidation.
+   */
+  callableMissCoverageKnown: boolean;
+
+  /**
    * Same coverage as callableMissesCovered, but for mixin-only lookup. A child
    * ruleset surface can satisfy mixin-ruleset lookup without satisfying a
    * Mixin-only call.
    */
   mixinCallableMissesCovered: boolean;
+
+  /**
+   * True when mixinCallableMissesCovered is a computed frame fact instead of an
+   * unknown value left by cache invalidation.
+   */
+  mixinCallableMissCoverageKnown: boolean;
 
   /**
    * VarDeclarations whose name is a computed expression (Interpolated,
@@ -215,7 +227,9 @@ export function buildScopeFrame(
   callableEntriesByName?: Map<string, CallableLookupEntry[] | null>,
   callablesCovered = callableEntriesByName !== undefined,
   callableMissesCovered = callablesCovered,
-  mixinCallableMissesCovered = callableMissesCovered
+  mixinCallableMissesCovered = callableMissesCovered,
+  callableMissCoverageKnown = callablesCovered,
+  mixinCallableMissCoverageKnown = callableMissCoverageKnown
 ): ScopeFrame {
   const declarationBucketsByName = new Map<string, BindingEntry[]>();
   const currentBindingsByName = new Map<string, CurrentBindingEntry>();
@@ -264,7 +278,9 @@ export function buildScopeFrame(
     declarationsCovered,
     callablesCovered,
     callableMissesCovered,
+    callableMissCoverageKnown,
     mixinCallableMissesCovered,
+    mixinCallableMissCoverageKnown,
     pendingDeclarationNames: pendingDeclarationNames ?? [],
     rulesNode
   };

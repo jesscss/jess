@@ -14,12 +14,10 @@ import {
 } from './mixin-output-slot.js';
 import type { DeclarationFindOptions } from './lookup-utils.js';
 
-type DirectDeclarationLookupResult = Declaration | undefined | typeof DIRECT_DECLARATION_LOOKUP_UNCOVERED;
+type DirectDeclarationLookupResult = Declaration | undefined;
 type DirectDeclarationFindOptions = DeclarationFindOptions & {
   context?: Context;
 };
-
-export const DIRECT_DECLARATION_LOOKUP_UNCOVERED = Symbol('direct-declaration-lookup-uncovered');
 
 type DeclarationLookupStrategy = {
   cacheTag: string;
@@ -28,7 +26,6 @@ type DeclarationLookupStrategy = {
   includeLiveBindings: boolean;
   includeFallbackFrames: boolean;
   prepareScopeFrame: boolean;
-  semanticFilterCovered: boolean;
   acceptsNode: (node: Node) => node is Declaration;
   skipVarsAfterBindingHit: boolean;
 };
@@ -40,7 +37,6 @@ const VARIABLE_LOOKUP: DeclarationLookupStrategy = {
   includeLiveBindings: true,
   includeFallbackFrames: true,
   prepareScopeFrame: true,
-  semanticFilterCovered: true,
   acceptsNode: (node): node is Declaration => isNode(node, N.VarDeclaration),
   skipVarsAfterBindingHit: true
 };
@@ -52,7 +48,6 @@ const PROPERTY_LOOKUP: DeclarationLookupStrategy = {
   includeLiveBindings: false,
   includeFallbackFrames: false,
   prepareScopeFrame: false,
-  semanticFilterCovered: true,
   acceptsNode: (node): node is Declaration => isNode(node, N.Declaration),
   skipVarsAfterBindingHit: false
 };
@@ -64,7 +59,6 @@ const ANY_DECLARATION_LOOKUP: DeclarationLookupStrategy = {
   includeLiveBindings: false,
   includeFallbackFrames: false,
   prepareScopeFrame: false,
-  semanticFilterCovered: true,
   acceptsNode: (node): node is Declaration => isNode(node, N.Declaration | N.VarDeclaration),
   skipVarsAfterBindingHit: false
 };
@@ -530,12 +524,6 @@ function findDeclarationWithStrategy(
   options?: DirectDeclarationFindOptions
 ): DirectDeclarationLookupResult {
   const lookupOptions = options ?? EMPTY_DIRECT_DECLARATION_FIND_OPTIONS;
-  if (
-    !strategy.semanticFilterCovered && lookupOptions.semanticFilter
-  ) {
-    return DIRECT_DECLARATION_LOOKUP_UNCOVERED;
-  }
-
   const searchParents = lookupOptions.searchParents ?? true;
   const preserveLinearStart = lookupOptions.start !== undefined;
   const visitedParents = new Set<Rules>();
@@ -634,22 +622,18 @@ export function findVariableDeclaration(
   startRules: Rules,
   key: string,
   options?: DirectDeclarationFindOptions
-): VarDeclaration | undefined | typeof DIRECT_DECLARATION_LOOKUP_UNCOVERED {
+): VarDeclaration | undefined {
   const found = findDeclarationWithStrategy(startRules, key, VARIABLE_LOOKUP, options);
-  return found === DIRECT_DECLARATION_LOOKUP_UNCOVERED || isNode(found, N.VarDeclaration)
-    ? found
-    : undefined;
+  return isNode(found, N.VarDeclaration) ? found : undefined;
 }
 
 export function findPropertyDeclaration(
   startRules: Rules,
   key: string,
   options?: DirectDeclarationFindOptions
-): Declaration | undefined | typeof DIRECT_DECLARATION_LOOKUP_UNCOVERED {
+): Declaration | undefined {
   const found = findDeclarationWithStrategy(startRules, key, PROPERTY_LOOKUP, options);
-  return found === DIRECT_DECLARATION_LOOKUP_UNCOVERED || isNode(found, N.Declaration)
-    ? found
-    : undefined;
+  return isNode(found, N.Declaration) ? found : undefined;
 }
 
 export function findAnyDeclaration(

@@ -71,7 +71,6 @@ import type { CallableLookupEntry, MixinEntry } from './util/callable-entry.js';
 import { isIndexedRuleChild } from './util/callable-surface.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
-  DIRECT_DECLARATION_LOOKUP_UNCOVERED,
   findAnyDeclaration as findAnyDeclarationDirect,
   findPropertyDeclaration,
   findVariableDeclaration
@@ -736,7 +735,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this._scopeFrame.callableBucketsByName = this.callableLookupCache;
         this._scopeFrame.callablesCovered = this.callableLookupCache !== undefined;
         this._scopeFrame.callableMissesCovered = !this.hasDirectLookupChildSurface();
+        this._scopeFrame.callableMissCoverageKnown = true;
         this._scopeFrame.mixinCallableMissesCovered = !this.hasDirectLookupChildSurface(false);
+        this._scopeFrame.mixinCallableMissCoverageKnown = true;
       }
     } finally {
       this._indexing = false;
@@ -876,7 +877,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this.callableLookupCache,
         undefined,
         !this.hasDirectLookupChildSurface(),
-        !this.hasDirectLookupChildSurface(false)
+        !this.hasDirectLookupChildSurface(false),
+        true,
+        true
       );
     }
     return this._scopeFrame;
@@ -954,8 +957,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
 
       const includeRulesets = options?.includeRulesets !== false;
-      if (scope.rulesIndexed >= scope.value.length && !scope.hasDirectLookupChildSurface(includeRulesets)) {
-        return visited;
+      if (scope.rulesIndexed >= scope.value.length) {
+        const hasIndexedChildSurface = scope._hasReferenceImports
+          || (includeRulesets
+            ? scope.hasExactCallableChildSurface
+            : scope.hasExactMixinChildSurface);
+        if (!hasIndexedChildSurface) {
+          return visited;
+        }
       }
       const childEntries = scope.directChildRuleEntries !== undefined
         ? (scope.directChildRuleEntries ?? undefined)
@@ -1153,7 +1162,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this._scopeFrame.callablesCovered = true;
       if (updateFrameMissCoverage) {
         this._scopeFrame.callableMissesCovered = !this.hasDirectLookupChildSurface();
+        this._scopeFrame.callableMissCoverageKnown = true;
         this._scopeFrame.mixinCallableMissesCovered = !this.hasDirectLookupChildSurface(false);
+        this._scopeFrame.mixinCallableMissCoverageKnown = true;
       }
     }
     return bucket;
@@ -1167,10 +1178,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       frame.callableBucketsByName = rules.callableLookupCache;
       frame.callablesCovered = true;
-      if (includeRulesets && !frame.callableMissesCovered) {
+      if (includeRulesets && !frame.callableMissCoverageKnown) {
         frame.callableMissesCovered = !rules.hasDirectLookupChildSurface();
-      } else if (!includeRulesets && !frame.mixinCallableMissesCovered) {
+        frame.callableMissCoverageKnown = true;
+      } else if (!includeRulesets && !frame.mixinCallableMissCoverageKnown) {
         frame.mixinCallableMissesCovered = !rules.hasDirectLookupChildSurface(false);
+        frame.mixinCallableMissCoverageKnown = true;
       }
     }
   }
@@ -2031,41 +2044,28 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const direct = filterType === 'VarDeclaration'
       ? findVariableDeclaration(this, keys, options)
       : findPropertyDeclaration(this, keys, options);
-    if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
-      return direct;
-    }
-    return undefined;
+    return direct;
   }
 
   findAnyDeclaration(
     keys: string,
     options?: DeclarationFindOptions
   ): Declaration | VarDeclaration | undefined {
-    const direct = findAnyDeclarationDirect(this, keys, options);
-    if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
-      return direct;
-    }
-    return undefined;
+    return findAnyDeclarationDirect(this, keys, options);
   }
 
   findVariable(
     keys: string,
     options?: DeclarationFindOptions
   ): VarDeclaration | undefined {
-    const direct = findVariableDeclaration(this, keys, options);
-    if (direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED) {
-      return direct;
-    }
-    return undefined;
+    return findVariableDeclaration(this, keys, options);
   }
 
   findProperty(
     keys: string,
     options?: DeclarationFindOptions
   ): Declaration | undefined {
-    const direct = findPropertyDeclaration(this, keys, options);
-    const found = direct !== DIRECT_DECLARATION_LOOKUP_UNCOVERED ? direct : undefined;
-    return isNode(found, N.Declaration) ? found : undefined;
+    return findPropertyDeclaration(this, keys, options);
   }
 
   findFunction(
@@ -2706,7 +2706,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this._scopeFrame.callableBucketsByName = undefined;
       this._scopeFrame.callablesCovered = false;
       this._scopeFrame.callableMissesCovered = false;
+      this._scopeFrame.callableMissCoverageKnown = false;
       this._scopeFrame.mixinCallableMissesCovered = false;
+      this._scopeFrame.mixinCallableMissCoverageKnown = false;
     }
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
@@ -2731,7 +2733,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this._hasReferenceImports = true;
         if (this._scopeFrame) {
           this._scopeFrame.callableMissesCovered = false;
+          this._scopeFrame.callableMissCoverageKnown = false;
           this._scopeFrame.mixinCallableMissesCovered = false;
+          this._scopeFrame.mixinCallableMissCoverageKnown = false;
         }
       }
     }
@@ -2762,7 +2766,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.addDirectChildRuleEntry(node, rulesVisibility, readonly);
       if (this._scopeFrame) {
         this._scopeFrame.callableMissesCovered = false;
+        this._scopeFrame.callableMissCoverageKnown = false;
         this._scopeFrame.mixinCallableMissesCovered = false;
+        this._scopeFrame.mixinCallableMissCoverageKnown = false;
       }
       if (node._hasExtends) {
         this._hasExtends = true;

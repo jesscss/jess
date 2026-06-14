@@ -68,42 +68,43 @@ Registryless lookup is the active runtime direction.
   - `prepareRulesLookupShape(...)`
 
 Recent baseline commit: `054fc959` trimmed this handoff to active guidance.
-Last smoke from the lookup pass was usable but not a speed claim:
-`mixins-guards.less` `27.09ms`, `scope-lookup-stress.less` `73.58ms`.
+Latest pass moved callable miss coverage onto `ScopeFrame`, removed the dead
+direct-declaration uncovered sentinel, and narrowed fully indexed callable
+child-surface checks. Last full gate smoke was usable but not a speed claim:
+`mixins-guards.less` `28.20ms`, `scope-lookup-stress.less` `88.23ms`.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7ei. [ ] ScopeFrame child-callable coverage fact.
-Scope: `ScopeFrame`, `prepareCallableLookupFrame(...)`,
-`hasDirectLookupChildSurface(...)`, and exact callable/mixin child-surface
-flags.
-Goal: carry enough child-surface capability on the frame that simple exact
-callable misses can stop from frame facts without asking `Rules` to rediscover
-child-surface coverage.
-Acceptance: callable bucket, static miss, child callable surface,
-terminal mixin-only, fallback-frame, namespace tests, lint, builds, aggressive
+7el. [ ] Binding slot shape audit.
+Scope: `ScopeFrame` declaration/current binding storage,
+`lookupScopeFrameVariable(...)`, direct declaration cache state, and live-slot
+reads.
+Goal: choose one object-heavy binding path that can become a slot/parallel-table
+path without changing lookup semantics or adding another registry-shaped table.
+Acceptance: variable/property source-order, live binding, readonly, fallback
+frame, iteration var tests, lint, builds, aggressive review.
+
+7em. [ ] Reference declaration lookup bridge deletion.
+Scope: `lookupVariableReference(...)`, `lookupDeclarationReference(...)`,
+`lookup*DeclarationOrFind(...)`, direct declaration options, and read-mode
+branching.
+Goal: delete or collapse one remaining Reference-side branch now that direct
+declaration lookup no longer has an uncovered sentinel.
+Acceptance: snapshot vs live variable reads, property reads, semantic filters,
+dynamic names, setDefined, ambient lookup tests, lint, builds, aggressive
 review.
 
-7ej. [ ] Direct declaration fallback mode audit.
-Scope: `findVariableDeclaration(...)`, `findPropertyDeclaration(...)`,
-`DIRECT_DECLARATION_LOOKUP_UNCOVERED`, semantic-filtered property/declaration
-lookups, and `Reference` direct lookup call sites.
-Goal: identify one remaining declaration fallback mode that can become covered
-direct lookup without adding a second registry-style name table.
-Acceptance: property/variable source-order, semantic-filter, merge-chain or
-import/reference visibility tests as applicable, lint, builds, aggressive
+7en. [ ] Callable namespace bridge narrowing.
+Scope: `findMixin(...)`, namespace path lookup, terminal mixin-only lookup,
+fallback-frame retry, and `findMixinsFast(...)`.
+Goal: narrow one namespace/fallback bridge using existing frame or indexed
+child-surface facts; reject any change that needs duplicated namespace
+inference or hidden `_options` access.
+Acceptance: namespace, recursive namespace, compound-prefix, terminal
+mixin-only, fallback-frame, import/reference tests, lint, builds, aggressive
 review.
-
-7ek. [ ] Callable direct-crawl bridge audit.
-Scope: `findMixinsFast(...)`, direct bridge calls after `uncovered` frame hits,
-namespace path lookup, guard/candidate visibility, and import child surfaces.
-Goal: choose one direct-crawl bridge that can be made frame/handle-owned or
-narrowed, and reject any bridge that would require rebuilding registry
-semantics beside direct lookup.
-Acceptance: namespace, guard/candidate, import/reference, fallback-frame,
-terminal mixin-only tests, lint, builds, aggressive review.
 
 ## Backlog Sources
 
@@ -153,21 +154,21 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: prepared-shape and callable-miss cache audit.
+- Latest pass: frame callable-coverage and declaration fallback deletion.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
-- New traversal: none.
+- New traversal: none; fully indexed callable bridge now uses existing indexed
+  child-surface flags instead of calling the broader rediscovery helper.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: `prepareRulesLookupShape(...)` replaced
-  `prepareRulesLookupTarget(...)` and collapses three prepared-shape slots to
-  one current prepared scope/shape pair.
+- Helper/API surface: removed the dead
+  `DIRECT_DECLARATION_LOOKUP_UNCOVERED` declaration sentinel and its caller
+  checks; added `ScopeFrame` miss-coverage-known bits to distinguish known child
+  surfaces from invalidated unknown state.
 - Metadata mutations: none.
-- Evidence: focused lint and lookup suite passed (`6` files, `285` passed,
-  `290` skipped). `null` miss sentinel remained contained to existing lookup
-  maps, and last-callable result caching no longer stores covered undefined
-  misses. Binding residue grep and `git diff --check` passed;
-  `@jesscss/core` build passed with only the existing `js-expr.ts` direct-eval
-  warning; aggressive review passed with no scoped danger tokens; node-creation
-  audit passed; `jess` build passed; one-iteration hotpath smoke passed with
-  usable signal: `mixins-guards.less` `23.11ms`, `scope-lookup-stress.less`
-  `92.74ms`. No speed claim is made.
+- Evidence: focused lint passed; focused lookup suite passed (`6` files,
+  `285` passed, `290` skipped). Binding residue grep and `git diff --check`
+  passed; `@jesscss/core` build passed with only the existing `js-expr.ts`
+  direct-eval warning; aggressive review passed with no scoped danger tokens;
+  node-creation audit passed; `jess` build passed; one-iteration hotpath smoke
+  passed with usable signal: `mixins-guards.less` `28.20ms`,
+  `scope-lookup-stress.less` `88.23ms`. No speed claim is made.
