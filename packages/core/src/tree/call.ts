@@ -579,26 +579,6 @@ export class Call extends Node<CallValue, CallOptions> {
     if (isCalc) {
       context.calcFrames++;
     }
-    const finishCall = (): MaybePromise<string> => {
-      if (isCalc) {
-        context.calcFrames--;
-      }
-      w.add(')');
-      if (callNode.options?.markImportant) {
-        w.add(' !important');
-      }
-      if (contentNode) {
-        w.add(': ');
-        const renderedContent = this.writeEvaluatedSyntax(contentNode, context, printOptions);
-        if (isThenable(renderedContent)) {
-          return renderedContent.then(() => {
-            return w.getSince(mark);
-          });
-        }
-        return w.getSince(mark);
-      }
-      return w.getSince(mark);
-    };
     let renderedArgs: MaybePromise<string>;
     try {
       renderedArgs = this.serializeRenderedArgs(callNode.value.args, context, prepared);
@@ -609,14 +589,47 @@ export class Call extends Node<CallValue, CallOptions> {
       throw error;
     }
     if (isThenable(renderedArgs)) {
-      return renderedArgs.then(finishCall, (error: unknown) => {
+      return renderedArgs.then(() => this.finishPlainFunctionCall(
+        callNode,
+        context,
+        printOptions,
+        mark,
+        contentNode,
+        isCalc
+      ), (error: unknown) => {
         if (isCalc) {
           context.calcFrames--;
         }
         throw error;
       });
     }
-    return finishCall();
+    return this.finishPlainFunctionCall(callNode, context, printOptions, mark, contentNode, isCalc);
+  }
+
+  private finishPlainFunctionCall(
+    callNode: Call,
+    context: Context,
+    printOptions: ReturnType<typeof getPrintOptions>,
+    mark: number,
+    contentNode: Node | undefined,
+    isCalc: boolean
+  ): MaybePromise<string> {
+    const w = printOptions.writer!;
+    if (isCalc) {
+      context.calcFrames--;
+    }
+    w.add(')');
+    if (callNode.options?.markImportant) {
+      w.add(' !important');
+    }
+    if (!contentNode) {
+      return w.getSince(mark);
+    }
+    w.add(': ');
+    const renderedContent = this.writeEvaluatedSyntax(contentNode, context, printOptions);
+    return isThenable(renderedContent)
+      ? renderedContent.then(() => w.getSince(mark))
+      : w.getSince(mark);
   }
 
   private renderFinalizedCallSyntax(
@@ -639,27 +652,31 @@ export class Call extends Node<CallValue, CallOptions> {
       w.add(stringifyValueOf(name), state.source);
     }
     w.add('(');
-    const finishCall = (): MaybePromise<string> => {
-      w.add(')');
-      if (this._options?.markImportant) {
-        w.add(' !important');
-      }
-      if (contentNode) {
-        w.add(': ');
-        const renderedContent = this.writeEvaluatedSyntax(contentNode, context, printOptions);
-        if (isThenable(renderedContent)) {
-          return renderedContent.then(() => {
-            return w.getSince(mark);
-          });
-        }
-        return w.getSince(mark);
-      }
-      return w.getSince(mark);
-    };
     const renderedArgs = this.serializeRenderedArgs(args, context, prepared);
     return isThenable(renderedArgs)
-      ? renderedArgs.then(finishCall)
-      : finishCall();
+      ? renderedArgs.then(() => this.finishFinalizedCallSyntax(context, printOptions, mark, contentNode))
+      : this.finishFinalizedCallSyntax(context, printOptions, mark, contentNode);
+  }
+
+  private finishFinalizedCallSyntax(
+    context: Context,
+    printOptions: ReturnType<typeof getPrintOptions>,
+    mark: number,
+    contentNode: Node | undefined
+  ): MaybePromise<string> {
+    const w = printOptions.writer!;
+    w.add(')');
+    if (this._options?.markImportant) {
+      w.add(' !important');
+    }
+    if (!contentNode) {
+      return w.getSince(mark);
+    }
+    w.add(': ');
+    const renderedContent = this.writeEvaluatedSyntax(contentNode, context, printOptions);
+    return isThenable(renderedContent)
+      ? renderedContent.then(() => w.getSince(mark))
+      : w.getSince(mark);
   }
 
   private async renderOptionalFallbackCallSyntax(

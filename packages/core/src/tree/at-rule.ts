@@ -665,24 +665,25 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     const printOptions = isRenderBuffer(bufferOrOptions)
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const renderNode = (node: Node): string => {
-      const writer = printOptions.writer;
-      const mark = writer.mark();
-      try {
-        node.toString(printOptions);
-        return writer.getSince(mark);
-      } finally {
-        writer.restore(mark);
-      }
-    };
-    const nameOut = renderNode(value.name);
-    const preludeOut = value.prelude ? renderNode(value.prelude) : '';
+    const nameOut = this.renderLeafNodeToString(value.name, printOptions);
+    const preludeOut = value.prelude ? this.renderLeafNodeToString(value.prelude, printOptions) : '';
     const rendered = preludeOut.trim()
       ? `${nameOut}${/\s$/.test(nameOut) || /^\s/.test(preludeOut) ? '' : ' '}${preludeOut.replace(/^\s+/, '')};`
       : `${nameOut};`;
     return isRenderBuffer(bufferOrOptions)
       ? writeRenderText(bufferOrOptions, rendered)
       : rendered;
+  }
+
+  private renderLeafNodeToString(node: Node, printOptions: FinalPrintOptions): string {
+    const writer = printOptions.writer;
+    const mark = writer.mark();
+    try {
+      node.toString(printOptions);
+      return writer.getSince(mark);
+    } finally {
+      writer.restore(mark);
+    }
   }
 
   private resolveLeafValue(value: AtRuleValue): AtRule {

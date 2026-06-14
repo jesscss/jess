@@ -737,6 +737,16 @@ the binding index/scope lookup refactor.
    skips the argument mark/trim window for empty lists. Focused call tests
    passed. Hotpath leash was mixed/noisy and status-only; see
    `PERFORMANCE-HANDOFF.md`.
+15e. [x] Continue render closure scaffold pass. `Call.renderPlainFunctionCall(...)`
+   and `Call.renderFinalizedCallSyntax(...)` no longer allocate per-call
+   `finishCall` closures; finishing lives on private class methods and async
+   continuations only jump there after rendered args settle. `AtRule.renderLeafValue(...)`
+   no longer allocates a local render-node closure for each leaf render.
+   Rejected cut: `QueryCondition` static shared-flat-buffer render still needs
+   the returned full string while keeping split buffer parts, so deleting that
+   `getSince(...)` requires a render-buffer contract change and is not a
+   local cleanup. Focused call/at-rule/render-buffer tests passed. Hotpath
+   leash was status-only; see `PERFORMANCE-HANDOFF.md`.
 16. [ ] Continue `Reference` before moving to the next node. Audit and cut the
    remaining copy/materialization pressure: `createRulesLikeReferenceSurface`,
    public `evaluateReferenceValueNode(...)` materialization, merged assign
@@ -903,35 +913,50 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Call explicit-empty-argument mark cuts.
+Current pass: Call/AtRule render closure scaffold cuts.
 
 - New traversal: none added.
 - New node/materialization: none added. This pass did not add `new Node`,
   copied nodes, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen state,
-  parent restoration, source metadata mutation, or new callable/call
+  parent restoration, source metadata mutation, or callable/call
   materialization.
-- Render path: `Call.serializeRenderedArgs(...)` now returns before opening a
-  writer mark when the args list exists but has zero items. Source
-  `toTrimmedString(...)` and `writeSyntax(...)` now treat explicit empty arg
-  lists as empty, skipping dead argument mark/trim windows. No render path
-  resolves into arrays/nodes just to stringify.
-- Helper/API surface: none added.
+- Render path: `Call.renderPlainFunctionCall(...)` and
+  `Call.renderFinalizedCallSyntax(...)` now jump to private finish methods
+  instead of allocating per-render `finishCall` closures. `AtRule.renderLeafValue(...)`
+  now calls a private leaf-node string helper instead of allocating a local
+  render-node closure. No render path resolves into arrays/nodes just to
+  stringify.
+- Helper/API surface: three private methods were added:
+  `finishPlainFunctionCall(...)`, `finishFinalizedCallSyntax(...)`, and
+  `renderLeafNodeToString(...)`. They replace per-call closure creation in
+  existing render paths and are node-local, private, and non-public.
 - Metadata mutations: none added.
-- Error/control flow: none added.
-- Evidence: pre-pass hotpath leash at `71da758a`: `functions` `15.93ms`
-  unstable, `import-reference` `21.74ms` usable, `mixins-guards` `18.46ms`
-  usable, `extend-chaining` `6.79ms` noisy, `media` `6.50ms` unstable. Dirty
-  post-pass leash: `functions` `15.72ms` unstable, `import-reference`
-  `23.82ms` usable, `mixins-guards` `18.77ms` unstable, `extend-chaining`
-  `6.53ms` unstable, `media` `6.63ms` usable. This is status only, not a speed
+- Error/control flow: no new routine error-control semantics. The diff shows
+  one `try/finally` because `AtRule.renderLeafValue(...)` moved its existing
+  writer `restore(mark)` guard from a local closure into
+  `renderLeafNodeToString(...)`; the guard still restores writer state after
+  temporary leaf serialization and does not encode expected misses or branch
+  results as errors.
+- Rejected cut: `QueryCondition` static shared-flat-buffer render still returns
+  the full string while preserving split buffer parts. Focused tests prove that
+  deleting its `getSince(...)` locally would change the current buffer/render
+  contract; queue it only behind an explicit render-buffer return-contract
+  change.
+- Evidence: pre-pass hotpath leash at `e575d35d`: `functions` `14.73ms`
+  usable, `import-reference` `23.89ms` usable, `mixins-guards` `17.86ms`
+  usable, `extend-chaining` `5.87ms` usable, `media` `5.41ms` usable. Dirty
+  post-pass leash: `functions` `15.87ms` unstable, `import-reference`
+  `24.90ms` usable, `mixins-guards` `18.06ms` unstable, `extend-chaining`
+  `6.40ms` unstable, `media` `6.49ms` usable. This is status only, not a speed
   claim. Focused tests passed:
   `pnpm --filter @jesscss/core test -- src/tree/__tests__/call.test.ts`
-  (`81` passed).
-- Verdict: accept the explicit-empty-argument writer mark/trim-window deletion.
-  Remaining open work: `Call.evalArgNodes(...)` copy pressure, whole-call
-  mark/readback, callable output selection, custom-property raw source
-  branches, merge-state/materialization boundaries, the final
-  `serializeRulesContainer(...)` string-header boundary, deeper
-  `Ruleset.getHeaderString(...)` capture/comparison paths, `AtRule` body-state
+  (`81` passed) and
+  `pnpm --filter @jesscss/core test -- src/tree/__tests__/at-rule.test.ts src/tree/__tests__/node-render-buffer.test.ts`
+  (`92` passed).
+- Verdict: accept the render closure scaffold deletion. Remaining open work:
+  `Call.evalArgNodes(...)` copy pressure, whole-call mark/readback, callable
+  output selection, custom-property raw source branches, merge-state/materialization
+  boundaries, the final `serializeRulesContainer(...)` string-header boundary,
+  deeper `Ruleset.getHeaderString(...)` capture/comparison paths, `AtRule` body-state
   branch ladders, `Reference` materialization, selector/extend equality,
   `StyleImport` placement copies, and the coherent binding-handle model.

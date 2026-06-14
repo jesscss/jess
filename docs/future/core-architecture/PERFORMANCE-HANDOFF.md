@@ -2335,6 +2335,39 @@ Hotpath status:
 Interpretation: status only, not a speed claim. Keep as a dead writer
 mark/trim-window deletion for explicit empty argument lists.
 
+### Call/AtRule Render Closure Scaffold Cut
+
+Date: 2026-06-13.
+
+Change: `Call.renderPlainFunctionCall(...)` and
+`Call.renderFinalizedCallSyntax(...)` no longer allocate per-call
+`finishCall` closures; finish logic is private class-method staging reached
+directly on the sync path and by async continuations only after rendered args
+settle. `AtRule.renderLeafValue(...)` no longer allocates a local render-node
+closure for each leaf render. A tempting `QueryCondition` static
+shared-flat-buffer `getSince(...)` deletion was rejected: current tests require
+the buffer render path to return the full string while keeping shared flat
+buffer parts split, so that needs a render-buffer contract change rather than
+a local cleanup.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `e575d35d` reported: `functions` median `14.73ms` usable,
+  `import-reference` median `23.89ms` usable, `mixins-guards` median
+  `17.86ms` usable, `extend-chaining` median `5.87ms` usable, and `media`
+  median `5.41ms` usable.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `15.87ms` unstable,
+  `import-reference` median `24.90ms` usable, `mixins-guards` median
+  `18.06ms` unstable, `extend-chaining` median `6.40ms` unstable, and `media`
+  median `6.49ms` usable.
+
+Interpretation: status only, not a speed claim. Keep as per-render closure
+scaffold deletion. The leash is mixed/noisy and does not prove a speed win;
+watch the next full benchmark/profile before treating this as performance
+movement.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
