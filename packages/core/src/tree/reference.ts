@@ -306,25 +306,18 @@ function isBlockedReferenceParamVar(
   );
 }
 
-function isBlockedReferenceSearchScope(
-  node: Node,
-  context: Context
-): boolean {
-  return context._searchScope?.has(node) === true;
-}
-
 function buildReferenceFilter(
   originalFilter: ReferenceOptions['filter'] | undefined,
   context: Context
 ): (n: Node) => boolean {
-  const passesOriginal = originalFilter ?? (() => true);
-
   return (n: Node) => {
-    return (
-      passesOriginal(n)
-      && !isBlockedReferenceSearchScope(n, context)
-      && !isBlockedReferenceParamVar(n, context)
-    );
+    if (originalFilter && !originalFilter(n)) {
+      return false;
+    }
+    if (context._searchScope?.has(n)) {
+      return false;
+    }
+    return !isBlockedReferenceParamVar(n, context);
   };
 }
 

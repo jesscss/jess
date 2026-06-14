@@ -587,6 +587,11 @@ next step starts.
      `context.searchScope.has(...)`. Check-only recursion probes read the
      existing `_searchScope` field directly so misses do not lazily create the
      set.
+   - `findVarDeclarationFast(...)` now reuses one `Set<Rules>` for its
+     independent scope-surface walks instead of allocating a new visited set
+     for every parent/fallback surface search, and `buildReferenceFilter(...)`
+     no longer allocates a noop pass-through filter or calls a one-line
+     search-scope helper on every filter hit.
    - A focused reference test proves the mixin array-path lookup receives the
      original static key array instance.
    - No cache, evaluated-value reuse, side map, materialized node, output
@@ -856,33 +861,33 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: binding lookup allocation cut.
+Current pass: binding var-surface allocation cut.
 
-- New traversal: none added. No loop, recursion, parent/source walk, side-map
-  lookup, object scan, array scan, `map/filter/sort`, or generator was added.
+- New traversal: none added. Existing `findVarWithinScopeSurface(...)`
+  recursion and parent/fallback walks are unchanged. This pass reuses one
+  `Set<Rules>` per `findVarDeclarationFast(...)` call and clears it before
+  each independent surface walk instead of allocating a fresh set per walk.
 - New node/materialization: none added. This pass did not add `new Node`,
   copied nodes, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen state,
   parent restoration, or source metadata mutation.
 - Render path: no render output path changed. The edited paths are variable
   lookup/recursion-filter checks only; they do not create arrays/nodes just to
   stringify.
-- Helper/API surface: no helper added. `searchRuntimeVarBindingChain(...)`
-  lost its `Set<ScopeFrame>` parameter, `lookupScopeFrameVariable(...)` now
-  accepts an existing `blockedSources` set instead of a callback, and
-  `Context._searchScope` is readable by core check-only paths so they do not
-  call the lazy `searchScope` getter.
-- Metadata mutations: none added. No parent/source metadata changed. Making
-  `_searchScope` readable exposes existing context state to core internals; it
-  does not add a new setter or allocate new runtime state.
-- Evidence: hotpath leash at `e0772af7` was status-only:
-  `functions` `14.14ms` usable, `import-reference` `20.84ms` usable,
-  `mixins-guards` `17.70ms` unstable, `extend-chaining` `5.98ms` unstable, and
-  `media` `5.99ms` unstable. Focused lookup/scope tests passed:
+- Helper/API surface: no helper added. `buildReferenceFilter(...)` no longer
+  allocates a noop `() => true` filter when no caller filter exists, and the
+  one-line search-scope helper was removed in favor of the existing
+  `_searchScope` check.
+- Metadata mutations: none added. No parent/source/context metadata changed.
+- Evidence: hotpath leash at `a395cce9` was status-only:
+  `functions` `14.81ms` unstable, `import-reference` `21.24ms` usable,
+  `mixins-guards` `18.55ms` usable, `extend-chaining` `5.96ms` usable, and
+  `media` `6.00ms` unstable. Focused lookup/scope tests passed:
   `pnpm --filter @jesscss/core test --
   src/tree/__tests__/reference.test.ts src/tree/__tests__/scope-frame.test.ts
   src/tree/util/__tests__/callable-live-slots.test.ts
   src/tree/util/__tests__/callable-scope-frame.test.ts` (`133` passed).
-- Verdict: accept the binding lookup allocation deletion only. The coherent
-  binding-handle model, repeated compound-reference reuse, evaluated-value/text
-  reuse, selector/extend equality, copy/materialization boundaries, and
-  `StyleImport` placement copies remain open.
+- Verdict: accept the var-surface visited-set reuse and Reference filter
+  closure/hop deletion only. The coherent binding-handle model, repeated
+  compound-reference reuse, evaluated-value/text reuse, selector/extend
+  equality, copy/materialization boundaries, and `StyleImport` placement copies
+  remain open.

@@ -289,6 +289,7 @@ export function findVarDeclarationFast(
   let first = true;
   let publicMatch: Node | undefined;
   let optionalMatch: Node | undefined;
+  const visited = new Set<Rules>();
   while (cursor) {
     if (isNode(cursor, N.Rules)) {
       const scope = cursor as Rules;
@@ -296,6 +297,7 @@ export function findVarDeclarationFast(
       const applyCurrentScopeStart = first;
       if (!first) {
         if (isNonClassicImportBoundary(scope)) {
+          visited.clear();
           const boundaryResult = findVarWithinScopeSurface(
             scope,
             name,
@@ -303,7 +305,7 @@ export function findVarDeclarationFast(
             options,
             undefined,
             options.local,
-            new Set<Rules>(),
+            visited,
             undefined,
             false
           );
@@ -313,6 +315,7 @@ export function findVarDeclarationFast(
         }
       }
       first = false;
+      visited.clear();
       const result = findVarWithinScopeSurface(
         scope,
         name,
@@ -320,7 +323,7 @@ export function findVarDeclarationFast(
         options,
         applyCurrentScopeStart ? scopeStart : undefined,
         options.local,
-        new Set<Rules>()
+        visited
       );
       publicMatch = laterVarMatch(publicMatch, result.publicMatch);
       optionalMatch = laterVarMatch(optionalMatch, result.optionalMatch);
@@ -335,6 +338,7 @@ export function findVarDeclarationFast(
       if (isNode(cursor, N.Rules)) {
         const scope = cursor as Rules;
         if (isNonClassicImportBoundary(scope)) {
+          visited.clear();
           const boundaryResult = findVarWithinScopeSurface(
             scope,
             name,
@@ -342,7 +346,7 @@ export function findVarDeclarationFast(
             options,
             undefined,
             options.local,
-            new Set<Rules>(),
+            visited,
             undefined,
             false
           );
@@ -350,6 +354,7 @@ export function findVarDeclarationFast(
           optionalMatch = laterVarMatch(optionalMatch, boundaryResult.optionalMatch);
           break;
         }
+        visited.clear();
         const result = findVarWithinScopeSurface(
           scope,
           name,
@@ -357,7 +362,7 @@ export function findVarDeclarationFast(
           options,
           undefined,
           options.local,
-          new Set<Rules>()
+          visited
         );
         publicMatch = laterVarMatch(publicMatch, result.publicMatch);
         optionalMatch = laterVarMatch(optionalMatch, result.optionalMatch);
