@@ -1965,7 +1965,7 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7dk. [ ] Reference target/leaky fallback task. Scope:
+7dk. [x] Reference target/leaky fallback task. Scope:
     `lookupRulesReferenceTarget(...)`, `lookupLeakyRulesReferenceTargets(...)`,
     `performRulesReferenceLookup(...)`, and prepared-target reuse across
     resolved target, parent, and source-parent scopes. Goal: reduce repeated
@@ -1974,8 +1974,13 @@ Seeded next binding/lookup queue:
     hiding leaky Less behavior. Acceptance: reference handle tests,
     import/reference visibility tests, leaky-rules focused tests, binding grep,
     lint, builds, and aggressive review.
+   Done. `lookupLeakyRulesReferenceTargets(...)` now skips the source-parent
+   fallback probe when `sourceRulesParent` is the same `Rules` object already
+   checked through `rulesParent`. Wider prepared-target reuse across different
+   fallback scopes was rejected for this pass because the lookup shape still
+   depends on target `Rules` facts such as ambient output blocking.
 
-7dl. [ ] Callable namespace traversal consolidation task. Scope:
+7dl. [x] Callable namespace traversal consolidation task. Scope:
     `findRulesetNamespacePathFast(...)`,
     `findCompoundPrefixCallableRulesetPathFast(...)`,
     `findVisibleCallableRulesetPrefixMatches(...)`, and exact ruleset path
@@ -1984,8 +1989,15 @@ Seeded next binding/lookup queue:
     boundaries without sorting cached results or adding registry-like indexes.
     Acceptance: recursive namespace, compound-prefix precedence, terminal
     mixin-only, ruleset-path miss, and callable cache tests plus standard gates.
+   Done as a no-op audit. The duplicate prefix/exact ruleset scans are real,
+   but the safe consolidation condition was not met: `findRulesetNamespacePathFast(...)`
+   uses prefix matches to decide between ruleset namespace resolution and legacy
+   fallback, while `findCompoundPrefixCallableRulesetPathFast(...)` later unions
+   compound-prefix rulesets with mixin namespace results. Sharing those matches
+   would require an out-param, transient cache, or registry-like lookup record
+   across separate precedence decisions, so this pass rejected the consolidation.
 
-7dm. [ ] ScopeFrame callable coverage ownership task. Scope:
+7dm. [x] ScopeFrame callable coverage ownership task. Scope:
     `ScopeFrame.callablesCovered`, `callableMissesCovered`,
     `mixinCallableMissesCovered`, `_hasReferenceImports`,
     `hasDirectLookupChildSurface(...)`, and mutation invalidation in
@@ -1995,6 +2007,37 @@ Seeded next binding/lookup queue:
     Acceptance: callable bucket/frame tests, import/reference tests,
     rulesVisibility tests, mutation invalidation tests if needed, binding grep,
     lint, builds, and aggressive review.
+   Done. The new lane-specific frame coverage made the old
+   `currentFrameHasNoMixinChildSurface` bridge and the retry-frame equivalent
+   obsolete; both are deleted. Covered Mixin-only no-child-surface misses now
+   return through `lookupScopeFrameCallable(...)` as misses, while uncovered
+   frames still fall back through the direct bridge.
+
+Seeded next binding/lookup queue:
+
+7dn. [ ] Callable result ownership and union task. Scope: compound-prefix
+    unioning in `findMixin(...)`, `compoundPrefixFast` ownership, duplicate
+    suppression, and cached result reuse. Goal: avoid mutating any cached or
+    reused result arrays while deleting unnecessary duplicate checks only if
+    ownership is local and provable. Acceptance: namespace union,
+    compound-prefix precedence, callable cache, and recursive namespace tests
+    plus standard gates.
+
+7do. [ ] Reference handle miss semantics task. Scope: `_rulesLookupHandle`,
+    `RulesLookupHandleReadResult`, `SCOPE_FRAME_VARIABLE_MISS`, undefined
+    result handling, and lookup-version invalidation. Goal: simplify the
+    miss/hit sentinel shape without conflating cached miss with unhandled lookup
+    or adding a second handle record. Acceptance: static variable/property/
+    function/callable handle tests, source-order tests, binding grep, lint,
+    builds, and aggressive review.
+
+7dp. [ ] Direct child-surface cache task. Scope: `directChildRuleEntries`,
+    `directDeclarationChildEntries`, exact callable/ruleset/mixin child flags,
+    and reference-import invalidation. Goal: determine whether child-surface
+    flags can replace more child entry materialization on covered misses without
+    hiding import/reference visibility semantics. Acceptance: callable bucket,
+    rulesVisibility, import/reference, declaration lookup, and namespace tests
+    plus standard gates.
 
 Parked secondary deep-cut queue:
 
@@ -2323,6 +2366,43 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Leaky fallback duplicate-scope and callable frame bridge deletion pass:
+  accepted as binding/lookup cleanup, not as a speed claim. Files:
+  `packages/core/src/tree/reference.ts`, `packages/core/src/tree/rules.ts`,
+  focused lookup tests, and this handoff.
+  - New traversal: none. `lookupLeakyRulesReferenceTargets(...)` keeps the same
+    parent/source fallback order but skips the source fallback when it is the
+    same `Rules` object already searched. Callable frame lookup keeps the same
+    frame-chain walk; this pass deletes two direct bridge checks that
+    lane-specific frame miss coverage made unreachable for covered Mixin-only
+    no-child-surface misses.
+  - New node/materialization: none. No production node, wrapper `Rules`, copied
+    node, cached array, source metadata, parent mutation, or frozen state was
+    added.
+  - Render path: unchanged. This is lookup-only control flow.
+  - Helper/API surface: none added. The pass deletes the
+    `currentFrameHasNoMixinChildSurface` branch and the retry-frame
+    no-mixin-child-surface bridge branch. Namespace prefix/exact consolidation
+    was rejected because carrying shared match state across
+    `findRulesetNamespacePathFast(...)` and
+    `findCompoundPrefixCallableRulesetPathFast(...)` would require an
+    out-param/cache record across two precedence decisions.
+  - Metadata mutations: none. The existing frame coverage booleans and
+    invalidation paths are unchanged.
+  - Danger-token prosecution: the only new condition is identity comparison
+    against the already-searched leaky fallback scope; it prevents duplicate
+    lookup work and does not alter lookup ordering for distinct scopes.
+  - Evidence: focused reference/mixin/call/rules/import/control suite passed
+    after the edit (`6` files, `205` passed, `370` skipped). Touched-file ESLint
+    passed; binding grep found no old registry-adapter or deleted bridge residue
+    beyond existing lane-specific reference option builders; `git diff --check`
+    passed; `@jesscss/core` build passed with only the existing `js-expr.ts`
+    direct-eval warning; `verify:aggressive-cutting-review` passed with no
+    scoped danger tokens; `audit:node-creation` passed; `jess` build passed.
+    One-iteration hotpath smoke passed with usable signal:
+    `mixins-guards.less` `27.94ms`, `scope-lookup-stress.less` `76.24ms`. No
+    speed claim is made from this pass.
 
 - Reference lane split and callable frame coverage pass: accepted as
   binding/lookup cleanup, not as a speed claim. Files:

@@ -1829,27 +1829,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             return results;
           }
         }
-        const currentFrameHasNoMixinChildSurface = frameHit.kind === 'uncovered'
-          && !includeRulesets
-          && isNode(callableFrame.rulesNode, N.Rules)
-          && !callableFrame.rulesNode.hasDirectLookupChildSurface(false);
-        if (
-          currentFrameHasNoMixinChildSurface
-          && (
-            options.searchParents === false
-            || (!callableFrame.parent && !callableFrame.fallbackFrame && this.parent === undefined)
-          )
-        ) {
-          const pathKeys = splitStaticCallablePathKey(keys);
-          if (pathKeys) {
-            const result = this.findMixin(pathKeys, filterType, options, keys);
-            this.setLastCallableLookupResult(cacheKey, result);
-            return result;
-          }
-          this.setLastCallableLookupResult(cacheKey, undefined);
-          return undefined;
-        }
-        if (frameHit.kind === 'uncovered' && !currentFrameHasNoMixinChildSurface) {
+        if (frameHit.kind === 'uncovered') {
           const direct = this.findMixinsFast(keys, {
             hasTarget: options.hasTarget,
             local: options.local,
@@ -1883,19 +1863,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 this.setLastCallableLookupResult(cacheKey, results);
                 return results;
               }
-            }
-            if (
-              retryHit.kind === 'uncovered'
-              && !includeRulesets
-              && isNode(retryFrame.rulesNode, N.Rules)
-              && !retryFrame.rulesNode.hasDirectLookupChildSurface(false)
-            ) {
-              retryFrame = retryFrame.parent;
-              if (!retryFrame && fallbackFrame) {
-                retryFrame = fallbackFrame;
-                fallbackFrame = fallbackFrame.fallbackFrame;
-              }
-              continue;
             }
             if (retryHit.kind === 'uncovered' && isNode(retryFrame.rulesNode, N.Rules)) {
               const direct = retryFrame.rulesNode.findMixinsFast(keys, {

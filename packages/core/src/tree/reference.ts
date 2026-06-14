@@ -752,7 +752,7 @@ function lookupLeakyRulesReferenceTargets(args: {
           return resolved;
         }
         const sourceRulesParent = args.sourceRulesParent;
-        return isNode(sourceRulesParent, N.Rules)
+        return isNode(sourceRulesParent, N.Rules) && sourceRulesParent !== rulesParent
           ? performRulesReferenceLookup(sourceRulesParent, args.lookupContext)
           : undefined;
       });
@@ -763,7 +763,7 @@ function lookupLeakyRulesReferenceTargets(args: {
   }
 
   const sourceRulesParent = args.sourceRulesParent;
-  return isNode(sourceRulesParent, N.Rules)
+  return isNode(sourceRulesParent, N.Rules) && sourceRulesParent !== rulesParent
     ? performRulesReferenceLookup(sourceRulesParent, args.lookupContext)
     : undefined;
 }
