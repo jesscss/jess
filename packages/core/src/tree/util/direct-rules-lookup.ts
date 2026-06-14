@@ -64,17 +64,22 @@ const ANY_DECLARATION_LOOKUP: DeclarationLookupStrategy = {
 };
 const EMPTY_DIRECT_DECLARATION_FIND_OPTIONS: DirectDeclarationFindOptions = {};
 
-type MatchState = {
+type DeclarationMatchState = {
   optionalMatch: Declaration | undefined;
   publicMatch: Declaration | undefined;
   readonly: boolean;
 };
 
-type CachedMatch = MatchState;
-const EMPTY_MATCH_STATE: MatchState = {
+type CachedDeclarationMatchState = DeclarationMatchState;
+const EMPTY_DECLARATION_MISS_STATE: DeclarationMatchState = {
   optionalMatch: undefined,
   publicMatch: undefined,
   readonly: false
+};
+const READONLY_EMPTY_DECLARATION_MISS_STATE: DeclarationMatchState = {
+  optionalMatch: undefined,
+  publicMatch: undefined,
+  readonly: true
 };
 
 function isNonClassicImportBoundary(rules: Rules | undefined): boolean {
@@ -200,18 +205,11 @@ function addCandidateMatch(
   }
 }
 
-function createEmptyState(readonly = false): MatchState {
-  if (!readonly) {
-    return EMPTY_MATCH_STATE;
-  }
-  return {
-    optionalMatch: undefined,
-    publicMatch: undefined,
-    readonly
-  };
+function getEmptyDeclarationMissState(readonly = false): DeclarationMatchState {
+  return readonly ? READONLY_EMPTY_DECLARATION_MISS_STATE : EMPTY_DECLARATION_MISS_STATE;
 }
 
-function createMutableState(readonly = false): MatchState {
+function createTraversalMatchState(readonly = false): DeclarationMatchState {
   return {
     optionalMatch: undefined,
     publicMatch: undefined,
@@ -246,8 +244,8 @@ function getDeclarationParentSearchStep(
 }
 
 function mergeMatch(
-  target: MatchState,
-  source: MatchState,
+  target: DeclarationMatchState,
+  source: DeclarationMatchState,
   optionalOnly: boolean
 ): void {
   target.readonly ||= source.readonly;
@@ -286,7 +284,7 @@ function getRecursiveLookupCacheKey(
   ].join('\u001f');
 }
 
-function readCachedMatch(scope: Rules, cacheKey: string | undefined): CachedMatch | undefined {
+function readCachedMatch(scope: Rules, cacheKey: string | undefined): CachedDeclarationMatchState | undefined {
   if (!cacheKey) {
     return undefined;
   }
@@ -297,7 +295,7 @@ function readCachedMatch(scope: Rules, cacheKey: string | undefined): CachedMatc
   return cached;
 }
 
-function writeCachedMatch(scope: Rules, cacheKey: string | undefined, state: MatchState): void {
+function writeCachedMatch(scope: Rules, cacheKey: string | undefined, state: DeclarationMatchState): void {
   if (!cacheKey) {
     return;
   }
@@ -372,9 +370,9 @@ function findWithinScopeSurface(
   firstVisitedRules?: Rules,
   secondVisitedRules?: Rules,
   visited?: Set<Rules>
-): MatchState {
+): DeclarationMatchState {
   if (firstVisitedRules === scope || secondVisitedRules === scope || visited?.has(scope)) {
-    return createEmptyState(readonly);
+    return getEmptyDeclarationMissState(readonly);
   }
   if (firstVisitedRules === undefined) {
     firstVisitedRules = scope;
@@ -400,7 +398,7 @@ function findWithinScopeSurface(
     }
   }
 
-  const state = createMutableState(readonly || Boolean(scope.options.readonly));
+  const state = createTraversalMatchState(readonly || Boolean(scope.options.readonly));
   if (includeLiveBindings) {
     const live = scope._scopeFrame?.currentBindingsByName.get(key);
     const liveSource = live?.live === true

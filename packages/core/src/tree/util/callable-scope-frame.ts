@@ -1,4 +1,4 @@
-import { type BindingCell, buildScopeFrame, copyLiveBindingSlots, type ScopeFrame } from '../scope-frame.js';
+import { type BindingCell, buildScopeFrame, type ScopeFrame } from '../scope-frame.js';
 import type { Rules } from '../rules.js';
 import { assignMixinOutputFallbackFrame } from './mixin-output-slot.js';
 
@@ -32,7 +32,7 @@ export function wireCallableScopeFrames({
           undefined,
           outerRules,
           lexicalScopeFrame,
-          copyLiveBindingSlots(liveSlots)
+          new Map(liveSlots)
         );
         if (parentFrame && parentFrame !== lexicalScopeFrame) {
           outerRules.scopeFrame.fallbackFrame = parentFrame;

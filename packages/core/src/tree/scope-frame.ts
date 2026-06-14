@@ -281,16 +281,10 @@ export function buildScopeFrame(
   };
 }
 
-export function copyLiveBindingSlots(
-  liveSlots: Map<string, BindingCell> | undefined
-): Map<string, BindingCell> {
-  return new Map(liveSlots);
-}
-
 export function copyScopeFrameLiveBindingSlots(
   frame: ScopeFrame | undefined
 ): Map<string, BindingCell> {
-  return copyLiveBindingSlots(frame?.liveSlotsByName);
+  return new Map(frame?.liveSlotsByName);
 }
 
 export function setScopeFrameLiveBinding(

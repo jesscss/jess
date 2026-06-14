@@ -68,65 +68,51 @@ Registryless lookup is the active runtime direction.
   - `prepareRulesLookupShape(...)`
 
 Recent baseline commit: `054fc959` trimmed this handoff to active guidance.
-Latest pass moved callable miss coverage onto `ScopeFrame`, removed the dead
-direct-declaration uncovered sentinel, and narrowed fully indexed callable
-child-surface checks. Last full gate smoke was usable but not a speed claim:
-`mixins-guards.less` `28.20ms`, `scope-lookup-stress.less` `88.23ms`.
-Current pass collapses current binding wrappers into direct `BindingCell`
-entries, deletes Reference declaration pass-through wrappers, and skips a
-terminal mixin-only exact-ruleset namespace probe.
-Current pass makes direct declaration recursion state lazy, reads runtime live
-ownership from the current binding cell, and avoids a namespace remainder array
-for two-segment mixin namespace descent.
-Current pass keeps direct declaration parent-cycle tracking scalar through two
-distinct surfaces, audits live-slot map ownership, and tags callable namespace
-prefix results with ownership so union append only copies shared/cached arrays.
-Current pass propagates callable namespace result ownership through recursive
-mixin descent, collapses duplicated direct declaration parent/fallback loops,
-and documents `liveSlotsByName` as construction/clone ownership state rather
-than the ordinary read path.
-Current pass stops caching arrays materialized from scope-frame callable
-buckets, moves production live-slot presence checks to `ScopeFrame.hasLiveBindings`,
-and keeps recursive direct declaration visited state scalar through two surfaces.
-Current pass stops caching direct `findMixinsFast(...)` arrays, centralizes
-live-slot owner map cloning behind `copyLiveBindingSlots(...)`, and stores
-terminal direct declaration cache states without copying them.
-Current pass stops caching positive fast path lookup arrays, hides frame
-live-slot owner reads behind `copyScopeFrameLiveBindingSlots(...)`, and reuses a
-shared empty direct declaration miss state for readonly-free recursive misses.
+Recent passes moved simple callable/declaration lookup toward `ScopeFrame` and
+direct `Rules` search, removed registry fallback bridges from covered paths,
+and stopped caching arrays produced by direct callable lookup.
+Latest pass deletes the dead last-callable cache surface, removes the raw
+`copyLiveBindingSlots(...)` helper, keeps live binding writes synchronized
+through `setScopeFrameLiveBinding(...)`, and names immutable direct-declaration
+miss states separately from mutable traversal state.
+Last full gate smoke was usable but not a speed claim:
+`mixins-guards.less` `26.23ms`, `scope-lookup-stress.less` `88.26ms`.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7fj. [ ] Callable path shared-result marking.
-Scope: `lastCallableLookupValue`, path-key `findMixin(...)`, path namespace
-fast helpers, compound-prefix union, and callable result consumers.
-Goal: either mark cached positive path arrays as shared at the type boundary or
-remove one remaining positive path cache write without hurting ordinary direct
-callable hits.
-Acceptance: namespace, recursive namespace, compound-prefix, terminal
-mixin-only, ruleset namespace with args, static callable binding, lint, builds,
+7fp. [ ] Reference variable binding path consolidation.
+Scope: `Reference.evalNode`, `lookupScopeFrameVariable(...)`,
+`findVariableDeclaration(...)`, readonly/snapshot lookup, `$!` contextual reads,
+and assignment/`:=` paths.
+Goal: make ordinary variable reads ask one binding path for live/static/current
+cell identity, with uncovered paths explicitly bounded to dynamic names or
+source-order snapshot semantics.
+Acceptance: live reads, `$!` snapshot reads, assignment/readonly, dynamic and
+`setDefined` variable tests, no registry/adapter residue, lint, builds,
 aggressive review.
 
-7fk. [ ] Live-slot owner mutation API.
-Scope: `liveSlotsByName`, `setScopeFrameLiveBinding(...)`, configured imports,
-loop/control live bindings, callable scope wiring, clone/derive, and tests that
-inspect live slots.
-Goal: move the remaining direct `liveSlotsByName.set(...)` into an owner helper
-or prove it is already the minimal update API for synchronized live/current
-binding state.
-Acceptance: mixin params, `@arguments`, import configured variables, iteration
-vars, readonly assignment, snapshot/live reads, clone/derive tests, lint,
-builds, aggressive review.
-
-7fl. [ ] Direct declaration mutable state split.
-Scope: `MatchState`, `createMutableState(...)`, `mergeMatch(...)`, recursive
-cache storage, readonly propagation, and optional/public candidate handling.
-Goal: split immutable miss state from mutable traversal state more clearly, or
-collapse another allocation without sharing mutable state across recursion.
+7fq. [ ] Direct declaration cache ownership audit.
+Scope: `directDeclarationLookupCache`, `directDeclarationsByName`,
+`getDirectDeclarationBucket(...)`, recursive cache writes, candidate sets, and
+fallback-frame recursion.
+Goal: prove each cached object is owned and immutable after storage, or replace
+the cache entry with a smaller miss/hit sentinel that cannot carry mutable
+traversal state.
 Acceptance: parent/fallback circular protection, fallback-frame, source-order,
 readonly, property/variable tests, lint, builds, aggressive review.
+
+7fr. [ ] Callable child-surface coverage tightening.
+Scope: `prepareCallableLookupFrame(...)`, `hasDirectLookupChildSurface(...)`,
+`findMixinsFast(...)` bridges, callable miss coverage flags, namespace and
+compound-prefix lookup.
+Goal: reduce uncovered callable fallback to only child surfaces that can
+actually contain the requested callable kind/key, with covered misses stopping
+without a direct tree crawl.
+Acceptance: static callable binding, namespace, recursive namespace,
+compound-prefix, terminal mixin-only, ruleset namespace with args, child-surface
+miss tests, lint, builds, aggressive review.
 
 ## Backlog Sources
 
@@ -151,7 +137,7 @@ pnpm --filter @jesscss/core exec vitest src/tree/__tests__/reference.test.ts src
 Before commit, run:
 
 ```sh
-rg -n "ReferenceLookupOptions|registryless|registry-utils|register\\('function'|findFunctionDirect|ReferenceFindOptions|stale registry|registry-backed|registry can find|findDeclaration\\([^,]+, undefined|Parameters<Rules\\['findMixinsFast'\\]>|RULES_LOOKUP_ADAPTERS|\\bRulesLookupAdapter\\b|lookupFunctionReference|lookupCallableReference|currentFrameHasNoMixinChildSurface|buildDeclarationReferenceLookupOptions|buildCallableReferenceLookupOptions" packages/core/src packages/jess-plugin-less/src packages/language-service/src packages/scss-parser/test/baseline.test.ts
+rg -n "ReferenceLookupOptions|registryless|registry-utils|register\\('function'|findFunctionDirect|ReferenceFindOptions|stale registry|registry-backed|registry can find|findDeclaration\\([^,]+, undefined|Parameters<Rules\\['findMixinsFast'\\]>|RULES_LOOKUP_ADAPTERS|\\bRulesLookupAdapter\\b|lookupFunctionReference|lookupCallableReference|currentFrameHasNoMixinChildSurface|buildDeclarationReferenceLookupOptions|buildCallableReferenceLookupOptions|lastCallableLookup|copyLiveBindingSlots" packages/core/src packages/jess-plugin-less/src packages/language-service/src packages/scss-parser/test/baseline.test.ts
 git diff --check
 pnpm --filter @jesscss/core build
 pnpm run verify:aggressive-cutting-review
@@ -176,27 +162,31 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: fast path cache and empty-state narrowing.
+- Latest pass: last-callable cache deletion, live-slot copy API narrowing, and
+  direct declaration state naming.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
 - New traversal: none.
-- New node/materialization: no nodes. `copyScopeFrameLiveBindingSlots(...)`
-  hides frame owner-map reads for existing live-slot map clones.
-  `EMPTY_MATCH_STATE` is immutable miss state for readonly-free recursive cycle
-  misses; mutable traversal still uses `createMutableState(...)`.
+- New node/materialization: no nodes. The diff shows two `new Map(...)` calls:
+  `copyScopeFrameLiveBindingSlots(...)` preserves the existing frame-owner copy,
+  and prebound guard outer rules copy the same live-slot owner map previously
+  copied through the deleted helper. The diff also names two shared
+  direct-declaration miss objects; these are immutable sentinels replacing
+  per-cycle empty-state allocation.
 - Render path: unchanged.
-- Helper/API surface: one internal frame-level live-slot copy helper; it moves
-  rules/imports away from reading `liveSlotsByName` directly.
+- Helper/API surface: deleted `getCallableLookupCacheKey(...)`,
+  `hasLastCallableLookupResult(...)`, `getLastCallableLookupResult(...)`,
+  `setLastCallableLookupResult(...)`, and the raw `copyLiveBindingSlots(...)`
+  export. No new helper/API was added. `setScopeFrameLiveBinding(...)` remains
+  the single production update API for synchronized `liveSlotsByName`,
+  `currentBindingsByName`, and `hasLiveBindings`.
 - Metadata mutations: none.
-- Allocation changes: positive fast-path array-key results are no longer stored
-  in `lastCallableLookupValue`; misses still clear the last cache key. Recursive
-  direct declaration cycle misses reuse `EMPTY_MATCH_STATE` when readonly is
-  false instead of allocating an empty state object.
-- Evidence: focused lint passed; focused lookup suite passed (`7` files,
-  `306` passed, `272` skipped). Affected reference/scope/mixin/live-slot subset
-  passed (`4` files, `42` passed, `256` skipped). Residue grep and
-  `git diff --check` passed. `@jesscss/core` build passed with only the existing
-  `js-expr.ts` direct-eval warning. Aggressive review passed with documented
-  scoped danger tokens; node-creation audit passed; `jess` build passed.
-  One-iteration hotpath smoke passed with usable signal:
-  `mixins-guards.less` `27.16ms`, `scope-lookup-stress.less` `102.05ms`. No
-  speed claim is made.
+- Allocation changes: deleted `lastCallableLookupKey`/`lastCallableLookupValue`
+  storage and all call-site cache-key string creation. Deleted the raw live-slot
+  copy helper instead of hiding owner-map copies behind an API. Recursive direct
+  declaration cycle misses reuse shared empty state for both readonly values.
+- Evidence: focused lint passed. Focused lookup suite passed (`8` files,
+  `327` passed, `254` skipped). Residue grep and `git diff --check` passed.
+  `pnpm --filter @jesscss/core build`, `pnpm run verify:aggressive-cutting-review`,
+  `pnpm run audit:node-creation`, and `pnpm --filter jess build` passed. Smoke
+  benchmark only: `mixins-guards.less` `26.23ms`,
+  `scope-lookup-stress.less` `88.26ms`.

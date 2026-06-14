@@ -79,7 +79,6 @@ import {
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
-const CALLABLE_LOOKUP_CACHE_KEY_SEPARATOR = '\u001e';
 const CALLABLE_LOOKUP_PATH_KEY_SEPARATOR = '\u001f';
 type StyleImportRegistrationNode = Node<{ path: unknown }>;
 type PathResolutionError = Error & { _isPathResolutionError?: boolean };
@@ -690,8 +689,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     readonly: boolean;
   }> | undefined;
 
-  lastCallableLookupKey: string | undefined;
-  lastCallableLookupValue: MixinEntry[] | undefined;
   lookupVersion = 0;
   /** ScopeFrame storage; check this when lookup must not lazily build a frame. */
   _scopeFrame: ScopeFrame | undefined;
@@ -807,8 +804,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.hasExactRulesetChildSurface = false;
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
-    this.lastCallableLookupKey = undefined;
-    this.lastCallableLookupValue = undefined;
     this.lookupVersion = 0;
     this._hasExtends = false;
     this._hasReferenceImports = false;
@@ -1296,43 +1291,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       rulesVisibility: visibility,
       readonly
     });
-  }
-
-  private getCallableLookupCacheKey(
-    lookupKey: string,
-    filterType: string | undefined,
-    options: CallableFindOptions
-  ): string | undefined {
-    if (options.hasTarget || options.local || options.context?.rulesContext === this) {
-      return undefined;
-    }
-    return lookupKey
-      + CALLABLE_LOOKUP_CACHE_KEY_SEPARATOR
-      + (filterType ?? '')
-      + CALLABLE_LOOKUP_CACHE_KEY_SEPARATOR
-      + (options.terminalMixinOnly === true ? 't1' : 't0')
-      + CALLABLE_LOOKUP_CACHE_KEY_SEPARATOR
-      + (options.searchParents === false ? 's0' : 's1');
-  }
-
-  private hasLastCallableLookupResult(key: string): boolean {
-    return this.lastCallableLookupKey === key;
-  }
-
-  private getLastCallableLookupResult(): MixinEntry[] | undefined {
-    return this.lastCallableLookupValue;
-  }
-
-  private setLastCallableLookupResult(key: string | undefined, value: MixinEntry[] | undefined): void {
-    if (key === undefined || value === undefined) {
-      if (key !== undefined && this.lastCallableLookupKey === key) {
-        this.lastCallableLookupKey = undefined;
-        this.lastCallableLookupValue = undefined;
-      }
-      return;
-    }
-    this.lastCallableLookupKey = key;
-    this.lastCallableLookupValue = value;
   }
 
   private findVisibleExactCallableRulesetPath(
@@ -1836,10 +1794,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): MixinEntry[] | undefined {
     if (typeof keys === 'string') {
       const includeRulesets = filterType !== 'Mixin' && options.terminalMixinOnly !== true;
-      const cacheKey = this.getCallableLookupCacheKey(keys, filterType, options);
-      if (cacheKey !== undefined && this.hasLastCallableLookupResult(cacheKey)) {
-        return this.getLastCallableLookupResult();
-      }
       const callableFrame = this._scopeFrame;
       if (callableFrame && !options.hasTarget && !options.local) {
         this.prepareCallableLookupFrame(callableFrame, keys, includeRulesets);
@@ -1850,11 +1804,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (frameHit.kind === 'miss' && options.searchParents === false) {
           const pathKeys = splitStaticCallablePathKey(keys);
           if (pathKeys) {
-            const result = this.findMixin(pathKeys, filterType, options, keys);
-            this.setLastCallableLookupResult(cacheKey, result);
-            return result;
+            return this.findMixin(pathKeys, filterType, options, keys);
           }
-          this.setLastCallableLookupResult(cacheKey, undefined);
           return undefined;
         }
         if (frameHit.kind === 'hit') {
@@ -1921,20 +1872,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (frameHit.kind === 'miss' && this.parent === undefined) {
             const pathKeys = splitStaticCallablePathKey(keys);
             if (pathKeys) {
-              const result = this.findMixin(pathKeys, filterType, options, keys);
-              this.setLastCallableLookupResult(cacheKey, result);
-              return result;
+              return this.findMixin(pathKeys, filterType, options, keys);
             }
-            this.setLastCallableLookupResult(cacheKey, undefined);
             return undefined;
           }
         }
       }
       const pathKeys = splitStaticCallablePathKey(keys);
       if (pathKeys) {
-        const result = this.findMixin(pathKeys, filterType, options, keys);
-        this.setLastCallableLookupResult(cacheKey, result);
-        return result;
+        return this.findMixin(pathKeys, filterType, options, keys);
       }
       const direct = this.findMixinsFast(keys, {
         hasTarget: options.hasTarget,
@@ -1942,30 +1888,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         includeRulesets,
         searchParents: options.searchParents
       });
-      const result = direct.length > 0 ? direct : undefined;
-      if (result === undefined) {
-        this.setLastCallableLookupResult(cacheKey, undefined);
-      }
-      return result;
+      return direct.length > 0 ? direct : undefined;
     } else if (isArray(keys) && keys.length === 0) {
       return undefined;
     } else if (isArray(keys) && keys.length === 1) {
       return this.findMixin(keys[0]!, filterType, options);
     } else if (isArray(keys) && keys.length > 1) {
       const lookupKey = normalizedPathKey ?? keys.join(CALLABLE_LOOKUP_PATH_KEY_SEPARATOR);
-      const cacheKey = this.getCallableLookupCacheKey(lookupKey, filterType, options);
-      if (cacheKey !== undefined && this.hasLastCallableLookupResult(cacheKey)) {
-        return this.getLastCallableLookupResult();
-      }
       const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
       let compoundPrefixFast: CallableRulesetPathResult | undefined;
       let mixinNamespaceFast: MixinEntry[] | undefined;
       if (mixinFilterType !== 'Mixin') {
         const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options, lookupKey);
         if (rulesetNamespaceFast !== undefined && (rulesetNamespaceFast.length > 0 || options.terminalMixinOnly !== true)) {
-          const result = rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
-          this.setLastCallableLookupResult(cacheKey, result);
-          return result;
+          return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
         }
         const namespaceMixins = this.findMixinsFast(keys[0]!, {
           hasTarget: options.hasTarget,
@@ -1979,7 +1915,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               local: options.local
             });
             if (namespaceRulesets.length !== 0) {
-              this.setLastCallableLookupResult(cacheKey, undefined);
               return undefined;
             }
             const exactRulesetPath = this.findVisibleExactCallableRulesetPath(keys, {
@@ -1990,7 +1925,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               return exactRulesetPath;
             }
           }
-          this.setLastCallableLookupResult(cacheKey, undefined);
           return undefined;
         }
         compoundPrefixFast = this.findCompoundPrefixCallableRulesetPathFast(keys, options, lookupKey);
@@ -2027,13 +1961,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return compoundUnion;
       }
       if (fast !== undefined) {
-        const result = fast.length > 0 ? fast : undefined;
-        if (result === undefined) {
-          this.setLastCallableLookupResult(cacheKey, undefined);
-        }
-        return result;
+        return fast.length > 0 ? fast : undefined;
       }
-      this.setLastCallableLookupResult(cacheKey, undefined);
       return undefined;
     }
     return undefined;
@@ -2725,8 +2654,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
-    this.lastCallableLookupKey = undefined;
-    this.lastCallableLookupValue = undefined;
     const directChildRules = childCallableRulesOf(node);
     if (directChildRules && !isNode(node, N.Rules)) {
       this.addDirectChildRuleEntry(directChildRules);
