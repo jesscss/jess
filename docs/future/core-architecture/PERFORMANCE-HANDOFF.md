@@ -2245,6 +2245,35 @@ Interpretation: status only, not a speed claim. Keep as writer-capture,
 sync-path closure, and selector array-factory deletion; the sample is bounded
 and not a stable benchmark proof.
 
+### AtRule Header Direct Syntax Cut
+
+Date: 2026-06-13.
+
+Change: `AtRule` now has a direct `writeSyntax(...)` source writer, and
+`AtRule.getHeaderString(...)` writes name/prelude syntax directly instead of
+calling child public `toString(...)` inside local capture helper functions.
+Prelude boundary trivia is emitted explicitly through the existing trivia
+consumption path so comment placement stays intact. `Ruleset` header compose
+also counts ampersands with a character loop instead of `valueOf().match(...)`
+array allocation.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `3f641b78` reported: `functions` median `14.97ms` unstable,
+  `import-reference` median `23.39ms` usable, `mixins-guards` median
+  `17.71ms` usable, `extend-chaining` median `5.87ms` usable, and `media`
+  median `6.33ms` unstable.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `14.79ms` usable,
+  `import-reference` median `24.00ms` usable, `mixins-guards` median
+  `17.62ms` usable, `extend-chaining` median `5.78ms` usable, and `media`
+  median `6.08ms` unstable.
+
+Interpretation: status only, not a speed claim. Keep as public-string transport
+and regex-result allocation deletion; the bounded leash is mixed but not
+regressive enough to reject the simpler path.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

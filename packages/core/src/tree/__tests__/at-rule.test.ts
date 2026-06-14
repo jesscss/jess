@@ -1576,23 +1576,23 @@ describe('AtRule', () => {
     const options = getPrintOptions({ writer });
     const name = node.value.name;
     const prelude = node.value.prelude!;
-    const originalNameToString = name.toString;
-    const originalPreludeToString = prelude.toString;
+    const originalNameWriteSyntax = name.writeSyntax;
+    const originalPreludeWriteSyntax = prelude.writeSyntax;
     let nameUsedActiveWriter = false;
     let preludeUsedActiveWriter = false;
-    name.toString = function toStringWithWriterCheck(
+    name.writeSyntax = function writeSyntaxWithWriterCheck(
       this: typeof name,
-      nextOptions?: Parameters<typeof originalNameToString>[0]
-    ): string {
-      nameUsedActiveWriter = nextOptions?.writer === writer;
-      return originalNameToString.call(this, nextOptions);
+      nextOptions: Parameters<typeof originalNameWriteSyntax>[0]
+    ): void {
+      nameUsedActiveWriter = nextOptions.writer === writer;
+      return originalNameWriteSyntax.call(this, nextOptions);
     };
-    prelude.toString = function toStringWithWriterCheck(
+    prelude.writeSyntax = function writeSyntaxWithWriterCheck(
       this: typeof prelude,
-      nextOptions?: Parameters<typeof originalPreludeToString>[0]
-    ): string {
-      preludeUsedActiveWriter = nextOptions?.writer === writer;
-      return originalPreludeToString.call(this, nextOptions);
+      nextOptions: Parameters<typeof originalPreludeWriteSyntax>[0]
+    ): void {
+      preludeUsedActiveWriter = nextOptions.writer === writer;
+      return originalPreludeWriteSyntax.call(this, nextOptions);
     };
 
     try {
@@ -1603,8 +1603,8 @@ describe('AtRule', () => {
       expect(nameUsedActiveWriter).toBe(true);
       expect(preludeUsedActiveWriter).toBe(true);
     } finally {
-      name.toString = originalNameToString;
-      prelude.toString = originalPreludeToString;
+      name.writeSyntax = originalNameWriteSyntax;
+      prelude.writeSyntax = originalPreludeWriteSyntax;
     }
   });
 

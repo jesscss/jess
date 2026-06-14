@@ -17,7 +17,7 @@ import {
 } from './util/render-buffer.js';
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
-import { createTriviaMap, emitCommentTriviaAfterNode } from './util/trivia.js';
+import { consumeTrivia, createTriviaMap, emitCommentTriviaAfterNode, emitTriviaTokens } from './util/trivia.js';
 import { canReuseLeaf, copyWithReusableLeaves, copyWithReusableLeavesPreservingComments, reuseLeaf } from './util/cloning.js';
 import { withRulesContext } from './util/context.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
@@ -489,6 +489,22 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   override toTrimmedString(options?: PrintOptions): string {
     return serializeRulesContainer(this, getPrintOptions(options));
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    const { name, prelude, rules } = this.value;
+    const w = options.writer;
+    name.writeSyntax(options);
+    if (prelude) {
+      w.add(' ');
+      prelude.writeSyntax(options);
+    }
+    if (rules) {
+      w.add(' ');
+      rules.writeBracedSyntax(options);
+    } else {
+      w.add(';');
+    }
   }
 
   getRenderRules(): Rules | undefined {
@@ -1087,34 +1103,23 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
     }
 
-    const emptyHeaderTrivia = () => createTriviaMap();
-    const captureWithoutHeaderTrivia = (fn: () => string): string => {
-      const savedTrivia = options.trivia;
-      if (withoutComments) {
-        options.trivia = emptyHeaderTrivia();
-      }
-      try {
-        return fn();
-      } finally {
-        options.trivia = savedTrivia;
-      }
-    };
-    const printHeaderFragment = (printOptions: FinalPrintOptions, fn: (nextOptions: FinalPrintOptions) => void): string => {
-      const writer = printOptions.writer;
-      const mark = writer.mark();
-      try {
-        fn(printOptions);
-        return writer.getSince(mark);
-      } finally {
-        writer.restore(mark);
-      }
-    };
-
-    const nameOut = captureWithoutHeaderTrivia(() => printHeaderFragment(options, nextOptions => name.toString(nextOptions)));
+    let savedTrivia = options.trivia;
+    if (withoutComments) {
+      options.trivia = createTriviaMap();
+    }
+    let mark = options.writer.mark();
+    let nameOut: string;
+    try {
+      name.writeSyntax(options);
+      nameOut = options.writer.getSince(mark);
+    } finally {
+      options.writer.restore(mark);
+      options.trivia = savedTrivia;
+    }
     const nameEndsWithSpace = /\s$/.test(nameOut);
     if (prelude) {
       const preludeTrivia = withoutComments
-        ? emptyHeaderTrivia()
+        ? createTriviaMap()
         : options.trivia ?? prelude.sourceRoot?._treeContext?.opts?.trivia;
       const preludePrintOptions: FinalPrintOptions = options.context && preludeTrivia
         ? {
@@ -1124,7 +1129,23 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             emittedTrivia: options.emittedTrivia
           }
         : options;
-      const preludeOut = captureWithoutHeaderTrivia(() => printHeaderFragment(preludePrintOptions, nextOptions => prelude.toString(nextOptions)));
+      savedTrivia = preludePrintOptions.trivia;
+      if (withoutComments) {
+        preludePrintOptions.trivia = createTriviaMap();
+      }
+      mark = preludePrintOptions.writer.mark();
+      let preludeOut: string;
+      try {
+        emitTriviaTokens(
+          consumeTrivia(preludeTrivia, prelude.location[0], 'before', preludePrintOptions),
+          preludePrintOptions
+        );
+        prelude.writeSyntax(preludePrintOptions);
+        preludeOut = preludePrintOptions.writer.getSince(mark);
+      } finally {
+        preludePrintOptions.writer.restore(mark);
+        preludePrintOptions.trivia = savedTrivia;
+      }
       if (!preludeOut.trim()) {
         out += nameOut;
         if (rules) {
@@ -1146,9 +1167,16 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         out += ' ';
       }
       out += finalPreludeOut;
-      const preludePost = withoutComments
-        ? ''
-        : printHeaderFragment(options, nextOptions => emitCommentTriviaAfterNode(prelude, nextOptions));
+      let preludePost = '';
+      if (!withoutComments) {
+        mark = options.writer.mark();
+        try {
+          emitCommentTriviaAfterNode(prelude, options);
+          preludePost = options.writer.getSince(mark);
+        } finally {
+          options.writer.restore(mark);
+        }
+      }
       out += preludePost;
       if (rules) {
         const preludeEndsWithSpace = /\s$/.test(preludeOut + preludePost);

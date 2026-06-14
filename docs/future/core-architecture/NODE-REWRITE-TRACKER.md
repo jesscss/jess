@@ -58,8 +58,10 @@ first measured offenders after the selector pass.
   checks use straight loops instead of callback predicates. Render sync-path
   helper closures are lifted out of `render(...)`, and ampersand composition
   uses indexed loops/pre-sized arrays instead of `slice(...)`, spread merge,
-  and push-spread flattening. Eliminate or isolate `getHeaderString(...)`
-  capture for hot frame render/comparison paths.
+  and push-spread flattening. Header compose ampersand counting uses a straight
+  character loop instead of `valueOf().match(...)` array allocation. Eliminate
+  or isolate `getHeaderString(...)` capture for hot frame render/comparison
+  paths.
 - [ ] `Declaration`: public syntax boundary exists for callers, non-custom
   declaration children now write through direct syntax hooks, and custom
   fallback function assembly uses straight loops. Render assignment and custom
@@ -219,11 +221,12 @@ Current hard leftovers after the broad hook sweep:
 - [x] `RawRules`: direct raw body writer.
 - [x] `Collection`: live wrapper with direct braced source writer; broader
   wrapper necessity remains out of scope for this source-writer pass.
-- [ ] `AtRule`: add an actual direct header/body writer, then remove public
-  child-string transport and custom eval/render branch ladders where state
-  already carries kind. Body eval/registration async branches now use
-  `MaybePromise` narrowing, and render sync-path helper closures are lifted out
-  of `render(...)`.
+- [ ] `AtRule`: direct source writer exists, and header name/prelude capture
+  writes child syntax directly instead of routing through public `toString(...)`.
+  Remove remaining custom eval/render branch ladders where state already
+  carries kind. Body eval/registration async branches now use `MaybePromise`
+  narrowing, and render sync-path helper closures are lifted out of
+  `render(...)`.
 - [ ] `StyleImport`: direct import/render writer and placement state; no
   first-use copied rules surfaces on render-only paths. Placement-state
   bookkeeping no longer stores a redundant top-level `Map`, unused preservation
@@ -275,7 +278,7 @@ Current hard leftovers after the broad hook sweep:
 | Ampersand | `packages/core/src/tree/ampersand.ts` | `SimpleSelector` | partial | Direct source writer exists; append/template placement no longer stores dead selector text arrays, no longer splits template strings into `templateParts`, selector-list template flattening uses indexed loops instead of iterator/spread, placement state carries only live facts, and BasicSelector append avoids generic `Reflect.construct`. Remaining debt is structural selector replacement, raw string assembly, and non-basic generic construction. |
 | Anonymous | `packages/core/src/tree/any.ts` | `Any` | writeSyntax hook complete | Scalar emission uses `Any.writeSyntax`; compare-time text normalization now shares the internal compare utility. |
 | Any | `packages/core/src/tree/any.ts` | `Node` | writeSyntax hook complete | Scalar emission has a direct writer; compare-time text normalization now shares the internal compare utility; string conversion and numeric regex decisions remain. |
-| AtRule | `packages/core/src/tree/at-rule.ts` | `Node` | partial | Body eval/registration async branches use `MaybePromise` narrowing, and sync render no longer allocates local render/result helper closures. High priority: direct header/body writer, child string transport, custom eval/import/render branches, and header-capture scaffolding. |
+| AtRule | `packages/core/src/tree/at-rule.ts` | `Node` | partial | Direct source writer exists; header name/prelude capture writes child syntax directly instead of public `toString(...)`; prelude boundary trivia is emitted explicitly; body eval/registration async branches use `MaybePromise` narrowing; and sync render no longer allocates local render/result helper closures. High priority: remaining custom eval/import/render branches, body-state staging, and header capture boundary. |
 | AttributeSelector | `packages/core/src/tree/selector-attr.ts` | `SimpleSelector` | direct child writer complete | Attribute parts write directly through child `writeSyntax(...)`; cold private source-string wrapper removed; interpolation eval/render branches use `MaybePromise` narrowing. ValueOf construction and render capture remain. |
 | BasicSelector | `packages/core/src/tree/selector-basic.ts` | `SimpleSelector` | writeSyntax complete | Direct source spelling emits authored `value`; kind checks use first-character tests, `valueOf()` remains normalized key text, and standalone eval now carries the existing selector-bit library from context. |
 | Block | `packages/core/src/tree/block.ts` | `Node` | writeSyntax hook complete | Bracket emission writes directly; no-trivia child syntax avoids public `toString(...)`, while trivia mode keeps source serialization for authored inner comments/spacing. Render/eval use `evalSync(...)` for non-async child values and thenable narrowing for async values. Render still captures for string/buffer return. |
@@ -323,7 +326,7 @@ Current hard leftovers after the broad hook sweep:
 | Reference | `packages/core/src/tree/reference.ts` | `Node` | in progress | Passes 1-14 deleted alias predicates, result/fallback/materialization wrapper helpers, the useless `evalNode(...)` Promise wrapper, direct render closures, option spread helpers, scope-array walker, runtime-key IIFE, small `findVarDeclarationFast(...)` result/IIFE allocations, duplicate fallback/copy/static-return branches, callable surface rechecks, raw lookup sync-path closure/IIFE setup, main eval lookup closure setup, static declaration public-resolve copy/inherit for non-important/non-merged containers, per-call `findVarDeclarationFast(...)` helper closure allocation for bucket selection/candidate ordering/deferred dynamic-name promotion, reference-value evaluator options-object allocation, the declaration evaluator argument-object wrapper, runtime-binding sync evaluator closure setup, the rules-reference lookup executor closure, render-only dynamic declaration/runtime binding post-eval copy+inherit, the per-call `findVarWithinScopeSurface(...)` recursive helper allocation inside `findVarDeclarationFast(...)`, the per-call `searchChain(...)` closure inside `lookupRuntimeVarBinding(...)`, runtime-binding/declaration reference sync finalizer closures, key-normalization/direct-index raw-target local closures, mixin/ruleset materialization finalizer closure, merged-assign collector closure, and calc slash finalizer closure; heavy lookup helper bodies now live in `packages/core/src/tree/util/reference-lookup.ts` instead of the node file; unresolved reference source serialization now has a direct `writeSyntax(...)` path, and target/key source children no longer route through public `toString(...)`. Remaining: rules-like surfaces, public value materialization, merged assign normalization, and key conversion. |
 | Rest | `packages/core/src/tree/rest.ts` | `Node` | partial scalar wrapper complete | String/empty rest syntax writes the known source token directly with no writer readback; node-valued rest stays on the existing child writer boundary. Wrapper necessity remains. |
 | Rules | `packages/core/src/tree/rules.ts` | `Node` | partial | Direct braced source writer exists, public `toBraced(...)` is cold, and registration/source-order eval async branches use `MaybePromise` narrowing; high priority remains for body eval/render, imports, placement state, merge output, and root serializer capture. |
-| Ruleset | `packages/core/src/tree/ruleset.ts` | `Node` | partial | Source-direct eligibility and bare-ampersand selector-list checks use straight loops with short-circuit tests, guard/body eval branches use `MaybePromise` narrowing, sync render no longer allocates local render/eval helper closures, and ampersand composition uses loops/pre-sized arrays instead of `slice(...)`, spread merge, and push-spread flattening. High priority remains for `getHeaderString(...)` capture, deeper selector composition, body prep, wrappers, and render branches. |
+| Ruleset | `packages/core/src/tree/ruleset.ts` | `Node` | partial | Source-direct eligibility and bare-ampersand selector-list checks use straight loops with short-circuit tests, guard/body eval branches use `MaybePromise` narrowing, sync render no longer allocates local render/eval helper closures, ampersand composition uses loops/pre-sized arrays instead of `slice(...)`, spread merge, and push-spread flattening, and header compose ampersand counting no longer allocates a regex match array. High priority remains for `getHeaderString(...)` capture, deeper selector composition, body prep, wrappers, and render branches. |
 | Selector | `packages/core/src/tree/selector.ts` | `Node` | writeSyntax complete | Selector-family writer hook exists; broader metadata and keyset invalidation audit remains. |
 | SelectorCapture | `packages/core/src/tree/selector-capture.ts` | `Node` | child/buffer staging complete | Capture syntax writes directly through child `writeSyntax(...)`, cold private source-string wrapper is gone, and resolved buffer render delegates to the child buffer renderer instead of rendering to string then writing that string. Audit whether capture node should exist after render rewrite. |
 | SelectorList | `packages/core/src/tree/selector-list.ts` | `Selector` | writeSyntax complete | List item emission uses `writeSyntax`, cold private source-string wrapper is gone, and selector eval/resolve uses `MaybePromise` narrowing; flattening, temporary arrays, and valueOf joins remain queued. |

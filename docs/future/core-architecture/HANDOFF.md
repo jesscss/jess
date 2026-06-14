@@ -713,6 +713,15 @@ the binding index/scope lookup refactor.
    merge, and push-spread flattening with indexed loops and pre-sized arrays.
    Focused call/at-rule/ruleset/selector/extend tests passed. Hotpath leash was
    status-only; see `PERFORMANCE-HANDOFF.md`.
+15b. [x] Continue AtRule/Ruleset header pass. `AtRule` now has a direct
+   source `writeSyntax(...)`, and `AtRule.getHeaderString(...)` writes
+   name/prelude syntax directly instead of calling child public
+   `toString(...)` inside local capture helper functions. Prelude boundary
+   trivia is emitted explicitly through the existing trivia consumption path.
+   `Ruleset` header compose now counts ampersands with a character loop instead
+   of `valueOf().match(...)` array allocation. Focused at-rule/ruleset/
+   selector/extend tests passed. Hotpath leash was status-only; see
+   `PERFORMANCE-HANDOFF.md`.
 16. [ ] Continue `Reference` before moving to the next node. Audit and cut the
    remaining copy/materialization pressure: `createRulesLikeReferenceSurface`,
    public `evaluateReferenceValueNode(...)` materialization, merged assign
@@ -879,53 +888,50 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Call/AtRule/Ruleset render closure and selector array-factory
-cuts.
+Current pass: AtRule header direct syntax and Ruleset ampersand-count cut.
 
-- New traversal: no semantic traversal added. `Ruleset` ampersand composition
-  replaces existing `slice(...)`, spread merge, and push-spread flattening with
-  indexed loops over the same selector arrays. The loops are not additional
-  discovery; they are the same copy/flatten work without iterator/spread
-  machinery.
-- New node/materialization: no new node ownership boundary added.
-  `Ruleset._prependParent(...)` and `_substituteAmpInCompound(...)` still
-  create the same selector result nodes as before; this pass only changes the
-  temporary array construction used to feed those existing factories. No
+- New traversal: one bounded character loop was added in `countAmpersands(...)`
+  to replace `valueOf().match(/&/g)`, which allocated a regex result array just
+  to count ampersands. One prelude trivia lookup was added to preserve the same
+  boundary trivia that `Node.toString(...)` previously emitted; it consumes the
+  existing trivia run and does not scan child nodes.
+- New node/materialization: none added. This pass did not add `new Node`,
   copied nodes, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen state,
-  parent restoration, or source metadata mutation was added.
-- Render path: `Call.serializeRenderedArgs(...)` no longer opens a writer mark
-  for zero-argument calls. `AtRule.render(...)` and `Ruleset.render(...)` no
-  longer allocate sync-path local render/result closures before rendering. No
-  render path now resolves into arrays/nodes just to stringify because of this
-  pass.
-- Helper/API surface: class-private render helpers were added to delete
-  per-render local helper closures. This is accepted only because they replace
-  closures allocated on every sync render with stable methods and do not widen
-  public API. The remaining local helper closures in `AtRule`/`Ruleset` eval
-  paths stay queued rather than hidden.
-- Metadata mutations: none added. The existing selector result `.inherit(...)`
-  calls remain as pre-existing selector composition ownership; no parent/source
-  restoration or lazy option/context creation was introduced.
+  parent restoration, source metadata mutation, or new owned selector/rules
+  materialization.
+- Render path: `AtRule.writeSyntax(...)` is source serialization only.
+  `AtRule.getHeaderString(...)` still captures the final header text because
+  `serializeRulesContainer(...)` currently consumes string headers, but child
+  name/prelude emission inside that capture now writes direct syntax instead
+  of calling public `toString(...)`.
+- Helper/API surface: one node-local public override,
+  `AtRule.writeSyntax(...)`, was added to satisfy the existing node writer
+  contract and delete base generic value-walk/public-string fallback use for
+  at-rule source syntax. No new public eval/resolve/materialization API was
+  added. The `Ruleset` ampersand counter is a small module helper that replaces
+  regex allocation; it does not hide traversal.
+- Metadata mutations: none added. Existing trivia emission uses
+  `options.emittedTrivia`, the same print-state mechanism used by source
+  serialization, and does not mutate nodes.
 - Error/control flow: no new routine error-control path was added. The
-  `TypeError` and `try/finally` text in the diff moved existing at-rule render
-  state validation/restoration out of a per-call local closure into class
-  methods; it still guards exceptional invalid state and restores print-state
-  overrides, not ordinary lookup/render misses.
-- Evidence: pre-pass hotpath leash at `0fa37690`: `functions` `16.65ms`
-  unstable, `import-reference` `29.40ms` usable, `mixins-guards` `21.04ms`
-  unstable, `extend-chaining` `7.11ms` unstable, `media` `6.92ms` usable.
-  Dirty post-pass leash: `functions` `15.07ms` usable, `import-reference`
-  `24.23ms` usable, `mixins-guards` `19.35ms` usable, `extend-chaining`
-  `5.83ms` usable, `media` `5.96ms` unstable. This is status only, not a
+  `try/finally` blocks in `AtRule.getHeaderString(...)` restore writer marks
+  and temporary trivia state after direct header fragment emission; they do not
+  throw/catch expected misses or branch outcomes.
+- Evidence: pre-pass hotpath leash at `3f641b78`: `functions` `14.97ms`
+  unstable, `import-reference` `23.39ms` usable, `mixins-guards` `17.71ms`
+  usable, `extend-chaining` `5.87ms` usable, `media` `6.33ms` unstable.
+  Dirty post-pass leash: `functions` `14.79ms` usable, `import-reference`
+  `24.00ms` usable, `mixins-guards` `17.62ms` usable, `extend-chaining`
+  `5.78ms` usable, `media` `6.08ms` unstable. This is status only, not a
   speed claim. Focused tests passed:
   `pnpm --filter @jesscss/core test --
-  src/tree/__tests__/call.test.ts src/tree/__tests__/at-rule.test.ts
-  src/tree/__tests__/ruleset.test.ts src/tree/__tests__/selector.test.ts
-  src/tree/__tests__/extend.test.ts src/tree/__tests__/extend-rules.test.ts`
-  (`228` passed).
-- Verdict: accept the writer-mark zero-arg cut, sync render closure lift, and
-  selector array-factory deletion. Remaining open work: `AtRule` direct
-  header/body writer and header-capture scaffolding, `Ruleset.getHeaderString`
-  capture/comparison paths, `Call.evalArgNodes(...)` copy pressure, whole-call
+  src/tree/__tests__/at-rule.test.ts src/tree/__tests__/ruleset.test.ts
+  src/tree/__tests__/selector.test.ts src/tree/__tests__/extend.test.ts
+  src/tree/__tests__/extend-rules.test.ts` (`147` passed).
+- Verdict: accept the AtRule direct syntax/header child-transport cut and the
+  Ruleset regex-result allocation cut. Remaining open work: the final
+  `serializeRulesContainer(...)` string-header boundary, deeper
+  `Ruleset.getHeaderString(...)` capture/comparison paths, `AtRule` body-state
+  branch ladders, `Call.evalArgNodes(...)` copy pressure, whole-call
   mark/readback, `Reference` materialization, selector/extend equality,
   `StyleImport` placement copies, and the coherent binding-handle model.

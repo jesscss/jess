@@ -80,6 +80,16 @@ function isRulesetSelectorMetadata(value: unknown): value is Selector {
     || value instanceof Node;
 }
 
+function countAmpersands(value: string): number {
+  let count = 0;
+  for (let i = 0; i < value.length; i++) {
+    if (value.charCodeAt(i) === 38) {
+      count++;
+    }
+  }
+  return count;
+}
+
 type RulesetOptions = NodeOptions & {
   parentSelector?: Selector | Nil;
   /** Own selector before parent resolution (getImplicitSelector); used by extend so nested rulesets extend .replace,.c not the resolved form. */
@@ -1189,7 +1199,6 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       rawParentComposed = options.composedSelectorStack?.at(-2);
     }
     const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
-    const referenceComposeAmpCount = ((ownSelector ?? renderSelector).valueOf()?.match(/&/g) ?? []).length;
     const parentComposed = (
       options.referenceMode === true
       && options.referenceRenderEnabled === true
@@ -1197,7 +1206,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     )
       ? Ruleset.filterExtendedForReferenceCompose(
         rawParentComposed,
-        referenceComposeAmpCount > 1
+        countAmpersands((ownSelector ?? renderSelector).valueOf()) > 1
       ) ?? rawParentComposed
       : rawParentComposed;
     const structuralParent = (
