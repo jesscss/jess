@@ -68,6 +68,15 @@ describe('Sequence', () => {
     expect(rule.toTrimmedString()).toBe('10 20 30');
   });
 
+  it('serializes empty sequence syntax without writer readback scaffolding', () => {
+    const writer = new CountingWriter();
+
+    expect(seq([]).toTrimmedString({ writer })).toBe('');
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
   it('compares against Any without public string transport for the Any operand', () => {
     const other = any('10 20 30');
     let stringCalls = 0;
@@ -204,6 +213,20 @@ describe('Sequence', () => {
 
     expect(sequenceNode.render(context, buffer)).toBe('3 solid');
     expect(buffer.parts).toEqual(['3 solid']);
+  });
+
+  it('renders empty sequences without writer readback scaffolding', () => {
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+    const sequenceNode = seq([]);
+
+    expect(sequenceNode.render(context, { writer })).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(sequenceNode.render(context, buffer, { writer })).toBe('');
+    expect(buffer.parts).toEqual([]);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('writes resolved sequence render output into flat buffers', async () => {

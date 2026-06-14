@@ -200,6 +200,44 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-14 Call List Sequence Known-Empty Serialization Pass
+
+Hypothesis: known-empty call/list/sequence output should return directly before
+opening writer mark/getSince or render-buffer mark setup. This deletes
+serialization scaffolding for scalar-empty paths without changing non-empty
+dynamic render contracts.
+
+Patch shape:
+
+- empty string-name `Call` text is shared by public stringification plus direct
+  and buffer render;
+- empty `List` source/render paths return known empty output before writer or
+  buffer preparation;
+- empty `Sequence` source/render paths return known empty output before writer
+  or buffer preparation;
+- no runtime nodes, arrays, copies, placement state, public API, or traversal
+  were added.
+
+After patch, bounded hot-path leash:
+
+- `functions`: `15.38ms`, `unstable`;
+- `import-reference`: `21.06ms`, `unstable`;
+- `mixins-guards`: `16.40ms`, `usable`;
+- `extend-chaining`: `5.83ms`, `unstable`;
+- `media`: `5.71ms`, `unstable`.
+
+Broad `benchmark.less` profiler status after the patch:
+
+- `OutputWriter.mark`: `50002`;
+- `OutputWriter.getSince`: `45006`;
+- `OutputWriter.restore`: `29542`;
+- `Reference.evalNode`: `3619`;
+- `Rules.find`: `1013`.
+
+Decision: keep as bounded known-output machinery deletion only. No speed claim:
+the hot-path leash was mostly unstable and the broad profiler counters stayed
+on the same lookup/eval and writer surfaces.
+
 ### 2026-06-14 Url Rest StyleImport Serialization Pass
 
 Hypothesis: scalar `Url` render/context output, cold `Rest.name`, and

@@ -33,6 +33,7 @@ async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<voi
 class CountingWriter extends OutputWriter {
   captures = 0;
   marks = 0;
+  reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
@@ -42,6 +43,11 @@ class CountingWriter extends OutputWriter {
   override mark(): number {
     this.marks++;
     return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
   }
 }
 
@@ -91,6 +97,15 @@ describe('List', () => {
 
     expect(rule.toTrimmedString()).toBe('1, 2, 3');
     expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
+  });
+
+  it('serializes empty list syntax without writer readback scaffolding', () => {
+    const writer = new CountingWriter();
+
+    expect(list([]).toTrimmedString({ writer })).toBe('');
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('emits trivia before parser-owned list separators', () => {
@@ -233,6 +248,20 @@ describe('List', () => {
     expect(listNode.render(context, buffer)).toBe('one, two');
     expect(buffer.parts).toEqual(['one', ', ', 'two']);
     expect(writer.marks).toBe(1);
+  });
+
+  it('renders empty lists without writer readback scaffolding', () => {
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+    const listNode = list([]);
+
+    expect(listNode.render(context, { writer })).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(listNode.render(context, buffer, { writer })).toBe('');
+    expect(buffer.parts).toEqual([]);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('renders dynamic list values without materializing a replacement list', async () => {

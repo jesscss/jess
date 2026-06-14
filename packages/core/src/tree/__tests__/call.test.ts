@@ -222,6 +222,16 @@ describe('Call', () => {
     expect(rule.registrationPrepared).toBe(false);
   });
 
+  it('renders empty CSS calls without writer readback scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = call({ name: 'button' }, { silentFail: true, markImportant: true });
+
+    expect(rule.render(context, { writer })).toBe('button?() !important');
+    expect(writer.toString()).toBe('button?() !important');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
   it('writes call render output into flat buffers', async () => {
     const buffer = createRenderBuffer('flat');
     const rule = call({
@@ -247,6 +257,18 @@ describe('Call', () => {
     expect(buffer.parts).toEqual(['rgb(100, 100, 100)']);
     expect(writer.toString()).toBe('');
     expect(writer.captures).toBe(0);
+  });
+
+  it('writes empty CSS call render output into buffers without writer readback scaffolding', () => {
+    const buffer = createRenderBuffer('flat');
+    const writer = new CountingWriter();
+    const rule = call({ name: 'button' });
+
+    expect(rule.render(context, buffer, { writer })).toBe('button()');
+    expect(buffer.parts).toEqual(['button()']);
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('writes CSS call arguments without resolving child wrappers', async () => {

@@ -330,6 +330,14 @@ Open tasks:
    placement state because focused tests require owned placement children plus
    source-child mapping, not because copying is acceptable as convenience.
 
+   Additional partial status: `Call` render now uses the known empty
+   string-name call text directly for direct and buffer render, so `button()`
+   style output does not open whole-call mark/getSince scaffolding. Empty
+   `List` and `Sequence` source/render paths now return the known empty output
+   before preparing writer state or buffer mark/readback. Broader dynamic
+   `Call` output selection and `List`/`Sequence` buffer string capture remain
+   open.
+
    Evidence pointer: use `NODE-REWRITE-TRACKER.md` for per-node status and
    `PERFORMANCE-HANDOFF.md` for benchmark/profile history. Do not add queue
    entries for one-line cuts inside this item.
@@ -516,33 +524,32 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Url`, `Rest`, and `StyleImport` serialization/materialization
-audit.
+Current pass: `Call`, `List`, and `Sequence` known-empty serialization cuts.
 
-- New traversal: none added. `Url` scalar normalization uses the existing string
-  normalization expression on already-owned scalar text. `StyleImport` removes a
-  sync-path closure, and `Rest.name` changes scalar transport only.
+- New traversal: none added. The pass adds only early known-output checks before
+  existing writer setup. No loops, recursion, parent/source walks, side maps, or
+  array scans were added.
 - New node/materialization: no runtime nodes, copies, wrappers, arrays, or
-  materialized render values added. `StyleImport` placement copies were audited
-  and kept as existing semantic placement state; tests prove placement children
-  are owned and mapped back to canonical source children.
-- Render path: selected rows are `Url`, `Rest`, and `StyleImport`. Scalar
-  `url(Any)` render/context output now writes directly without writer
-  mark/getSince/replace. `StyleImport` still evals to `Rules` and renders that
-  result directly, but the sync path no longer pays a local finalizer closure.
-  `Rest.name` is a cold public getter, not render output.
-- Helper/API surface: one private `Url.normalizeUrlValue(...)` helper replaces
-  duplicated regex normalizer text and enables the scalar direct path. No public
-  API or node method surface was added. `StyleImport` helper closure was
-  removed; `Rest` added no helper.
-- Metadata mutations: none added. Existing `StyleImport` placement
-  parent/source state remains because focused tests assert that semantic
-  boundary. Test-only monkey-patching of `toString` proves `Rest.name` avoids
-  public string transport.
+  materialized render values added. Review-script danger tokens are test-only
+  counting-writer fixtures and empty list/sequence fixture constructors that
+  prove known-empty output does not open readback scaffolding.
+- Render path: selected rows are `Call`, `List`, and `Sequence`. Empty
+  string-name calls now write or buffer the known call text directly in render
+  and public string paths. Empty lists/sequences now return known empty output
+  before preparing writer state or buffer mark/readback. Non-empty dynamic
+  `List`/`Sequence` buffer render still captures the emitted string for the
+  current render-buffer contract and remains open.
+- Helper/API surface: one private `Call.emptyStringNameCallText(...)` helper
+  replaces duplicated source/render literal assembly for the same scalar case.
+  No public API or node method surface was added. `List` and `Sequence` added no
+  helper.
+- Metadata mutations: none added. No parent/source/frozen/options/context
+  mutation, reflective defensive access, or own-property guard added.
 - Error/control flow: no new runtime error/control-flow branch.
-- Evidence: focused `Url`, `Rest`, and `StyleImport` tests passed. Final
-  hotpath/profile status is in `PERFORMANCE-HANDOFF.md`; no speed claim.
-- Verdict: accept bounded serialization cuts. Keep `Url` open only for
-  non-scalar/trivia fallback readback; keep `Rest` wrapper necessity open; treat
-  `StyleImport` placement-copy deletion as rejected until a replacement
-  placement-state model preserves owned placement children and source mapping.
+- Evidence: focused `Call`, `List`, `Sequence`, and render-buffer alignment
+  tests passed. Final hotpath/profile status is in `PERFORMANCE-HANDOFF.md`; no
+  speed claim.
+- Verdict: accept bounded known-output cuts. Keep `Call` open for callable
+  output selection, async path, and non-empty whole-call readback. Keep
+  `List`/`Sequence` open for dynamic buffer capture and trivia-backed child
+  transport.

@@ -274,6 +274,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   }
 
   private renderSequenceSyntax(value = this.value, options?: PrintOptions): string {
+    if (value.length === 0) {
+      return '';
+    }
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer;
     const mark = w.mark();
@@ -282,6 +285,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   }
 
   private renderSequenceDirect(context: Context, options?: PrintOptions): string {
+    if (this.value.length === 0) {
+      return '';
+    }
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer;
     const mark = w.mark();
@@ -347,6 +353,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   }
 
   private renderSequenceDirectMaybe(context: Context, options?: PrintOptions): MaybePromise<string> {
+    if (this.value.length === 0) {
+      return '';
+    }
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer;
     const mark = w.mark();
@@ -497,6 +506,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return buffer
         ? writeRenderedSequenceNode(buffer, value.render(context, options))
         : value.render(context, bufferOrOptions);
+    }
+    if (value.length === 0) {
+      return '';
     }
     let count = 0;
     let only: Node | undefined;

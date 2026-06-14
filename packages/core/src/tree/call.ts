@@ -917,15 +917,19 @@ export class Call extends Node<CallValue, CallOptions> {
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
 
-  override toTrimmedString(options?: PrintOptions) {
+  private emptyStringNameCallText(): string | undefined {
     const { name, args, contentNode } = this.value;
-    const hasArgs = args !== undefined && args.value.length > 0;
-    if (typeof name === 'string' && !hasArgs && !contentNode) {
-      const silentFail = this._options?.silentFail === true;
-      const markImportant = this._options?.markImportant === true;
-      const out = `${name}${silentFail ? '?' : ''}()${markImportant ? ' !important' : ''}`;
-      getPrintOptions(options).writer.add(out, this);
-      return out;
+    if (typeof name !== 'string' || contentNode || (args && args.value.length > 0)) {
+      return undefined;
+    }
+    return `${name}${this._options?.silentFail === true ? '?' : ''}()${this._options?.markImportant === true ? ' !important' : ''}`;
+  }
+
+  override toTrimmedString(options?: PrintOptions) {
+    const emptyCallText = this.emptyStringNameCallText();
+    if (emptyCallText !== undefined) {
+      getPrintOptions(options).writer.add(emptyCallText, this);
+      return emptyCallText;
     }
     options = getPrintOptions(options);
     const w = options.writer!;
@@ -968,6 +972,10 @@ export class Call extends Node<CallValue, CallOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
+      const emptyCallText = this.emptyStringNameCallText();
+      if (emptyCallText !== undefined) {
+        return writeRenderTextResult(bufferOrOptions, emptyCallText);
+      }
       if (this.evaluated) {
         const prepared = prepareBufferPrintState(context, options, bufferOrOptions);
         const mark = prepared.writer.mark();
@@ -982,6 +990,11 @@ export class Call extends Node<CallValue, CallOptions> {
       const prepared = prepareBufferPrintState(context, options, bufferOrOptions);
       const mark = prepared.writer.mark();
       return writePreparedRenderTextResult(bufferOrOptions, prepared, mark, this.renderPlainFunctionCall(this, context, prepared));
+    }
+    const emptyCallText = this.emptyStringNameCallText();
+    if (emptyCallText !== undefined) {
+      getPrintOptions(bufferOrOptions).writer.add(emptyCallText, this);
+      return emptyCallText;
     }
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
     if (this.evaluated) {

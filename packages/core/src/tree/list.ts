@@ -295,6 +295,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   private renderListSyntax(value = this.value, options?: PrintOptions): string {
+    if (value.length === 0) {
+      return '';
+    }
     return renderListValueSyntax(value, getPrintOptions(options), this._options?.sep ?? ',');
   }
 
@@ -383,6 +386,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): string {
+    if (value.length === 0) {
+      return '';
+    }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const sep = this._options?.sep ?? ',';
     if (buffer) {
@@ -401,6 +407,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): string {
+    if (this.value.length === 0) {
+      return '';
+    }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options, buffer)
@@ -417,6 +426,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): MaybePromise<string> {
+    if (this.value.length === 0) {
+      return '';
+    }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options, buffer)
