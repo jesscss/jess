@@ -2572,6 +2572,40 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: recursive namespace miss skips child direct crawl when child frame miss is covered', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '#missing-child-namespace') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const childRules = rules([
+          mixin({
+            name: any('#other-child-namespace'),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          })
+        ]);
+        const root = rules([
+          mixin({
+            name: any('#parent-namespace'),
+            rules: childRules
+          })
+        ]);
+        root.getScopeFrame();
+        childRules.getScopeFrame();
+
+        expect(root.findMixin(['#parent-namespace', '#missing-child-namespace', '.leaf'], 'Mixin')).toBeUndefined();
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('ScopeFrame callable buckets: static miss coverage stays false for reference imports', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];

@@ -65,6 +65,7 @@ const ANY_DECLARATION_LOOKUP: DeclarationLookupStrategy = {
 const EMPTY_DIRECT_DECLARATION_FIND_OPTIONS: DirectDeclarationFindOptions = {};
 
 export type DirectDeclarationOccurrence = {
+  readonly kind: 'direct-declaration-occurrence';
   readonly node: Declaration;
   readonly ownerRules: Rules | undefined;
   readonly ownerLookupVersion: number | undefined;
@@ -187,6 +188,7 @@ function chooseTraversalMatch(
 function createDeclarationOccurrence(node: Declaration): DirectDeclarationOccurrence {
   const ownerRules = isNode(node.parent, N.Rules) ? node.parent : undefined;
   return {
+    kind: 'direct-declaration-occurrence',
     node,
     ownerRules,
     ownerLookupVersion: ownerRules?.lookupVersion,
@@ -582,12 +584,12 @@ function findWithinScopeSurface(
   return state;
 }
 
-function findDeclarationWithStrategy(
+function findDeclarationOccurrenceWithStrategy(
   startRules: Rules,
   key: string,
   strategy: DeclarationLookupStrategy,
   options?: DirectDeclarationFindOptions
-): DirectDeclarationLookupResult {
+): DirectDeclarationOccurrence | undefined {
   const lookupOptions = options ?? EMPTY_DIRECT_DECLARATION_FIND_OPTIONS;
   const searchParents = lookupOptions.searchParents ?? true;
   const preserveLinearStart = lookupOptions.start !== undefined;
@@ -636,7 +638,7 @@ function findDeclarationWithStrategy(
       if (readonly && options) {
         options.readonly = true;
       }
-      return publicMatch.node;
+      return publicMatch;
     }
     optionalMatch = chooseTraversalMatch(optionalMatch, state.optionalMatch);
     if (searchingFallback) {
@@ -668,7 +670,16 @@ function findDeclarationWithStrategy(
   if (readonly && options) {
     options.readonly = true;
   }
-  return optionalMatch?.node;
+  return optionalMatch;
+}
+
+function findDeclarationWithStrategy(
+  startRules: Rules,
+  key: string,
+  strategy: DeclarationLookupStrategy,
+  options?: DirectDeclarationFindOptions
+): DirectDeclarationLookupResult {
+  return findDeclarationOccurrenceWithStrategy(startRules, key, strategy, options)?.node;
 }
 
 export function findVariableDeclaration(
@@ -695,4 +706,30 @@ export function findAnyDeclaration(
   options?: DirectDeclarationFindOptions
 ): DirectDeclarationLookupResult {
   return findDeclarationWithStrategy(startRules, key, ANY_DECLARATION_LOOKUP, options);
+}
+
+export function findVariableDeclarationOccurrence(
+  startRules: Rules,
+  key: string,
+  options?: DirectDeclarationFindOptions
+): DirectDeclarationOccurrence | undefined {
+  const found = findDeclarationOccurrenceWithStrategy(startRules, key, VARIABLE_LOOKUP, options);
+  return isNode(found?.node, N.VarDeclaration) ? found : undefined;
+}
+
+export function findPropertyDeclarationOccurrence(
+  startRules: Rules,
+  key: string,
+  options?: DirectDeclarationFindOptions
+): DirectDeclarationOccurrence | undefined {
+  const found = findDeclarationOccurrenceWithStrategy(startRules, key, PROPERTY_LOOKUP, options);
+  return isNode(found?.node, N.Declaration) ? found : undefined;
+}
+
+export function findAnyDeclarationOccurrence(
+  startRules: Rules,
+  key: string,
+  options?: DirectDeclarationFindOptions
+): DirectDeclarationOccurrence | undefined {
+  return findDeclarationOccurrenceWithStrategy(startRules, key, ANY_DECLARATION_LOOKUP, options);
 }

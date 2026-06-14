@@ -4274,7 +4274,7 @@ describe('reference', () => {
 
         expect(lookupRef.eval(context).valueOf()).toBe('blue');
         expect(lookupRef._rulesLookupHandle?.returnVal).toMatchObject({
-          kind: 'declaration-occurrence-handle'
+          kind: 'direct-declaration-occurrence'
         });
         expect(propertyLookups).toBe(0);
 
@@ -4304,7 +4304,7 @@ describe('reference', () => {
 
       expect(lookupRef.eval(context).valueOf()).toBe('blue');
       expect(lookupRef._rulesLookupHandle?.returnVal).toMatchObject({
-        kind: 'declaration-occurrence-handle'
+        kind: 'direct-declaration-occurrence'
       });
 
       childRules.push(decl({ name: 'color', value: any('green') }));

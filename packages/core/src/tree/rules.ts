@@ -512,14 +512,6 @@ function printDetached(options: PrintOptions, fn: (nextOptions: PrintOptions) =>
 
 export type RulesVisibility = 'public' | 'optional' | 'private';
 
-export interface RuntimeVarBinding {
-  kind: 'runtime-var-binding';
-  value: Node;
-  readonly?: boolean;
-  sourceNode?: Node;
-  rulesContext?: Rules;
-}
-
 export type RulesOptions = {
   /**
    * - public   = all members are considered in lookup algorithms
