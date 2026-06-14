@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { any, attr, comment, decl, quoted, rules, Any, Node } from '../../index.js';
-import { cloneWithReusableLeaves } from '../cloning.js';
+import { canReuseLeaf, cloneWithReusableLeaves } from '../cloning.js';
 
 describe('cloning helpers', () => {
+  it('checks reusable leaves without allocating empty location arrays', () => {
+    const leaf = any('red');
+
+    expect(leaf._location).toBeUndefined();
+    expect(canReuseLeaf(leaf)).toBe(true);
+    expect(leaf._location).toBeUndefined();
+  });
+
   it('clones containers and comments while reusing source-free scalar leaves', () => {
     const originalClone = Any.prototype.clone;
     let scalarClones = 0;

@@ -2483,6 +2483,34 @@ closure/error-control cleanup. The mixed/noisy leash does not prove a speed
 movement; Operation's remaining real debt is `withOperands(...)` copying and
 calc fallback ownership.
 
+### Reusable-Leaf Location Allocation Cut
+
+Date: 2026-06-13.
+
+Change: `canReuseLeaf(...)` now reads `_location` directly instead of calling
+the public `location` getter, so copy/reuse predicates no longer allocate an
+empty location array on source-free scalar leaves merely to prove they are
+source-free. Focused cloning coverage proves `_location` stays undefined after
+the reusable-leaf check.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `0ff63689` reported: `functions` median `13.95ms` unstable,
+  `import-reference` median `22.90ms` usable, `mixins-guards` median
+  `19.91ms` unstable, `extend-chaining` median `5.39ms` usable, and `media`
+  median `5.28ms` usable.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `14.49ms` usable,
+  `import-reference` median `21.61ms` usable, `mixins-guards` median
+  `17.55ms` usable, `extend-chaining` median `5.65ms` usable, and `media`
+  median `5.36ms` usable.
+
+Interpretation: status only, not a speed claim. Keep this as a hidden
+allocation deletion in the measured copy stack. It does not complete
+`copyWithReusableLeaves(...)`, `constructCopy(...)`, or `.inherit(...)`
+removal.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

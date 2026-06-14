@@ -866,6 +866,15 @@ the binding index/scope lookup refactor.
    `.inherit(...)`. CPU evidence says these are mostly registration derivation,
    selector header rendering, JS function argument ownership, reference value
    eval, and binding clone debt; do not justify them as render output copying.
+   Partial status: `canReuseLeaf(...)` no longer calls the public
+   `node.location` getter, so copy/reuse predicates do not allocate empty
+   location arrays on source-free scalar leaves just to decide whether the leaf
+   can be shared. Focused cloning test proves `_location` stays undefined after
+   the reusable-leaf check. Rejected local cut: deleting
+   `Operation.withOperands(...)` child copies would let the `Operation`
+   constructor adopt unchanged source operands and mutate canonical parent
+   pointers; fixing that locally would require parent restoration or a no-adopt
+   construction path, both outside this utility pass.
 27. [ ] Audit repeated callable/mixin evaluation from the profile before making
    more local helper cuts. If a mixin candidate or output body is evaluated
    more than the semantic call count requires, carry placement/binding state or
@@ -926,46 +935,42 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Operation` node closure/catch scaffold cut under queue item 14.
+Current pass: reusable-leaf copy predicate allocation cut under queue item 26.
 
 - New traversal: none. The pass adds no loop, recursion, source walk, parent
   walk, side-map lookup, object scan, or array scan.
-- New node/materialization: no new materialization boundary. The existing
-  `Operation.withOperands(...)`, `Operation.createCalcFallback(...)`,
-  `Call('calc', ...)`, `copyWithReusableLeaves(...)`, and `.inherit(...)`
-  behavior remains. No new node creation, copied node, wrapper `Rules`, frozen
-  mutation, parent restoration, source metadata mutation, or materialized array
-  was added.
-- Render path: accepted. `Operation.render(...)` still evaluates operands
-  directly and writes the resolved output; unresolved operand rendering still
-  streams `{ left, right }` without materializing a replacement `Operation`.
-  Focused tests continue to prove render does not call public `resolve(...)`
-  and does not call `withOperands(...)` for streamed unresolved output.
-- Helper/API surface: private prototype methods were added to move
-  `evaluateRenderOperands(...)`, `renderEvaluatedOutput(...)`, and
-  `evaluateOperands(...)` off per-call local closure factories. This is
-  accepted because it deletes the per-call `finalize`, `handleLeft`,
-  `renderOperands`, `finish`, and `combine` closures from the sync path while
-  keeping async continuations only where real thenables appear. No public API
-  was added.
-- Metadata mutations: no new metadata mutations. Existing `.inherit(...)`
-  calls on arithmetic results and calc fallback results remain; they are
-  documented as continuing `Operation` debt rather than hidden completion.
-  No lazy options/context allocation, `Reflect.*`, `Object.hasOwn`,
-  structural probe, parent restoration, or source-parent mutation was added.
-- Error/control flow: removed useless non-preserve `try/catch { throw error }`
-  wrappers around `operate(...)`. Preserve-mode dimension arithmetic still
-  catches `TypeError` to produce the existing `calc(...)` fallback; non-TypeError
-  failures still propagate.
+- New node/materialization: none added. The pass adds no `new Node`, copied
+  node, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen mutation,
+  parent restoration, source metadata mutation, or materialized array.
+- Render path: no render semantics changed. The cut is in
+  `tree/util/cloning.ts` and affects copy/reuse predicates used by list,
+  sequence, operation, callable/import output, and reference materialization
+  paths; rendering still stringifies through the existing node-family paths.
+- Helper/API surface: none added. `canReuseLeaf(...)` now reads `_location`
+  directly instead of calling the public `location` getter. This deletes a
+  hidden lazy empty-array allocation from the copy-stack predicate without
+  adding a helper or public API.
+- Metadata mutations: no new metadata mutations. The pass specifically avoids
+  creating `_location` on source-free scalar leaves. Existing `reuseLeaf(...)`
+  frozen marking remains unchanged and is still part of the broader copy-stack
+  debt.
+- Error/control flow: none added.
+- Rejected cut: `Operation.withOperands(...)` still copies unchanged operands.
+  Code-path evidence shows constructing a replacement `Operation` adopts its
+  operand children; deleting those copies would mutate canonical source
+  parents and fail the existing canonical-parent tests. A correct larger fix
+  needs a cold no-adopt/public materialization boundary or broader parent
+  semantics change, not local parent restoration.
 - Evidence: focused tests passed with
-  `pnpm --filter @jesscss/core test -- src/tree/__tests__/operation.test.ts src/tree/__tests__/node-render-buffer.test.ts`.
-  Pre-pass hotpath leash at `c92f5dfd`: `functions` `15.36ms` unstable,
-  `import-reference` `23.46ms` usable, `mixins-guards` `18.96ms` usable,
-  `extend-chaining` `5.91ms` usable, `media` `5.93ms` usable. Dirty
-  post-pass leash reported `functions` `16.09ms` usable, `import-reference`
-  `22.55ms` unstable, `mixins-guards` `18.43ms` usable, `extend-chaining`
-  `5.95ms` unstable, and `media` `6.01ms` unstable. This is status only, not
-  a speed claim.
-- Verdict: accept as partial item 14 progress. `Operation` still has real
-  copy/materialization debt around `withOperands(...)` and calc fallback
-  ownership, so the whole node rewrite item remains open.
+  `pnpm --filter @jesscss/core test -- src/tree/util/__tests__/cloning.test.ts src/tree/__tests__/list.test.ts src/tree/__tests__/sequence.test.ts src/tree/__tests__/operation.test.ts`.
+  Pre-pass hotpath leash at `0ff63689`: `functions` `13.95ms` unstable,
+  `import-reference` `22.90ms` usable, `mixins-guards` `19.91ms` unstable,
+  `extend-chaining` `5.39ms` usable, `media` `5.28ms` usable. Dirty
+  post-pass leash reported `functions` `14.49ms` usable, `import-reference`
+  `21.61ms` usable, `mixins-guards` `17.55ms` usable, `extend-chaining`
+  `5.65ms` usable, and `media` `5.36ms` usable. This is status only, not a
+  speed claim.
+- Verdict: accept as partial item 26 progress. This removes hidden allocation
+  from the measured copy stack predicate; it does not complete
+  `copyWithReusableLeaves(...)`, `constructCopy(...)`, or `.inherit(...)`
+  deletion.

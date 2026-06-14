@@ -8,7 +8,7 @@ import { isNode } from './is-node.js';
  * their children for a particular placement.
  */
 export function canReuseLeaf(node: Node): boolean {
-  return node.location.length === 0
+  return (node._location?.length ?? 0) === 0
     && !node.hasFlag(F_NON_STATIC)
     && !node.hasFlag(F_HAS_NODE_CHILD);
 }
