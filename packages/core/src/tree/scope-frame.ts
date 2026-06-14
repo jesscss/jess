@@ -421,7 +421,12 @@ export function lookupScopeFrameCallable(
       return { kind: 'uncovered' };
     }
 
-    const bucket = f.callableBucketsByName?.get(name);
+    const callableBucketsByName = f.callableBucketsByName;
+    if (!callableBucketsByName?.has(name)) {
+      return { kind: 'uncovered' };
+    }
+
+    const bucket = callableBucketsByName.get(name);
     if (bucket?.length) {
       for (let i = bucket.length - 1; i >= 0; i--) {
         const entry = bucket[i]!;

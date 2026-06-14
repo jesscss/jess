@@ -2137,7 +2137,7 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7dw. [ ] Direct declaration bucket materialization task. Scope:
+7dw. [x] Direct declaration bucket materialization task. Scope:
     `getDirectDeclarationBucket(...)`, `directDeclarationsByName`, dynamic and
     `setDefined(...)` names, source-order lookup, and static bucket creation.
     Goal: determine whether exact declaration lookup can avoid building the
@@ -2146,8 +2146,13 @@ Seeded next binding/lookup queue:
     Acceptance: variable/property source-order, semantic-filter, readonly,
     import/reference, dynamic-name, and `setDefined(...)` tests plus standard
     gates.
+    Done. `getDirectDeclarationBucket(...)` now fills only the requested key in
+    the existing `directDeclarationsByName` map, including an empty bucket for a
+    covered same-key miss. Dynamic and `setDefined(...)` declarations are still
+    skipped, and the existing invalidation points clear the map when names are
+    promoted or nodes are registered.
 
-7dx. [ ] Callable frame preparation cache task. Scope:
+7dx. [x] Callable frame preparation cache task. Scope:
     `prepareCallableLookupFrame(...)`, `getCallableEntriesForKey(...)`,
     callable miss coverage, `includeRulesets`, terminal mixin-only, and
     fallback-frame reuse. Goal: avoid recomputing broad/mixin coverage for
@@ -2155,8 +2160,13 @@ Seeded next binding/lookup queue:
     a registry-like side map or hiding fallback semantics. Acceptance: callable
     bucket, fallback-frame, leaky mixin, terminal mixin-only, namespaced
     mixin-ruleset, import/reference tests plus standard gates.
+    Done. Callable lookup now stores empty buckets for prepared key misses in
+    the existing `callableLookupCache`. `lookupScopeFrameCallable(...)` treats
+    an unprepared key as uncovered, and `prepareCallableLookupFrame(...)`
+    prepares only the missing key and recomputes the broad/mixin child-surface
+    miss flag only when that lane is not already covered.
 
-7dy. [ ] Reference local-shape reuse task. Scope:
+7dy. [x] Reference local-shape reuse task. Scope:
     `shouldUseLocalReferenceLookup(...)`, `buildRulesLookupHandleShape(...)`,
     prepared target shape reuse, ambient mixin-output blocking, and
     target/source scope identity. Goal: carry the local/terminal decision when
@@ -2165,6 +2175,40 @@ Seeded next binding/lookup queue:
     duplicating namespace semantics. Acceptance: reference variable/property,
     function/callable handle, ambient output, import/reference visibility, and
     prepared-target tests plus standard gates.
+    Done. The reference lookup context now carries prepared shapes for leaky
+    rules-parent and source-rules-parent fallback scopes, so
+    `performRulesReferenceLookup(...)` can reuse the target/local/start shape
+    when the exact scope identity is known instead of rebuilding it for each
+    fallback call.
+
+Seeded next binding/lookup queue:
+
+7dz. [ ] Callable prepared-shape duplication task. Scope:
+    `lookupLeakyRulesReferenceTargets(...)`, prepared parent/source target
+    shapes, and repeated object-literal shape construction. Goal: remove the
+    duplication introduced while carrying fallback prepared shapes, but only if
+    the replacement deletes more call-site work than it adds and does not
+    become a generic lookup helper. Acceptance: reference callable/function
+    handle, leaky fallback, ambient-output, import/reference tests plus
+    standard gates.
+
+7ea. [ ] Direct declaration local-before-child task. Scope:
+    `findWithinScopeSurface(...)`, per-key empty local buckets, carried child
+    declaration entries, and same-key repeated misses. Goal: determine whether
+    a covered empty local bucket can let lookup skip `Rules.value` entirely on
+    child-surface hits without changing local-before-child precedence for
+    uncached keys. Acceptance: property/variable source-order, child surface,
+    semantic-filter, import/reference, dynamic-name, and readonly tests plus
+    standard gates.
+
+7eb. [ ] Callable miss bucket memory task. Scope:
+    empty arrays in `callableLookupCache`, `lookupScopeFrameCallable(...)`,
+    last-callable lookup cache, and fallback-frame misses. Goal: replace empty
+    array miss buckets with a cheaper sentinel or ownership bit only if it
+    keeps key-covered semantics and reduces allocation without adding a
+    registry-like side structure. Acceptance: callable bucket, static miss,
+    fallback-frame, terminal mixin-only, namespace, import/reference tests plus
+    standard gates.
 
 Parked secondary deep-cut queue:
 
@@ -2493,6 +2537,53 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Per-key declaration/callable coverage and prepared fallback-shape pass:
+  accepted as binding/lookup cleanup, not as a speed claim. Files:
+  `packages/core/src/tree/util/direct-rules-lookup.ts`,
+  `packages/core/src/tree/rules.ts`, `packages/core/src/tree/scope-frame.ts`,
+  `packages/core/src/tree/reference.ts`, focused lookup tests, and this
+  handoff.
+  - New traversal: no new parent walk or child recursion. Direct declaration
+    lookup narrows the existing local declaration scan to the requested key
+    instead of building every name bucket. Callable frame lookup adds one
+    existing-cache `Map.has(key)` check so unprepared keys stay uncovered.
+    Reference fallback lookup reuses prepared shapes for already-known fallback
+    scopes rather than rediscovering local/start/terminal shape in each
+    fallback call.
+  - New node/materialization: no AST node, wrapper `Rules`, copied node, source
+    metadata, parent mutation, or frozen state was added. Existing per-`Rules`
+    caches now store empty declaration/callable buckets for covered same-key
+    misses; this adds no new cache owner, but the empty-array allocation is
+    carried forward as 7eb for a sentinel/ownership-bit audit.
+  - Render path: unchanged. This pass only touches lookup/binding paths.
+  - Helper/API surface: no helper or public API was added. The reference shape
+    carry currently duplicates object-literal construction at leaky fallback
+    call sites; 7dz is seeded to remove that duplication only if it deletes more
+    call-site work than it adds.
+  - Metadata mutations: none. Existing lookup invalidation still clears
+    `directDeclarationsByName`, `directDeclarationLookupCache`, callable caches,
+    and lookup versions at register/promote sites.
+  - Danger-token prosecution: the remaining maps are the existing per-`Rules`
+    direct declaration and callable lookup caches, not registry resurrection.
+    The direct declaration `for` loop is the old local declaration scan moved
+    from full-map construction to requested-key construction; it now allocates
+    only the requested bucket and records an empty same-key miss. Callable
+    lookup writes the existing `callableLookupCache` for empty misses so
+    `lookupScopeFrameCallable(...)` can distinguish a covered key miss from an
+    unprepared key. Reference fallback shape objects are attached to the
+    per-lookup context only for already-known rules-parent/source-parent
+    identities, not retained globally.
+  - Evidence: touched-file ESLint passed; focused reference/mixin/call/rules/
+    import/control suite passed (`6` files, `285` passed, `290` skipped).
+    Binding grep found no old registry-adapter or deleted reference option
+    builder residue; `git diff --check` passed; `@jesscss/core` build passed
+    with only the existing `js-expr.ts` direct-eval warning;
+    `verify:aggressive-cutting-review` passed with prosecuted existing-cache,
+    narrowed-loop, and prepared-shape danger tokens; `audit:node-creation`
+    passed; `jess` build passed. One-iteration hotpath smoke passed with usable
+    signal: `mixins-guards.less` `20.84ms`, `scope-lookup-stress.less`
+    `73.41ms`. No speed claim is made from this pass.
 
 - Direct declaration cache, callable retry bridge, and reference option builder
   pass: accepted as binding/lookup cleanup, not as a speed claim. Files:

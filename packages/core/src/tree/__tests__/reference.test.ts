@@ -3008,7 +3008,7 @@ describe('reference', () => {
       ]);
       await root.eval(context);
 
-      expect(root.findProperty('warmup-missing', { searchParents: false })).toBeUndefined();
+      expect(root.findProperty('child-color', { searchParents: false })?.value.value.valueOf()).toBe('blue');
       expect(root.directDeclarationChildEntries?.map(entry => entry.node)).toEqual([childRules]);
 
       const originalValue = root.value;

@@ -1145,9 +1145,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (bucket.length === 0 && sourceRules !== this) {
       this.collectCallableEntriesForKeyFrom(sourceRules, lookupKey, bucket);
     }
-    if (bucket.length > 0) {
-      (this.callableLookupCache ??= new Map()).set(lookupKey, bucket);
-    }
+    (this.callableLookupCache ??= new Map()).set(lookupKey, bucket);
     if (this._scopeFrame) {
       this._scopeFrame.callableBucketsByName = this.callableLookupCache;
       this._scopeFrame.callablesCovered = true;
@@ -1162,12 +1160,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private prepareCallableLookupFrame(frame: ScopeFrame, key: string, includeRulesets: boolean): void {
     if (isNode(frame.rulesNode, N.Rules)) {
       const rules = frame.rulesNode;
-      rules.getCallableEntriesForKey(key, includeRulesets);
+      if (!rules.callableLookupCache?.has(key)) {
+        rules.getCallableEntriesForKey(key, false);
+      }
       frame.callableBucketsByName = rules.callableLookupCache;
       frame.callablesCovered = true;
-      if (includeRulesets) {
+      if (includeRulesets && !frame.callableMissesCovered) {
         frame.callableMissesCovered = !rules.hasDirectLookupChildSurface();
-      } else {
+      } else if (!includeRulesets && !frame.mixinCallableMissesCovered) {
         frame.mixinCallableMissesCovered = !rules.hasDirectLookupChildSurface(false);
       }
     }

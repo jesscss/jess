@@ -121,28 +121,34 @@ function getDirectDeclarationBucket(
   scope: Rules,
   key: string
 ): Declaration[] | undefined {
-  let buckets = scope.directDeclarationsByName;
-  if (!buckets) {
-    buckets = new Map<string, Declaration[]>();
-    const value = scope.value;
-    for (let i = 0; i < value.length; i++) {
-      const node = value[i]!;
-      if (!isNode(node, N.Declaration | N.VarDeclaration)) {
-        continue;
-      }
-      if (node.options?.setDefined) {
-        continue;
-      }
-      const name = String(node.value.name.valueOf());
-      let bucket = buckets.get(name);
-      if (!bucket) {
-        buckets.set(name, bucket = []);
-      }
+  const buckets = scope.directDeclarationsByName ??= new Map<string, Declaration[]>();
+  const cached = buckets.get(key);
+  if (cached) {
+    return cached;
+  }
+  if (buckets.has(key)) {
+    return undefined;
+  }
+
+  const bucket: Declaration[] = [];
+  const value = scope.value;
+  for (let i = 0; i < value.length; i++) {
+    const node = value[i]!;
+    if (!isNode(node, N.Declaration | N.VarDeclaration)) {
+      continue;
+    }
+    if (node.options?.setDefined) {
+      continue;
+    }
+    if (String(node.value.name.valueOf()) === key) {
       bucket.push(node);
     }
-    scope.directDeclarationsByName = buckets;
   }
-  return buckets.get(key);
+  buckets.set(key, bucket);
+  if (bucket.length === 0) {
+    return undefined;
+  }
+  return bucket;
 }
 
 function chooseTraversalMatch(
