@@ -333,6 +333,8 @@ type RulesReferenceLookupContext = {
   adapter: RulesLookupAdapter;
   valueKey: NormalizedLookupKey;
   env: RulesLookupAdapterEnv;
+  preparedTargetRules?: Rules;
+  preparedTargetOptions?: ReferenceLookupOptions;
 };
 
 type PreparedReferenceLookup = {
@@ -682,10 +684,7 @@ function lookupFunctionReference(
 ): RulesLookupResult {
   const keyStr = getLookupKeyString(valueKey);
   if (env.inCall) {
-    return (
-      targetRules.findFunction(keyStr, undefined, opts.callable)
-      ?? lookupAnyDeclarationOrFind(targetRules, keyStr, opts.declaration)
-    );
+    return targetRules.findFunction(keyStr, undefined, opts.callable);
   }
   return (
     lookupAnyDeclarationOrFind(targetRules, keyStr, opts.declaration)
@@ -863,18 +862,20 @@ function performRulesReferenceLookup(
     valueKey,
     env
   } = lookupContext;
-  const opts = buildReferenceLookupOptions({
-    referenceNode,
-    target,
-    targetRules: scope,
-    resolution,
-    isInterpolatedVariable,
-    filter,
-    semanticFilter,
-    context,
-    hasTarget,
-    adapter
-  });
+  const opts = lookupContext.preparedTargetRules === scope
+    ? lookupContext.preparedTargetOptions!
+    : buildReferenceLookupOptions({
+        referenceNode,
+        target,
+        targetRules: scope,
+        resolution,
+        isInterpolatedVariable,
+        filter,
+        semanticFilter,
+        context,
+        hasTarget,
+        adapter
+      });
   return adapter.lookup(scope, valueKey, opts, env);
 }
 
@@ -926,22 +927,7 @@ type RulesLookupHandleShape = {
   terminalMixinOnly: boolean;
 };
 
-function getRulesLookupHandleShape(args: {
-  targetRules: Rules;
-  lookupContext: RulesReferenceLookupContext;
-}): RulesLookupHandleShape {
-  const opts = buildReferenceLookupOptions({
-    referenceNode: args.lookupContext.referenceNode,
-    target: args.lookupContext.target,
-    targetRules: args.targetRules,
-    resolution: args.lookupContext.resolution,
-    isInterpolatedVariable: args.lookupContext.isInterpolatedVariable,
-    filter: args.lookupContext.filter,
-    semanticFilter: args.lookupContext.semanticFilter,
-    context: args.lookupContext.context,
-    hasTarget: args.lookupContext.hasTarget,
-    adapter: args.lookupContext.adapter
-  });
+function getRulesLookupHandleShape(opts: ReferenceLookupOptions): RulesLookupHandleShape {
   return {
     start: opts.declaration.start,
     local: opts.declaration.local === true,
@@ -1059,10 +1045,21 @@ function lookupResolvedReference(args: {
   const targetRules = isNode(resolvedTarget, N.Rules) ? resolvedTarget : undefined;
   let handleShape: RulesLookupHandleShape | undefined;
   if (targetRules) {
-    handleShape = getRulesLookupHandleShape({
+    const preparedTargetOptions = buildReferenceLookupOptions({
+      referenceNode,
+      target,
       targetRules,
-      lookupContext
+      resolution: lookupContext.resolution,
+      isInterpolatedVariable: lookupContext.isInterpolatedVariable,
+      filter: lookupContext.filter,
+      semanticFilter: lookupContext.semanticFilter,
+      context,
+      hasTarget: lookupContext.hasTarget,
+      adapter
     });
+    lookupContext.preparedTargetRules = targetRules;
+    lookupContext.preparedTargetOptions = preparedTargetOptions;
+    handleShape = getRulesLookupHandleShape(preparedTargetOptions);
     const handleResult = readRulesLookupHandle({
       referenceNode,
       targetRules,
@@ -1105,7 +1102,7 @@ function lookupResolvedReference(args: {
           originalFilter,
           env,
           context,
-          shape: handleShape ?? getRulesLookupHandleShape({ targetRules, lookupContext }),
+          shape: handleShape,
           returnVal: resolved
         });
       }
@@ -1125,7 +1122,7 @@ function lookupResolvedReference(args: {
       originalFilter,
       env,
       context,
-      shape: handleShape ?? getRulesLookupHandleShape({ targetRules, lookupContext }),
+      shape: handleShape,
       returnVal
     });
   }

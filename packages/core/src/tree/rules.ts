@@ -105,6 +105,13 @@ type RulesResolveState = {
   output: Rules;
   kind: 'public-resolve';
 };
+type ExactCallableFindOptions = {
+  hasTarget?: boolean;
+  local?: boolean;
+  includeRulesets?: boolean;
+  searchParents?: boolean;
+  skipCurrentSurface?: boolean;
+};
 
 function isStyleImportRegistrationNode(node: Node): node is StyleImportRegistrationNode {
   return node.type === 'StyleImport';
@@ -875,13 +882,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   findMixinsFast(
     key: string,
-    options?: {
-      hasTarget?: boolean;
-      local?: boolean;
-      includeRulesets?: boolean;
-      searchParents?: boolean;
-      skipCurrentSurface?: boolean;
-    }
+    options?: ExactCallableFindOptions
   ): MixinEntry[] {
     const collectWithinScopeSurface = (
       scope: Rules,
@@ -1604,7 +1605,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         prefixMatches.sort((a, b) => b.consumed.length - a.consumed.length);
       }
       let sawLegacyOnlyPrefix = false;
-      let simpleLookupOptions: Parameters<Rules['findMixinsFast']>[1] | undefined;
+      let simpleLookupOptions: ExactCallableFindOptions | undefined;
       let nestedOptions: CallableFindOptions | undefined;
 
       for (const { ruleset, consumed } of prefixMatches) {

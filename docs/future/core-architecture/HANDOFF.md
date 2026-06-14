@@ -1676,34 +1676,82 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7bz. [ ] Audit whether `RulesLookupAdapterEnv` can be split into declaration,
+7bz. [x] Audit whether `RulesLookupAdapterEnv` can be split into declaration,
     callable, and index env shapes without wrapper churn; only change it if the
     callsite can pass the lane-specific shape directly.
+   Done as an audit. The shared env stays for now because splitting it would
+   add adapter wrappers or duplicate dispatch plumbing before the callsite can
+   pass lane-specific env directly.
 
-7ca. [ ] Audit `findMixinsFast(...)` callers for `Parameters<Rules['findMixinsFast']>`
+7ca. [x] Audit `findMixinsFast(...)` callers for `Parameters<Rules['findMixinsFast']>`
     type extraction and replace with a named exact-callable option type if it
     shrinks callsite/readability overhead.
+   Done. Added a local `ExactCallableFindOptions` type and replaced the
+   remaining `Parameters<Rules['findMixinsFast']>` extraction.
 
-7cb. [ ] Inspect callable child-entry visibility allocation for explicit
+7cb. [x] Inspect callable child-entry visibility allocation for explicit
     visibility overrides; reuse carried registration visibility only if it
     cannot go stale after `registerNode(...)`.
+   Done as an audit. Explicit visibility still clones into per-entry state
+   because registration can merge node and caller visibility; only no-override
+   entries share the default object from the prior pass.
 
-7cc. [ ] Audit namespace prefix-match result allocation. Keep the
+7cc. [x] Audit namespace prefix-match result allocation. Keep the
     `{ ruleset, consumed }` object array only if a lighter pair/inline walk
     would obscure ordering or duplicate traversal.
+   Done as an audit. The prefix result object array remains because both
+   namespace paths share the ordered prefix search and only sort when there are
+   multiple matches. A lighter pair shape would not delete traversal yet.
 
-7cd. [ ] Re-check reference handle shape construction: avoid rebuilding full
+7cd. [x] Re-check reference handle shape construction: avoid rebuilding full
     declaration/callable options only to compute cache shape if the shape facts
     can be carried from `performRulesReferenceLookup(...)`.
+   Done. For resolved target `Rules`, reference lookup now builds target
+   options once, uses them for handle shape, and reuses them when performing
+   lookup on that same target scope. Leaky parent retries still build
+   scope-specific options.
 
-7ce. [ ] Inspect `findAnyDeclaration(...)` cold fallback from function
+7ce. [x] Inspect `findAnyDeclaration(...)` cold fallback from function
     reference lookup; decide whether function lookup should attempt
     any-declaration fallback only for non-call references.
+   Done. In-call function references now try function bindings only. Non-call
+   function references keep the cold any-declaration fallback.
 
-7cf. [ ] Re-run focused scope-frame callable bucket and recursive namespace
+7cf. [x] Re-run focused scope-frame callable bucket and recursive namespace
     tests after the next changes.
+   Done. Focused call/reference/mixin/rules suite passed after the changes.
 
-7cg. [ ] Re-run binding-only grep for registry-shaped lookup wording, excluding
+7cg. [x] Re-run binding-only grep for registry-shaped lookup wording, excluding
+    extend-root registry machinery.
+   Done. Grep found no registry-shaped lookup wording/API residue in the
+   searched core/plugin/language-service surfaces.
+
+Seeded next binding/lookup queue:
+
+7ch. [ ] Audit whether `preparedTargetRules` / `preparedTargetOptions` should
+    be replaced by a single prepared target record to avoid paired optional
+    fields.
+
+7ci. [ ] Inspect `lookupFunctionReference(...)` non-call any-declaration
+    fallback with focused tests; delete it if no production/reference semantics
+    require function references to resolve declarations outside calls.
+
+7cj. [ ] Audit `findVisibleCallableRulesetPrefixMatches(...)` callsites for
+    shared result reuse; inline only if one caller can consume matches without
+    object allocation and without duplicating traversal.
+
+7ck. [ ] Re-check explicit child-entry visibility clone path after
+    `registerNode(...)`; factor a helper only if it deletes both callable and
+    declaration duplicate merge code.
+
+7cl. [ ] Inspect `RulesLookupAdapterEnv` again after any function fallback
+    deletion; split env only when adapters can receive lane-specific env from
+    preparation without wrappers.
+
+7cm. [ ] Re-run focused reference handle, callable bucket, recursive namespace,
+    and function fallback tests.
+
+7cn. [ ] Re-run binding-only grep for registry-shaped lookup wording, excluding
     extend-root registry machinery.
 
 Parked secondary deep-cut queue:
@@ -2033,6 +2081,43 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Prepared target options and function-call fallback pass: accepted as
+  binding/lookup cleanup and one call-time fallback narrowing, not as a speed
+  claim. Files: `packages/core/src/tree/reference.ts`,
+  `packages/core/src/tree/rules.ts`, focused lookup tests, and this handoff.
+  - New traversal: none. Resolved target Rules lookup now reuses the target's
+    prepared lookup options for handle shape and target-scope lookup; leaky
+    parent retries still build scope-specific options.
+  - New node/materialization: none. No production node, wrapper `Rules`, copied
+    node, `.inherit(...)`, `.adopt(...)`, materialized output array, source
+    metadata, parent mutation, or frozen state was added.
+  - Render path: unchanged. The pass changes lookup preparation/reuse and
+    call-time function fallback selection; rendering still consumes existing
+    resolved values.
+  - Helper/API surface: small cleanup. Added a named local
+    `ExactCallableFindOptions` type and removed the
+    `Parameters<Rules['findMixinsFast']>` type extraction. No new public
+    helper or compatibility shim was added. The shared `RulesLookupAdapterEnv`
+    remains because splitting it would add wrapper dispatch before the callsite
+    can pass lane-specific env directly.
+  - Metadata mutations: none. The new prepared target option fields are
+    per-reference lookup context state for the current lookup, not node
+    metadata or cache storage.
+  - Danger-token prosecution: the current diff should not add production
+    traversal or node/materialization danger tokens. The prepared option object
+    was already required for target lookup; this pass reuses it instead of
+    rebuilding it to compute handle shape.
+  - Evidence: focused function/reference/mixin/rules suite passed (`4` files,
+    `80` passed, `351` skipped); touched-file ESLint passed; `@jesscss/core`
+    build passed after the edit; binding grep found no registry-shaped lookup
+    wording/API residue in the searched surfaces. `git diff --check`,
+    `verify:aggressive-cutting-review`, `audit:node-creation`, `@jesscss/core`
+    build, and `jess` build passed. The review gate reported only the named
+    exact-callable option type and handoff danger-token wording, prosecuted
+    above. One-iteration hotpath smoke passed with usable signal:
+    `mixins-guards.less` `21.62ms`, `scope-lookup-stress.less` `78.20ms`.
+    No speed claim is made from this pass.
 
 - Reference handle terminal-shape and child-entry visibility pass: accepted as
   binding/lookup cleanup and default child-entry allocation reduction, not as a
