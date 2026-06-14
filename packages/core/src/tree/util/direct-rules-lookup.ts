@@ -76,11 +76,7 @@ type MatchState = {
   readonly: boolean;
 };
 
-type CachedMatch = {
-  optionalMatch: Declaration | undefined;
-  publicMatch: Declaration | undefined;
-  readonly: boolean;
-};
+type CachedMatch = MatchState;
 
 function isNonClassicImportBoundary(rules: Rules | undefined): boolean {
   return rules?.options.importBoundary === true;
@@ -280,22 +276,17 @@ function readCachedMatch(scope: Rules, cacheKey: string | undefined): CachedMatc
   if (!cached) {
     return undefined;
   }
-  return {
-    publicMatch: cached.publicMatch,
-    optionalMatch: cached.optionalMatch,
-    readonly: cached.readonly
-  };
+  return cached;
 }
 
 function writeCachedMatch(scope: Rules, cacheKey: string | undefined, state: MatchState): void {
   if (!cacheKey) {
     return;
   }
-  (scope.directDeclarationLookupCache ??= new Map()).set(cacheKey, {
-    optionalMatch: state.optionalMatch,
-    publicMatch: state.publicMatch,
-    readonly: state.readonly
-  });
+  const cached = createEmptyState(state.readonly);
+  cached.optionalMatch = state.optionalMatch;
+  cached.publicMatch = state.publicMatch;
+  (scope.directDeclarationLookupCache ??= new Map()).set(cacheKey, cached);
 }
 
 function findLocalDeclaration(

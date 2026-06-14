@@ -1,7 +1,7 @@
 import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, F_STATIC, type LocationInfo } from './node.js';
 import type { Context } from '../context.js';
 import { cast } from './util/cast.js';
-import type { CallableFindOptions, DeclarationFindOptions } from './util/lookup-utils.js';
+import type { DeclarationFindOptions } from './util/lookup-utils.js';
 import { Any, type AnyRole } from './any.js';
 import { Selector } from './selector.js';
 import { isNode } from './util/is-node.js';
@@ -475,37 +475,6 @@ function buildRulesLookupHandleShape(args: BuildReferenceLookupShapeArgs): Rules
   };
 }
 
-function buildDeclarationReferenceLookupOptions(args: {
-  filter: (n: Node) => boolean;
-  semanticFilter: boolean;
-  context: Context;
-  hasTarget: boolean;
-  shape: RulesLookupHandleShape;
-}): ReferenceDeclarationFindOptions {
-  return {
-    filter: args.filter,
-    semanticFilter: args.semanticFilter,
-    context: args.context,
-    hasTarget: args.hasTarget,
-    local: args.shape.local || undefined,
-    start: args.shape.start,
-    ignoreParentScopeStart: args.shape.ignoreParentScopeStart || undefined
-  };
-}
-
-function buildCallableReferenceLookupOptions(args: {
-  context: Context;
-  hasTarget: boolean;
-  shape: RulesLookupHandleShape;
-}): CallableFindOptions {
-  return {
-    context: args.context,
-    hasTarget: args.hasTarget,
-    local: args.shape.local || undefined,
-    terminalMixinOnly: args.shape.terminalMixinOnly || undefined
-  };
-}
-
 function lookupTypeNeedsContextualStart(lookupType: LookupType): boolean {
   return (
     lookupType === 'property'
@@ -833,39 +802,79 @@ function performRulesReferenceLookup(
       });
   switch (lookupType) {
     case 'index': {
-      const opts = buildDeclarationReferenceLookupOptions({ filter, semanticFilter, context, hasTarget, shape });
-      return lookupIndexReference(scope, valueKey, opts, env);
+      return lookupIndexReference(scope, valueKey, {
+        filter,
+        semanticFilter,
+        context,
+        hasTarget,
+        local: shape.local || undefined,
+        start: shape.start,
+        ignoreParentScopeStart: shape.ignoreParentScopeStart || undefined
+      }, env);
     }
     case 'property': {
-      const opts = buildDeclarationReferenceLookupOptions({ filter, semanticFilter, context, hasTarget, shape });
-      return lookupPropertyReference(scope, valueKey, opts, env);
+      return lookupPropertyReference(scope, valueKey, {
+        filter,
+        semanticFilter,
+        context,
+        hasTarget,
+        local: shape.local || undefined,
+        start: shape.start,
+        ignoreParentScopeStart: shape.ignoreParentScopeStart || undefined
+      }, env);
     }
     case 'variable': {
-      const opts = buildDeclarationReferenceLookupOptions({ filter, semanticFilter, context, hasTarget, shape });
-      return lookupVariableReference(scope, valueKey, opts, env);
+      return lookupVariableReference(scope, valueKey, {
+        filter,
+        semanticFilter,
+        context,
+        hasTarget,
+        local: shape.local || undefined,
+        start: shape.start,
+        ignoreParentScopeStart: shape.ignoreParentScopeStart || undefined
+      }, env);
     }
     case 'declaration': {
-      const opts = buildDeclarationReferenceLookupOptions({ filter, semanticFilter, context, hasTarget, shape });
-      return lookupDeclarationReference(scope, valueKey, opts, env);
+      return lookupDeclarationReference(scope, valueKey, {
+        filter,
+        semanticFilter,
+        context,
+        hasTarget,
+        local: shape.local || undefined,
+        start: shape.start,
+        ignoreParentScopeStart: shape.ignoreParentScopeStart || undefined
+      }, env);
     }
     case 'function': {
-      const opts = buildCallableReferenceLookupOptions({ context, hasTarget, shape });
-      return scope.findFunction(getLookupKeyString(valueKey), undefined, opts);
+      return scope.findFunction(getLookupKeyString(valueKey), undefined, {
+        context,
+        hasTarget,
+        local: shape.local || undefined,
+        terminalMixinOnly: shape.terminalMixinOnly || undefined
+      });
     }
     case 'mixin': {
-      const opts = buildCallableReferenceLookupOptions({ context, hasTarget, shape });
       return scope.findMixin(
         Array.isArray(valueKey) ? valueKey : getLookupKeyString(valueKey),
         'Mixin',
-        opts
+        {
+          context,
+          hasTarget,
+          local: shape.local || undefined,
+          terminalMixinOnly: shape.terminalMixinOnly || undefined
+        }
       );
     }
     case 'mixin-ruleset': {
-      const opts = buildCallableReferenceLookupOptions({ context, hasTarget, shape });
       return scope.findMixin(
         Array.isArray(valueKey) ? valueKey : getLookupKeyString(valueKey),
         undefined,
-        opts
+        {
+          context,
+          hasTarget,
+          local: shape.local || undefined,
+          terminalMixinOnly: shape.terminalMixinOnly || undefined
+        }
       );
     }
   }

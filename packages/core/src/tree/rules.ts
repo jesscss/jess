@@ -1853,12 +1853,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               includeRulesets,
               searchParents: false
             });
-            if (retryHit.kind === 'uncovered' && isNode(retryFrame.rulesNode, N.Rules)) {
-              this.prepareCallableLookupFrame(retryFrame, keys, includeRulesets);
-              retryHit = lookupScopeFrameCallable(retryFrame, keys, {
-                includeRulesets,
-                searchParents: false
-              });
+            if (retryHit.kind === 'uncovered') {
+              if (isNode(retryFrame.rulesNode, N.Rules)) {
+                this.prepareCallableLookupFrame(retryFrame, keys, includeRulesets);
+                retryHit = lookupScopeFrameCallable(retryFrame, keys, {
+                  includeRulesets,
+                  searchParents: false
+                });
+              }
             }
             if (retryHit.kind === 'hit') {
               const results = collectCallableBucketResults(retryHit.bucket, includeRulesets);
@@ -1867,17 +1869,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 return results;
               }
             }
-            if (retryHit.kind === 'uncovered' && isNode(retryFrame.rulesNode, N.Rules)) {
-              const direct = retryFrame.rulesNode.findMixinsFast(keys, {
-                hasTarget: options.hasTarget,
-                local: options.local,
-                includeRulesets,
-                searchParents: false,
-                skipCurrentSurface: true
-              });
-              if (direct.length > 0) {
-                this.setLastCallableLookupResult(cacheKey, direct);
-                return direct;
+            if (retryHit.kind === 'uncovered') {
+              if (isNode(retryFrame.rulesNode, N.Rules)) {
+                const direct = retryFrame.rulesNode.findMixinsFast(keys, {
+                  hasTarget: options.hasTarget,
+                  local: options.local,
+                  includeRulesets,
+                  searchParents: false,
+                  skipCurrentSurface: true
+                });
+                if (direct.length > 0) {
+                  this.setLastCallableLookupResult(cacheKey, direct);
+                  return direct;
+                }
               }
             }
             retryFrame = retryFrame.parent;

@@ -2097,7 +2097,7 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7dt. [ ] Direct declaration cache ownership task. Scope:
+7dt. [x] Direct declaration cache ownership task. Scope:
     `directDeclarationLookupCache`, `writeCachedMatch(...)`, optional/public
     match state, readonly propagation, and semantic filter boundaries. Goal:
     prove cached declaration misses/hits are not reused across option shapes
@@ -2105,16 +2105,25 @@ Seeded next binding/lookup queue:
     redundant cache fields only if the remaining key owns the distinction.
     Acceptance: variable/property source-order, optional/public visibility,
     readonly, semantic-filter, import/reference tests plus standard gates.
+    Done. `CachedMatch` now aliases `MatchState`; cache reads return the stored
+    immutable-by-convention match state directly, and writes create one
+    `createEmptyState(...)` cache object instead of a parallel literal shape.
+    Cache-key gates still reject live bindings, source-order `start`,
+    readonly, semantic filters, candidate filters, and optional candidates.
 
-7du. [ ] Callable frame retry task. Scope: retry-frame/fallback-frame loop in
+7du. [x] Callable frame retry task. Scope: retry-frame/fallback-frame loop in
     `findMixin(...)`, `lookupScopeFrameCallable(...)`, fallbackFrame ownership,
     and direct bridge calls after uncovered retry frames. Goal: delete or narrow
     retry direct bridge work only where frame preparation can prove covered
     misses, without losing leaky fallback-frame semantics. Acceptance: callable
     bucket, fallback-frame, leaky mixin, terminal mixin-only, import/reference
     tests plus standard gates.
+    Done. Retry frames now prepare on uncovered hits, re-check the frame, and
+    take the direct `findMixinsFast(... skipCurrentSurface: true)` bridge only
+    if the prepared frame remains uncovered. Covered misses stop paying that
+    bridge path while fallback-frame ownership remains unchanged.
 
-7dv. [ ] Reference option builder task. Scope:
+7dv. [x] Reference option builder task. Scope:
     `buildDeclarationReferenceLookupOptions(...)`,
     `buildCallableReferenceLookupOptions(...)`, `performRulesReferenceLookup(...)`,
     and switch-lane option object creation. Goal: remove or inline helper/object
@@ -2122,6 +2131,40 @@ Seeded next binding/lookup queue:
     shape semantics or reintroducing string-branching. Acceptance: reference
     variable/property/function/callable handle tests, binding grep, lint, builds,
     and aggressive review.
+    Done. The two option builder helpers were deleted; `performRulesReferenceLookup(...)`
+    now constructs the lane-specific declaration or callable options at the
+    call site inside the existing switch without adding string branching.
+
+Seeded next binding/lookup queue:
+
+7dw. [ ] Direct declaration bucket materialization task. Scope:
+    `getDirectDeclarationBucket(...)`, `directDeclarationsByName`, dynamic and
+    `setDefined(...)` names, source-order lookup, and static bucket creation.
+    Goal: determine whether exact declaration lookup can avoid building the
+    whole per-scope declaration map on first key access by using a narrower
+    per-key scan/slot that is still registryless and source-order correct.
+    Acceptance: variable/property source-order, semantic-filter, readonly,
+    import/reference, dynamic-name, and `setDefined(...)` tests plus standard
+    gates.
+
+7dx. [ ] Callable frame preparation cache task. Scope:
+    `prepareCallableLookupFrame(...)`, `getCallableEntriesForKey(...)`,
+    callable miss coverage, `includeRulesets`, terminal mixin-only, and
+    fallback-frame reuse. Goal: avoid recomputing broad/mixin coverage for
+    frames that already prove the requested key/lane is covered, without adding
+    a registry-like side map or hiding fallback semantics. Acceptance: callable
+    bucket, fallback-frame, leaky mixin, terminal mixin-only, namespaced
+    mixin-ruleset, import/reference tests plus standard gates.
+
+7dy. [ ] Reference local-shape reuse task. Scope:
+    `shouldUseLocalReferenceLookup(...)`, `buildRulesLookupHandleShape(...)`,
+    prepared target shape reuse, ambient mixin-output blocking, and
+    target/source scope identity. Goal: carry the local/terminal decision when
+    the target rules identity is already known so repeated handle paths avoid
+    rediscovering mixin-output blocking, without adding broad caches or
+    duplicating namespace semantics. Acceptance: reference variable/property,
+    function/callable handle, ambient output, import/reference visibility, and
+    prepared-target tests plus standard gates.
 
 Parked secondary deep-cut queue:
 
@@ -2450,6 +2493,44 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Direct declaration cache, callable retry bridge, and reference option builder
+  pass: accepted as binding/lookup cleanup, not as a speed claim. Files:
+  `packages/core/src/tree/util/direct-rules-lookup.ts`,
+  `packages/core/src/tree/rules.ts`, `packages/core/src/tree/reference.ts`,
+  focused lookup tests, and this handoff.
+  - New traversal: none. The direct declaration cache now reuses the cached
+    match state object; callable retry work narrows an existing fallback-frame
+    loop by checking whether preparation made the frame covered; reference
+    lookup deletes option-builder helpers inside the existing switch.
+  - New node/materialization: no AST node, wrapper `Rules`, copied node, source
+    metadata, parent mutation, frozen state, helper array, or map was added.
+    Direct declaration cache writes still allocate one `MatchState` cache entry
+    per cacheable key, replacing the previous parallel literal cache shape.
+  - Render path: unchanged. This pass only touches lookup/binding paths.
+  - Helper/API surface: deleted
+    `buildDeclarationReferenceLookupOptions(...)` and
+    `buildCallableReferenceLookupOptions(...)`; added no helper or public API.
+  - Metadata mutations: none. No parent/source/frozen/runtime metadata writes
+    were introduced.
+  - Danger-token prosecution: the remaining direct declaration cache is not a
+    registry; it is per-`Rules` lookup state and remains disabled for live
+    bindings, source-order `start`, readonly, filters, candidate filters,
+    optional candidates, and other option shapes that can change visibility or
+    source-order semantics. The diff still shows
+    `directDeclarationLookupCache ??= new Map()` because the existing cache-set
+    line changed shape; this pass does not add a new side map, cache owner, or
+    registry layer. The retry bridge is now skipped after frame preparation
+    proves a covered miss.
+  - Evidence: touched-file ESLint passed; focused reference/mixin/call/rules/
+    import/control suite passed (`6` files, `251` passed, `324` skipped);
+    binding grep found no removed reference option builders or old adapter
+    residue; `git diff --check` passed; `@jesscss/core` build passed with only
+    the existing `js-expr.ts` direct-eval warning; `verify:aggressive-cutting-review`
+    passed with the prosecuted existing cache-map danger token; `audit:node-creation`
+    passed; `jess` build passed. One-iteration hotpath smoke passed with usable
+    signal: `mixins-guards.less` `21.73ms`, `scope-lookup-stress.less`
+    `75.76ms`. No speed claim is made from this pass.
 
 - Declaration child-surface skip and cache-shape audit pass: accepted as
   binding/lookup cleanup, not as a speed claim. Files:
