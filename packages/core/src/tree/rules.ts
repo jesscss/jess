@@ -1514,7 +1514,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return matches;
       }
 
-      const nestedResults: MixinEntry[] = [];
+      let nestedResults: MixinEntry[] | undefined;
+      let nestedResultsOwned = false;
       let sawDefiniteMiss = false;
       for (const match of matches) {
         if (!isNode(match, N.Mixin)) {
@@ -1532,12 +1533,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           sawDefiniteMiss = true;
           continue;
         }
+        if (nestedResults === undefined) {
+          nestedResults = resolved;
+          continue;
+        }
+        if (!nestedResultsOwned) {
+          nestedResults = [...nestedResults];
+          nestedResultsOwned = true;
+        }
         for (let resolvedIndex = 0; resolvedIndex < resolved.length; resolvedIndex++) {
           nestedResults.push(resolved[resolvedIndex]!);
         }
       }
 
-      if (nestedResults.length > 0) {
+      if (nestedResults !== undefined && nestedResults.length > 0) {
         return nestedResults;
       }
       return sawDefiniteMiss ? DEFINITE_MISS : undefined;

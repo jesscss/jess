@@ -1774,32 +1774,76 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7co. [ ] Inspect direct adapter dispatch around `RULES_LOOKUP_ADAPTERS`; delete
+7co. [x] Inspect direct adapter dispatch around `RULES_LOOKUP_ADAPTERS`; delete
     the uniform adapter object only if each lookup lane can call its target
     directly without adding wrappers or branching inside the hot lookup.
+   Done. Deleted `RulesLookupAdapter` and `RULES_LOOKUP_ADAPTERS`. Lookup
+   context now carries `lookupType`, and `performRulesReferenceLookup(...)`
+   dispatches directly to the lane functions.
 
-7cp. [ ] Audit `ReferenceLookupOptions` shape after function fallback deletion;
+7cp. [x] Audit `ReferenceLookupOptions` shape after function fallback deletion;
     split declaration/callable option preparation only if it avoids building
     unused option records for a lane without duplicating parent-start logic.
+   Done as an audit-only no-op. Splitting today would duplicate
+   `start`/`local`/handle-shape preparation or add lane-specific assertion
+   helpers; leave it until handle preparation can become lane-specific too.
 
-7cq. [ ] Inspect `lookupCallableReference(...)` function fallback for calls
+7cq. [x] Inspect `lookupCallableReference(...)` function fallback for calls
     where callable lookup already proves a miss; narrow or cache the fallback
     only with focused function-vs-mixin call tests.
+   Done as an audit-only no-op. The fallback is still the call-site bridge from
+   callable-looking call syntax to JS functions after callable miss; focused
+   function/callable tests stay green with the existing behavior.
 
-7cr. [ ] Audit `findMixinNamespacePathFast(...)` recursive `nestedResults`
+7cr. [x] Audit `findMixinNamespacePathFast(...)` recursive `nestedResults`
     materialization; delete the array only if the recursive lane can return the
     first valid hit or append into a caller-owned result without changing order.
+   Done. The accumulator is now lazy: a single recursive hit returns the
+   resolved result directly, and only multiple hit branches clone/append to
+   avoid mutating cached result arrays.
 
-7cs. [ ] Re-check `findRulesetNamespacePathFast(...)` prefix-match sorting; keep
+7cs. [x] Re-check `findRulesetNamespacePathFast(...)` prefix-match sorting; keep
     sorting only where overlapping prefix lengths are observable, otherwise
     consume longest prefixes during traversal.
+   Done as an audit-only no-op. Existing compound-prefix precedence tests cover
+   overlapping prefix lengths, so sorting remains the simplest semantics keeper.
 
-7ct. [ ] Inspect callable bucket parent retry loop for repeated
+7ct. [x] Inspect callable bucket parent retry loop for repeated
     `prepareCallableLookupFrame(...)`; cache only on existing `ScopeFrame`
     fields and avoid a side registry or extra lookup map.
+   Done as an audit-only no-op. The retry loop prepares only uncovered
+   `ScopeFrame` rules nodes and then reuses the existing frame/cache fields; an
+   extra map or side cache would be registry-shaped overhead.
 
-7cu. [ ] Re-run focused adapter, callable fallback, recursive namespace, and
+7cu. [x] Re-run focused adapter, callable fallback, recursive namespace, and
     binding grep checks.
+   Done. Focused call/reference/mixin/rules/import/control suite passed after
+   the edits.
+
+Seeded next binding/lookup queue:
+
+7cv. [ ] Inspect whether `performRulesReferenceLookup(...)` direct switch can
+    move to a prepared lane function without recreating the deleted adapter
+    object or adding wrapper functions for `mixin`/`mixin-ruleset`.
+
+7cw. [ ] Revisit lane-specific `ReferenceLookupOptions` only after 7cv; split
+    declaration/callable option construction if the prepared lane can carry a
+    handle-shape builder without duplicate `start`/`local` logic.
+
+7cx. [ ] Audit `lookupCallableReference(...)` function fallback with explicit
+    JS-function-vs-mixin call fixtures; delete only if Less-compatible callable
+    syntax never expects JS function fallback after mixin miss.
+
+7cy. [ ] Inspect duplicate bucket-to-results loops in `findMixin(...)` for
+    current frame and retry frame hits; factor only if it deletes both loops
+    without adding a callback or extra result array.
+
+7cz. [ ] Re-check callable namespace result caching after lazy
+    `nestedResults`; ensure no cached recursive array can be mutated by later
+    union paths.
+
+7da. [ ] Re-run focused reference/callable namespace/function fallback tests,
+    binding-only grep, and the standard lookup gates.
 
 Parked secondary deep-cut queue:
 
@@ -2128,6 +2172,46 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Adapter-table deletion and lazy namespace accumulator pass: accepted as
+  binding/lookup cleanup, not as a speed claim. Files:
+  `packages/core/src/tree/reference.ts`, `packages/core/src/tree/rules.ts`,
+  focused lookup tests, and this handoff.
+  - New traversal: none. The pass deletes the `RULES_LOOKUP_ADAPTERS` object
+    and keeps existing lookup traversal paths. Prefix-match sorting and callable
+    parent retry traversal were audited and left unchanged because current tests
+    cover overlapping compound-prefix precedence and the retry loop already
+    prepares only uncovered existing `ScopeFrame` nodes.
+  - New node/materialization: no nodes or runtime materialization. The
+    recursive mixin namespace accumulator now avoids allocating a result array
+    for a single recursive hit; if a second branch contributes hits, it clones
+    the first resolved array before appending so cached recursive results are
+    not mutated.
+  - Render path: unchanged. The changes affect reference lookup dispatch and
+    callable namespace result accumulation only; rendering still consumes the
+    same resolved values.
+  - Helper/API surface: net deletion. Removed the private
+    `RulesLookupAdapter` type and `RULES_LOOKUP_ADAPTERS` table. Added one
+    private `lookupTypeNeedsContextualStart(...)` predicate to preserve the
+    former contextual-start bit without carrying an adapter object. Rejected
+    lane-specific option splitting because it would add assertions/helpers or
+    duplicate handle-shape preparation before lane preparation is redesigned.
+  - Metadata mutations: none. No parent/source restoration, frozen state, lazy
+    context creation, structural probe, side map, or lookup registry was added.
+  - Danger-token prosecution: the remaining `RulesLookupAdapterEnv` is an env
+    record shared by existing lane functions, not a registry/adapter table.
+    The lazy namespace clone is only for the multiple-branch union case and
+    replaces unconditional accumulator allocation.
+  - Evidence: focused adapter/function/reference/mixin/rules/import/control
+    suite passed (`6` files, `181` passed, `394` skipped). Binding grep found
+    no `RULES_LOOKUP_ADAPTERS`, exact `RulesLookupAdapter`, or registry-shaped
+    lookup residue in the searched surfaces. Touched-file ESLint passed;
+    `git diff --check` passed; `@jesscss/core` build passed;
+    `verify:aggressive-cutting-review` passed after flagging only the
+    prosecuted lazy `nestedResults` accumulator; `audit:node-creation` passed;
+    `jess` build passed. One-iteration hotpath smoke passed with usable signal:
+    `mixins-guards.less` `22.35ms`, `scope-lookup-stress.less` `81.23ms`. No
+    speed claim is made from this pass.
 
 - Function-reference narrowing and prepared-target record pass: accepted as
   binding/lookup cleanup, not as a speed claim. Files:

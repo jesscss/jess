@@ -311,18 +311,9 @@ type RulesLookupAdapterEnv = {
   semanticFilter: boolean;
 };
 
-type RulesLookupAdapter = {
-  applyContextualStart: boolean;
-  lookup: (
-    targetRules: Rules,
-    valueKey: NormalizedLookupKey,
-    opts: ReferenceLookupOptions,
-    env: RulesLookupAdapterEnv
-  ) => RulesLookupResult;
-};
-
 type RulesReferenceLookupContext = {
   referenceNode: Reference;
+  lookupType: LookupType;
   target: ReferenceValue['target'];
   resolution: ReferenceOptions['resolution'];
   isInterpolatedVariable: boolean;
@@ -330,14 +321,12 @@ type RulesReferenceLookupContext = {
   semanticFilter: boolean;
   context: Context;
   hasTarget: boolean;
-  adapter: RulesLookupAdapter;
   valueKey: NormalizedLookupKey;
   env: RulesLookupAdapterEnv;
   preparedTarget?: PreparedTargetLookup;
 };
 
 type PreparedReferenceLookup = {
-  adapter: RulesLookupAdapter;
   env: RulesLookupAdapterEnv;
 };
 
@@ -440,6 +429,7 @@ function shouldUseLocalReferenceLookup(args: {
 
 function buildReferenceLookupOptions(args: {
   referenceNode: Reference;
+  lookupType: LookupType;
   target: ReferenceValue['target'];
   targetRules: Rules;
   resolution: ReferenceOptions['resolution'];
@@ -448,10 +438,10 @@ function buildReferenceLookupOptions(args: {
   semanticFilter: boolean;
   context: Context;
   hasTarget: boolean;
-  adapter: RulesLookupAdapter;
 }): ReferenceLookupOptions {
   const {
     referenceNode,
+    lookupType,
     target,
     targetRules,
     resolution,
@@ -459,8 +449,7 @@ function buildReferenceLookupOptions(args: {
     filter,
     semanticFilter,
     context,
-    hasTarget,
-    adapter
+    hasTarget
   } = args;
   const local = shouldUseLocalReferenceLookup({ target, targetRules }) || undefined;
   let start: number | undefined;
@@ -469,7 +458,7 @@ function buildReferenceLookupOptions(args: {
   if (!isInterpolatedVariable) {
     if (resolution === 'live') {
       start = context.rulesContext?.index ?? getLookupStartIndex(referenceNode);
-    } else if (!target && adapter.applyContextualStart) {
+    } else if (!target && lookupTypeNeedsContextualStart(lookupType)) {
       start = getLookupStartIndex(referenceNode) ?? (
         referenceNode.options.type === 'variable' || referenceNode.options.type === undefined
           ? undefined
@@ -503,6 +492,14 @@ function buildReferenceLookupOptions(args: {
   };
 }
 
+function lookupTypeNeedsContextualStart(lookupType: LookupType): boolean {
+  return (
+    lookupType === 'property'
+    || lookupType === 'variable'
+    || lookupType === 'declaration'
+  );
+}
+
 function prepareReferenceLookup(args: {
   referenceNode: Reference;
   lookupType: LookupType;
@@ -527,7 +524,6 @@ function prepareReferenceLookup(args: {
   const semanticFilter = originalFilter !== undefined;
   const hasTarget = !!target;
   return {
-    adapter: RULES_LOOKUP_ADAPTERS[lookupType],
     env: {
       context,
       keyNode,
@@ -734,28 +730,6 @@ function lookupCallableReference(
   return undefined;
 }
 
-const RULES_LOOKUP_ADAPTERS: Record<LookupType, RulesLookupAdapter> = {
-  index: { applyContextualStart: false, lookup: lookupIndexReference },
-  property: { applyContextualStart: true, lookup: lookupPropertyReference },
-  variable: { applyContextualStart: true, lookup: lookupVariableReference },
-  declaration: { applyContextualStart: true, lookup: lookupDeclarationReference },
-  function: { applyContextualStart: false, lookup: lookupFunctionReference },
-  mixin: {
-    applyContextualStart: false,
-    lookup: (targetRules, valueKey, opts, env) => lookupCallableReference(
-      targetRules,
-      valueKey,
-      opts,
-      env,
-      'Mixin'
-    )
-  },
-  ['mixin-ruleset']: {
-    applyContextualStart: false,
-    lookup: lookupCallableReference
-  }
-};
-
 function lookupRulesReferenceTarget(args: {
   resolvedTarget: Rules;
   context: Context;
@@ -855,7 +829,7 @@ function performRulesReferenceLookup(
     semanticFilter,
     context,
     hasTarget,
-    adapter,
+    lookupType,
     valueKey,
     env
   } = lookupContext;
@@ -863,6 +837,7 @@ function performRulesReferenceLookup(
     ? lookupContext.preparedTarget.options
     : buildReferenceLookupOptions({
         referenceNode,
+        lookupType,
         target,
         targetRules: scope,
         resolution,
@@ -870,10 +845,24 @@ function performRulesReferenceLookup(
         filter,
         semanticFilter,
         context,
-        hasTarget,
-        adapter
+        hasTarget
       });
-  return adapter.lookup(scope, valueKey, opts, env);
+  switch (lookupType) {
+    case 'index':
+      return lookupIndexReference(scope, valueKey, opts, env);
+    case 'property':
+      return lookupPropertyReference(scope, valueKey, opts, env);
+    case 'variable':
+      return lookupVariableReference(scope, valueKey, opts, env);
+    case 'declaration':
+      return lookupDeclarationReference(scope, valueKey, opts, env);
+    case 'function':
+      return lookupFunctionReference(scope, valueKey, opts, env);
+    case 'mixin':
+      return lookupCallableReference(scope, valueKey, opts, env, 'Mixin');
+    case 'mixin-ruleset':
+      return lookupCallableReference(scope, valueKey, opts, env);
+  }
 }
 
 function isHandleableLookupKey(valueKey: NormalizedLookupKey): valueKey is string | string[] {
@@ -1016,7 +1005,7 @@ function lookupResolvedReference(args: {
     originalFilter,
     context
   } = args;
-  const { adapter, env } = prepareReferenceLookup({
+  const { env } = prepareReferenceLookup({
     referenceNode,
     lookupType,
     keyNode: referenceNode.value.key,
@@ -1027,6 +1016,7 @@ function lookupResolvedReference(args: {
 
   const lookupContext: RulesReferenceLookupContext = {
     referenceNode,
+    lookupType,
     target,
     resolution: referenceNode.options.resolution,
     isInterpolatedVariable: env.isInterpolatedVariable,
@@ -1034,7 +1024,6 @@ function lookupResolvedReference(args: {
     semanticFilter: env.semanticFilter,
     context,
     hasTarget: env.hasTarget,
-    adapter,
     valueKey,
     env
   };
@@ -1044,6 +1033,7 @@ function lookupResolvedReference(args: {
   if (targetRules) {
     const preparedTargetOptions = buildReferenceLookupOptions({
       referenceNode,
+      lookupType,
       target,
       targetRules,
       resolution: lookupContext.resolution,
@@ -1051,8 +1041,7 @@ function lookupResolvedReference(args: {
       filter: lookupContext.filter,
       semanticFilter: lookupContext.semanticFilter,
       context,
-      hasTarget: lookupContext.hasTarget,
-      adapter
+      hasTarget: lookupContext.hasTarget
     });
     lookupContext.preparedTarget = {
       rules: targetRules,
