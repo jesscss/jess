@@ -5,6 +5,7 @@ import type { VarDeclaration } from '../declaration-var.js';
 import type { Rules, RulesOptions, RuntimeVarBinding } from '../rules.js';
 import {
   getBindingCellValue,
+  isBlockedScopeFrameParamVar,
   type BindingEntry,
   type ScopeFrame
 } from '../scope-frame.js';
@@ -21,6 +22,8 @@ export type FindVarDeclarationFastOptions = {
   start?: number;
   /** Active evaluation context, used for search-scope exclusion and caller rules state. */
   context: Context;
+  /** Optional caller-provided node filter. */
+  filter?: (n: Node) => boolean;
   /** Whether the reference has an explicit target, which restricts mixin-output traversal. */
   hasTarget?: boolean;
   /** Whether lookup is already inside a local child surface. */
@@ -39,7 +42,7 @@ type FindVarScopeSurfaceResult = {
 function selectVarBucketCandidate(
   bucket: BindingEntry[] | undefined,
   start: number | undefined,
-  filter: (n: Node) => boolean
+  options: FindVarDeclarationFastOptions
 ): Node | undefined {
   if (!bucket?.length) {
     return undefined;
@@ -49,11 +52,24 @@ function selectVarBucketCandidate(
     if (start !== undefined && !(candidate.sourceNode.index !== undefined && candidate.sourceNode.index < start)) {
       continue;
     }
-    if (filter(candidate.sourceNode)) {
+    if (passesVarCandidateFilter(candidate.sourceNode, options)) {
       return candidate.sourceNode;
     }
   }
   return undefined;
+}
+
+function passesVarCandidateFilter(
+  node: Node,
+  options: FindVarDeclarationFastOptions
+): boolean {
+  if (options.filter && !options.filter(node)) {
+    return false;
+  }
+  if (options.context._searchScope?.has(node)) {
+    return false;
+  }
+  return !isBlockedScopeFrameParamVar(node, options.context.rulesContext);
 }
 
 /**
@@ -163,7 +179,6 @@ export function promoteResolvedPendingVarDecls(
 function findVarWithinScopeSurface(
   scope: Rules,
   name: string,
-  filter: (n: Node) => boolean,
   options: FindVarDeclarationFastOptions,
   scopeStart: number | undefined,
   localContext: boolean | undefined,
@@ -186,7 +201,7 @@ function findVarWithinScopeSurface(
   promoteResolvedPendingVarDecls(scope, frame);
   let publicMatch: Node | undefined;
   let optionalMatch: Node | undefined;
-  const currentCandidate = selectVarBucketCandidate(frame.declarationBucketsByName.get(name), undefined, filter);
+  const currentCandidate = selectVarBucketCandidate(frame.declarationBucketsByName.get(name), undefined, options);
   if (currentCandidate) {
     const scopeVisibility = visibilityOverride ?? scope.options.rulesVisibility?.VarDeclaration;
     const isRulesetBodyScope = isNode(scope.parent, N.Ruleset) || isNode(scope.sourceNode, N.Ruleset);
@@ -209,7 +224,6 @@ function findVarWithinScopeSurface(
     const lexicalResult = findVarWithinScopeSurface(
       lexicalParentRules as Rules,
       name,
-      filter,
       options,
       undefined,
       localContext,
@@ -256,7 +270,6 @@ function findVarWithinScopeSurface(
     const childResult = findVarWithinScopeSurface(
       entry.node,
       name,
-      filter,
       options,
       scopeStart,
       localContext || Boolean(entry.node.options?.local),
@@ -282,7 +295,6 @@ function findVarWithinScopeSurface(
 export function findVarDeclarationFast(
   startRules: Rules,
   name: string,
-  filter: (n: Node) => boolean,
   options: FindVarDeclarationFastOptions
 ): Node | undefined {
   let cursor: Node | undefined = startRules;
@@ -301,7 +313,6 @@ export function findVarDeclarationFast(
           const boundaryResult = findVarWithinScopeSurface(
             scope,
             name,
-            filter,
             options,
             undefined,
             options.local,
@@ -319,7 +330,6 @@ export function findVarDeclarationFast(
       const result = findVarWithinScopeSurface(
         scope,
         name,
-        filter,
         options,
         applyCurrentScopeStart ? scopeStart : undefined,
         options.local,
@@ -342,7 +352,6 @@ export function findVarDeclarationFast(
           const boundaryResult = findVarWithinScopeSurface(
             scope,
             name,
-            filter,
             options,
             undefined,
             options.local,
@@ -358,7 +367,6 @@ export function findVarDeclarationFast(
         const result = findVarWithinScopeSurface(
           scope,
           name,
-          filter,
           options,
           undefined,
           options.local,

@@ -19,6 +19,8 @@
 import type { Node } from './node.js';
 import type { VarDeclaration } from './declaration-var.js';
 import type { MixinEntry } from './util/callable-entry.js';
+import { N } from './node-type.js';
+import { isNode } from './util/is-node.js';
 
 /**
  * One live binding slot.  Value is updated in place for loop counters and
@@ -264,6 +266,7 @@ export function lookupScopeFrameVariable(
     start?: number;
     filter?: (node: Node) => boolean;
     blockedSources?: Set<Node>;
+    paramVarRulesContext?: Node;
     includeLive?: boolean;
     includeDeclarations?: boolean;
     bailOnPendingDeclarations?: boolean;
@@ -305,18 +308,26 @@ export function lookupScopeFrameVariable(
       if (bucket?.length) {
         for (let i = bucket.length - 1; i >= 0; i--) {
           const entry = bucket[i]!;
+          const sourceNode = entry.sourceNode;
           if (
             start !== undefined
-            && !(entry.sourceNode.index !== undefined && entry.sourceNode.index < start)
+            && !(sourceNode.index !== undefined && sourceNode.index < start)
           ) {
             continue;
           }
-          if (!options?.filter || options.filter(entry.sourceNode)) {
-            return {
-              kind: 'declaration',
-              entry
-            };
+          if (options?.filter && !options.filter(sourceNode)) {
+            continue;
           }
+          if (options?.blockedSources?.has(sourceNode)) {
+            continue;
+          }
+          if (isBlockedScopeFrameParamVar(sourceNode, options?.paramVarRulesContext)) {
+            continue;
+          }
+          return {
+            kind: 'declaration',
+            entry
+          };
         }
       }
 
@@ -370,6 +381,38 @@ export function lookupScopeFrameCallable(
     f = f.parent;
   }
   return { kind: 'miss' };
+}
+
+function isWithinParamVarScope(
+  paramParent: Node | undefined,
+  activeRules: Node | undefined
+): boolean {
+  const sourceParamParent = paramParent?.sourceNode as Node | undefined;
+  let cursor: Node | undefined = activeRules;
+  while (cursor) {
+    const sourceCursor = cursor.sourceNode as Node | undefined;
+    if (
+      cursor === paramParent
+      || cursor === sourceParamParent
+      || sourceCursor === paramParent
+      || (sourceCursor && sourceParamParent && sourceCursor === sourceParamParent)
+    ) {
+      return true;
+    }
+    cursor = cursor.parent;
+  }
+  return false;
+}
+
+export function isBlockedScopeFrameParamVar(
+  node: Node,
+  activeRules: Node | undefined
+): boolean {
+  return (
+    isNode(node, N.VarDeclaration)
+    && Boolean(node.options?.paramVar)
+    && !isWithinParamVarScope(node.parent, activeRules)
+  );
 }
 
 export function assignScopeFrameVariable(

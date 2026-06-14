@@ -22,7 +22,7 @@ import { JsObject } from './js-object.js';
 import { JsExpression } from './js-expr.js';
 import { List } from './list.js';
 import { Nil } from './nil.js';
-import { getBindingCellValue, lookupScopeFrameVariable } from './scope-frame.js';
+import { getBindingCellValue, isBlockedScopeFrameParamVar, lookupScopeFrameVariable } from './scope-frame.js';
 import type { VarDeclaration } from './declaration-var.js';
 import { getOrderedSelectorKeys } from './util/registry-utils.js';
 import {
@@ -212,12 +212,14 @@ function isRulesLookupResult(value: unknown): value is Exclude<RulesLookupResult
 
 type RulesLookupAdapterEnv = {
   context: Context;
+  lookupType: LookupType;
   keyNode: ReferenceValue['key'];
   readMode: ReferenceOptions['readMode'];
   hasTarget: boolean;
   inCall: boolean;
   isInterpolatedVariable: boolean;
-  filter: (n: Node) => boolean;
+  originalFilter: ReferenceOptions['filter'] | undefined;
+  filter?: (n: Node) => boolean;
 };
 
 type RulesLookupAdapter = {
@@ -235,7 +237,6 @@ type RulesReferenceLookupContext = {
   target: ReferenceValue['target'];
   resolution: ReferenceOptions['resolution'];
   isInterpolatedVariable: boolean;
-  filter: (n: Node) => boolean;
   context: Context;
   hasTarget: boolean;
   adapter: RulesLookupAdapter;
@@ -274,36 +275,8 @@ function isStringArray(value: unknown[]): value is string[] {
   return true;
 }
 
-function isWithinReferenceParamVarScope(
-  paramParent: Node | undefined,
-  activeRules: Node | undefined
-): boolean {
-  const sourceParamParent = paramParent?.sourceNode as Node | undefined;
-  let cursor: Node | undefined = activeRules;
-  while (cursor) {
-    const sourceCursor = cursor.sourceNode as Node | undefined;
-    if (
-      cursor === paramParent
-      || cursor === sourceParamParent
-      || sourceCursor === paramParent
-      || (sourceCursor && sourceParamParent && sourceCursor === sourceParamParent)
-    ) {
-      return true;
-    }
-    cursor = cursor.parent;
-  }
-  return false;
-}
-
-function isBlockedReferenceParamVar(
-  node: Node,
-  context: Context
-): boolean {
-  return (
-    isNode(node, N.VarDeclaration)
-    && Boolean(node.options?.paramVar)
-    && !isWithinReferenceParamVarScope(node.parent, context.rulesContext)
-  );
+function getReferenceFilter(env: RulesLookupAdapterEnv): (n: Node) => boolean {
+  return env.filter ??= buildReferenceFilter(env.originalFilter, env.context);
 }
 
 function buildReferenceFilter(
@@ -317,7 +290,7 @@ function buildReferenceFilter(
     if (context._searchScope?.has(n)) {
       return false;
     }
-    return !isBlockedReferenceParamVar(n, context);
+    return !isBlockedScopeFrameParamVar(n, context.rulesContext);
   };
 }
 
@@ -330,31 +303,35 @@ function shouldUseLocalReferenceLookup(args: {
 
 function buildReferenceLookupOptions(args: {
   referenceNode: Reference;
+  lookupType: LookupType;
   target: ReferenceValue['target'];
   targetRules: Rules;
   resolution: ReferenceOptions['resolution'];
   isInterpolatedVariable: boolean;
-  filter: (n: Node) => boolean;
   context: Context;
   hasTarget: boolean;
   adapter: RulesLookupAdapter;
+  env: RulesLookupAdapterEnv;
 }): FindOptions {
   const {
     referenceNode,
+    lookupType,
     target,
     targetRules,
     resolution,
     isInterpolatedVariable,
-    filter,
     context,
     hasTarget,
-    adapter
+    adapter,
+    env
   } = args;
   const opts: FindOptions = {
-    filter,
     context,
     hasTarget
   };
+  if (lookupType !== 'variable') {
+    opts.filter = getReferenceFilter(env);
+  }
 
   if (shouldUseLocalReferenceLookup({ target, targetRules })) {
     opts.local = true;
@@ -402,18 +379,18 @@ function prepareReferenceLookup(args: {
     lookupType === 'variable'
     && referenceNode.parent?.type === 'Interpolated'
   );
-  const filter = buildReferenceFilter(originalFilter, context);
   const hasTarget = !!target;
   return {
     adapter: RULES_LOOKUP_ADAPTERS[lookupType],
     env: {
       context,
+      lookupType,
       keyNode,
       readMode: referenceNode.options.readMode,
       hasTarget,
       inCall: isNode(referenceNode.parent, N.Call),
       isInterpolatedVariable,
-      filter
+      originalFilter
     }
   };
 }
@@ -435,8 +412,9 @@ function lookupScopeFrameVariableBinding(
   promoteResolvedPendingVarDecls(targetRules, frame);
   const hit = lookupScopeFrameVariable(frame, key, {
     start: opts.start,
-    filter: env.filter,
+    filter: env.originalFilter,
     blockedSources: env.context._searchScope,
+    paramVarRulesContext: env.context.rulesContext,
     includeLive: env.readMode !== 'snapshot',
     bailOnPendingDeclarations: true
   });
@@ -507,9 +485,10 @@ function lookupVariableReference(
       return live;
     }
   }
-  const fast = findVarDeclarationFast(targetRules, keyStr, env.filter, {
+  const fast = findVarDeclarationFast(targetRules, keyStr, {
     start: opts.start,
     context: env.context,
+    filter: env.originalFilter,
     hasTarget: env.hasTarget,
     local: opts.local
   });
@@ -684,7 +663,6 @@ function performRulesReferenceLookup(
     target,
     resolution,
     isInterpolatedVariable,
-    filter,
     context,
     hasTarget,
     adapter,
@@ -693,14 +671,15 @@ function performRulesReferenceLookup(
   } = lookupContext;
   const opts = buildReferenceLookupOptions({
     referenceNode,
+    lookupType: lookupContext.env.lookupType,
     target,
     targetRules: scope,
     resolution,
     isInterpolatedVariable,
-    filter,
     context,
     hasTarget,
-    adapter
+    adapter,
+    env
   });
   return adapter.lookup(scope, valueKey, opts, env);
 }
@@ -740,7 +719,6 @@ function lookupResolvedReference(args: {
     target,
     resolution: referenceNode.options.resolution,
     isInterpolatedVariable: env.isInterpolatedVariable,
-    filter: env.filter,
     context,
     hasTarget: env.hasTarget,
     adapter,
