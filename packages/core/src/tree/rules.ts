@@ -684,9 +684,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   hasExactRulesetChildSurface = false;
   directDeclarationsByName: Map<string, Declaration[] | null> | undefined;
   directDeclarationLookupCache: Map<string, {
-    optionalMatch: Declaration | undefined;
-    publicMatch: Declaration | undefined;
-    readonly: boolean;
+    readonly optionalMatch: Declaration | undefined;
+    readonly publicMatch: Declaration | undefined;
+    readonly readonly: boolean;
   }> | undefined;
 
   lookupVersion = 0;
@@ -928,6 +928,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     options?: ExactCallableFindOptions
   ): MixinEntry[] {
     let results: MixinEntry[] | undefined;
+    const includeRulesets = options?.includeRulesets !== false;
+    const collectBucketResults = (candidates: CallableLookupEntry[]): boolean => {
+      let found = false;
+      for (let i = candidates.length - 1; i >= 0; i--) {
+        const entry = candidates[i]!;
+        if (entry.match.length !== 0) {
+          continue;
+        }
+        const candidate = entry.value;
+        if (!includeRulesets && isNode(candidate, N.Ruleset)) {
+          continue;
+        }
+        (results ??= []).push(candidate);
+        found = true;
+      }
+      return found;
+    };
     const collectWithinScopeSurface = (
       scope: Rules,
       localContext: boolean | undefined,
@@ -944,21 +961,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (includeCurrentSurface) {
         const candidates = scope.getCallableEntriesForKey(key);
         if (candidates.length > 0) {
-          for (let i = candidates.length - 1; i >= 0; i--) {
-            const entry = candidates[i]!;
-            if (entry.match.length !== 0) {
-              continue;
-            }
-            const candidate = entry.value;
-            if (!options?.includeRulesets && isNode(candidate, N.Ruleset)) {
-              continue;
-            }
-            (results ??= []).push(candidate);
-          }
+          collectBucketResults(candidates);
         }
       }
 
-      const includeRulesets = options?.includeRulesets !== false;
       if (scope.rulesIndexed >= scope.value.length) {
         const hasIndexedChildSurface = scope._hasReferenceImports
           || (includeRulesets
@@ -990,12 +996,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (localContext && entry.node.options?.local) {
           continue;
         }
+        let includeChildCurrentSurface = true;
+        if (entry.node.rulesIndexed >= entry.node.value.length) {
+          const childCandidates = entry.node.getCallableEntriesForKey(key);
+          if (childCandidates.length > 0) {
+            collectBucketResults(childCandidates);
+          }
+          const hasChildDescendantSurface = entry.node.hasDirectLookupChildSurface(includeRulesets);
+          includeChildCurrentSurface = false;
+          if (!hasChildDescendantSurface) {
+            continue;
+          }
+        }
 
         visited = collectWithinScopeSurface(
           entry.node,
           localContext || Boolean(entry.node.options?.local),
           visited,
-          true
+          includeChildCurrentSurface
         );
       }
 

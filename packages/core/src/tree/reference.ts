@@ -332,6 +332,7 @@ type PreparedReferenceLookup = {
 };
 
 type ReferenceDeclarationFindOptions = DeclarationFindOptions & { context: Context };
+type ScopeFrameVariableBindingMode = 'full' | 'live-only';
 
 const RAW_REFERENCE_TARGET_NOT_FOUND = Symbol('RAW_REFERENCE_TARGET_NOT_FOUND');
 
@@ -537,29 +538,36 @@ function lookupScopeFrameVariableBinding(
   targetRules: Rules,
   key: string,
   opts: DeclarationFindOptions,
-  env: RulesLookupAdapterEnv
+  env: RulesLookupAdapterEnv,
+  mode: ScopeFrameVariableBindingMode = 'full'
 ): ScopeFrameVariableBindingResult {
-  if (
+  if (mode === 'full' && (
     env.hasTarget
     || env.isInterpolatedVariable
     || (opts.start !== undefined && env.readMode !== 'snapshot')
-  ) {
+  )) {
     return undefined;
   }
   const frame = targetRules.getScopeFrame();
-  promoteResolvedPendingVarDecls(targetRules, frame);
+  if (mode === 'full') {
+    promoteResolvedPendingVarDecls(targetRules, frame);
+  }
   const hit = lookupScopeFrameVariable(frame, key, {
-    start: opts.start,
+    start: mode === 'full' ? opts.start : undefined,
     filter: env.filter,
     blockedSource: node => env.context.searchScope.has(node),
-    includeLive: env.readMode !== 'snapshot',
-    bailOnPendingDeclarations: true
+    includeLive: mode === 'live-only' || env.readMode !== 'snapshot',
+    includeDeclarations: mode === 'live-only' ? false : undefined,
+    bailOnPendingDeclarations: mode === 'full'
   });
   if (hit.kind === 'uncovered') {
     return undefined;
   }
   if (hit.kind === 'miss') {
-    return SCOPE_FRAME_VARIABLE_MISS;
+    return mode === 'full' ? SCOPE_FRAME_VARIABLE_MISS : undefined;
+  }
+  if (mode === 'live-only' && hit.kind !== 'live') {
+    return undefined;
   }
   const { cell, sourceNode } = hit;
   const value = getBindingCellValue(cell);
@@ -572,28 +580,6 @@ function lookupScopeFrameVariableBinding(
   } satisfies RuntimeVarBinding;
 }
 
-function lookupLiveScopeFrameVariableBinding(
-  targetRules: Rules,
-  key: string,
-  context: Context
-): RuntimeVarBinding | undefined {
-  const hit = lookupScopeFrameVariable(targetRules.getScopeFrame(), key, {
-    blockedSource: node => context.searchScope.has(node),
-    includeDeclarations: false
-  });
-  if (hit.kind !== 'live') {
-    return undefined;
-  }
-  const value = getBindingCellValue(hit.cell);
-  return {
-    kind: 'runtime-var-binding',
-    value,
-    readonly: hit.cell.readonly,
-    sourceNode: hit.sourceNode,
-    rulesContext: isNode(hit.cell.rulesContext, N.Rules) ? hit.cell.rulesContext : undefined
-  } satisfies RuntimeVarBinding;
-}
-
 function lookupIndexReference(
   targetRules: Rules,
   valueKey: NormalizedLookupKey,
@@ -603,13 +589,13 @@ function lookupIndexReference(
   if (typeof valueKey === 'number') {
     return targetRules.at(valueKey);
   }
+  const keyStr = getLookupKeyString(valueKey);
   if (!isNode(env.keyNode, N.Quoted)) {
-    const live = lookupLiveScopeFrameVariableBinding(targetRules, getLookupKeyString(valueKey), env.context);
-    if (live) {
+    const live = lookupScopeFrameVariableBinding(targetRules, keyStr, opts, env, 'live-only');
+    if (live && live !== SCOPE_FRAME_VARIABLE_MISS) {
       return live;
     }
   }
-  const keyStr = getLookupKeyString(valueKey);
   return isNode(env.keyNode, N.Quoted)
     ? findPropertyDeclaration(targetRules, keyStr, opts)
     : findVariableDeclaration(targetRules, keyStr, opts);
@@ -644,8 +630,8 @@ function lookupVariableReference(
     }
   }
   if (env.readMode !== 'snapshot') {
-    const live = lookupLiveScopeFrameVariableBinding(targetRules, keyStr, env.context);
-    if (live) {
+    const live = lookupScopeFrameVariableBinding(targetRules, keyStr, opts, env, 'live-only');
+    if (live && live !== SCOPE_FRAME_VARIABLE_MISS) {
       return live;
     }
   }

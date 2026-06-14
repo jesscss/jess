@@ -70,7 +70,7 @@ type DeclarationMatchState = {
   readonly: boolean;
 };
 
-type CachedDeclarationMatchState = DeclarationMatchState;
+type CachedDeclarationMatchState = Readonly<DeclarationMatchState>;
 const EMPTY_DECLARATION_MISS_STATE: DeclarationMatchState = {
   optionalMatch: undefined,
   publicMatch: undefined,
@@ -245,7 +245,7 @@ function getDeclarationParentSearchStep(
 
 function mergeMatch(
   target: DeclarationMatchState,
-  source: DeclarationMatchState,
+  source: CachedDeclarationMatchState,
   optionalOnly: boolean
 ): void {
   target.readonly ||= source.readonly;
@@ -295,7 +295,7 @@ function readCachedMatch(scope: Rules, cacheKey: string | undefined): CachedDecl
   return cached;
 }
 
-function writeCachedMatch(scope: Rules, cacheKey: string | undefined, state: DeclarationMatchState): void {
+function writeCachedMatch(scope: Rules, cacheKey: string | undefined, state: CachedDeclarationMatchState): void {
   if (!cacheKey) {
     return;
   }
