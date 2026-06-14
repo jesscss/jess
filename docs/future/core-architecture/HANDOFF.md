@@ -298,6 +298,11 @@ Open tasks:
    properties render once at the normal leaf emission boundary instead of being
    pre-rendered into `declarationOutputCache` first.
 
+   Additional partial status: `QueryCondition` async-capable render no longer
+   forces static base-render siblings through dynamic child mark/probe fallback,
+   and the remaining custom/instance-render fallback uses
+   `hasContentSince(mark)` instead of a second `mark()` check.
+
    Evidence pointer: use `NODE-REWRITE-TRACKER.md` for per-node status and
    `PERFORMANCE-HANDOFF.md` for benchmark/profile history. Do not add queue
    entries for one-line cuts inside this item.
@@ -484,24 +489,31 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: handoff priority correction for node serialization completion.
+Current pass: `QueryCondition` async render sibling probe cut.
 
-- New traversal: none; docs-only.
-- New node/materialization: none.
-- Render path: refocuses the active lane on the
-  `writeSyntax(...)`/`render(...)`/public string wrapper split. It forbids
-  render-only public string transport and render-only `mark/getSince` unless a
-  node row documents a cold public boundary or semantic blocker.
-- Helper/API surface: none.
+- New traversal: none. The existing child loop remains; static base-render
+  children now stay on direct `writeSyntax(...)` inside async-capable
+  query-condition render instead of entering the dynamic fallback.
+- New node/materialization: no runtime nodes, copies, wrappers, arrays, or
+  materialized render values. The only `new` in the diff is a test-only
+  `CountingWriter` used to prove `QueryCondition` static siblings do not pay
+  extra render fallback marks.
+- Render path: selected node row is `QueryCondition`. The pass removes
+  render-only fallback work for static siblings and replaces
+  `w.mark() === before` checks with `!w.hasContentSince(before)` so the
+  remaining custom/instance-render fallback does not open a second mark just
+  to test whether output was written. The fallback remains only for child
+  render overrides that can return text without writing.
+- Helper/API surface: none added.
 - Metadata mutations: none.
 - Error/control flow: none.
-- Evidence: user direction plus the live `HANDOFF.md` and
-  `NODE-REWRITE-TRACKER.md` showed the prior wording still allowed secondary
-  queues to compete with the active focus.
-- Verdict: accept. The next queue pass must choose unfinished node/family
-  serialization work from `NODE-REWRITE-TRACKER.md`. Selector/equality,
-  binding-index, lookup, copy/materialization, benchmark-tuning, and generic
-  smell cleanup are not queue candidates until this focus is explicitly
-  switched or completed. Local edits in those areas are allowed only as
-  implementation details of the selected node-family serialization row and
-  must be documented that way.
+- Evidence: focused `query-condition` tests now prove async query conditions
+  render without resolving/materializing children and that static siblings do
+  not pay dynamic fallback probes; `node-render-buffer` stayed green. Hotpath
+  smoke after the patch was noisy/unstable on several fixtures, and broad
+  `benchmark.less` profiler counts stayed at `OutputWriter.mark` `50044` and
+  `OutputWriter.getSince` `45048`, so this is not a speed claim.
+- Verdict: accept as a bounded `QueryCondition` serialization cut. Keep the
+  `QueryCondition` tracker row open because buffer render still returns string
+  by contract and the custom child render fallback remains until child render
+  contracts are fully direct.

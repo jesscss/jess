@@ -228,6 +228,23 @@ describe('QueryCondition', () => {
     }
   });
 
+  it('does not probe static siblings in async query-condition render', async () => {
+    const writer = new CountingWriter();
+    const asyncItem = any('screen');
+    asyncItem.render = async () => 'print';
+    const queryNode = query([
+      asyncItem,
+      any('and'),
+      any('(color)')
+    ]);
+    queryNode.addFlag(F_MAY_ASYNC);
+    queryNode.removeFlag(F_STATIC);
+
+    await expect(Promise.resolve(queryNode.render(context, { writer }))).resolves.toBe('print and (color)');
+    expect(writer.toString()).toBe('print and (color)');
+    expect(writer.marks).toBe(2);
+  });
+
   it('resolves query-condition values without touching render state', async () => {
     const root = rules([
       vardecl({

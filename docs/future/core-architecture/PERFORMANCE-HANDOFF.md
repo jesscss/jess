@@ -200,6 +200,52 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-14 QueryCondition Async Static-Sibling Probe Cut
+
+Hypothesis: `QueryCondition` async-capable render should not force static
+base-render siblings through the dynamic child fallback just because another
+child may be async. The remaining fallback should also use the writer's
+existing content check instead of opening a second `mark()` just to ask whether
+the child wrote output.
+
+Patch shape:
+
+- static children whose render method is the base `Node.render` contract now
+  write syntax directly inside async-capable `QueryCondition` render;
+- instance-owned/custom child render overrides still use the fallback because
+  tests prove they may return text without writing;
+- fallback output checks changed from `w.mark() === before` to
+  `!w.hasContentSince(before)`;
+- no node, array, helper, side map, cache, copy, or public API was added.
+
+Before patch, bounded hot-path leash:
+
+- `functions`: `14.33ms`, `usable`;
+- `import-reference`: `19.05ms`, `unstable`;
+- `mixins-guards`: `16.06ms`, `usable`;
+- `extend-chaining`: `5.47ms`, `unstable`;
+- `media`: `5.51ms`, `usable`.
+
+After patch, bounded hot-path leash:
+
+- `functions`: `15.35ms`, `unstable`;
+- `import-reference`: `22.21ms`, `unstable`;
+- `mixins-guards`: `17.09ms`, `usable`;
+- `extend-chaining`: `5.56ms`, `unstable`;
+- `media`: `5.28ms`, `usable`.
+
+Broad `benchmark.less` profiler status after the patch:
+
+- `OutputWriter.mark`: `50044`;
+- `OutputWriter.getSince`: `45048`;
+- `Reference.evalNode`: `3619`;
+- `Rules.find`: `1013`.
+
+Decision: keep as focused serialization machinery deletion only. No speed
+claim: the bounded run was noisy/unstable for several fixtures, and the broad
+profiler counters did not move, which suggests the broad fixture does not
+exercise this specific async QueryCondition sibling path.
+
 ### 2026-06-14 Rejected Selector Remainder-Factory Loop Cut
 
 Hypothesis: `trySmallCompoundExtendMatch(...)` should avoid callback closures

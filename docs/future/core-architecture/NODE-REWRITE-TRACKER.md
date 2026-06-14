@@ -133,9 +133,13 @@ when choosing among unfinished serialization rows. Hot unfinished rows include
   children use `writeSyntax(...)` instead of public `toString(...)`, static
   flat-buffer render writes syntax directly with one writer mark, static child
   probe traffic is cut, and dynamic render now uses a straight sync loop with
-  an async rest method only after a thenable is observed. Dynamic child render
-  still has a localized writer-mark fallback until child render contracts are
-  fully direct.
+  an async rest method only after a thenable is observed. Async-capable dynamic
+  render now keeps base-render static siblings on direct syntax emission even
+  when another child is async, and the remaining dynamic fallback checks
+  `hasContentSince(mark)` instead of opening a second `mark()` just to test
+  whether the child wrote. Dynamic child render still has a localized
+  writer-mark fallback for instance-owned/custom render overrides until child
+  render contracts are fully direct.
 - [x] `Operation`: direct operand/operator writer; source and render operands
   avoid public string transport.
 - [x] `Paren`: direct wrapper writer, child syntax transport, list path, and

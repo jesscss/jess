@@ -1,6 +1,6 @@
 import type { Context } from '../context.js';
 import { type FinalPrintOptions, getPrintOptions, prepareRenderPrintState, type PrintOptions } from './util/print.js';
-import { defineType, F_MAY_ASYNC, F_STATIC, type Node } from './node.js';
+import { defineType, F_MAY_ASYNC, F_STATIC, Node } from './node.js';
 import { Sequence } from './sequence.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
@@ -10,6 +10,8 @@ import {
   writePreparedRenderTextResult,
   writePreparedRenderText
 } from './util/render-buffer.js';
+
+const BASE_RENDER = Node.prototype.render;
 
 /**
  * Used by `@media`, `@supports`, and `@container`
@@ -54,14 +56,14 @@ export class QueryCondition extends Sequence {
   }
 
   private renderQueryConditionValue(value: Node[], options: FinalPrintOptions, context: Context): MaybePromise<string> {
-    const w = options.writer;
-    const mark = w.mark();
     const length = value.length;
 
     if (length === 0) {
       return '';
     }
 
+    const w = options.writer;
+    const mark = w.mark();
     for (let i = 0; i < length; i++) {
       if (i > 0) {
         w.add(' ');
@@ -71,7 +73,7 @@ export class QueryCondition extends Sequence {
       options.suppressBoundaryTrivia = 'pre';
       let asyncOut = false;
       try {
-        if (node.hasFlag(F_STATIC) && !this.hasFlag(F_MAY_ASYNC)) {
+        if (node.hasFlag(F_STATIC) && node.render === BASE_RENDER) {
           node.writeSyntax(options);
         } else {
           const before = w.mark();
@@ -80,7 +82,7 @@ export class QueryCondition extends Sequence {
             asyncOut = true;
             return rendered.then(
               (out) => {
-                if (w.mark() === before) {
+                if (!w.hasContentSince(before)) {
                   w.add(out);
                 }
                 options.suppressBoundaryTrivia = saved;
@@ -92,7 +94,7 @@ export class QueryCondition extends Sequence {
               }
             );
           }
-          if (w.mark() === before) {
+          if (!w.hasContentSince(before)) {
             w.add(rendered);
           }
         }
@@ -122,13 +124,13 @@ export class QueryCondition extends Sequence {
       const saved = options.suppressBoundaryTrivia;
       options.suppressBoundaryTrivia = 'pre';
       try {
-        if (node.hasFlag(F_STATIC) && !this.hasFlag(F_MAY_ASYNC)) {
+        if (node.hasFlag(F_STATIC) && node.render === BASE_RENDER) {
           node.writeSyntax(options);
           continue;
         }
         const before = w.mark();
         const rendered = await node.render(context, options);
-        if (w.mark() === before) {
+        if (!w.hasContentSince(before)) {
           w.add(rendered);
         }
       } finally {
