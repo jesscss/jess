@@ -2593,6 +2593,33 @@ Interpretation: status only, not a speed claim. Keep this as lazy metadata
 allocation deletion in callable reuse decisions. It does not remove copied
 callable surfaces.
 
+### Rules Registration Scan Lazy Metadata Cut
+
+Date: 2026-06-13.
+
+Change: `Rules._scanRegistrationNodes(...)` now reads existing metadata slots
+for registration bookkeeping. Charset detection uses `_options?.role`, charset
+and CSS-import placeholders use `_location` instead of `location`, and canonical
+declaration reuse checks use `_options?.assign` /
+`_options?.normalizedFromAssign` instead of public `options`.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `ea4770b6` reported: `functions` median `15.06ms` unstable,
+  `import-reference` median `22.40ms` usable, `mixins-guards` median
+  `17.62ms` unstable, `extend-chaining` median `5.95ms` unstable, and `media`
+  median `5.21ms` unstable.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `14.10ms` usable,
+  `import-reference` median `21.81ms` usable, `mixins-guards` median
+  `16.32ms` usable, `extend-chaining` median `5.87ms` usable, and `media`
+  median `5.39ms` unstable.
+
+Interpretation: status only, not a speed claim. Keep this as lazy metadata
+allocation deletion in registration scanning. It does not remove
+registration-prep expected-miss `try/catch` control flow.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

@@ -2725,7 +2725,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let indexedRuleCount = 0;
     const processNode = (node: Node, index: number): MaybePromise<void> => {
       const nodeIndex = isIndexedRuleChild(node) ? indexedRuleCount++ : undefined;
-      if (isNode(node, N.Any) && node.options.role === 'charset') {
+      if (isNode(node, N.Any) && node._options?.role === 'charset') {
         // Charset is root output-order bookkeeping, not name registration.
         if (!context.currentCharset) {
           context.currentCharset = node;
@@ -2734,7 +2734,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const placeholder = new Nil(
           '',
           undefined,
-          node.location.length === 0 ? undefined : node.location
+          node._location && node._location.length !== 0 ? node._location : undefined
         );
         placeholder.sourceNode = node;
         placeholder.index = nodeIndex;
@@ -2749,7 +2749,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const placeholder = new Nil(
           '',
           undefined,
-          node.location.length === 0 ? undefined : node.location
+          node._location && node._location.length !== 0 ? node._location : undefined
         );
         placeholder.sourceNode = node;
         placeholder.index = nodeIndex;
@@ -2825,8 +2825,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Prepare static identities before registration. Rulesets still need selector/keySet prep.
     const canReuseCanonicalDeclaration = (
       isNode(node, N.Declaration | N.VarDeclaration)
-      && !node.options?.assign
-      && !node.options?.normalizedFromAssign
+      && !node._options?.assign
+      && !node._options?.normalizedFromAssign
     );
     const prepared = canReuseCanonicalDeclaration
       ? node.prepareRegistration(context, { reuseCanonical: true })

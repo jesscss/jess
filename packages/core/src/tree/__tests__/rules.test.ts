@@ -277,6 +277,7 @@ describe('Rules', () => {
 
   it('handles charset output-order bookkeeping without child registration prep', async () => {
     const charset = any('@charset "utf-8";', { role: 'charset' });
+    expect(charset._location).toBeUndefined();
     charset.prepareRegistration = () => {
       throw new Error('charset output-order handling should be owned by Rules');
     };
@@ -289,6 +290,7 @@ describe('Rules', () => {
 
     expect(context.currentCharset).toBe(charset);
     expect(node.value[0]?.type).toBe('Nil');
+    expect(charset._location).toBeUndefined();
     expect(node.render(context)).toBe('@charset "utf-8";\ncolor: red;\n');
   });
 

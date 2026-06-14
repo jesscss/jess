@@ -855,6 +855,13 @@ the binding index/scope lookup refactor.
    placement/render state or a narrow owned-item copier proven by merge tests.
 23. [ ] Convert registration-prep expected misses away from routine `try/catch`
    only after adding tests for unresolved declaration/identity behavior.
+   Adjacent partial status: `Rules._scanRegistrationNodes(...)` no longer
+   calls lazy `options`/`location` getters for charset/import bookkeeping or
+   canonical declaration reuse checks. It reads `_options`/`_location` directly
+   while preserving the existing registration-prep control flow. Focused
+   rules/import coverage proves charset output-order handling still skips child
+   registration prep and does not allocate an empty charset `_location`. This
+   does not remove the pending-registration `try/catch` miss path.
 24. [ ] Continue selector/extend factory cuts separately; do not hide selector
    placement copies inside another generic copy helper.
 25. [ ] Replace callable binding copies for static containers with explicit
@@ -957,34 +964,33 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: callable reuse lazy metadata cut under queue item 26.
+Current pass: registration scan lazy metadata cut under queue item 23.
 
 - New traversal: none. The pass adds no loop, recursion, source walk, parent
   walk, side-map lookup, object scan, or array scan.
-- New node/materialization: none added. Existing callable copy/materialization
-  remains unchanged; this pass only changes reuse predicates from allocating
-  getters to existing non-allocating slots.
+- New node/materialization: none added. Existing charset/import placeholder
+  materialization remains unchanged; this pass only changes registration scan
+  metadata reads from allocating getters to existing non-allocating slots.
 - Render path: no render semantics changed. The cut is in
-  `tree/util/callable-binding.ts` and `tree/util/callable-surface.ts`, which
-  decide whether callable binding/surface values can reuse static source
-  values; rendering still stringifies through existing node-family paths.
+  `tree/rules.ts`, in registration preparation before normal eval/render.
+  Rendering still stringifies through existing node-family paths.
 - Helper/API surface: none added and none removed. The pass is a direct
   property-read cut.
-- Metadata mutations: no new metadata mutations. `canReuseStaticScalarLeaf(...)`
-  now checks `_location` directly, and `canReuseStaticCallableChildren(...)`
-  checks `_options?.assign` directly. This avoids allocating node options or
-  empty location arrays merely to reject/reuse callable values.
+- Metadata mutations: no new metadata mutations. Charset detection now checks
+  `_options?.role`, placeholder location transfer checks `_location`, and
+  canonical declaration reuse checks `_options?.assign` /
+  `_options?.normalizedFromAssign`. This avoids allocating node options or empty
+  location arrays merely to classify registration-prep bookkeeping cases.
 - Error/control flow: none added.
 - Evidence: focused tests passed with
-  `pnpm --filter @jesscss/core test -- src/tree/util/__tests__/callable-output.test.ts src/tree/util/__tests__/callable-candidate-loop.test.ts src/tree/util/__tests__/cloning.test.ts src/tree/util/__tests__/callable-live-slots.test.ts`.
-  Pre-pass hotpath leash at `9227bb6b`: `functions` `14.95ms` usable,
-  `import-reference` `22.93ms` unstable, `mixins-guards` `17.30ms` unstable,
-  `extend-chaining` `5.70ms` usable, `media` `5.32ms` unstable. Dirty
-  post-pass leash reported `functions` `14.72ms` usable, `import-reference`
-  `20.23ms` usable, `mixins-guards` `19.45ms` usable, `extend-chaining`
-  `6.52ms` unstable, and `media` `6.56ms` unstable. This is status only, not a
+  `pnpm --filter @jesscss/core test -- src/tree/__tests__/rules.test.ts src/tree/__tests__/rules-raw.test.ts src/tree/__tests__/import-style.test.ts src/tree/util/__tests__/callable-output.test.ts src/tree/util/__tests__/cloning.test.ts`.
+  Pre-pass hotpath leash at `ea4770b6`: `functions` `15.06ms` unstable,
+  `import-reference` `22.40ms` usable, `mixins-guards` `17.62ms` unstable,
+  `extend-chaining` `5.95ms` unstable, `media` `5.21ms` unstable. Dirty
+  post-pass leash reported `functions` `14.10ms` usable, `import-reference`
+  `21.81ms` usable, `mixins-guards` `16.32ms` usable, `extend-chaining`
+  `5.87ms` usable, and `media` `5.39ms` unstable. This is status only, not a
   speed claim.
-- Verdict: accept as partial item 26 progress. This removes hidden lazy
-  metadata allocation from callable reuse predicates; it does not complete
-  `copyCallableRulesValue(...)`, `copyWithReusableLeaves(...)`,
-  `constructCopy(...)`, or `.inherit(...)` deletion.
+- Verdict: accept as adjacent partial item 23 progress. This removes lazy
+  metadata allocation from registration scanning; it does not complete the
+  expected-miss `try/catch` conversion.
