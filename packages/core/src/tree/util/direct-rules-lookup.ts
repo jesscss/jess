@@ -460,6 +460,14 @@ function findWithinScopeSurface(
     mergeMatch(state, lexicalState, false);
   }
 
+  if (
+    scope.directDeclarationChildEntries === undefined
+    && scope.rulesIndexed >= scope.value.length
+    && !scope.hasDirectChildRuleSurface
+  ) {
+    writeCachedMatch(scope, cacheKey, state);
+    return state;
+  }
   const childEntries = scope.directDeclarationChildEntries !== undefined
     ? (scope.directDeclarationChildEntries ?? undefined)
     : scope.collectDirectDeclarationChildEntries();

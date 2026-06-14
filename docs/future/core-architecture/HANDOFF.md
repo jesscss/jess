@@ -2056,23 +2056,32 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7dq. [ ] Callable miss caching task. Scope: `lastCallableLookupKey`,
+7dq. [x] Callable miss caching task. Scope: `lastCallableLookupKey`,
     `lastCallableLookupValue`, cache keys for string and namespace callable
     lookups, and cached miss representation. Goal: prove whether cached
     undefined misses need a separate presence bit or can use the existing key
     equality without hiding distinct option shapes. Acceptance: callable cache,
     terminal mixin-only, namespace miss, ruleset path miss, binding grep, lint,
     builds, and aggressive review.
+   Done as a no-op audit. The existing key-equality check is already the
+   presence bit: `hasLastCallableLookupResult(cacheKey)` distinguishes a cached
+   miss from an uncached lookup even when `lastCallableLookupValue` is
+   `undefined`. Cache keys already include filter type, terminal mixin-only, and
+   parent-search mode; target/local/context shapes remain uncached.
 
-7dr. [ ] Reference prepared-shape propagation task. Scope:
+7dr. [x] Reference prepared-shape propagation task. Scope:
     `buildRulesLookupHandleShape(...)`, `performRulesReferenceLookup(...)`,
     leaky fallback lookup, and target/source-parent fallback scopes. Goal:
     delete repeated shape construction only where target `Rules` facts are
     identical or already carried, without sharing shape across scopes with
     different ambient output blocking. Acceptance: leaky-rules, source-order,
     handle, import/reference, function/callable tests plus standard gates.
+   Done as a no-op audit. The only identical-scope leaky fallback probe was
+   already removed in 7dk. Remaining fallback scopes can have different
+   ambient-output blocking, contextual `start`, or local lookup shape, so sharing
+   a prepared shape would need another scope-keyed wrapper record.
 
-7ds. [ ] Declaration child-entry lane task. Scope:
+7ds. [x] Declaration child-entry lane task. Scope:
     `collectDirectDeclarationChildEntries(...)`, direct declaration lookup in
     `util/direct-rules-lookup.ts`, `hasDirectChildRuleSurface`, and
     declaration/property visibility. Goal: use existing child-surface facts to
@@ -2080,6 +2089,39 @@ Seeded next binding/lookup queue:
     weakening optional/public visibility or reference-import semantics.
     Acceptance: variable/property/reference/import/rulesVisibility tests plus
     binding grep, lint, builds, and aggressive review.
+   Done. Direct declaration lookup now skips child-entry collection when
+   `directDeclarationChildEntries` has not already been carried, indexing has
+   covered the scope, and `hasDirectChildRuleSurface` proves no child rule
+   surface exists. Carried child-entry arrays still win first, preserving the
+   existing reuse path that avoids touching `Rules.value`.
+
+Seeded next binding/lookup queue:
+
+7dt. [ ] Direct declaration cache ownership task. Scope:
+    `directDeclarationLookupCache`, `writeCachedMatch(...)`, optional/public
+    match state, readonly propagation, and semantic filter boundaries. Goal:
+    prove cached declaration misses/hits are not reused across option shapes
+    that can change visibility or source-order semantics, and remove any
+    redundant cache fields only if the remaining key owns the distinction.
+    Acceptance: variable/property source-order, optional/public visibility,
+    readonly, semantic-filter, import/reference tests plus standard gates.
+
+7du. [ ] Callable frame retry task. Scope: retry-frame/fallback-frame loop in
+    `findMixin(...)`, `lookupScopeFrameCallable(...)`, fallbackFrame ownership,
+    and direct bridge calls after uncovered retry frames. Goal: delete or narrow
+    retry direct bridge work only where frame preparation can prove covered
+    misses, without losing leaky fallback-frame semantics. Acceptance: callable
+    bucket, fallback-frame, leaky mixin, terminal mixin-only, import/reference
+    tests plus standard gates.
+
+7dv. [ ] Reference option builder task. Scope:
+    `buildDeclarationReferenceLookupOptions(...)`,
+    `buildCallableReferenceLookupOptions(...)`, `performRulesReferenceLookup(...)`,
+    and switch-lane option object creation. Goal: remove or inline helper/object
+    construction only when it reduces hot-path work without duplicating lookup
+    shape semantics or reintroducing string-branching. Acceptance: reference
+    variable/property/function/callable handle tests, binding grep, lint, builds,
+    and aggressive review.
 
 Parked secondary deep-cut queue:
 
@@ -2408,6 +2450,39 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Declaration child-surface skip and cache-shape audit pass: accepted as
+  binding/lookup cleanup, not as a speed claim. Files:
+  `packages/core/src/tree/util/direct-rules-lookup.ts`, focused lookup tests,
+  and this handoff.
+  - New traversal: none. Direct declaration lookup now checks existing
+    `Rules` coverage flags before calling `collectDirectDeclarationChildEntries(...)`
+    only when no carried child-entry cache exists. Callable miss caching and
+    prepared reference shape propagation were audited and left unchanged.
+  - New node/materialization: none. No production node, wrapper `Rules`, copied
+    node, cached array, source metadata, parent mutation, or frozen state was
+    added.
+  - Render path: unchanged. This is declaration lookup-only miss handling.
+  - Helper/API surface: none added. The first attempted declaration skip was
+    rejected by the focused test that proves carried child entries are reused
+    after indexing without touching `Rules.value`; the final shape preserves
+    carried entries before consulting `hasDirectChildRuleSurface`.
+  - Metadata mutations: none. The pass uses existing `rulesIndexed`,
+    `directDeclarationChildEntries`, and `hasDirectChildRuleSurface` state.
+  - Danger-token prosecution: the new conditional avoids a child-entry
+    collection call on covered no-child-surface misses. It is not a new lookup
+    cache or registry layer.
+  - Evidence: focused reference/mixin/call/rules/import/control suite passed
+    after the corrected edit (`6` files, `251` passed, `324` skipped).
+    Touched-file ESLint passed; binding grep found no old registry-adapter or
+    deleted bridge residue beyond existing lane-specific reference option
+    builders; `git diff --check` passed; `@jesscss/core` build passed with only
+    the existing `js-expr.ts` direct-eval warning;
+    `verify:aggressive-cutting-review` passed with no scoped danger tokens;
+    `audit:node-creation` passed; `jess` build passed. One-iteration hotpath
+    smoke passed with usable signal: `mixins-guards.less` `21.94ms`,
+    `scope-lookup-stress.less` `76.40ms`. No speed claim is made from this
+    pass.
 
 - Callable union ownership, handle miss sentinel, and child-surface flag pass:
   accepted as binding/lookup cleanup, not as a speed claim. Files:
