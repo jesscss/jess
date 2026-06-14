@@ -1822,28 +1822,68 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7cv. [ ] Inspect whether `performRulesReferenceLookup(...)` direct switch can
+7cv. [x] Inspect whether `performRulesReferenceLookup(...)` direct switch can
     move to a prepared lane function without recreating the deleted adapter
     object or adding wrapper functions for `mixin`/`mixin-ruleset`.
+   Done as an audit-only no-op. Moving dispatch to a prepared function today
+   would recreate the deleted adapter table in another shape or add wrapper
+   functions for `mixin`/`mixin-ruleset`; keep the direct switch for now.
 
-7cw. [ ] Revisit lane-specific `ReferenceLookupOptions` only after 7cv; split
+7cw. [x] Revisit lane-specific `ReferenceLookupOptions` only after 7cv; split
     declaration/callable option construction if the prepared lane can carry a
     handle-shape builder without duplicate `start`/`local` logic.
+   Done as an audit-only no-op. Without a prepared lane function, splitting the
+   option shape would duplicate handle-shape and `start`/`local` preparation.
+   Narrowed function/callable lookup signatures to accept `CallableFindOptions`
+   directly instead.
 
-7cx. [ ] Audit `lookupCallableReference(...)` function fallback with explicit
+7cx. [x] Audit `lookupCallableReference(...)` function fallback with explicit
     JS-function-vs-mixin call fixtures; delete only if Less-compatible callable
     syntax never expects JS function fallback after mixin miss.
+   Done. Deleted the callable-lane JS function fallback after focused
+   function/callable/mixin-ruleset tests passed.
 
-7cy. [ ] Inspect duplicate bucket-to-results loops in `findMixin(...)` for
+7cy. [x] Inspect duplicate bucket-to-results loops in `findMixin(...)` for
     current frame and retry frame hits; factor only if it deletes both loops
     without adding a callback or extra result array.
+   Done. Replaced both loops with `collectCallableBucketResults(...)`, which
+   allocates lazily only after a bucket entry survives filtering.
 
-7cz. [ ] Re-check callable namespace result caching after lazy
+7cz. [x] Re-check callable namespace result caching after lazy
     `nestedResults`; ensure no cached recursive array can be mutated by later
     union paths.
+   Done as an audit-only no-op. The lazy namespace path keeps the first
+   resolved array read-only unless a second branch contributes hits, in which
+   case it clones before appending. Later compound-prefix union mutates the
+   fresh compound-prefix array, not the cached recursive `fast` result.
 
-7da. [ ] Re-run focused reference/callable namespace/function fallback tests,
+7da. [x] Re-run focused reference/callable namespace/function fallback tests,
     binding-only grep, and the standard lookup gates.
+   Done. Focused call/reference/mixin/rules/import/control suite passed after
+   the edits.
+
+Seeded next binding/lookup queue:
+
+7db. [ ] Inspect whether `lookupFunctionReference(...)` and
+    `lookupCallableReference(...)` should become direct `case` bodies now that
+    their signatures are tiny; inline only if it deletes functions without
+    making the switch branchier.
+
+7dc. [ ] Revisit `ReferenceLookupOptions` after callable/function signature
+    narrowing; split only if declaration lanes can avoid callable option
+    construction and callable lanes can avoid declaration option construction
+    without changing handle shape caching.
+
+7dd. [ ] Audit `findCallableDescendantsWithinMixinNamespaces(...)` result
+    accumulation for the same lazy-first-hit pattern used by
+    `findMixinNamespacePathFast(...)`; avoid mutating cached nested results.
+
+7de. [ ] Inspect current-frame direct fallback after `frameHit.kind ===
+    'uncovered'`; avoid `findMixinsFast(...)` only when the frame proves no
+    exact callable child surface for the requested lane.
+
+7df. [ ] Re-run focused callable bucket, recursive namespace, function
+    fallback, and binding grep checks.
 
 Parked secondary deep-cut queue:
 
@@ -2172,6 +2212,46 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Callable fallback deletion and bucket-result collector pass: accepted as
+  binding/lookup cleanup, not as a speed claim. Files:
+  `packages/core/src/tree/reference.ts`, `packages/core/src/tree/rules.ts`,
+  focused lookup tests, and this handoff.
+  - New traversal: no new lookup traversal. Added one local bucket scan helper
+    that replaces two identical current-frame/retry-frame bucket loops in
+    `findMixin(...)`; the helper scans the same bucket once and allocates the
+    result array lazily only after a candidate survives filtering.
+  - New node/materialization: none. No production node, wrapper `Rules`, copied
+    node, source metadata, parent mutation, or frozen state was added. The
+    bucket helper may allocate the same `MixinEntry[]` result as before, but
+    skips allocation when a hit bucket has no usable zero-match entries.
+  - Render path: unchanged. The pass changes callable/function lookup dispatch
+    signatures, deletes a callable-lane function fallback, and deduplicates
+    callable bucket result collection.
+  - Helper/API surface: net local cleanup. `lookupFunctionReference(...)` and
+    `lookupCallableReference(...)` now accept `CallableFindOptions` directly
+    instead of the full reference option bundle; `lookupCallableReference(...)`
+    no longer takes the adapter env. Added one private bucket collector because
+    it deletes both duplicate loops and avoids no-result array allocation.
+    Rejected prepared lane functions because they would recreate the adapter
+    table or add wrappers for `mixin`/`mixin-ruleset`.
+  - Metadata mutations: none. No side map, lookup registry, parent/source
+    restoration, lazy context creation, or structural probe was added.
+  - Danger-token prosecution: the bucket collector is a local scan over a
+    bucket already returned by `lookupScopeFrameCallable(...)`, replacing
+    duplicate scans. It is not a child/parent traversal and does not add cache
+    storage.
+  - Evidence: focused function/callable/mixin-ruleset tests passed after
+    temporarily deleting the fallback (`3` files, `131` passed, `234`
+    skipped). Focused reference/callable namespace/function fallback suite
+    passed after all edits (`6` files, `189` passed, `386` skipped).
+    Touched-file ESLint passed; `git diff --check` passed; binding grep found
+    no registry/adapter-shaped lookup residue; `@jesscss/core` build passed;
+    `verify:aggressive-cutting-review` passed after flagging only the
+    prosecuted bucket helper loop/result-array tokens; `audit:node-creation`
+    passed; `jess` build passed. One-iteration hotpath smoke passed with usable
+    signal: `mixins-guards.less` `29.38ms`, `scope-lookup-stress.less`
+    `108.38ms`. No speed claim is made from this pass.
 
 - Adapter-table deletion and lazy namespace accumulator pass: accepted as
   binding/lookup cleanup, not as a speed claim. Files:

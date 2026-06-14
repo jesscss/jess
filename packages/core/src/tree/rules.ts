@@ -629,6 +629,25 @@ function mergeDirectChildRulesVisibility(
   return merged;
 }
 
+function collectCallableBucketResults(
+  bucket: CallableLookupEntry[],
+  includeRulesets: boolean
+): MixinEntry[] | undefined {
+  let results: MixinEntry[] | undefined;
+  for (let i = bucket.length - 1; i >= 0; i--) {
+    const entry = bucket[i]!;
+    if (entry.match.length !== 0) {
+      continue;
+    }
+    const candidate = entry.value;
+    if (!includeRulesets && isNode(candidate, N.Ruleset)) {
+      continue;
+    }
+    (results ??= []).push(candidate);
+  }
+  return results;
+}
+
 /**
  * The class representing a "declaration list".
  * CSS calls it this even though CSS Nesting
@@ -1787,20 +1806,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           return undefined;
         }
         if (frameHit.kind === 'hit') {
-          const bucket = frameHit.bucket;
-          const results: MixinEntry[] = [];
-          for (let i = bucket.length - 1; i >= 0; i--) {
-            const entry = bucket[i]!;
-            if (entry.match.length !== 0) {
-              continue;
-            }
-            const candidate = entry.value;
-            if (!includeRulesets && isNode(candidate, N.Ruleset)) {
-              continue;
-            }
-            results.push(candidate);
-          }
-          if (results.length > 0) {
+          const results = collectCallableBucketResults(frameHit.bucket, includeRulesets);
+          if (results) {
             this.setLastCallableLookupResult(cacheKey, results);
             return results;
           }
@@ -1854,20 +1861,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               });
             }
             if (retryHit.kind === 'hit') {
-              const bucket = retryHit.bucket;
-              const results: MixinEntry[] = [];
-              for (let i = bucket.length - 1; i >= 0; i--) {
-                const entry = bucket[i]!;
-                if (entry.match.length !== 0) {
-                  continue;
-                }
-                const candidate = entry.value;
-                if (!includeRulesets && isNode(candidate, N.Ruleset)) {
-                  continue;
-                }
-                results.push(candidate);
-              }
-              if (results.length > 0) {
+              const results = collectCallableBucketResults(retryHit.bucket, includeRulesets);
+              if (results) {
                 this.setLastCallableLookupResult(cacheKey, results);
                 return results;
               }
