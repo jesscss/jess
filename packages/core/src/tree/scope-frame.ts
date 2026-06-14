@@ -169,6 +169,13 @@ export interface ScopeFrame {
   callableMissesCovered: boolean;
 
   /**
+   * Same coverage as callableMissesCovered, but for mixin-only lookup. A child
+   * ruleset surface can satisfy mixin-ruleset lookup without satisfying a
+   * Mixin-only call.
+   */
+  mixinCallableMissesCovered: boolean;
+
+  /**
    * VarDeclarations whose name is a computed expression (Interpolated,
    * variable-variable, etc.).  Resolved lazily at first lookup.
    *
@@ -207,7 +214,8 @@ export function buildScopeFrame(
   declarationsCovered = varsByName !== undefined,
   callableEntriesByName?: Map<string, CallableLookupEntry[]>,
   callablesCovered = callableEntriesByName !== undefined,
-  callableMissesCovered = callablesCovered
+  callableMissesCovered = callablesCovered,
+  mixinCallableMissesCovered = callableMissesCovered
 ): ScopeFrame {
   const declarationBucketsByName = new Map<string, BindingEntry[]>();
   const currentBindingsByName = new Map<string, CurrentBindingEntry>();
@@ -256,6 +264,7 @@ export function buildScopeFrame(
     declarationsCovered,
     callablesCovered,
     callableMissesCovered,
+    mixinCallableMissesCovered,
     pendingDeclarationNames: pendingDeclarationNames ?? [],
     rulesNode
   };
@@ -425,7 +434,10 @@ export function lookupScopeFrameCallable(
       }
     }
 
-    if (!f.callableMissesCovered) {
+    const missesCovered = options?.includeRulesets === false
+      ? f.mixinCallableMissesCovered
+      : f.callableMissesCovered;
+    if (!missesCovered) {
       return { kind: 'uncovered' };
     }
 

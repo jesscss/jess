@@ -332,13 +332,10 @@ type PreparedReferenceLookup = {
 
 type PreparedTargetLookup = {
   rules: Rules;
-  options: ReferenceLookupOptions;
+  shape: RulesLookupHandleShape;
 };
 
-type ReferenceLookupOptions = {
-  declaration: DeclarationFindOptions & { context: Context };
-  callable: CallableFindOptions;
-};
+type ReferenceDeclarationFindOptions = DeclarationFindOptions & { context: Context };
 
 const RAW_REFERENCE_TARGET_NOT_FOUND = Symbol('RAW_REFERENCE_TARGET_NOT_FOUND');
 
@@ -427,18 +424,17 @@ function shouldUseLocalReferenceLookup(args: {
   return !args.target && blocksAmbientMixinOutputLookup(args.targetRules);
 }
 
-function buildReferenceLookupOptions(args: {
+type BuildReferenceLookupShapeArgs = {
   referenceNode: Reference;
   lookupType: LookupType;
   target: ReferenceValue['target'];
   targetRules: Rules;
   resolution: ReferenceOptions['resolution'];
   isInterpolatedVariable: boolean;
-  filter: (n: Node) => boolean;
-  semanticFilter: boolean;
   context: Context;
-  hasTarget: boolean;
-}): ReferenceLookupOptions {
+};
+
+function buildRulesLookupHandleShape(args: BuildReferenceLookupShapeArgs): RulesLookupHandleShape {
   const {
     referenceNode,
     lookupType,
@@ -446,14 +442,11 @@ function buildReferenceLookupOptions(args: {
     targetRules,
     resolution,
     isInterpolatedVariable,
-    filter,
-    semanticFilter,
-    context,
-    hasTarget
+    context
   } = args;
-  const local = shouldUseLocalReferenceLookup({ target, targetRules }) || undefined;
+  const local = shouldUseLocalReferenceLookup({ target, targetRules });
   let start: number | undefined;
-  let ignoreParentScopeStart: true | undefined;
+  let ignoreParentScopeStart = false;
 
   if (!isInterpolatedVariable) {
     if (resolution === 'live') {
@@ -474,21 +467,41 @@ function buildReferenceLookupOptions(args: {
   }
 
   return {
-    declaration: {
-      filter,
-      semanticFilter,
-      context,
-      hasTarget,
-      local,
-      start,
-      ignoreParentScopeStart
-    },
-    callable: {
-      context,
-      hasTarget,
-      local,
-      terminalMixinOnly: referenceNode.options.mixinRulesetCallHasArgs === true || undefined
-    }
+    start,
+    local,
+    ignoreParentScopeStart,
+    terminalMixinOnly: referenceNode.options.mixinRulesetCallHasArgs === true
+  };
+}
+
+function buildDeclarationReferenceLookupOptions(args: {
+  filter: (n: Node) => boolean;
+  semanticFilter: boolean;
+  context: Context;
+  hasTarget: boolean;
+  shape: RulesLookupHandleShape;
+}): ReferenceDeclarationFindOptions {
+  return {
+    filter: args.filter,
+    semanticFilter: args.semanticFilter,
+    context: args.context,
+    hasTarget: args.hasTarget,
+    local: args.shape.local || undefined,
+    start: args.shape.start,
+    ignoreParentScopeStart: args.shape.ignoreParentScopeStart || undefined
+  };
+}
+
+function buildCallableReferenceLookupOptions(args: {
+  context: Context;
+  hasTarget: boolean;
+  shape: RulesLookupHandleShape;
+}): CallableFindOptions {
+  return {
+    context: args.context,
+    hasTarget: args.hasTarget,
+    local: args.shape.local || undefined,
+    terminalMixinOnly: args.shape.terminalMixinOnly || undefined
   };
 }
 
@@ -602,7 +615,7 @@ function lookupLiveScopeFrameVariableBinding(
 function lookupIndexReference(
   targetRules: Rules,
   valueKey: NormalizedLookupKey,
-  opts: ReferenceLookupOptions,
+  opts: ReferenceDeclarationFindOptions,
   env: RulesLookupAdapterEnv
 ): RulesLookupResult {
   if (typeof valueKey === 'number') {
@@ -616,28 +629,28 @@ function lookupIndexReference(
   }
   const keyStr = getLookupKeyString(valueKey);
   return isNode(env.keyNode, N.Quoted)
-    ? lookupPropertyDeclarationOrFind(targetRules, keyStr, opts.declaration)
-    : lookupVariableDeclarationOrFind(targetRules, keyStr, opts.declaration);
+    ? lookupPropertyDeclarationOrFind(targetRules, keyStr, opts)
+    : lookupVariableDeclarationOrFind(targetRules, keyStr, opts);
 }
 
 function lookupPropertyReference(
   targetRules: Rules,
   valueKey: NormalizedLookupKey,
-  opts: ReferenceLookupOptions,
+  opts: ReferenceDeclarationFindOptions,
   _env: RulesLookupAdapterEnv
 ): RulesLookupResult {
-  return lookupPropertyDeclarationOrFind(targetRules, getLookupKeyString(valueKey), opts.declaration);
+  return lookupPropertyDeclarationOrFind(targetRules, getLookupKeyString(valueKey), opts);
 }
 
 function lookupVariableReference(
   targetRules: Rules,
   valueKey: NormalizedLookupKey,
-  opts: ReferenceLookupOptions,
+  opts: ReferenceDeclarationFindOptions,
   env: RulesLookupAdapterEnv
 ): RulesLookupResult {
   const keyStr = getLookupKeyString(valueKey);
   if (typeof valueKey === 'string') {
-    const frameHit = lookupScopeFrameVariableBinding(targetRules, keyStr, opts.declaration, env);
+    const frameHit = lookupScopeFrameVariableBinding(targetRules, keyStr, opts, env);
     if (frameHit) {
       if (frameHit === SCOPE_FRAME_VARIABLE_MISS) {
         if (env.readMode !== 'snapshot') {
@@ -655,14 +668,14 @@ function lookupVariableReference(
     }
   }
   const direct = findVariableDeclaration(targetRules, keyStr, {
-    start: opts.declaration.start,
+    start: opts.start,
     context: env.context,
     hasTarget: env.hasTarget,
-    local: opts.declaration.local,
+    local: opts.local,
     filter: env.filter,
     includeLiveBindings: env.readMode !== 'snapshot',
     ignoreCurrentScopeStart: true,
-    ignoreParentScopeStart: opts.declaration.ignoreParentScopeStart === true
+    ignoreParentScopeStart: opts.ignoreParentScopeStart === true
   });
   return direct === DIRECT_DECLARATION_LOOKUP_UNCOVERED ? undefined : direct;
 }
@@ -670,10 +683,10 @@ function lookupVariableReference(
 function lookupDeclarationReference(
   targetRules: Rules,
   valueKey: NormalizedLookupKey,
-  opts: ReferenceLookupOptions,
+  opts: ReferenceDeclarationFindOptions,
   _env: RulesLookupAdapterEnv
 ): RulesLookupResult {
-  return lookupAnyDeclarationOrFind(targetRules, getLookupKeyString(valueKey), opts.declaration);
+  return lookupAnyDeclarationOrFind(targetRules, getLookupKeyString(valueKey), opts);
 }
 
 function lookupVariableDeclarationOrFind(
@@ -806,43 +819,54 @@ function performRulesReferenceLookup(
     valueKey,
     env
   } = lookupContext;
-  const opts = lookupContext.preparedTarget?.rules === scope
-    ? lookupContext.preparedTarget.options
-    : buildReferenceLookupOptions({
+  const shape = lookupContext.preparedTarget?.rules === scope
+    ? lookupContext.preparedTarget.shape
+    : buildRulesLookupHandleShape({
         referenceNode,
         lookupType,
         target,
         targetRules: scope,
         resolution,
         isInterpolatedVariable,
-        filter,
-        semanticFilter,
-        context,
-        hasTarget
+        context
       });
   switch (lookupType) {
-    case 'index':
+    case 'index': {
+      const opts = buildDeclarationReferenceLookupOptions({ filter, semanticFilter, context, hasTarget, shape });
       return lookupIndexReference(scope, valueKey, opts, env);
-    case 'property':
+    }
+    case 'property': {
+      const opts = buildDeclarationReferenceLookupOptions({ filter, semanticFilter, context, hasTarget, shape });
       return lookupPropertyReference(scope, valueKey, opts, env);
-    case 'variable':
+    }
+    case 'variable': {
+      const opts = buildDeclarationReferenceLookupOptions({ filter, semanticFilter, context, hasTarget, shape });
       return lookupVariableReference(scope, valueKey, opts, env);
-    case 'declaration':
+    }
+    case 'declaration': {
+      const opts = buildDeclarationReferenceLookupOptions({ filter, semanticFilter, context, hasTarget, shape });
       return lookupDeclarationReference(scope, valueKey, opts, env);
-    case 'function':
-      return scope.findFunction(getLookupKeyString(valueKey), undefined, opts.callable);
-    case 'mixin':
+    }
+    case 'function': {
+      const opts = buildCallableReferenceLookupOptions({ context, hasTarget, shape });
+      return scope.findFunction(getLookupKeyString(valueKey), undefined, opts);
+    }
+    case 'mixin': {
+      const opts = buildCallableReferenceLookupOptions({ context, hasTarget, shape });
       return scope.findMixin(
         Array.isArray(valueKey) ? valueKey : getLookupKeyString(valueKey),
         'Mixin',
-        opts.callable
+        opts
       );
-    case 'mixin-ruleset':
+    }
+    case 'mixin-ruleset': {
+      const opts = buildCallableReferenceLookupOptions({ context, hasTarget, shape });
       return scope.findMixin(
         Array.isArray(valueKey) ? valueKey : getLookupKeyString(valueKey),
         undefined,
-        opts.callable
+        opts
       );
+    }
   }
 }
 
@@ -893,15 +917,6 @@ type RulesLookupHandleShape = {
   ignoreParentScopeStart: boolean;
   terminalMixinOnly: boolean;
 };
-
-function getRulesLookupHandleShape(opts: ReferenceLookupOptions): RulesLookupHandleShape {
-  return {
-    start: opts.declaration.start,
-    local: opts.declaration.local === true,
-    ignoreParentScopeStart: opts.declaration.ignoreParentScopeStart === true,
-    terminalMixinOnly: opts.callable.terminalMixinOnly === true
-  };
-}
 
 function readRulesLookupHandle(args: {
   referenceNode: Reference;
@@ -1012,23 +1027,20 @@ function lookupResolvedReference(args: {
   const targetRules = isNode(resolvedTarget, N.Rules) ? resolvedTarget : undefined;
   let handleShape: RulesLookupHandleShape | undefined;
   if (targetRules) {
-    const preparedTargetOptions = buildReferenceLookupOptions({
+    const preparedTargetShape = buildRulesLookupHandleShape({
       referenceNode,
       lookupType,
       target,
       targetRules,
       resolution: lookupContext.resolution,
       isInterpolatedVariable: lookupContext.isInterpolatedVariable,
-      filter: lookupContext.filter,
-      semanticFilter: lookupContext.semanticFilter,
-      context,
-      hasTarget: lookupContext.hasTarget
+      context
     });
     lookupContext.preparedTarget = {
       rules: targetRules,
-      options: preparedTargetOptions
+      shape: preparedTargetShape
     };
-    handleShape = getRulesLookupHandleShape(preparedTargetOptions);
+    handleShape = preparedTargetShape;
     const handleResult = readRulesLookupHandle({
       referenceNode,
       targetRules,

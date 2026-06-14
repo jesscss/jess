@@ -1919,15 +1919,20 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7dh. [ ] Reference lookup preparation task. Scope:
+7dh. [x] Reference lookup preparation task. Scope:
     `ReferenceLookupOptions`, `PreparedTargetLookup`, handle read/write shape,
     direct switch dispatch, and key normalization. Goal: remove unused lane
     option construction or duplicated key conversion only if the handle cache
     can keep one clear shape without adapter/wrapper records. Acceptance:
     focused reference/function/callable tests, binding grep, lint, builds, and
     aggressive review.
+   Done. The old dual `ReferenceLookupOptions` bundle is gone. `PreparedTargetLookup`
+   now carries only `RulesLookupHandleShape`, and `performRulesReferenceLookup(...)`
+   builds declaration or callable find options only inside the selected switch lane.
+   Key normalization remains unchanged because this pass did not find duplicated
+   key conversion worth replacing with another prepared wrapper.
 
-7di. [ ] Callable namespace/cache ownership task. Scope:
+7di. [x] Callable namespace/cache ownership task. Scope:
     `findRulesetNamespacePathFast(...)`, `findMixinNamespacePathFast(...)`,
     `findCompoundPrefixCallableRulesetPathFast(...)`,
     `findCallableDescendantsWithinMixinNamespaces(...)`, and
@@ -1935,8 +1940,15 @@ Seeded next binding/lookup queue:
     mutated or make fresh/lazy copies where necessary. Acceptance: recursive
     namespace, compound-prefix precedence, terminal mixin-only, and callable
     cache focused tests plus binding grep and standard gates.
+   Done. Audit result: namespace fan-in paths already preserve cached arrays.
+   `findMixinNamespacePathFast(...)` and
+   `findCallableDescendantsWithinMixinNamespaces(...)` reuse the first nested
+   result only until a second result must be appended, then copy lazily.
+   `findCompoundPrefixCallableRulesetPathFast(...)` returns fresh current-lookup
+   arrays before unioning, and `lastCallableLookup*` stores final lookup results
+   without mutating them.
 
-7dj. [ ] Callable frame and child-surface task. Scope:
+7dj. [x] Callable frame and child-surface task. Scope:
     `findMixinsFast(...)`, `collectCallableBucketResults(...)`,
     `lookupScopeFrameCallable(...)`, `prepareCallableLookupFrame(...)`, and
     child-surface skip logic. Goal: reduce hit/miss allocation or avoid child
@@ -1944,6 +1956,45 @@ Seeded next binding/lookup queue:
     binding semantics. Acceptance: callable bucket, rulesVisibility, import,
     function fallback, and recursive namespace focused tests plus standard
     gates.
+   Done. `ScopeFrame` now tracks mixin-only callable miss coverage separately
+   from mixin-or-ruleset miss coverage. `prepareCallableLookupFrame(...)` uses
+   the lookup lane to avoid broad ruleset-child surface scans for Mixin-only
+   lookups, while keeping broad misses uncovered for later ruleset-inclusive
+   calls. Existing focused frame tests cover ruleset-only child surfaces,
+   terminal mixin-only lookup, and parent-frame climb.
+
+Seeded next binding/lookup queue:
+
+7dk. [ ] Reference target/leaky fallback task. Scope:
+    `lookupRulesReferenceTarget(...)`, `lookupLeakyRulesReferenceTargets(...)`,
+    `performRulesReferenceLookup(...)`, and prepared-target reuse across
+    resolved target, parent, and source-parent scopes. Goal: reduce repeated
+    shape/option construction and avoid fallback probes when direct lookup
+    semantics prove the miss is final, without adding a wrapper record or
+    hiding leaky Less behavior. Acceptance: reference handle tests,
+    import/reference visibility tests, leaky-rules focused tests, binding grep,
+    lint, builds, and aggressive review.
+
+7dl. [ ] Callable namespace traversal consolidation task. Scope:
+    `findRulesetNamespacePathFast(...)`,
+    `findCompoundPrefixCallableRulesetPathFast(...)`,
+    `findVisibleCallableRulesetPrefixMatches(...)`, and exact ruleset path
+    lookup. Goal: remove duplicate prefix/exact scans only if one reverse walk
+    can preserve Less precedence, terminal mixin-only behavior, and fallback
+    boundaries without sorting cached results or adding registry-like indexes.
+    Acceptance: recursive namespace, compound-prefix precedence, terminal
+    mixin-only, ruleset-path miss, and callable cache tests plus standard gates.
+
+7dm. [ ] ScopeFrame callable coverage ownership task. Scope:
+    `ScopeFrame.callablesCovered`, `callableMissesCovered`,
+    `mixinCallableMissesCovered`, `_hasReferenceImports`,
+    `hasDirectLookupChildSurface(...)`, and mutation invalidation in
+    `Rules.registerNode(...)`. Goal: make lane-specific frame coverage explicit
+    enough to delete remaining direct bridge probes on covered misses, but only
+    where imports, child surfaces, and fallback frames cannot later contribute.
+    Acceptance: callable bucket/frame tests, import/reference tests,
+    rulesVisibility tests, mutation invalidation tests if needed, binding grep,
+    lint, builds, and aggressive review.
 
 Parked secondary deep-cut queue:
 
@@ -2272,6 +2323,53 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Reference lane split and callable frame coverage pass: accepted as
+  binding/lookup cleanup, not as a speed claim. Files:
+  `packages/core/src/tree/reference.ts`, `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/scope-frame.ts`, focused lookup tests, and this
+  handoff.
+  - New traversal: none. Reference lookup keeps the existing switch and target
+    fallback flow; it now carries only `RulesLookupHandleShape` as the prepared
+    target and builds declaration/callable option objects only in the selected
+    lane. Callable lookup keeps the same frame chain walk and child-surface
+    predicates.
+  - New node/materialization: none. No production node, wrapper `Rules`, copied
+    node, source metadata, parent mutation, or frozen state was added. Namespace
+    cache ownership was audited and left as-is because existing lazy-copy paths
+    already prevent mutation of cached arrays.
+  - Render path: unchanged. This is reference/callable lookup only; it does not
+    resolve arrays or nodes just to stringify.
+  - Helper/API surface: net narrower. Deleted the old `ReferenceLookupOptions`
+    dual bundle and `getRulesLookupHandleShape(...)`. Added two small
+    lane-specific option builders so declaration options are not built on
+    callable paths and callable options are not built on declaration paths.
+    Added one `ScopeFrame` boolean for mixin-only miss coverage instead of a
+    side map, callback, or registry-like cache.
+  - Metadata mutations: one new frame coverage boolean,
+    `mixinCallableMissesCovered`, lives on the existing `ScopeFrame` and is
+    invalidated at the same mutation sites as `callableMissesCovered`. No
+    parent/source restoration, generic structural probe, lazy context creation,
+    or reflection machinery was added.
+  - Danger-token prosecution: `BuildReferenceLookupShapeArgs` is a TypeScript
+    type-only shape for existing function arguments, not a runtime object.
+    The `CallableLookupEntry[]` token is the existing callable bucket return
+    type on `getCallableEntriesForKey(...)`; this pass added only a boolean
+    parameter so Mixin-only frame prep can skip broad miss coverage work.
+    New runtime object literals are lane options that replace the previous
+    always-built declaration-plus-callable option bundle. The new frame boolean
+    prevents broad child-surface rediscovery for Mixin-only lookups without
+    marking broad mixin-ruleset misses as covered.
+  - Evidence: focused reference/mixin/call/rules/import/control suite passed
+    after the edit (`6` files, `198` passed, `377` skipped). Touched-file ESLint
+    passed; binding grep found no registry-adapter residue beyond current
+    lane-specific reference option builders; `git diff --check` passed;
+    `@jesscss/core` build passed with only the existing `js-expr.ts` direct-eval
+    warning; `verify:aggressive-cutting-review` passed after flagging only the
+    prosecuted type/array tokens; `audit:node-creation` passed; `jess` build
+    passed. One-iteration hotpath smoke passed with usable signal:
+    `mixins-guards.less` `20.50ms`, `scope-lookup-stress.less` `75.49ms`. No
+    speed claim is made from this pass.
 
 - Full-queue granularity correction and lazy `findMixinsFast(...)` result pass:
   accepted as binding/lookup cleanup, not as a speed claim. Files:

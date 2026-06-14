@@ -736,6 +736,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this._scopeFrame.callableBucketsByName = this.callableLookupCache;
         this._scopeFrame.callablesCovered = this.callableLookupCache !== undefined;
         this._scopeFrame.callableMissesCovered = !this.hasDirectLookupChildSurface();
+        this._scopeFrame.mixinCallableMissesCovered = !this.hasDirectLookupChildSurface(false);
       }
     } finally {
       this._indexing = false;
@@ -874,7 +875,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         undefined,
         this.callableLookupCache,
         undefined,
-        !this.hasDirectLookupChildSurface()
+        !this.hasDirectLookupChildSurface(),
+        !this.hasDirectLookupChildSurface(false)
       );
     }
     return this._scopeFrame;
@@ -1126,7 +1128,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  private getCallableEntriesForKey(lookupKey: string): CallableLookupEntry[] {
+  private getCallableEntriesForKey(
+    lookupKey: string,
+    updateFrameMissCoverage = true
+  ): CallableLookupEntry[] {
     const entries = this.callableLookupCache;
     const cached = entries?.get(lookupKey);
     if (cached) {
@@ -1145,18 +1150,25 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (this._scopeFrame) {
       this._scopeFrame.callableBucketsByName = this.callableLookupCache;
       this._scopeFrame.callablesCovered = true;
-      this._scopeFrame.callableMissesCovered = !this.hasDirectLookupChildSurface();
+      if (updateFrameMissCoverage) {
+        this._scopeFrame.callableMissesCovered = !this.hasDirectLookupChildSurface();
+        this._scopeFrame.mixinCallableMissesCovered = !this.hasDirectLookupChildSurface(false);
+      }
     }
     return bucket;
   }
 
-  private prepareCallableLookupFrame(frame: ScopeFrame, key: string): void {
+  private prepareCallableLookupFrame(frame: ScopeFrame, key: string, includeRulesets: boolean): void {
     if (isNode(frame.rulesNode, N.Rules)) {
       const rules = frame.rulesNode;
-      rules.getCallableEntriesForKey(key);
+      rules.getCallableEntriesForKey(key, includeRulesets);
       frame.callableBucketsByName = rules.callableLookupCache;
       frame.callablesCovered = true;
-      frame.callableMissesCovered = !rules.hasDirectLookupChildSurface();
+      if (includeRulesets) {
+        frame.callableMissesCovered = !rules.hasDirectLookupChildSurface();
+      } else {
+        frame.mixinCallableMissesCovered = !rules.hasDirectLookupChildSurface(false);
+      }
     }
   }
 
@@ -1795,7 +1807,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       const callableFrame = this._scopeFrame;
       if (callableFrame && !options.hasTarget && !options.local) {
-        this.prepareCallableLookupFrame(callableFrame, keys);
+        this.prepareCallableLookupFrame(callableFrame, keys, includeRulesets);
         const frameHit = lookupScopeFrameCallable(callableFrame, keys, {
           includeRulesets,
           searchParents: false
@@ -1859,7 +1871,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               searchParents: false
             });
             if (retryHit.kind === 'uncovered' && isNode(retryFrame.rulesNode, N.Rules)) {
-              this.prepareCallableLookupFrame(retryFrame, keys);
+              this.prepareCallableLookupFrame(retryFrame, keys, includeRulesets);
               retryHit = lookupScopeFrameCallable(retryFrame, keys, {
                 includeRulesets,
                 searchParents: false
@@ -2708,6 +2720,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this._scopeFrame.callableBucketsByName = undefined;
       this._scopeFrame.callablesCovered = false;
       this._scopeFrame.callableMissesCovered = false;
+      this._scopeFrame.mixinCallableMissesCovered = false;
     }
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
@@ -2732,6 +2745,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this._hasReferenceImports = true;
         if (this._scopeFrame) {
           this._scopeFrame.callableMissesCovered = false;
+          this._scopeFrame.mixinCallableMissesCovered = false;
         }
       }
     }
@@ -2762,6 +2776,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.addDirectChildRuleEntry(node, rulesVisibility, readonly);
       if (this._scopeFrame) {
         this._scopeFrame.callableMissesCovered = false;
+        this._scopeFrame.mixinCallableMissesCovered = false;
       }
       if (node._hasExtends) {
         this._hasExtends = true;
