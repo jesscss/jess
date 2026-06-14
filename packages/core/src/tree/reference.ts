@@ -1460,36 +1460,21 @@ function evaluateCalcSlashListValue(
   }
 
   const [left, right] = declValue.value;
-  const finalize = (l: Node, r: Node): Node => {
-    if (
-      !isNode(l, N.Dimension)
-      || !isNode(r, N.Dimension)
-    ) {
-      return declValue;
-    }
-    try {
-      const out = l.operate(r, '/', context);
-      return out.inherit(declValue);
-    } catch {
-      return declValue;
-    }
-  };
-
   const maybeLeft = left?.eval(context);
   if (isThenable(maybeLeft)) {
     return Promise.resolve(maybeLeft).then((l) => {
       const maybeRight = right?.eval(context);
       if (isThenable(maybeRight)) {
-        return Promise.resolve(maybeRight).then(r => finalize(l, r));
+        return Promise.resolve(maybeRight).then(r => finalizeCalcSlashListValue(declValue, l, r, context));
       }
-      return maybeRight ? finalize(l, maybeRight) : declValue;
+      return maybeRight ? finalizeCalcSlashListValue(declValue, l, maybeRight, context) : declValue;
     });
   }
 
   const maybeRight = right?.eval(context);
   if (isThenable(maybeRight)) {
     return maybeLeft
-      ? Promise.resolve(maybeRight).then(r => finalize(maybeLeft, r))
+      ? Promise.resolve(maybeRight).then(r => finalizeCalcSlashListValue(declValue, maybeLeft, r, context))
       : declValue;
   }
 
@@ -1497,7 +1482,27 @@ function evaluateCalcSlashListValue(
     return declValue;
   }
 
-  return finalize(maybeLeft, maybeRight);
+  return finalizeCalcSlashListValue(declValue, maybeLeft, maybeRight, context);
+}
+
+function finalizeCalcSlashListValue(
+  declValue: Node,
+  left: Node,
+  right: Node,
+  context: Context
+): Node {
+  if (
+    !isNode(left, N.Dimension)
+    || !isNode(right, N.Dimension)
+  ) {
+    return declValue;
+  }
+  try {
+    const out = left.operate(right, '/', context);
+    return out.inherit(declValue);
+  } catch {
+    return declValue;
+  }
 }
 
 function evaluateReferenceValueNode(
