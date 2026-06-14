@@ -78,35 +78,37 @@ terminal mixin-only exact-ruleset namespace probe.
 Current pass makes direct declaration recursion state lazy, reads runtime live
 ownership from the current binding cell, and avoids a namespace remainder array
 for two-segment mixin namespace descent.
+Current pass narrows parent-cycle tracking to scalar-first state, removes
+`@arguments` live-slot map lookups, and reuses existing no-parent callable
+options in namespace descent.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7er. [ ] Direct declaration parent-cycle state audit.
-Scope: `findDeclarationWithStrategy(...)`, `visitedParents`, fallback-frame
-traversal, and `getDeclarationParentSearchStep(...)`.
-Goal: narrow the remaining parent-cycle `Set` work without losing circular
-parent/fallback protection; reject if the proof requires new broad traversal.
+7eu. [ ] Direct declaration parent-state scalarization follow-up.
+Scope: `findDeclarationWithStrategy(...)`, fallback traversal, readonly
+propagation, and parent-step preservation.
+Goal: determine whether the scalar-first parent tracker can also avoid Set
+promotion for the common two-scope parent case without weakening circular
+protection.
 Acceptance: parent/fallback circular protection, fallback-frame, source-order,
 readonly, property/variable tests, lint, builds, aggressive review.
 
-7es. [ ] Live-slot compatibility surface audit.
-Scope: `liveSlotsByName`, `BindingCell.live`, callable live-slot creation,
-import configured vars, and direct reference target resolution.
-Goal: decide the next safe reduction for `liveSlotsByName`: keep it as cold
-compat/debug state, remove one hot `.has/.get` use, or document the remaining
-semantic owner that still needs the map.
+7ev. [ ] ScopeFrame live-slot storage ownership audit.
+Scope: `liveSlotsByName`, `currentBindingsByName`, `BindingCell.live`,
+`resetDerivedState(...)`, configured imports, and callable scope wiring.
+Goal: choose the next safe reduction in dual live-slot storage, or document the
+remaining semantic owner that requires `liveSlotsByName` as a separate map.
 Acceptance: mixin params, `@arguments`, import configured variables, iteration
-vars, readonly assignment, snapshot/live reads, lint, builds, aggressive review.
+vars, readonly assignment, snapshot/live reads, clone/derive tests, lint,
+builds, aggressive review.
 
-7et. [ ] Callable namespace option allocation audit.
-Scope: `findCallableDescendantsWithinMixinNamespaces(...)`,
-`findCompoundPrefixCallableRulesetPathFast(...)`, nested `searchParents:false`
-options, and compound union ownership.
-Goal: remove one nested options or union-copy allocation in namespace lookup
-without duplicating namespace inference or changing ruleset-as-namespace
-behavior.
+7ew. [ ] Callable namespace union-copy audit.
+Scope: compound-prefix union, namespace mixin descent, `resolvedOwned`,
+`compoundUnionOwned`, and cached callable result ownership.
+Goal: remove or narrow one result-array copy in namespace lookup without
+mutating cached/shared result arrays or changing namespace/ruleset precedence.
 Acceptance: namespace, recursive namespace, compound-prefix, terminal
 mixin-only, ruleset namespace with args, import/reference tests, lint, builds,
 aggressive review.
@@ -159,25 +161,28 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: lazy declaration recursion state and namespace allocation trim.
+- Latest pass: parent-cycle scalar state and live-slot lookup trim.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
-- New traversal: no new loop/recursion. Direct declaration recursion now lazily
-  allocates `visited` only when entering lexical/child recursion instead of at
-  every parent/fallback surface.
-- New node/materialization: none.
+- New traversal: no new recursion. `@arguments` still loops its param cells, but
+  now reads a carried cell array directly instead of looking each one up by name
+  in `liveSlotsByName`.
+- New node/materialization: no nodes. `paramCells` is deferred binding-slot
+  state for `@arguments`; it reuses the same `BindingCell` objects stored in the
+  live-slot map and replaces later per-argument map lookups.
 - Render path: unchanged.
 - Helper/API surface: none added.
 - Metadata mutations: none. The runtime initial-target check now reads
   `currentBindingsByName.get(key)?.live` instead of probing `liveSlotsByName`.
-- Allocation changes: two-segment mixin namespace descent now passes the
-  remaining key string directly instead of allocating a one-element remainder
-  array.
+- Allocation changes: parent-cycle tracking stays scalar for one-scope lookups
+  and promotes to a `Set` only on the second distinct parent/fallback surface.
+  Callable namespace descent reuses existing `searchParents:false` options
+  instead of cloning an equivalent options object.
 - Evidence: focused lint passed; focused lookup suite passed (`6` files,
-  `285` passed, `290` skipped). Affected reference/scope/mixin subset passed
-  (`3` files, `31` passed, `264` skipped). Binding residue grep and
+  `306` passed, `272` skipped). Affected reference/scope/mixin/live-slot subset
+  passed (`4` files, `42` passed, `256` skipped). Binding residue grep and
   `git diff --check` passed; `@jesscss/core` build passed with only the
   existing `js-expr.ts` direct-eval warning; aggressive review passed with
   documented scoped danger tokens; node-creation audit passed; `jess` build
   passed; one-iteration hotpath smoke passed with usable signal:
-  `mixins-guards.less` `24.61ms`, `scope-lookup-stress.less` `94.83ms`. No
+  `mixins-guards.less` `27.37ms`, `scope-lookup-stress.less` `81.52ms`. No
   speed claim is made.

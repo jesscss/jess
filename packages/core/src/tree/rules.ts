@@ -1738,13 +1738,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       prefixMatches.sort((a, b) => b.consumed.length - a.consumed.length);
     }
     let nestedOptions: CallableFindOptions | undefined;
+    const existingNoParentOptions = options.searchParents === false ? options : undefined;
 
     for (const { ruleset, consumed } of prefixMatches) {
       const remainderLength = keys.length - consumed.length;
       if (remainderLength === 0) {
         return options.terminalMixinOnly === true ? [] : [ruleset];
       }
-      nestedOptions ??= {
+      nestedOptions ??= existingNoParentOptions ?? {
         ...options,
         searchParents: false
       };
@@ -1776,6 +1777,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     let remainder: string | string[] | undefined;
     let nestedOptions: CallableFindOptions | undefined;
+    const existingNoParentOptions = options.searchParents === false ? options : undefined;
     let resolved: MixinEntry[] | undefined;
     let resolvedOwned = false;
     for (let i = 0; i < namespaceMixins.length; i++) {
@@ -1787,7 +1789,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         continue;
       }
       remainder ??= keys.length === 2 ? keys[1]! : collectKeyRemainder(keys, 1);
-      nestedOptions ??= {
+      nestedOptions ??= existingNoParentOptions ?? {
         ...options,
         searchParents: false
       };

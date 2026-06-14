@@ -531,7 +531,8 @@ function findDeclarationWithStrategy(
   const lookupOptions = options ?? EMPTY_DIRECT_DECLARATION_FIND_OPTIONS;
   const searchParents = lookupOptions.searchParents ?? true;
   const preserveLinearStart = lookupOptions.start !== undefined;
-  const visitedParents = new Set<Rules>();
+  let firstVisitedRules: Rules | undefined;
+  let visitedParents: Set<Rules> | undefined;
   let ignoreCurrentScopeStart = lookupOptions.ignoreCurrentScopeStart === true;
   let start = lookupOptions.start;
   let rules: Rules | undefined = startRules;
@@ -540,10 +541,15 @@ function findDeclarationWithStrategy(
   let readonly = Boolean(lookupOptions.readonly);
 
   while (rules) {
-    if (visitedParents.has(rules)) {
+    if (firstVisitedRules === rules || visitedParents?.has(rules)) {
       throw new Error('Circular parent chain detected in direct declaration lookup');
     }
-    visitedParents.add(rules);
+    if (firstVisitedRules === undefined) {
+      firstVisitedRules = rules;
+    } else {
+      visitedParents ??= new Set<Rules>([firstVisitedRules]);
+      visitedParents.add(rules);
+    }
 
     const currentStart = ignoreCurrentScopeStart ? undefined : start;
     const currentChildStart = start;
@@ -589,10 +595,15 @@ function findDeclarationWithStrategy(
     ? startRules._scopeFrame?.fallbackFrame?.rulesNode
     : undefined;
   while (fallbackRules) {
-    if (visitedParents.has(fallbackRules)) {
+    if (firstVisitedRules === fallbackRules || visitedParents?.has(fallbackRules)) {
       throw new Error('Circular fallback frame chain detected in direct declaration lookup');
     }
-    visitedParents.add(fallbackRules);
+    if (firstVisitedRules === undefined) {
+      firstVisitedRules = fallbackRules;
+    } else {
+      visitedParents ??= new Set<Rules>([firstVisitedRules]);
+      visitedParents.add(fallbackRules);
+    }
     const state = findWithinScopeSurface(
       fallbackRules,
       key,

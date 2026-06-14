@@ -20,31 +20,29 @@ export function createCallableLiveSlots({
   rulesContext
 }: CreateCallableLiveSlotsOptions): Map<string, BindingCell> {
   const liveSlots = new Map<string, BindingCell>();
+  const paramCells: BindingCell[] = [];
   for (const binding of paramBindings) {
     if (isNode(binding.sourceNode, N.VarDeclaration)) {
       binding.sourceNode.options ??= {};
       binding.sourceNode.options.paramVar = true;
       binding.sourceNode.removeFlag(F_VISIBLE);
     }
-    liveSlots.set(binding.name, {
+    const cell: BindingCell = {
       value: binding.value,
       prepareValue: binding.prepareValue,
       sourceNode: binding.sourceNode as Node | undefined,
       rulesContext,
       readonly: binding.readonly
-    });
+    };
+    paramCells.push(cell);
+    liveSlots.set(binding.name, cell);
   }
   if (defineArguments) {
     liveSlots.set('arguments', {
       prepareValue: () => {
         const paramValues: Node[] = [];
-        for (const binding of paramBindings) {
-          const liveSlot = liveSlots.get(binding.name);
-          if (liveSlot) {
-            paramValues.push(getBindingCellValue(liveSlot));
-          } else if (binding.value) {
-            paramValues.push(binding.value);
-          }
+        for (let i = 0; i < paramCells.length; i++) {
+          paramValues.push(getBindingCellValue(paramCells[i]!));
         }
         const argumentNodes = (paramValues.length > 0) ? paramValues : nodeArgs;
         return createArgumentsBindingValue(getArgumentsBindingValues(argumentNodes));
