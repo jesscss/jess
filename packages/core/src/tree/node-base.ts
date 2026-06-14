@@ -288,7 +288,7 @@ export abstract class Node<
 
   _treeContext: TreeContext | undefined;
 
-  protected _options: O & AllNodeOptions | undefined;
+  _options: O & AllNodeOptions | undefined;
   get options(): O & AllNodeOptions {
     return (this._options ??= createNodeOptions());
   }

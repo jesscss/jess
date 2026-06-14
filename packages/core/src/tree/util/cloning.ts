@@ -90,10 +90,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
 
-function nodeOptions(node: Node): unknown {
-  return Object.getOwnPropertyDescriptor(node, '_options')?.value;
-}
-
 type FrameMetadataNode = Node & {
   frames?: unknown;
 };
@@ -119,7 +115,7 @@ function copyRenderMetadata(source: Node, target: Node): void {
 }
 
 function constructCopy(node: Node, value: unknown): Node {
-  const options = nodeOptions(node);
+  const options = node._options;
   const copy = Reflect.construct(
     node.constructor,
     [

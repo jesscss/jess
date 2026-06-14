@@ -875,6 +875,13 @@ the binding index/scope lookup refactor.
    constructor adopt unchanged source operands and mutate canonical parent
    pointers; fixing that locally would require parent restoration or a no-adopt
    construction path, both outside this utility pass.
+   Second partial status: `constructCopy(...)` no longer calls
+   `Object.getOwnPropertyDescriptor(node, '_options')` for every generic copy.
+   It reads the owned `_options` slot directly through the non-allocating node
+   slot, keeping the existing no-lazy-options behavior without a defensive
+   descriptor helper.
+   Focused cloning coverage proves optionless source containers stay
+   optionless after `copyWithReusableLeaves(...)`.
 27. [ ] Audit repeated callable/mixin evaluation from the profile before making
    more local helper cuts. If a mixin candidate or output body is evaluated
    more than the semantic call count requires, carry placement/binding state or
@@ -935,7 +942,7 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: reusable-leaf copy predicate allocation cut under queue item 26.
+Current pass: generic copy options descriptor-probe cut under queue item 26.
 
 - New traversal: none. The pass adds no loop, recursion, source walk, parent
   walk, side-map lookup, object scan, or array scan.
@@ -943,34 +950,32 @@ Current pass: reusable-leaf copy predicate allocation cut under queue item 26.
   node, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen mutation,
   parent restoration, source metadata mutation, or materialized array.
 - Render path: no render semantics changed. The cut is in
-  `tree/util/cloning.ts` and affects copy/reuse predicates used by list,
+  `tree/util/cloning.ts` and affects generic copy construction used by list,
   sequence, operation, callable/import output, and reference materialization
   paths; rendering still stringifies through the existing node-family paths.
-- Helper/API surface: none added. `canReuseLeaf(...)` now reads `_location`
-  directly instead of calling the public `location` getter. This deletes a
-  hidden lazy empty-array allocation from the copy-stack predicate without
-  adding a helper or public API.
-- Metadata mutations: no new metadata mutations. The pass specifically avoids
-  creating `_location` on source-free scalar leaves. Existing `reuseLeaf(...)`
-  frozen marking remains unchanged and is still part of the broader copy-stack
-  debt.
+- Helper/API surface: one private helper, `nodeOptions(...)`, was deleted.
+  `constructCopy(...)` now reads the owned `_options` slot directly through a
+  non-allocating node slot instead of calling
+  `Object.getOwnPropertyDescriptor(...)` for every copied node. This also makes
+  `Node._options` an intentionally readable slot so internal utilities do not
+  need descriptor probes or type-cast games to avoid the allocating `options`
+  getter.
+- Metadata mutations: no new metadata mutations. The pass preserves the
+  existing no-lazy-options behavior while avoiding the defensive descriptor
+  probe; optionless source containers stay optionless after copy. Existing
+  `reuseLeaf(...)` frozen marking remains unchanged and is still part of the
+  broader copy-stack debt.
 - Error/control flow: none added.
-- Rejected cut: `Operation.withOperands(...)` still copies unchanged operands.
-  Code-path evidence shows constructing a replacement `Operation` adopts its
-  operand children; deleting those copies would mutate canonical source
-  parents and fail the existing canonical-parent tests. A correct larger fix
-  needs a cold no-adopt/public materialization boundary or broader parent
-  semantics change, not local parent restoration.
 - Evidence: focused tests passed with
   `pnpm --filter @jesscss/core test -- src/tree/util/__tests__/cloning.test.ts src/tree/__tests__/list.test.ts src/tree/__tests__/sequence.test.ts src/tree/__tests__/operation.test.ts`.
-  Pre-pass hotpath leash at `0ff63689`: `functions` `13.95ms` unstable,
-  `import-reference` `22.90ms` usable, `mixins-guards` `19.91ms` unstable,
-  `extend-chaining` `5.39ms` usable, `media` `5.28ms` usable. Dirty
-  post-pass leash reported `functions` `14.49ms` usable, `import-reference`
-  `21.61ms` usable, `mixins-guards` `17.55ms` usable, `extend-chaining`
-  `5.65ms` usable, and `media` `5.36ms` usable. This is status only, not a
-  speed claim.
+  Pre-pass hotpath leash at `0406552f`: `functions` `17.00ms` noisy,
+  `import-reference` `26.61ms` noisy, `mixins-guards` `18.38ms` usable,
+  `extend-chaining` `6.08ms` unstable, `media` `6.05ms` usable. Dirty
+  post-pass leash reported `functions` `16.23ms` unstable,
+  `import-reference` `22.79ms` usable, `mixins-guards` `17.93ms` usable,
+  `extend-chaining` `6.11ms` unstable, and `media` `5.90ms` usable. This is
+  status only, not a speed claim.
 - Verdict: accept as partial item 26 progress. This removes hidden allocation
-  from the measured copy stack predicate; it does not complete
+  and helper/probe overhead from the measured copy stack; it does not complete
   `copyWithReusableLeaves(...)`, `constructCopy(...)`, or `.inherit(...)`
   deletion.

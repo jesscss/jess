@@ -2511,6 +2511,35 @@ allocation deletion in the measured copy stack. It does not complete
 `copyWithReusableLeaves(...)`, `constructCopy(...)`, or `.inherit(...)`
 removal.
 
+### Generic Copy Options Descriptor-Probe Cut
+
+Date: 2026-06-13.
+
+Change: `constructCopy(...)` no longer calls
+`Object.getOwnPropertyDescriptor(node, '_options')` for every generic copy. It
+reads the owned `_options` slot directly through the non-allocating node slot,
+keeping the existing no-lazy-options behavior without a defensive descriptor
+helper. Focused cloning coverage proves optionless source containers stay
+optionless after `copyWithReusableLeaves(...)`.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `0406552f` reported: `functions` median `17.00ms` noisy,
+  `import-reference` median `26.61ms` noisy, `mixins-guards` median
+  `18.38ms` usable, `extend-chaining` median `6.08ms` unstable, and `media`
+  median `6.05ms` usable.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `16.23ms` unstable,
+  `import-reference` median `22.79ms` usable, `mixins-guards` median
+  `17.93ms` usable, `extend-chaining` median `6.11ms` unstable, and `media`
+  median `5.90ms` usable.
+
+Interpretation: status only, not a speed claim. Keep this as a helper/probe
+deletion in the measured copy stack. It does not complete
+`copyWithReusableLeaves(...)`, `constructCopy(...)`, or `.inherit(...)`
+removal.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
