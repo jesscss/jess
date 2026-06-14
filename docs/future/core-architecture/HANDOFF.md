@@ -70,16 +70,35 @@ Less is the optimizing path. Preserve SCSS-enabling seams only when they are
 concrete and cheap or isolated behind cold extension boundaries.
 
 Work shape while `writeSyntax` is active: run full queue batches, not one-node
-dribbles. Sweep the unchecked node/family list in `NODE-REWRITE-TRACKER.md`,
-land every bounded deletion that shares the same proof surface, and stop only
-when the remaining candidates require a larger semantic design, a behavior
-decision, or benchmark-first tradeoff work. For each touched node, split direct
-emission from public string capture, make render call the direct writer path
-after value selection, and prove output with focused tests. Run the aggressive
-cutting gate, record any benchmark/profile status if a touched node is hot,
-then commit and push the whole coherent batch. Reject changes that make
-`render(...)` call public `toString(...)`/`toTrimmedString(...)` as transport,
-or that add helper objects/arrays only to describe syntax.
+dribbles.
+
+Queue items must be **entire tasks**, not micro-items. A queue item is a
+meaningful node-family or runtime-path objective with its own proof surface,
+for example "finish the `Call` render/stringification cleanup" or "remove
+`AtRule` leaf/body render string transport where semantics allow it." It may
+contain several sub-tasks, helper deletions, rejected cuts, and tests, but those
+sub-tasks are not themselves queue items. Do not mark a queue item complete
+because a one-line helper moved, a single closure was lifted, one regex was
+replaced, or one narrow fast path was added while the larger stated task remains
+open.
+
+A valid queue pass should complete one or more whole queue items, or explicitly
+record that the current whole item is blocked by a semantic decision,
+benchmark-first tradeoff, or unsafe behavior boundary. If the work is only a
+small partial cut inside a larger task, record it as partial status under that
+task and keep the checkbox open. Do not create new numbered queue entries just
+to memorialize every tiny cut.
+
+Sweep the unchecked node/family list in `NODE-REWRITE-TRACKER.md`, land every
+bounded deletion that shares the same proof surface, and stop only when the
+remaining candidates require a larger semantic design, a behavior decision, or
+benchmark-first tradeoff work. For each touched node, split direct emission
+from public string capture, make render call the direct writer path after value
+selection, and prove output with focused tests. Run the aggressive cutting
+gate, record any benchmark/profile status if a touched node is hot, then commit
+and push the whole coherent batch. Reject changes that make `render(...)` call
+public `toString(...)`/`toTrimmedString(...)` as transport, or that add helper
+objects/arrays only to describe syntax.
 
 ## Active Work
 
@@ -684,69 +703,33 @@ the binding index/scope lookup refactor.
    values instead of applying a post-eval `copyWithReusableLeaves(...)` plus
    `.inherit(reference)`. Focused tests prove dynamic container renders do not
    stamp reference ownership after eval.
-14. [x] Continue node `writeSyntax` pass. Cut three bounded node-family
-   surfaces without changing semantics: `Mixin.deriveMixin(...)` no longer
-   builds conditional object-spread fragments for optional fields;
-   `Interpolated.writeReplacement(...)` writes through direct
-   `writeSyntax(...)` plus the existing trim window instead of public
-   `toTrimmedString(...)` transport; and `QueryCondition` dynamic render now
-   uses a straight sync loop with one async rest method only after a thenable is
-   observed. Focused `Mixin`, `Interpolated`, `InterpolatedSelector`, and
-   `QueryCondition` tests passed. Hotpath leash was status-only and not a win;
-   see `PERFORMANCE-HANDOFF.md`.
-15. [x] Continue node `writeSyntax` pass. Cut bounded `List`/`Sequence`
-   async-capable render scaffolding without changing render semantics:
-   `List` no longer allocates a local render-node closure or nested async rest
-   function on the sync path, `List[Symbol.iterator]` returns the array
-   iterator directly instead of using a generator wrapper, and `Sequence`
-   moves async rest work out of per-call nested functions into private methods
-   reached only after a thenable is observed. Focused list/sequence/spaced and
-   render-buffer tests passed. Hotpath leash was mixed and status-only; see
-   `PERFORMANCE-HANDOFF.md`.
-15a. [x] Continue node `writeSyntax`/render pass across Call, AtRule, and
-   Ruleset. `Call.serializeRenderedArgs(...)` now returns immediately for
-   zero-arg calls without opening a writer mark. `AtRule.render(...)` and
-   `Ruleset.render(...)` no longer allocate their sync-path local
-   render/result helper closures on every render; the same staging lives on
-   class methods, with async continuations only after a thenable appears.
-   `Ruleset` ampersand composition replaced selector `slice(...)`, spread
-   merge, and push-spread flattening with indexed loops and pre-sized arrays.
-   Focused call/at-rule/ruleset/selector/extend tests passed. Hotpath leash was
-   status-only; see `PERFORMANCE-HANDOFF.md`.
-15b. [x] Continue AtRule/Ruleset header pass. `AtRule` now has a direct
-   source `writeSyntax(...)`, and `AtRule.getHeaderString(...)` writes
-   name/prelude syntax directly instead of calling child public
-   `toString(...)` inside local capture helper functions. Prelude boundary
-   trivia is emitted explicitly through the existing trivia consumption path.
-   `Ruleset` header compose now counts ampersands with a character loop instead
-   of `valueOf().match(...)` array allocation. Focused at-rule/ruleset/
-   selector/extend tests passed. Hotpath leash was status-only; see
-   `PERFORMANCE-HANDOFF.md`.
-15c. [x] Continue Declaration formatting pass. Multiline declaration value
-   formatting no longer allocates regex `match(...)` arrays for indentation or
-   closing-line checks, custom fallback formatting no longer calls
-   `valueOut.match(...)` just to preserve leading whitespace, and custom
-   interpolated render replacement evaluation uses an indexed loop instead of
-   `replacements.entries()`. Focused declaration/var-declaration/list/sequence
-   tests passed. Hotpath leash was status-only; see
-   `PERFORMANCE-HANDOFF.md`.
-15d. [x] Continue Call empty-arg pass. Explicit empty argument lists now use
-   the same empty-call fast path as missing args: render serialization returns
-   before opening an argument writer mark, source `toTrimmedString(...)`
-   recognizes empty lists as no rendered args, and source `writeSyntax(...)`
-   skips the argument mark/trim window for empty lists. Focused call tests
-   passed. Hotpath leash was mixed/noisy and status-only; see
-   `PERFORMANCE-HANDOFF.md`.
-15e. [x] Continue render closure scaffold pass. `Call.renderPlainFunctionCall(...)`
-   and `Call.renderFinalizedCallSyntax(...)` no longer allocate per-call
-   `finishCall` closures; finishing lives on private class methods and async
-   continuations only jump there after rendered args settle. `AtRule.renderLeafValue(...)`
-   no longer allocates a local render-node closure for each leaf render.
-   Rejected cut: `QueryCondition` static shared-flat-buffer render still needs
-   the returned full string while keeping split buffer parts, so deleting that
-   `getSince(...)` requires a render-buffer contract change and is not a
-   local cleanup. Focused call/at-rule/render-buffer tests passed. Hotpath
-   leash was status-only; see `PERFORMANCE-HANDOFF.md`.
+14. [ ] Finish the node `writeSyntax` render/stringification rewrite across the
+   remaining node families in `NODE-REWRITE-TRACKER.md`. This is a whole-task
+   queue item: it is not complete until remaining open families have either
+   direct render/stringification separation, documented cold public
+   materialization boundaries, or an explicit semantic/benchmark blocker.
+   Partial status:
+   - `Mixin`, `Interpolated`, `InterpolatedSelector`, and `QueryCondition` have
+     bounded direct-writer and sync-loop cuts, but remaining cold replacement,
+     dynamic child render, and materialization boundaries keep the task open.
+   - `List` and `Sequence` have async-capable render scaffolding cuts, direct
+     writer hooks, and generator/callback deletions, but trivia-backed child
+     emission and dynamic render capture remain open.
+   - `Call`, `AtRule`, and `Ruleset` have several local closure, direct syntax,
+     empty-arg, header, and selector-array cuts. These are partial progress
+     only; callable output selection, `evalArgNodes(...)` copy pressure,
+     whole-call mark/readback, `AtRule` body-state staging, and
+     `Ruleset.getHeaderString(...)` capture/comparison boundaries remain open.
+   - `Declaration` formatting and custom interpolated replacement evaluation
+     have regex/iterator cuts, but custom-property raw source, duplicate
+     comparison/materialization, and merge-state boundaries remain open.
+   - Rejected local cut: `QueryCondition` static shared-flat-buffer render
+     still needs the returned full string while keeping split buffer parts, so
+     deleting that `getSince(...)` requires a render-buffer return-contract task
+     rather than a local cleanup.
+   Evidence for these partials is in `NODE-REWRITE-TRACKER.md` and
+   `PERFORMANCE-HANDOFF.md`; do not create new queue entries for additional
+   one-line cuts inside this item.
 16. [ ] Continue `Reference` before moving to the next node. Audit and cut the
    remaining copy/materialization pressure: `createRulesLikeReferenceSurface`,
    public `evaluateReferenceValueNode(...)` materialization, merged assign
@@ -889,7 +872,10 @@ the gate passed.
 
 ## When Done
 
-1. Update the queue item status.
+1. Update queue status only at the whole-task level. Mark a queue checkbox done
+   only when the stated task objective is complete against its proof surface.
+   Otherwise record the change as partial status under the still-open item and
+   keep the checkbox open.
 2. Replace the self-prosecution block below with exact files/functions and a
    clear verdict for the current pass. Do not append pass history.
 3. If the pass produced benchmark/profile evidence, add the evidence summary to
@@ -913,50 +899,19 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Call/AtRule render closure scaffold cuts.
+Current pass: queue granularity guidance and handoff cleanup.
 
-- New traversal: none added.
-- New node/materialization: none added. This pass did not add `new Node`,
-  copied nodes, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen state,
-  parent restoration, source metadata mutation, or callable/call
-  materialization.
-- Render path: `Call.renderPlainFunctionCall(...)` and
-  `Call.renderFinalizedCallSyntax(...)` now jump to private finish methods
-  instead of allocating per-render `finishCall` closures. `AtRule.renderLeafValue(...)`
-  now calls a private leaf-node string helper instead of allocating a local
-  render-node closure. No render path resolves into arrays/nodes just to
-  stringify.
-- Helper/API surface: three private methods were added:
-  `finishPlainFunctionCall(...)`, `finishFinalizedCallSyntax(...)`, and
-  `renderLeafNodeToString(...)`. They replace per-call closure creation in
-  existing render paths and are node-local, private, and non-public.
+- New traversal: none added. Docs-only change.
+- New node/materialization: none added. Docs-only change.
+- Render path: no code path changed.
+- Helper/API surface: none added.
 - Metadata mutations: none added.
-- Error/control flow: no new routine error-control semantics. The diff shows
-  one `try/finally` because `AtRule.renderLeafValue(...)` moved its existing
-  writer `restore(mark)` guard from a local closure into
-  `renderLeafNodeToString(...)`; the guard still restores writer state after
-  temporary leaf serialization and does not encode expected misses or branch
-  results as errors.
-- Rejected cut: `QueryCondition` static shared-flat-buffer render still returns
-  the full string while preserving split buffer parts. Focused tests prove that
-  deleting its `getSince(...)` locally would change the current buffer/render
-  contract; queue it only behind an explicit render-buffer return-contract
-  change.
-- Evidence: pre-pass hotpath leash at `e575d35d`: `functions` `14.73ms`
-  usable, `import-reference` `23.89ms` usable, `mixins-guards` `17.86ms`
-  usable, `extend-chaining` `5.87ms` usable, `media` `5.41ms` usable. Dirty
-  post-pass leash: `functions` `15.87ms` unstable, `import-reference`
-  `24.90ms` usable, `mixins-guards` `18.06ms` unstable, `extend-chaining`
-  `6.40ms` unstable, `media` `6.49ms` usable. This is status only, not a speed
-  claim. Focused tests passed:
-  `pnpm --filter @jesscss/core test -- src/tree/__tests__/call.test.ts`
-  (`81` passed) and
-  `pnpm --filter @jesscss/core test -- src/tree/__tests__/at-rule.test.ts src/tree/__tests__/node-render-buffer.test.ts`
-  (`92` passed).
-- Verdict: accept the render closure scaffold deletion. Remaining open work:
-  `Call.evalArgNodes(...)` copy pressure, whole-call mark/readback, callable
-  output selection, custom-property raw source branches, merge-state/materialization
-  boundaries, the final `serializeRulesContainer(...)` string-header boundary,
-  deeper `Ruleset.getHeaderString(...)` capture/comparison paths, `AtRule` body-state
-  branch ladders, `Reference` materialization, selector/extend equality,
-  `StyleImport` placement copies, and the coherent binding-handle model.
+- Error/control flow: none added.
+- Evidence: handoff guidance now explicitly says queue items must be whole
+  tasks, not one-line cuts; `When Done` now forbids checking off an item unless
+  the stated task objective is complete against its proof surface. The recent
+  `15a` through `15e` micro-items were collapsed into partial status under the
+  still-open node `writeSyntax` render/stringification rewrite item.
+- Verdict: accept. Future queue passes must complete substantial task bundles,
+  or record partial progress under the open whole-task item without creating
+  new numbered micro-items.
