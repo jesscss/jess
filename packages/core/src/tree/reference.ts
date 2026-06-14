@@ -324,18 +324,12 @@ type RulesReferenceLookupContext = {
   hasTarget: boolean;
   valueKey: NormalizedLookupKey;
   env: RulesLookupAdapterEnv;
-  preparedTarget?: PreparedTargetLookup;
-  preparedRulesParent?: PreparedTargetLookup;
-  preparedSourceRulesParent?: PreparedTargetLookup;
+  preparedRules?: Rules;
+  preparedShape?: RulesLookupHandleShape;
 };
 
 type PreparedReferenceLookup = {
   env: RulesLookupAdapterEnv;
-};
-
-type PreparedTargetLookup = {
-  rules: Rules;
-  shape: RulesLookupHandleShape;
 };
 
 type ReferenceDeclarationFindOptions = DeclarationFindOptions & { context: Context };
@@ -477,22 +471,22 @@ function buildRulesLookupHandleShape(args: BuildReferenceLookupShapeArgs): Rules
   };
 }
 
-function prepareRulesLookupTarget(
+function prepareRulesLookupShape(
   lookupContext: RulesReferenceLookupContext,
   targetRules: Rules
-): PreparedTargetLookup {
-  return {
-    rules: targetRules,
-    shape: buildRulesLookupHandleShape({
-      referenceNode: lookupContext.referenceNode,
-      lookupType: lookupContext.lookupType,
-      target: lookupContext.target,
-      targetRules,
-      resolution: lookupContext.resolution,
-      isInterpolatedVariable: lookupContext.isInterpolatedVariable,
-      context: lookupContext.context
-    })
-  };
+): RulesLookupHandleShape {
+  const shape = buildRulesLookupHandleShape({
+    referenceNode: lookupContext.referenceNode,
+    lookupType: lookupContext.lookupType,
+    target: lookupContext.target,
+    targetRules,
+    resolution: lookupContext.resolution,
+    isInterpolatedVariable: lookupContext.isInterpolatedVariable,
+    context: lookupContext.context
+  });
+  lookupContext.preparedRules = targetRules;
+  lookupContext.preparedShape = shape;
+  return shape;
 }
 
 function lookupTypeNeedsContextualStart(lookupType: LookupType): boolean {
@@ -735,7 +729,7 @@ function lookupLeakyRulesReferenceTargets(args: {
 }): MaybePromise<RulesLookupResult> {
   const rulesParent = args.rulesParent;
   if (isNode(rulesParent, N.Rules)) {
-    args.lookupContext.preparedRulesParent ??= prepareRulesLookupTarget(args.lookupContext, rulesParent);
+    prepareRulesLookupShape(args.lookupContext, rulesParent);
     const result = performRulesReferenceLookup(rulesParent, args.lookupContext);
     if (isThenable(result)) {
       return Promise.resolve(result).then((resolved) => {
@@ -746,7 +740,7 @@ function lookupLeakyRulesReferenceTargets(args: {
         if (!isNode(sourceRulesParent, N.Rules) || sourceRulesParent === rulesParent) {
           return undefined;
         }
-        args.lookupContext.preparedSourceRulesParent ??= prepareRulesLookupTarget(args.lookupContext, sourceRulesParent);
+        prepareRulesLookupShape(args.lookupContext, sourceRulesParent);
         return performRulesReferenceLookup(sourceRulesParent, args.lookupContext);
       });
     }
@@ -759,7 +753,7 @@ function lookupLeakyRulesReferenceTargets(args: {
   if (!isNode(sourceRulesParent, N.Rules) || sourceRulesParent === rulesParent) {
     return undefined;
   }
-  args.lookupContext.preparedSourceRulesParent ??= prepareRulesLookupTarget(args.lookupContext, sourceRulesParent);
+  prepareRulesLookupShape(args.lookupContext, sourceRulesParent);
   return performRulesReferenceLookup(sourceRulesParent, args.lookupContext);
 }
 
@@ -814,13 +808,9 @@ function performRulesReferenceLookup(
     valueKey,
     env
   } = lookupContext;
-  const preparedShape = lookupContext.preparedTarget?.rules === scope
-    ? lookupContext.preparedTarget.shape
-    : lookupContext.preparedRulesParent?.rules === scope
-      ? lookupContext.preparedRulesParent.shape
-      : lookupContext.preparedSourceRulesParent?.rules === scope
-        ? lookupContext.preparedSourceRulesParent.shape
-        : undefined;
+  const preparedShape = lookupContext.preparedRules === scope
+    ? lookupContext.preparedShape
+    : undefined;
   const shape = preparedShape ?? buildRulesLookupHandleShape({
     referenceNode,
     lookupType,
@@ -1067,8 +1057,7 @@ function lookupResolvedReference(args: {
   const targetRules = isNode(resolvedTarget, N.Rules) ? resolvedTarget : undefined;
   let handleShape: RulesLookupHandleShape | undefined;
   if (targetRules) {
-    lookupContext.preparedTarget = prepareRulesLookupTarget(lookupContext, targetRules);
-    handleShape = lookupContext.preparedTarget.shape;
+    handleShape = prepareRulesLookupShape(lookupContext, targetRules);
     const handleResult = readRulesLookupHandle({
       referenceNode,
       targetRules,

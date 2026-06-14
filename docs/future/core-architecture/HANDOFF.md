@@ -64,8 +64,8 @@ Registryless lookup is the active runtime direction.
 - Current miss sentinel: `null` inside existing direct declaration and
   callable lookup maps means the key was prepared and missed. Absent key means
   uncovered.
-- Current narrow helper to audit:
-  - `prepareRulesLookupTarget(...)`
+- Current prepared shape helper:
+  - `prepareRulesLookupShape(...)`
 
 Recent baseline commit: `054fc959` trimmed this handoff to active guidance.
 Last smoke from the lookup pass was usable but not a speed claim:
@@ -75,33 +75,34 @@ Last smoke from the lookup pass was usable but not a speed claim:
 
 Complete every item in this queue before committing the next pass.
 
-7ef. [ ] Prepared-shape lookup-context shape audit.
-Scope: `preparedTarget`, `preparedRulesParent`, `preparedSourceRulesParent`,
-and `performRulesReferenceLookup(...)`.
-Goal: determine whether the three prepared-shape slots should collapse into
-one tiny current-scope shape path without reintroducing repeated object
-construction or generic helper branching.
-Acceptance: reference callable/function handle, leaky fallback,
-ambient-output, import/reference tests, lint, builds, aggressive review.
+7ei. [ ] ScopeFrame child-callable coverage fact.
+Scope: `ScopeFrame`, `prepareCallableLookupFrame(...)`,
+`hasDirectLookupChildSurface(...)`, and exact callable/mixin child-surface
+flags.
+Goal: carry enough child-surface capability on the frame that simple exact
+callable misses can stop from frame facts without asking `Rules` to rediscover
+child-surface coverage.
+Acceptance: callable bucket, static miss, child callable surface,
+terminal mixin-only, fallback-frame, namespace tests, lint, builds, aggressive
+review.
 
-7eg. [ ] Null miss sentinel type containment.
-Scope: `directDeclarationsByName`, `callableLookupCache`,
-`callableBucketsByName`, `getDirectDeclarationBucket(...)`,
-`getCallableEntriesForKey(...)`, and `lookupScopeFrameCallable(...)`.
-Goal: keep the `null` covered-miss sentinel private to lookup internals; if it
-leaks into more callers, wrap it behind narrower accessors or split covered
-miss state without adding a registry-like side map.
-Acceptance: property/variable same-key miss, callable static miss,
-fallback-frame, terminal mixin-only, dynamic-name, and import/reference tests,
-lint, builds, aggressive review.
+7ej. [ ] Direct declaration fallback mode audit.
+Scope: `findVariableDeclaration(...)`, `findPropertyDeclaration(...)`,
+`DIRECT_DECLARATION_LOOKUP_UNCOVERED`, semantic-filtered property/declaration
+lookups, and `Reference` direct lookup call sites.
+Goal: identify one remaining declaration fallback mode that can become covered
+direct lookup without adding a second registry-style name table.
+Acceptance: property/variable source-order, semantic-filter, merge-chain or
+import/reference visibility tests as applicable, lint, builds, aggressive
+review.
 
-7eh. [ ] Last-callable miss cache audit.
-Scope: `lastCallableLookupKey`, `lastCallableLookupValue`,
-`setLastCallableLookupResult(...)`, and covered frame miss paths.
-Goal: prove last-callable result caching still saves work now that per-key
-misses are represented in `callableLookupCache`, and delete or narrow it if it
-only duplicates covered miss state.
-Acceptance: callable bucket, static miss, fallback-frame, namespace,
+7ek. [ ] Callable direct-crawl bridge audit.
+Scope: `findMixinsFast(...)`, direct bridge calls after `uncovered` frame hits,
+namespace path lookup, guard/candidate visibility, and import child surfaces.
+Goal: choose one direct-crawl bridge that can be made frame/handle-owned or
+narrowed, and reject any bridge that would require rebuilding registry
+semantics beside direct lookup.
+Acceptance: namespace, guard/candidate, import/reference, fallback-frame,
 terminal mixin-only tests, lint, builds, aggressive review.
 
 ## Backlog Sources
@@ -152,19 +153,21 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: helper/sentinel audit.
+- Latest pass: prepared-shape and callable-miss cache audit.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
 - New traversal: none.
-- New node/materialization: none. The retained empty-array sentinels were
-  deleted; `null` now represents covered misses in the existing maps.
+- New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: `prepareRulesLookupTarget(...)` kept; it remains a net
-  deletion versus four repeated prepared-shape literals and has no public API.
+- Helper/API surface: `prepareRulesLookupShape(...)` replaced
+  `prepareRulesLookupTarget(...)` and collapses three prepared-shape slots to
+  one current prepared scope/shape pair.
 - Metadata mutations: none.
 - Evidence: focused lint and lookup suite passed (`6` files, `285` passed,
-  `290` skipped); binding residue grep and `git diff --check` passed;
+  `290` skipped). `null` miss sentinel remained contained to existing lookup
+  maps, and last-callable result caching no longer stores covered undefined
+  misses. Binding residue grep and `git diff --check` passed;
   `@jesscss/core` build passed with only the existing `js-expr.ts` direct-eval
-  warning; aggressive review passed with prosecuted existing-map/null-sentinel
-  danger tokens; node-creation audit passed; `jess` build passed; one-iteration
-  hotpath smoke passed with usable signal: `mixins-guards.less` `19.67ms`,
-  `scope-lookup-stress.less` `69.51ms`. No speed claim is made.
+  warning; aggressive review passed with no scoped danger tokens; node-creation
+  audit passed; `jess` build passed; one-iteration hotpath smoke passed with
+  usable signal: `mixins-guards.less` `23.11ms`, `scope-lookup-stress.less`
+  `92.74ms`. No speed claim is made.

@@ -1304,7 +1304,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private setLastCallableLookupResult(key: string | undefined, value: MixinEntry[] | undefined): void {
-    if (key === undefined) {
+    if (key === undefined || value === undefined) {
+      if (key !== undefined && this.lastCallableLookupKey === key) {
+        this.lastCallableLookupKey = undefined;
+        this.lastCallableLookupValue = undefined;
+      }
       return;
     }
     this.lastCallableLookupKey = key;

@@ -2468,6 +2468,7 @@ describe('Mixin', () => {
         expect(root.findMixin('.frame-missing', 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
         expect(root.callableLookupCache?.get('.frame-missing')).toBeNull();
+        expect(root.lastCallableLookupKey).toBeUndefined();
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }
