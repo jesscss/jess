@@ -356,9 +356,9 @@ function findWithinScopeSurface(
   childStart: number | undefined,
   local: boolean,
   readonly: boolean,
-  visited: Set<Rules>
+  visited?: Set<Rules>
 ): MatchState {
-  if (visited.has(scope)) {
+  if (visited?.has(scope)) {
     return createEmptyState(readonly);
   }
   const cacheKey = getRecursiveLookupCacheKey(key, strategy, options, start, local, readonly);
@@ -366,7 +366,6 @@ function findWithinScopeSurface(
   if (cached) {
     return cached;
   }
-  visited.add(scope);
 
   const includeLiveBindings = strategy.includeLiveBindings && options.includeLiveBindings !== false;
   if (strategy.prepareScopeFrame && includeLiveBindings) {
@@ -441,6 +440,8 @@ function findWithinScopeSurface(
     isNode(lexicalParentRules, N.Rules)
     && lexicalParentRules !== scope
   ) {
+    visited ??= new Set<Rules>();
+    visited.add(scope);
     const lexicalState = findWithinScopeSurface(
       lexicalParentRules as Rules,
       key,
@@ -473,6 +474,8 @@ function findWithinScopeSurface(
 
   const lookupType = strategy.lookupVisibility;
   const context = options.context;
+  visited ??= new Set<Rules>();
+  visited.add(scope);
   for (let i = childEntries.length - 1; i >= 0; i--) {
     const entry = childEntries[i]!;
     if (!canEnterRulesEntryForLookup(entry, {
@@ -553,8 +556,7 @@ function findDeclarationWithStrategy(
       currentStart,
       currentChildStart,
       Boolean(lookupOptions.local),
-      readonly,
-      new Set<Rules>()
+      readonly
     );
     readonly ||= state.readonly;
     publicMatch = chooseTraversalMatch(publicMatch, state.publicMatch);
@@ -599,8 +601,7 @@ function findDeclarationWithStrategy(
       undefined,
       undefined,
       Boolean(lookupOptions.local),
-      readonly,
-      new Set<Rules>()
+      readonly
     );
     readonly ||= state.readonly;
     if (state.publicMatch) {

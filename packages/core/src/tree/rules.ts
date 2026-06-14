@@ -1774,7 +1774,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return undefined;
     }
 
-    let remainder: string[] | undefined;
+    let remainder: string | string[] | undefined;
     let nestedOptions: CallableFindOptions | undefined;
     let resolved: MixinEntry[] | undefined;
     let resolvedOwned = false;
@@ -1786,7 +1786,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!mixinHasNoRequiredParams(entry)) {
         continue;
       }
-      remainder ??= collectKeyRemainder(keys, 1);
+      remainder ??= keys.length === 2 ? keys[1]! : collectKeyRemainder(keys, 1);
       nestedOptions ??= {
         ...options,
         searchParents: false

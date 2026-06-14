@@ -1223,7 +1223,7 @@ function resolveInitialReferenceTarget(
     runtimeLiveSlotKey = String(runtimeKey);
   }
   const runtimeParentHasLiveSlot = runtimeLiveSlotKey !== undefined
-    && runtimeRulesParent?._scopeFrame?.liveSlotsByName.has(runtimeLiveSlotKey);
+    && runtimeRulesParent?._scopeFrame?.currentBindingsByName.get(runtimeLiveSlotKey)?.live === true;
   const resolvedTarget = target
     ? target.eval(context)
     : runtimeParentHasLiveSlot

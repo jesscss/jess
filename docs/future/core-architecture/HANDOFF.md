@@ -75,33 +75,38 @@ child-surface checks. Last full gate smoke was usable but not a speed claim:
 Current pass collapses current binding wrappers into direct `BindingCell`
 entries, deletes Reference declaration pass-through wrappers, and skips a
 terminal mixin-only exact-ruleset namespace probe.
+Current pass makes direct declaration recursion state lazy, reads runtime live
+ownership from the current binding cell, and avoids a namespace remainder array
+for two-segment mixin namespace descent.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7eo. [ ] Direct declaration recursion cache tightening.
-Scope: `findWithinScopeSurface(...)`, `visitedParents`, recursive child
-`visited` sets, direct declaration cache keys, and fallback-frame traversal.
-Goal: remove or narrow one hot lookup `Set` allocation path by carrying the
-smallest necessary visited state without weakening circular-protection tests.
-Acceptance: recursive namespace/import, fallback-frame, source-order,
-property/variable, readonly, semantic-filter tests, lint, builds, aggressive
-review.
+7er. [ ] Direct declaration parent-cycle state audit.
+Scope: `findDeclarationWithStrategy(...)`, `visitedParents`, fallback-frame
+traversal, and `getDeclarationParentSearchStep(...)`.
+Goal: narrow the remaining parent-cycle `Set` work without losing circular
+parent/fallback protection; reject if the proof requires new broad traversal.
+Acceptance: parent/fallback circular protection, fallback-frame, source-order,
+readonly, property/variable tests, lint, builds, aggressive review.
 
-7ep. [ ] Binding cell current-map ownership cleanup.
-Scope: `BindingCell.live`, `liveSlotsByName`, `currentBindingsByName`,
-runtime params, iteration vars, and assignment writes.
-Goal: prove whether `liveSlotsByName` still needs to be a hot lookup participant
-or can become cold/compat state now that current bindings carry cells directly.
-Acceptance: live param, `@arguments`, iteration var, readonly assignment,
-snapshot vs live reads, fallback-frame tests, lint, builds, aggressive review.
+7es. [ ] Live-slot compatibility surface audit.
+Scope: `liveSlotsByName`, `BindingCell.live`, callable live-slot creation,
+import configured vars, and direct reference target resolution.
+Goal: decide the next safe reduction for `liveSlotsByName`: keep it as cold
+compat/debug state, remove one hot `.has/.get` use, or document the remaining
+semantic owner that still needs the map.
+Acceptance: mixin params, `@arguments`, import configured variables, iteration
+vars, readonly assignment, snapshot/live reads, lint, builds, aggressive review.
 
-7eq. [ ] Callable namespace allocation audit.
-Scope: `findMixin(...)` multi-key branch, `collectKeyRemainder(...)`,
-compound-prefix union, namespace mixin descent, and terminal mixin-only options.
-Goal: remove one array/object allocation in namespace lookup without duplicating
-namespace inference or changing ruleset-as-namespace behavior.
+7et. [ ] Callable namespace option allocation audit.
+Scope: `findCallableDescendantsWithinMixinNamespaces(...)`,
+`findCompoundPrefixCallableRulesetPathFast(...)`, nested `searchParents:false`
+options, and compound union ownership.
+Goal: remove one nested options or union-copy allocation in namespace lookup
+without duplicating namespace inference or changing ruleset-as-namespace
+behavior.
 Acceptance: namespace, recursive namespace, compound-prefix, terminal
 mixin-only, ruleset namespace with args, import/reference tests, lint, builds,
 aggressive review.
@@ -154,30 +159,25 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding-cell current map and wrapper deletion.
+- Latest pass: lazy declaration recursion state and namespace allocation trim.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
-- New traversal: no new loop/recursion. The scoped `filter(...)` danger token is
-  the pre-existing declaration predicate call, still guarded behind the same
-  lookup option and not an array helper.
+- New traversal: no new loop/recursion. Direct declaration recursion now lazily
+  allocates `visited` only when entering lexical/child recursion instead of at
+  every parent/fallback surface.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: removed `CurrentBindingEntry` and Reference
-  `lookup*DeclarationOrFind(...)` pass-through helpers. `currentBindingsByName`
-  now stores `BindingCell` directly, and `ScopeFrame` declaration lookup results
-  return direct `cell`/`sourceNode` fields instead of nested entry wrappers.
-- Metadata mutations: `BindingCell.live` is set when constructing or installing
-  live cells; this is semantic binding state that avoids a second
-  `liveSlotsByName.get(...)` probe on direct current-binding reads. The
-  `sourceNode` reads are existing binding provenance, not parent/source
-  mutation. `currentBindingsByName` remains the existing frame map; this pass
-  changes its value shape from wrapper objects to cells instead of adding a side
-  map.
+- Helper/API surface: none added.
+- Metadata mutations: none. The runtime initial-target check now reads
+  `currentBindingsByName.get(key)?.live` instead of probing `liveSlotsByName`.
+- Allocation changes: two-segment mixin namespace descent now passes the
+  remaining key string directly instead of allocating a one-element remainder
+  array.
 - Evidence: focused lint passed; focused lookup suite passed (`6` files,
-  `285` passed, `290` skipped). Affected scope/reference subset passed
-  (`2` files, `74` passed, `77` skipped). Binding residue grep and
+  `285` passed, `290` skipped). Affected reference/scope/mixin subset passed
+  (`3` files, `31` passed, `264` skipped). Binding residue grep and
   `git diff --check` passed; `@jesscss/core` build passed with only the
   existing `js-expr.ts` direct-eval warning; aggressive review passed with
   documented scoped danger tokens; node-creation audit passed; `jess` build
   passed; one-iteration hotpath smoke passed with usable signal:
-  `mixins-guards.less` `28.62ms`, `scope-lookup-stress.less` `81.85ms`. No
+  `mixins-guards.less` `24.61ms`, `scope-lookup-stress.less` `94.83ms`. No
   speed claim is made.
