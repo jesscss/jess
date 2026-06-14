@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction, style } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { getRulesEntryTraversalState } from '../util/lookup-utils.js';
@@ -2509,6 +2509,64 @@ describe('Mixin', () => {
 
         expect(root.findMixin(['#missing-namespace', '.leaf'], 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: ruleset namespace miss skips mixin ambiguity crawl when frame miss is covered', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '#missing-ruleset-namespace') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          ruleset({
+            selector: el('#other-ruleset-namespace'),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          })
+        ]);
+        root.getScopeFrame();
+
+        expect(root.findMixin(['#missing-ruleset-namespace', '.leaf'], undefined)).toBeUndefined();
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: static miss coverage stays false for reference imports', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.reference-import-missing') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          style({
+            path: quoted(any('reference-import.jess'))
+          }, {
+            type: 'import',
+            importOptions: { reference: true }
+          })
+        ]);
+        root.getScopeFrame();
+
+        expect(root.findMixin('.reference-import-missing', 'Mixin')).toBeUndefined();
+        expect(root._scopeFrame?.mixinCallableMissesCovered).toBe(false);
+        expect(root._scopeFrame?.mixinCallableMissCoverageKnown).toBe(true);
+        expect(fastPathHits.length).toBeGreaterThan(0);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }

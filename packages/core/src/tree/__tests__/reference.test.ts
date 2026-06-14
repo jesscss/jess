@@ -2798,8 +2798,43 @@ describe('reference', () => {
       const first = await colorRef.eval(context);
       expect(first.valueOf()).toBe('red');
       expect(colorRef._rulesLookupHandle?.lookupType).toBe('variable');
+      expect(colorRef._rulesLookupHandle?.returnVal).toMatchObject({
+        kind: 'scope-frame-variable-binding-handle'
+      });
 
       setScopeFrameLiveBinding(node.getScopeFrame(), 'color', {
+        value: any('blue')
+      });
+      const second = await colorRef.eval(context);
+
+      expect(second.valueOf()).toBe('blue');
+      expect(colorRef.render(context)).toBe('blue');
+    });
+
+    it('static variable handle invalidates when a parent frame replaces the current cell', async () => {
+      const colorRef = ref({ key: 'color' }, { type: 'variable' });
+      const childRules = rules([
+        decl({
+          name: any('seen'),
+          value: colorRef
+        })
+      ]);
+      const root = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        ruleset({
+          selector: el('.scope'),
+          rules: childRules
+        })
+      ]);
+      context.root = root;
+      context.rulesContext = childRules;
+      childRules.scopeFrame = childRules.getScopeFrame(root.getScopeFrame());
+
+      const first = await colorRef.eval(context);
+      expect(first.valueOf()).toBe('red');
+      expect(colorRef._rulesLookupHandle?.lookupType).toBe('variable');
+
+      setScopeFrameLiveBinding(root.getScopeFrame(), 'color', {
         value: any('blue')
       });
       const second = await colorRef.eval(context);
@@ -4231,6 +4266,9 @@ describe('reference', () => {
         const lookupRef = ref({ key: 'color' }, { type: 'property' });
 
         expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        expect(lookupRef._rulesLookupHandle?.returnVal).toMatchObject({
+          kind: 'declaration-occurrence-handle'
+        });
         expect(propertyLookups).toBe(0);
 
         expect(lookupRef.eval(context).valueOf()).toBe('blue');
@@ -4242,6 +4280,29 @@ describe('reference', () => {
       } finally {
         RulesClass.prototype.findProperty = originalFindProperty;
       }
+    });
+
+    it('static property occurrence handles invalidate when owner rules changes', async () => {
+      const childRules = rules([
+        decl({ name: 'color', value: any('blue') })
+      ]);
+      const root = rules([
+        ruleset({
+          selector: el('.scope'),
+          rules: childRules
+        })
+      ]);
+      setRulesContext(await root.eval(context));
+      const lookupRef = ref({ key: 'color' }, { type: 'property' });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle?.returnVal).toMatchObject({
+        kind: 'declaration-occurrence-handle'
+      });
+
+      childRules.push(decl({ name: 'color', value: any('green') }));
+
+      expect(lookupRef.eval(context).valueOf()).toBe('green');
     });
 
     it('static declaration references use direct declaration lookup before binding handle reuse', async () => {

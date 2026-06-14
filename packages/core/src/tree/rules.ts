@@ -1628,12 +1628,30 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!segment) {
         return DEFINITE_MISS;
       }
-      if (scope.findMixinsFast(segment, {
-        hasTarget: options.hasTarget,
-        local: options.local,
-        includeRulesets: false,
-        searchParents
-      }).length > 0) {
+      let hasMixinNamespace = false;
+      let mixinNamespaceCovered = false;
+      if (scope._scopeFrame && !options.hasTarget && !options.local) {
+        scope.prepareCallableLookupFrame(scope._scopeFrame, segment, false);
+        const frameHit = lookupScopeFrameCallable(scope._scopeFrame, segment, {
+          includeRulesets: false,
+          searchParents
+        });
+        if (frameHit.kind === 'hit') {
+          hasMixinNamespace = true;
+          mixinNamespaceCovered = true;
+        } else if (frameHit.kind === 'miss') {
+          mixinNamespaceCovered = true;
+        }
+      }
+      if (!mixinNamespaceCovered) {
+        hasMixinNamespace = scope.findMixinsFast(segment, {
+          hasTarget: options.hasTarget,
+          local: options.local,
+          includeRulesets: false,
+          searchParents
+        }).length > 0;
+      }
+      if (hasMixinNamespace) {
         return undefined;
       }
 

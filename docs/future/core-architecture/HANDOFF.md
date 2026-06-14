@@ -84,45 +84,52 @@ Current pass lets static variable lookup handles store binding-cell identity
 instead of a materialized runtime value, copies direct declaration cache records
 at the cache boundary, and lets frame-covered mixin namespace misses stop before
 `findMixinsFast(...)`.
+Current pass carries owner frames on variable binding hits so handles validate
+parent/fallback cell replacement, stores property/declaration handles as
+validated occurrence records, and lets ruleset namespace lookup use frame facts
+for the first-segment mixin ambiguity check.
+Current pass lets reusable variable handles finalize and raw-render directly
+from binding cells, makes declaration occurrence handles validate owner lookup
+version for child/source-order mutation, and proves reference imports keep
+callable frame miss coverage uncovered.
 Last full gate smoke was usable but not a speed claim:
-`mixins-guards.less` `23.53ms`, `scope-lookup-stress.less` `74.88ms`.
+`mixins-guards.less` `24.18ms`, `scope-lookup-stress.less` `78.62ms`.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7fv. [ ] Variable handle invalidation covers parent/fallback cells.
-Scope: `Reference._rulesLookupHandle`, `ScopeFrame.parent`,
-`ScopeFrame.fallbackFrame`, current binding replacement, `:=` assignment, loop
-state mutation, mixin params, and import configured variables.
-Goal: extend the binding-cell handle guard beyond the target frame's own
-current binding map so parent/fallback/live-slot replacement cannot reuse a
-stale cell while same-cell value mutation remains cheap.
-Acceptance: repeated variable reference skips rediscovery for stable cells,
-parent/fallback/current-cell replacement invalidates, mixin params and loop vars
-stay live, assignment/readonly tests pass, lint, builds, aggressive review.
+7gb. [ ] Promote declaration occurrence slots into direct lookup cache records.
+Scope: `directDeclarationLookupCache`, declaration bucket entries,
+`DeclarationOccurrenceHandle`, owner lookup version, source-order starts, and
+public/optional match selection.
+Goal: store reusable occurrence identity at the direct lookup cache boundary so
+reference handles and direct lookup share one occurrence model instead of each
+carrying partial node/index facts.
+Acceptance: source-order, public/optional, candidate, semantic-filter, and
+child owner mutation tests pass; no new registry-like maps; lint, builds,
+aggressive review.
 
-7fw. [ ] Property/declaration handle stores occurrence identity.
-Scope: `Reference._rulesLookupHandle`, static property/declaration references,
-`directDeclarationLookupCache`, `directDeclarationsByName`, source-order starts,
-semantic filters, and candidate/optional-candidate sets.
-Goal: stop storing only materialized declaration nodes for covered property and
-declaration handles; carry occurrence/cache identity where safe and leave
-explicit uncovered modes for filtered/merge cases that still need broader facts.
-Acceptance: repeated property/declaration refs skip rediscovery, source-order
-and semantic-filter tests pass, candidate/optional candidate behavior remains
-correct, lint, builds, aggressive review.
+7gc. [ ] Collapse variable binding result and handle shapes.
+Scope: `RuntimeVarBindingWithCell`, `ScopeFrameVariableBindingHandle`,
+`lookupScopeFrameVariableBinding(...)`, assignment/raw render/finalization, and
+snapshot/live variable lanes.
+Goal: remove the remaining temporary runtime-binding wrapper from static
+frame-backed variable lookup so binding cell identity is the shared live result
+model, not an intermediate object.
+Acceptance: variable eval/render/raw lookup stays live, assignment and readonly
+semantics hold, async definition rules context tests pass, lint, builds,
+aggressive review.
 
-7fx. [ ] Callable namespace frame facts for ruleset/import cases.
-Scope: `findRulesetNamespacePathFast(...)`, `findMixinNamespacePathFast(...)`,
-`prepareCallableLookupFrame(...)`, reference imports, guard/candidate matching,
-and callable miss coverage flags.
-Goal: move the next ruleset/import namespace bridge condition into frame/handle
-facts so covered namespace misses can stop without generic direct crawl while
-unmodeled guard/import cases stay explicit.
-Acceptance: ruleset namespace, recursive namespace, compound-prefix,
-import/reference visibility, guarded callable tests, terminal mixin-only, lint,
-builds, aggressive review.
+7gd. [ ] Callable frame facts cover guarded namespace candidates without crawl.
+Scope: callable buckets, guard/candidate matching, mixin-ruleset namespace
+resolution, `terminalMixinOnly`, `prepareCallableLookupFrame(...)`, and
+`findMixinNamespacePathFast(...)`.
+Goal: use frame facts for guarded namespace hit/miss decisions where candidate
+metadata is already known, while leaving true dynamic guard cases uncovered.
+Acceptance: guarded callable, recursive namespace, mixin-ruleset with args,
+terminal mixin-only, import/reference visibility, lint, builds, aggressive
+review.
 
 ## Backlog Sources
 
@@ -172,35 +179,37 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: variable handle cell identity, direct declaration cache ownership,
-  and callable namespace frame miss coverage.
+- Latest pass: direct variable handle finalization, declaration occurrence
+  owner invalidation, and callable namespace/import frame facts.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
-- New traversal: no new parent/source walks. Variable handle reads add one
-  current-cell identity check on the target frame when the key is static. Mixin
-  namespace lookup asks an existing frame for the first segment and can stop on
-  a covered miss before the direct crawl. Test-only `fastPathHits` records the
-  old bridge being skipped.
+- New traversal: no new parent/source walks. Variable handle reads check the
+  owner frame's current cell for the static key and finalization reads the
+  existing cell directly. Ruleset namespace lookup asks an existing frame for
+  first-segment mixin ambiguity before falling back to direct crawl only when
+  the frame cannot cover the miss.
 - New node/materialization: no nodes. No AST wrappers or copied nodes.
 - Render path: unchanged.
-- Helper/API surface: adds internal `ScopeFrameVariableBindingHandle` shape and
-  shared `runtimeBindingFromCell(...)`; these replace materialized variable
-  handle values with cell/source identity for static variable handles.
+- Helper/API surface: `lookupScopeFrameVariable(...)` hit results now carry the
+  owner frame. `DeclarationOccurrenceHandle` validates static property and
+  declaration handles against parent/index and owner lookup version before
+  reuse. Small binding-handle accessors replace per-read runtime binding
+  object construction for reusable variable handles.
 - Metadata mutations: no parent/source mutation. `sourceNode` is carried through
-  the variable handle as existing binding identity, then used to rebuild the
-  same runtime binding result shape from the current cell value.
-- Allocation changes: variable handle reads rebuild a lightweight runtime
-  binding from an existing cell instead of returning a cached runtime binding
-  value. Static variable handle writes allocate a small cell/source handle
-  record only for reusable static variable refs. Direct declaration cache writes
-  allocate an owned three-field cache record instead of storing mutable
-  traversal state. Callable namespace frame misses avoid `findMixinsFast(...)`
-  for covered mixin-only namespace misses. The `try` token is test-only cleanup
-  around monkey-patched methods.
-- Evidence: focused lint passed. Focused lookup suite passed (`3` files,
-  `90` passed, `263` skipped). Larger focused lookup suite passed (`8` files,
-  `345` passed, `238` skipped). Residue grep, `git diff --check`,
-  `pnpm --filter @jesscss/core build`, and `pnpm run audit:node-creation`
-  passed. `pnpm run verify:aggressive-cutting-review` passed with documented
-  handle/cache/test danger tokens. `pnpm --filter jess build` passed. Smoke
-  benchmark only: `mixins-guards.less` `23.53ms`,
-  `scope-lookup-stress.less` `74.88ms`.
+  variable and declaration handles as existing binding identity; no source or
+  parent fields are mutated.
+- Allocation changes: variable and declaration handle writes allocate small
+  identity records. Reusable variable handle reads no longer allocate a
+  runtime binding wrapper; raw render reads the current cell value. Test-only
+  `fastPathHits` arrays and monkey-patch `try/finally` blocks prove direct
+  bridge use or skip. The handle `returnVal` object replaces cached declaration
+  nodes with explicit occurrence identity. Ruleset namespace frame misses can
+  avoid the mixin ambiguity direct crawl, while reference imports keep miss
+  coverage false.
+- Evidence: focused lint passed. Focused lookup suite passed (`4` files,
+  `122` passed, `245` skipped). Larger focused lookup suite passed (`9` files,
+  `359` passed, `238` skipped). `pnpm --filter @jesscss/core build` passed
+  with the existing `js-expr.ts` direct-eval warning. Residue grep found no
+  matches; `git diff --check`, `pnpm run verify:aggressive-cutting-review`,
+  `pnpm run audit:node-creation`, and `pnpm --filter jess build` passed.
+  Smoke only: `mixins-guards.less` `24.18ms`,
+  `scope-lookup-stress.less` `78.62ms`.

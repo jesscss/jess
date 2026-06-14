@@ -64,11 +64,13 @@ export type ScopeFrameVariableLookupResult =
     kind: 'live';
     cell: BindingCell;
     sourceNode?: Node;
+    frame: ScopeFrame;
   }
   | {
     kind: 'declaration';
     cell: BindingCell;
     sourceNode: Node;
+    frame: ScopeFrame;
   }
   | {
     kind: 'miss';
@@ -359,7 +361,8 @@ export function lookupScopeFrameVariable(
             return {
               kind: 'live',
               cell: currentCell,
-              sourceNode
+              sourceNode,
+              frame: f
             };
           }
         } else if (
@@ -372,7 +375,8 @@ export function lookupScopeFrameVariable(
           return {
             kind: 'declaration',
             cell: currentCell,
-            sourceNode: currentCell.sourceNode
+            sourceNode: currentCell.sourceNode,
+            frame: f
           };
         }
       }
@@ -404,7 +408,8 @@ export function lookupScopeFrameVariable(
             return {
               kind: 'declaration',
               cell: entry.cell,
-              sourceNode: entry.sourceNode
+              sourceNode: entry.sourceNode,
+              frame: f
             };
           }
         }
