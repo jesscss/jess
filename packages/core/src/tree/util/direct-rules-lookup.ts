@@ -69,6 +69,7 @@ const ANY_DECLARATION_LOOKUP: DeclarationLookupStrategy = {
   skipVarsAfterBindingHit: false
 };
 const EMPTY_DIRECT_DECLARATION_FIND_OPTIONS: DirectDeclarationFindOptions = {};
+const EMPTY_DIRECT_DECLARATION_BUCKET: Declaration[] = [];
 
 type MatchState = {
   optionalMatch: Declaration | undefined;
@@ -130,7 +131,7 @@ function getDirectDeclarationBucket(
     return undefined;
   }
 
-  const bucket: Declaration[] = [];
+  let bucket: Declaration[] | undefined;
   const value = scope.value;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
@@ -141,13 +142,15 @@ function getDirectDeclarationBucket(
       continue;
     }
     if (String(node.value.name.valueOf()) === key) {
+      bucket ??= [];
       bucket.push(node);
     }
   }
-  buckets.set(key, bucket);
-  if (bucket.length === 0) {
+  if (!bucket) {
+    buckets.set(key, EMPTY_DIRECT_DECLARATION_BUCKET);
     return undefined;
   }
+  buckets.set(key, bucket);
   return bucket;
 }
 

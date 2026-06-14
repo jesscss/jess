@@ -2183,7 +2183,7 @@ Seeded next binding/lookup queue:
 
 Seeded next binding/lookup queue:
 
-7dz. [ ] Callable prepared-shape duplication task. Scope:
+7dz. [x] Callable prepared-shape duplication task. Scope:
     `lookupLeakyRulesReferenceTargets(...)`, prepared parent/source target
     shapes, and repeated object-literal shape construction. Goal: remove the
     duplication introduced while carrying fallback prepared shapes, but only if
@@ -2191,8 +2191,13 @@ Seeded next binding/lookup queue:
     become a generic lookup helper. Acceptance: reference callable/function
     handle, leaky fallback, ambient-output, import/reference tests plus
     standard gates.
+    Done. `prepareRulesLookupTarget(...)` is a narrow reference-lookup helper
+    that owns the prepared target shape for resolved targets, leaky
+    rules-parents, and source-rules-parents. It replaces four repeated
+    `buildRulesLookupHandleShape(...)` object literals with one lookup-context
+    shape constructor.
 
-7ea. [ ] Direct declaration local-before-child task. Scope:
+7ea. [x] Direct declaration local-before-child task. Scope:
     `findWithinScopeSurface(...)`, per-key empty local buckets, carried child
     declaration entries, and same-key repeated misses. Goal: determine whether
     a covered empty local bucket can let lookup skip `Rules.value` entirely on
@@ -2200,13 +2205,50 @@ Seeded next binding/lookup queue:
     uncached keys. Acceptance: property/variable source-order, child surface,
     semantic-filter, import/reference, dynamic-name, and readonly tests plus
     standard gates.
+    Done. Per-key direct declaration misses now reuse the shared
+    `EMPTY_DIRECT_DECLARATION_BUCKET`, so repeated same-key local misses stay
+    covered without allocating a retained empty bucket or rereading
+    `Rules.value`; uncached keys still scan local declarations first to preserve
+    local-before-child precedence.
 
-7eb. [ ] Callable miss bucket memory task. Scope:
+7eb. [x] Callable miss bucket memory task. Scope:
     empty arrays in `callableLookupCache`, `lookupScopeFrameCallable(...)`,
     last-callable lookup cache, and fallback-frame misses. Goal: replace empty
     array miss buckets with a cheaper sentinel or ownership bit only if it
     keeps key-covered semantics and reduces allocation without adding a
     registry-like side structure. Acceptance: callable bucket, static miss,
+    fallback-frame, terminal mixin-only, namespace, import/reference tests plus
+    standard gates.
+    Done. `callableLookupCache` now stores the shared
+    `EMPTY_CALLABLE_LOOKUP_BUCKET` for prepared key misses. This keeps
+    key-covered miss semantics for `lookupScopeFrameCallable(...)` without a
+    fresh retained empty array per missed key or a new side structure.
+
+Seeded next binding/lookup queue:
+
+7ec. [ ] Reference prepared-shape helper audit task. Scope:
+    `prepareRulesLookupTarget(...)`, `performRulesReferenceLookup(...)`, and
+    `readRulesLookupHandle(...)`. Goal: confirm the new narrow helper is
+    genuinely a net deletion and either keep it with stronger ownership tests
+    or inline a cheaper shape path if the helper adds call overhead in hot
+    reference lookups. Acceptance: reference callable/function handle,
+    leaky-fallback, ambient-output, import/reference tests plus standard gates.
+
+7ed. [ ] Direct declaration empty-bucket sentinel task. Scope:
+    `EMPTY_DIRECT_DECLARATION_BUCKET`, `directDeclarationsByName`,
+    `getDirectDeclarationBucket(...)`, and dynamic-name promotion. Goal: prove
+    the shared empty bucket cannot be mutated or mistaken for a real bucket,
+    and replace it with a boolean/key-owned sentinel only if that reduces work
+    without adding a new map. Acceptance: property/variable source-order,
+    same-key miss, child-surface, dynamic-name, `setDefined(...)`, and readonly
+    tests plus standard gates.
+
+7ee. [ ] Callable empty-bucket sentinel task. Scope:
+    `EMPTY_CALLABLE_LOOKUP_BUCKET`, `callableLookupCache`,
+    `lookupScopeFrameCallable(...)`, and last-callable lookup results. Goal:
+    prove the shared empty callable bucket cannot leak as a mutable hit bucket,
+    and replace it with a cheaper sentinel only if the result path stays
+    branch-light and key-covered. Acceptance: callable bucket, static miss,
     fallback-frame, terminal mixin-only, namespace, import/reference tests plus
     standard gates.
 
@@ -2537,6 +2579,43 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Prepared target shape and empty miss-bucket pass: accepted as binding/lookup
+  cleanup, not as a speed claim. Files:
+  `packages/core/src/tree/reference.ts`, `packages/core/src/tree/rules.ts`,
+  `packages/core/src/tree/util/direct-rules-lookup.ts`, focused lookup tests,
+  and this handoff.
+  - New traversal: none. The direct declaration scan remains the existing
+    local declaration scan for uncached keys; repeated same-key misses now read
+    the existing per-key map entry and skip `Rules.value`.
+  - New node/materialization: no AST node, wrapper `Rules`, copied node, source
+    metadata, parent mutation, or frozen state was added. The retained empty
+    declaration and callable miss buckets are now shared sentinels instead of
+    one retained empty array per missed key.
+  - Render path: unchanged. This pass only touches lookup/binding paths.
+  - Helper/API surface: added `prepareRulesLookupTarget(...)`, a private
+    reference-lookup helper. It replaces four repeated prepared-shape object
+    literals across resolved-target and leaky fallback paths; 7ec is seeded to
+    re-audit whether the helper remains a net win after this batch.
+  - Metadata mutations: none. Existing lookup invalidation remains responsible
+    for clearing `directDeclarationsByName`, callable caches, and lookup
+    versions.
+  - Danger-token prosecution: `EMPTY_DIRECT_DECLARATION_BUCKET` and
+    `EMPTY_CALLABLE_LOOKUP_BUCKET` are shared immutable-by-convention empty
+    arrays stored in existing per-`Rules` caches, not new registry state. They
+    preserve key-covered miss semantics while avoiding retained per-miss empty
+    arrays. The prepared-shape helper attaches objects only to the current
+    lookup context for known rules identities.
+  - Evidence: touched-file ESLint passed; focused reference/mixin/call/rules/
+    import/control suite passed (`6` files, `285` passed, `290` skipped);
+    binding grep found no old registry-adapter or deleted reference option
+    builder residue; `git diff --check` passed; `@jesscss/core` build passed
+    with only the existing `js-expr.ts` direct-eval warning;
+    `verify:aggressive-cutting-review` passed with prosecuted existing-cache
+    and empty-bucket sentinel danger tokens; `audit:node-creation` passed;
+    `jess` build passed. One-iteration hotpath smoke passed with usable signal:
+    `mixins-guards.less` `27.09ms`, `scope-lookup-stress.less` `73.58ms`. No
+    speed claim is made from this pass.
 
 - Per-key declaration/callable coverage and prepared fallback-shape pass:
   accepted as binding/lookup cleanup, not as a speed claim. Files:

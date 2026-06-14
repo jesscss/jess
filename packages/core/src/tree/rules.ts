@@ -648,6 +648,8 @@ function collectCallableBucketResults(
   return results;
 }
 
+const EMPTY_CALLABLE_LOOKUP_BUCKET: CallableLookupEntry[] = [];
+
 /**
  * The class representing a "declaration list".
  * CSS calls it this even though CSS Nesting
@@ -1145,7 +1147,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (bucket.length === 0 && sourceRules !== this) {
       this.collectCallableEntriesForKeyFrom(sourceRules, lookupKey, bucket);
     }
-    (this.callableLookupCache ??= new Map()).set(lookupKey, bucket);
+    (this.callableLookupCache ??= new Map()).set(
+      lookupKey,
+      bucket.length === 0 ? EMPTY_CALLABLE_LOOKUP_BUCKET : bucket
+    );
     if (this._scopeFrame) {
       this._scopeFrame.callableBucketsByName = this.callableLookupCache;
       this._scopeFrame.callablesCovered = true;
