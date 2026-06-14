@@ -723,6 +723,13 @@ the binding index/scope lookup refactor.
    - `Declaration` formatting and custom interpolated replacement evaluation
      have regex/iterator cuts, but custom-property raw source, duplicate
      comparison/materialization, and merge-state boundaries remain open.
+   - Control-family partial: `If`, `For`, and `While` eval no longer allocate
+     local `run` async closures. `While` eval/render no longer allocate the
+     generic `runWithRulesContext(...)` callback wrapper just to save/restore
+     `context.rulesContext`. `If` is complete for this tracker lane; `For` and
+     `While` stay open because loop state/body surfaces still create owned
+     iteration surfaces and copy/reuse children at real semantic placement
+     boundaries.
    - Rejected local cut: `QueryCondition` static shared-flat-buffer render
      still needs the returned full string while keeping split buffer parts, so
      deleting that `getSince(...)` requires a render-buffer return-contract task
@@ -899,19 +906,46 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: queue granularity guidance and handoff cleanup.
+Current pass: control-node eval/render callback scaffold cut under the node
+`writeSyntax` whole-task item.
 
-- New traversal: none added. Docs-only change.
-- New node/materialization: none added. Docs-only change.
-- Render path: no code path changed.
-- Helper/API surface: none added.
-- Metadata mutations: none added.
-- Error/control flow: none added.
-- Evidence: handoff guidance now explicitly says queue items must be whole
-  tasks, not one-line cuts; `When Done` now forbids checking off an item unless
-  the stated task objective is complete against its proof surface. The recent
-  `15a` through `15e` micro-items were collapsed into partial status under the
-  still-open node `writeSyntax` render/stringification rewrite item.
-- Verdict: accept. Future queue passes must complete substantial task bundles,
-  or record partial progress under the open whole-task item without creating
-  new numbered micro-items.
+- New traversal: no new traversal semantics. The diff shows existing `If`
+  branch iteration and existing `While` loop iteration because those loops moved
+  out of deleted local `run` closures into the method bodies. The loop counts,
+  visited nodes, and branch order are unchanged.
+- New node/materialization: none added. This pass did not add `new Node`,
+  copied nodes, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen state,
+  parent restoration, source metadata mutation, or materialized arrays. The two
+  `outputRules: Node[]` arrays are existing eval output accumulators moved out
+  of deleted local `run` closures; no new array allocation site or ownership
+  boundary was introduced.
+- Render path: `While.renderIterations(...)` now saves/restores
+  `context.rulesContext` directly instead of calling the generic
+  `runWithRulesContext(...)` async callback wrapper. It still writes body
+  output directly into the provided `RenderBuffer`; no render path resolves
+  into arrays/nodes just to stringify.
+- Helper/API surface: deleted the module-local `runWithRulesContext(...)`
+  helper. `If.evalNode(...)`, `For.evalNode(...)`, and `While.evalNode(...)`
+  now execute directly as async methods instead of allocating per-call local
+  `run` closures. `For.evalNode(...)` also collapsed a duplicated push branch
+  after clearing `Rules.scopeFrame`.
+- Metadata mutations: no new metadata mutations. Existing `Rules.scopeFrame`
+  cleanup and `context.rulesContext` save/restore semantics are preserved.
+- Error/control flow: no new routine error-control semantics. The diff shows
+  two `try/finally` blocks because the existing `runWithRulesContext(...)`
+  restore guard moved inline into `While.evalNode(...)` and
+  `While.renderIterations(...)`; the guard restores `context.rulesContext`
+  after loop eval/render and does not encode expected misses or branch results
+  as errors.
+- Evidence: focused tests passed:
+  `pnpm --filter @jesscss/core test -- src/tree/__tests__/control.test.ts src/tree/__tests__/node-render-buffer.test.ts`
+  (`81` passed). Pre-pass hotpath leash at `05461114`: `functions` `13.91ms`
+  unstable, `import-reference` `19.60ms` usable, `mixins-guards` `17.48ms`
+  unstable, `extend-chaining` `5.39ms` usable, `media` `5.11ms` usable. Dirty
+  post-pass leash: `functions` `14.40ms` usable, `import-reference` `19.80ms`
+  usable, `mixins-guards` `17.15ms` usable, `extend-chaining` `5.19ms`
+  usable, `media` `5.32ms` usable. This is status only, not a speed claim.
+- Verdict: accept as partial progress under the open node
+  `writeSyntax`/render rewrite task. `If` is complete for this tracker lane;
+  `For` and `While` remain open because loop state/body surfaces still require
+  a separate placement/copy audit.

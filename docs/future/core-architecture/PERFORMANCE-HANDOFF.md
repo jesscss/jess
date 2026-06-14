@@ -2368,6 +2368,35 @@ scaffold deletion. The leash is mixed/noisy and does not prove a speed win;
 watch the next full benchmark/profile before treating this as performance
 movement.
 
+### Control Node Eval Callback Scaffold Cut
+
+Date: 2026-06-13.
+
+Change: `If.evalNode(...)`, `For.evalNode(...)`, and `While.evalNode(...)`
+execute directly as async methods instead of allocating local `run` closures.
+`While.evalNode(...)` and `While.renderIterations(...)` also inline the
+`context.rulesContext` save/restore guard, deleting the generic
+`runWithRulesContext(...)` async callback wrapper. `For.evalNode(...)`
+collapses a duplicated push branch after clearing `Rules.scopeFrame`.
+
+Hotpath status:
+
+- Pre-pass bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` at `05461114` reported: `functions` median `13.91ms` unstable,
+  `import-reference` median `19.60ms` usable, `mixins-guards` median
+  `17.48ms` unstable, `extend-chaining` median `5.39ms` usable, and `media`
+  median `5.11ms` usable.
+- Dirty post-pass bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` reported: `functions` median `14.40ms` usable,
+  `import-reference` median `19.80ms` usable, `mixins-guards` median
+  `17.15ms` usable, `extend-chaining` median `5.19ms` usable, and `media`
+  median `5.32ms` usable.
+
+Interpretation: status only, not a speed claim. This is control-family
+callback/helper deletion under the node rewrite task. `If` is complete for the
+tracker lane; `For` and `While` still need loop state/body-surface placement
+work before their node-family checkboxes can close.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

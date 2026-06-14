@@ -111,20 +111,6 @@ function createGeneratedOutputRulesSurface(childNodes?: Node[]): Rules {
   return output;
 }
 
-async function runWithRulesContext<T>(
-  context: Context,
-  rulesContext: Rules,
-  run: () => Promise<T>
-): Promise<T> {
-  const savedRulesContext = context.rulesContext;
-  context.rulesContext = rulesContext;
-  try {
-    return await run();
-  } finally {
-    context.rulesContext = savedRulesContext;
-  }
-}
-
 function createIterationEvalSurface(sourceRules: Rules): Rules {
   const childNodes = new Array<Node>(sourceRules.value.length);
   for (let i = 0; i < sourceRules.value.length; i++) {
@@ -481,26 +467,23 @@ export class If extends Node<IfValue> {
     }
   }
 
-  override evalNode(context: Context): MaybePromise<Node> {
-    const run = async (): Promise<Node> => {
-      for (const branch of this.value.branches) {
-        if (!branch.condition) {
-          return branch.rules.eval(context);
-        }
-        let conditionPasses: boolean;
-        if (branch.condition instanceof Condition) {
-          conditionPasses = await branch.condition.evaluateBoolean(context);
-        } else {
-          const condition = await branch.condition.eval(context);
-          conditionPasses = condition instanceof Bool && condition.value === true;
-        }
-        if (conditionPasses) {
-          return branch.rules.eval(context);
-        }
+  override async evalNode(context: Context): Promise<Node> {
+    for (const branch of this.value.branches) {
+      if (!branch.condition) {
+        return branch.rules.eval(context);
       }
-      return createGeneratedOutputRulesSurface();
-    };
-    return run();
+      let conditionPasses: boolean;
+      if (branch.condition instanceof Condition) {
+        conditionPasses = await branch.condition.evaluateBoolean(context);
+      } else {
+        const condition = await branch.condition.eval(context);
+        conditionPasses = condition instanceof Bool && condition.value === true;
+      }
+      if (conditionPasses) {
+        return branch.rules.eval(context);
+      }
+    }
+    return createGeneratedOutputRulesSurface();
   }
 
   private async renderSelectedBranch(
@@ -577,45 +560,40 @@ export class For extends Node<StructuredLoopValue> {
     makeDirectiveRulesPublic(value.rules);
   }
 
-  override evalNode(context: Context): MaybePromise<Node> {
+  override async evalNode(context: Context): Promise<Node> {
     const { pattern, iterable } = this.value;
     const { bindingDecls, bindingNames } = getForBindingInfo(pattern);
-    const run = async (): Promise<Node> => {
-      const outputRules: Node[] = [];
-      let counter = 1;
-      const originalRules = this.value.rules;
-      const evaluatedIterable = await iterableToNode(iterable).eval(context);
-      await visitResolvedEntries(evaluatedIterable, context, async (value, key) => {
-        const iterationRules = await createForIterationSurface(
-          originalRules,
-          context,
-          bindingDecls,
-          bindingNames,
-          value,
-          key,
-          counter
-        );
-        counter++;
-        const result = await iterationRules.eval(context);
-        const iterationFrame = iterationRules.getScopeFrame();
-        attachIterationFallbackFrame(result, iterationFrame);
+    const outputRules: Node[] = [];
+    let counter = 1;
+    const originalRules = this.value.rules;
+    const evaluatedIterable = await iterableToNode(iterable).eval(context);
+    await visitResolvedEntries(evaluatedIterable, context, async (value, key) => {
+      const iterationRules = await createForIterationSurface(
+        originalRules,
+        context,
+        bindingDecls,
+        bindingNames,
+        value,
+        key,
+        counter
+      );
+      counter++;
+      const result = await iterationRules.eval(context);
+      const iterationFrame = iterationRules.getScopeFrame();
+      attachIterationFallbackFrame(result, iterationFrame);
 
-        if (isNode(result, N.Rules)) {
-          result.scopeFrame = undefined;
-          outputRules.push(result);
-        } else {
-          outputRules.push(result);
-        }
-      });
-      if (outputRules.length === 0) {
-        return createGeneratedOutputRulesSurface();
+      if (isNode(result, N.Rules)) {
+        result.scopeFrame = undefined;
       }
-      if (outputRules.length === 1) {
-        return outputRules[0]!;
-      }
-      return createGeneratedOutputRulesSurface(outputRules);
-    };
-    return run();
+      outputRules.push(result);
+    });
+    if (outputRules.length === 0) {
+      return createGeneratedOutputRulesSurface();
+    }
+    if (outputRules.length === 1) {
+      return outputRules[0]!;
+    }
+    return createGeneratedOutputRulesSurface(outputRules);
   }
 
   override resolve(context: Context): MaybePromise<Node> {
@@ -742,49 +720,50 @@ export class While extends Node<WhileValue> {
     this.value.rules.writeBracedSyntax(options);
   }
 
-  override evalNode(context: Context): MaybePromise<Node> {
-    const run = async (): Promise<Node> => {
-      const outputRules: Node[] = [];
-      const originalRules = this.value.rules;
-      const stateRules = createWhileStateSurface(originalRules, context);
-      let iterations = 0;
-      await runWithRulesContext(context, stateRules, async () => {
-        while (true) {
-          let conditionPasses: boolean;
-          if (this.value.condition instanceof Condition) {
-            conditionPasses = await this.value.condition.evaluateBoolean(context);
-          } else {
-            const condition = await this.value.condition.eval(context);
-            conditionPasses = condition instanceof Bool && condition.value === true;
-          }
-          if (!conditionPasses) {
-            break;
-          }
-          iterations++;
-          if (iterations > MAX_WHILE_ITERATIONS) {
-            throwWhileIterationLimitExceeded();
-          }
-          const iterationRules = createWhileIterationSurface(originalRules, stateRules);
-          const result = await iterationRules.eval(context);
-          if (isNode(result, N.Rules)) {
-            await syncWhileState(stateRules, result, context);
-            result.scopeFrame = undefined;
-            outputRules.push(result);
-          } else {
-            await syncWhileState(stateRules, iterationRules, context);
-            outputRules.push(result);
-          }
+  override async evalNode(context: Context): Promise<Node> {
+    const outputRules: Node[] = [];
+    const originalRules = this.value.rules;
+    const stateRules = createWhileStateSurface(originalRules, context);
+    let iterations = 0;
+    const savedRulesContext = context.rulesContext;
+    context.rulesContext = stateRules;
+    try {
+      while (true) {
+        let conditionPasses: boolean;
+        if (this.value.condition instanceof Condition) {
+          conditionPasses = await this.value.condition.evaluateBoolean(context);
+        } else {
+          const condition = await this.value.condition.eval(context);
+          conditionPasses = condition instanceof Bool && condition.value === true;
         }
-      });
-      if (outputRules.length === 0) {
-        return createGeneratedOutputRulesSurface();
+        if (!conditionPasses) {
+          break;
+        }
+        iterations++;
+        if (iterations > MAX_WHILE_ITERATIONS) {
+          throwWhileIterationLimitExceeded();
+        }
+        const iterationRules = createWhileIterationSurface(originalRules, stateRules);
+        const result = await iterationRules.eval(context);
+        if (isNode(result, N.Rules)) {
+          await syncWhileState(stateRules, result, context);
+          result.scopeFrame = undefined;
+          outputRules.push(result);
+        } else {
+          await syncWhileState(stateRules, iterationRules, context);
+          outputRules.push(result);
+        }
       }
-      if (outputRules.length === 1) {
-        return outputRules[0]!;
-      }
-      return createGeneratedOutputRulesSurface(outputRules);
-    };
-    return run();
+    } finally {
+      context.rulesContext = savedRulesContext;
+    }
+    if (outputRules.length === 0) {
+      return createGeneratedOutputRulesSurface();
+    }
+    if (outputRules.length === 1) {
+      return outputRules[0]!;
+    }
+    return createGeneratedOutputRulesSurface(outputRules);
   }
 
   private async renderIterations(
@@ -797,7 +776,9 @@ export class While extends Node<WhileValue> {
     const directMutations = getDirectIterationStateMutations(originalRules);
     let iterations = 0;
     let output = '';
-    await runWithRulesContext(context, stateRules, async () => {
+    const savedRulesContext = context.rulesContext;
+    context.rulesContext = stateRules;
+    try {
       while (true) {
         let conditionPasses: boolean;
         if (this.value.condition instanceof Condition) {
@@ -827,7 +808,9 @@ export class While extends Node<WhileValue> {
         output += await iterationRules.render(context, buffer, options);
         await syncWhileState(stateRules, iterationRules, context);
       }
-    });
+    } finally {
+      context.rulesContext = savedRulesContext;
+    }
     return output;
   }
 

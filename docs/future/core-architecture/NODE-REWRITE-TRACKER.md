@@ -145,7 +145,7 @@ first measured offenders after the selector pass.
 Current hard leftovers after the broad hook sweep:
 
 - `Rules`, `Ruleset`, `Declaration`, `AtRule`, `Call`, `Reference`,
-  `QueryCondition`, `Interpolated`, `Mixin`, `Ampersand`, and control nodes
+  `QueryCondition`, `Interpolated`, `Mixin`, `Ampersand`, and loop control nodes
   still own meaningful render/eval string-transport or branch-heavy paths.
 - Shared utility cleanup: `cast([...])` and cloning/reusable-leaf helpers now
   use straight indexed loops instead of `.map(...)`, `.some(...)`, and metadata
@@ -264,17 +264,19 @@ Current hard leftovers after the broad hook sweep:
   Broader declaration body staging remains on `Declaration`.
 - [ ] `For`: direct source syntax writer exists, range-bound closure removed,
   async-generator entry iteration is gone, per-entry tuple arrays are gone,
-  constructor binding adoption is direct, and render path already emits body
-  output directly. Loop state/body surface audit remains.
+  constructor binding adoption is direct, eval no longer allocates a local
+  `run` closure, and render path already emits body output directly. Loop
+  state/body surface audit remains.
 - [ ] `While`: direct source syntax writer exists; render path already emits
   body output directly, the state-mutation probe uses a straight loop, and
-  public render no longer allocates the control string wrapper callback. Loop
-  state/body surface audit remains.
-- [ ] `If`: direct source syntax writer exists, branch serialization avoids
+  public render no longer allocates the control string wrapper callback. Eval
+  no longer allocates a local `run` closure, and eval/render no longer allocate
+  a rules-context callback wrapper. Loop state/body surface audit remains.
+- [x] `If`: direct source syntax writer exists, branch serialization avoids
   rest-array allocation, selected branch buffer render passes the existing
   `RenderBuffer` through to `Rules.render(...)` instead of staging through a
-  detached rules string, and public render no longer allocates the control
-  string wrapper callback. Eval/body surface audit remains.
+  detached rules string, public render no longer allocates the control string
+  wrapper callback, and eval no longer allocates a local `run` closure.
 - [x] `Log`: side-effect render path stays direct; redundant public
   `toString(...)` override removed while cold empty `toTrimmedString(...)`
   remains.
