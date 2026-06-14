@@ -200,6 +200,45 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-14 AtRule Scalar Dynamic Leaf Readback And Key Cut
+
+Hypothesis: dynamic leaf at-rule render should not use child
+`mark/getSince/restore` readback for scalar `Any` name/prelude pieces when no
+trivia is active. These nodes already own the exact text needed for the final
+leaf string.
+
+Patch shape:
+
+- `renderLeafNodeToString(...)` returns `Any.value` directly when no trivia is
+  active;
+- `AtRule.valueOf()` reads `name.valueOf()` instead of public
+  `name.toString()`;
+- complex or trivia-backed leaf pieces stay on the existing readback path;
+- focused AtRule tests count marks, reads, restores, captures, and previews for
+  a dynamic scalar `@namespace` leaf path and prove `AtRule.valueOf()` does not
+  call public name string transport;
+- no runtime node, helper, array, cache, side map, copy, or public API was
+  added.
+
+After final patch, bounded hot-path leash:
+
+- `functions`: `14.42ms`, `unstable`;
+- `import-reference`: `19.88ms`, `usable`;
+- `mixins-guards`: `16.97ms`, `usable`;
+- `extend-chaining`: `5.47ms`, `usable`;
+- `media`: `5.84ms`, `usable`.
+
+Broad `benchmark.less` profiler status after the patch:
+
+- `OutputWriter.mark`: `50044`;
+- `OutputWriter.getSince`: `45048`;
+- `Reference.evalNode`: `3619`;
+- `Rules.find`: `1013`.
+
+Decision: keep as focused serialization machinery deletion only. No speed
+claim: one bounded fixture stayed unstable and the broad profiler counters did
+not move.
+
 ### 2026-06-14 QueryCondition Async Static-Sibling Probe Cut
 
 Hypothesis: `QueryCondition` async-capable render should not force static

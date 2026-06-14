@@ -303,6 +303,13 @@ Open tasks:
    and the remaining custom/instance-render fallback uses
    `hasContentSince(mark)` instead of a second `mark()` check.
 
+   Additional partial status: `AtRule` dynamic leaf render now returns scalar
+   `Any` name/prelude text directly when no trivia is active, avoiding child
+   mark/getSince/restore readback for common resolved leaf at-rules such as
+   `@namespace @var;` after the prelude resolves to a scalar. `AtRule.valueOf()`
+   also reads the name value key directly instead of routing the name through
+   public `toString(...)`.
+
    Evidence pointer: use `NODE-REWRITE-TRACKER.md` for per-node status and
    `PERFORMANCE-HANDOFF.md` for benchmark/profile history. Do not add queue
    entries for one-line cuts inside this item.
@@ -489,31 +496,32 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `QueryCondition` async render sibling probe cut.
+Current pass: `AtRule` scalar dynamic leaf render/key transport cut.
 
-- New traversal: none. The existing child loop remains; static base-render
-  children now stay on direct `writeSyntax(...)` inside async-capable
-  query-condition render instead of entering the dynamic fallback.
+- New traversal: none. The existing leaf render path still renders exactly the
+  evaluated name and optional prelude.
 - New node/materialization: no runtime nodes, copies, wrappers, arrays, or
-  materialized render values. The only `new` in the diff is a test-only
-  `CountingWriter` used to prove `QueryCondition` static siblings do not pay
-  extra render fallback marks.
-- Render path: selected node row is `QueryCondition`. The pass removes
-  render-only fallback work for static siblings and replaces
-  `w.mark() === before` checks with `!w.hasContentSince(before)` so the
-  remaining custom/instance-render fallback does not open a second mark just
-  to test whether output was written. The fallback remains only for child
-  render overrides that can return text without writing.
+  materialized render values. The only new construction is test instrumentation
+  already present in the AtRule suite's `CountingWriter` class plus focused
+  fixture nodes created by existing test factories.
+- Render path: selected node row is `AtRule`. `renderLeafNodeToString(...)`
+  now returns owned `Any.value` directly when no trivia is active, so common
+  scalar leaf name/prelude pieces do not pay child `mark()` / `getSince()` /
+  `restore()` just to assemble final leaf output. Complex/trivia-backed leaf
+  pieces stay on the old readback path. `AtRule.valueOf()` also reads
+  `name.valueOf()` instead of public `name.toString()` for equality/key text.
 - Helper/API surface: none added.
 - Metadata mutations: none.
-- Error/control flow: none.
-- Evidence: focused `query-condition` tests now prove async query conditions
-  render without resolving/materializing children and that static siblings do
-  not pay dynamic fallback probes; `node-render-buffer` stayed green. Hotpath
-  smoke after the patch was noisy/unstable on several fixtures, and broad
+- Error/control flow: no runtime error/control-flow change. The only new
+  `Error` is a focused test hook that makes `name.toString()` throw if
+  `AtRule.valueOf()` regresses to public string transport.
+- Evidence: focused `at-rule` tests prove dynamic leaf at-rules still render
+  without evaluating an at-rule surface, scalar dynamic leaf output does not
+  use child mark/readback/restore/capture/preview, and `AtRule.valueOf()` does
+  not call public name `toString(...)`. Final hotpath smoke after the patch had
+  one unstable fixture and no decision-quality speed claim; broad
   `benchmark.less` profiler counts stayed at `OutputWriter.mark` `50044` and
-  `OutputWriter.getSince` `45048`, so this is not a speed claim.
-- Verdict: accept as a bounded `QueryCondition` serialization cut. Keep the
-  `QueryCondition` tracker row open because buffer render still returns string
-  by contract and the custom child render fallback remains until child render
-  contracts are fully direct.
+  `OutputWriter.getSince` `45048`.
+- Verdict: accept as a bounded `AtRule` serialization cut. No speed claim.
+  Keep the `AtRule` tracker row open because non-scalar leaf/header readback,
+  body-state staging, and custom eval/import/render branches remain.

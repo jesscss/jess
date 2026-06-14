@@ -448,7 +448,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   /** Used for equality comparison with other at-rules */
   override valueOf() {
-    return (this._valueOf ??= (this.value.name.toString() + (this.value.prelude ? ' ' + this.value.prelude.valueOf() : '')));
+    return (this._valueOf ??= (this.value.name.valueOf() + (this.value.prelude ? ' ' + this.value.prelude.valueOf() : '')));
   }
 
   /**
@@ -676,6 +676,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private renderLeafNodeToString(node: Node, printOptions: FinalPrintOptions): string {
+    if (!printOptions.trivia && node instanceof Any) {
+      return node.value;
+    }
     const writer = printOptions.writer;
     const mark = writer.mark();
     try {

@@ -36,6 +36,9 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
 class CountingWriter extends OutputWriter {
   captures = 0;
   previews = 0;
+  marks = 0;
+  reads = 0;
+  restores = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
@@ -47,6 +50,21 @@ class CountingWriter extends OutputWriter {
   override preview(fn: () => MaybePromise<string | void>, preserveSegments?: boolean): MaybePromise<string> {
     this.previews++;
     return super.preview(fn, preserveSegments);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+
+  override restore(mark: number): void {
+    this.restores++;
+    return super.restore(mark);
   }
 }
 
@@ -621,6 +639,43 @@ describe('AtRule', () => {
     } finally {
       AtRule.prototype.eval = originalEval;
     }
+  });
+
+  it('renders scalar dynamic leaf at-rule output without child mark/readback', async () => {
+    const root = rules([
+      vardecl({
+        name: 'namespace',
+        value: any('svg')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const writer = new CountingWriter();
+    const node = atrule({
+      name: any('@namespace', { role: 'atkeyword' }),
+      prelude: ref({ key: 'namespace' }, { type: 'variable' })
+    });
+
+    expect(await Promise.resolve(node.render(context, { writer }))).toBe('@namespace svg;');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(writer.restores).toBe(0);
+    expect(writer.captures).toBe(0);
+    expect(writer.previews).toBe(0);
+  });
+
+  it('builds at-rule value keys without public name string transport', () => {
+    const name = any('@media', { role: 'atkeyword' });
+    name.toString = () => {
+      throw new Error('AtRule.valueOf should not call public name toString');
+    };
+    const node = atrule({
+      name,
+      prelude: any('screen')
+    });
+
+    expect(node.valueOf()).toBe('@media screen');
   });
 
   it('keeps source at-rule bodies canonical during dynamic direct render', async () => {
