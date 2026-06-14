@@ -304,6 +304,11 @@ Open tasks:
    `Sequence.compare(...)` instead of routing that already-owned scalar through
    public `toString(...)` transport. Container left-hand serialization remains
    because structural equality keys for list/sequence values are not finished.
+   Additional partial status: selector extend recursive search now carries one
+   mutable path stack through `searchWithinSelector*` instead of allocating
+   child path arrays with `forEach(...)` and `[...currentPath, segment]` before
+   a match exists. Stored match locations still copy the path at the ownership
+   boundary.
 19. [x] Split sync immediate eval/render from cold public materialization so
    routine sync render replacement does not imply `.inherit(...)`. `evalSync`
    remains the public sync value API and still uses the public materialization
@@ -342,6 +347,11 @@ Open tasks:
    does not remove the pending-registration `try/catch` miss path.
 24. [ ] Continue selector/extend factory cuts separately; do not hide selector
    placement copies inside another generic copy helper.
+   Partial status: `selector-match-core.ts` recursive search walkers now use
+   indexed loops plus push/pop path-stack state for selector-list, compound,
+   complex, and pseudo-selector descent. This removes per-child callback
+   closures and speculative path-array allocation from the full-search walk
+   while keeping location-path copies only at stored-match boundaries.
 25. [ ] Replace callable binding copies for static containers with explicit
    binding/placement state. Static containers should not be copied merely
    because they contain child nodes; `F_HAS_NODE_CHILD` is only a cheap current
@@ -422,25 +432,26 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: compare-time `Any` scalar transport cut in
-`packages/core/src/tree/any.ts`, `list.ts`, and `sequence.ts`.
+Current pass: selector extend recursive path-stack cut in
+`packages/core/src/tree/util/selector-match-core.ts`.
 
-- New traversal: none. No loop, recursion, callback scan, parent/source walk,
-  side-map lookup, or object/array scan was added.
-- New node/materialization: none. No nodes, wrapper rules, copies, `.inherit`,
-  `.adopt`, frozen/source metadata, or materialized arrays were added.
-- Render path: accepts. This pass does not render; it removes public string
-  transport from comparison branches that already know `other.type === 'Any'`
-  or already own the left `Any.value`.
+- New traversal: none. Existing selector-list, compound, complex, and
+  pseudo-selector recursive walks were rewritten from callback/spread descent
+  to indexed loops over the same children.
+- New node/materialization: none. No nodes, wrapper selectors, copies,
+  `.inherit`, `.adopt`, side maps, or metadata mutations were added.
+- Render path: not touched. This pass cuts selector/extend matching machinery,
+  not render output.
 - Helper/API surface: no helper, public API, or method added.
-- Metadata mutations: none. No parent/source/options/context reads or writes
-  were added.
+- Metadata mutations: one existing local `currentPath` array is now used as a
+  push/pop stack during recursive search. Stored `ExtendLocation.path` values
+  still receive their own copied array at the match boundary, so no external
+  mutable path state leaks.
 - Error/control flow: none added.
-- Evidence: focused Any/List/Sequence tests prove the touched branches do not
-  call the public `Any.toString(...)` transport; `@jesscss/core` build passes;
-  bounded hot-path benchmark was run before and after as a regression leash.
-  Treat the benchmark as sanity evidence, not a speed claim.
-- Verdict: accept as partial item 18 progress. Keep selector matching/extend
-  equality open because List/Sequence still serialize their own container text
-  for this comparison path and broader selector equality still has string-key
-  work.
+- Evidence: focused selector-match, selector-compare, process-extends, and
+  extend-eval-integration tests pass; `@jesscss/core` build passes; bounded
+  hot-path benchmark was run before and after as a regression leash. Treat the
+  benchmark as sanity evidence, not a speed claim.
+- Verdict: accept as partial items 18 and 24 progress. Keep selector/extend
+  equality open because value-key matching, selector factory remainders, and
+  broader selector string decisions remain.

@@ -1208,9 +1208,11 @@ function searchWithinSelectorList(
   currentPath: Array<string | number>,
   locations: ExtendLocation[]
 ): void {
-  selectorList.value.forEach((selector, index) => {
-    searchWithinSelector(selector, target, [...currentPath, index], locations);
-  });
+  for (let index = 0; index < selectorList.value.length; index++) {
+    currentPath.push(index);
+    searchWithinSelector(selectorList.value[index]!, target, currentPath, locations);
+    currentPath.pop();
+  }
 }
 
 /**
@@ -1225,21 +1227,26 @@ function searchWithinCompoundSelector(
   // Handle when target is a PseudoSelector - check for equivalent matches
   if (isNode(target, N.PseudoSelector) && target.value.arg && isSelector(target.value.arg)) {
     // Look for matching pseudo-selectors within the compound
-    compound.value.forEach((component, index) => {
+    for (let index = 0; index < compound.value.length; index++) {
+      const component = compound.value[index]!;
       if (isNode(component, N.PseudoSelector) && arePseudoSelectorsEquivalent(component, target)) {
+        currentPath.push(index);
         locations.push(withMatchScope({
-          path: [...currentPath, index],
+          path: [...currentPath],
           matchedNode: component,
           extensionType: 'replace'
         }));
+        currentPath.pop();
       }
-    });
+    }
   }
 
   // Standard recursive search through each component
-  compound.value.forEach((component, index) => {
-    searchWithinSelector(component, target, [...currentPath, index], locations);
-  });
+  for (let index = 0; index < compound.value.length; index++) {
+    currentPath.push(index);
+    searchWithinSelector(compound.value[index]!, target, currentPath, locations);
+    currentPath.pop();
+  }
 
   // OPTIMIZATION 5: Check for partial matches within compound selectors
   // This enables extending when target is a subset of the compound
@@ -1257,13 +1264,15 @@ function searchWithinCompoundSelector(
             ? [remainderComponents[0]!]
             : [new CompoundSelector(remainderComponents).inherit(compound)];
 
+        currentPath.push(i);
         locations.push(withMatchScope({
-          path: [...currentPath, i],
+          path: [...currentPath],
           matchedNode: compound.value[i]!,
           extensionType: 'replace',
           isPartialMatch: remainders.length > 0,
           remainders
         }));
+        currentPath.pop();
       }
     }
   }
@@ -1328,12 +1337,15 @@ function searchWithinComplexSelector(
     }
   }
 
-  complex.value.forEach((component, index) => {
+  for (let index = 0; index < complex.value.length; index++) {
+    const component = complex.value[index]!;
     // Skip combinators, only search selector components
     if (!isNode(component, N.Combinator)) {
-      searchWithinSelector(component as Selector, target, [...currentPath, index], locations);
+      currentPath.push(index);
+      searchWithinSelector(component as Selector, target, currentPath, locations);
+      currentPath.pop();
     }
-  });
+  }
 
   // Post-process: when find matches one component of a multi-component complex selector,
   // that is always a partial match (full mode should reject it). Mark ALL such component
@@ -1723,51 +1735,63 @@ function searchWithinPseudoSelector(
   if (pseudo.value.name === ':is') {
     if (isNode(argSelector, N.SelectorList)) {
       // Check if target matches any alternative in the :is() selector list
-      argSelector.value.forEach((alternative, altIndex) => {
-        const itemPath = [...currentPath, 'arg', altIndex];
+      currentPath.push('arg');
+      for (let altIndex = 0; altIndex < argSelector.value.length; altIndex++) {
+        const alternative = argSelector.value[altIndex]!;
+        currentPath.push(altIndex);
         // Direct structural match: use determineExtensionType so we get 'wrap' when inside a compound (not just 'append')
         if (isStructurallyEqual(alternative, target)) {
           locations.push(withMatchScope({
-            path: itemPath,
+            path: [...currentPath],
             matchedNode: alternative,
-            extensionType: determineExtensionType(alternative, itemPath)
+            extensionType: determineExtensionType(alternative, currentPath)
           }));
         }
 
         // Recursive search within each alternative
-        searchWithinSelector(alternative, target, itemPath, locations);
-      });
+        searchWithinSelector(alternative, target, currentPath, locations);
+        currentPath.pop();
+      }
+      currentPath.pop();
 
       // Additional optimization: Check if target could be added as new alternative
       // This enables extending :is(.a, .b) with .c to become :is(.a, .b, .c)
       const canExtendAsList = !argSelector.value.some(alt => isStructurallyEqual(alt, target));
       if (canExtendAsList) {
+        currentPath.push('arg');
         locations.push(withMatchScope({
-          path: [...currentPath, 'arg'],
+          path: [...currentPath],
           matchedNode: argSelector,
           extensionType: 'append', // Append new alternative to :is() list
           isPartialMatch: false
         }));
+        currentPath.pop();
       }
     } else {
       // Single argument in :is() - check for direct match
       if (isStructurallyEqual(argSelector, target)) {
+        currentPath.push('arg');
         locations.push(withMatchScope({
-          path: [...currentPath, 'arg'],
+          path: [...currentPath],
           matchedNode: argSelector,
           extensionType: 'append', // Will convert single arg to SelectorList and append
           isPartialMatch: false
         }));
+        currentPath.pop();
         // Don't do recursive search since we found the direct match
         return;
       }
 
       // Only do recursive search if no direct match found
-      searchWithinSelector(argSelector, target, [...currentPath, 'arg'], locations);
+      currentPath.push('arg');
+      searchWithinSelector(argSelector, target, currentPath, locations);
+      currentPath.pop();
     }
   } else {
     // Standard recursive search for other pseudo-selectors
-    searchWithinSelector(argSelector, target, [...currentPath, 'arg'], locations);
+    currentPath.push('arg');
+    searchWithinSelector(argSelector, target, currentPath, locations);
+    currentPath.pop();
   }
 }
 

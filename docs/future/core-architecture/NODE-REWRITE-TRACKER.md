@@ -147,7 +147,10 @@ first measured offenders after the selector pass.
 - [x] `Condition`: direct guard/comparison writer, operand writer, and eval
   result path; guard operand branches use `MaybePromise` narrowing.
 - [x] `Extend`: direct extend writer; side-effect eval branch uses
-  `MaybePromise` narrowing. Audit selector comparison/string keys.
+  `MaybePromise` narrowing. Recursive selector extend search now carries one
+  local path stack through indexed descent instead of allocating child path
+  arrays through callback/spread recursion. Audit selector comparison/string
+  keys.
 
 Current hard leftovers after the broad hook sweep:
 
@@ -177,6 +180,11 @@ Current hard leftovers after the broad hook sweep:
   writes inline comma-space syntax directly instead of capturing/restoring a
   temporary argument string. The same pass fixed generated `:is(...)`
   required-key metadata to match single-selector-list wrapper omission.
+- Selector extend full-search walkers now use one mutable local path stack and
+  indexed loops for selector-list, compound, complex, and pseudo-selector
+  descent; path arrays are copied only when a match location is stored. This
+  does not complete selector equality because value-key matching and factory
+  remainder materialization remain.
 - [x] `ExtendList`: direct list writer; remove super-string wrapper.
 - [x] `SelectorCapture`: direct capture syntax writer, child writer, and direct
   resolved buffer render; audit whether node still needs to exist.

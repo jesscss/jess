@@ -192,6 +192,39 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-14 Selector Extend Path-Stack Cut
+
+Hypothesis: full recursive selector extend search should not allocate a new
+path array and callback closure for every child before it knows whether a match
+exists. The walk can carry one local path stack and copy only at stored match
+locations.
+
+Before patch, bounded hot-path leash:
+
+- `functions`: `14.24ms`, `unstable`;
+- `import-reference`: `20.37ms`, `usable`;
+- `mixins-guards`: `19.21ms`, `usable`;
+- `extend-chaining`: `5.69ms`, `usable`;
+- `media`: `5.50ms`, `usable`.
+
+Patch shape:
+
+- selector-list, compound, complex, and pseudo-selector recursive search
+  descent now uses indexed loops and `currentPath.push(...)` / `pop()`;
+- stored `ExtendLocation.path` arrays still copy at match boundaries;
+- no selector nodes, side maps, caches, or public API surfaces were added.
+
+After patch:
+
+- `functions`: `14.64ms`, `unstable`;
+- `import-reference`: `20.43ms`, `usable`;
+- `mixins-guards`: `16.82ms`, `usable`;
+- `extend-chaining`: `5.45ms`, `usable`;
+- `media`: `5.35ms`, `unstable`.
+
+Decision: keep as machinery deletion. No speed claim: media lost
+decision-quality signal, while usable fixtures did not show a regression.
+
 ### 2026-06-14 Any Compare Scalar Transport Cut
 
 Hypothesis: compare branches that already know an operand is `Any` should read
