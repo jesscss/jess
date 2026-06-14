@@ -2,7 +2,7 @@ import { Node, F_MAY_ASYNC, F_STATIC, defineType } from './node.js';
 import { Nil } from './nil.js';
 import { List } from './list.js';
 import type { Context } from '../context.js';
-import { compareNodeArray } from './util/compare.js';
+import { compareNodeArray, normalizeComparableWhitespace } from './util/compare.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -181,9 +181,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return result;
     }
     if (other.type === 'Any') {
-      const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
-      const left = normalize(this.toString());
-      const right = normalize(other.toString());
+      const left = normalizeComparableWhitespace(this.toString());
+      const right = normalizeComparableWhitespace(other.toString());
       return left === right ? 0 : undefined;
     }
     return undefined;

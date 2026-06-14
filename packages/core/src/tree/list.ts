@@ -1,7 +1,7 @@
 import { type Context } from '../context.js';
 import { defineType, F_MAY_ASYNC, F_STATIC, Node } from './node.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
-import { compareNodeArray } from './util/compare.js';
+import { compareNodeArray, normalizeComparableText } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import {
   consumeTrivia,
@@ -351,9 +351,8 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       return result;
     }
     if (other.type === 'Any') {
-      const normalize = (s: string) => s.replace(/;\s*/g, ', ').replace(/\s+/g, ' ').trim();
-      const left = normalize(this.toString());
-      const right = normalize(other.toString());
+      const left = normalizeComparableText(this.toString());
+      const right = normalizeComparableText(other.toString());
       return left === right ? 0 : undefined;
     }
     return undefined;

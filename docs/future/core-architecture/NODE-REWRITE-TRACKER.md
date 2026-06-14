@@ -65,7 +65,8 @@ first measured offenders after the selector pass.
   Custom-property raw source,
   duplicate-comparison/materialization, and merge-state boundaries remain.
 - [x] `Any` / `Keyword` / `Anonymous`: move scalar token emission to generic
-  `writeSyntax`; audit `compare(...)` string normalization.
+  `writeSyntax`; compare-time `Any` coercion uses the shared compare
+  normalizer instead of a per-call local closure.
 - [x] `Dimension` / `Num`: numeric/unit emission uses one scalar serializer
   shared by `writeSyntax(...)` and public string output; audit regex/unit
   formatting and operation paths.
@@ -84,7 +85,8 @@ first measured offenders after the selector pass.
   render no longer allocates per-call nested rest functions or a local
   render-node closure on the sync path. Boundary separator checks now use
   numeric character tests, an indexed trivia scan, and one shared spacer
-  predicate instead of regex/callback probes. Trivia-backed
+  predicate instead of regex/callback probes, and compare-time `Any` coercion
+  uses the shared whitespace normalizer. Trivia-backed
   child-boundary emission still uses `toString(...)`.
 - [x] `Quoted`: direct quoted/interpolated emission; child node syntax uses
   `writeSyntax(...)` with no public `toTrimmedString(...)` transport, and
@@ -95,7 +97,8 @@ first measured offenders after the selector pass.
   one writer mark; render/eval branches use `MaybePromise` narrowing.
   Async-capable dynamic render no longer allocates a local render-node closure
   or nested rest function on the sync path, and the public iterator no longer
-  uses a generator wrapper. Trivia-backed item emission still uses
+  uses a generator wrapper. Compare-time `Any` coercion uses the shared compare
+  normalizer instead of a per-call local closure. Trivia-backed item emission still uses
   `toString(...)`, and dynamic render still captures string output before
   buffer writes.
 - [ ] `QueryCondition`: direct condition syntax writer exists, source/static
@@ -266,8 +269,8 @@ Current hard leftovers after the broad hook sweep:
 | Node | File | Base/family | Status | Rewrite notes |
 | --- | --- | --- | --- | --- |
 | Ampersand | `packages/core/src/tree/ampersand.ts` | `SimpleSelector` | partial | Direct source writer exists; append/template placement no longer stores dead selector text arrays, no longer splits template strings into `templateParts`, selector-list template flattening uses indexed loops instead of iterator/spread, placement state carries only live facts, and BasicSelector append avoids generic `Reflect.construct`. Remaining debt is structural selector replacement, raw string assembly, and non-basic generic construction. |
-| Anonymous | `packages/core/src/tree/any.ts` | `Any` | writeSyntax hook complete | Scalar emission uses `Any.writeSyntax`; broader compare/string normalization remains. |
-| Any | `packages/core/src/tree/any.ts` | `Node` | writeSyntax hook complete | Scalar emission has a direct writer; compare/string conversion and numeric regex decisions remain. |
+| Anonymous | `packages/core/src/tree/any.ts` | `Any` | writeSyntax hook complete | Scalar emission uses `Any.writeSyntax`; compare-time text normalization now shares the internal compare utility. |
+| Any | `packages/core/src/tree/any.ts` | `Node` | writeSyntax hook complete | Scalar emission has a direct writer; compare-time text normalization now shares the internal compare utility; string conversion and numeric regex decisions remain. |
 | AtRule | `packages/core/src/tree/at-rule.ts` | `Node` | queued | Body eval/registration async branches use `MaybePromise` narrowing. High priority: reduce custom eval/import/render branches. |
 | AttributeSelector | `packages/core/src/tree/selector-attr.ts` | `SimpleSelector` | direct child writer complete | Attribute parts write directly through child `writeSyntax(...)`; cold private source-string wrapper removed; interpolation eval/render branches use `MaybePromise` narrowing. ValueOf construction and render capture remain. |
 | BasicSelector | `packages/core/src/tree/selector-basic.ts` | `SimpleSelector` | writeSyntax complete | Direct source spelling emits authored `value`; kind checks use first-character tests, `valueOf()` remains normalized key text, and standalone eval now carries the existing selector-bit library from context. |
@@ -298,8 +301,8 @@ Current hard leftovers after the broad hook sweep:
 | JsFunction | `packages/core/src/tree/js-function.ts` | `Node` | live host wrapper | Function registry/plugins/language service/call/reference paths consume it. Keep cold; no arbitrary source writer. |
 | JsImport | `packages/core/src/tree/import-js.ts` | `Node` | live parser node | Jess `@-use/@-from` and SCSS `@use "sass:*"` construct it; import syntax writes directly and path child uses `writeSyntax(...)`. |
 | JsObject | `packages/core/src/tree/js-object.ts` | `Node` | live host wrapper | `cast(plainObject)` creates it and indexed references read properties from it. Keep cold; no arbitrary source writer. |
-| Keyword | `packages/core/src/tree/any.ts` | `Any` | writeSyntax hook complete | Scalar emission uses `Any.writeSyntax`; broader compare/string normalization remains. |
-| List | `packages/core/src/tree/list.ts` | `Node` | partial | Direct item writer exists, no-trivia items avoid public `toString(...)`, static flat-buffer render writes syntax directly with one writer mark, cached `valueOf()` uses a plain loop instead of callback-array joining, render/eval item branches use `MaybePromise` narrowing, async-capable dynamic render no longer allocates local closure/rest scaffolding on the sync path, and `[Symbol.iterator]` returns the array iterator directly instead of using a generator wrapper. Trivia-backed item emission, dynamic render string capture before buffer writes, and eval/render item-loop audit remain. |
+| Keyword | `packages/core/src/tree/any.ts` | `Any` | writeSyntax hook complete | Scalar emission uses `Any.writeSyntax`; compare-time text normalization now shares the internal compare utility. |
+| List | `packages/core/src/tree/list.ts` | `Node` | partial | Direct item writer exists, no-trivia items avoid public `toString(...)`, static flat-buffer render writes syntax directly with one writer mark, cached `valueOf()` uses a plain loop instead of callback-array joining, render/eval item branches use `MaybePromise` narrowing, async-capable dynamic render no longer allocates local closure/rest scaffolding on the sync path, `[Symbol.iterator]` returns the array iterator directly instead of using a generator wrapper, and compare-time `Any` coercion uses the shared compare normalizer. Trivia-backed item emission, dynamic render string capture before buffer writes, and eval/render item-loop audit remain. |
 | Log | `packages/core/src/tree/log.ts` | `Node` | complete | Empty source writer complete, redundant `toString(...)` override removed, and side-effect eval/render path is direct with `MaybePromise` narrowing. |
 | Mixin | `packages/core/src/tree/mixin.ts` | `Node` | partial | Source syntax writer exists and name/params/guard use direct child writers; interpolated-name derivation now builds the owned value object directly instead of allocating conditional spread fragments; high priority remains for guard/default/body copy and callable candidate output. |
 | MixinCollection | `packages/core/src/tree/util/callable-collection.ts` | `Node` | cold handoff audited | Live callable-value handoff wrapper; immediate eval-only wrappers in `Call`/`Func` are cut, and focused tests prove the remaining public value surface is the direct callable handoff outside `rules.ts`. No source writer should be invented. |
@@ -320,7 +323,7 @@ Current hard leftovers after the broad hook sweep:
 | Selector | `packages/core/src/tree/selector.ts` | `Node` | writeSyntax complete | Selector-family writer hook exists; broader metadata and keyset invalidation audit remains. |
 | SelectorCapture | `packages/core/src/tree/selector-capture.ts` | `Node` | child/buffer staging complete | Capture syntax writes directly through child `writeSyntax(...)`, cold private source-string wrapper is gone, and resolved buffer render delegates to the child buffer renderer instead of rendering to string then writing that string. Audit whether capture node should exist after render rewrite. |
 | SelectorList | `packages/core/src/tree/selector-list.ts` | `Selector` | writeSyntax complete | List item emission uses `writeSyntax`, cold private source-string wrapper is gone, and selector eval/resolve uses `MaybePromise` narrowing; flattening, temporary arrays, and valueOf joins remain queued. |
-| Sequence | `packages/core/src/tree/sequence.ts` | `Node` | partial | Direct sequence writer exists; no-trivia and custom-property raw source children use `writeSyntax(...)`; nil children are skipped in the writer so static render no longer materializes a filtered replacement array; static flat-buffer render writes syntax directly with one writer mark; render/eval branches use `MaybePromise` narrowing; async-capable dynamic render no longer allocates local render-node/rest closures on the sync path; boundary separator checks now use numeric character tests, an indexed trivia scan, and one shared spacer predicate instead of regex/callback probes. Trivia-backed child `toString` transport and broader dynamic render capture remain until boundary-trivia emission is made explicit. |
+| Sequence | `packages/core/src/tree/sequence.ts` | `Node` | partial | Direct sequence writer exists; no-trivia and custom-property raw source children use `writeSyntax(...)`; nil children are skipped in the writer so static render no longer materializes a filtered replacement array; static flat-buffer render writes syntax directly with one writer mark; render/eval branches use `MaybePromise` narrowing; async-capable dynamic render no longer allocates local render-node/rest closures on the sync path; boundary separator checks now use numeric character tests, an indexed trivia scan, and one shared spacer predicate instead of regex/callback probes; compare-time `Any` coercion uses the shared whitespace normalizer. Trivia-backed child `toString` transport and broader dynamic render capture remain until boundary-trivia emission is made explicit. |
 | SimpleSelector | `packages/core/src/tree/selector-simple.ts` | `Selector` | queued | Audit base class necessity and branches. |
 | StyleImport | `packages/core/src/tree/import-style.ts` | `Node` | queued | High priority: first-use placement copies and derived rules surfaces. |
 | Url | `packages/core/src/tree/url.ts` | `Node` | writeSyntax hook complete | URL wrapper and no-trivia child syntax write directly in source and context modes; render/eval use `evalSync(...)` for non-async child values and thenable narrowing for async values. Render/context normalization still uses localized mark/replace and remains queued. |

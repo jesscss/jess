@@ -758,6 +758,11 @@ the binding index/scope lookup refactor.
 18. [ ] Sweep selector matching/extend equality. Replace hot `valueOf()` equality
    predicates with structural/keyset checks where possible, keeping
    `valueOf()` only as a measured, cached fast-path when it wins.
+   Partial status: `Any.compare(...)`, `List.compare(...)`, and
+   `Sequence.compare(...)` no longer allocate per-call local normalization
+   closures for `Any` coercion. They share the internal compare normalizers in
+   `tree/util/compare.ts`. This does not complete selector matching/extend
+   equality or remove value/string serialization as a decision mechanism.
 19. [ ] Split `Node.evalStatic(...)` into immediate eval/render and cold public
    materialization so routine eval replacement does not imply `.inherit(...)`.
 20. [ ] Replace `StyleImport` first-use placement copies with placement state
@@ -845,39 +850,30 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: final `Reference` local helper closure cut.
+Current pass: shared compare normalization cut.
 
 - New traversal: none added. No loop, recursion, parent/source walk, side-map
   lookup, object scan, array scan, `map/filter/sort`, or generator was added.
-- New node/materialization: none added. Existing rules-like public
-  materialization, rules-output `.inherit(sourceRules)`, and merged-assign
-  `.inherit(reference)` behavior stayed exactly where they were; this pass did
-  not add `new Node`, copied nodes, `.adopt(...)`, wrapper `Rules`, frozen
-  state, parent restoration, or source metadata mutation.
-- Render path: no render path changed. Runtime binding and declaration
-  references still return/evaluate the same nodes and only render through the
-  existing resolved-node render path; no arrays/nodes were created just to
-  stringify.
-- Helper/API surface: added one private module-local helper only to delete the
-  remaining calc slash local finalizer closure from the synchronous Reference
-  value-eval path. This is private implementation surface, not public API. The
-  async thenable branches still allocate only their required continuations.
-- Metadata mutations: none added. Existing `out.inherit(declValue)` calc
-  result metadata, reference-stack/search-scope cleanup, rules-like
-  preservation, and merged-assign `.inherit(reference)` semantics are
-  unchanged. Registration-prep `try/catch` expected misses remain open because
-  converting them properly needs a typed unresolved result from node
-  registration prep, not another wrapper around thrown misses.
-- Evidence: pre-pass hotpath leash at `14a783ac` was status-only:
-  `functions` `13.19ms` usable, `import-reference` `19.48ms` usable,
-  `mixins-guards` `16.60ms` usable, `extend-chaining` `5.26ms` unstable, and
-  `media` `4.95ms` unstable. Focused Reference tests passed:
+- New node/materialization: none added. This pass did not add `new Node`,
+  copied nodes, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen state,
+  parent restoration, or source metadata mutation.
+- Render path: no render/eval path changed. The edited paths are comparison
+  paths only; they still use the existing public strings for `Any` coercion and
+  do not create arrays/nodes just to stringify.
+- Helper/API surface: added two internal utility functions in
+  `packages/core/src/tree/util/compare.ts` only to remove three repeated
+  per-call local normalization closures from `Any.compare(...)`,
+  `List.compare(...)`, and `Sequence.compare(...)`. This is not public package
+  API and does not add a generic hot-path dispatch ladder.
+- Metadata mutations: none added. No parent, source, option, context, frozen,
+  defensive `Reflect.*`, or `Object.hasOwn` behavior changed.
+- Evidence: hotpath leash at `847fe59a` was status-only:
+  `functions` `15.68ms` unstable, `import-reference` `26.15ms` usable,
+  `mixins-guards` `17.83ms` usable, `extend-chaining` `5.89ms` usable, and
+  `media` `5.87ms` unstable. Focused compare-adjacent tests passed:
   `pnpm --filter @jesscss/core test --
-  src/tree/__tests__/reference.test.ts` (`117` passed).
-- Verdict: accept the final local Reference helper closure deletion only.
-  `Reference` no longer has local helper closures in its sync lookup/value-eval
-  path. `Reference` `createRulesLikeReferenceSurface(...)`, public
-  `evaluateReferenceValueNode(...)` materialization, merged assign
-  normalization, key conversion, `StyleImport` placement copies,
-  registration-prep typed misses, `Rules` merge placement, and selector/extend
-  equality remain open because they need semantic runtime changes.
+  src/tree/__tests__/any.test.ts src/tree/__tests__/list.test.ts
+  src/tree/__tests__/sequence.test.ts` (`64` passed).
+- Verdict: accept the repeated local compare-normalization closure deletion
+  only. The broader selector/extend equality work, `valueOf()` decision paths,
+  and render-time string-to-decide paths remain open.

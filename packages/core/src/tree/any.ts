@@ -6,6 +6,7 @@ import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from 
 import type { Context } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { FinalPrintOptions, PrintOptions } from './util/print.js';
+import { normalizeComparableText } from './util/compare.js';
 
 export type AnyRole =
   'ident'
@@ -102,8 +103,7 @@ export class Any<
       }
       return Number(text) === otherNumber ? 0 : undefined;
     }
-    const normalize = (s: string) => s.replace(/;\s*/g, ', ').replace(/\s+/g, ' ').trim();
-    return normalize(this.toString()) === normalize(other.toString()) ? 0 : undefined;
+    return normalizeComparableText(this.toString()) === normalizeComparableText(other.toString()) ? 0 : undefined;
   }
 }
 
