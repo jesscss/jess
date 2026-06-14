@@ -3158,6 +3158,35 @@ benchmark/profile leash does not expose a regression. Broader extend matching,
 selector stringification, and wrapper existence remain outside this
 serialization pass.
 
+### Call Rendered Args Readback Cut
+
+Date: 2026-06-14.
+
+Change: `Call.serializeRenderedArgs(...)` now writes argument syntax and returns
+only completion (`void` or promise), because callers only awaited it before
+finishing call syntax. This removes the args-level `mark/getSince` readback
+whose string was immediately discarded by plain and finalized call rendering.
+
+Hotpath status:
+
+- Focused `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/call.test.ts --run` passed. The call test now asserts a
+  rendered non-empty CSS call has one whole-call readback, not an extra
+  discarded args readback.
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `14.89ms` unstable, `import-reference` median
+  `21.67ms` usable, `mixins-guards` median `16.73ms` usable,
+  `extend-chaining` median `5.87ms` unstable, and `media` median `6.05ms`
+  usable.
+- Final `node scripts/profile-less-benchmark.mjs --file=benchmark.less`
+  reported broad `OutputWriter.mark` `49969`, `OutputWriter.getSince` `44973`,
+  `Reference.evalNode` `3619` calls / `76.68ms`, and `Rules.find` `1013`
+  calls / `32.53ms`.
+
+Interpretation: machinery deletion only, not a speed claim. Keep `Call` open:
+whole-call readback, callable output, `evalArgNodes(...)` copy pressure, async
+path shape, helper ladders, and repeated eval remain.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

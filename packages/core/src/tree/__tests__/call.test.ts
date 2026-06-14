@@ -947,6 +947,7 @@ describe('Call', () => {
     expect(rule.render(context, { writer })).toBe('rgb(100, 100, 100)');
     expect(writer.toString()).toBe('rgb(100, 100, 100)');
     expect(writer.captures).toBe(0);
+    expect(writer.readbacks).toBe(1);
   });
 
   it('resolves CSS calls without touching render state', async () => {

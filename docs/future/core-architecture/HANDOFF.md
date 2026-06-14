@@ -338,6 +338,12 @@ Open tasks:
    `Call` output selection and `List`/`Sequence` buffer string capture remain
    open.
 
+   Additional partial status: `Call.serializeRenderedArgs(...)` now writes
+   rendered args as a completion-only side effect instead of returning a
+   discarded inner args string. Non-empty CSS-call arg render no longer opens
+   an extra args-level `mark/getSince` readback; focused tests prove the whole
+   call still reads back once for the current call syntax boundary.
+
    Additional partial status: `Block`, `Paren`, `Quoted`, and
    `AttributeSelector` render now use known wrapper text directly for safe
    scalar/empty forms: nil blocks, empty/nil parens, literal non-escaped quoted
@@ -537,29 +543,28 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Extend` / `ExtendList` invisible-effect render cut.
+Current pass: `Call` rendered-argument readback cut.
 
-- New traversal: no new source/tree traversal. `ExtendList` still iterates its
-  own child array once, but now uses a plain sync-first loop instead of
-  `serialForEach(...)` plus a callback. This deletes generic iteration
-  machinery on the selected node-family path.
+- New traversal: none. The existing arg loop remains; no loop, recursion,
+  parent/source walk, side-map lookup, or object/array scan was added.
 - New node/materialization: no runtime nodes, copies, wrappers, arrays, side
   maps, output strings, or materialized render values added.
-- Render path: selected rows are `Extend` and `ExtendList`. `ExtendList.render`
-  now runs `Extend.runEffect(...)` directly and returns invisible output through
-  `renderInvisibleEffect(...)`; it no longer calls each child's public
-  `render(...)` as transport for an effect-only node.
-- Helper/API surface: `Extend.runExtendEffect(...)` became the intentionally
-  callable `runEffect(...)` semantic boundary. One private async continuation
-  method in `ExtendList` replaces package-generic callback iteration and only
-  runs after the first async child effect.
-- Metadata mutations: no new parent/source/frozen/context metadata mutation.
-  Existing extend registration semantics are unchanged.
+- Render path: selected row is `Call`. `serializeRenderedArgs(...)` now writes
+  args and returns only completion (`void` or promise), because callers only
+  awaited it before finishing the call syntax. Rendering still writes the same
+  evaluated arg syntax directly; it no longer reads back an args string that is
+  immediately discarded.
+- Helper/API surface: no helper or public method added. The existing helper
+  signature shrank from `MaybePromise<string>` to `MaybePromise<void>` and the
+  recursive continuation stopped carrying the unused mark.
+- Metadata mutations: none. No parent/source/frozen/context metadata mutation,
+  lazy options/context creation, reflection call, or generic own-property
+  helper added.
 - Error/control flow: no new routine error objects or throw/catch control flow.
-- Evidence: focused `extend.test.ts` now proves `ExtendList.render(...)` does
-  not call public list eval or child render, and `node-render-buffer.test.ts`
-  stayed green. Final hotpath/profile status is in `PERFORMANCE-HANDOFF.md`;
-  no speed claim.
-- Verdict: accept as a bounded effect-boundary cut. `ExtendList` public wrapper
-  existence and broader extend selector/matching work remain separate; do not
-  let that overtake node serialization focus.
+- Evidence: package-scoped `call.test.ts` passed, with a `CountingWriter`
+  assertion that rendered CSS call args no longer add an extra readback beyond
+  the current whole-call syntax boundary. Final hotpath/profile status is in
+  `PERFORMANCE-HANDOFF.md`; no speed claim.
+- Verdict: accept as a bounded `Call` render-transport deletion. Keep `Call`
+  open for callable output, `evalArgNodes(...)` copy pressure, non-empty
+  whole-call readback, async path shape, helper ladders, and repeated eval.

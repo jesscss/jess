@@ -460,22 +460,20 @@ export class Call extends Node<CallValue, CallOptions> {
     args: List<Node> | undefined,
     context: Context,
     options: PrintOptions
-  ): MaybePromise<string> {
+  ): MaybePromise<void> {
     if (!args || args.value.length === 0) {
-      return '';
+      return undefined;
     }
     const printOptions = getPrintOptions(options);
-    const mark = printOptions.writer!.mark();
-    return this.serializeRenderedArgsFrom(args.value, context, printOptions, mark, 0);
+    return this.serializeRenderedArgsFrom(args.value, context, printOptions, 0);
   }
 
   private serializeRenderedArgsFrom(
     rawArgs: Node[],
     context: Context,
     printOptions: ReturnType<typeof getPrintOptions>,
-    mark: number,
     start: number
-  ): MaybePromise<string> {
+  ): MaybePromise<void> {
     const w = printOptions.writer!;
     const last = rawArgs.length - 1;
     for (let i = start; i <= last;) {
@@ -483,7 +481,7 @@ export class Call extends Node<CallValue, CallOptions> {
         i++;
       }
       if (i > last) {
-        return w.getSince(mark);
+        return undefined;
       }
       const arg = rawArgs[i]!;
       let next = i + 1;
@@ -505,7 +503,7 @@ export class Call extends Node<CallValue, CallOptions> {
                 emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
                 w.add(', ');
               }
-              return this.serializeRenderedArgsFrom(rawArgs, context, printOptions, mark, next);
+              return this.serializeRenderedArgsFrom(rawArgs, context, printOptions, next);
             });
           }
           w.trimHorizontalStartSince(innerMark);
@@ -523,7 +521,7 @@ export class Call extends Node<CallValue, CallOptions> {
               emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
               w.add(', ');
             }
-            return this.serializeRenderedArgsFrom(rawArgs, context, printOptions, mark, next);
+            return this.serializeRenderedArgsFrom(rawArgs, context, printOptions, next);
           });
         }
         w.trimHorizontalStartSince(argMark);
@@ -535,7 +533,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       i = next;
     }
-    return w.getSince(mark);
+    return undefined;
   }
 
   private writeEvaluatedSyntax(
@@ -579,7 +577,7 @@ export class Call extends Node<CallValue, CallOptions> {
     if (isCalc) {
       context.calcFrames++;
     }
-    let renderedArgs: MaybePromise<string>;
+    let renderedArgs: MaybePromise<void>;
     try {
       renderedArgs = this.serializeRenderedArgs(callNode.value.args, context, prepared);
     } catch (error) {
