@@ -677,17 +677,18 @@ describe('Call', () => {
 
   it('resolves simple function hits from direct function bindings', () => {
     const root = rules([]);
-    root.register('function', new JsFunction({
+    const fnNode = new JsFunction({
       name: 'direct-hit',
       fn: () => any('ok')
-    }));
+    });
+    root.setFunctionBinding('direct-hit', fnNode);
 
     expect(root.findFunction('direct-hit')?.type).toBe('JsFunction');
   });
 
   it('resolves simple function misses from direct function bindings', () => {
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('other', new JsFunction({
       name: 'other',
       fn: () => any('ok')
     }));
@@ -701,7 +702,7 @@ describe('Call', () => {
       name: 'direct-options-hit',
       fn: () => any('ok')
     });
-    root.register('function', fnNode);
+    root.setFunctionBinding('direct-options-hit', fnNode);
 
     expect(root.findFunction('direct-options-hit', 'ignored', {
       candidates: new Set(),

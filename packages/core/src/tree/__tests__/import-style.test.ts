@@ -47,16 +47,20 @@ let context: Context;
 
 function getVarWithContext(context: Context, n: Rules, key: string, opts: ReferenceFindOptions = {}) {
   context.rulesContext = n;
-  opts.context ??= context;
-  opts.searchParents = true;
-  return n.findVariable(key, opts);
+  return n.findVariable(key, {
+    ...opts,
+    context: opts.context ?? context,
+    searchParents: true
+  });
 }
 
 function getMixinWithContext(context: Context, n: Rules, key: string, opts: ReferenceFindOptions = {}) {
   context.rulesContext = n;
-  opts.context ??= context;
-  opts.searchParents = true;
-  return n.findMixin(key, 'Mixin', opts);
+  return n.findMixin(key, 'Mixin', {
+    ...opts,
+    context: opts.context ?? context,
+    searchParents: true
+  });
 }
 
 describe('Style import', () => {

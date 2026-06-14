@@ -1384,29 +1384,89 @@ Seeded next binding/lookup queue:
    admission, and `hasTarget` changes visibility/admission. Variable lookup is
    still excluded by `strategy.includeLiveBindings`.
 
-Seeded next binding/lookup queue:
-
-7ao. [ ] Audit remaining public-looking `register('function')` callsites in
+7ao. [x] Audit remaining public-looking `register('function')` callsites in
     tests/helpers; where a test is not specifically about plugin-style function
     registration, switch to `setFunctionBinding(...)` or a narrower helper.
+   Done. The direct function-binding tests now use `setFunctionBinding(...)`,
+   and production `registerNode(Func)` writes the function binding directly.
+   Remaining `register('function')` callsites are plugin/function-library
+   fixture setup or external package plugin adapters, not core lookup fallback
+   paths.
 
-7ap. [ ] Audit `Rules.findDeclaration(...)` as a test-supported legacy helper:
+7ap. [x] Audit `Rules.findDeclaration(...)` as a test-supported legacy helper:
     either add explicit overload tests for any-declaration semantics or delete
     the generic test-only caller if typed finders cover the behavior.
+   Done. The only `findDeclaration(key, undefined, ...)` caller is the
+   `rules.test.ts` any-declaration helper, and the existing test
+   `find(declaration, key, undefined) picks VarDeclaration or Declaration by
+   source order` explicitly covers that boundary. No production fallback caller
+   remains.
 
-7aq. [ ] Inspect `ReferenceFindOptions` callsites for mutation (`opts.start`,
+7aq. [x] Inspect `ReferenceFindOptions` callsites for mutation (`opts.start`,
     `opts.local`, `opts.context`) and split construction so declaration and
     callable lanes do not carry irrelevant fields when avoidable without
     wrappers.
+   Done. Production reference option construction now computes local/start bits
+   as locals and returns one object without mutating `opts`. The remaining
+   test helpers that mutated lookup option arguments in `rules.test.ts` and
+   `import-style.test.ts` now pass merged option literals instead.
 
-7ar. [ ] Audit `directDeclarationsByName` / `directDeclarationLookupCache`
+7ar. [x] Audit `directDeclarationsByName` / `directDeclarationLookupCache`
     invalidation against dynamic declaration-name promotion and `setDefined`
     writes; delete cache usage if the next focused tests can prove it is too
     broad or redundant.
+   Done. `registerNode(...)` already clears direct declaration buckets/cache
+   for `setDefined` writes. Dynamic declaration-name promotion now clears
+   `directDeclarationsByName`, `directDeclarationLookupCache`, and increments
+   `lookupVersion`; a focused reference test warms a stale direct declaration
+   cache before promotion and proves promotion clears that cache while the
+   scope frame carries the promoted `x` binding.
 
-7as. [ ] Audit callable cache key construction for array path keys; avoid
+7as. [x] Audit callable cache key construction for array path keys; avoid
     rebuilding a compound path string when an existing normalized key can be
     carried from reference/call preparation.
+   Done as an audit. No existing normalized array path key is carried from
+   reference/call preparation today; the array path cache key is joined once at
+   the `findMixin(string[])` boundary, while string lookups stay string-only.
+   The next queue carries the real cut forward as explicit key propagation
+   rather than hiding a new helper layer in this pass.
+
+Seeded next binding/lookup queue:
+
+7at. [ ] Replace external package plugin adapters that still call
+    `register('function', ...)` with `setFunctionBinding(...)` so function
+    registration no longer looks registry-shaped outside core tests.
+
+7au. [ ] Split the remaining `rules.test.ts` any-declaration helper into a
+    named `findAnyDeclaration`-style local helper or production method, then
+    decide whether `findDeclaration(key, undefined, ...)` should be deleted or
+    kept as the single cold boundary.
+
+7av. [ ] Split `ReferenceFindOptions` at the final dispatch point so
+    declaration lookup receives only declaration fields and callable lookup
+    receives only callable fields; reject the cut if it adds wrapper churn on
+    the hot path.
+
+7aw. [ ] Carry a normalized callable path key beside `string[]` namespace
+    lookups where preparation already computed it, and use it for
+    `lastCallableLookup*` without joining inside recursive `findMixin(...)`
+    paths.
+
+7ax. [ ] Audit `findFunctionDirect(...)` naming and call path; either fold the
+    direct function binding walk into `findFunction(...)` or rename/remove the
+    extra method if it is just old-architecture residue.
+
+7ay. [ ] Audit `functionsByName` clone preservation versus plugin binding
+    writes; keep only the clone state needed for explicit plugin function
+    bindings and remove any registry-era commentary or shape.
+
+7az. [ ] Audit `directDeclarationsByName` memory shape after promotion
+    invalidation: prove the multi-entry map still beats a one-entry
+    declaration memo for real lookup tests, or narrow it.
+
+7ba. [ ] Inspect `lookupVersion` increments around declaration/function
+    binding writes and pending-name promotion; remove redundant increments only
+    where binding-handle invalidation remains provably correct.
 
 Parked secondary deep-cut queue:
 
@@ -1735,6 +1795,51 @@ the gate passed.
    - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Binding option/cache audit pass: accepted as lookup surface cleanup and a
+  stale-cache correctness fix, not as a speed claim. Files:
+  `packages/core/src/tree/reference.ts`, `packages/core/src/tree/rules.ts`,
+  focused lookup tests, and this handoff.
+  - New traversal: none. Production `Reference` option construction now uses
+    locals instead of mutating an options object. `registerNode(Func)` writes
+    directly to the existing function-binding map. Dynamic declaration-name
+    promotion clears existing declaration caches instead of adding a new cache,
+    scan, side map, or fallback walk. The callable path-key item was audited
+    only; no helper or traversal was added for it.
+  - New node/materialization: none. No production node, wrapper `Rules`,
+    copied node, `.inherit(...)`, `.adopt(...)`, materialized output array, or
+    frozen/source/parent metadata mutation was added. The changed tests build
+    the same fixture nodes and warm an existing lookup cache to prove
+    invalidation. The `new JsFunction(...)` additions are test-fixture
+    construction moved from `register('function', ...)` to
+    `setFunctionBinding(...)`; they do not add runtime node creation.
+  - Render path: unchanged. The pass does not resolve arrays/nodes to
+    stringify; rendered output still uses the same evaluated declaration and
+    callable values.
+  - Helper/API surface: net cleanup. No public compatibility shim was kept for
+    its own sake. Direct function-binding tests now use
+    `setFunctionBinding(...)`; production `registerNode(Func)` no longer calls
+    `register('function')`. The remaining `register('function')` callsites are
+    plugin/function-library fixture setup or external plugin adapters and are
+    queued for the next binding pass. No new lookup helper was introduced.
+  - Metadata mutations: one deliberate invalidation. When the dynamic-name
+    promotion routine mutates queued dynamic declaration names into real
+    declaration identities, it now clears
+    `directDeclarationsByName`, clears `directDeclarationLookupCache`, and
+    increments `lookupVersion`. `registerNode(...)` already does the same for
+    `setDefined`/ordinary writes.
+  - Danger-token prosecution: `string[]` appears only in queue/audit text for
+    array-path callable lookup. This pass added no materialized array path in
+    production; carrying a normalized key remains queued because the current
+    pass found no existing normalized key to reuse safely.
+  - Evidence: focused lookup suite passed (`240` passed, `132` skipped);
+    touched-file ESLint passed; `git diff --check` passed; `@jesscss/core`
+    build passed with the pre-existing direct-`eval` warning in `js-expr.ts`;
+    `audit:node-creation` passed; aggressive review passed; `jess` build
+    passed with the existing unused `linecraft` bundle note; one-iteration
+    hotpath smoke passed for `mixins-guards.less` (`19.36ms`) and
+    `scope-lookup-stress.less` (`68.30ms`). No speed claim is made from this
+    pass.
 
 - Lookup option split and utility rename pass: accepted as binding/lookup
   surface slimming and stale registry residue deletion, not as a speed claim.

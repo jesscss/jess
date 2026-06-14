@@ -48,21 +48,18 @@ function expectDeclarationNode(node: Node | undefined): Declaration {
 
 function getPropWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
-  opts.searchParents = true;
-  return n.findProperty(key, opts);
+  return n.findProperty(key, { ...opts, searchParents: true });
 }
 
 function getVarWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
-  opts.searchParents = true;
-  let decl = n.findVariable(key, opts);
+  let decl = n.findVariable(key, { ...opts, searchParents: true });
   return decl;
 }
 
 function getDeclEitherWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
-  opts.searchParents = true;
-  return n.findDeclaration(key, undefined, opts);
+  return n.findDeclaration(key, undefined, { ...opts, searchParents: true });
 }
 
 class WholeBufferCountingWriter extends OutputWriter {

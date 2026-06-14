@@ -2866,7 +2866,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     } else if (isNode(node, N.Ruleset) || isNode(node, N.Mixin)) {
       // Callable lookup crawls Rules.value directly and filters candidates at lookup/call time.
     } else if (isNode(node, N.Func)) {
-      this.register('function', node);
+      this.setFunctionBinding(node.nameKey, node);
     }
     if (rebuildCallableCache && !this._indexing && this._scopeFrame) {
       this._scopeFrame.callableBucketsByName = this.callableLookupCache;

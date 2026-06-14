@@ -3393,12 +3393,15 @@ describe('reference', () => {
         ]);
 
         const frame = node.getScopeFrame();
+        expect(node.findProperty('x', { searchParents: false })).toBeUndefined();
+        expect(node.directDeclarationsByName).toBeDefined();
         const dynamicDecl = node.at(0)!;
         dynamicDecl.set('name', any('x'));
 
         const resolved = await node.at(1)!.eval(context);
         expect(resolved.toTrimmedString()).toBe('bar: red');
         expect(declarationHits).toHaveLength(0);
+        expect(node.directDeclarationsByName).toBeUndefined();
         expect(frame.pendingDeclarationNames).toHaveLength(0);
         expect(frame.declarationBucketsByName.get('x')?.at(-1)?.sourceNode).toBe(dynamicDecl);
         const promotedHit = lookupScopeFrameVariable(frame, 'x', {

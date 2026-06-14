@@ -201,6 +201,9 @@ function promoteResolvedPendingVarDecls(
 
   if (mutated) {
     frame.pendingDeclarationNames = remaining;
+    scope.directDeclarationsByName = undefined;
+    scope.directDeclarationLookupCache = undefined;
+    scope.lookupVersion++;
   }
 }
 
@@ -449,43 +452,37 @@ function buildReferenceLookupOptions(args: {
     hasTarget,
     adapter
   } = args;
-  const opts: ReferenceFindOptions = {
-    filter,
-    semanticFilter,
-    context,
-    hasTarget
-  };
-
-  if (shouldUseLocalReferenceLookup({ target, targetRules })) {
-    opts.local = true;
-  }
+  const local = shouldUseLocalReferenceLookup({ target, targetRules }) || undefined;
+  let start: number | undefined;
+  let ignoreParentScopeStart: true | undefined;
 
   if (!isInterpolatedVariable) {
     if (resolution === 'live') {
-      if (context.rulesContext !== undefined) {
-        opts.start = context.rulesContext.index;
-      } else {
-        const startIndex = getLookupStartIndex(referenceNode);
-        if (startIndex !== undefined) {
-          opts.start = startIndex;
-        }
-      }
+      start = context.rulesContext?.index ?? getLookupStartIndex(referenceNode);
     } else if (!target && adapter.applyContextualStart) {
-      const startIndex = getLookupStartIndex(referenceNode) ?? (
+      start = getLookupStartIndex(referenceNode) ?? (
         referenceNode.options.type === 'variable' || referenceNode.options.type === undefined
           ? undefined
           : context.rulesContext?.index
       );
-      if (startIndex !== undefined) {
-        opts.start = startIndex;
-        if (referenceNode.options.type === 'variable' || referenceNode.options.type === undefined) {
-          opts.ignoreParentScopeStart = true;
-        }
+      if (
+        start !== undefined
+        && (referenceNode.options.type === 'variable' || referenceNode.options.type === undefined)
+      ) {
+        ignoreParentScopeStart = true;
       }
     }
   }
 
-  return opts;
+  return {
+    filter,
+    semanticFilter,
+    context,
+    hasTarget,
+    local,
+    start,
+    ignoreParentScopeStart
+  };
 }
 
 function prepareReferenceLookup(args: {
