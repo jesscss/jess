@@ -2784,6 +2784,29 @@ describe('reference', () => {
       }
     });
 
+    it('static variable handle reuses binding identity without caching stale live values', async () => {
+      const colorRef = ref({ key: 'color' }, { type: 'variable' });
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        decl({
+          name: any('seen'),
+          value: colorRef
+        })
+      ]);
+      setRulesContext(node);
+
+      const first = await colorRef.eval(context);
+      expect(first.valueOf()).toBe('red');
+      expect(colorRef._rulesLookupHandle?.lookupType).toBe('variable');
+
+      setScopeFrameLiveBinding(node.getScopeFrame(), 'color', {
+        value: any('blue')
+      });
+      const second = await colorRef.eval(context);
+
+      expect(second.valueOf()).toBe('blue');
+    });
+
     it('findDeclaration VarDeclaration lookup uses direct lookup', async () => {
       const node = rules([
         vardecl({ name: 'color', value: any('red') })

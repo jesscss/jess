@@ -299,7 +299,11 @@ function writeCachedMatch(scope: Rules, cacheKey: string | undefined, state: Cac
   if (!cacheKey) {
     return;
   }
-  (scope.directDeclarationLookupCache ??= new Map()).set(cacheKey, state);
+  (scope.directDeclarationLookupCache ??= new Map()).set(cacheKey, {
+    optionalMatch: state.optionalMatch,
+    publicMatch: state.publicMatch,
+    readonly: state.readonly
+  });
 }
 
 function findLocalDeclaration(

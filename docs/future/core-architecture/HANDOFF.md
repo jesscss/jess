@@ -80,46 +80,49 @@ explicit live-only mode, makes cached direct declaration match state readonly at
 the type boundary, and lets fully indexed callable child surfaces append
 current-key hits once before skipping recursion when no relevant descendants
 exist.
+Current pass lets static variable lookup handles store binding-cell identity
+instead of a materialized runtime value, copies direct declaration cache records
+at the cache boundary, and lets frame-covered mixin namespace misses stop before
+`findMixinsFast(...)`.
 Last full gate smoke was usable but not a speed claim:
-`mixins-guards.less` `30.68ms`, `scope-lookup-stress.less` `82.20ms`.
+`mixins-guards.less` `23.53ms`, `scope-lookup-stress.less` `74.88ms`.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7fs. [ ] Variable lookup handle carries binding identity.
-Scope: `Reference._rulesLookupHandle`, `RuntimeVarBinding`, `BindingCell`,
-`lookupScopeFrameVariable(...)`, ordinary static variable reads, `$!` snapshot
-reads, and live mutation invalidation.
-Goal: extend repeated static variable lookup reuse without caching a stale value:
-the handle should carry cell/source identity or a versioned slot fact, not a
-materialized runtime binding value.
-Acceptance: repeated variable reference skips rediscovery, live updates do not
-return stale values, snapshot reads preserve source-order behavior, assignment
-and readonly tests pass, lint, builds, aggressive review.
+7fv. [ ] Variable handle invalidation covers parent/fallback cells.
+Scope: `Reference._rulesLookupHandle`, `ScopeFrame.parent`,
+`ScopeFrame.fallbackFrame`, current binding replacement, `:=` assignment, loop
+state mutation, mixin params, and import configured variables.
+Goal: extend the binding-cell handle guard beyond the target frame's own
+current binding map so parent/fallback/live-slot replacement cannot reuse a
+stale cell while same-cell value mutation remains cheap.
+Acceptance: repeated variable reference skips rediscovery for stable cells,
+parent/fallback/current-cell replacement invalidates, mixin params and loop vars
+stay live, assignment/readonly tests pass, lint, builds, aggressive review.
 
-7ft. [ ] Declaration occurrence slots for property modes.
-Scope: `directDeclarationLookupCache`, `directDeclarationsByName`,
-filtered property lookup, merge-chain/assignment-normalization property reads,
-candidate and optional-candidate sets, and source-order starts.
-Goal: replace the remaining registry-owned property/filtered modes with
-binding-frame occurrence facts where semantics are understood; leave explicit
-`UNCOVERED` only for modes still not modeled.
-Acceptance: property merge/source-order tests, assignment-normalization tests,
-candidate/optional candidate tests, readonly/property tests, lint, builds,
-aggressive review.
+7fw. [ ] Property/declaration handle stores occurrence identity.
+Scope: `Reference._rulesLookupHandle`, static property/declaration references,
+`directDeclarationLookupCache`, `directDeclarationsByName`, source-order starts,
+semantic filters, and candidate/optional-candidate sets.
+Goal: stop storing only materialized declaration nodes for covered property and
+declaration handles; carry occurrence/cache identity where safe and leave
+explicit uncovered modes for filtered/merge cases that still need broader facts.
+Acceptance: repeated property/declaration refs skip rediscovery, source-order
+and semantic-filter tests pass, candidate/optional candidate behavior remains
+correct, lint, builds, aggressive review.
 
-7fu. [ ] Callable frame facts for namespace/import bridges.
-Scope: `prepareCallableLookupFrame(...)`, `findMixinsFast(...)`,
-`findMixinNamespacePathFast(...)`, `findRulesetNamespacePathFast(...)`,
-import/reference visibility, guard/candidate matching, and callable miss
-coverage flags.
-Goal: move the next callable direct-crawl bridge condition into frame/handle
-facts so covered namespace or import misses return hit/miss/`UNCOVERED` without
-generic child crawling.
-Acceptance: namespace, recursive namespace, compound-prefix, import/reference
-visibility, guarded callable tests, terminal mixin-only, lint, builds,
-aggressive review.
+7fx. [ ] Callable namespace frame facts for ruleset/import cases.
+Scope: `findRulesetNamespacePathFast(...)`, `findMixinNamespacePathFast(...)`,
+`prepareCallableLookupFrame(...)`, reference imports, guard/candidate matching,
+and callable miss coverage flags.
+Goal: move the next ruleset/import namespace bridge condition into frame/handle
+facts so covered namespace misses can stop without generic direct crawl while
+unmodeled guard/import cases stay explicit.
+Acceptance: ruleset namespace, recursive namespace, compound-prefix,
+import/reference visibility, guarded callable tests, terminal mixin-only, lint,
+builds, aggressive review.
 
 ## Backlog Sources
 
@@ -169,31 +172,35 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: variable binding helper consolidation, direct declaration cache
-  readonly typing, and callable child-surface recursion tightening.
+- Latest pass: variable handle cell identity, direct declaration cache ownership,
+  and callable namespace frame miss coverage.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
-- New traversal: no new parent/source walks. `findMixinsFast(...)` now uses one
-  local bucket loop from both current-surface and fully indexed child precheck
-  paths; this is the same candidate iteration the old recursive path performed,
-  but it can now avoid entering a child with no current-key hits and no relevant
-  descendants.
-- New node/materialization: no nodes. No new arrays, maps, or AST wrappers.
+- New traversal: no new parent/source walks. Variable handle reads add one
+  current-cell identity check on the target frame when the key is static. Mixin
+  namespace lookup asks an existing frame for the first segment and can stop on
+  a covered miss before the direct crawl. Test-only `fastPathHits` records the
+  old bridge being skipped.
+- New node/materialization: no nodes. No AST wrappers or copied nodes.
 - Render path: unchanged.
-- Helper/API surface: deleted `lookupLiveScopeFrameVariableBinding(...)`.
-  `lookupScopeFrameVariableBinding(...)` now owns full and live-only reads so
-  target/index/variable paths share one binding-cell result construction path.
-- Metadata mutations: none.
-- Allocation changes: cached direct declaration match state is readonly at the
-  cache type boundary. Variable live-only reads no longer build a second helper
-  result path. Callable child recursion can avoid a recursive call after using
-  the existing per-key bucket and descendant-surface fact. The existing
-  `results` array is still the public `findMixinsFast(...)` return surface; no
-  additional result array is introduced.
-- Evidence: focused lint passed. Focused lookup suite passed (`5` files,
-  `102` passed, `318` skipped). Larger focused lookup suite passed (`8` files,
-  `332` passed, `249` skipped). Residue grep, `git diff --check`,
+- Helper/API surface: adds internal `ScopeFrameVariableBindingHandle` shape and
+  shared `runtimeBindingFromCell(...)`; these replace materialized variable
+  handle values with cell/source identity for static variable handles.
+- Metadata mutations: no parent/source mutation. `sourceNode` is carried through
+  the variable handle as existing binding identity, then used to rebuild the
+  same runtime binding result shape from the current cell value.
+- Allocation changes: variable handle reads rebuild a lightweight runtime
+  binding from an existing cell instead of returning a cached runtime binding
+  value. Static variable handle writes allocate a small cell/source handle
+  record only for reusable static variable refs. Direct declaration cache writes
+  allocate an owned three-field cache record instead of storing mutable
+  traversal state. Callable namespace frame misses avoid `findMixinsFast(...)`
+  for covered mixin-only namespace misses. The `try` token is test-only cleanup
+  around monkey-patched methods.
+- Evidence: focused lint passed. Focused lookup suite passed (`3` files,
+  `90` passed, `263` skipped). Larger focused lookup suite passed (`8` files,
+  `345` passed, `238` skipped). Residue grep, `git diff --check`,
   `pnpm --filter @jesscss/core build`, and `pnpm run audit:node-creation`
-  passed. `pnpm run verify:aggressive-cutting-review` passed with the documented
-  callable loop/result-surface danger tokens. `pnpm --filter jess build` passed.
-  Smoke benchmark only: `mixins-guards.less` `30.68ms`,
-  `scope-lookup-stress.less` `82.20ms`.
+  passed. `pnpm run verify:aggressive-cutting-review` passed with documented
+  handle/cache/test danger tokens. `pnpm --filter jess build` passed. Smoke
+  benchmark only: `mixins-guards.less` `23.53ms`,
+  `scope-lookup-stress.less` `74.88ms`.

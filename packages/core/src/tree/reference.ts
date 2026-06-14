@@ -26,6 +26,7 @@ import {
   getBindingCellValue,
   lookupScopeFrameVariable,
   setScopeFrameDeclarationBinding,
+  type BindingCell,
   type BindingEntry,
   type ScopeFrame
 } from './scope-frame.js';
@@ -279,15 +280,25 @@ type LookupType = NonNullable<ReferenceOptions['type']>;
 type NormalizedLookupKey = string | string[] | number;
 type RulesLookupResult = RuntimeVarBinding | Node | MixinEntry[] | undefined;
 const SCOPE_FRAME_VARIABLE_MISS = Symbol('scope-frame-variable-miss');
-type ScopeFrameVariableBindingResult = RuntimeVarBinding | typeof SCOPE_FRAME_VARIABLE_MISS | undefined;
-type RulesLookupHandleValue = Exclude<RulesLookupResult, undefined> | typeof SCOPE_FRAME_VARIABLE_MISS;
+type RuntimeVarBindingWithCell = RuntimeVarBinding & { cell?: BindingCell };
+type ScopeFrameVariableBindingResult = RuntimeVarBindingWithCell | typeof SCOPE_FRAME_VARIABLE_MISS | undefined;
+type ScopeFrameVariableBindingHandle = {
+  kind: 'scope-frame-variable-binding-handle';
+  cell: BindingCell;
+  sourceNode?: Node;
+  rulesContext?: Rules;
+};
+type RulesLookupHandleValue =
+  | Exclude<RulesLookupResult, undefined>
+  | ScopeFrameVariableBindingHandle
+  | typeof SCOPE_FRAME_VARIABLE_MISS;
 type RulesLookupHandleReadResult = RulesLookupHandleValue | undefined;
 
 type ReferenceRulesLookupHandle = {
   targetRules: Rules;
   targetLookupVersion: number;
   valueKey: string | string[];
-  lookupType: 'declaration' | 'function' | 'mixin' | 'mixin-ruleset' | 'property';
+  lookupType: 'declaration' | 'function' | 'mixin' | 'mixin-ruleset' | 'property' | 'variable';
   inCall: boolean;
   start: number | undefined;
   local: boolean;
@@ -298,6 +309,29 @@ type ReferenceRulesLookupHandle = {
 
 function isRulesLookupResult(value: unknown): value is Exclude<RulesLookupResult, undefined> {
   return isRuntimeVarBinding(value) || isNode(value) || Array.isArray(value);
+}
+
+function isScopeFrameVariableBindingHandle(value: unknown): value is ScopeFrameVariableBindingHandle {
+  return (
+    value !== null
+    && typeof value === 'object'
+    && 'kind' in value
+    && value.kind === 'scope-frame-variable-binding-handle'
+  );
+}
+
+function runtimeBindingFromCell(
+  cell: BindingCell,
+  sourceNode: Node | undefined
+): RuntimeVarBindingWithCell {
+  return {
+    kind: 'runtime-var-binding',
+    value: getBindingCellValue(cell),
+    readonly: cell.readonly,
+    sourceNode,
+    rulesContext: isNode(cell.rulesContext, N.Rules) ? cell.rulesContext : undefined,
+    cell
+  };
 }
 
 type RulesLookupAdapterEnv = {
@@ -570,14 +604,7 @@ function lookupScopeFrameVariableBinding(
     return undefined;
   }
   const { cell, sourceNode } = hit;
-  const value = getBindingCellValue(cell);
-  return {
-    kind: 'runtime-var-binding',
-    value,
-    readonly: cell.readonly,
-    sourceNode,
-    rulesContext: isNode(cell.rulesContext, N.Rules) ? cell.rulesContext : undefined
-  } satisfies RuntimeVarBinding;
+  return runtimeBindingFromCell(cell, sourceNode);
 }
 
 function lookupIndexReference(
@@ -868,13 +895,14 @@ function canUseRulesLookupHandle(args: {
   env: RulesLookupAdapterEnv;
   context: Context;
 }): args is typeof args & {
-  lookupType: 'declaration' | 'function' | 'mixin' | 'mixin-ruleset' | 'property';
+  lookupType: 'declaration' | 'function' | 'mixin' | 'mixin-ruleset' | 'property' | 'variable';
   valueKey: string | string[];
 } {
   const handleableKey = (
     args.lookupType === 'declaration'
     || args.lookupType === 'function'
     || args.lookupType === 'property'
+    || args.lookupType === 'variable'
   )
     ? typeof args.valueKey === 'string'
     : isHandleableLookupKey(args.valueKey);
@@ -885,6 +913,7 @@ function canUseRulesLookupHandle(args: {
       || args.lookupType === 'mixin'
       || args.lookupType === 'mixin-ruleset'
       || args.lookupType === 'property'
+      || args.lookupType === 'variable'
     )
     && handleableKey
     && args.target === undefined
@@ -933,6 +962,15 @@ function readRulesLookupHandle(args: {
   ) {
     return undefined;
   }
+  if (isScopeFrameVariableBindingHandle(handle.returnVal)) {
+    if (typeof args.valueKey === 'string') {
+      const currentCell = args.targetRules._scopeFrame?.currentBindingsByName.get(args.valueKey);
+      if (currentCell && currentCell !== handle.returnVal.cell) {
+        return undefined;
+      }
+    }
+    return runtimeBindingFromCell(handle.returnVal.cell, handle.returnVal.sourceNode);
+  }
   return handle.returnVal;
 }
 
@@ -952,6 +990,22 @@ function writeRulesLookupHandle(args: {
     args.referenceNode._rulesLookupHandle = undefined;
     return;
   }
+  let returnVal: RulesLookupHandleValue = args.returnVal ?? SCOPE_FRAME_VARIABLE_MISS;
+  if (args.lookupType === 'variable') {
+    if (args.returnVal === undefined) {
+      returnVal = SCOPE_FRAME_VARIABLE_MISS;
+    } else if (isRuntimeVarBinding(args.returnVal) && 'cell' in args.returnVal && args.returnVal.cell) {
+      returnVal = {
+        kind: 'scope-frame-variable-binding-handle',
+        cell: args.returnVal.cell,
+        sourceNode: args.returnVal.sourceNode,
+        rulesContext: args.returnVal.rulesContext
+      };
+    } else {
+      args.referenceNode._rulesLookupHandle = undefined;
+      return;
+    }
+  }
   args.referenceNode._rulesLookupHandle = {
     targetRules: args.targetRules,
     targetLookupVersion: args.targetRules.lookupVersion,
@@ -962,7 +1016,7 @@ function writeRulesLookupHandle(args: {
     local: args.shape.local,
     ignoreParentScopeStart: args.shape.ignoreParentScopeStart,
     terminalMixinOnly: args.shape.terminalMixinOnly,
-    returnVal: args.returnVal ?? SCOPE_FRAME_VARIABLE_MISS
+    returnVal
   };
 }
 

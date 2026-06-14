@@ -2482,6 +2482,38 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: namespace miss skips Rules.findMixinsFast when frame miss is covered', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '#missing-namespace') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('#other-namespace'),
+            rules: rules([
+              mixin({
+                name: any('.leaf'),
+                rules: rules([decl({ name: 'color', value: any('green') })])
+              })
+            ])
+          })
+        ]);
+        root.getScopeFrame();
+
+        expect(root.findMixin(['#missing-namespace', '.leaf'], 'Mixin')).toBeUndefined();
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('ScopeFrame callable buckets: static miss keeps Rules.findMixinsFast bridge when child surfaces exist', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];

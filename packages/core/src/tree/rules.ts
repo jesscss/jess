@@ -1530,10 +1530,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return DEFINITE_MIXIN_NAMESPACE_MISS;
       }
 
-      const matches = scope.findMixinsFast(segment, {
+      const includeRulesets = restLength === 0 && filterType !== 'Mixin' && options.terminalMixinOnly !== true;
+      let matches: MixinEntry[] | undefined;
+      if (scope._scopeFrame && !options.hasTarget && !options.local) {
+        scope.prepareCallableLookupFrame(scope._scopeFrame, segment, includeRulesets);
+        const frameHit = lookupScopeFrameCallable(scope._scopeFrame, segment, {
+          includeRulesets,
+          searchParents
+        });
+        if (frameHit.kind === 'hit') {
+          matches = collectCallableBucketResults(frameHit.bucket, includeRulesets);
+        } else if (frameHit.kind === 'miss') {
+          return DEFINITE_MIXIN_NAMESPACE_MISS;
+        }
+      }
+      matches ??= scope.findMixinsFast(segment, {
         hasTarget: options.hasTarget,
         local: options.local,
-        includeRulesets: restLength === 0 && filterType !== 'Mixin' && options.terminalMixinOnly !== true,
+        includeRulesets,
         searchParents
       });
 
