@@ -2672,6 +2672,40 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: recursive namespace miss skips child findMixin when first remainder miss is covered', () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      let childFindMixinCount = 0;
+      let childRules: RulesClass;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this === childRules) {
+          childFindMixinCount++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        childRules = rules([
+          mixin({
+            name: any('#other-child-namespace'),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          })
+        ]);
+        const root = rules([
+          mixin({
+            name: any('#parent-namespace'),
+            rules: childRules
+          })
+        ]);
+        root.getScopeFrame();
+        childRules.getScopeFrame();
+
+        expect(root.findMixin(['#parent-namespace', '#missing-child-namespace', '.leaf'], undefined)).toBeUndefined();
+        expect(childFindMixinCount).toBe(0);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
     it('ScopeFrame callable buckets: recursive namespace hit reaches fallback frame before child direct crawl', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];

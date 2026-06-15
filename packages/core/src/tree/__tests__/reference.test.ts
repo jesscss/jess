@@ -3047,6 +3047,7 @@ describe('reference', () => {
       const found = node.findProperty('color', opts);
 
       expect(found?.value.value.valueOf()).toBe('red');
+      expect(node.directDeclarationLookupCache?.size).toBeGreaterThan(0);
     });
 
     it('direct property lookup records non-empty candidate hits', async () => {

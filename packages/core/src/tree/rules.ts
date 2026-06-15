@@ -1834,6 +1834,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!mixinHasNoRequiredParams(entry)) {
         continue;
       }
+      const firstRemainder = keys[1]!;
+      const firstRemainderIncludesRulesets = keys.length === 2 && options.terminalMixinOnly !== true;
+      const childFrame = entry.value.rules._scopeFrame;
+      if (childFrame && !options.hasTarget && !options.local) {
+        entry.value.rules.prepareCallableLookupFrame(childFrame, firstRemainder, firstRemainderIncludesRulesets);
+        const firstRemainderHit = lookupScopeFrameCallable(childFrame, firstRemainder, {
+          includeRulesets: firstRemainderIncludesRulesets,
+          searchParents: false
+        });
+        if (firstRemainderHit.kind === 'miss') {
+          continue;
+        }
+      }
       remainder ??= keys.length === 2 ? keys[1]! : collectKeyRemainder(keys, 1);
       nestedOptions ??= existingNoParentOptions ?? {
         ...options,

@@ -298,8 +298,8 @@ function getRecursiveLookupCacheKey(
     || start !== undefined
     || readonly
     || options.filter
-    || options.candidates
-    || options.optionalCandidates
+    || Boolean(options.candidates?.size)
+    || Boolean(options.optionalCandidates?.size)
   ) {
     return undefined;
   }
