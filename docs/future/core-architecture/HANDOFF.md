@@ -105,38 +105,37 @@ through to direct crawl.
 The reference strategy cache now uses a single node slot; the strategy object
 carries its own lookup type for stale-type checks.
 Last full gate smoke was usable but not a speed claim:
-`mixins-guards.less` `23.52ms`, `scope-lookup-stress.less` `77.50ms`.
+`mixins-guards.less` `29.22ms`, `scope-lookup-stress.less` `116.84ms`.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7hi. [ ] Reference handle writer shape is audited against generated output.
-Scope: `reference.ts` family writers, compiled `lib`, bundle size, and focused
-handle tests.
-Goal: decide from emitted code whether the repeated object-literal writer shape
-is still cheaper than a shared writer helper, without changing source for style.
-Acceptance: emitted-code proof with no source change, or zero-tax source cut;
-lint, builds, aggressive review.
+7hl. [ ] Reference handle eligibility is computed once per resolved lookup.
+Scope: `canUseRulesLookupHandle(...)`, `readRulesLookupHandle(...)`, family
+writers, `lookupResolvedReference(...)`, and handle tests.
+Goal: avoid repeating the same handle-eligibility checks on read and write
+without adding a generic branch ladder or stale state.
+Acceptance: one eligibility computation reused safely, or no-op proof; focused
+handle tests, lint, builds, aggressive review.
 
-7hj. [ ] Callable uncovered reason is carried through descendant namespace
-calls only when include-ruleset semantics match.
+7hm. [ ] Callable namespace first-remainder coverage gets a same-mode probe.
 Scope: `findCallableDescendantsWithinMixinNamespaces(...)`,
-`findMixinNamespacePathFast(...)`, `terminalMixinOnly`, and namespace tests.
-Goal: avoid recursive `findMixin(...)` only when the first remainder segment is
-covered for the same include-ruleset mode the recursive lookup would use.
+`findMixinNamespacePathFast(...)`, `terminalMixinOnly`, `includeRulesets`, and
+namespace tests.
+Goal: add or reject a cheap same-mode frame probe for the first remainder
+segment before recursive `findMixin(...)`, so covered misses skip recursion only
+when semantics exactly match.
 Acceptance: branch skip/deletion or no-op proof, namespace tests, lint, builds,
 aggressive review.
 
-7hk. [ ] Reference strategy cache and rules lookup handle reset are unified if
-there is an existing reset edge.
-Scope: `Reference._lookupStrategy`, `_rulesLookupHandle`, clone/copy/adopt,
-option mutation, and any existing reference state invalidation.
-Goal: if a reference already clears lookup state somewhere, make strategy cache
-follow that edge; otherwise document why the lookup-type guard is the ownership
-boundary.
-Acceptance: reset unification or no-op proof, focused reference tests, lint,
-builds, aggressive review.
+7hn. [ ] Reference strategy cache emitted shape is checked after minification.
+Scope: `packages/core/lib/index.js`, `getCachedReferenceLookupStrategy(...)`,
+strategy constants, and bundle output.
+Goal: verify the single-slot strategy cache stays smaller/cleaner in emitted
+code than a switch at every lookup call and does not grow retained state.
+Acceptance: emitted-code proof, no source churn unless it deletes emitted work;
+lint, builds, aggressive review.
 
 ## Backlog Sources
 
@@ -186,32 +185,29 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: single-slot reference strategy cache hardening, deeper callable
-  namespace no-op proof, and handle-writer no-op proof.
+- Latest pass: emitted handle-writer audit, deeper callable namespace no-op
+  proof, and reference lookup cache ownership proof.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
-- New traversal: no new runtime traversal. Reference strategy selection is
-  cached on the `Reference` node and guarded by `strategy.lookupType`, so
-  mutable `options.type` cannot reuse the wrong strategy. The deeper descendant
-  namespace branch was left unchanged because recursive `findMixin(...)` can
-  use different include-ruleset semantics when `terminalMixinOnly` and
-  namespace containers interact.
+- New traversal: none. `findCallableDescendantsWithinMixinNamespaces(...)` was
+  left unchanged because recursive `findMixin(...)` can use different
+  include-ruleset semantics when `terminalMixinOnly` and namespace containers
+  interact; a covered miss for one mode is not proof for the other mode.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: keeps module-local `getCachedReferenceLookupStrategy(...)`
-  and shrinks its ownership to one node-local cache slot. No public API.
-  Repeated handle object writes were left intact because the obvious shared
-  writer adds a function call or helper object on the cache-write path without
-  deleting validation work.
+- Helper/API surface: no new helper or API. Emitted `lib/index.js` shows the
+  four handle writers compile to straight-line validation plus one direct
+  `_rulesLookupHandle` assignment; a shared writer would add a call/helper
+  object without deleting the family-specific validation.
 - Metadata mutations: none.
-- Allocation changes: no new per-lookup arrays or nodes. The strategy cache
-  stores one reference to an existing module constant on the `Reference` node.
-  Handle writes still allocate one cache record as before.
-- Evidence: focused eslint passed for `reference.ts`, `rules.ts`, and
-  `scope-frame.ts`. `@jesscss/core` build passed with the existing `js-expr.ts`
-  direct-eval warning. Targeted lookup/callable tests passed (`4` files,
-  `154` passed, `292` skipped). Broader lookup test slice passed (`8` files,
-  `313` passed, `290` skipped). Residue grep had no matches; `git diff --check`,
-  aggressive review with no scoped danger tokens, node-creation audit,
-  `@jesscss/core` build, `jess` build, and one-iteration hotpath smoke all
-  passed. Smoke was usable but not a speed claim: `mixins-guards.less`
-  `23.52ms`, `scope-lookup-stress.less` `77.50ms`.
+- Allocation changes: no source allocation changes. Emitted writer audit kept
+  the existing one cache-record allocation per successful handle write.
+- Evidence: emitted writer audit inspected `packages/core/lib/index.js`
+  writer output (`writeVariableRulesLookupHandle(...)` through
+  `writeCallableRulesLookupHandle(...)`) and bundle size (`index.js`
+  `1022392` bytes, `index.cjs` `1037039` bytes). Focused eslint passed.
+  Focused lookup tests passed (`6` files, `299` passed, `291` skipped).
+  Residue grep had no matches; `git diff --check`, aggressive review with no
+  scoped danger tokens, node-creation audit, `@jesscss/core` build, `jess`
+  build, and one-iteration hotpath smoke all passed. Smoke was usable but not a
+  speed claim: `mixins-guards.less` `29.22ms`, `scope-lookup-stress.less`
+  `116.84ms`.
