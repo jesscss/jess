@@ -275,6 +275,7 @@ function getLookupStartIndex(node: Node): number | undefined {
 type LookupType = NonNullable<ReferenceOptions['type']>;
 type NormalizedLookupKey = string | string[] | number;
 const SCOPE_FRAME_VARIABLE_MISS = Symbol('scope-frame-variable-miss');
+const CACHED_RULES_LOOKUP_MISS = Symbol('cached-rules-lookup-miss');
 type ScopeFrameVariableBindingHandle = {
   kind: 'scope-frame-variable-binding-handle';
   cell: BindingCell;
@@ -295,10 +296,10 @@ type CallableReferenceLookupReturnValue = MixinEntry[] | undefined;
 type VariableRulesLookupHandleValue =
   | ScopeFrameVariableBindingHandle
   | DirectDeclarationOccurrence
-  | typeof SCOPE_FRAME_VARIABLE_MISS;
-type DeclarationRulesLookupHandleValue = DirectDeclarationOccurrence | typeof SCOPE_FRAME_VARIABLE_MISS;
-type FunctionRulesLookupHandleValue = Exclude<FunctionReferenceLookupReturnValue, undefined> | typeof SCOPE_FRAME_VARIABLE_MISS;
-type CallableRulesLookupHandleValue = MixinEntry[] | typeof SCOPE_FRAME_VARIABLE_MISS;
+  | typeof CACHED_RULES_LOOKUP_MISS;
+type DeclarationRulesLookupHandleValue = DirectDeclarationOccurrence | typeof CACHED_RULES_LOOKUP_MISS;
+type FunctionRulesLookupHandleValue = Exclude<FunctionReferenceLookupReturnValue, undefined> | typeof CACHED_RULES_LOOKUP_MISS;
+type CallableRulesLookupHandleValue = MixinEntry[] | typeof CACHED_RULES_LOOKUP_MISS;
 type RulesLookupHandleReadResult =
   | VariableRulesLookupHandleValue
   | DeclarationRulesLookupHandleValue
@@ -399,6 +400,7 @@ type RulesLookupAdapterEnv = {
 type RulesReferenceLookupContext = {
   referenceNode: Reference;
   lookupType: LookupType;
+  strategy: ReferenceLookupStrategy;
   target: ReferenceValue['target'];
   resolution: ReferenceOptions['resolution'];
   isInterpolatedVariable: boolean;
@@ -418,6 +420,14 @@ type PreparedReferenceLookup = {
 
 type ReferenceDeclarationFindOptions = DeclarationFindOptions & { context: Context };
 type ScopeFrameVariableBindingMode = 'full' | 'live-only';
+type ReferenceLookupStrategy = {
+  readonly performRulesLookup: (
+    scope: Rules,
+    lookupContext: RulesReferenceLookupContext,
+    shape: RulesLookupHandleShape
+  ) => ReferenceLookupReturnValue;
+  readonly writeHandle: (args: WriteRulesLookupHandleArgs) => void;
+};
 
 const RAW_REFERENCE_TARGET_NOT_FOUND = Symbol('RAW_REFERENCE_TARGET_NOT_FOUND');
 
@@ -734,6 +744,120 @@ function lookupDeclarationReference(
   return findAnyDeclarationOccurrence(targetRules, getLookupKeyString(valueKey), opts);
 }
 
+function buildReferenceDeclarationFindOptions(
+  lookupContext: RulesReferenceLookupContext,
+  shape: RulesLookupHandleShape
+): ReferenceDeclarationFindOptions {
+  return {
+    filter: lookupContext.filter,
+    semanticFilter: lookupContext.semanticFilter,
+    context: lookupContext.context,
+    hasTarget: lookupContext.hasTarget,
+    local: shape.local || undefined,
+    start: shape.start,
+    ignoreParentScopeStart: shape.ignoreParentScopeStart || undefined
+  };
+}
+
+function performIndexRulesLookup(
+  scope: Rules,
+  lookupContext: RulesReferenceLookupContext,
+  shape: RulesLookupHandleShape
+): IndexReferenceLookupReturnValue {
+  return lookupIndexReference(
+    scope,
+    lookupContext.valueKey,
+    buildReferenceDeclarationFindOptions(lookupContext, shape),
+    lookupContext.env
+  );
+}
+
+function performPropertyRulesLookup(
+  scope: Rules,
+  lookupContext: RulesReferenceLookupContext,
+  shape: RulesLookupHandleShape
+): DeclarationReferenceLookupReturnValue {
+  return lookupPropertyReference(
+    scope,
+    lookupContext.valueKey,
+    buildReferenceDeclarationFindOptions(lookupContext, shape),
+    lookupContext.env
+  );
+}
+
+function performVariableRulesLookup(
+  scope: Rules,
+  lookupContext: RulesReferenceLookupContext,
+  shape: RulesLookupHandleShape
+): VariableReferenceLookupReturnValue {
+  return lookupVariableReference(
+    scope,
+    lookupContext.valueKey,
+    buildReferenceDeclarationFindOptions(lookupContext, shape),
+    lookupContext.env
+  );
+}
+
+function performDeclarationRulesLookup(
+  scope: Rules,
+  lookupContext: RulesReferenceLookupContext,
+  shape: RulesLookupHandleShape
+): DeclarationReferenceLookupReturnValue {
+  return lookupDeclarationReference(
+    scope,
+    lookupContext.valueKey,
+    buildReferenceDeclarationFindOptions(lookupContext, shape),
+    lookupContext.env
+  );
+}
+
+function performFunctionRulesLookup(
+  scope: Rules,
+  lookupContext: RulesReferenceLookupContext,
+  shape: RulesLookupHandleShape
+): FunctionReferenceLookupReturnValue {
+  return scope.findFunction(getLookupKeyString(lookupContext.valueKey), undefined, {
+    context: lookupContext.context,
+    hasTarget: lookupContext.hasTarget,
+    local: shape.local || undefined,
+    terminalMixinOnly: shape.terminalMixinOnly || undefined
+  });
+}
+
+function performMixinRulesLookup(
+  scope: Rules,
+  lookupContext: RulesReferenceLookupContext,
+  shape: RulesLookupHandleShape
+): CallableReferenceLookupReturnValue {
+  return scope.findMixin(
+    Array.isArray(lookupContext.valueKey) ? lookupContext.valueKey : getLookupKeyString(lookupContext.valueKey),
+    'Mixin',
+    {
+      context: lookupContext.context,
+      hasTarget: lookupContext.hasTarget,
+      local: shape.local || undefined,
+      terminalMixinOnly: shape.terminalMixinOnly || undefined
+    }
+  );
+}
+
+function performMixinRulesetRulesLookup(
+  scope: Rules,
+  lookupContext: RulesReferenceLookupContext,
+  shape: RulesLookupHandleShape
+): CallableReferenceLookupReturnValue {
+  return scope.findMixin(
+    Array.isArray(lookupContext.valueKey) ? lookupContext.valueKey : getLookupKeyString(lookupContext.valueKey),
+    undefined,
+    {
+      context: lookupContext.context,
+      hasTarget: lookupContext.hasTarget,
+      local: shape.local || undefined,
+      terminalMixinOnly: shape.terminalMixinOnly || undefined
+    }
+  );
+}
+
 function lookupRulesReferenceTarget(args: {
   resolvedTarget: Rules;
   context: Context;
@@ -832,13 +956,8 @@ function performRulesReferenceLookup(
     target,
     resolution,
     isInterpolatedVariable,
-    filter,
-    semanticFilter,
     context,
-    hasTarget,
-    lookupType,
-    valueKey,
-    env
+    lookupType
   } = lookupContext;
   const preparedShape = lookupContext.preparedRules === scope
     ? lookupContext.preparedShape
@@ -852,84 +971,7 @@ function performRulesReferenceLookup(
     isInterpolatedVariable,
     context
   });
-  switch (lookupType) {
-    case 'index': {
-      return lookupIndexReference(scope, valueKey, {
-        filter,
-        semanticFilter,
-        context,
-        hasTarget,
-        local: shape.local || undefined,
-        start: shape.start,
-        ignoreParentScopeStart: shape.ignoreParentScopeStart || undefined
-      }, env);
-    }
-    case 'property': {
-      return lookupPropertyReference(scope, valueKey, {
-        filter,
-        semanticFilter,
-        context,
-        hasTarget,
-        local: shape.local || undefined,
-        start: shape.start,
-        ignoreParentScopeStart: shape.ignoreParentScopeStart || undefined
-      }, env);
-    }
-    case 'variable': {
-      return lookupVariableReference(scope, valueKey, {
-        filter,
-        semanticFilter,
-        context,
-        hasTarget,
-        local: shape.local || undefined,
-        start: shape.start,
-        ignoreParentScopeStart: shape.ignoreParentScopeStart || undefined
-      }, env);
-    }
-    case 'declaration': {
-      return lookupDeclarationReference(scope, valueKey, {
-        filter,
-        semanticFilter,
-        context,
-        hasTarget,
-        local: shape.local || undefined,
-        start: shape.start,
-        ignoreParentScopeStart: shape.ignoreParentScopeStart || undefined
-      }, env);
-    }
-    case 'function': {
-      return scope.findFunction(getLookupKeyString(valueKey), undefined, {
-        context,
-        hasTarget,
-        local: shape.local || undefined,
-        terminalMixinOnly: shape.terminalMixinOnly || undefined
-      });
-    }
-    case 'mixin': {
-      return scope.findMixin(
-        Array.isArray(valueKey) ? valueKey : getLookupKeyString(valueKey),
-        'Mixin',
-        {
-          context,
-          hasTarget,
-          local: shape.local || undefined,
-          terminalMixinOnly: shape.terminalMixinOnly || undefined
-        }
-      );
-    }
-    case 'mixin-ruleset': {
-      return scope.findMixin(
-        Array.isArray(valueKey) ? valueKey : getLookupKeyString(valueKey),
-        undefined,
-        {
-          context,
-          hasTarget,
-          local: shape.local || undefined,
-          terminalMixinOnly: shape.terminalMixinOnly || undefined
-        }
-      );
-    }
-  }
+  return lookupContext.strategy.performRulesLookup(scope, lookupContext, shape);
 }
 
 function isHandleableLookupKey(valueKey: NormalizedLookupKey): valueKey is string | string[] {
@@ -980,6 +1022,19 @@ type RulesLookupHandleShape = {
   local: boolean;
   ignoreParentScopeStart: boolean;
   terminalMixinOnly: boolean;
+};
+
+type WriteRulesLookupHandleArgs = {
+  referenceNode: Reference;
+  targetRules: Rules;
+  lookupType: LookupType;
+  valueKey: NormalizedLookupKey;
+  target: ReferenceValue['target'];
+  originalFilter: ReferenceOptions['filter'] | undefined;
+  env: RulesLookupAdapterEnv;
+  context: Context;
+  shape: RulesLookupHandleShape;
+  returnVal: ReferenceLookupReturnValue;
 };
 
 function readRulesLookupHandle(args: {
@@ -1034,18 +1089,7 @@ function readRulesLookupHandle(args: {
   return handle.returnVal;
 }
 
-function writeRulesLookupHandle(args: {
-  referenceNode: Reference;
-  targetRules: Rules;
-  lookupType: LookupType;
-  valueKey: NormalizedLookupKey;
-  target: ReferenceValue['target'];
-  originalFilter: ReferenceOptions['filter'] | undefined;
-  env: RulesLookupAdapterEnv;
-  context: Context;
-  shape: RulesLookupHandleShape;
-  returnVal: ReferenceLookupReturnValue;
-}): void {
+function writeVariableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {
   if (!canUseRulesLookupHandle(args)) {
     args.referenceNode._rulesLookupHandle = undefined;
     return;
@@ -1054,71 +1098,44 @@ function writeRulesLookupHandle(args: {
   const { valueKey } = args;
   const inCall = args.env.inCall;
   const { start, local, ignoreParentScopeStart, terminalMixinOnly } = args.shape;
-  if (args.lookupType === 'variable') {
-    if (
+  if (
+    args.lookupType !== 'variable'
+    || (
       args.returnVal !== undefined
       && !isScopeFrameVariableBindingHandle(args.returnVal)
       && !isDirectDeclarationOccurrence(args.returnVal)
-    ) {
-      args.referenceNode._rulesLookupHandle = undefined;
-      return;
-    }
-    args.referenceNode._rulesLookupHandle = {
-      targetRules: args.targetRules,
-      targetLookupVersion,
-      valueKey,
-      lookupType: 'variable',
-      inCall,
-      start,
-      local,
-      ignoreParentScopeStart,
-      terminalMixinOnly,
-      returnVal: args.returnVal ?? SCOPE_FRAME_VARIABLE_MISS
-    };
-    return;
-  }
-  if (args.lookupType === 'property' || args.lookupType === 'declaration') {
-    if (args.returnVal !== undefined && !isDirectDeclarationOccurrence(args.returnVal)) {
-      args.referenceNode._rulesLookupHandle = undefined;
-      return;
-    }
-    args.referenceNode._rulesLookupHandle = {
-      targetRules: args.targetRules,
-      targetLookupVersion,
-      valueKey,
-      lookupType: args.lookupType,
-      inCall,
-      start,
-      local,
-      ignoreParentScopeStart,
-      terminalMixinOnly,
-      returnVal: args.returnVal ?? SCOPE_FRAME_VARIABLE_MISS
-    };
-    return;
-  }
-  if (args.lookupType === 'function') {
-    if (args.returnVal !== undefined && !isNode(args.returnVal)) {
-      args.referenceNode._rulesLookupHandle = undefined;
-      return;
-    }
-    args.referenceNode._rulesLookupHandle = {
-      targetRules: args.targetRules,
-      targetLookupVersion,
-      valueKey,
-      lookupType: 'function',
-      inCall,
-      start,
-      local,
-      ignoreParentScopeStart,
-      terminalMixinOnly,
-      returnVal: args.returnVal ?? SCOPE_FRAME_VARIABLE_MISS
-    };
-    return;
-  }
-  if (!Array.isArray(args.returnVal) && args.returnVal !== undefined) {
+    )
+  ) {
     args.referenceNode._rulesLookupHandle = undefined;
     return;
   }
+  args.referenceNode._rulesLookupHandle = {
+    targetRules: args.targetRules,
+    targetLookupVersion,
+    valueKey,
+    lookupType: 'variable',
+    inCall,
+    start,
+    local,
+    ignoreParentScopeStart,
+    terminalMixinOnly,
+    returnVal: args.returnVal ?? CACHED_RULES_LOOKUP_MISS
+  };
+}
+
+function writeDeclarationRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {
+  if (
+    !canUseRulesLookupHandle(args)
+    || (args.lookupType !== 'property' && args.lookupType !== 'declaration')
+    || (args.returnVal !== undefined && !isDirectDeclarationOccurrence(args.returnVal))
+  ) {
+    args.referenceNode._rulesLookupHandle = undefined;
+    return;
+  }
+  const targetLookupVersion = args.targetRules.lookupVersion;
+  const { valueKey } = args;
+  const inCall = args.env.inCall;
+  const { start, local, ignoreParentScopeStart, terminalMixinOnly } = args.shape;
   args.referenceNode._rulesLookupHandle = {
     targetRules: args.targetRules,
     targetLookupVersion,
@@ -1129,8 +1146,114 @@ function writeRulesLookupHandle(args: {
     local,
     ignoreParentScopeStart,
     terminalMixinOnly,
-    returnVal: args.returnVal ?? SCOPE_FRAME_VARIABLE_MISS
+    returnVal: args.returnVal ?? CACHED_RULES_LOOKUP_MISS
   };
+}
+
+function writeFunctionRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {
+  if (
+    !canUseRulesLookupHandle(args)
+    || args.lookupType !== 'function'
+    || (args.returnVal !== undefined && !isNode(args.returnVal))
+  ) {
+    args.referenceNode._rulesLookupHandle = undefined;
+    return;
+  }
+  const targetLookupVersion = args.targetRules.lookupVersion;
+  const { valueKey } = args;
+  const inCall = args.env.inCall;
+  const { start, local, ignoreParentScopeStart, terminalMixinOnly } = args.shape;
+  args.referenceNode._rulesLookupHandle = {
+    targetRules: args.targetRules,
+    targetLookupVersion,
+    valueKey,
+    lookupType: 'function',
+    inCall,
+    start,
+    local,
+    ignoreParentScopeStart,
+    terminalMixinOnly,
+    returnVal: args.returnVal ?? CACHED_RULES_LOOKUP_MISS
+  };
+}
+
+function writeCallableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {
+  if (
+    !canUseRulesLookupHandle(args)
+    || (args.lookupType !== 'mixin' && args.lookupType !== 'mixin-ruleset')
+    || (!Array.isArray(args.returnVal) && args.returnVal !== undefined)
+  ) {
+    args.referenceNode._rulesLookupHandle = undefined;
+    return;
+  }
+  const targetLookupVersion = args.targetRules.lookupVersion;
+  const { valueKey } = args;
+  const inCall = args.env.inCall;
+  const { start, local, ignoreParentScopeStart, terminalMixinOnly } = args.shape;
+  args.referenceNode._rulesLookupHandle = {
+    targetRules: args.targetRules,
+    targetLookupVersion,
+    valueKey,
+    lookupType: args.lookupType,
+    inCall,
+    start,
+    local,
+    ignoreParentScopeStart,
+    terminalMixinOnly,
+    returnVal: args.returnVal ?? CACHED_RULES_LOOKUP_MISS
+  };
+}
+
+function clearRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {
+  args.referenceNode._rulesLookupHandle = undefined;
+}
+
+const INDEX_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
+  performRulesLookup: performIndexRulesLookup,
+  writeHandle: clearRulesLookupHandle
+};
+const PROPERTY_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
+  performRulesLookup: performPropertyRulesLookup,
+  writeHandle: writeDeclarationRulesLookupHandle
+};
+const VARIABLE_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
+  performRulesLookup: performVariableRulesLookup,
+  writeHandle: writeVariableRulesLookupHandle
+};
+const DECLARATION_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
+  performRulesLookup: performDeclarationRulesLookup,
+  writeHandle: writeDeclarationRulesLookupHandle
+};
+const FUNCTION_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
+  performRulesLookup: performFunctionRulesLookup,
+  writeHandle: writeFunctionRulesLookupHandle
+};
+const MIXIN_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
+  performRulesLookup: performMixinRulesLookup,
+  writeHandle: writeCallableRulesLookupHandle
+};
+const MIXIN_RULESET_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
+  performRulesLookup: performMixinRulesetRulesLookup,
+  writeHandle: writeCallableRulesLookupHandle
+};
+
+function getReferenceLookupStrategy(lookupType: LookupType): ReferenceLookupStrategy {
+  switch (lookupType) {
+    case 'index':
+      return INDEX_REFERENCE_LOOKUP_STRATEGY;
+    case 'property':
+      return PROPERTY_REFERENCE_LOOKUP_STRATEGY;
+    case 'variable':
+      return VARIABLE_REFERENCE_LOOKUP_STRATEGY;
+    case 'declaration':
+      return DECLARATION_REFERENCE_LOOKUP_STRATEGY;
+    case 'function':
+      return FUNCTION_REFERENCE_LOOKUP_STRATEGY;
+    case 'mixin':
+      return MIXIN_REFERENCE_LOOKUP_STRATEGY;
+    case 'mixin-ruleset':
+      return MIXIN_RULESET_REFERENCE_LOOKUP_STRATEGY;
+  }
 }
 
 function lookupResolvedReference(args: {
@@ -1154,6 +1277,7 @@ function lookupResolvedReference(args: {
     originalFilter,
     context
   } = args;
+  const strategy = getReferenceLookupStrategy(lookupType);
   const { env } = prepareReferenceLookup({
     referenceNode,
     lookupType,
@@ -1166,6 +1290,7 @@ function lookupResolvedReference(args: {
   const lookupContext: RulesReferenceLookupContext = {
     referenceNode,
     lookupType,
+    strategy,
     target,
     resolution: referenceNode.options.resolution,
     isInterpolatedVariable: env.isInterpolatedVariable,
@@ -1194,7 +1319,7 @@ function lookupResolvedReference(args: {
     });
     if (handleResult !== undefined) {
       return {
-        returnVal: handleResult === SCOPE_FRAME_VARIABLE_MISS ? undefined : handleResult,
+        returnVal: handleResult === CACHED_RULES_LOOKUP_MISS ? undefined : handleResult,
         valueKey
       };
     }
@@ -1213,7 +1338,7 @@ function lookupResolvedReference(args: {
   if (isThenable(returnVal)) {
     return Promise.resolve(returnVal).then((resolved) => {
       if (targetRules) {
-        writeRulesLookupHandle({
+        strategy.writeHandle({
           referenceNode,
           targetRules,
           lookupType,
@@ -1233,7 +1358,7 @@ function lookupResolvedReference(args: {
     });
   }
   if (targetRules) {
-    writeRulesLookupHandle({
+    strategy.writeHandle({
       referenceNode,
       targetRules,
       lookupType,

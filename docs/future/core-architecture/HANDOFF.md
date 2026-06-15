@@ -93,44 +93,45 @@ families, and direct target/index lookup is the only remaining broad node
 result lane. `Rules.find*` is now the cold node-materialization edge for direct
 declarations; `direct-rules-lookup.ts` exports occurrence-returning helpers
 only.
+Rules lookup handles now use a generic cached-miss sentinel; the scope-frame
+variable miss sentinel is only for live variable lookup. Reference lookup now
+selects a lookup-family strategy once and uses that for rules lookup and handle
+write validation. Callable frame uncovered results carry `frame`, `key`, or
+`child-surface` reason; direct callable crawl is gated to child-surface state.
 Last full gate smoke was usable but not a speed claim:
-`mixins-guards.less` `26.51ms`, `scope-lookup-stress.less` `104.69ms`.
+`mixins-guards.less` `24.89ms`, `scope-lookup-stress.less` `77.56ms`.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7gz. [ ] Rules lookup handle miss state stops using the variable miss symbol.
-Scope: `reference.ts` handle read/write, variable lookup misses, declaration
-misses, function/callable misses, and tests that exercise repeated missed
-references.
-Goal: separate the generic cached lookup miss sentinel from the scope-frame
-variable binding miss sentinel, so the handle model stops implying every cached
-miss is a variable binding result.
-Acceptance: no extra runtime objects, no behavior change, targeted miss/cache
-tests, lint, builds, aggressive review.
+7hc. [ ] Reference lookup strategy can shrink repeated handle object writes.
+Scope: `reference.ts` strategy writers, `_rulesLookupHandle` assignment sites,
+family-specific validation, and cached miss tests.
+Goal: keep family-specific validation while deleting repeated assignment
+boilerplate only if it does not add another per-lookup object or generic branch
+ladder.
+Acceptance: one smaller writer path or a documented no-op, focused handle tests,
+lint, builds, aggressive review.
 
-7ha. [ ] Reference lookup dispatch becomes strategy-assigned by lookup family.
-Scope: `performRulesReferenceLookup(...)`, `writeRulesLookupHandle(...)`,
-handle value validation, and the family-specific lookup helpers in
-`reference.ts`.
-Goal: reduce string-branching by assigning the lookup/write strategy for the
-current reference family once, without adding a generic helper ladder or
-weakening the family-specific return types.
-Acceptance: less repeated branch work or documented no-op, focused reference
-tests, lint, builds, aggressive review.
+7hd. [ ] Callable uncovered reasons remove another direct crawl path.
+Scope: `lookupScopeFrameCallable(...)`, `prepareCallableLookupFrame(...)`,
+`findMixin(...)`, `findMixinNamespacePathFast(...)`, namespace/fallback tests,
+and reference-import surfaces.
+Goal: use the new uncovered reason to skip or delete one more direct crawl when
+the frame proves the key was covered and cannot contain callable hits.
+Acceptance: branch deletion or tight no-op proof, namespace/fallback tests,
+lint, builds, aggressive review.
 
-7hb. [ ] Callable uncovered branches carry enough surface facts to delete one
-direct crawl.
-Scope: `prepareCallableLookupFrame(...)`, `lookupScopeFrameCallable(...)`,
-`findMixin(...)`, `findMixinNamespacePathFast(...)`, fallback frames,
-reference-import surfaces, and `terminalMixinOnly`.
-Goal: make a concrete uncovered state distinguish reference-import/child-surface
-needs from already-covered misses, then delete one fallback direct crawl branch
-only when the frame fact proves it cannot contain callable hits.
-Acceptance: one real branch deletion with tests, or a tight no-op proof that
-the needed fact cannot be carried yet without more overhead; lint, builds,
-aggressive review.
+7he. [ ] Lookup strategy selection moves earlier only if it deletes work.
+Scope: `Reference.eval/resolution` setup, `prepareReferenceLookup(...)`,
+`lookupResolvedReference(...)`, and direct target/index handling.
+Goal: see whether the lookup strategy can be derived at reference construction
+or first eval and reused without stale state, avoiding repeated
+`getReferenceLookupStrategy(...)` calls.
+Acceptance: reused strategy without stale lookup type, or no-op proof that
+options can mutate too late; focused reference tests, lint, builds, aggressive
+review.
 
 ## Backlog Sources
 
@@ -180,34 +181,32 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: reference result-family split, deletion of node-returning direct
-  declaration helper exports, and callable fallback branch boundary audit.
+- Latest pass: generic cached lookup miss sentinel, lookup-family strategy
+  dispatch, and callable uncovered reason gating.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
-- New traversal: no new runtime traversal. Caller audit via `rg` found runtime
-  node-returning direct declaration helper calls only inside `Rules.find*`
-  wrappers, so those helpers were deleted and `Rules.find*` now unwraps
-  occurrence records directly. Callable fallback branches were not hidden behind
-  a helper: after a real `Rules` fallback frame is prepared, remaining
-  `uncovered` means reference-import or child-surface state still needs direct
-  crawl semantics.
+- New traversal: no new runtime traversal. Reference rules lookup now calls the
+  selected family strategy instead of switching inside each rules lookup.
+  Callable direct crawls are only attempted when `lookupScopeFrameCallable(...)`
+  reports `reason: 'child-surface'`; `frame` and `key` uncovered reasons must be
+  prepared/rechecked or treated as no direct-crawl state.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: deletes exported node-returning direct declaration helper
-  functions from `direct-rules-lookup.ts`. Adds type-only reference result
-  families and discriminated handle value families; no runtime helper added.
-- Metadata mutations: no parent/source mutation. `sourceNode` is carried through
-  variable handles as existing binding identity; declaration occurrence
-  validation compares existing parent/version/index without mutating metadata.
-- Allocation changes: no new traversal allocations or node allocations. The
-  aggressive review array/object tokens are type-only `MixinEntry[]` aliases
-  plus repeated `_rulesLookupHandle = { ... }` assignment sites. Handle writes
-  still allocate one cache record as before; the family-specific writer repeats
-  fields instead of building a spread base object or helper object.
+- Helper/API surface: adds module-local strategy functions/objects in
+  `reference.ts` and a reason field on callable uncovered results. This is not
+  public API; it replaces per-rules-lookup and per-handle-write branching with
+  one strategy selection per resolved reference.
+- Metadata mutations: none.
+- Allocation changes: no new per-lookup arrays or nodes. Strategy objects are
+  module constants. The callable uncovered result remains the existing small
+  result object with one string reason. Handle writes still allocate one cache
+  record as before. Aggressive review object/array tokens are the module-level
+  strategy constants, type-only callable array aliases, type-only argument
+  shapes, and existing handle object assignment sites.
 - Evidence: focused eslint passed for `reference.ts`, `rules.ts`, and
-  `direct-rules-lookup.ts`. Focused type/build passed with the existing
-  `js-expr.ts` direct-eval warning. Targeted lookup tests passed (`4` files,
-  `68` passed, `302` skipped). Broader lookup test slice passed (`8` files,
+  `scope-frame.ts`. `@jesscss/core` build passed with the existing `js-expr.ts`
+  direct-eval warning. Targeted lookup/callable tests passed (`4` files,
+  `152` passed, `294` skipped). Broader lookup test slice passed (`8` files,
   `313` passed, `290` skipped). Residue grep had no matches; `git diff --check`,
-  `@jesscss/core` build, aggressive review, node-creation audit, `jess` build,
+  aggressive review, node-creation audit, `@jesscss/core` build, `jess` build,
   and one-iteration hotpath smoke all passed. Smoke was usable but not a speed
-  claim: `mixins-guards.less` `26.51ms`, `scope-lookup-stress.less` `104.69ms`.
+  claim: `mixins-guards.less` `24.89ms`, `scope-lookup-stress.less` `77.56ms`.

@@ -1546,7 +1546,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               matches = collectCallableBucketResults(fallbackHit.bucket, includeRulesets);
               break;
             }
-            if (fallbackHit.kind === 'uncovered') {
+            if (fallbackHit.kind === 'uncovered' && fallbackHit.reason === 'child-surface') {
               if (isNode(fallbackFrame.rulesNode, N.Rules)) {
                 const directFallback = fallbackFrame.rulesNode.findMixinsFast(segment, {
                   hasTarget: options.hasTarget,
@@ -1889,7 +1889,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             return results;
           }
         }
-        if (frameHit.kind === 'uncovered') {
+        if (frameHit.kind === 'uncovered' && frameHit.reason === 'child-surface') {
           const direct = this.findMixinsFast(keys, {
             hasTarget: options.hasTarget,
             local: options.local,
@@ -1909,7 +1909,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               includeRulesets,
               searchParents: false
             });
-            if (retryHit.kind === 'uncovered') {
+            if (retryHit.kind === 'uncovered' && retryHit.reason !== 'child-surface') {
               if (isNode(retryFrame.rulesNode, N.Rules)) {
                 this.prepareCallableLookupFrame(retryFrame, keys, includeRulesets);
                 retryHit = lookupScopeFrameCallable(retryFrame, keys, {
@@ -1924,7 +1924,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 return results;
               }
             }
-            if (retryHit.kind === 'uncovered') {
+            if (retryHit.kind === 'uncovered' && retryHit.reason === 'child-surface') {
               if (isNode(retryFrame.rulesNode, N.Rules)) {
                 const direct = retryFrame.rulesNode.findMixinsFast(keys, {
                   hasTarget: options.hasTarget,

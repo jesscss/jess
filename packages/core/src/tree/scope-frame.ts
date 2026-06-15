@@ -89,6 +89,7 @@ export type ScopeFrameCallableLookupResult =
   }
   | {
     kind: 'uncovered';
+    reason: 'frame' | 'key' | 'child-surface';
   };
 
 /**
@@ -440,12 +441,12 @@ export function lookupScopeFrameCallable(
   let f = frame;
   while (f) {
     if (!f.callablesCovered) {
-      return { kind: 'uncovered' };
+      return { kind: 'uncovered', reason: 'frame' };
     }
 
     const callableBucketsByName = f.callableBucketsByName;
     if (!callableBucketsByName?.has(name)) {
-      return { kind: 'uncovered' };
+      return { kind: 'uncovered', reason: 'key' };
     }
 
     const bucket = callableBucketsByName.get(name);
@@ -465,7 +466,7 @@ export function lookupScopeFrameCallable(
       ? f.mixinCallableMissesCovered
       : f.callableMissesCovered;
     if (!missesCovered) {
-      return { kind: 'uncovered' };
+      return { kind: 'uncovered', reason: 'child-surface' };
     }
 
     if (options?.searchParents === false) {
