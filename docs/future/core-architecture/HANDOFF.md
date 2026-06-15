@@ -548,29 +548,32 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Rest` scalar wrapper completion.
+Current pass: `Block` scalar wrapper cut.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   or object/array scan was added.
 - New node/materialization: no runtime nodes, copies, wrappers, arrays, side
-  maps, or materialized render values added. The review script flags one
-  test-only CountingWriter allocation used to prove writer-readback counts; it is
-  not production node creation or render materialization. The only new runtime
-  strings are the existing scalar return values required by `render(...)` and
-  public `toTrimmedString(...)`.
-- Render path: selected row is `Rest`. String, empty, and `Any` rest values now
-  write their known scalar syntax directly in both public capture and render
-  paths. `rest(any("items"))` no longer inherits the base `renderSource(...)`
-  path that wrote syntax and then read it back through `mark/getSince`.
-- Helper/API surface: no helper, public method, or node method added.
+  maps, or materialized render values added. The review script flags test-only
+  CountingWriter allocations used to prove writer mark/readback counts; they
+  are not production node creation or render materialization. The only new
+  runtime strings are the existing scalar return values required by
+  `render(...)` and public `toTrimmedString(...)`.
+- Render path: selected row is `Block`. Nil and `Any` block values now write
+  known delimiter/content syntax directly in public capture and direct render
+  paths. Resolved `Any` block output no longer routes through
+  `renderBlockSyntax(...)` mark/readback capture just to return `{value}`.
+- Helper/API surface: one private `renderDirectBlockSyntax(...)` method
+  replaces the previous nil-only branch inside `renderBlockSyntax(...)` and
+  centralizes the scalar no-readback cases. It adds no public API and does not
+  hide traversal, child walks, copies, or generic classification ladders.
 - Metadata mutations: none. No parent/source/frozen/context metadata mutation,
   lazy options/context creation, reflection call, generic own-property helper,
   or structural probe added.
 - Error/control flow: no new routine error objects or throw/catch control flow.
-- Evidence: package-scoped `rest.test.ts` passed. Tests prove scalar public
-  capture and render avoid writer readback, and `Any` rest names read the owned
-  scalar value without public `toString(...)` or `valueOf()` transport. Final
-  hotpath/profile status belongs in `PERFORMANCE-HANDOFF.md`; no speed claim.
-- Verdict: accept as the `Rest` scalar wrapper completion. Arbitrary
-  node-valued rest remains on the existing child writer fallback boundary
-  because that is not an owned scalar syntax case.
+- Evidence: package-scoped `block.test.ts` passed. Tests prove scalar block
+  public capture and render avoid writer readback, existing nil delimiters
+  still avoid marks/readbacks, and resolved `Any` block render avoids
+  materializing a replacement block. Final hotpath/profile status belongs in
+  `PERFORMANCE-HANDOFF.md`; no speed claim.
+- Verdict: accept as a bounded `Block` scalar wrapper cut. Trivia-backed and
+  non-scalar block values remain on the existing writer fallback boundary.

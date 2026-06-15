@@ -1,4 +1,5 @@
 import type { Context } from '../context.js';
+import { Any } from './any.js';
 import { Node, F_MAY_ASYNC, F_STATIC, defineType } from './node.js';
 import { Nil } from './nil.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
@@ -54,14 +55,35 @@ export class Block extends Node<Node, BlockOptions> {
     w.add(end);
   }
 
-  private renderBlockSyntax(value = this.value, options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const type = this._options?.type;
+  private renderDirectBlockSyntax(value: Node, options: FinalPrintOptions): string | undefined {
     const trivia = options.trivia ?? this.sourceRoot?._treeContext?.opts?.trivia;
-    if (value instanceof Nil && !trivia) {
-      const out = type === 'square' ? '[]' : '{}';
+    if (trivia) {
+      return undefined;
+    }
+    const type = this._options?.type;
+    const open = type === 'square' ? '[' : '{';
+    const close = type === 'square' ? ']' : '}';
+    if (value instanceof Nil) {
+      const out = open + close;
       options.writer.add(out, this);
       return out;
+    }
+    if (value instanceof Any) {
+      const out = open + value.value + close;
+      const w = options.writer;
+      w.add(open);
+      w.add(value.value, value);
+      w.add(close);
+      return out;
+    }
+    return undefined;
+  }
+
+  private renderBlockSyntax(value = this.value, options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const direct = this.renderDirectBlockSyntax(value, options);
+    if (direct !== undefined) {
+      return direct;
     }
     const mark = options.writer.mark();
     this.writeBlockSyntax(value, options);

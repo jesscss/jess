@@ -3244,6 +3244,35 @@ Interpretation: accept as serialization machinery deletion only, not a speed
 claim. `Rest` scalar syntax is complete; arbitrary node-valued rest remains on
 the existing child writer fallback boundary.
 
+### Block Scalar Wrapper Cut
+
+Date: 2026-06-15.
+
+Change: `Block` now writes nil and `Any` scalar block syntax through one direct
+writer path for public capture and direct render. Resolved `Any` block output
+no longer captures with `mark/getSince` just to return `{value}`. Trivia-backed
+and non-scalar block values remain on the existing writer fallback boundary.
+
+Hotpath status:
+
+- Focused `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/block.test.ts --run` passed. Tests prove scalar block
+  capture/render avoid writer readback and existing nil delimiter paths still
+  avoid marks/readbacks.
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `14.79ms` usable, `import-reference` median
+  `21.34ms` usable, `mixins-guards` median `17.42ms` usable,
+  `extend-chaining` median `5.52ms` usable, and `media` median `5.61ms`
+  usable.
+- Final `node scripts/profile-less-benchmark.mjs --file=benchmark.less`
+  reported broad `OutputWriter.mark` `49969`, `OutputWriter.getSince` `44973`,
+  `Reference.evalNode` `3619` calls / `78.86ms`, and `Rules.find` `1013`
+  calls / `32.33ms`.
+
+Interpretation: accept as a bounded serialization-path deletion only, not a
+speed claim. Broad benchmark counts did not move, which indicates the
+benchmark does not exercise this scalar block path materially.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

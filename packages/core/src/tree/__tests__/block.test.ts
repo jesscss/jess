@@ -55,15 +55,21 @@ describe('Block', () => {
     expect(block(any('foo')).toTrimmedString()).toBe('{foo}');
   });
 
-  it('writes nil block delimiters without writer readback', () => {
+  it('writes scalar block syntax without writer readback', () => {
     const writer = new CountingWriter();
     const squareWriter = new CountingWriter();
 
+    expect(block(any('foo')).toTrimmedString({ writer })).toBe('{foo}');
+    expect(writer.toString()).toBe('{foo}');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
     expect(block(nil()).toTrimmedString({ writer })).toBe('{}');
-    expect(writer.toString()).toBe('{}');
+    expect(writer.toString()).toBe('{foo}{}');
+    expect(writer.marks).toBe(0);
     expect(writer.reads).toBe(0);
     expect(block(nil(), { type: 'square' }).toTrimmedString({ writer: squareWriter })).toBe('[]');
     expect(squareWriter.toString()).toBe('[]');
+    expect(squareWriter.marks).toBe(0);
     expect(squareWriter.reads).toBe(0);
   });
 
@@ -165,6 +171,28 @@ describe('Block', () => {
     expect(buffer.parts).toEqual(['[]']);
     expect(writer.marks).toBe(0);
     expect(writer.reads).toBe(0);
+  });
+
+  it('renders scalar Any block values without writer readback', async () => {
+    const writer = new CountingWriter();
+
+    expect(block(any('foo')).render(context, { writer })).toBe('{foo}');
+    expect(writer.toString()).toBe('{foo}');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('bar')
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+    const resolvedWriter = new CountingWriter();
+
+    expect(block(ref({ key: 'value' }, { type: 'variable' })).render(context, { writer: resolvedWriter })).toBe('{bar}');
+    expect(resolvedWriter.toString()).toBe('{bar}');
+    expect(resolvedWriter.reads).toBe(0);
   });
 
   it('renders resolved block values without materializing a replacement block', async () => {
