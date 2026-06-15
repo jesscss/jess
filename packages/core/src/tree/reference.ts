@@ -1048,14 +1048,6 @@ type RulesLookupHandleShape = {
 
 type WriteRulesLookupHandleArgs = {
   referenceNode: Reference;
-  targetRules: Rules;
-  lookupType: LookupType;
-  valueKey: NormalizedLookupKey;
-  target: ReferenceValue['target'];
-  originalFilter: ReferenceOptions['filter'] | undefined;
-  env: RulesLookupAdapterEnv;
-  context: Context;
-  shape: RulesLookupHandleShape;
   handleAccess: RulesLookupHandleAccess | undefined;
   returnVal: ReferenceLookupReturnValue;
 };
@@ -1375,14 +1367,6 @@ function lookupResolvedReference(args: {
       if (targetRules) {
         strategy.writeHandle({
           referenceNode,
-          targetRules,
-          lookupType,
-          valueKey,
-          target,
-          originalFilter,
-          env,
-          context,
-          shape: handleShape!,
           handleAccess,
           returnVal: resolved
         });
@@ -1396,14 +1380,6 @@ function lookupResolvedReference(args: {
   if (targetRules) {
     strategy.writeHandle({
       referenceNode,
-      targetRules,
-      lookupType,
-      valueKey,
-      target,
-      originalFilter,
-      env,
-      context,
-      shape: handleShape!,
       handleAccess,
       returnVal
     });

@@ -2854,30 +2854,45 @@ describe('reference', () => {
     });
 
     it('static variable handle reuses binding identity without caching stale live values', async () => {
+      const originalFindVariable = RulesClass.prototype.findVariable;
+      let variableLookups = 0;
+      RulesClass.prototype.findVariable = function(...args: Parameters<typeof originalFindVariable>) {
+        const [key] = args;
+        if (key === 'color') {
+          variableLookups++;
+        }
+        return originalFindVariable.apply(this, args);
+      };
       const colorRef = ref({ key: 'color' }, { type: 'variable' });
-      const node = rules([
-        vardecl({ name: 'color', value: any('red') }),
-        decl({
-          name: any('seen'),
-          value: colorRef
-        })
-      ]);
-      setRulesContext(node);
+      try {
+        const node = rules([
+          vardecl({ name: 'color', value: any('red') }),
+          decl({
+            name: any('seen'),
+            value: colorRef
+          })
+        ]);
+        setRulesContext(node);
 
-      const first = await colorRef.eval(context);
-      expect(first.valueOf()).toBe('red');
-      expect(colorRef._rulesLookupHandle?.lookupType).toBe('variable');
-      expect(colorRef._rulesLookupHandle?.returnVal).toMatchObject({
-        kind: 'scope-frame-variable-binding-handle'
-      });
+        const first = await colorRef.eval(context);
+        expect(first.valueOf()).toBe('red');
+        expect(colorRef._rulesLookupHandle?.lookupType).toBe('variable');
+        expect(colorRef._rulesLookupHandle?.returnVal).toMatchObject({
+          kind: 'scope-frame-variable-binding-handle'
+        });
+        expect(variableLookups).toBe(0);
 
-      setScopeFrameLiveBinding(node.getScopeFrame(), 'color', {
-        value: any('blue')
-      });
-      const second = await colorRef.eval(context);
+        setScopeFrameLiveBinding(node.getScopeFrame(), 'color', {
+          value: any('blue')
+        });
+        const second = await colorRef.eval(context);
 
-      expect(second.valueOf()).toBe('blue');
-      expect(colorRef.render(context)).toBe('blue');
+        expect(second.valueOf()).toBe('blue');
+        expect(colorRef.render(context)).toBe('blue');
+        expect(variableLookups).toBe(0);
+      } finally {
+        RulesClass.prototype.findVariable = originalFindVariable;
+      }
     });
 
     it('static variable handle invalidates when a parent frame replaces the current cell', async () => {
