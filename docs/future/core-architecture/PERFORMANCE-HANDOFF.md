@@ -200,6 +200,34 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-15 QueryCondition Static Class-Contract Probe Cut
+
+Hypothesis: the previous static-sibling QueryCondition cut was too narrow
+because it only trusted `Node.prototype.render`. Static scalar subclasses such
+as `Any` own direct render methods, so they were still paying dynamic
+write-vs-return probe marks in sync and async-capable query-condition render.
+
+Patch shape:
+
+- static children now write syntax directly when their render method still
+  matches their class prototype render contract;
+- per-instance/custom render overrides stay on the fallback because tests prove
+  they may return text without writing;
+- a sync dynamic test now proves static siblings are not probed, alongside the
+  existing async sibling proof.
+
+Evidence:
+
+- focused test: `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/query-condition.test.ts --run` passed;
+- core build passed;
+- quick bounded hotpath leash: `pnpm run measure:less:hotpath --
+  --iterations 15 --warmup 5` completed with mixed signal only. Usable
+  medians: `functions` `16.13ms`, `import-reference` `22.74ms`,
+  `mixins-guards` `17.47ms`, `extend-chaining` `5.85ms`. Unstable median:
+  `media` `5.84ms`. Treat this as a regression tripwire only, not a speed
+  claim or keep/revert-quality stable benchmark.
+
 ### 2026-06-15 List Sequence Active Trivia Child Transport Pass
 
 Hypothesis: `List` and `Sequence` source syntax should not call child public

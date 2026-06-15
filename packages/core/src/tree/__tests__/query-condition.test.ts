@@ -125,6 +125,19 @@ describe('QueryCondition', () => {
     expect(node.render(context)).toBe('3 and (color)');
   });
 
+  it('does not probe static siblings in sync query-condition render', () => {
+    const writer = new CountingWriter();
+    const queryNode = query([
+      op([num(1), '+', num(2)]),
+      any('and'),
+      any('(color)')
+    ]);
+
+    expect(queryNode.render(context, { writer })).toBe('3 and (color)');
+    expect(writer.toString()).toBe('3 and (color)');
+    expect(writer.marks).toBe(2);
+  });
+
   it('renders resolved query-condition values through render(context)', async () => {
     const root = rules([
       vardecl({

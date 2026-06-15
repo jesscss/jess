@@ -1,6 +1,6 @@
 import type { Context } from '../context.js';
 import { type FinalPrintOptions, getPrintOptions, prepareRenderPrintState, type PrintOptions } from './util/print.js';
-import { defineType, F_MAY_ASYNC, F_STATIC, Node } from './node.js';
+import { defineType, F_STATIC, Node } from './node.js';
 import { Sequence } from './sequence.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
@@ -10,8 +10,6 @@ import {
   writePreparedRenderTextResult,
   writePreparedRenderText
 } from './util/render-buffer.js';
-
-const BASE_RENDER = Node.prototype.render;
 
 /**
  * Used by `@media`, `@supports`, and `@container`
@@ -73,7 +71,7 @@ export class QueryCondition extends Sequence {
       options.suppressBoundaryTrivia = 'pre';
       let asyncOut = false;
       try {
-        if (node.hasFlag(F_STATIC) && node.render === BASE_RENDER) {
+        if (node.hasFlag(F_STATIC) && node.render === Object.getPrototypeOf(node).render) {
           node.writeSyntax(options);
         } else {
           const before = w.mark();
@@ -124,7 +122,7 @@ export class QueryCondition extends Sequence {
       const saved = options.suppressBoundaryTrivia;
       options.suppressBoundaryTrivia = 'pre';
       try {
-        if (node.hasFlag(F_STATIC) && node.render === BASE_RENDER) {
+        if (node.hasFlag(F_STATIC) && node.render === Object.getPrototypeOf(node).render) {
           node.writeSyntax(options);
           continue;
         }

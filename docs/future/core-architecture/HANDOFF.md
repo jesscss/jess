@@ -345,8 +345,10 @@ sub-work inside it; do not convert these into micro-items:
    pre-rendered into `declarationOutputCache` first.
 
    Additional partial status: `QueryCondition` async-capable render no longer
-   forces static base-render siblings through dynamic child mark/probe fallback,
-   and the remaining custom/instance-render fallback uses
+   forces static class-contract siblings through dynamic child mark/probe
+   fallback. This covers scalar static subclasses such as `Any`, while
+   per-instance/custom render overrides still use the fallback because they may
+   return text without writing. The remaining dynamic fallback uses
    `hasContentSince(mark)` instead of a second `mark()` check.
 
    Additional partial status: `AtRule` dynamic leaf render and scalar header
@@ -608,39 +610,41 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `List` / `Sequence` active-trivia child string transport cut.
+Current pass: `QueryCondition` static class-contract sibling probe cut.
 
-- New traversal: none in production. No loop, recursion, parent/source walk,
-  side-map lookup, or object/array scan was added. New tests use small
-  fixed-size trivia maps to prove behavior; their `new Map(...)` instances are
-  test-only fixtures matching existing trivia tests, not render-path side maps.
+- New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
+  object/array scan, generator, or collection helper was added.
 - New node/materialization: no runtime nodes, copies, wrappers, side maps, or
-  materialized render values added. Test-only `Any`/`Dimension` construction
-  creates source-backed fixtures only, and the test-only whitespace token
-  array exists only to build a `TriviaMap`. The review script also flags the
-  doc-only `copyWithReusableLeaves(...)` mention in queue item 17; that is a
-  target to audit, not new production copy machinery.
-- Render path: selected rows are `List` and `Sequence`. Dynamic buffer render
-  was not changed in this pass. Source syntax for active-trivia children now
-  writes leading trivia and child syntax directly instead of calling child
-  public `toString(...)` as transport. No child is resolved into an array/node
-  just to stringify.
-- Helper/API surface: one shared utility was added:
-  `emitNodeSourceSyntaxWithTrivia(...)` in `tree/util/trivia.ts`. It replaces
-  three node-local public-string calls and mirrors the base source boundary:
-  consume leading trivia, then call child `writeSyntax(...)`.
+  materialized render values added. The new test uses existing scalar factory
+  helpers plus a test-only `CountingWriter` to prove mark counts.
+- Render path: selected row is `QueryCondition`. Static children now bypass the
+  dynamic write-vs-return probe when their `render` method is still the class
+  prototype render contract. This removes probe marks for scalar static
+  siblings in sync and async-capable query-condition render. Per-instance or
+  custom render overrides still use the fallback because tests prove they may
+  return text without writing.
+- Helper/API surface: no helper, method, public API, or new utility added. A
+  first draft helper was rejected and inlined to avoid a hot per-child function
+  call.
 - Metadata mutations: none. No parent/source/frozen/context metadata mutation,
-  lazy context creation, reflection call, generic own-property helper, or
-  structural probe added. The utility may set `options.trivia` to the child's
-  source trivia exactly as base `Node.toString(...)` already did. Test-only
-  `TreeContext` construction is fixture setup for source trivia ownership.
+  lazy options/context creation, `Reflect.*`, generic own-property helper, or
+  source restoration added. The review script flags that doc phrase as a
+  danger token because it names forbidden patterns, not because the patch adds
+  them. `Object.getPrototypeOf(node)` is a class-contract check used only to
+  distinguish prototype render from per-instance render mutation; it replaces
+  the stale `Node.prototype.render` identity check that missed scalar
+  subclasses.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Evidence: package-scoped `list.test.ts` and `sequence.test.ts` passed
-  together. Core build, diff check, aggressive review, and bounded hotpath
-  leash ran. Tests prove active trivia output is preserved while child
-  `toString(...)` overrides are not called. Hotpath leash details belong in
-  `PERFORMANCE-HANDOFF.md`; no speed claim.
-- Verdict: accept as a bounded `List`/`Sequence` serialization cleanup.
-  Completed active queue items 1 and 2; keep broader rows open for public
-  render return compatibility and addition/materialization copy audit.
+- Remaining blocker: dynamic non-static/custom child render still keeps one
+  localized mark/`hasContentSince(...)` fallback. Removing it requires a
+  broader child render write-vs-return contract; a detached writer/render-buffer
+  local replacement would be worse machinery.
+- Evidence: package-scoped `query-condition.test.ts` passed. Core build, diff
+  check, aggressive review, and bounded hotpath leash ran. New sync and
+  existing async tests prove static scalar siblings do not pay probe marks,
+  while instance render overrides still render correctly. Hotpath leash details
+  belong in `PERFORMANCE-HANDOFF.md`; no speed claim.
+- Verdict: accept as a bounded `QueryCondition` cleanup. Keep active queue item
+  3 open until the remaining dynamic child fallback can be removed by a direct
+  render contract change.
