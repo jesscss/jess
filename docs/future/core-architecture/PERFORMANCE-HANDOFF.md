@@ -116,7 +116,7 @@ empty), so the next measured lookup pass should instrument
 2026-06-15 stress fixture profile: `node scripts/profile-less-benchmark.mjs
 --fixture=scripts/fixtures/less-hotpath/scope-lookup-stress.less
 --compat=false` now profiles repo-local fixtures. It reported
-`Reference.evalNode` `6528` calls / `61.99ms`; top reference keys were
+`Reference.evalNode` `6528` calls / `66.88ms`; top reference keys were
 `variable:n` `1530`, `variable:depth` `767`, `variable:value` `720`,
 `variable:seed` `630`, `variable:local` `540`, `variable:global-base` `450`,
 `mixin-ruleset:.path-loop` `405`, and the deep

@@ -147,6 +147,10 @@ Latest queue pass removes `findFunction(...)`'s `_indexRules()` call because
 function lookup is a live/evaluated binding-map parent walk, then adds direct
 declaration crawl counters to the lookup stress profile. `_indexRules()` is
 now explicitly documented as legacy lookup debt, not the target architecture.
+Current queue pass removes the remaining production `_indexRules()` calls from
+callable ruleset path helpers. Exact and compound-prefix ruleset namespace
+lookup now reverse-scan the current tree and use carried child-surface flags
+without building broad indexes.
 
 ## Active Queue
 
@@ -175,12 +179,13 @@ emitted output. Goal: decide scalar locals versus transient object with
 evidence. Acceptance: emitted audit plus benchmark/profile note, no speed
 claim without stable signal.
 
-7ko. [ ] Remaining callable lookup `_indexRules()` callers are replaced by
-direct reverse crawl. Scope: `findMixinsFast(...)`,
-`findVisibleExactCallableRulesetPath(...)`, and
-`findVisibleCallableRulesetPrefixMatches(...)`. Goal: callable lookup should
-not build broad per-rules indexes before searching. Acceptance: focused
-callable/namespace tests pass with `_indexRules()` spied off for those paths.
+7ko. [ ] Legacy `_indexRules()` method and `rulesIndexed` fields get a delete
+or isolate plan. Scope: `_indexRules()`, `rulesIndexed`,
+`directChildRuleEntries`, `directDeclarationChildEntries`, and
+`rules-flags.test.ts`. Goal: separate any remaining non-lookup flag/index
+setup from runtime lookup so the broad index method can be deleted or made
+test-only/cold. Acceptance: production `rg "_indexRules\\(" packages/core/src`
+has no lookup callers and the next source cut is identified with tests.
 
 7kp. [ ] Function binding invalidation is key-scoped or explicitly proven
 global. Scope: `setFunctionBinding(...)`, lookup handles, and function tests.
@@ -291,43 +296,35 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `Rules.findFunction(...)` no longer calls `_indexRules()` before
-  reading `functionsByName`; it now stays a live/evaluated binding-map parent
-  walk. The pass also adds opt-in direct declaration lookup counters to
-  `findWithinScopeSurface(...)` and exposes them from
-  `profile-less-benchmark.mjs`.
-- Verdict: accepted as a lookup-index deletion plus measurement instrumentation,
+- Latest pass: `findVisibleExactCallableRulesetPath(...)` and
+  `findVisibleCallableRulesetPrefixMatches(...)` no longer call `_indexRules()`
+  before searching. They reverse-scan current `Rules.value` directly and use
+  existing carried child-surface flags to skip known non-ruleset child
+  surfaces.
+- Verdict: accepted as a callable lookup-index deletion,
   not as a speed claim.
-- New traversal: none in production lookup. The profiler records counters at
-  existing direct lookup branch points. Tests add a prototype spy that throws if
-  function lookup tries to index rules.
+- New traversal: no new traversal shape. The pass keeps the existing reverse
+  current-scope scan in both helpers and removes the broad pre-scan/index.
+  Tests add prototype spies that throw if callable ruleset path lookup tries to
+  index rules.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: added no runtime lookup API. Added one file-local
-  counter helper and one profile JSON field,
-  `lookupStats.directLookupCounters`, for measurement only.
+- Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: when the profiler opt-in global is present, direct lookup
-  increments string-keyed counter properties. Normal runtime has no counter
-  object and pays only an optional counter hook check at the instrumented
-  branch points. The benchmark script creates the counter object before
-  rendering and materializes `Object.entries(...)` only while printing profile
-  JSON.
+- Allocation changes: none.
 - Rejected/failed proof: none so far in this pass.
-- Aggressive-review tokens: test-only `rules([])`, `new JsFunction(...)`,
-  `throw new Error(...)`, and `try/finally` protect the no-index function
-  lookup spy. The profile counter object, `Object.entries(...)`, and output
-  `Map` materialization live only in the benchmark script.
-- Evidence: focused function/binding tests passed (`3` files, `29` passed,
-  `262` skipped), then the broader lookup subset passed (`3` passed, `1`
-  skipped; `68` passed, `226` skipped), then the full focused lookup gate
-  passed (`8` files, `323` passed, `287` skipped). Focused eslint, residue
-  grep, `git diff --check`, aggressive review, `@jesscss/core` build,
+- Aggressive-review tokens: test-only `throw new Error(...)`/`try/finally`
+  protect the no-index callable path spies.
+- Evidence: focused callable/namespace tests passed (`2` files, `21` passed,
+  `286` skipped), then the full focused lookup gate passed (`8` files, `325`
+  passed, `287` skipped). Production `rg "_indexRules\\("
+  packages/core/src/tree packages/core/src/tree/util -g "*.ts"` now reports
+  only the legacy method definition/comment and `rules-flags.test.ts`; no
+  production lookup caller remains. Focused eslint, residue grep,
+  `git diff --check`, aggressive review, `@jesscss/core` build,
   node-creation audit, and `jess` build passed. Node-creation audit reported
-  `new-node: 304`, `with-surface: 39`, `derive: 30`, `copy-leaves: 28`.
-  Stress profile passed in direct Jess mode with `Reference.evalNode` `6528`
-  calls / `61.99ms` and populated `directLookupCounters`: `cacheMiss`/`scope.v`
-  `16560`, child entries entered `11520`, child-entry scans `10530`, local
-  matches `2475`, `childEntryStartSkip` `2295`, scope binding hits `1665`,
-  frame prep `139`. One-iteration hotpath smoke passed and is not a speed
-  claim: `mixins-guards.less` `28.35ms`, `scope-lookup-stress.less` `75.01ms`.
+  `new-node: 304`, `with-surface: 39`, `derive: 30`, `copy-leaves: 28`. Stress
+  profile passed in direct Jess mode with `Reference.evalNode` `6528` calls /
+  `66.88ms`. One-iteration hotpath smoke passed and is not a speed claim:
+  `mixins-guards.less` `26.76ms`; a follow-up three-iteration stress smoke
+  reported `scope-lookup-stress.less` median `74.22ms`, `3.6%` RSD.

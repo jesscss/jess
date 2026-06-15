@@ -3016,6 +3016,62 @@ describe('Mixin', () => {
       }
     });
 
+    it('ruleset namespace path lookup crawls without indexing rules', () => {
+      const originalIndexRules = RulesClass.prototype._indexRules;
+      RulesClass.prototype._indexRules = function rulesetNamespaceLookupShouldNotIndex() {
+        throw new Error('ruleset namespace lookup should crawl directly');
+      };
+
+      try {
+        const root = rules([
+          ruleset({
+            selector: el('#theme'),
+            rules: rules([
+              ruleset({
+                selector: el('.button'),
+                rules: rules([decl({ name: 'color', value: any('red') })])
+              })
+            ])
+          })
+        ]);
+
+        const found = root.findMixin(['#theme', '.button'], undefined, { searchParents: false });
+
+        expect(found).toHaveLength(1);
+        expect(found?.[0]?.type).toBe('Ruleset');
+      } finally {
+        RulesClass.prototype._indexRules = originalIndexRules;
+      }
+    });
+
+    it('compound-prefix ruleset lookup crawls without indexing rules', () => {
+      const originalIndexRules = RulesClass.prototype._indexRules;
+      RulesClass.prototype._indexRules = function compoundPrefixLookupShouldNotIndex() {
+        throw new Error('compound-prefix ruleset lookup should crawl directly');
+      };
+
+      try {
+        const root = rules([
+          ruleset({
+            selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+            rules: rules([
+              mixin({
+                name: any('.colors'),
+                rules: rules([decl({ name: 'primary', value: any('red') })])
+              })
+            ])
+          })
+        ]);
+
+        const found = root.findMixin(['#theme', '.dark', '.navbar', '.colors'], undefined, { searchParents: false });
+
+        expect(found).toHaveLength(1);
+        expect(found?.[0]?.type).toBe('Mixin');
+      } finally {
+        RulesClass.prototype._indexRules = originalIndexRules;
+      }
+    });
+
     it('callable lookup does not build a scope frame just to try the frame shortcut', () => {
       const mixinDef = mixin({
         name: any('.lazy-frame-mixin'),

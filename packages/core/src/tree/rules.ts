@@ -849,7 +849,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   /**
    * Lazily build and cache the ScopeFrame for this scope.
-   * Requires _indexRules() to have run so varsByName is populated.
+   * Prepares declaration cells directly when no evaluated binding state exists.
    *
    * Parent frame: if the caller supplies one it is used directly (mixin
    * call sites do this to wire the call-site lexical chain). Otherwise the
@@ -1395,10 +1395,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         visited.add(scope);
       }
 
-      if (scope.rulesIndexed < scope.value.length) {
-        scope._indexRules();
-      }
-
       for (let i = scope.value.length - 1; i >= 0; i--) {
         const candidate = scope.value[i]!;
         if (!isNode(candidate, N.Ruleset)) {
@@ -1417,7 +1413,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
 
-      if (scope.rulesIndexed >= scope.value.length && !scope.hasExactRulesetChildSurface) {
+      if (scope.directChildRuleEntries !== undefined && !scope.hasExactRulesetChildSurface) {
         return;
       }
       const childEntries = scope.directChildRuleEntries !== undefined
@@ -1494,10 +1490,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         visited.add(scope);
       }
 
-      if (scope.rulesIndexed < scope.value.length) {
-        scope._indexRules();
-      }
-
       for (let i = scope.value.length - 1; i >= 0; i--) {
         const candidate = scope.value[i]!;
         if (!isNode(candidate, N.Ruleset)) {
@@ -1516,7 +1508,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
 
-      if (scope.rulesIndexed >= scope.value.length && !scope.hasExactRulesetChildSurface) {
+      if (scope.directChildRuleEntries !== undefined && !scope.hasExactRulesetChildSurface) {
         return;
       }
       const childEntries = scope.directChildRuleEntries !== undefined
