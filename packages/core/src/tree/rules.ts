@@ -73,7 +73,9 @@ import { isIndexedRuleChild } from './util/callable-surface.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
   findAnyDeclarationOccurrence,
+  findPropertyDeclarationLookup,
   findPropertyDeclarationOccurrence,
+  findVariableDeclarationLookup,
   findVariableDeclarationOccurrence
 } from './util/direct-rules-lookup.js';
 const { isArray } = Array;
@@ -1187,6 +1189,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const rules = frame.rulesNode;
       if (!rules.callableLookupCache?.has(key)) {
         rules.getCallableEntriesForKey(key, false);
+      }
+      const coverageKnown = includeRulesets
+        ? frame.callableMissCoverageKnown
+        : frame.mixinCallableMissCoverageKnown;
+      if (
+        frame.callableBucketsByName === rules.callableLookupCache
+        && frame.callablesCovered
+        && coverageKnown
+      ) {
+        return;
       }
       frame.callableBucketsByName = rules.callableLookupCache;
       frame.callablesCovered = true;
@@ -2840,18 +2852,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
 
         let key = node.value.name?.toString();
-        /** Don't set within sibling rules */
-        let opts: DeclarationFindOptions = {};
-        opts.searchParents = true;
-        // Don't use start when searching parents - we want to find variables in parent regardless of position
-        // start is only relevant for finding variables before the current node in the same Rules
-        opts.start = undefined;
-        const resultOccurrence = isNode(node, N.VarDeclaration)
-          ? findVariableDeclarationOccurrence(this, key, opts)
-          : findPropertyDeclarationOccurrence(this, key, opts);
+        const lookupOptions: DeclarationFindOptions = { searchParents: true };
+        const lookup = isNode(node, N.VarDeclaration)
+          ? findVariableDeclarationLookup(this, key, lookupOptions)
+          : findPropertyDeclarationLookup(this, key, lookupOptions);
+        const resultOccurrence = lookup.occurrence;
         const result = resultOccurrence?.node;
         if (result) {
-          if (result.options?.readonly || opts.readonly) {
+          if (result.options?.readonly || lookup.readonly) {
             throw new ReferenceError(`"${key}" is readonly`);
           }
           if (isNode(node, N.VarDeclaration) && isNode(result, N.VarDeclaration)) {

@@ -52,7 +52,7 @@ approved it as API, delete or reshape it.
 Registryless lookup is the active runtime direction.
 
 - Covered simple callable lookup should resolve from `ScopeFrame` or direct
-  `Rules` lookup and return hit or miss without registry fallback.
+  `Rules` lookup and return hit or miss without old lookup bridges.
 - Uncovered or complex shapes may route to direct tree search, but each bridge
   needs a deletion condition.
 - Direct declaration lookup is per `Rules` and per key. It skips dynamic and
@@ -69,8 +69,8 @@ Registryless lookup is the active runtime direction.
 
 Recent baseline commit: `054fc959` trimmed this handoff to active guidance.
 Recent passes moved simple callable/declaration lookup toward `ScopeFrame` and
-direct `Rules` search, removed registry fallback bridges from covered paths,
-and stopped caching arrays produced by direct callable lookup.
+direct `Rules` search, removed old lookup bridges from covered paths, and
+stopped caching arrays produced by direct callable lookup.
 Latest pass deletes the dead last-callable cache surface, removes the raw
 `copyLiveBindingSlots(...)` helper, keeps live binding writes synchronized
 through `setScopeFrameLiveBinding(...)`, and names immutable direct-declaration
@@ -105,7 +105,7 @@ through to direct crawl.
 The reference strategy cache now uses a single node slot; the strategy object
 carries its own lookup type for stale-type checks.
 Last full gate smoke was usable but not a speed claim:
-`mixins-guards.less` `26.27ms`, `scope-lookup-stress.less` `82.22ms`.
+`mixins-guards.less` `30.37ms`, `scope-lookup-stress.less` `84.79ms`.
 Latest queue pass finished the prior handle/callable/direct-declaration queue:
 new source changes added public `Rules.findVariable` cold-path proof for
 covered variable handles and deleted dead handle writer call fields after
@@ -113,119 +113,108 @@ covered variable handles and deleted dead handle writer call fields after
 covered the remaining stale items: separate callable miss surface facts,
 no-frame child-surface pruning, dynamic pending promotion, array-path handle
 identity, and registryless public `Rules.find*` cold paths.
+Current queue pass moved readonly assignment lookup off option mutation,
+deleted redundant callable frame-coverage writes, and purged stale registry
+fallback wording from the active handoff. Items that require broader semantic
+modeling were carried forward as new concrete tasks below.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7ib. [ ] Direct declaration readonly propagation stops mutating option objects.
-Scope: `direct-rules-lookup.ts`, `Rules` assignment paths, and readonly tests.
-Goal: return readonly as lookup result state instead of using
-`options.readonly` as an out-param.
-Acceptance: assignment readonly behavior preserved, option mutation removed or
-isolated behind one cold compatibility edge, lint/builds/aggressive review.
+7iq. [ ] Dynamic pending declaration coverage gets an affected-key model.
+Scope: `ScopeFrame.pendingDeclarationNames`, interpolated/static promotion, and
+static miss tests.
+Goal: unaffected static-key misses stop without broad uncovered fallback while
+affected or unknown dynamic names remain conservative.
+Acceptance: tests cover unaffected miss, affected unresolved name, and
+promotion.
 
-7ic. [ ] Direct declaration lookup mode is encoded once before traversal.
-Scope: `DeclarationLookupStrategy`, `findWithinScopeSurface(...)`, and
-declaration/property tests.
-Goal: avoid repeated strategy/filter branching inside recursive scope and child
-surface loops.
-Acceptance: branch deletion or no-op proof with focused declaration tests.
+7ir. [ ] Callable reference-import visibility becomes a frame fact.
+Scope: `_hasReferenceImports`, callable miss coverage, import/reference tests.
+Goal: covered callable misses should not enter direct crawl just to rediscover
+reference import surfaces.
+Acceptance: direct-crawl spy around reference-import callable miss.
 
-7id. [ ] Variable assignment target lookup uses frame/current-cell identity
-before source occurrence fallback.
-Scope: `assignScopeFrameVariable(...)`, `Rules` set-defined eval, and
-assignment tests.
-Goal: make `:=` mutate modeled cells directly for covered static variables.
-Acceptance: covered assignment avoids declaration occurrence lookup where cell
-identity is already known; readonly tests still pass.
-
-7ie. [ ] Dynamic pending declaration coverage is keyed by affected names.
-Scope: `ScopeFrame.pendingDeclarationNames`, dynamic promotion, and static miss
+7is. [ ] Guarded callable uncertainty has a named uncovered reason.
+Scope: `ScopeFrameCallableLookupResult`, guarded mixins/rulesets, callable
 tests.
-Goal: unaffected static-key misses should not stay uncovered because an
-unrelated dynamic declaration exists.
-Acceptance: tests prove unrelated static misses stop and affected names remain
-uncovered until promotion.
+Goal: distinguish guard/candidate uncertainty from child-surface uncertainty.
+Acceptance: guarded cases route uncovered; unguarded misses skip bridge.
 
-7if. [ ] Callable import/reference visibility becomes a frame coverage fact.
-Scope: `_hasReferenceImports`, callable frame miss coverage, import tests.
-Goal: represent import/reference callable visibility explicitly so covered
-misses do not enter direct crawl just to rediscover reference surfaces.
-Acceptance: import/reference callable tests plus direct-crawl spy.
+7it. [ ] Parameterized namespace handles prove terminal mixin-only reuse.
+Scope: callable reference handles, `terminalMixinOnly`, namespace call tests.
+Goal: repeated parameterized namespace calls reuse handles only for matching
+terminal mode.
+Acceptance: wrong-mode handle rejected; same-mode repeated call skips lookup.
 
-7ig. [ ] Callable guard/candidate uncertainty has a named uncovered reason.
-Scope: `ScopeFrameCallableLookupResult`, guarded mixins, and callable tests.
-Goal: distinguish guard/candidate uncertainty from child-surface uncertainty
-so simple covered misses can skip direct crawl safely.
-Acceptance: guarded cases still route uncovered; unguarded misses skip bridge.
+7iu. [ ] Array-path callable handles avoid repeated remainder construction.
+Scope: `collectKeyRemainder(...)`, `getCallableLookupKeyRemainder(...)`, and
+namespace handle tests.
+Goal: stable array-path handles carry enough identity to avoid repeated
+remainder work after warmup.
+Acceptance: counter/spy proof or emitted no-op proof.
 
-7ih. [ ] Callable namespace handle validation carries terminal mixin-only mode.
-Scope: callable reference handles, `terminalMixinOnly`, and namespace tests.
-Goal: repeated parameterized namespace calls reuse only handles whose terminal
-mode matches the call shape.
-Acceptance: repeated parameterized calls skip rediscovery and wrong-mode handle
-reuse is rejected.
-
-7ii. [ ] Array-path callable handles avoid repeated remainder construction.
-Scope: `collectKeyRemainder(...)`, `getCallableLookupKeyRemainder(...)`,
-reference handles, and namespace tests.
-Goal: stable array-path handles should carry enough identity to avoid repeated
-join/slice/remainder work.
-Acceptance: spy/counter tests prove repeated covered lookups avoid remainder
-construction after warmup.
-
-7ij. [ ] Public `Rules.find*` materialization stays cold for every covered
-reference family.
-Scope: `Reference` covered paths and `Rules.findVariable/findProperty/
-findDeclaration/findFunction/findMixin`.
-Goal: covered reference reads return occurrence/binding/callable result lanes
-without public node-materializing method calls.
-Acceptance: spies cover variable, property, declaration, function, and callable
-warmups.
-
-7ik. [ ] Handle access shape is evaluated for allocation cost.
+7iv. [ ] Handle access allocation shape gets a keep/delete decision.
 Scope: `getRulesLookupHandleAccess(...)`, read/write call sites, emitted
-output, and focused handle tests.
-Goal: decide whether the transient access object should stay, become scalar
-locals, or move into strategy-specific straight-line read/write paths.
-Acceptance: measured/emitted proof for keep/delete decision; no speed claim
-without stable benchmark.
+output, and hotpath smoke.
+Goal: decide whether the transient access object should become scalar locals or
+strategy-specific read/write paths.
+Acceptance: emitted/benchmark evidence; no speed claim without stable signal.
 
-7il. [ ] Direct declaration child traversal uses carried visibility before
-entering child rules.
+7iw. [ ] Direct declaration strategy branching gets a measured target.
+Scope: `DeclarationLookupStrategy`, `findWithinScopeSurface(...)`, and
+diagnostic profile counters.
+Goal: decide which strategy/filter branches are hot enough to split.
+Acceptance: profile/counter evidence recorded before source churn.
+
+7ix. [ ] Function binding invalidation is key-scoped or proven global.
+Scope: `setFunctionBinding(...)`, reference handles, function tests.
+Goal: avoid invalidating unrelated function handles unless global invalidation
+is required.
+Acceptance: keyed invalidation or no-op proof with tests.
+
+7iy. [ ] Assignment target lookup tries modeled current cells first.
+Scope: `assignScopeFrameVariable(...)`, set-defined eval, readonly tests.
+Goal: covered static `:=` writes should mutate current cells before source
+occurrence fallback.
+Acceptance: spy proves occurrence lookup is skipped for modeled cells.
+
+7iz. [ ] Direct declaration child traversal gets unrelated-surface spy proof.
 Scope: `directDeclarationChildEntries`, `canEnterRulesEntryForLookup(...)`, and
-child-surface tests.
-Goal: skip child rules that cannot contain the requested declaration family
-before recursive lookup.
-Acceptance: focused tests prove unrelated child surfaces are not entered.
+declaration child tests.
+Goal: carried visibility should prevent entering child rules that cannot
+contain the requested declaration family.
+Acceptance: focused spy test.
 
-7im. [ ] ScopeFrame callable bucket preparation avoids redundant cache writes.
+7ja. [ ] ScopeFrame callable bucket preparation avoids redundant cache writes.
 Scope: `prepareCallableLookupFrame(...)`, `getCallableEntriesForKey(...)`, and
-callable tests.
-Goal: do not rewrite frame coverage fields when the key/mode is already
-prepared and coverage is known.
-Acceptance: no behavior change; focused callable tests and emitted audit.
+emitted output.
+Goal: prove the early-return shape stays smaller/cleaner after build.
+Acceptance: emitted audit plus focused callable tests.
 
-7in. [ ] Function binding version invalidation is key-scoped or proven global.
-Scope: `setFunctionBinding(...)`, reference handles, and function tests.
-Goal: avoid invalidating unrelated function handles on unrelated function
-binding writes unless a global version is required by semantics.
-Acceptance: keyed invalidation or documented no-op proof with tests.
+7jb. [ ] Benchmark leash is refreshed for the next hot lookup target.
+Scope: `PERFORMANCE-HANDOFF.md`, hotpath fixtures, lookup smoke/profile.
+Goal: pick the next measured lookup target from current counters.
+Acceptance: target and command recorded without smoke speed claims.
 
-7io. [ ] Direct lookup fallback names are purged from docs/tests.
-Scope: lookup docs/tests/comments that still describe removed registry
-fallbacks.
-Goal: keep the active architecture language aligned with registryless runtime.
-Acceptance: no stale declaration/mixin registry fallback language in active
-binding lookup docs or tests.
+7jc. [ ] Property merge-chain occurrence slots are designed before coding.
+Scope: `BINDING-INDEX-PROPOSAL.md`, property lookup, merge-chain tests.
+Goal: avoid adding a second registry-like map for merge-chain properties.
+Acceptance: design note with deletion condition and test target.
 
-7ip. [ ] Benchmark leash is refreshed for the next hot lookup target.
-Scope: `PERFORMANCE-HANDOFF.md`, hotpath fixtures, and lookup smoke.
-Goal: choose the next measured lookup target from current counters instead of
-guessing.
-Acceptance: current diagnostic command and target recorded without claiming
-speed from smoke.
+7jd. [ ] Import/reference declaration visibility becomes an explicit direct
+lookup mode.
+Scope: import/reference declaration lookup options and import tests.
+Goal: stop using fallback side effects to rediscover visibility.
+Acceptance: focused import/reference declaration tests and fallback spy.
+
+7je. [ ] Performance handoff stale registry language is split into historical
+versus active sections.
+Scope: `PERFORMANCE-HANDOFF.md`.
+Goal: keep historical registry evidence while preventing active guidance from
+suggesting deleted registry paths still exist.
+Acceptance: active sections use current direct/frame terminology.
 
 ## Backlog Sources
 
@@ -275,24 +264,29 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: public `Rules.findVariable` cold-path proof for variable
-  handles, deletion of dead handle writer fields, and reseeding of the next
-  binding/lookup queue after the prior queue was fully discharged.
+- Latest pass: readonly assignment lookup now reads explicit direct-declaration
+  lookup state instead of a mutated options out-param; callable frame
+  preparation skips redundant coverage writes once key/mode coverage is known;
+  active handoff wording no longer describes covered lookup as registry
+  fallback work; the next queue was reseeded with remaining real tasks.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
 - New traversal: none.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: no new helper or API. `WriteRulesLookupHandleArgs` was
-  narrowed to `referenceNode`, `handleAccess`, and `returnVal`, deleting stale
-  target/type/key/env/context fields from family writer calls.
+- Helper/API surface: two occurrence-plus-readonly direct lookup helpers were
+  added for assignment, while assignment stopped relying on mutation of
+  `DeclarationFindOptions`. No public API was added.
 - Metadata mutations: none.
 - Allocation changes: no nodes or materialized lookup-result arrays added. The
-  patch deletes writer argument fields but does not claim allocation reduction.
-- Aggressive-review tokens: any `try` in the diff is test-only prototype
-  restoration around monkey-patched methods.
+  typed direct lookup result object replaces an options out-param for assignment
+  lookup; this pass does not claim allocation reduction.
+- Aggressive-review tokens: the typed direct lookup result object is semantic
+  lookup state for readonly propagation. The assignment lookup options object
+  replaces the prior mutable local options object and is not a new traversal or
+  materialized lookup result.
 - Evidence: focused eslint passed. Focused lookup tests passed (`6` files,
   `306` passed, `285` skipped). Residue grep had no matches; `git diff
-  --check`, `@jesscss/core` build, aggressive review with the test-only
-  restoration token prosecuted, node-creation audit, `jess` build, and
+  --check`, `@jesscss/core` build, aggressive review with scoped danger tokens
+  prosecuted, node-creation audit, `jess` build, and
   one-iteration hotpath smoke all passed. Smoke was usable but not a speed
-  claim: `mixins-guards.less` `26.27ms`, `scope-lookup-stress.less` `82.22ms`.
+  claim: `mixins-guards.less` `30.37ms`, `scope-lookup-stress.less` `84.79ms`.
