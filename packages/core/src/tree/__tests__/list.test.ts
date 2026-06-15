@@ -384,6 +384,22 @@ describe('List', () => {
     expect(buffer.parts).toEqual(['3, solid']);
   });
 
+  it('writes dynamic sync direct list render output into shared flat buffers with one mark', () => {
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const listNode = list([
+      op([num(1), '+', num(2)]),
+      any('solid')
+    ]);
+
+    expect(listNode.render(context, buffer)).toBe('3, solid');
+    expect(buffer.parts.join('')).toBe('3, solid');
+    expect(writer.marks).toBe(1);
+    expect(writer.reads).toBe(1);
+  });
+
   it('resolves list values without touching render state', async () => {
     const node = rules([
       vardecl({

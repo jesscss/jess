@@ -203,11 +203,12 @@ function renderListValueDirect<T extends Node>(
   context: Context,
   value: T[],
   options: PrintOptions,
-  sep: ListOptions['sep'] = ','
+  sep: ListOptions['sep'] = ',',
+  mark?: number
 ): string {
   const printOptions = getPrintOptions(options);
   const w = printOptions.writer;
-  const mark = w.mark();
+  const startMark = mark ?? w.mark();
   if (value.length === 0) {
     return '';
   }
@@ -219,18 +220,19 @@ function renderListValueDirect<T extends Node>(
     emitListSeparator(prev, item, printOptions, sep);
     emitRenderedListItem(item, context, printOptions, true);
   }
-  return w.getSince(mark);
+  return w.getSince(startMark);
 }
 
 function renderListValueDirectMaybe<T extends Node>(
   context: Context,
   value: T[],
   options: PrintOptions,
-  sep: ListOptions['sep'] = ','
+  sep: ListOptions['sep'] = ',',
+  mark?: number
 ): MaybePromise<string> {
   const printOptions = getPrintOptions(options);
   const w = printOptions.writer;
-  const mark = w.mark();
+  const startMark = mark ?? w.mark();
   if (value.length === 0) {
     return '';
   }
@@ -238,7 +240,7 @@ function renderListValueDirectMaybe<T extends Node>(
   let item = value[0]!;
   const first = emitRenderedListItemMaybe(item, context, printOptions);
   if (isThenable(first)) {
-    return first.then(() => renderListValueDirectMaybeRest(context, value, printOptions, sep, mark, 1, item));
+    return first.then(() => renderListValueDirectMaybeRest(context, value, printOptions, sep, startMark, 1, item));
   }
   for (let i = 1; i < value.length; i++) {
     const prev = item;
@@ -246,10 +248,10 @@ function renderListValueDirectMaybe<T extends Node>(
     emitListSeparator(prev, item, printOptions, sep);
     const rendered = emitRenderedListItemMaybe(item, context, printOptions, true);
     if (isThenable(rendered)) {
-      return rendered.then(() => renderListValueDirectMaybeRest(context, value, printOptions, sep, mark, i + 1, item));
+      return rendered.then(() => renderListValueDirectMaybeRest(context, value, printOptions, sep, startMark, i + 1, item));
     }
   }
-  return w.getSince(mark);
+  return w.getSince(startMark);
 }
 
 export type ListOptions = {
@@ -414,11 +416,12 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     const prepared = buffer
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const mark = buffer ? prepared.writer.mark() : 0;
-    const out = renderListValueDirect(context, this.value, prepared, this._options?.sep ?? ',');
-    return buffer
-      ? writePreparedRenderText(buffer, prepared, mark, out)
-      : out;
+    if (buffer) {
+      const mark = prepared.writer.mark();
+      const out = renderListValueDirect(context, this.value, prepared, this._options?.sep ?? ',', mark);
+      return writePreparedRenderText(buffer, prepared, mark, out);
+    }
+    return renderListValueDirect(context, this.value, prepared, this._options?.sep ?? ',');
   }
 
   private renderDirectListValueMaybe(
@@ -433,16 +436,15 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     const prepared = buffer
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const mark = buffer ? prepared.writer.mark() : 0;
-    const out = renderListValueDirectMaybe(context, this.value, prepared, this._options?.sep ?? ',');
-    if (isThenable(out)) {
-      return buffer
-        ? writePreparedRenderTextResult(buffer, prepared, mark, out)
-        : out;
+    if (!buffer) {
+      return renderListValueDirectMaybe(context, this.value, prepared, this._options?.sep ?? ',');
     }
-    return buffer
-      ? writePreparedRenderText(buffer, prepared, mark, out)
-      : out;
+    const mark = prepared.writer.mark();
+    const out = renderListValueDirectMaybe(context, this.value, prepared, this._options?.sep ?? ',', mark);
+    if (isThenable(out)) {
+      return writePreparedRenderTextResult(buffer, prepared, mark, out);
+    }
+    return writePreparedRenderText(buffer, prepared, mark, out);
   }
 
   protected override evalNode(context: Context): MaybePromise<List<Node>> {

@@ -97,6 +97,11 @@ because a one-line helper moved, a single closure was lifted, one regex was
 replaced, or one narrow fast path was added while the larger stated task remains
 open.
 
+Queue floor: after every handoff update, leave at least **15 unchecked sizable
+queue items** available across the active lane unless the lane is genuinely
+within 15 tasks of completion. If fewer than 15 remain, split by whole
+node-family/runtime boundary, not by one-line edits.
+
 A valid queue pass should complete one or more whole queue items, or explicitly
 record that the current whole item is blocked by a semantic decision,
 benchmark-first tradeoff, or unsafe behavior boundary. If the work is only a
@@ -266,6 +271,41 @@ Completed highlights:
 
 Open tasks:
 
+Current 15-item active queue, in priority order. Each item is a whole task with
+sub-work inside it; do not convert these into micro-items:
+
+1. [ ] Finish `Sequence` by making boundary-trivia emission explicit enough to
+   remove trivia-backed child `toString(...)` transport.
+2. [ ] Finish `List` by making trivia-backed item emission direct and auditing
+   eval/render item loops.
+3. [ ] Finish `QueryCondition` dynamic render by removing the child mark probe
+   only after child render contracts prove write-vs-return behavior directly.
+4. [ ] Finish `Call` callable output selection, whole-call mark/readback, and
+   `evalArgNodes(...)` copy pressure.
+5. [ ] Finish `AtRule` body-state staging and remaining custom
+   eval/import/render branch ladders.
+6. [ ] Finish `Ruleset.getHeaderString(...)` capture removal for frame
+   render/comparison paths.
+7. [ ] Finish `Declaration` custom-property raw-source, merge-state, and
+   materialization boundaries.
+8. [ ] Finish `Rules` root/body render, imports, placement state, and duplicate
+   declaration materialization.
+9. [ ] Finish `Reference` public value materialization, rules-like surfaces,
+   merged assign normalization, and remaining key conversion.
+10. [ ] Finish `Mixin` guard/default/body copy interactions and callable
+   candidate output.
+11. [ ] Finish `Ampersand` structural selector replacement, raw fallback string
+   assembly, and non-basic construction.
+12. [ ] Finish `Interpolated` cold replacement capture, selector/generic
+   materialization, and replacement arrays.
+13. [ ] Finish `StyleImport` first-use placement copies by replacing them with
+   canonical source placement state.
+14. [ ] Finish `Node` base/source render fallback so inherited source render no
+   longer routes hot render through public `toTrimmedString(...)`.
+15. [ ] Finish scalar wrapper leftovers in `Block`, `Paren`, `Url`, `Quoted`,
+   `Rest`, `Negative`, and `AttributeSelector` where localized mark/readback
+   remains outside documented cold/public boundaries.
+
 14. [ ] Finish the node `writeSyntax` render/stringification rewrite across the
    remaining node families in `NODE-REWRITE-TRACKER.md`.
 
@@ -361,6 +401,14 @@ Open tasks:
    generic `serialForEach(...)` callback iteration. `Extend.runEffect(...)` is
    the semantic side-effect boundary; focused tests prove list render does not
    call public list eval or child render.
+
+   Additional partial status: `List` and `Sequence` dynamic flat-buffer render
+   now pass the buffer writer mark into the direct render writer and reuse that
+   same mark for `writePreparedRenderText(...)`. This deletes the outer
+   buffer mark/readback window around the inner direct render readback. The
+   equivalent `QueryCondition` cut was rejected because dynamic child render
+   still needs a localized write-vs-return probe until child render contracts
+   are direct.
 
    Evidence pointer: use `NODE-REWRITE-TRACKER.md` for per-node status and
    `PERFORMANCE-HANDOFF.md` for benchmark/profile history. Do not add queue
@@ -548,32 +596,39 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Quoted` non-escaped `Any` wrapper readback cut.
+Current pass: `List` / `Sequence` dynamic flat-buffer mark reuse.
 
-- New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
-  or object/array scan was added.
-- New node/materialization: no runtime nodes, copies, wrappers, arrays, side
-  maps, or materialized render values added. Runtime strings are the quoted
-  output that `render(...)` and public `toTrimmedString(...)` already return.
-  The review script flags test-only `CountingWriter` constructions used to
-  prove mark/readback counts; they are not production node creation or render
-  materialization.
-- Render path: selected row is `Quoted`. Non-escaped `Any` values now write
-  quote/value/quote directly in public source capture and render paths without
-  opening a writer mark/readback window. Escaped quoted values, interpolated
-  values, and non-`Any` node values stay on existing semantic boundaries.
-- Helper/API surface: one node-local private helper was added:
-  `writeScalarSyntax(...)`. It adds no public API and centralizes the existing
-  string scalar writer plus the new split `Any` scalar writer.
+- New traversal: none in production. No loop, recursion, parent/source walk,
+  side-map lookup, or object/array scan was added. Test assertions use
+  `buffer.parts.join('')` only to check the shared flat-buffer text pieces;
+  this is test-only evidence, not render-path string transport.
+- New node/materialization: no runtime nodes, copies, wrappers, side maps, or
+  materialized render values added. The review script flags two test-only
+  `CountingWriter` constructions used to prove mark/readback counts; they are
+  not production node creation or render materialization.
+- Render path: selected rows are `List` and `Sequence`. Dynamic buffer render
+  now passes the buffer writer mark into the direct render writer and reuses
+  that mark for `writePreparedRenderText(...)`, deleting the outer
+  buffer mark/readback window around the inner direct render readback. No child
+  is resolved into an array/node just to stringify.
+- Helper/API surface: no helper, method, or public API added. Existing
+  node-local direct render functions accepted an optional mark so the buffer
+  caller can share the already-open writer window.
 - Metadata mutations: none. No parent/source/frozen/context metadata mutation,
   lazy options/context creation, reflection call, generic own-property helper,
   or structural probe added.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Evidence: package-scoped `quoted.test.ts` passed, and core build passed.
-  Tests prove non-escaped `Any` quoted source/render paths avoid writer
-  marks/readbacks, avoid public child string transport, keep render-buffer
-  output correct, and preserve existing resolve/render state behavior. Final
-  hotpath/profile status belongs in `PERFORMANCE-HANDOFF.md`; no speed claim.
-- Verdict: accept as a bounded `Quoted` scalar-wrapper cleanup. The remaining
-  fallback is intentional for escaped, interpolated, and non-`Any` node values.
+- Rejected cut: the same shared-mark shape was tried for `QueryCondition` and
+  reverted. Its dynamic child render still owns a localized write-vs-return
+  probe for custom/instance render contracts, so a one-mark dynamic-buffer
+  assertion is false until that downstream contract is direct.
+- Evidence: package-scoped `list.test.ts` and `sequence.test.ts` passed
+  together. Core build passed. `query-condition.test.ts` still has an
+  unrelated current-tree mark-count failure with no remaining diff in
+  `query-condition.ts`; do not count it as proof for this pass. Hotpath leash
+  was a quick bounded run only and is recorded in `PERFORMANCE-HANDOFF.md`; no
+  speed claim.
+- Verdict: accept as a bounded `List`/`Sequence` serialization cleanup. Keep
+  both rows open because trivia-backed child/item emission and public render
+  string return compatibility remain.

@@ -200,6 +200,37 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-15 List Sequence Dynamic Buffer Mark Reuse Pass
+
+Hypothesis: `List` and `Sequence` dynamic flat-buffer render already write
+through the direct child-render loop, so the buffer wrapper should reuse that
+same writer mark instead of opening an outer mark/readback window around the
+inner direct-render readback.
+
+Patch shape:
+
+- `List` direct dynamic render accepts an existing writer mark when the caller
+  is a render buffer and reuses it for `writePreparedRenderText(...)`;
+- `Sequence` direct dynamic render does the same for sync and async-capable
+  paths;
+- shared flat-buffer tests prove dynamic `List` and `Sequence` render use one
+  mark/read window for the family-level wrapper;
+- the analogous `QueryCondition` change was tried and rejected because dynamic
+  child render still has a per-child write-vs-return probe contract.
+
+Evidence:
+
+- focused tests: `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/list.test.ts src/tree/__tests__/sequence.test.ts --run`
+  passed;
+- core build passed;
+- quick bounded hotpath leash: `pnpm run measure:less:hotpath --
+  --iterations 15 --warmup 5` completed with mixed signal only. Usable
+  medians: `import-reference` `21.87ms`, `mixins-guards` `16.69ms`, `media`
+  `5.53ms`. Unstable medians: `functions` `16.51ms`, `extend-chaining`
+  `5.76ms`. Treat this as a regression tripwire only, not a speed claim or
+  keep/revert-quality stable benchmark.
+
 ### 2026-06-14 Block Paren Quoted Attribute Known-Wrapper Render Pass
 
 Hypothesis: known wrapper render output should write or buffer final text

@@ -224,6 +224,22 @@ describe('Sequence', () => {
     expect(buffer.parts).toEqual(['3 solid']);
   });
 
+  it('writes dynamic sync direct sequence render output into shared flat buffers with one mark', () => {
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const sequenceNode = seq([
+      op([num(1), '+', num(2)]),
+      any('solid')
+    ]);
+
+    expect(sequenceNode.render(context, buffer)).toBe('3 solid');
+    expect(buffer.parts.join('')).toBe('3 solid');
+    expect(writer.marks).toBe(1);
+    expect(writer.reads).toBe(1);
+  });
+
   it('renders empty sequences without writer readback scaffolding', () => {
     const writer = new CountingWriter();
     const buffer = createRenderBuffer('flat');

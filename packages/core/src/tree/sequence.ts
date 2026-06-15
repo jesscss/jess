@@ -284,13 +284,13 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return w.getSince(mark);
   }
 
-  private renderSequenceDirect(context: Context, options?: PrintOptions): string {
+  private renderSequenceDirect(context: Context, options?: PrintOptions, mark?: number): string {
     if (this.value.length === 0) {
       return '';
     }
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer;
-    const mark = w.mark();
+    const startMark = mark ?? w.mark();
     let prev: Node | undefined;
 
     if (printOptions.inCustom) {
@@ -301,7 +301,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         }
         emitRenderedSequenceNode(node, context, printOptions);
       }
-      return w.getSince(mark);
+      return w.getSince(startMark);
     }
 
     for (let i = 0; i < this.value.length; i++) {
@@ -349,16 +349,16 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       prev = node;
     }
 
-    return w.getSince(mark);
+    return w.getSince(startMark);
   }
 
-  private renderSequenceDirectMaybe(context: Context, options?: PrintOptions): MaybePromise<string> {
+  private renderSequenceDirectMaybe(context: Context, options?: PrintOptions, mark?: number): MaybePromise<string> {
     if (this.value.length === 0) {
       return '';
     }
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer;
-    const mark = w.mark();
+    const startMark = mark ?? w.mark();
 
     if (printOptions.inCustom) {
       for (let i = 0; i < this.value.length; i++) {
@@ -368,10 +368,10 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         }
         const rendered = emitRenderedSequenceNodeMaybe(node, context, printOptions);
         if (isThenable(rendered)) {
-          return rendered.then(() => this.renderSequenceCustomRest(context, printOptions, mark, i + 1));
+          return rendered.then(() => this.renderSequenceCustomRest(context, printOptions, startMark, i + 1));
         }
       }
-      return w.getSince(mark);
+      return w.getSince(startMark);
     }
 
     let prev: Node | undefined;
@@ -385,12 +385,12 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       }
       const rendered = emitRenderedSequenceNodeMaybe(node, context, printOptions);
       if (isThenable(rendered)) {
-        return rendered.then(() => this.renderSequenceRest(context, printOptions, mark, i + 1, node));
+        return rendered.then(() => this.renderSequenceRest(context, printOptions, startMark, i + 1, node));
       }
       prev = node;
     }
 
-    return w.getSince(mark);
+    return w.getSince(startMark);
   }
 
   private async renderSequenceCustomRest(
@@ -546,11 +546,12 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     const prepared = buffer
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const mark = buffer ? prepared.writer.mark() : 0;
-    const out = this.renderSequenceDirect(context, prepared);
-    return buffer
-      ? writePreparedRenderText(buffer, prepared, mark, out)
-      : out;
+    if (buffer) {
+      const mark = prepared.writer.mark();
+      const out = this.renderSequenceDirect(context, prepared, mark);
+      return writePreparedRenderText(buffer, prepared, mark, out);
+    }
+    return this.renderSequenceDirect(context, prepared);
   }
 
   private renderDirectValueMaybe(
@@ -562,16 +563,15 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     const prepared = buffer
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const mark = buffer ? prepared.writer.mark() : 0;
-    const out = this.renderSequenceDirectMaybe(context, prepared);
-    if (isThenable(out)) {
-      return buffer
-        ? writePreparedRenderTextResult(buffer, prepared, mark, out)
-        : out;
+    if (!buffer) {
+      return this.renderSequenceDirectMaybe(context, prepared);
     }
-    return buffer
-      ? writePreparedRenderText(buffer, prepared, mark, out)
-      : out;
+    const mark = prepared.writer.mark();
+    const out = this.renderSequenceDirectMaybe(context, prepared, mark);
+    if (isThenable(out)) {
+      return writePreparedRenderTextResult(buffer, prepared, mark, out);
+    }
+    return writePreparedRenderText(buffer, prepared, mark, out);
   }
 
   override operate(b: Node, op: string, _context: Context): Sequence | List {
