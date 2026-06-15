@@ -191,6 +191,24 @@ describe('quoted', () => {
 
     expect(quoted(any('hello')).toTrimmedString({ writer })).toBe('"hello"');
     expect(writer.captures).toBe(0);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
+  it('renders resolved Any quoted values without writer readback', async () => {
+    const node = rules([
+      vardecl({
+        name: any('asset'),
+        value: any('image.png')
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+    const writer = new CountingWriter();
+
+    expect(quoted(ref({ key: 'asset' }, { type: 'variable' })).render(context, { writer })).toBe('"image.png"');
+    expect(writer.toString()).toBe('"image.png"');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('writes quoted node values without public toTrimmedString transport', () => {

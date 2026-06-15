@@ -3463,6 +3463,37 @@ speed claim. Broad writer counts did not move, which means this range scalar
 path is not materially represented in `benchmark.less`; the bounded leash did
 not show a usable regression.
 
+### Quoted Any Wrapper Readback Cut
+
+Date: 2026-06-15.
+
+Change: non-escaped `Quoted` values backed by `Any` now write
+quote/value/quote directly in public source and render paths. They no longer
+open a writer mark/readback window just to return or buffer `"value"`.
+Escaped values, interpolated values, and non-`Any` node values stay on their
+existing boundaries.
+
+Hotpath status:
+
+- Focused `pnpm --filter @jesscss/core test -- --run
+  src/tree/__tests__/quoted.test.ts` passed. Tests prove non-escaped `Any`
+  source/render avoids mark/getSince and public child string transport while
+  preserving render-buffer output and resolve behavior.
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `14.69ms` usable, `import-reference` median
+  `23.45ms` unstable, `mixins-guards` median `17.56ms` unstable,
+  `extend-chaining` median `5.94ms` usable, and `media` median `5.48ms`
+  unstable.
+- Final `node scripts/profile-less-benchmark.mjs --file=benchmark.less`
+  reported broad `OutputWriter.mark` `49883`, `OutputWriter.getSince` `44887`,
+  `Reference.evalNode` `3619` calls / `69.45ms`, and `Rules.find` `1013`
+  calls / `26.95ms`.
+
+Interpretation: accept as a local scalar serialization cleanup only, not a
+speed claim. Broad profiler counters moved by 20 fewer `mark/getSince` calls,
+which is consistent with this exact quoted scalar path appearing in
+`benchmark.less`; real benchmark timing remains only leash evidence.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

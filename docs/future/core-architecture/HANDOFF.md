@@ -548,34 +548,32 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Range` scalar-bound readback cut.
+Current pass: `Quoted` non-escaped `Any` wrapper readback cut.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   or object/array scan was added.
 - New node/materialization: no runtime nodes, copies, wrappers, arrays, side
-  maps, or materialized render values added. Runtime strings are the scalar
-  range output that `render(...)` and public `toTrimmedString(...)` already
-  return. The review script flags one test-only `CountingWriter` construction
-  used to prove mark/readback counts; it is not production node creation or
-  render materialization.
-- Render path: selected row is `Range`. Simple `Any` and non-compound
-  `Dimension` bounds now build the known range text directly and write it to
-  the supplied writer or render buffer without opening a writer mark/readback
-  window. Trivia-backed or non-scalar bounds stay on the existing direct writer
-  fallback.
-- Helper/API surface: two node-local private helpers were added:
-  `scalarBoundText(...)` and `scalarRangeText(...)`. They add no public API and
-  replace the previous public render/source capture path for common scalar
-  ranges. A one-line writer helper was rejected and removed during review.
+  maps, or materialized render values added. Runtime strings are the quoted
+  output that `render(...)` and public `toTrimmedString(...)` already return.
+  The review script flags test-only `CountingWriter` constructions used to
+  prove mark/readback counts; they are not production node creation or render
+  materialization.
+- Render path: selected row is `Quoted`. Non-escaped `Any` values now write
+  quote/value/quote directly in public source capture and render paths without
+  opening a writer mark/readback window. Escaped quoted values, interpolated
+  values, and non-`Any` node values stay on existing semantic boundaries.
+- Helper/API surface: one node-local private helper was added:
+  `writeScalarSyntax(...)`. It adds no public API and centralizes the existing
+  string scalar writer plus the new split `Any` scalar writer.
 - Metadata mutations: none. No parent/source/frozen/context metadata mutation,
   lazy options/context creation, reflection call, generic own-property helper,
   or structural probe added.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Evidence: package-scoped `range.test.ts` passed, and core build passed.
-  Tests prove scalar range source/render paths avoid writer marks/readbacks,
-  avoid public resolve, keep render-buffer output correct, and preserve
-  existing resolve/render state behavior. Final hotpath/profile status belongs
-  in `PERFORMANCE-HANDOFF.md`; no speed claim.
-- Verdict: accept as a bounded `Range` scalar-bound cleanup. The remaining
-  fallback is intentional for trivia-backed or non-scalar bounds.
+- Evidence: package-scoped `quoted.test.ts` passed, and core build passed.
+  Tests prove non-escaped `Any` quoted source/render paths avoid writer
+  marks/readbacks, avoid public child string transport, keep render-buffer
+  output correct, and preserve existing resolve/render state behavior. Final
+  hotpath/profile status belongs in `PERFORMANCE-HANDOFF.md`; no speed claim.
+- Verdict: accept as a bounded `Quoted` scalar-wrapper cleanup. The remaining
+  fallback is intentional for escaped, interpolated, and non-`Any` node values.
