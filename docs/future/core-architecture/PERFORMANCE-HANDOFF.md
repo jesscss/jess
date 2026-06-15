@@ -3303,6 +3303,39 @@ speed claim. The profiler count delta from the prior pass is consistent with
 removing visible comment render/capture readbacks in `benchmark.less`, while
 the real benchmark timing run was too noisy to use.
 
+### Scalar Leaf Render-Buffer Mark Cut
+
+Date: 2026-06-15.
+
+Change: `Any`/`Keyword`/`Anonymous`, `Bool`, `Combinator`, `Dimension`, and
+scalar `Color` now write direct string/buffer output in `render(...)` instead
+of inheriting the base render-buffer mark window. Node-backed `Color` remains
+on the existing source fallback boundary.
+
+Hotpath status:
+
+- Focused `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/any.test.ts src/tree/__tests__/bool.test.ts
+  src/tree/__tests__/combinator.test.ts src/tree/__tests__/dimension.test.ts
+  src/tree/__tests__/color.test.ts src/tree/__tests__/node-render-buffer.test.ts
+  --run` passed. Tests prove direct-writer and flat-buffer render avoid writer
+  marks/readbacks for the touched scalar leaves while preserving render-buffer
+  alignment.
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `13.87ms` unstable, `import-reference` median
+  `19.80ms` usable, `mixins-guards` median `16.72ms` usable,
+  `extend-chaining` median `5.81ms` usable, and `media` median `4.95ms`
+  usable.
+- Final `node scripts/profile-less-benchmark.mjs --file=benchmark.less`
+  reported broad `OutputWriter.mark` `49903`, `OutputWriter.getSince` `44907`,
+  `Reference.evalNode` `3619` calls / `67.77ms`, and `Rules.find` `1013`
+  calls / `27.13ms`.
+
+Interpretation: accept as a focused serialization cleanup only, not a speed
+claim. Broad `benchmark.less` writer counts did not move from the previous
+pass, which means this cut mostly affects focused scalar flat-buffer paths not
+materially represented by the broad benchmark.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

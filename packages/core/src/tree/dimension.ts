@@ -3,6 +3,7 @@ import { Color, ColorFormat } from './color.js';
 import {
   Node,
   F_STATIC,
+  F_VISIBLE,
   type LocationInfo,
   type NodeOptions,
   defineType
@@ -12,6 +13,7 @@ import { logger } from '../logger.js';
 import round from 'lodash-es/round.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { finalizeOperationMetadataResult, finalizePublicOperationResult } from './util/operation-result.js';
+import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
 
 // import type { Context } from '../context.js'
 // import type { OutputCollector } from '../output'
@@ -273,6 +275,20 @@ export class Dimension extends Node<DimensionValue> {
 
   override writeSyntax(options: FinalPrintOptions): void {
     options.writer.add(this.serializeSyntax(), this);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
+    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+      return '';
+    }
+    const out = this.serializeSyntax();
+    if (isRenderBuffer(bufferOrOptions)) {
+      return writeRenderText(bufferOrOptions, out);
+    }
+    getPrintOptions(bufferOrOptions).writer.add(out, this);
+    return out;
   }
 
   private serializeSyntax(): string {

@@ -1,4 +1,4 @@
-import { Node, F_STATIC, defineType, type NodeOptions } from './node.js';
+import { Node, F_STATIC, F_VISIBLE, defineType, type NodeOptions } from './node.js';
 import { calculate, type Operator } from './util/calculate.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
@@ -6,6 +6,7 @@ import { N } from './node-type.js';
 import round from 'lodash-es/round.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { finalizePublicOperationResult } from './util/operation-result.js';
+import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
 type ColorValues = [number, number, number, number] | number[];
 type ChannelTuple = [number, string];
 type ChannelValue = number | ChannelTuple;
@@ -502,6 +503,26 @@ export class Color extends Node<ColorData, ColorOptions> {
     }
 
     w.add(this.serializeScalarSyntax(Boolean(options.compress))!, this);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
+    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+      return '';
+    }
+    const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
+    const scalar = this.serializeScalarSyntax(Boolean(printOptions?.compress));
+    if (scalar === undefined) {
+      return isRenderBuffer(bufferOrOptions)
+        ? this.renderSource(context, bufferOrOptions, options)
+        : this.renderSource(context, bufferOrOptions);
+    }
+    if (isRenderBuffer(bufferOrOptions)) {
+      return writeRenderText(bufferOrOptions, scalar);
+    }
+    getPrintOptions(bufferOrOptions).writer.add(scalar, this);
+    return scalar;
   }
 
   private serializeScalarSyntax(compress: boolean): string | undefined {

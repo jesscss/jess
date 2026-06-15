@@ -2,11 +2,12 @@
  * Import from node-base to avoid circular dependency.
  * The patching happens in node.ts
  */
-import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from './node-base.js';
+import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC, F_VISIBLE } from './node-base.js';
 import type { Context } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
-import type { FinalPrintOptions, PrintOptions } from './util/print.js';
+import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './util/print.js';
 import { normalizeComparableText } from './util/compare.js';
+import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
 
 export type AnyRole =
   'ident'
@@ -73,6 +74,20 @@ export class Any<
 
   override writeSyntax(options: FinalPrintOptions): void {
     options.writer.add(this.value, this);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
+    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+      return '';
+    }
+    const out = this.value;
+    if (isRenderBuffer(bufferOrOptions)) {
+      return writeRenderText(bufferOrOptions, out);
+    }
+    getPrintOptions(bufferOrOptions).writer.add(out, this);
+    return out;
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {

@@ -6,7 +6,13 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 import { OutputWriter } from '../util/print.js';
 
 class CountingWriter extends OutputWriter {
+  marks = 0;
   reads = 0;
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
 
   override getSince(mark: number): string {
     this.reads++;
@@ -253,6 +259,27 @@ describe('Color Node', () => {
 
       expect(color.toTrimmedString({ writer })).toBe('rgb(255, 0, 0)');
       expect(writer.toString()).toBe('rgb(255, 0, 0)');
+      expect(writer.reads).toBe(0);
+    });
+
+    it('renders scalar colors without writer mark/readback', () => {
+      const writer = new CountingWriter();
+      const buffer = createRenderBuffer('flat');
+      const first = new Color({
+        format: ColorFormat.RGB,
+        rgb: [255, 0, 0],
+        alpha: 1
+      });
+      const second = new Color('#00ff00');
+      const context = new Context();
+
+      expect(first.render(context, { writer })).toBe('rgb(255, 0, 0)');
+      expect(writer.toString()).toBe('rgb(255, 0, 0)');
+      expect(writer.marks).toBe(0);
+      expect(writer.reads).toBe(0);
+      expect(second.render(context, buffer, { writer })).toBe('#00ff00');
+      expect(buffer.parts).toEqual(['#00ff00']);
+      expect(writer.marks).toBe(0);
       expect(writer.reads).toBe(0);
     });
 

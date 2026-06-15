@@ -1,6 +1,7 @@
 import type { Context } from '../context.js';
-import { Node, F_STATIC, defineType } from './node.js';
+import { Node, F_STATIC, F_VISIBLE, defineType } from './node.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
 
 export interface Bool extends Node<boolean> {
   eval(context: Context): Bool;
@@ -30,6 +31,20 @@ export class Bool extends Node<boolean> {
 
   override writeSyntax(options: FinalPrintOptions): void {
     options.writer.add(this.value ? 'true' : 'false', this);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
+    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+      return '';
+    }
+    const out = this.value ? 'true' : 'false';
+    if (isRenderBuffer(bufferOrOptions)) {
+      return writeRenderText(bufferOrOptions, out);
+    }
+    getPrintOptions(bufferOrOptions).writer.add(out, this);
+    return out;
   }
 
   override resolve(_context: Context): this {

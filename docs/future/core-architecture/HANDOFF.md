@@ -548,30 +548,36 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Comment` scalar wrapper completion.
+Current pass: scalar leaf render-buffer mark cut.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   or object/array scan was added.
 - New node/materialization: no runtime nodes, copies, wrappers, arrays, side
   maps, or materialized render values added. The review script flags test-only
-  CountingWriter allocations used to prove writer mark/readback counts; they
-  are not production node creation or render materialization. The only new
-  runtime strings are the existing scalar return values required by
-  `render(...)` and public `toTrimmedString(...)`.
-- Render path: selected row is `Comment`. Visible comments now write the owned
-  scalar text directly in public capture and render paths. They no longer
-  inherit base `renderSource(...)`/`toTrimmedString(...)` capture that wrote the
-  same text and then read it back through `mark/getSince`.
-- Helper/API surface: no helper, public method, or node method added beyond
-  overriding the existing `toTrimmedString(...)` and `render(...)` extension
-  points for this concrete scalar node.
+  `Context`, `CountingWriter`, and scalar `Color` allocations used to prove
+  writer mark/readback counts and scalar color output; they are not production
+  node creation or render materialization. Runtime strings are the existing
+  scalar return values required by `render(...)` and public
+  `toTrimmedString(...)`.
+- Render path: selected rows are `Any`/`Keyword`/`Anonymous`, `Bool`,
+  `Combinator`, `Dimension`, and scalar `Color`. These nodes already had
+  direct source/public scalar writers, but flat-buffer render still inherited
+  the base render mark window. Each touched scalar leaf now writes direct
+  string/buffer output in `render(...)`; node-backed `Color` stays on the
+  existing fallback boundary.
+- Helper/API surface: no helper, public method, or utility added. The pass uses
+  concrete node `render(...)` overrides rather than a generic helper ladder, so
+  hot leaf output stays one direct branch and one writer call.
 - Metadata mutations: none. No parent/source/frozen/context metadata mutation,
   lazy options/context creation, reflection call, generic own-property helper,
   or structural probe added.
 - Error/control flow: no new routine error objects or throw/catch control flow.
-- Evidence: package-scoped `comment.test.ts` passed. Tests prove visible block
-  comment capture and render avoid writer marks/readbacks, line comments remain
-  render-hidden unless `fullRender` is set, and existing trivia preservation
-  tests still pass. Final hotpath/profile status belongs in
-  `PERFORMANCE-HANDOFF.md`; no speed claim.
-- Verdict: accept as `Comment` scalar wrapper completion.
+- Evidence: package-scoped `any.test.ts`, `bool.test.ts`,
+  `combinator.test.ts`, `dimension.test.ts`, `color.test.ts`, and
+  `node-render-buffer.test.ts` passed. Tests prove direct writer and
+  flat-buffer render avoid writer marks/readbacks for the touched scalar leaves
+  while preserving existing render/buffer alignment. Final hotpath/profile
+  status belongs in `PERFORMANCE-HANDOFF.md`; no speed claim.
+- Verdict: accept as a scalar leaf render-buffer completion batch. `Range`,
+  `List`, `Sequence`, and other composite nodes remain on their own rows
+  because they need child-boundary/trivia/materialization decisions.

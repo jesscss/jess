@@ -5,7 +5,13 @@ import { type Operator } from '../util/calculate.js';
 import { OutputWriter } from '../util/print.js';
 
 class CountingWriter extends OutputWriter {
+  marks = 0;
   reads = 0;
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
 
   override getSince(mark: number): string {
     this.reads++;
@@ -85,6 +91,20 @@ describe('Dimension', () => {
       expect(await node.render(context, buffer)).toBe('10px');
       expect(buffer.parts).toEqual(['10px']);
       expect(resolveCalls).toBe(0);
+    });
+
+    it('renders dimensions without writer mark/readback', () => {
+      const writer = new CountingWriter();
+      const buffer = createRenderBuffer('flat');
+
+      expect(dimension([10, 'px']).render(context, { writer })).toBe('10px');
+      expect(writer.toString()).toBe('10px');
+      expect(writer.marks).toBe(0);
+      expect(writer.reads).toBe(0);
+      expect(dimension([20, 'px*em']).render(context, buffer, { writer })).toBe('calc(20 * 1px * 1em)');
+      expect(buffer.parts).toEqual(['calc(20 * 1px * 1em)']);
+      expect(writer.marks).toBe(0);
+      expect(writer.reads).toBe(0);
     });
 
     it('resolves dimensions without touching render state', async () => {

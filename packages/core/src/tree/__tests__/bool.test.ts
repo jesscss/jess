@@ -6,7 +6,13 @@ import { cast } from '../util/cast.js';
 import { OutputWriter } from '../util/print.js';
 
 class CountingWriter extends OutputWriter {
+  marks = 0;
   reads = 0;
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
 
   override getSince(mark: number): string {
     this.reads++;
@@ -58,6 +64,20 @@ describe('Bool', () => {
     expect(await node.render(context, buffer)).toBe('true');
     expect(buffer.parts).toEqual(['true']);
     expect(resolveCalls).toBe(0);
+  });
+
+  it('renders bool values without writer mark/readback', () => {
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+
+    expect(bool(true).render(context, { writer })).toBe('true');
+    expect(writer.toString()).toBe('true');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(bool(false).render(context, buffer, { writer })).toBe('false');
+    expect(buffer.parts).toEqual(['false']);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('resolves bool values without touching render state', async () => {
