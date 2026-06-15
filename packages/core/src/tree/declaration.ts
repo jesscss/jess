@@ -340,10 +340,12 @@ const isLessFunctionFallbackCall = (node: Node): node is LessFunctionFallbackCal
 
 const stringifyDetached = (node: Node, options: PrintOptions): string => {
   const printOptions = getPrintOptions(options);
-  return node.toString({
+  const writer = new OutputWriter();
+  node.writeSyntax({
     ...printOptions,
-    writer: new OutputWriter()
+    writer
   });
+  return writer.toString();
 };
 
 const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions): string | undefined => {
@@ -559,7 +561,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           options
         );
       } else {
-        value.toString(options);
+        value.writeSyntax(options);
       }
       w.replaceSince(valueMark, (valueOut) => {
         const fallbackOut = stringifyCustomFallbackFunctionCall(value, options);
@@ -599,18 +601,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return w.getSince(mark);
   }
 
-  private renderSpaceValueSyntax(value: Node[], options: PrintOptions): string {
+  private renderSpaceValueSyntax(value: Node[], options: PrintOptions): void {
     const printOptions = getPrintOptions(options);
-    const w = printOptions.writer!;
-    const mark = w.mark();
     for (let index = 0; index < value.length; index++) {
       if (index !== 0) {
-        w.queueSpacer(' ');
+        printOptions.writer.queueSpacer(' ');
       }
       const item = value[index]!;
       item.writeSyntax(printOptions);
     }
-    return w.getSince(mark);
   }
 
   override toTrimmedString(options?: PrintOptions) {

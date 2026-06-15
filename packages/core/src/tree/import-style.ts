@@ -51,6 +51,16 @@ function throwInvalidImportedRulesRegistrationPrep(): never {
   throw new TypeError('Expected imported rules registration prep to return Rules');
 }
 
+function variableNameKey(node: Node): string {
+  if (!isNode(node, N.VarDeclaration)) {
+    return '';
+  }
+  const name = node.value.name;
+  return name instanceof Any
+    ? name.value
+    : String(name.valueOf?.() ?? '');
+}
+
 function visitDescendantRulesets(value: unknown, cb: (ruleset: Ruleset) => void): void {
   if (isNode(value, N.Ruleset)) {
     cb(value as Ruleset);
@@ -615,7 +625,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       if (!isNode(existingNode, N.VarDeclaration)) {
         continue;
       }
-      const existingName = existingNode.value.name?.toString();
+      const existingName = variableNameKey(existingNode);
       if (existingName && !firstVarIndexByName.has(existingName)) {
         firstVarIndexByName.set(existingName, index);
       }
@@ -625,7 +635,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const replacementsByIndex = new Map<number, Node>();
     for (const injectedNode of withRules.value) {
       if (isNode(injectedNode, N.VarDeclaration)) {
-        const varName = injectedNode.value.name?.toString();
+        const varName = variableNameKey(injectedNode);
         if (varName) {
           const existingIndex = firstVarIndexByName.get(varName);
           if (existingIndex !== undefined) {
@@ -717,7 +727,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       if (!isNode(node, N.VarDeclaration)) {
         continue;
       }
-      const name = node.value.name?.toString();
+      const name = variableNameKey(node);
       if (!name) {
         continue;
       }

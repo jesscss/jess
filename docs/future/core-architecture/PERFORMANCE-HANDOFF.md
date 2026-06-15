@@ -3682,6 +3682,27 @@ speed claim. Broad profiler counters moved by 20 fewer `mark/getSince` calls,
 which is consistent with this exact quoted scalar path appearing in
 `benchmark.less`; real benchmark timing remains only leash evidence.
 
+### Cross-Queue Direct Syntax Cleanup
+
+Date: 2026-06-15.
+
+Change: `AtRule`, `Declaration`, `Reference`, `StyleImport`, and base
+`Node.writeSyntax` removed internal public stringification or detached-writer
+hops in selected serialization/key/render paths. The pass is cleanup only; it
+did not complete any whole queue item.
+
+Hotpath status:
+
+- Final dirty bounded `pnpm run measure:less:hotpath -- --iterations 15
+  --warmup 5` at HEAD `c111aaa8` reported: `functions` median `16.00ms`
+  unstable, `import-reference` median `22.38ms` usable, `mixins-guards`
+  median `16.62ms` usable, `extend-chaining` median `5.36ms` unstable, and
+  `media` median `5.50ms` unstable.
+
+Interpretation: status only, not a speed claim. This is a dirty-worktree leash
+for direct serialization cleanup; no before/after decision-quality performance
+conclusion is claimed.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

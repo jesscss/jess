@@ -10,7 +10,7 @@ import type { Call } from './call.js';
 import type { Quoted } from './quoted.js';
 import { atIndex } from './util/collections.js';
 import type { Num } from './number.js';
-import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Rules, RuntimeVarBinding } from './rules.js';
 import type { Interpolated } from './interpolated.js';
@@ -2030,6 +2030,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const renderBuffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const renderOptions = renderBuffer ? options : bufferOrOptions;
+    const childRenderOptions = renderBuffer
+      ? options
+      : prepareRenderPrintState(context, renderOptions);
     if (canRenderRawVariableReferenceDirectly(this) && this.options.fallbackValue === undefined) {
       const rawValue = resolveRawReferenceLookupTarget(this, context);
       if (isThenable(rawValue)) {
@@ -2042,7 +2045,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           ) {
             return renderBuffer
               ? writeRenderTextResult(renderBuffer, value.render(context, options))
-              : value.render(context, renderOptions);
+              : value.render(context, childRenderOptions);
           }
           const evaluated = evaluateReferenceNode({
             referenceNode: this,
@@ -2059,11 +2062,11 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             ? Promise.resolve(evaluated).then((node) => {
                 return renderBuffer
                   ? writeRenderTextResult(renderBuffer, node.render(context, options))
-                  : node.render(context, renderOptions);
+                  : node.render(context, childRenderOptions);
               })
             : renderBuffer
               ? writeRenderTextResult(renderBuffer, evaluated.render(context, options))
-              : evaluated.render(context, renderOptions);
+              : evaluated.render(context, childRenderOptions);
         });
       }
       if (
@@ -2074,7 +2077,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       ) {
         return renderBuffer
           ? writeRenderTextResult(renderBuffer, rawValue.render(context, options))
-          : rawValue.render(context, renderOptions);
+          : rawValue.render(context, childRenderOptions);
       }
     }
     const evaluated = evaluateReferenceNode({
@@ -2092,11 +2095,11 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       ? Promise.resolve(evaluated).then((node) => {
           return renderBuffer
             ? writeRenderTextResult(renderBuffer, node.render(context, options))
-            : node.render(context, renderOptions);
+            : node.render(context, childRenderOptions);
         })
       : renderBuffer
         ? writeRenderTextResult(renderBuffer, evaluated.render(context, options))
-        : evaluated.render(context, renderOptions);
+        : evaluated.render(context, childRenderOptions);
   }
 
   /**

@@ -682,7 +682,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     const writer = printOptions.writer;
     const mark = writer.mark();
     try {
-      node.toString(printOptions);
+      node.writeSyntax(printOptions);
       return writer.getSince(mark);
     } finally {
       writer.restore(mark);

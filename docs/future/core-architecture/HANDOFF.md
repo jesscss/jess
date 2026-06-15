@@ -296,23 +296,48 @@ shape current before commit.
    overrides still use the localized write-vs-return mark fallback.
 3. [ ] Finish `AtRule` body-state staging and remaining custom
    eval/import/render branch ladders.
+
+   Current partial status: dynamic leaf rendering no longer calls child
+   public `toString(...)` from `renderLeafNodeToString(...)`; it writes child
+   syntax directly and keeps the existing localized mark only for the needed
+   string boundary.
 4. [ ] Finish `Ruleset.getHeaderString(...)` capture removal for frame
    render/comparison paths and same-property duplicate declaration pre-render.
 5. [ ] Finish `Declaration` custom-property raw-source, merge-state, internal
    mark/replace, and materialization boundaries.
+
+   Current partial status: custom-property fallback stringification now uses
+   direct `writeSyntax(...)` with a detached writer instead of child
+   `toString(...)`; custom value writing also uses direct syntax; space-merge
+   rendering stopped returning an unused captured string.
 6. [ ] Finish `Rules` root/body render, imports, placement state, merge output,
    and duplicate declaration materialization.
 7. [ ] Finish `Reference` public value materialization, rules-like surfaces,
    merged assign normalization, key conversion, and remaining cold copy/inherit
    ownership.
+
+   Current partial status: non-buffer `Reference.render(...)` now prepares the
+   context-owned render print state once and passes it to resolved child
+   renders, fixing detached scalar child writes without adding public
+   materialization.
 8. [ ] Finish `Mixin` guard/default/body copy interactions and callable
    candidate output.
 9. [ ] Finish `Interpolated` cold replacement capture, selector/generic
    materialization, and replacement arrays.
 10. [ ] Finish `StyleImport` first-use placement copies by replacing them with
    canonical source placement state, or document the exact semantic blocker.
+
+   Current partial status: configured import variable-key matching and binding
+   attachment no longer call declaration-name public `toString(...)`; normal
+   `Any` names use direct `.value`, with non-Any names falling back to
+   `valueOf()`.
 11. [ ] Finish `Node` base/source render fallback so inherited source render no
    longer routes hot render through public `toTrimmedString(...)`.
+
+   Current partial status: base `Node.writeSyntax(...)` no longer calls child
+   public `toString(...)`; child values write syntax directly. Base
+   `renderSource(...)` still routes through `toTrimmedString(...)`, so the item
+   remains open.
 12. [ ] Finish scalar wrapper leftovers in `Block`, `Paren`, `Url`, `Quoted`,
    `Negative`, and `AttributeSelector` where localized mark/readback remains
    outside documented cold/public boundaries.
@@ -389,38 +414,40 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `QueryCondition` static child contract cut.
+Current pass: cross-queue direct syntax cleanup.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   object/array scan, generator, or collection helper was added.
-- New node/materialization: no runtime nodes, copies, wrappers, side maps, or
-  materialized render values added.
-- Render path: selected row is `QueryCondition`. Static child direct-write
-  checks in `renderQueryConditionValue(...)` and
-  `renderQueryConditionValueRest(...)` no longer rediscover the class contract
-  with `Object.getPrototypeOf(node)`. They use explicit owned scalar
-  type/prototype contracts before direct `writeSyntax(...)`; dynamic, async,
-  and custom-render children keep the localized write-vs-return mark fallback.
-- Helper/API surface: no helper, method, public API, or new utility added.
-  The checks are duplicated inline to avoid adding another hot-path helper
-  call.
-- Metadata mutations: none. No parent/source/frozen/context metadata mutation,
-  lazy options/context creation, `Reflect.*`, generic own-property helper, or
-  source restoration added. The review script flags that doc phrase as a
-  danger token because it names forbidden patterns, not because the patch adds
-  them.
+- New node/materialization: one detached `OutputWriter` remains in
+  `Declaration.stringifyDetached(...)`; this is an existing cold/custom
+  fallback string boundary, not a new render node or AST materialization.
+- Render path: selected queue rows were `AtRule`, `Declaration`, `Reference`,
+  `StyleImport`, and `Node`. Internal serialization stopped calling child
+  public string APIs in `AtRule.renderLeafNodeToString(...)`,
+  `Declaration` custom value/fallback paths, `Reference.render(...)`,
+  `StyleImport` configured variable keys, and base `Node.writeSyntax(...)`.
+- Helper/API surface: one file-local `variableNameKey(...)` helper was added
+  in `StyleImport` to replace three public `toString(...)` calls. It has no
+  traversal and is scoped to declaration-name key extraction.
+- Metadata mutations: none added. No parent/source/frozen/context metadata
+  mutation, lazy options/context creation, `Reflect.*`, generic own-property
+  helper, or source restoration added. The existing configured import surface
+  mutation/copy work remains queue item 10 debt.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
 - Rejected cut: returning the original empty `Call` arg list from
   `evalArgNodes(...)` was tested and reverted. Focused `Call` tests prove even
   empty arg lists carry source-call parent identity, so reusing them would
   transfer ownership to the evaluated call surface.
-- Remaining blocker: `QueryCondition` dynamic child render still needs the
-  localized write-vs-return mark fallback until child render contracts are
-  direct; item 2 stays open.
-- Evidence: package-scoped `query-condition.test.ts` and `call.test.ts` passed.
-  Core build, diff check, aggressive review, and bounded hotpath leash ran.
-  Hotpath leash details belong in `PERFORMANCE-HANDOFF.md`; no speed claim.
-- Verdict: accept as a bounded `QueryCondition` serialization cleanup. Keep
-  active queue item 2 open until the remaining dynamic child mark fallback is
-  removed or proven semantic.
+- Remaining blockers: `Call.evalArgNodes(...)`, `AtRule` body ownership,
+  `Rules` render string-return bridges, `List`/`Sequence` buffer compatibility,
+  and `Operation` public resolve materialization all remain open.
+- Evidence: focused core-project tests for `AtRule`, `Declaration`,
+  `node-render-buffer`, `Block`, `Url`, `ImportStyle`, `Reference`, and
+  `Rules` passed. A bounded changed-baseline attempt first exposed
+  `Reference.render(...)` failing to write resolved scalar output through the
+  context-owned print state; that failure is now fixed by the same pass. Core
+  build passed.
+- Verdict: accept as a bounded direct-syntax cleanup across the full queue
+  surface; keep all queue items open because none of the whole-task objectives
+  are complete.

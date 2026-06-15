@@ -1365,7 +1365,7 @@ export abstract class Node<
   writeSyntax(options: FinalPrintOptions): void {
     this._visitValues((v) => {
       if (v instanceof Node) {
-        v.toString(options);
+        v.writeSyntax(options);
       } else {
         const s = v === undefined ? '' : String(v);
         if (s) {
