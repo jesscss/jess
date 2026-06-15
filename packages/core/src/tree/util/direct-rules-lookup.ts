@@ -433,10 +433,7 @@ function findWithinScopeSurface(
   const includeLiveBindings = strategy.includeLiveBindings && options.includeLiveBindings !== false;
   if (strategy.prepareScopeFrame && includeLiveBindings) {
     if (!scope._scopeFrame) {
-      if (scope.rulesIndexed < scope.value.length) {
-        scope._indexRules();
-      }
-      scope.getScopeFrame();
+      scope.getScopeFrame(undefined, false);
     }
   }
 

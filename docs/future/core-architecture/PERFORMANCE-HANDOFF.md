@@ -113,6 +113,19 @@ empty), so the next measured lookup pass should instrument
 `scope-lookup-stress.less` or another lookup-heavy fixture before splitting
 `DeclarationLookupStrategy` or handle access allocation.
 
+2026-06-15 stress fixture profile: `node scripts/profile-less-benchmark.mjs
+--fixture=scripts/fixtures/less-hotpath/scope-lookup-stress.less
+--compat=false` now profiles repo-local fixtures. It reported
+`Reference.evalNode` `6528` calls / `67.48ms`; top reference keys were
+`variable:n` `1530`, `variable:depth` `767`, `variable:value` `720`,
+`variable:seed` `630`, `variable:local` `540`, `variable:global-base` `450`,
+`mixin-ruleset:.path-loop` `405`, and the deep
+`#lookup-catalog > #alpha > #beta > #gamma > .pick` path `360`.
+`Rules.find` and old registry counters stayed empty, so the next measurement
+needs direct lookup counters inside `findWithinScopeSurface(...)`,
+scope-frame variable lookup, and callable handle access rather than old
+registry wrappers.
+
 ## Reactivation Threshold
 
 Full performance rounds are currently active. If future work parks performance

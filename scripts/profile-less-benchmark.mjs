@@ -17,10 +17,11 @@ const cliArgs = new Map(
   })
 );
 
-const benchmarkArg = cliArgs.get('--file') ?? 'benchmark.less';
+const benchmarkArg = cliArgs.get('--fixture') ?? cliArgs.get('--file') ?? 'benchmark.less';
+const benchmarkRoot = cliArgs.has('--fixture') ? repoRoot : path.join(lessPkgRoot, 'benchmark');
 const benchmarkFile = path.isAbsolute(benchmarkArg)
   ? benchmarkArg
-  : path.join(lessPkgRoot, 'benchmark', benchmarkArg);
+  : path.join(benchmarkRoot, benchmarkArg);
 const useCompat = cliArgs.get('--compat') !== 'false';
 globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ = {};
 
@@ -90,7 +91,7 @@ function wrapMethod(proto, methodName, label, before) {
   if (original.__instrumented) {
     return true;
   }
-  const wrapped = function (...args) {
+  const wrapped = function(...args) {
     before?.call(this, args);
     const start = performance.now();
     let result;
@@ -133,7 +134,7 @@ wrapMethod(OutputWriter.prototype, 'capture', 'OutputWriter.capture');
 wrapMethod(Node.prototype, 'clone', 'Node.clone');
 wrapMethod(Node.prototype, 'copy', 'Node.copy');
 wrapMethod(Node.prototype, 'cloneValue', 'Node.cloneValue');
-wrapMethod(Reference.prototype, 'evalNode', 'Reference.evalNode', function () {
+wrapMethod(Reference.prototype, 'evalNode', 'Reference.evalNode', function() {
   const key = this?.value?.rawKey ?? this?.value?.key;
   const type = this?.options?.type ?? 'variable';
   const line = this?.location?.line ?? this?.source?.start?.line ?? '?';
@@ -143,7 +144,7 @@ wrapMethod(Reference.prototype, 'evalNode', 'Reference.evalNode', function () {
   recordPath(lookupStats.referenceEvalBySite, `${type}:${normalizeLookupKey(key)} @ ${path.basename(String(file))}:${line}:${column}`);
 });
 
-wrapMethod(Rules.prototype, 'find', 'Rules.find', function (args) {
+wrapMethod(Rules.prototype, 'find', 'Rules.find', function(args) {
   const [type, keys] = args;
   recordPath(lookupStats.rulesFindByType, String(type));
   recordPath(lookupStats.rulesFindByKey, `${String(type)}:${normalizeLookupKey(keys)}`);
@@ -160,17 +161,17 @@ wrapMethod(Rules.prototype, 'find', 'Rules.find', function (args) {
 });
 {
   const originalGetRegistry = Rules.prototype.getRegistry;
-  Rules.prototype.getRegistry = function (...args) {
+  Rules.prototype.getRegistry = function(...args) {
     const registry = originalGetRegistry.apply(this, args);
     if (registry?.constructor?.prototype) {
       const proto = registry.constructor.prototype;
       const prefix = registry.constructor.name || 'Registry';
-      wrapMethod(proto, 'find', `${prefix}.find`, function (findArgs) {
+      wrapMethod(proto, 'find', `${prefix}.find`, function(findArgs) {
         const [keys] = findArgs;
         recordPath(lookupStats.registryFindByType, prefix);
         recordPath(lookupStats.registryFindByKey, `${prefix}:${normalizeLookupKey(keys)}`);
       });
-      wrapMethod(proto, '_searchRulesChildren', `${prefix}._searchRulesChildren`, function (childArgs) {
+      wrapMethod(proto, '_searchRulesChildren', `${prefix}._searchRulesChildren`, function(childArgs) {
         const [keys] = childArgs;
         recordPath(lookupStats.searchChildrenByType, prefix);
         recordPath(lookupStats.searchChildrenByKey, `${prefix}:${normalizeLookupKey(keys)}`);
@@ -183,7 +184,7 @@ wrapMethod(Rules.prototype, 'find', 'Rules.find', function (args) {
 
 {
   const originalGetTree = Context.prototype.getTree;
-  Context.prototype.getTree = async function (...args) {
+  Context.prototype.getTree = async function(...args) {
     importStats.getTreeCalls++;
     const [importPath] = args;
     recordPath(importStats.getTreeByPath, String(importPath));
@@ -203,7 +204,7 @@ wrapMethod(Rules.prototype, 'find', 'Rules.find', function (args) {
   };
 }
 
-wrapMethod(LessParser.prototype, 'parse', 'LessParser.parse', function (args) {
+wrapMethod(LessParser.prototype, 'parse', 'LessParser.parse', function(args) {
   importStats.parseCalls++;
   const [, rule = 'stylesheet'] = args;
   recordPath(importStats.parseByRule, String(rule));

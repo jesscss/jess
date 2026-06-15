@@ -45,6 +45,18 @@ describe('ScopeFrame variable facade', () => {
     expect(snapshot?.kind === 'declaration' && snapshot.cell.value?.valueOf()).toBe('red');
   });
 
+  it('records readonly provenance on static declaration cells', async () => {
+    const root = rules([
+      vardecl({ name: 'x', value: any('red') }, { readonly: true })
+    ]);
+    await root.eval(new Context());
+
+    const hit = lookupScopeFrameVariable(root.getScopeFrame(), 'x');
+
+    expect(hit.kind).toBe('declaration');
+    expect(hit.kind === 'declaration' && hit.cell.readonly).toBe(true);
+  });
+
   it('shadows child declarations locally without mutating parent cells', async () => {
     const parentRules = rules([
       vardecl({ name: 'y', value: any('black') })

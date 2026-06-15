@@ -466,6 +466,30 @@ function rulesMayContainExactRulesetSurface(rules: Rules): boolean {
   return false;
 }
 
+function rulesMayContainReferenceImports(rules: Rules): boolean {
+  if ((rules.options as { referenceMode?: boolean } | undefined)?.referenceMode === true || rules._hasReferenceImports) {
+    return true;
+  }
+  const value = rules.value;
+  for (let i = 0; i < value.length; i++) {
+    const node = value[i]!;
+    if (node.type === 'StyleImport') {
+      const importOptions = 'importOptions' in node.options
+        ? node.options.importOptions
+        : undefined;
+      if (importOptions?.reference === true || importOptions?._dedupe === true) {
+        return true;
+      }
+      continue;
+    }
+    const child = childRulesOf(node);
+    if (child && rulesMayContainReferenceImports(child)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function sourceRulesOf(rules: Rules): Rules {
   return isNode(rules.sourceNode, N.Rules) ? rules.sourceNode : rules;
 }
@@ -711,6 +735,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (this.rulesIndexed === 0) {
         this._hasExtends = false;
         this._hasReferenceImports = (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
+        this.varsByName = new Map();
         this.hasDirectChildRuleSurface = false;
         this.hasExactCallableChildSurface = false;
         this.hasExactMixinChildSurface = false;
@@ -840,10 +865,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this._scopeFrame = frame;
   }
 
-  getScopeFrame(parent?: ScopeFrame): ScopeFrame {
+  getScopeFrame(parent?: ScopeFrame, prepareCallableCoverage = true): ScopeFrame {
     if (!this._scopeFrame) {
       if (this.varsByName === undefined) {
-        this._indexRules();
+        this.prepareScopeFrameDeclarationIndex();
       }
       let resolvedParent = parent;
       if (resolvedParent === undefined) {
@@ -872,14 +897,47 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         undefined,
         this.callableLookupCache,
         undefined,
-        !this.hasDirectLookupChildSurface(),
-        !this.hasDirectLookupChildSurface(false),
-        true,
-        true,
+        prepareCallableCoverage ? !this.hasDirectLookupChildSurface() : false,
+        prepareCallableCoverage ? !this.hasDirectLookupChildSurface(false) : false,
+        prepareCallableCoverage,
+        prepareCallableCoverage,
         this._hasReferenceImports
       );
     }
     return this._scopeFrame;
+  }
+
+  private prepareScopeFrameDeclarationIndex(): void {
+    const varsByName = this.varsByName = new Map();
+    const value = this.value;
+    this._hasReferenceImports = (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
+    for (let i = 0; i < value.length; i++) {
+      const node = value[i]!;
+      if (node.type === 'StyleImport') {
+        const importOptions = 'importOptions' in node.options
+          ? node.options.importOptions
+          : undefined;
+        if (importOptions?.reference === true || importOptions?._dedupe === true) {
+          this._hasReferenceImports = true;
+        }
+        continue;
+      }
+      if (isNode(node, N.Rules)) {
+        if (rulesMayContainReferenceImports(node)) {
+          this._hasReferenceImports = true;
+        }
+        continue;
+      }
+      if (!isNode(node, N.VarDeclaration) || !this._hasStaticName(node)) {
+        continue;
+      }
+      const name = node.value.name.valueOf();
+      let bucket = varsByName.get(name);
+      if (!bucket) {
+        varsByName.set(name, bucket = []);
+      }
+      bucket.push(node);
+    }
   }
 
   private hasDirectLookupChildSurface(includeRulesets = true): boolean {
@@ -1296,12 +1354,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.hasDirectChildRuleSurface = true;
     if (rulesMayContainExactCallableSurface(child)) {
       this.hasExactCallableChildSurface = true;
-    }
-    if (rulesMayContainExactMixinSurface(child)) {
-      this.hasExactMixinChildSurface = true;
-    }
-    if (rulesMayContainExactRulesetSurface(child)) {
-      this.hasExactRulesetChildSurface = true;
+      if (rulesMayContainExactMixinSurface(child)) {
+        this.hasExactMixinChildSurface = true;
+      }
+      if (rulesMayContainExactRulesetSurface(child)) {
+        this.hasExactRulesetChildSurface = true;
+      }
     }
     const visibility = mergeDirectChildRulesVisibility(child.options.rulesVisibility, rulesVisibility);
 
@@ -2810,10 +2868,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     }
     if (isNode(node, N.Rules)) {
-      if (node.rulesIndexed < node.value.length) {
-        node._indexRules();
-      }
-
       // Use options if provided, otherwise use node's settings, otherwise empty
       // Then merge with node's settings to preserve any values not in options
       let optionsVisibility = options?.rulesVisibility;
@@ -2843,7 +2897,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (node._hasExtends) {
         this._hasExtends = true;
       }
-      if ((node.options as { referenceMode?: boolean } | undefined)?.referenceMode === true || node._hasReferenceImports) {
+      if (rulesMayContainReferenceImports(node)) {
         this._hasReferenceImports = true;
         if (this._scopeFrame) {
           this._scopeFrame.hasReferenceImports = true;
