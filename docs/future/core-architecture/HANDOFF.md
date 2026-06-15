@@ -548,7 +548,7 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Block` scalar wrapper cut.
+Current pass: `Comment` scalar wrapper completion.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   or object/array scan was added.
@@ -558,22 +558,20 @@ Current pass: `Block` scalar wrapper cut.
   are not production node creation or render materialization. The only new
   runtime strings are the existing scalar return values required by
   `render(...)` and public `toTrimmedString(...)`.
-- Render path: selected row is `Block`. Nil and `Any` block values now write
-  known delimiter/content syntax directly in public capture and direct render
-  paths. Resolved `Any` block output no longer routes through
-  `renderBlockSyntax(...)` mark/readback capture just to return `{value}`.
-- Helper/API surface: one private `renderDirectBlockSyntax(...)` method
-  replaces the previous nil-only branch inside `renderBlockSyntax(...)` and
-  centralizes the scalar no-readback cases. It adds no public API and does not
-  hide traversal, child walks, copies, or generic classification ladders.
+- Render path: selected row is `Comment`. Visible comments now write the owned
+  scalar text directly in public capture and render paths. They no longer
+  inherit base `renderSource(...)`/`toTrimmedString(...)` capture that wrote the
+  same text and then read it back through `mark/getSince`.
+- Helper/API surface: no helper, public method, or node method added beyond
+  overriding the existing `toTrimmedString(...)` and `render(...)` extension
+  points for this concrete scalar node.
 - Metadata mutations: none. No parent/source/frozen/context metadata mutation,
   lazy options/context creation, reflection call, generic own-property helper,
   or structural probe added.
 - Error/control flow: no new routine error objects or throw/catch control flow.
-- Evidence: package-scoped `block.test.ts` passed. Tests prove scalar block
-  public capture and render avoid writer readback, existing nil delimiters
-  still avoid marks/readbacks, and resolved `Any` block render avoids
-  materializing a replacement block. Final hotpath/profile status belongs in
+- Evidence: package-scoped `comment.test.ts` passed. Tests prove visible block
+  comment capture and render avoid writer marks/readbacks, line comments remain
+  render-hidden unless `fullRender` is set, and existing trivia preservation
+  tests still pass. Final hotpath/profile status belongs in
   `PERFORMANCE-HANDOFF.md`; no speed claim.
-- Verdict: accept as a bounded `Block` scalar wrapper cut. Trivia-backed and
-  non-scalar block values remain on the existing writer fallback boundary.
+- Verdict: accept as `Comment` scalar wrapper completion.

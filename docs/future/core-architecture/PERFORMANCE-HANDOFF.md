@@ -3273,6 +3273,36 @@ Interpretation: accept as a bounded serialization-path deletion only, not a
 speed claim. Broad benchmark counts did not move, which indicates the
 benchmark does not exercise this scalar block path materially.
 
+### Comment Scalar Wrapper Completion
+
+Date: 2026-06-15.
+
+Change: `Comment` now writes owned comment text directly in public capture and
+render paths. Visible comments no longer inherit the base source-render path
+that writes text and reads it back through `mark/getSince`; line comments still
+stay hidden from render unless `fullRender` is set.
+
+Hotpath status:
+
+- Focused `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/comment.test.ts --run` passed. Tests prove public capture
+  and render avoid writer marks/readbacks while existing line-comment visibility
+  and trivia preservation behavior remains intact.
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  was noisy for every fixture: `functions` median `25.18ms`,
+  `import-reference` median `68.45ms`, `mixins-guards` median `31.68ms`,
+  `extend-chaining` median `7.54ms`, and `media` median `8.05ms`. Treat this
+  run as leash/inconclusive, not performance evidence.
+- Final `node scripts/profile-less-benchmark.mjs --file=benchmark.less`
+  reported broad `OutputWriter.mark` `49903`, `OutputWriter.getSince` `44907`,
+  `Reference.evalNode` `3619` calls / `91.71ms`, and `Rules.find` `1013`
+  calls / `35.93ms`.
+
+Interpretation: accept as a concrete serialization-path deletion only, not a
+speed claim. The profiler count delta from the prior pass is consistent with
+removing visible comment render/capture readbacks in `benchmark.less`, while
+the real benchmark timing run was too noisy to use.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

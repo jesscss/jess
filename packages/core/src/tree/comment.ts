@@ -1,6 +1,7 @@
 import { type Context } from '../context.js';
 import { Node, F_VISIBLE, F_STATIC, defineType, type LocationInfo } from './node.js';
-import type { FinalPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, getPrintOptions, type PrintOptions } from './util/print.js';
+import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
 
 export type CommentOptions = {
   lineComment?: boolean;
@@ -29,8 +30,28 @@ export class Comment extends Node<string, CommentOptions> {
     return this;
   }
 
+  override toTrimmedString(options?: PrintOptions): string {
+    const out = this.value;
+    getPrintOptions(options).writer.add(out, this);
+    return out;
+  }
+
   override writeSyntax(options: FinalPrintOptions): void {
     options.writer.add(this.value, this);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
+    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+      return '';
+    }
+    const out = this.value;
+    if (isRenderBuffer(bufferOrOptions)) {
+      return writeRenderText(bufferOrOptions, out);
+    }
+    getPrintOptions(bufferOrOptions).writer.add(out, this);
+    return out;
   }
 }
 export const comment = defineType(Comment, 'Comment');
