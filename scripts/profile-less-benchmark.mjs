@@ -24,6 +24,7 @@ const benchmarkFile = path.isAbsolute(benchmarkArg)
   : path.join(benchmarkRoot, benchmarkArg);
 const useCompat = cliArgs.get('--compat') !== 'false';
 globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ = {};
+globalThis.__JESS_DIRECT_LOOKUP_PROFILE_COUNTERS__ = {};
 
 const coreLib = pathToFileURL(path.join(repoRoot, 'packages/core/lib/index.js')).href;
 const lessParserLib = pathToFileURL(path.join(repoRoot, 'packages/less-parser/lib/index.js')).href;
@@ -249,6 +250,7 @@ if (useCompat) {
 }
 const elapsedMs = performance.now() - start;
 const serializeProfileCounters = globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ ?? {};
+const directLookupProfileCounters = globalThis.__JESS_DIRECT_LOOKUP_PROFILE_COUNTERS__ ?? {};
 
 const metricRows = [...stats.entries()]
   .map(([name, metric]) => ({
@@ -288,6 +290,7 @@ const result = {
     topRegistryFindKeys: Object.fromEntries(printMap(lookupStats.registryFindByKey, 30)),
     searchChildrenByType: Object.fromEntries(printMap(lookupStats.searchChildrenByType, 20)),
     topSearchChildrenKeys: Object.fromEntries(printMap(lookupStats.searchChildrenByKey, 30)),
+    directLookupCounters: Object.fromEntries(printMap(new Map(Object.entries(directLookupProfileCounters)), 40)),
     topReferenceEvalKeys: Object.fromEntries(printMap(lookupStats.referenceEvalByKey, 30)),
     topReferenceEvalSites: Object.fromEntries(printMap(lookupStats.referenceEvalBySite, 40))
   },

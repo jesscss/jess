@@ -116,7 +116,7 @@ empty), so the next measured lookup pass should instrument
 2026-06-15 stress fixture profile: `node scripts/profile-less-benchmark.mjs
 --fixture=scripts/fixtures/less-hotpath/scope-lookup-stress.less
 --compat=false` now profiles repo-local fixtures. It reported
-`Reference.evalNode` `6528` calls / `67.48ms`; top reference keys were
+`Reference.evalNode` `6528` calls / `61.99ms`; top reference keys were
 `variable:n` `1530`, `variable:depth` `767`, `variable:value` `720`,
 `variable:seed` `630`, `variable:local` `540`, `variable:global-base` `450`,
 `mixin-ruleset:.path-loop` `405`, and the deep
@@ -125,6 +125,16 @@ empty), so the next measured lookup pass should instrument
 needs direct lookup counters inside `findWithinScopeSurface(...)`,
 scope-frame variable lookup, and callable handle access rather than old
 registry wrappers.
+
+2026-06-15 direct declaration counters: the stress fixture now reports
+`lookupStats.directLookupCounters`. A direct Jess run showed
+`declaration.cacheMiss` `16560`, `declaration.scope.v` `16560`,
+`declaration.childEntryEntered` `11520`, `declaration.childEntriesScanned`
+`10530`, `declaration.localMatch` `2475`, `declaration.childEntryStartSkip`
+`2295`, `declaration.scopeBindingHit` `1665`, and
+`declaration.framePrep` `139`. That says the next direct-declaration cut should
+target child-entry scans/entries and cache identity before splitting smaller
+strategy fields.
 
 ## Reactivation Threshold
 

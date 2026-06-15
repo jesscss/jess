@@ -2207,9 +2207,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const { searchParents = true } = options ?? {};
     let findRoot = false;
     while (rules) {
-      if (rules.rulesIndexed < rules.value.length) {
-        rules._indexRules();
-      }
       const fn = rules.functionsByName?.get(keys);
       if (fn || !searchParents) {
         return fn;

@@ -28,6 +28,21 @@ type DeclarationLookupStrategy = {
   skipVarsAfterBindingHit: boolean;
 };
 
+const DIRECT_LOOKUP_PROFILE_COUNTERS_KEY = '__JESS_DIRECT_LOOKUP_PROFILE_COUNTERS__';
+
+type DirectLookupProfileGlobals = typeof globalThis & {
+  [DIRECT_LOOKUP_PROFILE_COUNTERS_KEY]?: Record<string, number>;
+};
+
+const directLookupProfileGlobals = globalThis as DirectLookupProfileGlobals;
+const directLookupProfileCounters = directLookupProfileGlobals[DIRECT_LOOKUP_PROFILE_COUNTERS_KEY];
+const countDirectLookup = directLookupProfileCounters
+  ? (event: string): void => {
+      const counters = directLookupProfileCounters;
+      counters[event] = (counters[event] ?? 0) + 1;
+    }
+  : undefined;
+
 const VARIABLE_LOOKUP: DeclarationLookupStrategy = {
   cacheTag: 'v',
   lookupVisibility: 'VarDeclaration',
@@ -427,12 +442,16 @@ function findWithinScopeSurface(
   const cacheKey = getRecursiveLookupCacheKey(key, strategy, options, start, local, readonly);
   const cached = readCachedMatch(scope, cacheKey);
   if (cached) {
+    countDirectLookup?.('declaration.cacheHit');
     return cached;
   }
+  countDirectLookup?.('declaration.cacheMiss');
+  countDirectLookup?.(`declaration.scope.${strategy.cacheTag}`);
 
   const includeLiveBindings = strategy.includeLiveBindings && options.includeLiveBindings !== false;
   if (strategy.prepareScopeFrame && includeLiveBindings) {
     if (!scope._scopeFrame) {
+      countDirectLookup?.('declaration.framePrep');
       scope.getScopeFrame(undefined, false);
     }
   }
@@ -449,6 +468,7 @@ function findWithinScopeSurface(
       && (!options.filter || options.filter(liveSource))
     ) {
       const liveOccurrence = createDeclarationOccurrence(liveSource);
+      countDirectLookup?.('declaration.liveBindingHit');
       state.readonly ||= Boolean(live.readonly || liveSource.options?.readonly);
       const visibility = scope.options.rulesVisibility?.VarDeclaration ?? '';
       if (visibility === 'optional' && !isRulesetBodyScope(scope)) {
@@ -464,6 +484,7 @@ function findWithinScopeSurface(
   if (includeLiveBindings) {
     const bindingMatch = findScopeBindingDeclaration(scope, key, options.filter, start);
     if (bindingMatch) {
+      countDirectLookup?.('declaration.scopeBindingHit');
       state.readonly ||= Boolean(bindingMatch.node.options.readonly);
       localMatch = bindingMatch;
     }
@@ -483,6 +504,7 @@ function findWithinScopeSurface(
   }
 
   if (localMatch) {
+    countDirectLookup?.('declaration.localMatch');
     state.readonly ||= Boolean(localMatch.node.options.readonly);
     const visibility = getDeclarationVisibility(scope, strategy);
     if (visibility === 'optional' && !isRulesetBodyScope(scope)) {
@@ -533,6 +555,7 @@ function findWithinScopeSurface(
     return state;
   }
 
+  countDirectLookup?.('declaration.childEntriesScanned');
   const lookupType = strategy.lookupVisibility;
   const context = options.context;
   for (let i = childEntries.length - 1; i >= 0; i--) {
@@ -541,24 +564,30 @@ function findWithinScopeSurface(
       type: lookupType,
       hasTarget: options.hasTarget
     })) {
+      countDirectLookup?.('declaration.childEntryRulesVisibilitySkip');
       continue;
     }
     if (!canEnterMixinOutputForLookup(entry, {
       type: lookupType,
       hasTarget: options.hasTarget
     })) {
+      countDirectLookup?.('declaration.childEntryMixinOutputSkip');
       continue;
     }
     if (context?.rulesContext === scope && entry.node.options.forward) {
+      countDirectLookup?.('declaration.childEntryForwardSkip');
       continue;
     }
     if (local && entry.node.options.local) {
+      countDirectLookup?.('declaration.childEntryLocalSkip');
       continue;
     }
     if (childStart !== undefined && !(entry.node.index !== undefined && entry.node.index < childStart)) {
+      countDirectLookup?.('declaration.childEntryStartSkip');
       continue;
     }
 
+    countDirectLookup?.('declaration.childEntryEntered');
     const childState = findWithinScopeSurface(
       entry.node,
       key,

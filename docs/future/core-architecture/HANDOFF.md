@@ -33,6 +33,10 @@ Do not preserve an unreleased or self-invented public-looking lookup method
 for compatibility alone. If repo usage does not need it and the user has not
 approved it as API, delete or reshape it.
 
+`_indexRules()` is legacy lookup-indexing debt. Do not add new lookup
+dependencies on it. Runtime lookup should crawl the canonical tree directly
+and consult evaluated/live binding state only when that state already exists.
+
 ## Working Rules
 
 - Work from repo evidence first.
@@ -139,6 +143,10 @@ without indexing or entering their bodies. The pass also adds readonly
 provenance coverage for static declaration cells and makes
 `profile-less-benchmark.mjs --fixture ... --compat=false` produce lookup
 counters for `scope-lookup-stress.less`.
+Latest queue pass removes `findFunction(...)`'s `_indexRules()` call because
+function lookup is a live/evaluated binding-map parent walk, then adds direct
+declaration crawl counters to the lookup stress profile. `_indexRules()` is
+now explicitly documented as legacy lookup debt, not the target architecture.
 
 ## Active Queue
 
@@ -167,18 +175,19 @@ emitted output. Goal: decide scalar locals versus transient object with
 evidence. Acceptance: emitted audit plus benchmark/profile note, no speed
 claim without stable signal.
 
-7ko. [ ] Direct declaration strategy gets direct counters before splitting.
-Scope: `DeclarationLookupStrategy`, `findWithinScopeSurface(...)`, and
-`scope-lookup-stress.less`. Goal: instrument direct declaration strategy hits,
-misses, child-entry skips, and frame-prep calls. Acceptance:
-`profile-less-benchmark.mjs --fixture ... --compat=false` reports those
-counters.
+7ko. [ ] Remaining callable lookup `_indexRules()` callers are replaced by
+direct reverse crawl. Scope: `findMixinsFast(...)`,
+`findVisibleExactCallableRulesetPath(...)`, and
+`findVisibleCallableRulesetPrefixMatches(...)`. Goal: callable lookup should
+not build broad per-rules indexes before searching. Acceptance: focused
+callable/namespace tests pass with `_indexRules()` spied off for those paths.
 
 7kp. [ ] Function binding invalidation is key-scoped or explicitly proven
 global. Scope: `setFunctionBinding(...)`, lookup handles, and function tests.
 Goal: unrelated declarations should not invalidate function handles unless
 global invalidation is semantically required. Acceptance: keyed invalidation or
-no-op proof with tests.
+no-op proof with tests. Note: `findFunction(...)` no longer indexes rules;
+this item is about version invalidation only.
 
 7kq. [ ] Assignment target lookup tries modeled current cells before occurrence
 fallback. Scope: `assignScopeFrameVariable(...)`, set-defined eval, readonly
@@ -282,58 +291,43 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: variable lookup no longer forces broad `Rules._indexRules()` or
-  eager child `Rules` indexing just to prepare scope-frame variable cells.
-  `Rules.getScopeFrame(..., false)` now asks for declaration-cell prep without
-  callable child-surface coverage, and the pass adds fixture profiling support
-  for lookup-heavy repo-local Less files.
-- Verdict: accepted as a narrower lookup source cut and measurement harness
-  improvement, not as a speed claim.
-- New traversal: one current-scope loop in
-  `prepareScopeFrameDeclarationIndex()` scans direct children for static
-  variable declarations plus cheap reference-import facts. This replaces the
-  broader `_indexRules()` path for variable-frame prep, which also entered
-  child `Rules` through parent registration. `rulesMayContainReferenceImports()`
-  adds a narrow metadata recursion for nested reference-import presence so
-  existing `_hasReferenceImports` semantics survive without child indexing; the
-  next queue still needs to make that fact cheaper/carryable. No new sort was
-  added. Tests add existing lookup calls and prototype spies around them.
+- Latest pass: `Rules.findFunction(...)` no longer calls `_indexRules()` before
+  reading `functionsByName`; it now stays a live/evaluated binding-map parent
+  walk. The pass also adds opt-in direct declaration lookup counters to
+  `findWithinScopeSurface(...)` and exposes them from
+  `profile-less-benchmark.mjs`.
+- Verdict: accepted as a lookup-index deletion plus measurement instrumentation,
+  not as a speed claim.
+- New traversal: none in production lookup. The profiler records counters at
+  existing direct lookup branch points. Tests add a prototype spy that throws if
+  function lookup tries to index rules.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: added private
-  `prepareScopeFrameDeclarationIndex()`, file-local
-  `rulesMayContainReferenceImports()`, and a boolean argument on the existing
-  internal `getScopeFrame(...)` call. The new frame-prep helper removes a broad
-  indexing call from variable lookup prep instead of adding a wrapper ladder.
-  The reference-import helper preserves an existing indexed flag after child
-  indexing was removed. The profiler script accepts `--fixture` so lookup-heavy
-  local fixtures can be measured without copying them into the Less benchmark
-  directory.
-- Metadata mutations: `prepareScopeFrameDeclarationIndex()` initializes
-  `varsByName` and `_hasReferenceImports` for the current scope only. Full
-  `_indexRules()` now resets `varsByName` before registration when it follows
-  frame-only prep, preventing duplicate static variable cells. Child callable
-  exact-surface flags now only compute mixin/ruleset subtype flags when the
-  child can contain any exact callable surface.
-- Allocation changes: variable-frame prep allocates one `Map` for the same
-  `varsByName` storage the full index would have allocated; it avoids the full
-  child indexing side effects. Static variable buckets still use the existing
-  per-name arrays because the scope-frame variable facade expects declaration
-  cells by name. The `--fixture` profile support is command-line setup only and
-  uses `path.join(...)` to resolve either Less benchmark files or repo-local
-  fixtures before the measured run starts.
-- Rejected/failed proof: a broader callable flag shortcut was tried and
-  removed because callable miss tests still require conservative coverage.
-- Aggressive-review tokens: test-only `throw new Error(...)`/`try/finally`
-  spies remain in the variable/property child-surface proofs and restore
-  patched properties. The readonly provenance test constructs a `Context` for
-  normal eval setup, not production lookup machinery.
-- Evidence: focused lookup gate passed after the reference-import fix (`8`
-  files, `322` passed, `287` skipped). Focused eslint, residue grep,
-  `git diff --check`, `@jesscss/core` build, aggressive review,
+- Helper/API surface: added no runtime lookup API. Added one file-local
+  counter helper and one profile JSON field,
+  `lookupStats.directLookupCounters`, for measurement only.
+- Metadata mutations: none.
+- Allocation changes: when the profiler opt-in global is present, direct lookup
+  increments string-keyed counter properties. Normal runtime has no counter
+  object and pays only an optional counter hook check at the instrumented
+  branch points. The benchmark script creates the counter object before
+  rendering and materializes `Object.entries(...)` only while printing profile
+  JSON.
+- Rejected/failed proof: none so far in this pass.
+- Aggressive-review tokens: test-only `rules([])`, `new JsFunction(...)`,
+  `throw new Error(...)`, and `try/finally` protect the no-index function
+  lookup spy. The profile counter object, `Object.entries(...)`, and output
+  `Map` materialization live only in the benchmark script.
+- Evidence: focused function/binding tests passed (`3` files, `29` passed,
+  `262` skipped), then the broader lookup subset passed (`3` passed, `1`
+  skipped; `68` passed, `226` skipped), then the full focused lookup gate
+  passed (`8` files, `323` passed, `287` skipped). Focused eslint, residue
+  grep, `git diff --check`, aggressive review, `@jesscss/core` build,
   node-creation audit, and `jess` build passed. Node-creation audit reported
-  `new-node: 304`, `with-surface: 39`, `derive: 30`, `copy-leaves: 28`. The
-  stress fixture profile passed in direct Jess mode with `Reference.evalNode`
-  `6528` calls / `67.48ms`; old registry counters stayed empty. One-iteration
-  hotpath smoke passed and is not a speed claim: `mixins-guards.less`
-  `24.57ms`, `scope-lookup-stress.less` `82.43ms`.
+  `new-node: 304`, `with-surface: 39`, `derive: 30`, `copy-leaves: 28`.
+  Stress profile passed in direct Jess mode with `Reference.evalNode` `6528`
+  calls / `61.99ms` and populated `directLookupCounters`: `cacheMiss`/`scope.v`
+  `16560`, child entries entered `11520`, child-entry scans `10530`, local
+  matches `2475`, `childEntryStartSkip` `2295`, scope binding hits `1665`,
+  frame prep `139`. One-iteration hotpath smoke passed and is not a speed
+  claim: `mixins-guards.less` `28.35ms`, `scope-lookup-stress.less` `75.01ms`.
