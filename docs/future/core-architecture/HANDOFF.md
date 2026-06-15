@@ -44,6 +44,10 @@ and consult evaluated/live binding state only when that state already exists.
 - Queue items must be whole tasks. Do not create one-line queue items.
 - Before ending a pass, seed the next queue with exactly 15 real
   binding/lookup tasks.
+- Queue numbering is always plain `1` through `15`. Do not preserve old queue
+  IDs, ticket-like labels, or historical numbering.
+- Reseeding the next queue is mandatory closeout work, not one of the 15 queue
+  items.
 - Keep completed history out of this file. Replace old done items with a short
   baseline note only when it helps the next worker.
 - Use focused tests while iterating, then run gates before commit.
@@ -156,30 +160,30 @@ without building broad indexes.
 
 Complete every item in this queue before committing the next pass.
 
-7kk. [ ] Dynamic pending declarations get a real affected-key model.
+1. [ ] Dynamic pending declarations get a real affected-key model.
 Scope: `pendingDeclarationNames`, dynamic-name promotion, and static miss
 tests. Goal: do not broad-uncover misses unless an unresolved dynamic name can
 actually affect the requested key. Acceptance: semantic model plus tests for
 unknown dynamic, promoted static, and unaffected static miss.
 
-7kl. [ ] Callable guard/candidate uncertainty is named separately from child
+2. [ ] Callable guard/candidate uncertainty is named separately from child
 and reference-import uncertainty. Scope: guarded mixins/rulesets and
 `ScopeFrameCallableLookupResult`. Goal: only guarded candidate uncertainty
 routes to the bridge. Acceptance: guarded cases return a named uncovered
 reason; unguarded covered misses stop.
 
-7km. [ ] Array-path callable handles stop rebuilding remainders after warmup.
+3. [ ] Array-path callable handles stop rebuilding remainders after warmup.
 Scope: `collectKeyRemainder(...)`, `getCallableLookupKeyRemainder(...)`, and
 array namespace references. Goal: stable path identity carries/reuses the
 needed remainder. Acceptance: counter proof or a documented emitted no-op.
 
-7kn. [ ] Handle access object allocation gets a measured keep/delete decision.
+4. [ ] Handle access object allocation gets a measured keep/delete decision.
 Scope: `getRulesLookupHandleAccess(...)`, strategy write/read call sites, and
 emitted output. Goal: decide scalar locals versus transient object with
 evidence. Acceptance: emitted audit plus benchmark/profile note, no speed
 claim without stable signal.
 
-7ko. [ ] Legacy `_indexRules()` method and `rulesIndexed` fields get a delete
+5. [ ] Legacy `_indexRules()` method and `rulesIndexed` fields get a delete
 or isolate plan. Scope: `_indexRules()`, `rulesIndexed`,
 `directChildRuleEntries`, `directDeclarationChildEntries`, and
 `rules-flags.test.ts`. Goal: separate any remaining non-lookup flag/index
@@ -187,66 +191,68 @@ setup from runtime lookup so the broad index method can be deleted or made
 test-only/cold. Acceptance: production `rg "_indexRules\\(" packages/core/src`
 has no lookup callers and the next source cut is identified with tests.
 
-7kp. [ ] Function binding invalidation is key-scoped or explicitly proven
+6. [ ] Function binding invalidation is key-scoped or explicitly proven
 global. Scope: `setFunctionBinding(...)`, lookup handles, and function tests.
 Goal: unrelated declarations should not invalidate function handles unless
 global invalidation is semantically required. Acceptance: keyed invalidation or
 no-op proof with tests. Note: `findFunction(...)` no longer indexes rules;
 this item is about version invalidation only.
 
-7kq. [ ] Assignment target lookup tries modeled current cells before occurrence
+7. [ ] Assignment target lookup tries modeled current cells before occurrence
 fallback. Scope: `assignScopeFrameVariable(...)`, set-defined eval, readonly
 rules. Goal: covered `:=` writes mutate modeled cells without source lookup
 when readonly semantics are represented. Acceptance: occurrence spy proves the
 covered current-cell path skips direct declaration lookup.
 
-7kr. [ ] Import/reference declaration visibility becomes an explicit direct
+8. [ ] Import/reference declaration visibility becomes an explicit direct
 lookup mode. Scope: declaration lookup options, import/reference fixtures, and
 direct child entries. Goal: direct lookup should carry visibility facts instead
 of rediscovering them through fallback side effects. Acceptance: focused
 import/reference declaration tests plus fallback spy.
 
-7ks. [ ] Property merge-chain occurrence slots are implemented from the design
+9. [ ] Property merge-chain occurrence slots are implemented from the design
 note. Scope: property declaration occurrences, merge metadata, assignment
 normalization. Goal: delete the remaining filtered property registry fallback
 without adding a second name map. Acceptance: merge-chain fixtures use direct
 occurrence lookup.
 
-7kt. [ ] Reference-import callable uncertainty gets direct-crawl boundary
+10. [ ] Reference-import callable uncertainty gets direct-crawl boundary
 proof for namespace lookups. Scope: reference imports, namespace callable
 lookup, and fallback frames. Goal: reference-import uncertainty remains
 conservative but does not poison covered frame/key misses. Acceptance:
 namespace/fallback spy tests.
 
-7ku. [ ] Import/reference declaration visibility gets a direct-mode test matrix.
+11. [ ] Import/reference declaration visibility gets a direct-mode test matrix.
 Scope: reference imports, compose/import boundaries, declarations vs variables.
 Goal: choose the explicit direct lookup mode before source changes.
 Acceptance: matrix tests or documented unsupported cells.
 
-7kv. [ ] Scope-frame declaration prep tracks dynamic pending facts without a
+12. [ ] Scope-frame declaration prep tracks dynamic pending facts without a
 second scan. Scope: `prepareScopeFrameDeclarationIndex(...)`,
 `pendingDeclarationNames`, and `getScopeFrame(...)`. Goal: avoid scanning the
 same scope twice for variable declarations and pending names. Acceptance:
 tests prove static and pending dynamic declarations are represented after one
 frame-prep pass.
 
-7kw. [ ] Callable miss coverage recomputes only for callable lookup, not
+13. [ ] Callable miss coverage recomputes only for callable lookup, not
 variable lookup. Scope: `getScopeFrame(..., false)`,
 `prepareCallableLookupFrame(...)`, and callable miss tests. Goal: preserve the
 new variable-prep cut while proving callable callers still compute coverage
 when needed. Acceptance: spy tests for both paths.
 
-7kx. [ ] Scope-frame reference-import facts include child reference wrappers
+14. [ ] Scope-frame reference-import facts include child reference wrappers
 without child indexing. Scope: `prepareScopeFrameDeclarationIndex(...)`,
 reference imports, and reference-mode child `Rules`. Goal: keep
 `hasReferenceImports` correct without entering child bodies. Acceptance:
 focused tests for direct style imports and reference-mode child rules.
 
-7ky. [ ] Next queue is reseeded only from binding/lookup backlog after the
-above pass. Scope: this handoff plus `BINDING-INDEX-PROPOSAL.md`. Goal:
-maintain exactly 15 sizable tasks, no micro-items, no non-binding cutting drift.
-Acceptance: completed items replaced by concise baseline and a fresh real
-queue.
+15. [ ] Direct child-entry guards stop depending on `rulesIndexed`.
+Scope: `collectDirectChildRulesEntries()`,
+`collectDirectDeclarationChildEntries()`, `hasExact*ChildSurface`, and direct
+lookup child-surface skips. Goal: make carried child-surface facts explicit
+enough that direct lookup does not use `rulesIndexed` as an indexed/unindexed
+proxy. Acceptance: focused child-surface tests pass and the remaining
+`rulesIndexed` reads are narrowed to legacy/cold index state or deleted.
 
 ## Backlog Sources
 
@@ -289,10 +295,12 @@ At the end of a pass:
 
 1. Replace completed queue items with one concise baseline note if needed.
 2. Seed only the next active binding/lookup queue.
-3. Keep this file small. Pointers to backlog docs are good; copied backlog
+3. The new active queue must contain exactly 15 real binding/lookup tasks,
+   numbered `1` through `15`; reseeding itself is not a queue item.
+4. Keep this file small. Pointers to backlog docs are good; copied backlog
    content is not. If old evidence matters, put it in the commit or
    `PERFORMANCE-HANDOFF.md`, not here.
-4. Keep `Aggressive Cutting Self-Prosecution` to the latest pass only.
+5. Keep `Aggressive Cutting Self-Prosecution` to the latest pass only.
 
 ## Aggressive Cutting Self-Prosecution
 
