@@ -200,6 +200,33 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-15 List Sequence Active Trivia Child Transport Pass
+
+Hypothesis: `List` and `Sequence` source syntax should not call child public
+`toString(...)` just because trivia exists. The needed behavior is only
+leading-trivia emission plus direct child syntax writing.
+
+Patch shape:
+
+- added `emitNodeSourceSyntaxWithTrivia(...)` in `tree/util/trivia.ts`;
+- replaced active-trivia child `toString(...)` calls in `List` and `Sequence`
+  with direct trivia-aware `writeSyntax(...)`;
+- focused tests prove active-trivia output stays unchanged while child
+  `toString(...)` overrides are not called.
+
+Evidence:
+
+- focused tests: `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/list.test.ts src/tree/__tests__/sequence.test.ts --run`
+  passed;
+- core build passed;
+- quick bounded hotpath leash: `pnpm run measure:less:hotpath --
+  --iterations 15 --warmup 5` completed with mixed signal only. Usable
+  medians: `import-reference` `20.89ms`, `mixins-guards` `17.66ms`,
+  `extend-chaining` `6.52ms`. Unstable medians: `functions` `14.26ms`,
+  `media` `6.56ms`. Treat this as a regression tripwire only, not a speed
+  claim or keep/revert-quality stable benchmark.
+
 ### 2026-06-15 List Sequence Dynamic Buffer Mark Reuse Pass
 
 Hypothesis: `List` and `Sequence` dynamic flat-buffer render already write

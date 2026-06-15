@@ -20,6 +20,7 @@ import {
   evaluateNodeArrayMaybe,
   evaluateNodeArraySync
 } from './util/evaluate-node-array.js';
+import { emitNodeSourceSyntaxWithTrivia } from './util/trivia.js';
 
 export type SequenceOptions = {
   /**
@@ -216,7 +217,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     const first = value[firstIndex]!;
     const firstSourceTrivia = printOptions.trivia ?? first.sourceRoot?._treeContext?.opts?.trivia;
     if (firstSourceTrivia) {
-      first.toString(printOptions);
+      emitNodeSourceSyntaxWithTrivia(first, printOptions);
     } else {
       first.writeSyntax(printOptions);
     }
@@ -265,7 +266,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       }
       const nodeSourceTrivia = printOptions.trivia ?? node.sourceRoot?._treeContext?.opts?.trivia;
       if (nodeSourceTrivia) {
-        node.toString(printOptions);
+        emitNodeSourceSyntaxWithTrivia(node, printOptions);
       } else {
         node.writeSyntax(printOptions);
       }

@@ -271,12 +271,12 @@ Completed highlights:
 
 Open tasks:
 
-Current 15-item active queue, in priority order. Each item is a whole task with
+Current active queue, in priority order. Each item is a whole task with
 sub-work inside it; do not convert these into micro-items:
 
-1. [ ] Finish `Sequence` by making boundary-trivia emission explicit enough to
+1. [x] Finish `Sequence` by making boundary-trivia emission explicit enough to
    remove trivia-backed child `toString(...)` transport.
-2. [ ] Finish `List` by making trivia-backed item emission direct and auditing
+2. [x] Finish `List` by making trivia-backed item emission direct and auditing
    eval/render item loops.
 3. [ ] Finish `QueryCondition` dynamic render by removing the child mark probe
    only after child render contracts prove write-vs-return behavior directly.
@@ -305,6 +305,12 @@ sub-work inside it; do not convert these into micro-items:
 15. [ ] Finish scalar wrapper leftovers in `Block`, `Paren`, `Url`, `Quoted`,
    `Rest`, `Negative`, and `AttributeSelector` where localized mark/readback
    remains outside documented cold/public boundaries.
+16. [ ] Finish `List`/`Sequence` public render string-return compatibility
+   audit: either document it as the cold public boundary or split a direct
+   buffer-only path that avoids returning a string when callers do not need it.
+17. [ ] Finish `List`/`Sequence` addition/materialization copy audit,
+   including `deriveAdditionSequence(...)`, `copyWithReusableLeaves(...)`, and
+   container output ownership after arithmetic/list operations.
 
 14. [ ] Finish the node `writeSyntax` render/stringification rewrite across the
    remaining node families in `NODE-REWRITE-TRACKER.md`.
@@ -409,6 +415,12 @@ sub-work inside it; do not convert these into micro-items:
    equivalent `QueryCondition` cut was rejected because dynamic child render
    still needs a localized write-vs-return probe until child render contracts
    are direct.
+
+   Additional partial status: `List` and `Sequence` source syntax no longer
+   call child public `toString(...)` when trivia is active. Shared
+   `emitNodeSourceSyntaxWithTrivia(...)` emits leading trivia and then calls
+   child `writeSyntax(...)` into the same writer; focused tests prove active
+   trivia preserves output while child `toString(...)` overrides are not used.
 
    Evidence pointer: use `NODE-REWRITE-TRACKER.md` for per-node status and
    `PERFORMANCE-HANDOFF.md` for benchmark/profile history. Do not add queue
@@ -596,39 +608,39 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `List` / `Sequence` dynamic flat-buffer mark reuse.
+Current pass: `List` / `Sequence` active-trivia child string transport cut.
 
 - New traversal: none in production. No loop, recursion, parent/source walk,
-  side-map lookup, or object/array scan was added. Test assertions use
-  `buffer.parts.join('')` only to check the shared flat-buffer text pieces;
-  this is test-only evidence, not render-path string transport.
+  side-map lookup, or object/array scan was added. New tests use small
+  fixed-size trivia maps to prove behavior; their `new Map(...)` instances are
+  test-only fixtures matching existing trivia tests, not render-path side maps.
 - New node/materialization: no runtime nodes, copies, wrappers, side maps, or
-  materialized render values added. The review script flags two test-only
-  `CountingWriter` constructions used to prove mark/readback counts; they are
-  not production node creation or render materialization.
+  materialized render values added. Test-only `Any`/`Dimension` construction
+  creates source-backed fixtures only, and the test-only whitespace token
+  array exists only to build a `TriviaMap`. The review script also flags the
+  doc-only `copyWithReusableLeaves(...)` mention in queue item 17; that is a
+  target to audit, not new production copy machinery.
 - Render path: selected rows are `List` and `Sequence`. Dynamic buffer render
-  now passes the buffer writer mark into the direct render writer and reuses
-  that mark for `writePreparedRenderText(...)`, deleting the outer
-  buffer mark/readback window around the inner direct render readback. No child
-  is resolved into an array/node just to stringify.
-- Helper/API surface: no helper, method, or public API added. Existing
-  node-local direct render functions accepted an optional mark so the buffer
-  caller can share the already-open writer window.
+  was not changed in this pass. Source syntax for active-trivia children now
+  writes leading trivia and child syntax directly instead of calling child
+  public `toString(...)` as transport. No child is resolved into an array/node
+  just to stringify.
+- Helper/API surface: one shared utility was added:
+  `emitNodeSourceSyntaxWithTrivia(...)` in `tree/util/trivia.ts`. It replaces
+  three node-local public-string calls and mirrors the base source boundary:
+  consume leading trivia, then call child `writeSyntax(...)`.
 - Metadata mutations: none. No parent/source/frozen/context metadata mutation,
-  lazy options/context creation, reflection call, generic own-property helper,
-  or structural probe added.
+  lazy context creation, reflection call, generic own-property helper, or
+  structural probe added. The utility may set `options.trivia` to the child's
+  source trivia exactly as base `Node.toString(...)` already did. Test-only
+  `TreeContext` construction is fixture setup for source trivia ownership.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected cut: the same shared-mark shape was tried for `QueryCondition` and
-  reverted. Its dynamic child render still owns a localized write-vs-return
-  probe for custom/instance render contracts, so a one-mark dynamic-buffer
-  assertion is false until that downstream contract is direct.
 - Evidence: package-scoped `list.test.ts` and `sequence.test.ts` passed
-  together. Core build passed. `query-condition.test.ts` still has an
-  unrelated current-tree mark-count failure with no remaining diff in
-  `query-condition.ts`; do not count it as proof for this pass. Hotpath leash
-  was a quick bounded run only and is recorded in `PERFORMANCE-HANDOFF.md`; no
-  speed claim.
-- Verdict: accept as a bounded `List`/`Sequence` serialization cleanup. Keep
-  both rows open because trivia-backed child/item emission and public render
-  string return compatibility remain.
+  together. Core build, diff check, aggressive review, and bounded hotpath
+  leash ran. Tests prove active trivia output is preserved while child
+  `toString(...)` overrides are not called. Hotpath leash details belong in
+  `PERFORMANCE-HANDOFF.md`; no speed claim.
+- Verdict: accept as a bounded `List`/`Sequence` serialization cleanup.
+  Completed active queue items 1 and 2; keep broader rows open for public
+  render return compatibility and addition/materialization copy audit.

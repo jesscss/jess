@@ -6,6 +6,7 @@ import { type Operator } from './util/calculate.js';
 import {
   consumeTrivia,
   emitCommentTriviaBetweenNodes,
+  emitNodeSourceSyntaxWithTrivia,
   emitTriviaTokens
 } from './util/trivia.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -28,7 +29,7 @@ function emitListItem<T extends Node>(
   options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
   const sourceTrivia = options.trivia ?? item.sourceRoot?._treeContext?.opts?.trivia;
   if (sourceTrivia) {
-    item.toString(options);
+    emitNodeSourceSyntaxWithTrivia(item, options);
     options.suppressBoundaryTrivia = saved;
   } else {
     item.writeSyntax(options);

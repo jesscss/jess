@@ -156,6 +156,24 @@ describe('List', () => {
     expect(stringCalls).toBe(0);
   });
 
+  it('writes list items without public toString transport when trivia is active', () => {
+    const first = new Any('screen', undefined, [0, 1, 1, 5, 1, 6]);
+    const second = new Any('print', undefined, [23, 1, 24, 27, 1, 28]);
+    const tokens = [token(' '), token('/* comment */', 'BlockComment')];
+    const trivia = createTriviaMap({
+      before: new Map([[21, tokens]]),
+      after: new Map([[first.location[3], tokens]])
+    }) satisfies TriviaMap;
+    let stringCalls = 0;
+    first.toString = second.toString = () => {
+      stringCalls++;
+      return '';
+    };
+
+    expect(list([first, second]).toString({ trivia })).toBe('screen /* comment */, print');
+    expect(stringCalls).toBe(0);
+  });
+
   it('leaves plain separator whitespace to list syntax', () => {
     const first = new Any('10px', undefined, [0, 1, 1, 3, 1, 4]);
     const second = new Any('2', undefined, [7, 1, 8, 7, 1, 8]);

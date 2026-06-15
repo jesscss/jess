@@ -634,6 +634,32 @@ describe('Sequence', () => {
     expect(stringCalls).toBe(0);
   });
 
+  it('writes sequence items without public toString transport when trivia is active', () => {
+    const WS = createToken({ name: 'WS', pattern: / +/ });
+    const whitespace = [{
+      image: '  ',
+      startOffset: 2,
+      endOffset: 2,
+      tokenTypeIdx: WS.tokenTypeIdx,
+      tokenType: WS
+    }] satisfies IToken[];
+    const trivia = createTriviaMap({
+      before: new Map([[3, whitespace]]),
+      after: new Map([[1, whitespace]])
+    }) satisfies TriviaMap;
+    const treeContext = new TreeContext({ trivia });
+    const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
+    const second = num(20, undefined, [3, 1, 4, 4, 1, 5], treeContext);
+    let stringCalls = 0;
+    first.toString = second.toString = () => {
+      stringCalls++;
+      return '';
+    };
+
+    expect(seq([first, second]).toTrimmedString({ trivia })).toBe('10  20');
+    expect(stringCalls).toBe(0);
+  });
+
   it('does not inspect the emitted sequence text for each child boundary', () => {
     const writer = new CountingWriter();
     const rule = seq([
