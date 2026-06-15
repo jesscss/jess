@@ -87,6 +87,24 @@ In benchmark-leashed cutting mode:
   to improve the real benchmark, unless the change fixes correctness and the
   regression is explicitly accepted as debt.
 
+## Active Lookup Leash
+
+Current binding/lookup target: `findWithinScopeSurface(...)` and the callers
+that still make declaration lookup branch through strategy objects, child
+visibility gates, and assignment occurrence fallback.
+
+Use profiler/counter proof before reshaping this path. The next measured pass
+should answer which of these is hottest in real lookup work:
+
+- strategy fields in `direct-rules-lookup.ts`;
+- child declaration-surface traversal through `directDeclarationChildEntries`;
+- current-cell assignment target lookup versus occurrence fallback;
+- callable reference-import uncertainty and direct crawl handoff;
+- handle access object creation in `reference.ts`.
+
+Do not treat one-iteration smoke as a speed result. Use it only as a regression
+tripwire after behavior gates.
+
 ## Reactivation Threshold
 
 Full performance rounds are currently active. If future work parks performance

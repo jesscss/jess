@@ -1,6 +1,6 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction, style } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
-import { resolveFrameCell } from '../scope-frame.js';
+import { lookupScopeFrameCallable, resolveFrameCell } from '../scope-frame.js';
 import { getRulesEntryTraversalState } from '../util/lookup-utils.js';
 import { renderNodeToString } from '../util/render-buffer.js';
 import {
@@ -2810,6 +2810,14 @@ describe('Mixin', () => {
         root.getScopeFrame();
 
         expect(root.findMixin('.reference-import-missing', 'Mixin')).toBeUndefined();
+        const frameHit = lookupScopeFrameCallable(root._scopeFrame, '.reference-import-missing', {
+          includeRulesets: false,
+          searchParents: false
+        });
+        expect(frameHit).toEqual({
+          kind: 'uncovered',
+          reason: 'reference-import'
+        });
         expect(root._scopeFrame?.mixinCallableMissesCovered).toBe(false);
         expect(root._scopeFrame?.mixinCallableMissCoverageKnown).toBe(true);
         expect(fastPathHits.length).toBeGreaterThan(0);

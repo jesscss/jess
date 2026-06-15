@@ -593,10 +593,10 @@ Current implementation note:
 - This is intentionally not a new wrapper-record allocation. The bucket entry
   is the record surface for this slice.
 - Static callable misses are not complete. They still route to
-  `Rules.findMixinsFast(...)` because child-surface and import/reference
-  visibility are not yet represented in frame state. The next callable binding
-  pass must carry those surface facts on the frame or an attached placement
-  surface so a modeled miss can return `MISS` and stop.
+  `Rules.findMixinsFast(...)` when child-surface or reference-import visibility
+  makes the frame result explicitly `UNCOVERED`. Reference-import uncertainty
+  is now a named frame fact; it is not folded into ordinary child-surface
+  recursion or treated as a covered miss.
 - Do not call `getScopeFrame(...)` inside callable lookup just to try this
   shortcut. That creates declaration bucket state for a speculative callable
   lookup. The next step is construction/adoption-time callable surface coverage,
@@ -665,6 +665,24 @@ slots and merge-anchor facts; reusing the current direct property bucket is
 wrong because it scans `Rules.value` after normalization/coalescing. The next
 valid deletion is property declaration occurrence slots in the binding frame,
 not a second registry-style name map beside `DeclarationRegistry`.
+
+Property merge-chain slot target:
+
+- store property occurrences in the same ordered declaration slot stream as
+  variables, with a property-kind bit rather than a separate merge registry;
+- keep merge metadata on the occurrence/slot, not in a post-lookup side map;
+- allow ordinary exact property reads to use the latest visible property slot;
+- allow merge reads to scan the same key's occurrence slots in reverse source
+  order and stop at the first non-merge boundary required by semantics;
+- keep visibility (`public`, `optional`, `private`, import/reference surface)
+  as lookup-mode state before candidate merge, not as a later filter;
+- reject any design that adds another persistent `propertiesByName` structure
+  unless measurement proves it replaces more hot-path work than it adds.
+
+Deletion condition: once property occurrence slots carry merge metadata,
+ordinary property lookup and merge-chain lookup must share the direct
+occurrence path. The remaining registry fallback for filtered property
+merge-chain cases is deleted rather than kept as a second chance.
 
 Deletion condition: every time a complex declaration lookup mode is represented
 in `BindingFrame`, delete the corresponding registry fallback branch from

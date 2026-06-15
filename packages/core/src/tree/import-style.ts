@@ -752,7 +752,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       targetRules,
       targetRules._scopeFrame?.parent,
       liveSlots,
-      targetRules._scopeFrame?.pendingDeclarationNames
+      targetRules._scopeFrame?.pendingDeclarationNames,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      targetRules._scopeFrame?.hasReferenceImports ?? targetRules._hasReferenceImports
     );
     targetRules.scopeFrame.fallbackFrame = existingFallbackFrame;
   }

@@ -3186,6 +3186,39 @@ describe('reference', () => {
       }
     });
 
+    it('direct property lookup skips child rules whose visibility cannot contain properties', async () => {
+      const childRules = rules([
+        vardecl({ name: 'child-color', value: any('blue') })
+      ], {
+        rulesVisibility: {
+          VarDeclaration: 'public',
+          Declaration: 'private'
+        }
+      });
+      const root = rules([childRules]);
+      await root.eval(context);
+      root.collectDirectDeclarationChildEntries();
+
+      const originalValue = childRules.value;
+      Object.defineProperty(childRules, 'value', {
+        configurable: true,
+        get() {
+          throw new Error('property lookup should skip variable-only child surfaces');
+        }
+      });
+
+      try {
+        const found = root.findProperty('child-color', { searchParents: false });
+        expect(found).toBeUndefined();
+      } finally {
+        Object.defineProperty(childRules, 'value', {
+          configurable: true,
+          writable: true,
+          value: originalValue
+        });
+      }
+    });
+
     it('setDefined variable assignment uses occurrence lookup without Rules.findVariable', async () => {
       const originalFindVariable = RulesClass.prototype.findVariable;
       let variableLookups = 0;

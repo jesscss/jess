@@ -875,7 +875,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         !this.hasDirectLookupChildSurface(),
         !this.hasDirectLookupChildSurface(false),
         true,
-        true
+        true,
+        this._hasReferenceImports
       );
     }
     return this._scopeFrame;
@@ -1558,7 +1559,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               matches = collectCallableBucketResults(fallbackHit.bucket, includeRulesets);
               break;
             }
-            if (fallbackHit.kind === 'uncovered' && fallbackHit.reason === 'child-surface') {
+            if (
+              fallbackHit.kind === 'uncovered'
+              && (fallbackHit.reason === 'child-surface' || fallbackHit.reason === 'reference-import')
+            ) {
               if (isNode(fallbackFrame.rulesNode, N.Rules)) {
                 const directFallback = fallbackFrame.rulesNode.findMixinsFast(segment, {
                   hasTarget: options.hasTarget,
@@ -1678,7 +1682,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           mixinNamespaceCovered = true;
         } else if (frameHit.kind === 'miss') {
           mixinNamespaceCovered = true;
-        } else if (frameHit.reason !== 'child-surface') {
+        } else if (frameHit.reason === 'frame' || frameHit.reason === 'key') {
           mixinNamespaceCovered = true;
         }
       }
@@ -1916,7 +1920,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             return results;
           }
         }
-        if (frameHit.kind === 'uncovered' && frameHit.reason === 'child-surface') {
+        if (
+          frameHit.kind === 'uncovered'
+          && (frameHit.reason === 'child-surface' || frameHit.reason === 'reference-import')
+        ) {
           const direct = this.findMixinsFast(keys, {
             hasTarget: options.hasTarget,
             local: options.local,
@@ -1936,7 +1943,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               includeRulesets,
               searchParents: false
             });
-            if (retryHit.kind === 'uncovered' && retryHit.reason !== 'child-surface') {
+            if (retryHit.kind === 'uncovered' && (retryHit.reason === 'frame' || retryHit.reason === 'key')) {
               if (isNode(retryFrame.rulesNode, N.Rules)) {
                 this.prepareCallableLookupFrame(retryFrame, keys, includeRulesets);
                 retryHit = lookupScopeFrameCallable(retryFrame, keys, {
@@ -1951,7 +1958,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 return results;
               }
             }
-            if (retryHit.kind === 'uncovered' && retryHit.reason === 'child-surface') {
+            if (
+              retryHit.kind === 'uncovered'
+              && (retryHit.reason === 'child-surface' || retryHit.reason === 'reference-import')
+            ) {
               if (isNode(retryFrame.rulesNode, N.Rules)) {
                 const direct = retryFrame.rulesNode.findMixinsFast(keys, {
                   hasTarget: options.hasTarget,
@@ -2017,7 +2027,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             namespaceMixins = collectCallableBucketResults(frameHit.bucket, false) ?? [];
           } else if (frameHit.kind === 'miss') {
             namespaceMixinMissCovered = true;
-          } else if (frameHit.reason !== 'child-surface') {
+          } else if (frameHit.reason === 'frame' || frameHit.reason === 'key') {
             namespaceMixinMissCovered = true;
           }
         }
@@ -2791,6 +2801,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (importOptions?.reference === true || importOptions?._dedupe === true) {
         this._hasReferenceImports = true;
         if (this._scopeFrame) {
+          this._scopeFrame.hasReferenceImports = true;
           this._scopeFrame.callableMissesCovered = false;
           this._scopeFrame.callableMissCoverageKnown = false;
           this._scopeFrame.mixinCallableMissesCovered = false;
@@ -2834,6 +2845,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       if ((node.options as { referenceMode?: boolean } | undefined)?.referenceMode === true || node._hasReferenceImports) {
         this._hasReferenceImports = true;
+        if (this._scopeFrame) {
+          this._scopeFrame.hasReferenceImports = true;
+        }
       }
 
       // Note: Imported child Rules still contribute their own rules/rulesets after

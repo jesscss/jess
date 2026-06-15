@@ -89,7 +89,7 @@ export type ScopeFrameCallableLookupResult =
   }
   | {
     kind: 'uncovered';
-    reason: 'frame' | 'key' | 'child-surface';
+    reason: 'frame' | 'key' | 'child-surface' | 'reference-import';
   };
 
 /**
@@ -202,6 +202,9 @@ export interface ScopeFrame {
 
   /** Back-pointer to the Rules node this frame was built from. */
   rulesNode: object;  // typed as object to avoid a circular import; callers cast
+
+  /** True when reference-import surfaces can contribute callable lookup hits. */
+  hasReferenceImports: boolean;
 }
 
 /**
@@ -230,7 +233,8 @@ export function buildScopeFrame(
   callableMissesCovered = callablesCovered,
   mixinCallableMissesCovered = callableMissesCovered,
   callableMissCoverageKnown = callablesCovered,
-  mixinCallableMissCoverageKnown = callableMissCoverageKnown
+  mixinCallableMissCoverageKnown = callableMissCoverageKnown,
+  hasReferenceImports = false
 ): ScopeFrame {
   const declarationBucketsByName = new Map<string, BindingEntry[]>();
   const currentBindingsByName = new Map<string, BindingCell>();
@@ -280,7 +284,8 @@ export function buildScopeFrame(
     mixinCallableMissesCovered,
     mixinCallableMissCoverageKnown,
     pendingDeclarationNames: pendingDeclarationNames ?? [],
-    rulesNode
+    rulesNode,
+    hasReferenceImports
   };
 }
 
@@ -466,6 +471,9 @@ export function lookupScopeFrameCallable(
       ? f.mixinCallableMissesCovered
       : f.callableMissesCovered;
     if (!missesCovered) {
+      if (f.hasReferenceImports) {
+        return { kind: 'uncovered', reason: 'reference-import' };
+      }
       return { kind: 'uncovered', reason: 'child-surface' };
     }
 
