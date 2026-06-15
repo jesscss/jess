@@ -72,11 +72,8 @@ import type { CallableLookupEntry, MixinEntry } from './util/callable-entry.js';
 import { isIndexedRuleChild } from './util/callable-surface.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
-  type DirectDeclarationOccurrence,
-  findAnyDeclaration as findAnyDeclarationDirect,
-  findPropertyDeclaration,
+  findAnyDeclarationOccurrence,
   findPropertyDeclarationOccurrence,
-  findVariableDeclaration,
   findVariableDeclarationOccurrence
 } from './util/direct-rules-lookup.js';
 const { isArray } = Array;
@@ -2074,31 +2071,30 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     filterType: 'VarDeclaration' | 'Declaration',
     options?: DeclarationFindOptions
   ): Declaration | VarDeclaration | undefined {
-    const direct = filterType === 'VarDeclaration'
-      ? findVariableDeclaration(this, keys, options)
-      : findPropertyDeclaration(this, keys, options);
-    return direct;
+    return filterType === 'VarDeclaration'
+      ? findVariableDeclarationOccurrence(this, keys, options)?.node
+      : findPropertyDeclarationOccurrence(this, keys, options)?.node;
   }
 
   findAnyDeclaration(
     keys: string,
     options?: DeclarationFindOptions
   ): Declaration | VarDeclaration | undefined {
-    return findAnyDeclarationDirect(this, keys, options);
+    return findAnyDeclarationOccurrence(this, keys, options)?.node;
   }
 
   findVariable(
     keys: string,
     options?: DeclarationFindOptions
   ): VarDeclaration | undefined {
-    return findVariableDeclaration(this, keys, options);
+    return findVariableDeclarationOccurrence(this, keys, options)?.node;
   }
 
   findProperty(
     keys: string,
     options?: DeclarationFindOptions
   ): Declaration | undefined {
-    return findPropertyDeclaration(this, keys, options);
+    return findPropertyDeclarationOccurrence(this, keys, options)?.node;
   }
 
   findFunction(

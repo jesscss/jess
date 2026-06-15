@@ -1,6 +1,5 @@
 import type { Context } from '../../context.js';
 import type { Declaration } from '../declaration.js';
-import type { VarDeclaration } from '../declaration-var.js';
 import { Node } from '../node.js';
 import { N } from '../node-type.js';
 import type { Rules, RulesOptions } from '../rules.js';
@@ -14,7 +13,6 @@ import {
 } from './mixin-output-slot.js';
 import type { DeclarationFindOptions } from './lookup-utils.js';
 
-type DirectDeclarationLookupResult = Declaration | undefined;
 type DirectDeclarationFindOptions = DeclarationFindOptions & {
   context?: Context;
 };
@@ -671,41 +669,6 @@ function findDeclarationOccurrenceWithStrategy(
     options.readonly = true;
   }
   return optionalMatch;
-}
-
-function findDeclarationWithStrategy(
-  startRules: Rules,
-  key: string,
-  strategy: DeclarationLookupStrategy,
-  options?: DirectDeclarationFindOptions
-): DirectDeclarationLookupResult {
-  return findDeclarationOccurrenceWithStrategy(startRules, key, strategy, options)?.node;
-}
-
-export function findVariableDeclaration(
-  startRules: Rules,
-  key: string,
-  options?: DirectDeclarationFindOptions
-): VarDeclaration | undefined {
-  const found = findDeclarationWithStrategy(startRules, key, VARIABLE_LOOKUP, options);
-  return isNode(found, N.VarDeclaration) ? found : undefined;
-}
-
-export function findPropertyDeclaration(
-  startRules: Rules,
-  key: string,
-  options?: DirectDeclarationFindOptions
-): Declaration | undefined {
-  const found = findDeclarationWithStrategy(startRules, key, PROPERTY_LOOKUP, options);
-  return isNode(found, N.Declaration) ? found : undefined;
-}
-
-export function findAnyDeclaration(
-  startRules: Rules,
-  key: string,
-  options?: DirectDeclarationFindOptions
-): DirectDeclarationLookupResult {
-  return findDeclarationWithStrategy(startRules, key, ANY_DECLARATION_LOOKUP, options);
 }
 
 export function findVariableDeclarationOccurrence(

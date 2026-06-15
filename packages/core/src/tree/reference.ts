@@ -40,6 +40,8 @@ import {
 import { blocksAmbientMixinOutputLookup } from './util/mixin-output-slot.js';
 import { MixinCollection } from './util/callable-collection.js';
 import type { MixinEntry } from './util/callable-entry.js';
+import type { JsFunction } from './js-function.js';
+import type { Func } from './function.js';
 import {
   type DirectDeclarationOccurrence,
   findAnyDeclarationOccurrence,
@@ -272,7 +274,6 @@ function getLookupStartIndex(node: Node): number | undefined {
 
 type LookupType = NonNullable<ReferenceOptions['type']>;
 type NormalizedLookupKey = string | string[] | number;
-type RulesLookupResult = Node | MixinEntry[] | undefined;
 const SCOPE_FRAME_VARIABLE_MISS = Symbol('scope-frame-variable-miss');
 type ScopeFrameVariableBindingHandle = {
   kind: 'scope-frame-variable-binding-handle';
@@ -282,26 +283,63 @@ type ScopeFrameVariableBindingHandle = {
   rulesContext?: Rules;
 };
 type ScopeFrameVariableBindingResult = ScopeFrameVariableBindingHandle | typeof SCOPE_FRAME_VARIABLE_MISS | undefined;
-type RulesLookupHandleValue =
-  | Exclude<RulesLookupResult, undefined>
+type DirectTargetReferenceLookupReturnValue = Node | undefined;
+type IndexReferenceLookupReturnValue =
+  | DirectTargetReferenceLookupReturnValue
+  | ScopeFrameVariableBindingHandle
+  | DirectDeclarationOccurrence;
+type DeclarationReferenceLookupReturnValue = DirectDeclarationOccurrence | undefined;
+type VariableReferenceLookupReturnValue = ScopeFrameVariableBindingHandle | DirectDeclarationOccurrence | undefined;
+type FunctionReferenceLookupReturnValue = JsFunction | Func | undefined;
+type CallableReferenceLookupReturnValue = MixinEntry[] | undefined;
+type VariableRulesLookupHandleValue =
   | ScopeFrameVariableBindingHandle
   | DirectDeclarationOccurrence
   | typeof SCOPE_FRAME_VARIABLE_MISS;
-type RulesLookupHandleReadResult = RulesLookupHandleValue | undefined;
-type ReferenceLookupReturnValue = RulesLookupResult | ScopeFrameVariableBindingHandle | DirectDeclarationOccurrence;
+type DeclarationRulesLookupHandleValue = DirectDeclarationOccurrence | typeof SCOPE_FRAME_VARIABLE_MISS;
+type FunctionRulesLookupHandleValue = Exclude<FunctionReferenceLookupReturnValue, undefined> | typeof SCOPE_FRAME_VARIABLE_MISS;
+type CallableRulesLookupHandleValue = MixinEntry[] | typeof SCOPE_FRAME_VARIABLE_MISS;
+type RulesLookupHandleReadResult =
+  | VariableRulesLookupHandleValue
+  | DeclarationRulesLookupHandleValue
+  | FunctionRulesLookupHandleValue
+  | CallableRulesLookupHandleValue
+  | undefined;
+type ReferenceLookupReturnValue =
+  | DirectTargetReferenceLookupReturnValue
+  | ScopeFrameVariableBindingHandle
+  | DirectDeclarationOccurrence
+  | FunctionReferenceLookupReturnValue
+  | CallableReferenceLookupReturnValue;
 
-type ReferenceRulesLookupHandle = {
+type ReferenceRulesLookupHandleBase = {
   targetRules: Rules;
   targetLookupVersion: number;
   valueKey: string | string[];
-  lookupType: 'declaration' | 'function' | 'mixin' | 'mixin-ruleset' | 'property' | 'variable';
   inCall: boolean;
   start: number | undefined;
   local: boolean;
   ignoreParentScopeStart: boolean;
   terminalMixinOnly: boolean;
-  returnVal: RulesLookupHandleValue;
 };
+
+type ReferenceRulesLookupHandle =
+  | (ReferenceRulesLookupHandleBase & {
+    lookupType: 'declaration' | 'property';
+    returnVal: DeclarationRulesLookupHandleValue;
+  })
+  | (ReferenceRulesLookupHandleBase & {
+    lookupType: 'function';
+    returnVal: FunctionRulesLookupHandleValue;
+  })
+  | (ReferenceRulesLookupHandleBase & {
+    lookupType: 'mixin' | 'mixin-ruleset';
+    returnVal: CallableRulesLookupHandleValue;
+  })
+  | (ReferenceRulesLookupHandleBase & {
+    lookupType: 'variable';
+    returnVal: VariableRulesLookupHandleValue;
+  });
 
 function isDirectDeclarationOccurrence(value: unknown): value is DirectDeclarationOccurrence {
   return (
@@ -625,7 +663,7 @@ function lookupIndexReference(
   valueKey: NormalizedLookupKey,
   opts: ReferenceDeclarationFindOptions,
   env: RulesLookupAdapterEnv
-): ReferenceLookupReturnValue {
+): IndexReferenceLookupReturnValue {
   if (typeof valueKey === 'number') {
     return targetRules.at(valueKey);
   }
@@ -646,7 +684,7 @@ function lookupPropertyReference(
   valueKey: NormalizedLookupKey,
   opts: ReferenceDeclarationFindOptions,
   _env: RulesLookupAdapterEnv
-): ReferenceLookupReturnValue {
+): DeclarationReferenceLookupReturnValue {
   return findPropertyDeclarationOccurrence(targetRules, getLookupKeyString(valueKey), opts);
 }
 
@@ -655,7 +693,7 @@ function lookupVariableReference(
   valueKey: NormalizedLookupKey,
   opts: ReferenceDeclarationFindOptions,
   env: RulesLookupAdapterEnv
-): ReferenceLookupReturnValue {
+): VariableReferenceLookupReturnValue {
   const keyStr = getLookupKeyString(valueKey);
   if (typeof valueKey === 'string') {
     const frameHit = lookupScopeFrameVariableBinding(targetRules, keyStr, opts, env);
@@ -692,7 +730,7 @@ function lookupDeclarationReference(
   valueKey: NormalizedLookupKey,
   opts: ReferenceDeclarationFindOptions,
   _env: RulesLookupAdapterEnv
-): ReferenceLookupReturnValue {
+): DeclarationReferenceLookupReturnValue {
   return findAnyDeclarationOccurrence(targetRules, getLookupKeyString(valueKey), opts);
 }
 
@@ -1012,35 +1050,86 @@ function writeRulesLookupHandle(args: {
     args.referenceNode._rulesLookupHandle = undefined;
     return;
   }
-  let returnVal: RulesLookupHandleValue = args.returnVal ?? SCOPE_FRAME_VARIABLE_MISS;
+  const targetLookupVersion = args.targetRules.lookupVersion;
+  const { valueKey } = args;
+  const inCall = args.env.inCall;
+  const { start, local, ignoreParentScopeStart, terminalMixinOnly } = args.shape;
   if (args.lookupType === 'variable') {
-    if (args.returnVal === undefined) {
-      returnVal = SCOPE_FRAME_VARIABLE_MISS;
-    } else if (isScopeFrameVariableBindingHandle(args.returnVal)) {
-      returnVal = args.returnVal;
-    } else if (isDirectDeclarationOccurrence(args.returnVal)) {
-      returnVal = args.returnVal;
-    } else {
+    if (
+      args.returnVal !== undefined
+      && !isScopeFrameVariableBindingHandle(args.returnVal)
+      && !isDirectDeclarationOccurrence(args.returnVal)
+    ) {
       args.referenceNode._rulesLookupHandle = undefined;
       return;
     }
-  } else if (
-    (args.lookupType === 'property' || args.lookupType === 'declaration')
-    && isDirectDeclarationOccurrence(args.returnVal)
-  ) {
-    returnVal = args.returnVal;
+    args.referenceNode._rulesLookupHandle = {
+      targetRules: args.targetRules,
+      targetLookupVersion,
+      valueKey,
+      lookupType: 'variable',
+      inCall,
+      start,
+      local,
+      ignoreParentScopeStart,
+      terminalMixinOnly,
+      returnVal: args.returnVal ?? SCOPE_FRAME_VARIABLE_MISS
+    };
+    return;
+  }
+  if (args.lookupType === 'property' || args.lookupType === 'declaration') {
+    if (args.returnVal !== undefined && !isDirectDeclarationOccurrence(args.returnVal)) {
+      args.referenceNode._rulesLookupHandle = undefined;
+      return;
+    }
+    args.referenceNode._rulesLookupHandle = {
+      targetRules: args.targetRules,
+      targetLookupVersion,
+      valueKey,
+      lookupType: args.lookupType,
+      inCall,
+      start,
+      local,
+      ignoreParentScopeStart,
+      terminalMixinOnly,
+      returnVal: args.returnVal ?? SCOPE_FRAME_VARIABLE_MISS
+    };
+    return;
+  }
+  if (args.lookupType === 'function') {
+    if (args.returnVal !== undefined && !isNode(args.returnVal)) {
+      args.referenceNode._rulesLookupHandle = undefined;
+      return;
+    }
+    args.referenceNode._rulesLookupHandle = {
+      targetRules: args.targetRules,
+      targetLookupVersion,
+      valueKey,
+      lookupType: 'function',
+      inCall,
+      start,
+      local,
+      ignoreParentScopeStart,
+      terminalMixinOnly,
+      returnVal: args.returnVal ?? SCOPE_FRAME_VARIABLE_MISS
+    };
+    return;
+  }
+  if (!Array.isArray(args.returnVal) && args.returnVal !== undefined) {
+    args.referenceNode._rulesLookupHandle = undefined;
+    return;
   }
   args.referenceNode._rulesLookupHandle = {
     targetRules: args.targetRules,
-    targetLookupVersion: args.targetRules.lookupVersion,
-    valueKey: args.valueKey,
+    targetLookupVersion,
+    valueKey,
     lookupType: args.lookupType,
-    inCall: args.env.inCall,
-    start: args.shape.start,
-    local: args.shape.local,
-    ignoreParentScopeStart: args.shape.ignoreParentScopeStart,
-    terminalMixinOnly: args.shape.terminalMixinOnly,
-    returnVal
+    inCall,
+    start,
+    local,
+    ignoreParentScopeStart,
+    terminalMixinOnly,
+    returnVal: args.returnVal ?? SCOPE_FRAME_VARIABLE_MISS
   };
 }
 
@@ -1164,7 +1253,7 @@ function lookupDirectTarget(
   targetNode: Node | undefined,
   lookupType: LookupType,
   valueKey: NormalizedLookupKey
-): ReferenceLookupReturnValue {
+): DirectTargetReferenceLookupReturnValue {
   if (lookupType !== 'index' || !targetNode) {
     return undefined;
   }
@@ -1177,7 +1266,7 @@ function lookupDirectTarget(
 function lookupDirectArrayIndexTarget(
   targetNode: Node,
   valueKey: number
-): RulesLookupResult {
+): DirectTargetReferenceLookupReturnValue {
   if (!(targetNode instanceof JsArray)) {
     return undefined;
   }
@@ -1187,7 +1276,7 @@ function lookupDirectArrayIndexTarget(
 function lookupDirectNamedTarget(
   targetNode: Node,
   key: string
-): ReferenceLookupReturnValue {
+): DirectTargetReferenceLookupReturnValue {
   if (targetNode instanceof JsObject) {
     return targetNode.value[key];
   }

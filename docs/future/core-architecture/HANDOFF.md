@@ -84,42 +84,53 @@ declaration occurrences, delete the unreachable direct `Rules` target branch,
 move selector attribute and setDefined internals off node-returning lookup
 helpers, move function return lookup to occurrences, and consume
 parent/fallback callable covered misses before direct crawl.
+Variable reference handles now have a variable-specific cached value type that
+excludes bare nodes.
+Reference result types are split by lookup family: declaration/property
+references return declaration occurrences, variable references return live
+binding handles or declaration occurrences, callable references return callable
+families, and direct target/index lookup is the only remaining broad node
+result lane. `Rules.find*` is now the cold node-materialization edge for direct
+declarations; `direct-rules-lookup.ts` exports occurrence-returning helpers
+only.
 Last full gate smoke was usable but not a speed claim:
-`mixins-guards.less` `25.59ms`, `scope-lookup-stress.less` `88.53ms`.
+`mixins-guards.less` `26.51ms`, `scope-lookup-stress.less` `104.69ms`.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7gt. [ ] `Rules.find*` wrappers stay node materialization only.
-Scope: `Rules.findDeclaration(...)`, `findAnyDeclaration(...)`,
-`findVariable(...)`, `findProperty(...)`, remaining tests that call them, and
-any production caller found by `rg`.
-Goal: keep these wrappers as the only runtime callers of node-returning direct
-declaration helpers, or move any new internal/value-only caller to occurrence
-lookup immediately.
-Acceptance: caller audit, no internal value-only caller left, lint, builds,
-aggressive review.
-
-7gu. [ ] Reference lookup result union stops advertising variable nodes.
-Scope: `RulesLookupResult`, `ReferenceLookupReturnValue`,
-`RulesLookupHandleValue`, variable/index reference finalization, function and
-declaration reference tests.
-Goal: type/branch shape should make it impossible for variable references to
-cache a bare declaration node while still allowing real node results for
-functions and cold public materialization.
-Acceptance: type narrowing or no-op proof, static/explicit/snapshot variable
+7gz. [ ] Rules lookup handle miss state stops using the variable miss symbol.
+Scope: `reference.ts` handle read/write, variable lookup misses, declaration
+misses, function/callable misses, and tests that exercise repeated missed
+references.
+Goal: separate the generic cached lookup miss sentinel from the scope-frame
+variable binding miss sentinel, so the handle model stops implying every cached
+miss is a variable binding result.
+Acceptance: no extra runtime objects, no behavior change, targeted miss/cache
 tests, lint, builds, aggressive review.
 
-7gv. [ ] Callable fallback bridge duplication is reduced only if it removes work.
-Scope: simple `findMixin(...)`, `findMixinNamespacePathFast(...)`,
-fallback-frame hit/miss logic, reference-import uncovered surfaces, and
-`terminalMixinOnly`.
-Goal: do not add a generic lookup helper unless it deletes repeated direct
-bridge work and keeps covered misses terminal; otherwise document the no-op and
-move to the next binding-index task.
-Acceptance: covered simple/namespace miss tests, uncovered fallback bridge
-test, explicit helper/no-helper decision, lint, builds, aggressive review.
+7ha. [ ] Reference lookup dispatch becomes strategy-assigned by lookup family.
+Scope: `performRulesReferenceLookup(...)`, `writeRulesLookupHandle(...)`,
+handle value validation, and the family-specific lookup helpers in
+`reference.ts`.
+Goal: reduce string-branching by assigning the lookup/write strategy for the
+current reference family once, without adding a generic helper ladder or
+weakening the family-specific return types.
+Acceptance: less repeated branch work or documented no-op, focused reference
+tests, lint, builds, aggressive review.
+
+7hb. [ ] Callable uncovered branches carry enough surface facts to delete one
+direct crawl.
+Scope: `prepareCallableLookupFrame(...)`, `lookupScopeFrameCallable(...)`,
+`findMixin(...)`, `findMixinNamespacePathFast(...)`, fallback frames,
+reference-import surfaces, and `terminalMixinOnly`.
+Goal: make a concrete uncovered state distinguish reference-import/child-surface
+needs from already-covered misses, then delete one fallback direct crawl branch
+only when the frame fact proves it cannot contain callable hits.
+Acceptance: one real branch deletion with tests, or a tight no-op proof that
+the needed fact cannot be carried yet without more overhead; lint, builds,
+aggressive review.
 
 ## Backlog Sources
 
@@ -169,33 +180,34 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: function return occurrence lookup, snapshot variable binding
-  handle proof, and namespace fallback covered-miss proof.
+- Latest pass: reference result-family split, deletion of node-returning direct
+  declaration helper exports, and callable fallback branch boundary audit.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
-- New traversal: no new runtime traversal. `Func.evalCall(...)` now reuses
-  existing occurrence lookup traversal for the return declaration. Tests use
-  monkey-patched counters only to prove wrapper/direct bridge skip behavior.
-- New node/materialization: no runtime nodes. Test-only `rules([])` creates
-  empty child/fallback fixtures for recursive namespace fallback proof.
+- New traversal: no new runtime traversal. Caller audit via `rg` found runtime
+  node-returning direct declaration helper calls only inside `Rules.find*`
+  wrappers, so those helpers were deleted and `Rules.find*` now unwraps
+  occurrence records directly. Callable fallback branches were not hidden behind
+  a helper: after a real `Rules` fallback frame is prepared, remaining
+  `uncovered` means reference-import or child-surface state still needs direct
+  crawl semantics.
+- New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: no helper or API added. `function.ts` now imports
-  `findPropertyDeclarationOccurrence(...)` instead of using the node-returning
-  `Rules.findProperty(...)` wrapper. Remaining direct declaration node-returning
-  helper callers in runtime source are `Rules.find*` wrappers.
+- Helper/API surface: deletes exported node-returning direct declaration helper
+  functions from `direct-rules-lookup.ts`. Adds type-only reference result
+  families and discriminated handle value families; no runtime helper added.
 - Metadata mutations: no parent/source mutation. `sourceNode` is carried through
   variable handles as existing binding identity; declaration occurrence
   validation compares existing parent/version/index without mutating metadata.
-- Allocation changes: no new runtime allocation. Test-only `fastPathHits`
-  arrays and monkey-patch `try/finally` blocks prove that direct crawl/wrapper
-  lookup is skipped or isolated and restore patched methods. No callable helper
-  was added in this pass: the remaining duplicate direct-bridge code is
-  deliberately visible until a follow-up can delete repeated work, not just
-  hide it behind a call.
-- Evidence: focused lint passed. Targeted lookup tests passed (`3` files,
-  `10` passed, `294` skipped). Larger focused lookup suite passed (`8` files,
-  `311` passed, `292` skipped). Residue grep produced no matches.
-  `git diff --check`, `pnpm --filter @jesscss/core build`,
-  `pnpm run verify:aggressive-cutting-review`,
-  `pnpm run audit:node-creation`, and `pnpm --filter jess build` passed.
-  Core build kept the existing `js-expr.ts` direct-eval warning. Smoke only:
-  `mixins-guards.less` `25.59ms`, `scope-lookup-stress.less` `88.53ms`.
+- Allocation changes: no new traversal allocations or node allocations. The
+  aggressive review array/object tokens are type-only `MixinEntry[]` aliases
+  plus repeated `_rulesLookupHandle = { ... }` assignment sites. Handle writes
+  still allocate one cache record as before; the family-specific writer repeats
+  fields instead of building a spread base object or helper object.
+- Evidence: focused eslint passed for `reference.ts`, `rules.ts`, and
+  `direct-rules-lookup.ts`. Focused type/build passed with the existing
+  `js-expr.ts` direct-eval warning. Targeted lookup tests passed (`4` files,
+  `68` passed, `302` skipped). Broader lookup test slice passed (`8` files,
+  `313` passed, `290` skipped). Residue grep had no matches; `git diff --check`,
+  `@jesscss/core` build, aggressive review, node-creation audit, `jess` build,
+  and one-iteration hotpath smoke all passed. Smoke was usable but not a speed
+  claim: `mixins-guards.less` `26.51ms`, `scope-lookup-stress.less` `104.69ms`.
