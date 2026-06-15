@@ -3397,6 +3397,41 @@ claim. Broad writer counts did not move from the prior pass, so these scalar
 paths are not materially represented in `benchmark.less`; the bounded timing
 run had too much noisy/unstable signal for a performance claim.
 
+### List Sequence Compare String Transport Cut
+
+Date: 2026-06-15.
+
+Change: `List.compare(Any)` and `Sequence.compare(Any)` now use their
+node-local direct syntax renderers for the left operand instead of calling the
+public `toString(...)` wrapper just to normalize text for a decision predicate.
+No helper, traversal, copy/materialization, or API surface was added.
+
+Hotpath status:
+
+- Focused `pnpm --filter @jesscss/core test -- --run
+  src/tree/__tests__/list.test.ts src/tree/__tests__/sequence.test.ts` passed.
+  Tests prove both the `Any` operand and the `List`/`Sequence` operand avoid
+  public `toString(...)` transport during compare.
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  was run twice because the first pass showed a usable `extend-chaining`
+  median above the rough regression leash. Run 1 reported: `functions` median
+  `16.98ms` unstable, `import-reference` median `26.88ms` usable,
+  `mixins-guards` median `20.86ms` unstable, `extend-chaining` median `6.66ms`
+  usable, and `media` median `6.52ms` usable. Run 2 reported: `functions`
+  median `17.68ms` noisy, `import-reference` median `21.54ms` unstable,
+  `mixins-guards` median `17.11ms` usable, `extend-chaining` median `6.56ms`
+  unstable, and `media` median `6.11ms` unstable.
+- Final `node scripts/profile-less-benchmark.mjs --file=benchmark.less`
+  reported broad `OutputWriter.mark` `49903`, `OutputWriter.getSince` `44907`,
+  `Reference.evalNode` `3619` calls / `95.47ms`, and `Rules.find` `1013`
+  calls / `40.21ms`.
+
+Interpretation: accept as a local decision-path serialization cut only, not a
+speed claim. The timing leash was noisy/unstable across repeat runs; the one
+initial usable `extend-chaining` concern did not remain decision-quality on the
+rerun. Broad writer counts did not move, which is expected because this cuts a
+compare path rather than the main `benchmark.less` render path.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

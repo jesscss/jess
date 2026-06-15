@@ -77,6 +77,15 @@ describe('List compare', () => {
     expect(list([any('foo')]).compare(other)).toBe(0);
     expect(stringCalls).toBe(0);
   });
+
+  it('compares against Any without public string transport for the List operand', () => {
+    const node = list([any('foo')]);
+    node.toString = () => {
+      throw new Error('List compare should use direct syntax instead of public toString transport');
+    };
+
+    expect(node.compare(any('foo'))).toBe(0);
+  });
 });
 
 let context: Context;

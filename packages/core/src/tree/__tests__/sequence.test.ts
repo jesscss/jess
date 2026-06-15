@@ -89,6 +89,15 @@ describe('Sequence', () => {
     expect(stringCalls).toBe(0);
   });
 
+  it('compares against Any without public string transport for the Sequence operand', () => {
+    const node = seq([num(10), num(20), num(30)]);
+    node.toString = () => {
+      throw new Error('Sequence compare should use direct syntax instead of public toString transport');
+    };
+
+    expect(node.compare(any('10 20 30'))).toBe(0);
+  });
+
   it('does not allocate options when resolving a default single-item sequence', async () => {
     const rule = seq([num(10)]);
 

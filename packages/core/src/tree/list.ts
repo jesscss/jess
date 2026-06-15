@@ -354,7 +354,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       return result;
     }
     if (other.type === 'Any') {
-      const left = normalizeComparableText(this.toString());
+      const left = normalizeComparableText(this.renderListSyntax(this.value));
       const right = normalizeComparableText(other.value);
       return left === right ? 0 : undefined;
     }

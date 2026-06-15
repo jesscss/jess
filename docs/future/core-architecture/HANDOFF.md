@@ -548,31 +548,33 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: scalar wrapper readback cleanup for `DefaultGuard` and `Negative`.
+Current pass: `List`/`Sequence` compare-time public string transport cut.
 
-- New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
-  or object/array scan was added.
+- New traversal: none beyond the existing direct syntax writer loops already
+  owned by `List.renderListSyntax(...)` and
+  `Sequence.renderSequenceSyntax(...)`. No new loop, recursion,
+  parent/source walk, side-map lookup, or object/array scan was added.
 - New node/materialization: no runtime nodes, copies, wrappers, arrays, side
-  maps, or materialized render values added. The review script flags test-only
-  `CountingWriter` allocations used to prove writer mark/readback counts; they
-  are not production node creation or render materialization. Runtime strings
-  are the existing scalar return values required by `render(...)` and public
-  `toTrimmedString(...)`.
-- Render path: selected rows are `DefaultGuard` and `Negative`.
-  `DefaultGuard.render(...)` now writes the resolved boolean text to a supplied
-  writer instead of returning a detached string when no render buffer is passed.
-  `Negative.toTrimmedString(...)` now writes `Any` child source syntax directly
-  from owned scalar text instead of opening a mark/readback window.
+  maps, or materialized render values added. The review script may flag
+  test-only thrown `Error` sentinels in focused tests; they are not production
+  control flow and only prove public string transport is not called.
+- Render path: selected rows are `List` and `Sequence`. This pass does not
+  change render output. It cuts compare-time serialization used as a decision
+  predicate: `compare(Any)` now uses each node's direct syntax renderer instead
+  of calling the public `toString(...)` wrapper on the left operand.
 - Helper/API surface: none added. Existing node methods were simplified in
   place; no shared abstraction, utility object, or public API was introduced.
 - Metadata mutations: none. No parent/source/frozen/context metadata mutation,
   lazy options/context creation, reflection call, generic own-property helper,
   or structural probe added.
-- Error/control flow: no new routine error objects or throw/catch control flow.
-- Evidence: package-scoped `default-guard.test.ts` and `negative.test.ts`
-  passed. Tests prove the touched direct writer paths avoid writer
-  marks/readbacks while preserving existing render/buffer/eval behavior. Final
-  hotpath/profile status belongs in `PERFORMANCE-HANDOFF.md`; no speed claim.
-- Verdict: accept as a bounded scalar-wrapper cleanup. `Negative` remains
-  partial because compound units and arbitrary child render/source semantics
-  still require their existing boundaries.
+- Error/control flow: no production error objects or throw/catch control flow
+  added. Focused tests override `toString(...)` with throwing sentinels to prove
+  the forbidden path is not used.
+- Evidence: package-scoped `list.test.ts` and `sequence.test.ts` passed. Tests
+  prove both `Any` operands and `List`/`Sequence` operands avoid public
+  `toString(...)` transport during compare while preserving existing render,
+  buffer, eval, and source canonicality behavior. Final hotpath/profile status
+  belongs in `PERFORMANCE-HANDOFF.md`; no speed claim.
+- Verdict: accept as a bounded `List`/`Sequence` compare-path cut. Both rows
+  remain partial because trivia-backed emission and dynamic render buffer
+  capture boundaries still require separate decisions.

@@ -181,7 +181,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return result;
     }
     if (other.type === 'Any') {
-      const left = normalizeComparableWhitespace(this.toString());
+      const left = normalizeComparableWhitespace(this.renderSequenceSyntax(this.value));
       const right = normalizeComparableWhitespace(other.value);
       return left === right ? 0 : undefined;
     }
