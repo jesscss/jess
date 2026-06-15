@@ -200,6 +200,32 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-15 Call Scalar Argument Trim/Eval Skip
+
+Hypothesis: common scalar CSS call args already have a direct writer contract,
+so they should not pay an evaluated trim window or immediate eval call when no
+trivia is active and base `Node.eval` is intact.
+
+Patch shape:
+
+- `Call.serializeRenderedArgsFrom(...)` writes `Num`, `Dimension`, `Color`, and
+  `Bool` args directly on the no-trivia/base-eval path;
+- `Call.writeEvaluatedSyntax(...)` uses the same scalar-contract direct writer
+  before falling back to `evalImmediateSync(...)`;
+- the broader `F_STATIC` shortcut was rejected by tests because API-mutated
+  static nodes can evaluate to different output.
+
+Evidence:
+
+- focused test: `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/call.test.ts --run` passed;
+- hotpath leash: `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` passed. Results were tripwire-only, not a speed claim:
+  `functions.less` median 16.82ms unstable, `import-reference.less` median
+  24.16ms usable, `mixins-guards.less` median 20.05ms unstable,
+  `extend-chaining.less` median 6.07ms usable, `media.less` median 5.97ms
+  unstable.
+
 ### 2026-06-15 Call Plain Buffer Mark Reuse Pass
 
 Hypothesis: plain/evaluated CSS-call buffer render already owns a buffer writer

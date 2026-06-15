@@ -257,7 +257,7 @@ describe('Call', () => {
 
     expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
     expect(buffer.parts).toEqual(['rgb', '(', '100', ', ', '100', ', ', '100', ')']);
-    expect(writer.marks).toBe(4);
+    expect(writer.marks).toBe(1);
     expect(writer.readbacks).toBe(1);
   });
 

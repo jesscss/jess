@@ -511,6 +511,20 @@ export class Call extends Node<CallValue, CallOptions> {
         }
         w.add(')', arg);
       } else {
+        const activeTrivia = printOptions.trivia ?? arg.sourceRoot?._treeContext?.opts?.trivia;
+        if (
+          arg.eval === Node.prototype.eval
+          && isNode(arg, N.Num | N.Dimension | N.Color | N.Bool)
+          && !activeTrivia
+        ) {
+          arg.writeSyntax(printOptions);
+          if (hasNext) {
+            emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
+            w.add(', ');
+          }
+          i = next;
+          continue;
+        }
         const argMark = w.mark();
         const rendered = this.writeEvaluatedSyntax(arg, context, printOptions);
         if (isThenable(rendered)) {
@@ -541,6 +555,13 @@ export class Call extends Node<CallValue, CallOptions> {
     context: Context,
     printOptions: ReturnType<typeof getPrintOptions>
   ): MaybePromise<void> {
+    if (
+      node.eval === Node.prototype.eval
+      && isNode(node, N.Num | N.Dimension | N.Color | N.Bool)
+    ) {
+      node.writeSyntax(printOptions);
+      return undefined;
+    }
     if (!node.hasFlag(F_MAY_ASYNC)) {
       node.evalImmediateSync(context).writeSyntax(printOptions);
       return undefined;
