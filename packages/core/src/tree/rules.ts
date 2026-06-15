@@ -1666,6 +1666,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           mixinNamespaceCovered = true;
         } else if (frameHit.kind === 'miss') {
           mixinNamespaceCovered = true;
+        } else if (frameHit.reason !== 'child-surface') {
+          mixinNamespaceCovered = true;
         }
       }
       if (!mixinNamespaceCovered) {
@@ -1979,6 +1981,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
         }
         let namespaceMixins: MixinEntry[] | undefined;
+        let namespaceMixinMissCovered = false;
         if (this._scopeFrame && !options.hasTarget && !options.local) {
           const namespaceKey = keys[0]!;
           this.prepareCallableLookupFrame(this._scopeFrame, namespaceKey, false);
@@ -1988,15 +1991,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (frameHit.kind === 'hit') {
             namespaceMixins = collectCallableBucketResults(frameHit.bucket, false) ?? [];
           } else if (frameHit.kind === 'miss') {
-            namespaceMixins = [];
+            namespaceMixinMissCovered = true;
+          } else if (frameHit.reason !== 'child-surface') {
+            namespaceMixinMissCovered = true;
           }
         }
-        namespaceMixins ??= this.findMixinsFast(keys[0]!, {
-          hasTarget: options.hasTarget,
-          local: options.local,
-          includeRulesets: false
-        });
-        if (namespaceMixins.length === 0) {
+        if (namespaceMixins === undefined && !namespaceMixinMissCovered) {
+          namespaceMixins = this.findMixinsFast(keys[0]!, {
+            hasTarget: options.hasTarget,
+            local: options.local,
+            includeRulesets: false
+          });
+        }
+        if (!namespaceMixins || namespaceMixins.length === 0) {
           if (options.terminalMixinOnly !== true) {
             const namespaceRulesets = this.findVisibleExactCallableRulesetPath([keys[0]!], {
               hasTarget: options.hasTarget,

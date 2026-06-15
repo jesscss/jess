@@ -1256,6 +1256,20 @@ function getReferenceLookupStrategy(lookupType: LookupType): ReferenceLookupStra
   }
 }
 
+function getCachedReferenceLookupStrategy(
+  referenceNode: Reference,
+  lookupType: LookupType
+): ReferenceLookupStrategy {
+  const cached = referenceNode._lookupStrategy;
+  if (cached && referenceNode._lookupStrategyType === lookupType) {
+    return cached;
+  }
+  const strategy = getReferenceLookupStrategy(lookupType);
+  referenceNode._lookupStrategyType = lookupType;
+  referenceNode._lookupStrategy = strategy;
+  return strategy;
+}
+
 function lookupResolvedReference(args: {
   referenceNode: Reference;
   resolvedTarget: unknown;
@@ -1277,7 +1291,7 @@ function lookupResolvedReference(args: {
     originalFilter,
     context
   } = args;
-  const strategy = getReferenceLookupStrategy(lookupType);
+  const strategy = getCachedReferenceLookupStrategy(referenceNode, lookupType);
   const { env } = prepareReferenceLookup({
     referenceNode,
     lookupType,
@@ -2478,6 +2492,8 @@ function evaluateReferenceNode(args: {
  */
 export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   _rulesLookupHandle: ReferenceRulesLookupHandle | undefined;
+  _lookupStrategy: ReferenceLookupStrategy | undefined;
+  _lookupStrategyType: LookupType | undefined;
 
   constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: LocationInfo) {
     if (typeof value === 'string') {

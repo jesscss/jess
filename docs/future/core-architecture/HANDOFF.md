@@ -98,40 +98,44 @@ variable miss sentinel is only for live variable lookup. Reference lookup now
 selects a lookup-family strategy once and uses that for rules lookup and handle
 write validation. Callable frame uncovered results carry `frame`, `key`, or
 `child-surface` reason; direct callable crawl is gated to child-surface state.
+Reference lookup strategy selection is cached on the `Reference` node and
+guarded by the current lookup type. Callable namespace lookups now treat
+non-child-surface uncovered frame results as covered misses instead of falling
+through to direct crawl.
 Last full gate smoke was usable but not a speed claim:
-`mixins-guards.less` `24.89ms`, `scope-lookup-stress.less` `77.56ms`.
+`mixins-guards.less` `27.98ms`, `scope-lookup-stress.less` `109.35ms`.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7hc. [ ] Reference lookup strategy can shrink repeated handle object writes.
-Scope: `reference.ts` strategy writers, `_rulesLookupHandle` assignment sites,
-family-specific validation, and cached miss tests.
-Goal: keep family-specific validation while deleting repeated assignment
-boilerplate only if it does not add another per-lookup object or generic branch
-ladder.
-Acceptance: one smaller writer path or a documented no-op, focused handle tests,
+7hf. [ ] Reference handle writer repetition is only cut with zero hot-path tax.
+Scope: `reference.ts` family-specific handle writers and `_rulesLookupHandle`
+assignment sites.
+Goal: prove whether repeated object literal fields can be removed without an
+extra function call, per-write helper object, or generic validation branch. If
+not, keep repetition and document the no-op.
+Acceptance: zero-tax deletion or no-op proof, handle tests, lint, builds,
+aggressive review.
+
+7hg. [ ] Callable namespace path fallback can use uncovered reason deeper.
+Scope: `findMixinNamespacePathFast(...)`, `findRulesetNamespacePathFast(...)`,
+`findCallableDescendantsWithinMixinNamespaces(...)`, fallback frames, and
+namespace tests.
+Goal: push `frame`/`key`/`child-surface` reason through one deeper namespace
+path so a covered-miss child scope avoids direct crawl or recursive fallback.
+Acceptance: one concrete branch skip/deletion or no-op proof, namespace tests,
 lint, builds, aggressive review.
 
-7hd. [ ] Callable uncovered reasons remove another direct crawl path.
-Scope: `lookupScopeFrameCallable(...)`, `prepareCallableLookupFrame(...)`,
-`findMixin(...)`, `findMixinNamespacePathFast(...)`, namespace/fallback tests,
-and reference-import surfaces.
-Goal: use the new uncovered reason to skip or delete one more direct crawl when
-the frame proves the key was covered and cannot contain callable hits.
-Acceptance: branch deletion or tight no-op proof, namespace/fallback tests,
-lint, builds, aggressive review.
-
-7he. [ ] Lookup strategy selection moves earlier only if it deletes work.
-Scope: `Reference.eval/resolution` setup, `prepareReferenceLookup(...)`,
-`lookupResolvedReference(...)`, and direct target/index handling.
-Goal: see whether the lookup strategy can be derived at reference construction
-or first eval and reused without stale state, avoiding repeated
-`getReferenceLookupStrategy(...)` calls.
-Acceptance: reused strategy without stale lookup type, or no-op proof that
-options can mutate too late; focused reference tests, lint, builds, aggressive
-review.
+7hh. [ ] Reference lookup strategy cache ownership is hardened or shrunk.
+Scope: `Reference._lookupStrategy`, `_lookupStrategyType`,
+`getCachedReferenceLookupStrategy(...)`, reference copying/adoption, and tests
+that mutate/reference options.
+Goal: either prove the cache cannot stale across copy/adopt/option mutation, or
+shrink ownership so the cache is reset where the node runtime already resets
+lookup state.
+Acceptance: stale-state proof or reset path, focused reference tests, lint,
+builds, aggressive review.
 
 ## Backlog Sources
 
@@ -181,32 +185,30 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: generic cached lookup miss sentinel, lookup-family strategy
-  dispatch, and callable uncovered reason gating.
+- Latest pass: cached reference lookup strategy, callable namespace direct-crawl
+  skips for non-child-surface uncovered state, and handle-writer no-op proof.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
-- New traversal: no new runtime traversal. Reference rules lookup now calls the
-  selected family strategy instead of switching inside each rules lookup.
-  Callable direct crawls are only attempted when `lookupScopeFrameCallable(...)`
-  reports `reason: 'child-surface'`; `frame` and `key` uncovered reasons must be
-  prepared/rechecked or treated as no direct-crawl state.
+- New traversal: no new runtime traversal. Reference strategy selection is
+  cached on the `Reference` node and guarded by the current lookup type, so
+  mutable `options.type` cannot reuse the wrong strategy. Callable namespace
+  lookup now treats uncovered `frame`/`key` reasons as covered misses and only
+  direct-crawls for `child-surface`.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: adds module-local strategy functions/objects in
-  `reference.ts` and a reason field on callable uncovered results. This is not
-  public API; it replaces per-rules-lookup and per-handle-write branching with
-  one strategy selection per resolved reference.
+- Helper/API surface: adds module-local `getCachedReferenceLookupStrategy(...)`
+  and two node-local cache slots. No public API. Repeated handle object writes
+  were left intact because the obvious shared writer adds a function call or
+  helper object on the cache-write path without deleting validation work.
 - Metadata mutations: none.
-- Allocation changes: no new per-lookup arrays or nodes. Strategy objects are
-  module constants. The callable uncovered result remains the existing small
-  result object with one string reason. Handle writes still allocate one cache
-  record as before. Aggressive review object/array tokens are the module-level
-  strategy constants, type-only callable array aliases, type-only argument
-  shapes, and existing handle object assignment sites.
+- Allocation changes: no new per-lookup arrays or nodes. The strategy cache
+  stores references to existing module constants on the `Reference` node. Handle
+  writes still allocate one cache record as before.
 - Evidence: focused eslint passed for `reference.ts`, `rules.ts`, and
   `scope-frame.ts`. `@jesscss/core` build passed with the existing `js-expr.ts`
   direct-eval warning. Targeted lookup/callable tests passed (`4` files,
-  `152` passed, `294` skipped). Broader lookup test slice passed (`8` files,
+  `154` passed, `292` skipped). Broader lookup test slice passed (`8` files,
   `313` passed, `290` skipped). Residue grep had no matches; `git diff --check`,
-  aggressive review, node-creation audit, `@jesscss/core` build, `jess` build,
-  and one-iteration hotpath smoke all passed. Smoke was usable but not a speed
-  claim: `mixins-guards.less` `24.89ms`, `scope-lookup-stress.less` `77.56ms`.
+  aggressive review with no scoped danger tokens, node-creation audit,
+  `@jesscss/core` build, `jess` build, and one-iteration hotpath smoke all
+  passed. Smoke was usable but not a speed claim: `mixins-guards.less`
+  `27.98ms`, `scope-lookup-stress.less` `109.35ms`.
