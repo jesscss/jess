@@ -424,6 +424,13 @@ sub-work inside it; do not convert these into micro-items:
    child `writeSyntax(...)` into the same writer; focused tests prove active
    trivia preserves output while child `toString(...)` overrides are not used.
 
+   Additional partial status: `Call` plain/evaluated CSS-call buffer render now
+   reuses the buffer writer mark inside `renderPlainFunctionCall(...)`, so the
+   buffer wrapper no longer opens a second call-level readback window around
+   the inner whole-call readback. Focused tests prove shared flat-buffer render
+   has one call-level readback while the remaining per-argument trim marks are
+   still explicit debt.
+
    Evidence pointer: use `NODE-REWRITE-TRACKER.md` for per-node status and
    `PERFORMANCE-HANDOFF.md` for benchmark/profile history. Do not add queue
    entries for one-line cuts inside this item.
@@ -610,41 +617,39 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `QueryCondition` static class-contract sibling probe cut.
+Current pass: `Call` plain CSS-call buffer mark reuse.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   object/array scan, generator, or collection helper was added.
 - New node/materialization: no runtime nodes, copies, wrappers, side maps, or
   materialized render values added. The new test uses existing scalar factory
-  helpers plus a test-only `CountingWriter` to prove mark counts.
-- Render path: selected row is `QueryCondition`. Static children now bypass the
-  dynamic write-vs-return probe when their `render` method is still the class
-  prototype render contract. This removes probe marks for scalar static
-  siblings in sync and async-capable query-condition render. Per-instance or
-  custom render overrides still use the fallback because tests prove they may
-  return text without writing.
-- Helper/API surface: no helper, method, public API, or new utility added. A
-  first draft helper was rejected and inlined to avoid a hot per-child function
-  call.
+  helpers plus a test-only `CountingWriter` to prove mark/readback counts. The
+  review-script `new` token is accepted only because it is test instrumentation;
+  production code adds no object construction.
+- Render path: selected row is `Call`. Plain/evaluated CSS-call buffer render
+  now opens one buffer writer mark and passes it into
+  `renderPlainFunctionCall(...)`; the inner whole-call readback reuses that
+  mark instead of opening a nested call-level mark. No call args are resolved
+  into arrays/nodes just to stringify.
+- Helper/API surface: no helper, method, public API, or new utility added.
+  Existing node-local `renderPlainFunctionCall(...)` accepts an optional mark
+  so the buffer caller can share the already-open writer window.
 - Metadata mutations: none. No parent/source/frozen/context metadata mutation,
   lazy options/context creation, `Reflect.*`, generic own-property helper, or
   source restoration added. The review script flags that doc phrase as a
   danger token because it names forbidden patterns, not because the patch adds
-  them. `Object.getPrototypeOf(node)` is a class-contract check used only to
-  distinguish prototype render from per-instance render mutation; it replaces
-  the stale `Node.prototype.render` identity check that missed scalar
-  subclasses.
+  them.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Remaining blocker: dynamic non-static/custom child render still keeps one
-  localized mark/`hasContentSince(...)` fallback. Removing it requires a
-  broader child render write-vs-return contract; a detached writer/render-buffer
-  local replacement would be worse machinery.
-- Evidence: package-scoped `query-condition.test.ts` passed. Core build, diff
-  check, aggressive review, and bounded hotpath leash ran. New sync and
-  existing async tests prove static scalar siblings do not pay probe marks,
-  while instance render overrides still render correctly. Hotpath leash details
-  belong in `PERFORMANCE-HANDOFF.md`; no speed claim.
-- Verdict: accept as a bounded `QueryCondition` cleanup. Keep active queue item
-  3 open until the remaining dynamic child fallback can be removed by a direct
-  render contract change.
+- Remaining blocker: per-argument trim marks remain in
+  `serializeRenderedArgsFrom(...)`, and the larger `Call` queue item still owns
+  callable output selection, `evalArgNodes(...)` copy pressure, async/helper
+  ladders, and repeated eval.
+- Evidence: package-scoped `call.test.ts` passed. Core build, diff check,
+  aggressive review, and bounded hotpath leash ran. The shared flat-buffer test
+  proves the call-level duplicate mark/readback is gone while the remaining
+  argument trim marks are still visible. Hotpath leash details belong in
+  `PERFORMANCE-HANDOFF.md`; no speed claim.
+- Verdict: accept as a bounded `Call` serialization cleanup. Keep active queue
+  item 4 open until the remaining call-output/copy/argument-readback work is
+  removed or isolated.

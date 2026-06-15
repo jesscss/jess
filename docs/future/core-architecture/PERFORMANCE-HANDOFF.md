@@ -200,6 +200,31 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-15 Call Plain Buffer Mark Reuse Pass
+
+Hypothesis: plain/evaluated CSS-call buffer render already owns a buffer writer
+mark, so `renderPlainFunctionCall(...)` should reuse it instead of opening a
+nested whole-call mark/readback window.
+
+Patch shape:
+
+- `renderPlainFunctionCall(...)` accepts an optional mark for buffer callers;
+- plain/evaluated CSS-call buffer render passes the buffer mark through to the
+  whole-call renderer;
+- focused tests prove shared flat-buffer render has one call-level readback;
+- per-argument trim marks remain visible and are not claimed as fixed.
+
+Evidence:
+
+- focused test: `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/call.test.ts --run` passed;
+- hotpath leash: `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` passed. Results were tripwire-only, not a speed claim:
+  `functions.less` median 15.19ms unstable, `import-reference.less` median
+  24.96ms usable, `mixins-guards.less` median 16.78ms usable,
+  `extend-chaining.less` median 6.22ms noisy, `media.less` median 5.87ms
+  unstable.
+
 ### 2026-06-15 QueryCondition Static Class-Contract Probe Cut
 
 Hypothesis: the previous static-sibling QueryCondition cut was too narrow

@@ -558,11 +558,12 @@ export class Call extends Node<CallValue, CallOptions> {
   private renderPlainFunctionCall(
     callNode: Call,
     context: Context,
-    prepared: PrintOptions
+    prepared: PrintOptions,
+    mark?: number
   ): MaybePromise<string> {
     const printOptions = getPrintOptions(prepared);
     const w = printOptions.writer!;
-    const mark = w.mark();
+    const startMark = mark ?? w.mark();
     const { name, contentNode } = callNode.value;
     if (typeof name === 'string') {
       w.add(name, callNode);
@@ -591,7 +592,7 @@ export class Call extends Node<CallValue, CallOptions> {
         callNode,
         context,
         printOptions,
-        mark,
+        startMark,
         contentNode,
         isCalc
       ), (error: unknown) => {
@@ -601,7 +602,7 @@ export class Call extends Node<CallValue, CallOptions> {
         throw error;
       });
     }
-    return this.finishPlainFunctionCall(callNode, context, printOptions, mark, contentNode, isCalc);
+    return this.finishPlainFunctionCall(callNode, context, printOptions, startMark, contentNode, isCalc);
   }
 
   private finishPlainFunctionCall(
@@ -977,7 +978,7 @@ export class Call extends Node<CallValue, CallOptions> {
       if (this.evaluated) {
         const prepared = prepareBufferPrintState(context, options, bufferOrOptions);
         const mark = prepared.writer.mark();
-        return writePreparedRenderTextResult(bufferOrOptions, prepared, mark, this.renderPlainFunctionCall(this, context, prepared));
+        return writePreparedRenderTextResult(bufferOrOptions, prepared, mark, this.renderPlainFunctionCall(this, context, prepared, mark));
       }
       if (typeof this.value.name !== 'string') {
         const prepared = prepareBufferPrintState(context, options, bufferOrOptions);
@@ -987,7 +988,7 @@ export class Call extends Node<CallValue, CallOptions> {
       // keep calc-frame cleanup instead of falling back to source text.
       const prepared = prepareBufferPrintState(context, options, bufferOrOptions);
       const mark = prepared.writer.mark();
-      return writePreparedRenderTextResult(bufferOrOptions, prepared, mark, this.renderPlainFunctionCall(this, context, prepared));
+      return writePreparedRenderTextResult(bufferOrOptions, prepared, mark, this.renderPlainFunctionCall(this, context, prepared, mark));
     }
     const emptyCallText = this.emptyStringNameCallText();
     if (emptyCallText !== undefined) {

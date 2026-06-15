@@ -245,6 +245,22 @@ describe('Call', () => {
     expect(rule.registrationPrepared).toBe(false);
   });
 
+  it('writes CSS call render output into shared flat buffers without nested call marks', async () => {
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
+    expect(buffer.parts).toEqual(['rgb', '(', '100', ', ', '100', ', ', '100', ')']);
+    expect(writer.marks).toBe(4);
+    expect(writer.readbacks).toBe(1);
+  });
+
   it('writes call render output into buffers without mutating a provided writer', async () => {
     const buffer = createRenderBuffer('flat');
     const writer = new CountingWriter();
