@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Context } from '../../context.js';
-import { rules, decl, any, list, vardecl, call, fn, nil, ref } from '../index.js';
+import { rules, decl, any, list, vardecl, call, fn, nil, ref, Rules as RulesClass } from '../index.js';
 
 describe('Func', () => {
   it('serializes function definitions through toTrimmedString()', () => {
@@ -40,27 +40,41 @@ describe('Func', () => {
   });
 
   it('evaluates a stylesheet function and returns return: value', async () => {
+    const originalFindProperty = RulesClass.prototype.findProperty;
+    let propertyLookups = 0;
+    RulesClass.prototype.findProperty = function(...args: Parameters<typeof originalFindProperty>) {
+      const [key] = args;
+      if (key === 'return') {
+        propertyLookups++;
+      }
+      return originalFindProperty.apply(this, args);
+    };
     const ctx = new Context({ leakyRules: true });
     ctx.depth = 2;
 
-    const tree = rules([
-      fn({
-        name: any('add'),
-        params: list([
-          vardecl({ name: 'a', value: nil() }),
-          vardecl({ name: 'b', value: nil() })
-        ]),
-        body: rules([
-          decl({ name: 'return', value: any('ok') })
-        ])
-      }),
-      call({ name: ref('add', { type: 'function' }), args: list([any('x'), any('y')]) })
-    ]);
+    try {
+      const tree = rules([
+        fn({
+          name: any('add'),
+          params: list([
+            vardecl({ name: 'a', value: nil() }),
+            vardecl({ name: 'b', value: nil() })
+          ]),
+          body: rules([
+            decl({ name: 'return', value: any('ok') })
+          ])
+        }),
+        call({ name: ref('add', { type: 'function' }), args: list([any('x'), any('y')]) })
+      ]);
 
-    const out = await tree.eval(ctx);
-    expect(String(out)).toBeString(`
-      ok
-    `);
+      const out = await tree.eval(ctx);
+      expect(String(out)).toBeString(`
+        ok
+      `);
+      expect(propertyLookups).toBe(0);
+    } finally {
+      RulesClass.prototype.findProperty = originalFindProperty;
+    }
   });
 
   it('evaluates a zero-arg stylesheet function without a synthetic mixin wrapper', async () => {

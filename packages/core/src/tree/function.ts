@@ -7,6 +7,7 @@ import { type List, list } from './list.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { callableRulesEntry } from './util/callable-entry.js';
 import { MixinCollection } from './util/callable-collection.js';
+import { findPropertyDeclarationOccurrence } from './util/direct-rules-lookup.js';
 
 /**
  * Stylesheet-defined function with a return value.
@@ -95,7 +96,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must evaluate to rules`);
     }
 
-    const decl = evaluated.findProperty(returnName, { searchParents: false });
+    const decl = findPropertyDeclarationOccurrence(evaluated, returnName, { searchParents: false })?.node;
     if (!decl) {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must return a value (missing "${returnName}: ...")`);
     }

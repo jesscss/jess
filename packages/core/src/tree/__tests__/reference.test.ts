@@ -2799,11 +2799,12 @@ describe('reference', () => {
         return originalFind.apply(this, args);
       };
 
+      const snapshotRef = ref({ key: 'color' }, { type: 'variable', readMode: 'snapshot' });
       const node = rules([
         vardecl({ name: 'color', value: any('red') }),
         decl({
           name: any('seen'),
-          value: ref({ key: 'color' }, { type: 'variable', readMode: 'snapshot' })
+          value: snapshotRef
         }),
         vardecl({ name: 'color', value: any('blue') })
       ]);
@@ -2815,6 +2816,10 @@ describe('reference', () => {
         seen: red;
       `);
       expect(declarationHits).toBe(0);
+      expect(isNode(snapshotRef._rulesLookupHandle?.returnVal)).toBe(false);
+      expect(snapshotRef._rulesLookupHandle?.returnVal).toMatchObject({
+        kind: 'scope-frame-variable-binding-handle'
+      });
     });
 
     it('static variable hits avoid Rules.find for covered binding-frame lookup', async () => {
