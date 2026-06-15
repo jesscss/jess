@@ -25,25 +25,32 @@ describe('Rest', () => {
     expect(rest(any('items')).toTrimmedString()).toBe('...$items');
   });
 
-  it('returns string rest syntax without writer readback', () => {
+  it('returns scalar rest syntax without writer readback', () => {
     const writer = new CountingWriter();
 
     expect(rest('items').toTrimmedString({ writer })).toBe('...$$items');
     expect(rest(undefined).toTrimmedString({ writer })).toBe('...$');
-    expect(writer.toString()).toBe('...$$items...$');
+    expect(rest(any('items')).toTrimmedString({ writer })).toBe('...$items');
+    expect(writer.toString()).toBe('...$$items...$...$items');
     expect(writer.reads).toBe(0);
   });
 
-  it('reads node rest names without public toString transport', () => {
+  it('reads Any rest names from the owned scalar value', () => {
     const value = any('items');
     let toStringCalls = 0;
+    let valueOfCalls = 0;
     value.toString = () => {
       toStringCalls++;
+      return '';
+    };
+    value.valueOf = () => {
+      valueOfCalls++;
       return '';
     };
 
     expect(rest(value).name).toBe('items');
     expect(toStringCalls).toBe(0);
+    expect(valueOfCalls).toBe(0);
   });
 
   it('renders rest values through render(context)', () => {
@@ -56,6 +63,15 @@ describe('Rest', () => {
     expect(named.registrationPrepared).toBe(false);
     expect(nodeNamed.evaluated).toBe(false);
     expect(nodeNamed.registrationPrepared).toBe(false);
+  });
+
+  it('renders scalar rest values without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(rest('items').render(context, { writer })).toBe('...$$items');
+    expect(rest(any('items')).render(context, { writer })).toBe('...$items');
+    expect(writer.toString()).toBe('...$$items...$items');
+    expect(writer.reads).toBe(0);
   });
 
   it('writes rest render output into flat buffers', async () => {

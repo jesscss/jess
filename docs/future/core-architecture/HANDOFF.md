@@ -548,25 +548,29 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `VarDeclaration` bare-parameter name transport cut.
+Current pass: `Rest` scalar wrapper completion.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   or object/array scan was added.
 - New node/materialization: no runtime nodes, copies, wrappers, arrays, side
-  maps, output strings, or materialized render values added.
-- Render path: selected row is `VarDeclaration`. Bare parameter var syntax now
-  writes the `$` prefix and owned name syntax directly; it no longer routes an
-  `Any` name through public `String(name)`/`toString(...)` transport just to
-  print `$name`.
+  maps, or materialized render values added. The review script flags one
+  test-only CountingWriter allocation used to prove writer-readback counts; it is
+  not production node creation or render materialization. The only new runtime
+  strings are the existing scalar return values required by `render(...)` and
+  public `toTrimmedString(...)`.
+- Render path: selected row is `Rest`. String, empty, and `Any` rest values now
+  write their known scalar syntax directly in both public capture and render
+  paths. `rest(any("items"))` no longer inherits the base `renderSource(...)`
+  path that wrote syntax and then read it back through `mark/getSince`.
 - Helper/API surface: no helper, public method, or node method added.
 - Metadata mutations: none. No parent/source/frozen/context metadata mutation,
   lazy options/context creation, reflection call, generic own-property helper,
   or structural probe added.
 - Error/control flow: no new routine error objects or throw/catch control flow.
-- Evidence: package-scoped `var-declaration.test.ts` passed, with a
-  `CountingWriter` proof that bare parameter vars still avoid readback and a
-  direct `writeSyntax(...)` proof that name `toString(...)` is not called.
-  Final hotpath/profile status is in `PERFORMANCE-HANDOFF.md`; no speed claim.
-- Verdict: accept as a bounded `VarDeclaration` serialization cut. General
-  declaration body rendering, custom-property raw source, merge state, and
-  duplicate-comparison materialization remain open under `Declaration`.
+- Evidence: package-scoped `rest.test.ts` passed. Tests prove scalar public
+  capture and render avoid writer readback, and `Any` rest names read the owned
+  scalar value without public `toString(...)` or `valueOf()` transport. Final
+  hotpath/profile status belongs in `PERFORMANCE-HANDOFF.md`; no speed claim.
+- Verdict: accept as the `Rest` scalar wrapper completion. Arbitrary
+  node-valued rest remains on the existing child writer fallback boundary
+  because that is not an owned scalar syntax case.

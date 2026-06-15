@@ -3215,6 +3215,35 @@ Interpretation: accept as a small node-family serialization completion slice.
 Broader declaration body rendering, raw custom property source, merge state,
 and duplicate declaration materialization remain on the `Declaration` row.
 
+### Rest Scalar Wrapper Completion
+
+Date: 2026-06-15.
+
+Change: `Rest` now handles string, empty, and `Any` scalar rest values through
+direct writer emission in public capture and render paths. `rest(any("items"))`
+no longer falls through the inherited base render path that wrote syntax and
+then read it back through `mark/getSince`; `Rest.name` also reads `Any.value`
+directly instead of public `toString(...)` or `valueOf()` transport.
+
+Hotpath status:
+
+- Focused `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/rest.test.ts --run` passed. Tests prove scalar capture and
+  render avoid writer readback, and `Any` names avoid public string/value
+  transport.
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `15.29ms` unstable, `import-reference` median
+  `26.70ms` usable, `mixins-guards` median `18.60ms` usable,
+  `extend-chaining` median `5.83ms` noisy, and `media` median `5.91ms` usable.
+- Final `node scripts/profile-less-benchmark.mjs --file=benchmark.less`
+  reported broad `OutputWriter.mark` `49969`, `OutputWriter.getSince` `44973`,
+  `Reference.evalNode` `3619` calls / `72.61ms`, and `Rules.find` `1013`
+  calls / `31.78ms`.
+
+Interpretation: accept as serialization machinery deletion only, not a speed
+claim. `Rest` scalar syntax is complete; arbitrary node-valued rest remains on
+the existing child writer fallback boundary.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
