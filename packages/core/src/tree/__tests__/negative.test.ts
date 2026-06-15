@@ -15,7 +15,13 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 import { OutputWriter } from '../util/print.js';
 
 class CountingWriter extends OutputWriter {
+  marks = 0;
   reads = 0;
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
 
   override getSince(mark: number): string {
     this.reads++;
@@ -49,6 +55,16 @@ describe('Negative', () => {
 
     expect(negative(dimension([10, 'px'])).toTrimmedString({ writer })).toBe('-10px');
     expect(writer.toString()).toBe('-10px');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
+  it('returns simple Any negative syntax without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(negative(any('token')).toTrimmedString({ writer })).toBe('-token');
+    expect(writer.toString()).toBe('-token');
+    expect(writer.marks).toBe(0);
     expect(writer.reads).toBe(0);
   });
 

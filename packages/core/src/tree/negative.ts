@@ -1,5 +1,6 @@
 import { Node, defineType, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type LocationInfo, type NodeOptions } from './node.js';
 import type { Context } from '../context.js';
+import { Any } from './any.js';
 import { Dimension } from './dimension.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { type FinalPrintOptions, getPrintOptions, type PrintOptions } from './util/print.js';
@@ -31,6 +32,12 @@ export class Negative extends Node<Node> {
       const unit = this.value.value.unit ?? '';
       const out = `-${`${round(this.value.value.number, 8)}`.toLowerCase()}${unit}`;
       options.writer.add(out, this);
+      return out;
+    }
+    if (this.value instanceof Any) {
+      const out = `-${this.value.value}`;
+      options.writer.add('-', this);
+      options.writer.add(this.value.value, this.value);
       return out;
     }
     const mark = options.writer.mark();

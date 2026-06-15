@@ -5,7 +5,13 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 import { OutputWriter } from '../util/print.js';
 
 class CountingWriter extends OutputWriter {
+  marks = 0;
   reads = 0;
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
 
   override getSince(mark: number): string {
     this.reads++;
@@ -45,6 +51,17 @@ describe('DefaultGuard', () => {
     expect(falsy.render(context)).toBe('false');
     expect(falsy.evaluated).toBe(false);
     expect(falsy.registrationPrepared).toBe(false);
+  });
+
+  it('writes resolved default guard render output without writer readback', () => {
+    const writer = new CountingWriter();
+
+    context.isDefault = true;
+
+    expect(defaultguard('default').render(context, { writer })).toBe('true');
+    expect(writer.toString()).toBe('true');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('writes resolved default guard render output into flat buffers', async () => {

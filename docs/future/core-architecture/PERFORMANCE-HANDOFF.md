@@ -3366,6 +3366,37 @@ Interpretation: accept as a bounded serialization cleanup only, not a speed
 claim. Broad writer counts did not move, indicating this scalar paren path is
 not materially represented in `benchmark.less`.
 
+### DefaultGuard Negative Scalar Wrapper Readback Cut
+
+Date: 2026-06-15.
+
+Change: `DefaultGuard.render(...)` now writes resolved boolean text to the
+supplied writer when no render buffer is passed, and `Negative.toTrimmedString`
+now writes simple `Any` child source text directly. No helper, traversal,
+copy/materialization, or shared abstraction was added.
+
+Hotpath status:
+
+- Focused `pnpm --filter @jesscss/core test -- --run
+  src/tree/__tests__/default-guard.test.ts
+  src/tree/__tests__/negative.test.ts` passed. Tests prove the touched writer
+  paths avoid mark/getSince readback while preserving render/buffer/eval
+  behavior.
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `15.52ms` noisy, `import-reference` median
+  `27.54ms` unstable, `mixins-guards` median `18.49ms` usable,
+  `extend-chaining` median `5.94ms` usable, and `media` median `6.02ms`
+  unstable.
+- Final `node scripts/profile-less-benchmark.mjs --file=benchmark.less`
+  reported broad `OutputWriter.mark` `49903`, `OutputWriter.getSince` `44907`,
+  `Reference.evalNode` `3619` calls / `67.24ms`, and `Rules.find` `1013`
+  calls / `27.10ms`.
+
+Interpretation: accept as a local serialization cleanup only, not a speed
+claim. Broad writer counts did not move from the prior pass, so these scalar
+paths are not materially represented in `benchmark.less`; the bounded timing
+run had too much noisy/unstable signal for a performance claim.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

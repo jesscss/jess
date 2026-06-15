@@ -548,7 +548,7 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Paren` no-trivia `Any` wrapper cut.
+Current pass: scalar wrapper readback cleanup for `DefaultGuard` and `Negative`.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   or object/array scan was added.
@@ -558,26 +558,21 @@ Current pass: `Paren` no-trivia `Any` wrapper cut.
   are not production node creation or render materialization. Runtime strings
   are the existing scalar return values required by `render(...)` and public
   `toTrimmedString(...)`.
-- Render path: selected row is `Paren`. No-trivia `Any` children now write
-  known wrapper syntax directly in public capture and non-escaped render paths.
-  The path no longer falls back to `renderOutput(context, this, ...)` and the
-  inherited source capture just to return `(value)` or `[value]`. Escaped
-  render, trivia, and non-`Any` children stay on their existing semantic
-  boundaries.
-- Helper/API surface: two private helpers were added only inside `Paren`:
-  `directAnySourceText(...)` computes the scalar wrapper text and
-  `writeDirectAnySourceText(...)` emits the same pieces with source association.
-  They add no public API and avoid a generic helper ladder.
+- Render path: selected rows are `DefaultGuard` and `Negative`.
+  `DefaultGuard.render(...)` now writes the resolved boolean text to a supplied
+  writer instead of returning a detached string when no render buffer is passed.
+  `Negative.toTrimmedString(...)` now writes `Any` child source syntax directly
+  from owned scalar text instead of opening a mark/readback window.
+- Helper/API surface: none added. Existing node methods were simplified in
+  place; no shared abstraction, utility object, or public API was introduced.
 - Metadata mutations: none. No parent/source/frozen/context metadata mutation,
   lazy options/context creation, reflection call, generic own-property helper,
   or structural probe added.
 - Error/control flow: no new routine error objects or throw/catch control flow.
-- Evidence: package-scoped `paren.test.ts` passed. Tests prove no-trivia `Any`
-  paren source capture, square delimiter capture, escaped source capture, and
-  non-escaped render/buffer render avoid writer marks/readbacks while existing
-  dynamic, default guard, nil, trivia, and escaped-list behavior remains green.
-  Final hotpath/profile status belongs in `PERFORMANCE-HANDOFF.md`; no speed
-  claim.
-- Verdict: accept as a bounded `Paren` scalar wrapper cut. Non-`Any` parens,
-  escaped render, and trivia-backed source remain on the existing fallback
-  boundaries.
+- Evidence: package-scoped `default-guard.test.ts` and `negative.test.ts`
+  passed. Tests prove the touched direct writer paths avoid writer
+  marks/readbacks while preserving existing render/buffer/eval behavior. Final
+  hotpath/profile status belongs in `PERFORMANCE-HANDOFF.md`; no speed claim.
+- Verdict: accept as a bounded scalar-wrapper cleanup. `Negative` remains
+  partial because compound units and arbitrary child render/source semantics
+  still require their existing boundaries.
