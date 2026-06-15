@@ -105,6 +105,14 @@ should answer which of these is hottest in real lookup work:
 Do not treat one-iteration smoke as a speed result. Use it only as a regression
 tripwire after behavior gates.
 
+2026-06-15 leash refresh: `node scripts/profile-less-benchmark.mjs
+--file=benchmark-v39.less` is not useful for the current direct-declaration
+branching target. It reported empty lookup counters (`rulesFindByType`,
+`registryFindByType`, `searchChildrenByType`, and reference-key buckets all
+empty), so the next measured lookup pass should instrument
+`scope-lookup-stress.less` or another lookup-heavy fixture before splitting
+`DeclarationLookupStrategy` or handle access allocation.
+
 ## Reactivation Threshold
 
 Full performance rounds are currently active. If future work parks performance

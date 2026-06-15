@@ -3197,6 +3197,7 @@ describe('reference', () => {
       });
       const root = rules([childRules]);
       await root.eval(context);
+      root.getScopeFrame();
       root.collectDirectDeclarationChildEntries();
 
       const originalValue = childRules.value;
@@ -4496,6 +4497,67 @@ describe('reference', () => {
         expect(declarationLookups).toBe(0);
       } finally {
         RulesClass.prototype.findDeclaration = originalFindDeclaration;
+      }
+    });
+
+    it('reference strategy cache rejects stale lookup types in one node slot', async () => {
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        decl({ name: any('color'), value: any('blue') })
+      ]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'color' }, { type: 'property' });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._lookupStrategy?.lookupType).toBe('property');
+      expect(lookupRef._rulesLookupHandle?.lookupType).toBe('property');
+
+      lookupRef.options.type = 'variable';
+
+      expect(lookupRef.eval(context).valueOf()).toBe('red');
+      expect(lookupRef._lookupStrategy?.lookupType).toBe('variable');
+      expect(lookupRef._rulesLookupHandle?.lookupType).toBe('variable');
+    });
+
+    it('callable handles reject stale terminal mixin-only mode', async () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      let callableLookups = 0;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        const [key] = args;
+        if (key === '.parameterized-handle') {
+          callableLookups++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          ruleset({
+            selector: el('.parameterized-handle'),
+            rules: rules([decl({ name: 'color', value: any('ruleset') })])
+          }),
+          mixin({
+            name: any('.parameterized-handle'),
+            params: list([any('color', { role: 'property' })]),
+            rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+          })
+        ]);
+        setRulesContext(await node.eval(context));
+        const lookupRef = ref({ key: '.parameterized-handle' }, { type: 'mixin-ruleset' });
+
+        const first = lookupRef.eval(context);
+        expect(isNode(first)).toBe(true);
+        expect(callableLookups).toBe(1);
+        expect(lookupRef._rulesLookupHandle?.terminalMixinOnly).toBe(false);
+
+        lookupRef.options.mixinRulesetCallHasArgs = true;
+
+        const second = lookupRef.eval(context);
+        expect(isNode(second)).toBe(true);
+        expect(callableLookups).toBe(2);
+        expect(lookupRef._rulesLookupHandle?.terminalMixinOnly).toBe(true);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
       }
     });
 

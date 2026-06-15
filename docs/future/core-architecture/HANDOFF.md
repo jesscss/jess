@@ -125,93 +125,107 @@ benchmark leash, and records the property merge-chain occurrence-slot target.
 Dynamic pending declaration affected-key precision, keyed function invalidation,
 assignment current-cell-first writes, and handle allocation splitting remain
 larger semantic/measured cuts, not micro-edits.
+Latest queue pass adds handle-shape proof for stale lookup-type rejection and
+terminal mixin-only rejection, prebuilds the direct property child-visibility
+spy so it tests traversal instead of setup, and records that the
+`benchmark-v39.less` profile no longer exercises the lookup counters needed
+for direct declaration strategy splitting. A attempted variable-family child
+visibility spy exposed a source-prep boundary instead: variable lookup can
+index child rules while preparing scope-frame state before the child-entry
+visibility skip can be observed.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7jf. [ ] Dynamic pending declarations get a real affected-key model.
+7ju. [ ] Dynamic pending declarations get a real affected-key model.
 Scope: `pendingDeclarationNames`, dynamic-name promotion, and static miss
 tests. Goal: do not broad-uncover misses unless an unresolved dynamic name can
 actually affect the requested key. Acceptance: semantic model plus tests for
 unknown dynamic, promoted static, and unaffected static miss.
 
-7jg. [ ] Callable guard/candidate uncertainty is named separately from child
+7jv. [ ] Callable guard/candidate uncertainty is named separately from child
 and reference-import uncertainty. Scope: guarded mixins/rulesets and
 `ScopeFrameCallableLookupResult`. Goal: only guarded candidate uncertainty
 routes to the bridge. Acceptance: guarded cases return a named uncovered
 reason; unguarded covered misses stop.
 
-7jh. [ ] Parameterized namespace handle reuse is proven end-to-end. Scope:
-`terminalMixinOnly`, reference handles, and namespace calls with args. Goal:
-same terminal mode reuses the handle; wrong terminal mode rejects it.
-Acceptance: spy counts for same-mode and wrong-mode repeated calls.
-
-7ji. [ ] Array-path callable handles stop rebuilding remainders after warmup.
+7jw. [ ] Array-path callable handles stop rebuilding remainders after warmup.
 Scope: `collectKeyRemainder(...)`, `getCallableLookupKeyRemainder(...)`, and
 array namespace references. Goal: stable path identity carries/reuses the
 needed remainder. Acceptance: counter proof or a documented emitted no-op.
 
-7jj. [ ] Handle access object allocation gets a measured keep/delete decision.
+7jx. [ ] Handle access object allocation gets a measured keep/delete decision.
 Scope: `getRulesLookupHandleAccess(...)`, strategy write/read call sites, and
 emitted output. Goal: decide scalar locals versus transient object with
 evidence. Acceptance: emitted audit plus benchmark/profile note, no speed
 claim without stable signal.
 
-7jk. [ ] Direct declaration strategy branching gets measured before splitting.
+7jy. [ ] Direct declaration strategy branching gets measured before splitting.
 Scope: `DeclarationLookupStrategy`, `findWithinScopeSurface(...)`, and lookup
 profile counters. Goal: identify which strategy fields are hot enough to
 specialize. Acceptance: profile/counter evidence recorded in
 `PERFORMANCE-HANDOFF.md`.
 
-7jl. [ ] Function binding invalidation is key-scoped or explicitly proven
+7jz. [ ] Function binding invalidation is key-scoped or explicitly proven
 global. Scope: `setFunctionBinding(...)`, lookup handles, and function tests.
 Goal: unrelated declarations should not invalidate function handles unless
 global invalidation is semantically required. Acceptance: keyed invalidation or
 no-op proof with tests.
 
-7jm. [ ] Assignment target lookup tries modeled current cells before occurrence
+7ka. [ ] Assignment target lookup tries modeled current cells before occurrence
 fallback. Scope: `assignScopeFrameVariable(...)`, set-defined eval, readonly
 rules. Goal: covered `:=` writes mutate modeled cells without source lookup
 when readonly semantics are represented. Acceptance: occurrence spy proves the
 covered current-cell path skips direct declaration lookup.
 
-7jn. [ ] Import/reference declaration visibility becomes an explicit direct
+7kb. [ ] Import/reference declaration visibility becomes an explicit direct
 lookup mode. Scope: declaration lookup options, import/reference fixtures, and
 direct child entries. Goal: direct lookup should carry visibility facts instead
 of rediscovering them through fallback side effects. Acceptance: focused
 import/reference declaration tests plus fallback spy.
 
-7jo. [ ] Property merge-chain occurrence slots are implemented from the design
+7kc. [ ] Property merge-chain occurrence slots are implemented from the design
 note. Scope: property declaration occurrences, merge metadata, assignment
 normalization. Goal: delete the remaining filtered property registry fallback
 without adding a second name map. Acceptance: merge-chain fixtures use direct
 occurrence lookup.
 
-7jp. [ ] Reference-import callable uncertainty gets direct-crawl boundary
+7kd. [ ] Reference-import callable uncertainty gets direct-crawl boundary
 proof for namespace lookups. Scope: reference imports, namespace callable
 lookup, and fallback frames. Goal: reference-import uncertainty remains
 conservative but does not poison covered frame/key misses. Acceptance:
 namespace/fallback spy tests.
 
-7jq. [ ] ScopeFrame callable preparation is emitted-audited after build.
-Scope: `prepareCallableLookupFrame(...)` and generated JS. Goal: confirm the
-early-return shape did not add avoidable emitted helper/branch bulk.
-Acceptance: emitted excerpt or no-op proof recorded after build.
+7ke. [ ] Variable-family child visibility skips child prep/indexing.
+Scope: `findWithinScopeSurface(...)`, scope-frame preparation, and
+`directDeclarationChildEntries`. Goal: variable lookup should not index or
+enter a child rules surface whose carried visibility cannot contain variables.
+Acceptance: the attempted variable-family getter spy passes without touching
+the child `value`.
 
-7jr. [ ] Direct declaration child-entry visibility gets variable-family spy
-coverage too. Scope: `directDeclarationChildEntries` and
-`canEnterRulesEntryForLookup(...)`. Goal: variable lookup skips
-property-only/private child surfaces symmetrically with the new property test.
-Acceptance: focused spy test.
+7kf. [ ] Function handles stop invalidating on unrelated declaration pushes or
+the global invalidation reason is documented with proof. Scope:
+`lookupVersion`, `setFunctionBinding(...)`, `Rules.push(...)`, and function
+reference handles. Goal: avoid key-independent invalidation when possible.
+Acceptance: changed keyed invalidation or explicit failing-proof note.
 
-7js. [ ] Reference strategy/handle cache shape is audited for one-slot
-stability. Scope: `Reference._lookupStrategy`, `_rulesLookupHandle`, and
-lookup-type changes. Goal: stale type/key/terminal mode checks stay explicit
-without extra public surfaces. Acceptance: tests cover type switch and handle
-reuse/rejection.
+7kg. [ ] Assignment/current-cell lookup records readonly provenance on modeled
+cells. Scope: `BindingCell.readonly`, set-defined writes, and readonly tests.
+Goal: current-cell-first assignment can be implemented without losing readonly
+errors. Acceptance: focused readonly cell tests.
 
-7jt. [ ] Next queue is reseeded only from binding/lookup backlog after the
+7kh. [ ] Import/reference declaration visibility gets a direct-mode test matrix.
+Scope: reference imports, compose/import boundaries, declarations vs variables.
+Goal: choose the explicit direct lookup mode before source changes.
+Acceptance: matrix tests or documented unsupported cells.
+
+7ki. [ ] `scope-lookup-stress.less` gains lookup counters/profile support.
+Scope: benchmark/profile scripts. Goal: provide a measured target for
+strategy branching and handle-access allocation. Acceptance: command records
+lookup counters for the stress fixture.
+
+7kj. [ ] Next queue is reseeded only from binding/lookup backlog after the
 above pass. Scope: this handoff plus `BINDING-INDEX-PROPOSAL.md`. Goal:
 maintain 10-15 sizable tasks, no micro-items, no non-binding cutting drift.
 Acceptance: completed items replaced by concise baseline and a fresh real
@@ -265,38 +279,38 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: callable reference-import uncertainty became an explicit
-  `ScopeFrame` fact/reason; namespace covered-miss checks now treat only
-  `frame`/`key` as covered and keep `reference-import` conservative; direct
-  property lookup gained child-visibility spy coverage; performance/design docs
-  now point at current direct/frame lookup targets; the active queue was
-  reseeded with binding/lookup-only tasks.
-- Verdict: accepted as lookup architecture cleanup and proof, not as a speed
-  claim.
-- New traversal: none in production. Tests add spies/getters around existing
-  lookup calls.
+- Latest pass: added proof that `Reference`'s single cached lookup strategy
+  rejects stale lookup types, that callable lookup handles reject stale
+  `terminalMixinOnly` mode, and that the direct property child-visibility spy
+  tests traversal after frame prep. The pass also recorded that
+  `benchmark-v39.less` no longer exposes lookup counters for declaration
+  strategy splitting, and reseeded the queue around real binding/lookup cuts.
+- Verdict: accepted as lookup-handle and handoff proof, not as a speed claim.
+- New traversal: none in production. Tests add existing lookup calls and
+  prototype spies around them.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: no helper added. `ScopeFrame` gained one boolean
-  fact, `hasReferenceImports`, and the callable uncovered reason union gained
-  `reference-import`.
-- Metadata mutations: existing reference-import registration now mirrors the
-  existing `_hasReferenceImports` fact into an already-built frame. Import
-  live-slot frame rebuilding preserves that fact.
-- Allocation changes: no nodes, arrays, maps, or result collections added to
-  lookup. One boolean field is added to frame construction state.
-- Aggressive-review tokens: the added frame fact avoids treating
-  reference-import callable uncertainty as generic child recursion. Direct
-  crawl remains only where the named uncovered reason requires it. The flagged
-  `throw new Error(...)` and `try/finally` are test-only spy scaffolding that
-  fails if a skipped child surface is entered, then restores the descriptor.
-- Evidence: focused eslint passed for touched source/tests. Focused
-  reference/mixin/scope-frame tests passed (`3` files, `29` passed,
-  `283` skipped). Full focused lookup gate passed (`6` files, `307` passed,
-  `285` skipped). Residue grep had no matches; `git diff --check` and
-  `@jesscss/core` build passed. Emitted audit showed `prepareCallableLookupFrame`
-  keeps the early-return branch and the new `reference-import` reason in
-  straight-line generated JS. Node-creation audit passed with `new-node: 302`,
-  `with-surface: 39`, `derive: 30`, `copy-leaves: 28`. `jess` build passed.
-  One-iteration hotpath smoke passed and is not a speed claim:
-  `mixins-guards.less` `25.90ms`, `scope-lookup-stress.less` `86.13ms`.
+- Helper/API surface: no production helper or API added.
+- Metadata mutations: tests mutate `Reference.options.type` and
+  `mixinRulesetCallHasArgs` to prove stale cache rejection; production metadata
+  paths are unchanged.
+- Allocation changes: no production allocation changes.
+- Rejected/failed proof: a variable-family child-visibility spy was attempted
+  and removed because variable lookup still indexes child `Rules` while
+  preparing scope-frame declaration state. That is now a source-cut queue item,
+  not a completed proof.
+- Aggressive-review tokens: test-only `throw new Error(...)`/`try/finally`
+  spies remain in the existing property visibility proof and the new handle
+  prototype spies restore patched methods.
+- Evidence: focused handle/property tests passed (`1` file, `4` passed,
+  `146` skipped). `node scripts/profile-less-benchmark.mjs
+  --file=benchmark-v39.less` ran but produced empty lookup counters, so it is
+  not usable as a strategy-branching target. Focused eslint passed. Full
+  focused lookup gate passed (`6` files, `308` passed, `286` skipped). Residue
+  grep had no matches; `git diff --check`, `@jesscss/core` build, aggressive
+  review, node-creation audit, and `jess` build passed. Emitted audit showed
+  handle reads still reject mismatched `lookupType` and `terminalMixinOnly` in
+  the straight-line guard. Node-creation audit stayed at `new-node: 302`,
+  `with-surface: 39`, `derive: 30`, `copy-leaves: 28`. One-iteration hotpath
+  smoke passed and is not a speed claim: `mixins-guards.less` `28.18ms`,
+  `scope-lookup-stress.less` `113.07ms`.
