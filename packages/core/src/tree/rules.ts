@@ -1945,7 +1945,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               fallbackFrame = fallbackFrame.fallbackFrame;
             }
           }
-          if (frameHit.kind === 'miss' && this.parent === undefined) {
+          if (frameHit.kind === 'miss') {
             const pathKeys = splitStaticCallablePathKey(keys);
             if (pathKeys) {
               return this.findMixin(pathKeys, filterType, options, keys);

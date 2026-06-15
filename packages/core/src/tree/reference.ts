@@ -44,7 +44,6 @@ import {
   type DirectDeclarationOccurrence,
   findAnyDeclarationOccurrence,
   findPropertyDeclarationOccurrence,
-  findVariableDeclaration,
   findVariableDeclarationOccurrence
 } from './util/direct-rules-lookup.js';
 /**
@@ -676,7 +675,7 @@ function lookupVariableReference(
       return live;
     }
   }
-  return findVariableDeclaration(targetRules, keyStr, {
+  return findVariableDeclarationOccurrence(targetRules, keyStr, {
     start: opts.start,
     context: env.context,
     hasTarget: env.hasTarget,
@@ -758,7 +757,6 @@ function lookupReferenceTarget(args: {
   resolvedTarget: Node | undefined;
   lookupType: LookupType;
   valueKey: NormalizedLookupKey;
-  keyNode: ReferenceValue['key'];
   context: Context;
   rulesParent: Rules | undefined;
   sourceRulesParent: Rules | undefined;
@@ -768,7 +766,6 @@ function lookupReferenceTarget(args: {
     resolvedTarget,
     lookupType,
     valueKey,
-    keyNode,
     context,
     rulesParent,
     sourceRulesParent,
@@ -776,7 +773,7 @@ function lookupReferenceTarget(args: {
   } = args;
 
   if (!isNode(resolvedTarget, N.Rules)) {
-    return lookupDirectTarget(resolvedTarget, lookupType, valueKey, keyNode);
+    return lookupDirectTarget(resolvedTarget, lookupType, valueKey);
   }
 
   return lookupRulesReferenceTarget({
@@ -1021,6 +1018,8 @@ function writeRulesLookupHandle(args: {
       returnVal = SCOPE_FRAME_VARIABLE_MISS;
     } else if (isScopeFrameVariableBindingHandle(args.returnVal)) {
       returnVal = args.returnVal;
+    } else if (isDirectDeclarationOccurrence(args.returnVal)) {
+      returnVal = args.returnVal;
     } else {
       args.referenceNode._rulesLookupHandle = undefined;
       return;
@@ -1116,7 +1115,6 @@ function lookupResolvedReference(args: {
     resolvedTarget: isNode(resolvedTarget) ? resolvedTarget : undefined,
     lookupType,
     valueKey,
-    keyNode: referenceNode.value.key,
     context,
     rulesParent: referenceNode.rulesParent,
     sourceRulesParent: referenceNode.sourceRulesParent,
@@ -1165,8 +1163,7 @@ function lookupResolvedReference(args: {
 function lookupDirectTarget(
   targetNode: Node | undefined,
   lookupType: LookupType,
-  valueKey: NormalizedLookupKey,
-  keyNode: ReferenceValue['key']
+  valueKey: NormalizedLookupKey
 ): ReferenceLookupReturnValue {
   if (lookupType !== 'index' || !targetNode) {
     return undefined;
@@ -1174,7 +1171,7 @@ function lookupDirectTarget(
   if (typeof valueKey === 'number') {
     return lookupDirectArrayIndexTarget(targetNode, valueKey);
   }
-  return lookupDirectNamedTarget(targetNode, getLookupKeyString(valueKey), keyNode);
+  return lookupDirectNamedTarget(targetNode, getLookupKeyString(valueKey));
 }
 
 function lookupDirectArrayIndexTarget(
@@ -1187,26 +1184,12 @@ function lookupDirectArrayIndexTarget(
   return atIndex(targetNode.value, valueKey);
 }
 
-function lookupDirectRulesTarget(
-  targetNode: Rules,
-  key: string,
-  keyNode: ReferenceValue['key']
-): ReferenceLookupReturnValue {
-  return isNode(keyNode, N.Quoted)
-    ? findPropertyDeclarationOccurrence(targetNode, key, {})
-    : findVariableDeclarationOccurrence(targetNode, key, {});
-}
-
 function lookupDirectNamedTarget(
   targetNode: Node,
-  key: string,
-  keyNode: ReferenceValue['key']
+  key: string
 ): ReferenceLookupReturnValue {
   if (targetNode instanceof JsObject) {
     return targetNode.value[key];
-  }
-  if (isNode(targetNode, N.Rules)) {
-    return lookupDirectRulesTarget(targetNode, key, keyNode);
   }
   return undefined;
 }

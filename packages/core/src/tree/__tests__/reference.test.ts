@@ -1367,6 +1367,42 @@ describe('reference', () => {
       expect(variableRef.eval(context).valueOf()).toBe('blue');
     });
 
+    it('explicit target variable refs use occurrence fallback without Rules.findVariable', async () => {
+      const originalFindVariable = RulesClass.prototype.findVariable;
+      let variableLookups = 0;
+      RulesClass.prototype.findVariable = function(...args: Parameters<typeof originalFindVariable>) {
+        const [key] = args;
+        if (key === 'toneVar') {
+          variableLookups++;
+        }
+        return originalFindVariable.apply(this, args);
+      };
+
+      try {
+        const targetRules = rules([
+          vardecl({ name: 'toneVar', value: any('purple') })
+        ]);
+        const node = rules([
+          vardecl({ name: 'targetRules', value: targetRules })
+        ]);
+        setRulesContext(await node.eval(context));
+        const variableRef = ref({
+          target: ref({ key: 'targetRules' }, { type: 'variable' }),
+          key: 'toneVar'
+        }, { type: 'variable' });
+
+        expect(variableRef.eval(context).valueOf()).toBe('purple');
+        expect(variableLookups).toBe(0);
+
+        targetRules.push(vardecl({ name: 'toneVar', value: any('blue') }));
+
+        expect(variableRef.eval(context).valueOf()).toBe('blue');
+        expect(variableLookups).toBe(0);
+      } finally {
+        RulesClass.prototype.findVariable = originalFindVariable;
+      }
+    });
+
     it('explicit target variable fallback uses carried declaration child entries', async () => {
       const childRules = rules([
         vardecl({ name: 'target-color', value: any('blue') })
