@@ -167,7 +167,7 @@ describe('Attribute Selector', () => {
     expect(attrNode.toTrimmedString()).toBe('[data=$attr-data]');
   });
 
-  test('interpolated attribute values use direct variable declaration lookup', async () => {
+  test('interpolated attribute values use occurrence lookup without Rules.findVariable', async () => {
     const originalFindVariable = RulesClass.prototype.findVariable;
     let fallbackLookups = 0;
     RulesClass.prototype.findVariable = function(...args: Parameters<typeof originalFindVariable>) {

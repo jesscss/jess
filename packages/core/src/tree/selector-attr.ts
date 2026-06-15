@@ -16,7 +16,7 @@ import {
 } from './util/render-buffer.js';
 import type { Rules } from './rules.js';
 import type { VarDeclaration } from './declaration-var.js';
-import { findVariableDeclaration } from './util/direct-rules-lookup.js';
+import { findVariableDeclarationOccurrence } from './util/direct-rules-lookup.js';
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -30,7 +30,7 @@ export type AttributeSelectorValue = {
 };
 
 function findAttributeVarDeclaration(rules: Rules, key: string): VarDeclaration | undefined {
-  const found = findVariableDeclaration(rules, key);
+  const found = findVariableDeclarationOccurrence(rules, key)?.node;
   return isNode(found, N.VarDeclaration) ? found : undefined;
 }
 

@@ -75,7 +75,9 @@ import {
   type DirectDeclarationOccurrence,
   findAnyDeclaration as findAnyDeclarationDirect,
   findPropertyDeclaration,
-  findVariableDeclaration
+  findPropertyDeclarationOccurrence,
+  findVariableDeclaration,
+  findVariableDeclarationOccurrence
 } from './util/direct-rules-lookup.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
@@ -2828,9 +2830,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // Don't use start when searching parents - we want to find variables in parent regardless of position
         // start is only relevant for finding variables before the current node in the same Rules
         opts.start = undefined;
-        let result = isNode(node, N.VarDeclaration)
-          ? this.findVariable(key, opts)
-          : this.findProperty(key, opts);
+        const resultOccurrence = isNode(node, N.VarDeclaration)
+          ? findVariableDeclarationOccurrence(this, key, opts)
+          : findPropertyDeclarationOccurrence(this, key, opts);
+        const result = resultOccurrence?.node;
         if (result) {
           if (result.options?.readonly || opts.readonly) {
             throw new ReferenceError(`"${key}" is readonly`);

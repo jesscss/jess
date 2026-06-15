@@ -3165,6 +3165,38 @@ describe('reference', () => {
       }
     });
 
+    it('setDefined variable assignment uses occurrence lookup without Rules.findVariable', async () => {
+      const originalFindVariable = RulesClass.prototype.findVariable;
+      let variableLookups = 0;
+      RulesClass.prototype.findVariable = function(...args: Parameters<typeof originalFindVariable>) {
+        const [key] = args;
+        if (key === 'color') {
+          variableLookups++;
+        }
+        return originalFindVariable.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({ name: 'color', value: any('red') }),
+          vardecl({ name: 'color', value: any('blue') }, { setDefined: true }),
+          decl({
+            name: any('seen'),
+            value: ref({ key: 'color' }, { type: 'variable' })
+          })
+        ]);
+
+        const css = await renderNodeToString(node, context);
+
+        expect(css).toBeString(`
+          seen: blue;
+        `);
+        expect(variableLookups).toBe(0);
+      } finally {
+        RulesClass.prototype.findVariable = originalFindVariable;
+      }
+    });
+
     it('nested static variable hits build parent scope frames without Rules.find fallback', async () => {
       const originalFind = RulesClass.prototype.find;
       let declarationHits = 0;

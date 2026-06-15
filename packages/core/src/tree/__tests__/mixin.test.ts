@@ -2432,6 +2432,37 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: uncovered fallback frame still uses direct bridge only on fallback surface', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      const parentRules = rules([]);
+      const fallbackRules = rules([
+        style({
+          path: quoted(any('reference-import.jess'))
+        }, {
+          type: 'import',
+          importOptions: { reference: true }
+        })
+      ]);
+      const childRules = rules([]);
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.fallback-reference-missing') {
+          fastPathHits.push(`${this === fallbackRules ? 'fallback' : 'other'}:${key}`);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+      try {
+        const childFrame = childRules.getScopeFrame(parentRules.getScopeFrame());
+        childFrame.fallbackFrame = fallbackRules.getScopeFrame();
+
+        expect(childRules.findMixin('.fallback-reference-missing', 'Mixin')).toBeUndefined();
+        expect(fastPathHits).toEqual(['fallback:.fallback-reference-missing']);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('ScopeFrame callable buckets: static Ruleset-as-mixin hit skips Rules.findMixinsFast', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }

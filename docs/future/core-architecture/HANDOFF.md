@@ -81,41 +81,44 @@ the dead `RuntimeVarBinding` model, and use callable frame facts for guarded
 and recursive namespace paths before direct crawl.
 Latest passes make direct Rules/index and variable reference fallback return
 declaration occurrences, delete the unreachable direct `Rules` target branch,
-and consume parent/fallback callable covered misses before direct crawl.
+move selector attribute and setDefined internals off node-returning lookup
+helpers, and consume parent/fallback callable covered misses before direct
+crawl.
 Last full gate smoke was usable but not a speed claim:
-`mixins-guards.less` `23.84ms`, `scope-lookup-stress.less` `77.47ms`.
+`mixins-guards.less` `23.71ms`, `scope-lookup-stress.less` `76.86ms`.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7gn. [ ] Selector attribute variable lookup leaves node-returning direct helper.
-Scope: `selector-attr.ts`, `findVariableDeclaration(...)`,
-`findVariableDeclarationOccurrence(...)`, selector attribute interpolation, and
-raw string finalization.
-Goal: selector attribute variable reads should use occurrence records or frame
-binding state instead of the bare-node direct helper.
-Acceptance: selector attr variable tests, source-order behavior, lint, builds,
+7gq. [ ] Direct declaration node-returning helpers are only wrapper/cold API.
+Scope: `direct-rules-lookup.ts`, `Rules.find*`, `rules.ts` internal callers,
+`function.ts`, and tests that monkey-patch `Rules.find*`.
+Goal: prove remaining `findVariableDeclaration(...)`,
+`findPropertyDeclaration(...)`, and `findAnyDeclaration(...)` node-returning
+helpers are only used by real node-returning wrappers/cold materialization, or
+move another internal caller to occurrences.
+Acceptance: caller audit, at least one deletion/move or explicit no-op proof,
+lint, builds, aggressive review.
+
+7gr. [ ] Reference variable lookup handles use occurrence/binding only.
+Scope: `ReferenceLookupReturnValue`, `_rulesLookupHandle`, variable/index
+reference finalization, snapshot reads, and direct declaration occurrence
+validation.
+Goal: remove any remaining variable-reference path that can cache or finalize a
+bare declaration node when a binding handle or occurrence record can represent
+the same hit.
+Acceptance: static variable, explicit target, snapshot, and owner mutation
+tests; lint, builds, aggressive review.
+
+7gs. [ ] Callable fallback bridge state is factored without extra direct crawl.
+Scope: simple `findMixin(...)`, namespace fast path, fallback-frame hit/miss
+logic, reference-import uncovered surfaces, and `terminalMixinOnly`.
+Goal: keep covered hit/miss and uncovered direct-bridge behavior explicit while
+reducing repeated parent/fallback probing or duplicate direct-bridge code.
+Acceptance: covered simple/namespace miss tests, uncovered fallback bridge test,
+no new hot helper ladder unless it deletes duplicated work, lint, builds,
 aggressive review.
-
-7go. [ ] `Rules.find*` declaration wrappers are audited and narrowed.
-Scope: `Rules.findDeclaration(...)`, `findAnyDeclaration(...)`,
-`findVariable(...)`, `findProperty(...)`, internal call sites in `rules.ts`,
-and tests under `reference.test.ts`/`rules.test.ts`.
-Goal: keep node-returning wrappers only for real node-materialization callers;
-move internal lookup paths that can consume occurrence/binding identity off the
-bare declaration helpers.
-Acceptance: caller audit in diff or handoff, at least one internal caller moved
-or a no-op proof, lint, builds, aggressive review.
-
-7gp. [ ] Callable fallback-frame direct bridge is isolated to uncovered frames.
-Scope: `findMixin(...)`, `findMixinNamespacePathFast(...)`,
-`lookupScopeFrameCallable(...)`, fallback frame chains, covered misses, and
-uncovered import/reference surfaces.
-Goal: covered fallback misses never trigger direct child-surface scans; direct
-bridge remains only where frame facts are truly uncovered.
-Acceptance: simple and namespace covered miss tests, uncovered fallback bridge
-test, no repeated parent/fallback probing, lint, builds, aggressive review.
 
 ## Backlog Sources
 
@@ -165,32 +168,30 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: variable reference fallback occurrence returns, direct `Rules`
-  target branch deletion, and covered parent/fallback callable miss handling.
+- Latest pass: selector attribute occurrence lookup, setDefined occurrence
+  lookup, and uncovered fallback-frame callable bridge proof.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
-- New traversal: no new runtime traversal. Simple callable lookup now stops
-  after covered current/parent/fallback frame misses instead of falling through
-  to direct current-surface search. Tests use monkey-patched counters only to
-  prove the direct bridge was skipped.
-- New node/materialization: no runtime nodes. Test-only `rules([])` creates an
-  empty child fixture for fallback-frame miss proof.
+- New traversal: no new runtime traversal. Selector attr and setDefined now
+  reuse existing occurrence lookup traversal. Tests use monkey-patched counters
+  only to prove wrapper/direct bridge skip behavior.
+- New node/materialization: no runtime nodes. Test-only `rules([])` creates
+  empty parent/child fixtures for fallback-frame uncovered bridge proof.
 - Render path: unchanged.
-- Helper/API surface: deletes `lookupDirectRulesTarget(...)` and the dead
-  `Rules` branch in `lookupDirectNamedTarget(...)`; no helper added. Variable
-  reference fallback reuses existing occurrence-returning direct lookup.
+- Helper/API surface: no helper or API added. `selector-attr.ts` now imports
+  `findVariableDeclarationOccurrence(...)` instead of the node-returning direct
+  helper. `setDefined` uses occurrence lookup directly instead of the
+  node-returning `Rules.findVariable/findProperty` wrappers.
 - Metadata mutations: no parent/source mutation. `sourceNode` is carried through
   variable handles as existing binding identity; declaration occurrence
   validation compares existing parent/version/index without mutating metadata.
-- Allocation changes: variable fallback can store existing declaration
-  occurrence records in reusable variable handles. Deleting the dead direct
-  `Rules` target branch removes one function and quoted-vs-unquoted branch.
-  Test-only `fastPathHits` arrays and monkey-patch `try/finally` blocks prove
-  that direct crawl/wrapper lookup is skipped and restore patched methods.
-- Evidence: focused lint passed. Targeted lookup tests passed (`2` files,
-  `13` passed, `284` skipped). Larger focused lookup suite passed (`6` files,
-  `297` passed, `290` skipped). Residue grep produced no matches.
+- Allocation changes: no new runtime allocation. Test-only `fastPathHits`
+  arrays and monkey-patch `try/finally` blocks prove that direct crawl/wrapper
+  lookup is skipped or isolated and restore patched methods.
+- Evidence: focused lint passed. Targeted lookup tests passed (`3` files,
+  `9` passed, `299` skipped). Larger focused lookup suite passed (`7` files,
+  `306` passed, `292` skipped). Residue grep produced no matches.
   `git diff --check`, `pnpm --filter @jesscss/core build`,
   `pnpm run verify:aggressive-cutting-review`,
   `pnpm run audit:node-creation`, and `pnpm --filter jess build` passed.
   Core build kept the existing `js-expr.ts` direct-eval warning. Smoke only:
-  `mixins-guards.less` `23.84ms`, `scope-lookup-stress.less` `77.47ms`.
+  `mixins-guards.less` `23.71ms`, `scope-lookup-stress.less` `76.86ms`.
