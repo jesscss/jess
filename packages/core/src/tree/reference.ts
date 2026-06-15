@@ -421,6 +421,7 @@ type PreparedReferenceLookup = {
 type ReferenceDeclarationFindOptions = DeclarationFindOptions & { context: Context };
 type ScopeFrameVariableBindingMode = 'full' | 'live-only';
 type ReferenceLookupStrategy = {
+  readonly lookupType: LookupType;
   readonly performRulesLookup: (
     scope: Rules,
     lookupContext: RulesReferenceLookupContext,
@@ -1209,30 +1210,37 @@ function clearRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {
 }
 
 const INDEX_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
+  lookupType: 'index',
   performRulesLookup: performIndexRulesLookup,
   writeHandle: clearRulesLookupHandle
 };
 const PROPERTY_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
+  lookupType: 'property',
   performRulesLookup: performPropertyRulesLookup,
   writeHandle: writeDeclarationRulesLookupHandle
 };
 const VARIABLE_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
+  lookupType: 'variable',
   performRulesLookup: performVariableRulesLookup,
   writeHandle: writeVariableRulesLookupHandle
 };
 const DECLARATION_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
+  lookupType: 'declaration',
   performRulesLookup: performDeclarationRulesLookup,
   writeHandle: writeDeclarationRulesLookupHandle
 };
 const FUNCTION_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
+  lookupType: 'function',
   performRulesLookup: performFunctionRulesLookup,
   writeHandle: writeFunctionRulesLookupHandle
 };
 const MIXIN_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
+  lookupType: 'mixin',
   performRulesLookup: performMixinRulesLookup,
   writeHandle: writeCallableRulesLookupHandle
 };
 const MIXIN_RULESET_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
+  lookupType: 'mixin-ruleset',
   performRulesLookup: performMixinRulesetRulesLookup,
   writeHandle: writeCallableRulesLookupHandle
 };
@@ -1261,11 +1269,10 @@ function getCachedReferenceLookupStrategy(
   lookupType: LookupType
 ): ReferenceLookupStrategy {
   const cached = referenceNode._lookupStrategy;
-  if (cached && referenceNode._lookupStrategyType === lookupType) {
+  if (cached?.lookupType === lookupType) {
     return cached;
   }
   const strategy = getReferenceLookupStrategy(lookupType);
-  referenceNode._lookupStrategyType = lookupType;
   referenceNode._lookupStrategy = strategy;
   return strategy;
 }
@@ -2493,7 +2500,6 @@ function evaluateReferenceNode(args: {
 export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   _rulesLookupHandle: ReferenceRulesLookupHandle | undefined;
   _lookupStrategy: ReferenceLookupStrategy | undefined;
-  _lookupStrategyType: LookupType | undefined;
 
   constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: LocationInfo) {
     if (typeof value === 'string') {
