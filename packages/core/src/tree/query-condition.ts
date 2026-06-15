@@ -2,6 +2,10 @@ import type { Context } from '../context.js';
 import { type FinalPrintOptions, getPrintOptions, prepareRenderPrintState, type PrintOptions } from './util/print.js';
 import { defineType, F_STATIC, Node } from './node.js';
 import { Sequence } from './sequence.js';
+import { Any } from './any.js';
+import { Bool } from './bool.js';
+import { Color } from './color.js';
+import { Dimension } from './dimension.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -71,7 +75,29 @@ export class QueryCondition extends Sequence {
       options.suppressBoundaryTrivia = 'pre';
       let asyncOut = false;
       try {
-        if (node.hasFlag(F_STATIC) && node.render === Object.getPrototypeOf(node).render) {
+        const nodeType = node.type;
+        const canWriteStatic =
+          node.hasFlag(F_STATIC)
+          && (
+            (
+              (
+                nodeType === 'Any'
+                || nodeType === 'Anonymous'
+                || nodeType === 'Keyword'
+              )
+              && node.render === Any.prototype.render
+            )
+            || (nodeType === 'Bool' && node.render === Bool.prototype.render)
+            || (
+              (
+                nodeType === 'Dimension'
+                || nodeType === 'Num'
+              )
+              && node.render === Dimension.prototype.render
+            )
+            || (nodeType === 'Color' && node.render === Color.prototype.render)
+          );
+        if (canWriteStatic) {
           node.writeSyntax(options);
         } else {
           const before = w.mark();
@@ -122,7 +148,29 @@ export class QueryCondition extends Sequence {
       const saved = options.suppressBoundaryTrivia;
       options.suppressBoundaryTrivia = 'pre';
       try {
-        if (node.hasFlag(F_STATIC) && node.render === Object.getPrototypeOf(node).render) {
+        const nodeType = node.type;
+        const canWriteStatic =
+          node.hasFlag(F_STATIC)
+          && (
+            (
+              (
+                nodeType === 'Any'
+                || nodeType === 'Anonymous'
+                || nodeType === 'Keyword'
+              )
+              && node.render === Any.prototype.render
+            )
+            || (nodeType === 'Bool' && node.render === Bool.prototype.render)
+            || (
+              (
+                nodeType === 'Dimension'
+                || nodeType === 'Num'
+              )
+              && node.render === Dimension.prototype.render
+            )
+            || (nodeType === 'Color' && node.render === Color.prototype.render)
+          );
+        if (canWriteStatic) {
           node.writeSyntax(options);
           continue;
         }

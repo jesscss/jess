@@ -288,6 +288,12 @@ shape current before commit.
    tags rather than the generic `isNode(...)` classifier.
 2. [ ] Finish `QueryCondition` dynamic render by removing the child mark probe
    only after child render contracts prove write-vs-return behavior directly.
+
+   Current partial status: static child fast-path checks no longer call
+   `Object.getPrototypeOf(...)` per child. QueryCondition now uses explicit
+   owned scalar type/prototype contracts (`Any`/`Anonymous`/`Keyword`, `Bool`,
+   `Dimension`/`Num`, `Color`) before direct `writeSyntax(...)`; custom render
+   overrides still use the localized write-vs-return mark fallback.
 3. [ ] Finish `AtRule` body-state staging and remaining custom
    eval/import/render branch ladders.
 4. [ ] Finish `Ruleset.getHeaderString(...)` capture removal for frame
@@ -383,46 +389,38 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: fresh 15-item queue plus `Call` scalar classifier cut.
+Current pass: `QueryCondition` static child contract cut.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   object/array scan, generator, or collection helper was added.
 - New node/materialization: no runtime nodes, copies, wrappers, side maps, or
   materialized render values added.
-- Render path: selected row is `Call`. The existing scalar direct path in
-  `serializeRenderedArgsFrom(...)` and `writeEvaluatedSyntax(...)` now uses
-  direct `node.type`/`arg.type` comparisons for `Num`, `Dimension`, `Color`,
-  and `Bool` instead of the generic `isNode(...bitmask...)` classifier. The
-  path still writes syntax directly only when base `Node.eval` is intact and no
-  trivia is active; dynamic, trivia-backed, escaped-paren, async, and
-  custom-eval args keep the existing evaluated trim boundary.
+- Render path: selected row is `QueryCondition`. Static child direct-write
+  checks in `renderQueryConditionValue(...)` and
+  `renderQueryConditionValueRest(...)` no longer rediscover the class contract
+  with `Object.getPrototypeOf(node)`. They use explicit owned scalar
+  type/prototype contracts before direct `writeSyntax(...)`; dynamic, async,
+  and custom-render children keep the localized write-vs-return mark fallback.
 - Helper/API surface: no helper, method, public API, or new utility added.
-  This pass removes a generic helper call from the scalar branch instead of
-  adding a replacement helper.
+  The checks are duplicated inline to avoid adding another hot-path helper
+  call.
 - Metadata mutations: none. No parent/source/frozen/context metadata mutation,
   lazy options/context creation, `Reflect.*`, generic own-property helper, or
   source restoration added. The review script flags that doc phrase as a
   danger token because it names forbidden patterns, not because the patch adds
-  them. The diff also reads the arg source-root context only to detect
-  active trivia before taking the scalar direct path; it does not mutate
-  source/root metadata, and trivia-backed args stay on the existing trim
-  boundary.
+  them.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected cut carried forward: a broader `F_STATIC` shortcut was tried in the
-  prior pass and failed focused tests because `Any` instances can be
-  API-mutated with custom `eval(...)` behavior. That shape remains rejected.
-- Queue discipline: the active queue was refreshed to exactly 15 unchecked
-  sizable tasks in priority order. Parked non-focus work is no longer mixed into
-  the active queue.
-- Remaining blocker: non-scalar/static-custom/trivia args still need trim
-  boundaries, and active queue item 1 still owns callable output selection,
-  `evalArgNodes(...)` copy pressure, async/helper ladders, and repeated eval.
-- Evidence: package-scoped `call.test.ts` passed. Core build, diff check,
-  aggressive review, and bounded hotpath leash ran. The shared flat-buffer test
-  proves `rgb(100, 100, 100)` uses one call-level mark/readback and no
-  per-argument scalar trim marks. Hotpath leash details belong in
-  `PERFORMANCE-HANDOFF.md`; no speed claim.
-- Verdict: accept as a bounded `Call` serialization cleanup. Keep active queue
-  item 1 open until the remaining call-output/copy/argument-readback work is
-  removed or isolated.
+- Rejected cut: returning the original empty `Call` arg list from
+  `evalArgNodes(...)` was tested and reverted. Focused `Call` tests prove even
+  empty arg lists carry source-call parent identity, so reusing them would
+  transfer ownership to the evaluated call surface.
+- Remaining blocker: `QueryCondition` dynamic child render still needs the
+  localized write-vs-return mark fallback until child render contracts are
+  direct; item 2 stays open.
+- Evidence: package-scoped `query-condition.test.ts` and `call.test.ts` passed.
+  Core build, diff check, aggressive review, and bounded hotpath leash ran.
+  Hotpath leash details belong in `PERFORMANCE-HANDOFF.md`; no speed claim.
+- Verdict: accept as a bounded `QueryCondition` serialization cleanup. Keep
+  active queue item 2 open until the remaining dynamic child mark fallback is
+  removed or proven semantic.

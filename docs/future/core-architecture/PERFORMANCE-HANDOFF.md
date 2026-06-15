@@ -200,6 +200,32 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-15 QueryCondition Static Contract Probe Cut
+
+Hypothesis: `QueryCondition` static child render should not rediscover the
+child class contract with `Object.getPrototypeOf(...)` on every static sibling.
+
+Patch shape:
+
+- `renderQueryConditionValue(...)` and `renderQueryConditionValueRest(...)`
+  use explicit scalar type/prototype contracts for `Any`/`Anonymous`/`Keyword`,
+  `Bool`, `Dimension`/`Num`, and `Color`;
+- custom render overrides still use the existing write-vs-return mark fallback;
+- an attempted `Call.evalArgNodes(...)` empty-list reuse was rejected by focused
+  tests because empty arg lists still carry source-call parent identity.
+
+Evidence:
+
+- focused tests: `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/query-condition.test.ts src/tree/__tests__/call.test.ts
+  --run` passed;
+- hotpath leash: `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` passed. Results were tripwire-only, not a speed claim:
+  `functions.less` median 14.98ms usable, `import-reference.less` median
+  19.92ms usable, `mixins-guards.less` median 16.58ms usable,
+  `extend-chaining.less` median 5.15ms usable, `media.less` median 5.07ms
+  unstable.
+
 ### 2026-06-15 Call Scalar Direct-Type Classifier Pass
 
 Hypothesis: the accepted scalar-argument fast path should not pay the generic
