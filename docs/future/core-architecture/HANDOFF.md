@@ -75,60 +75,47 @@ Latest pass deletes the dead last-callable cache surface, removes the raw
 `copyLiveBindingSlots(...)` helper, keeps live binding writes synchronized
 through `setScopeFrameLiveBinding(...)`, and names immutable direct-declaration
 miss states separately from mutable traversal state.
-Current pass collapses variable frame binding lookup into one helper with an
-explicit live-only mode, makes cached direct declaration match state readonly at
-the type boundary, and lets fully indexed callable child surfaces append
-current-key hits once before skipping recursion when no relevant descendants
-exist.
-Current pass lets static variable lookup handles store binding-cell identity
-instead of a materialized runtime value, copies direct declaration cache records
-at the cache boundary, and lets frame-covered mixin namespace misses stop before
-`findMixinsFast(...)`.
-Current pass carries owner frames on variable binding hits so handles validate
-parent/fallback cell replacement, stores property/declaration handles as
-validated occurrence records, and lets ruleset namespace lookup use frame facts
-for the first-segment mixin ambiguity check.
-Current pass lets reusable variable handles finalize and raw-render directly
-from binding cells, makes declaration occurrence handles validate owner lookup
-version for child/source-order mutation, and proves reference imports keep
-callable frame miss coverage uncovered.
-Current pass stores declaration occurrence identity inside direct declaration
-cache records, removes the temporary runtime-binding wrapper from frame-backed
-variable lookup results, and lets callable frames answer guarded namespace
-mixin starts before direct crawl.
-Current pass shares direct declaration occurrence records with reference
-handles, deletes the dead `RuntimeVarBinding` model, and proves recursive
-namespace child-frame misses stop before direct crawl.
+Current passes store declaration occurrence identity inside direct declaration
+cache records, share those occurrence records with reference handles, delete
+the dead `RuntimeVarBinding` model, and use callable frame facts for guarded
+and recursive namespace paths before direct crawl.
+Latest pass makes direct Rules/index target lookup return declaration
+occurrences, removes test-only declaration-cache array spreading, and lets
+recursive namespace lookup hit fallback frames before child direct crawl.
 Last full gate smoke was usable but not a speed claim:
-`mixins-guards.less` `24.70ms`, `scope-lookup-stress.less` `103.00ms`.
+`mixins-guards.less` `29.84ms`, `scope-lookup-stress.less` `97.25ms`.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-7gh. [ ] Direct target `Rules` lookup uses occurrence/value records.
-Scope: `lookupDirectRulesTarget(...)`, quoted property index references,
-variable declaration fallback, raw reference lookup, and direct `Rules` targets.
-Goal: stop direct target lookup from returning bare declaration nodes where the
-same occurrence or binding-handle model can represent the hit.
-Acceptance: raw target lookup, quoted property index, variable/property target
-refs, owner mutation, lint, builds, aggressive review.
+7gk. [ ] Reference variable fallback stops returning bare declaration nodes.
+Scope: `lookupVariableReference(...)`, `lookupIndexReference(...)`,
+`findVariableDeclaration(...)` reference callers, raw render/eval finalization,
+and `_rulesLookupHandle` validation.
+Goal: variable reference fallback should use binding-cell handles or
+declaration occurrence records, not reusable bare `VarDeclaration` nodes.
+Acceptance: static variable refs, explicit target refs, snapshot reads, owner
+mutation, lint, builds, aggressive review.
 
-7gi. [ ] Declaration occurrence cache avoids test-only array scans.
-Scope: `directDeclarationLookupCache`, occurrence readback tests,
-source-order/owner mutation proof, and cache observability helpers.
-Goal: keep occurrence-cache proof without spreading cache values into arrays,
-and avoid adding cold introspection helpers unless a real test path needs them.
-Acceptance: tests prove occurrence identity and invalidation without hot-path
-array scans, lint, builds, aggressive review.
+7gl. [ ] Dead direct `Rules` target branch is proven and removed or covered.
+Scope: `lookupReferenceTarget(...)`, `lookupDirectTarget(...)`,
+`lookupDirectRulesTarget(...)`, and resolved `Rules` targets from refs/calls.
+Goal: if resolved `Rules` targets always route through
+`lookupRulesReferenceTarget(...)`, delete the direct `Rules` branch; otherwise
+add exact coverage and keep only the occurrence-returning lane.
+Acceptance: no unreachable branch left unexamined, direct target tests for the
+kept path or deletion proof, lint, builds, aggressive review.
 
-7gj. [ ] Callable namespace frame facts cover fallback-frame recursive hits.
-Scope: `findMixinNamespacePathFast(...)`, fallback frames, recursive namespace
-walks, `lookupScopeFrameCallable(...)`, and `terminalMixinOnly`.
-Goal: ensure recursive namespace descent uses fallback frame facts for covered
-hit/miss decisions before direct crawl.
-Acceptance: fallback-frame callable namespace tests, recursive namespace,
-terminal mixin-only, guarded namespace, lint, builds, aggressive review.
+7gm. [ ] Callable fallback-frame coverage avoids unnecessary direct fallback.
+Scope: simple `findMixin(...)`, `findMixinNamespacePathFast(...)`, fallback
+frame chains, covered misses, uncovered frames, and `terminalMixinOnly`.
+Goal: when fallback frames have covered hit/miss facts for a callable key,
+consume those facts without searching direct child surfaces or repeating
+parent fallback work.
+Acceptance: fallback covered hit and covered miss tests for simple and
+namespace lookup, uncovered fallback still bridges only when needed, lint,
+builds, aggressive review.
 
 ## Backlog Sources
 
@@ -178,36 +165,36 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: direct declaration occurrences shared with reference handles,
-  dead runtime binding shape deletion, and recursive namespace child-frame miss
-  proof.
+- Latest pass: direct Rules/index target occurrence returns, test-only
+  declaration-cache array-spread removal, and recursive namespace fallback-frame
+  hit coverage.
 - Verdict: accepted as binding/lookup cleanup, not as a speed claim.
-- New traversal: no new parent/source walks. Direct occurrence records are
-  returned through property/declaration reference lookup and validated in the
-  existing handle read path. Recursive namespace test warms the child frame and
-  proves its covered miss stops before `findMixinsFast(...)`.
+- New traversal: adds one fallback-frame loop inside
+  `findMixinNamespacePathFast(...)` only after a recursive child frame reports a
+  covered miss. It reuses existing `ScopeFrame.fallbackFrame` state and avoids
+  child direct crawl for covered fallback hits/misses; uncovered fallback frames
+  still bridge to direct lookup only on that fallback surface. Test-only cache
+  readback uses a cold `for...of` over `directDeclarationLookupCache` values to
+  prove occurrence identity without materializing an array or adding a runtime
+  introspection helper.
 - New node/materialization: no nodes. No AST wrappers or copied nodes.
+  Test-only `rules([])` creates an empty fixture body for fallback-frame proof.
 - Render path: unchanged.
-- Helper/API surface: adds occurrence-returning direct lookup variants for the
-  reference path and deletes `RuntimeVarBinding`, its guard, and its finalizer
-  branches. Node-returning `Rules.find*` methods stay as thin wrappers over
-  direct lookup for callers that need nodes.
+- Helper/API surface: no helper or API added. Existing occurrence-returning
+  direct lookup functions are reused by direct target/index lookup.
 - Metadata mutations: no parent/source mutation. `sourceNode` is carried through
   variable handles as existing binding identity; declaration occurrence
   validation compares existing parent/version/index without mutating metadata.
-- Allocation changes: reference handles now store the direct occurrence record
-  instead of rebuilding `DeclarationOccurrenceHandle`. Deleting
-  `RuntimeVarBinding` removes dead branch objects and branch checks.
-  `RulesLookupResult` is a type-only union over existing node and callable
-  array results; it does not allocate. Test-only `fastPathHits` arrays and
-  monkey-patch `try/finally` blocks prove direct bridge use or skip.
-- Evidence: focused lint passed. Focused lookup suite passed (`4` files,
-  `128` passed, `241` skipped). Larger focused lookup suite passed (`9` files,
-  `369` passed, `230` skipped). `pnpm --filter @jesscss/core build` passed
-  with the existing `js-expr.ts` direct-eval warning. Residue grep found no
-  runtime binding or old declaration-handle shapes outside tests that assert
-  removed method names; broader residue grep, `git diff --check`,
+- Allocation changes: direct target/index lookup now returns existing
+  declaration occurrence records instead of bare declaration nodes. Test cache
+  proof uses a single cold `for...of` instead of spreading cache values into an
+  array. Test-only `fastPathHits` arrays and monkey-patch `try/finally` blocks
+  prove that direct crawl is skipped and restore patched methods.
+- Evidence: focused lint passed. Targeted lookup tests passed (`2` files,
+  `10` passed, `285` skipped). Larger focused lookup suite passed (`6` files,
+  `295` passed, `290` skipped). Residue grep produced no matches.
+  `git diff --check`, `pnpm --filter @jesscss/core build`,
   `pnpm run verify:aggressive-cutting-review`,
   `pnpm run audit:node-creation`, and `pnpm --filter jess build` passed.
-  Smoke only: `mixins-guards.less` `24.70ms`,
-  `scope-lookup-stress.less` `103.00ms`.
+  Core build kept the existing `js-expr.ts` direct-eval warning. Smoke only:
+  `mixins-guards.less` `29.84ms`, `scope-lookup-stress.less` `97.25ms`.

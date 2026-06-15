@@ -43,9 +43,9 @@ import type { MixinEntry } from './util/callable-entry.js';
 import {
   type DirectDeclarationOccurrence,
   findAnyDeclarationOccurrence,
-  findPropertyDeclaration,
   findPropertyDeclarationOccurrence,
-  findVariableDeclaration
+  findVariableDeclaration,
+  findVariableDeclarationOccurrence
 } from './util/direct-rules-lookup.js';
 /**
  * The type is determined by syntax
@@ -639,7 +639,7 @@ function lookupIndexReference(
   }
   return isNode(env.keyNode, N.Quoted)
     ? findPropertyDeclarationOccurrence(targetRules, keyStr, opts)
-    : findVariableDeclaration(targetRules, keyStr, opts);
+    : findVariableDeclarationOccurrence(targetRules, keyStr, opts);
 }
 
 function lookupPropertyReference(
@@ -1167,7 +1167,7 @@ function lookupDirectTarget(
   lookupType: LookupType,
   valueKey: NormalizedLookupKey,
   keyNode: ReferenceValue['key']
-): RulesLookupResult {
+): ReferenceLookupReturnValue {
   if (lookupType !== 'index' || !targetNode) {
     return undefined;
   }
@@ -1191,17 +1191,17 @@ function lookupDirectRulesTarget(
   targetNode: Rules,
   key: string,
   keyNode: ReferenceValue['key']
-): RulesLookupResult {
+): ReferenceLookupReturnValue {
   return isNode(keyNode, N.Quoted)
-    ? findPropertyDeclaration(targetNode, key, {})
-    : findVariableDeclaration(targetNode, key, {});
+    ? findPropertyDeclarationOccurrence(targetNode, key, {})
+    : findVariableDeclarationOccurrence(targetNode, key, {});
 }
 
 function lookupDirectNamedTarget(
   targetNode: Node,
   key: string,
   keyNode: ReferenceValue['key']
-): RulesLookupResult {
+): ReferenceLookupReturnValue {
   if (targetNode instanceof JsObject) {
     return targetNode.value[key];
   }

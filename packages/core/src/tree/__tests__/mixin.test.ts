@@ -2606,6 +2606,48 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: recursive namespace hit reaches fallback frame before child direct crawl', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '#fallback-child-namespace') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const leaf = mixin({
+          name: any('.leaf'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        });
+        const fallbackChildNamespace = mixin({
+          name: any('#fallback-child-namespace'),
+          rules: rules([leaf])
+        });
+        const fallbackRules = rules([fallbackChildNamespace]);
+        const childRules = rules([]);
+        const root = rules([
+          mixin({
+            name: any('#parent-with-fallback-namespace'),
+            rules: childRules
+          })
+        ]);
+        root.getScopeFrame();
+        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+
+        expect(root.findMixin([
+          '#parent-with-fallback-namespace',
+          '#fallback-child-namespace',
+          '.leaf'
+        ], 'Mixin')).toEqual([leaf]);
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('ScopeFrame callable buckets: static miss coverage stays false for reference imports', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];

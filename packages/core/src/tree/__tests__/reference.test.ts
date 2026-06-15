@@ -1339,6 +1339,34 @@ describe('reference', () => {
       }
     });
 
+    it('direct Rules index target occurrences re-read after owner mutation', async () => {
+      const targetRules = rules([
+        decl({ name: 'tone', value: any('orange') }),
+        vardecl({ name: 'toneVar', value: any('purple') })
+      ]);
+      const node = rules([
+        vardecl({ name: 'targetRules', value: targetRules })
+      ]);
+      setRulesContext(await node.eval(context));
+      const propertyRef = ref({
+        target: ref({ key: 'targetRules' }, { type: 'variable' }),
+        key: quoted('tone')
+      }, { type: 'index' });
+      const variableRef = ref({
+        target: ref({ key: 'targetRules' }, { type: 'variable' }),
+        key: 'toneVar'
+      }, { type: 'index' });
+
+      expect(propertyRef.eval(context).valueOf()).toBe('orange');
+      expect(variableRef.eval(context).valueOf()).toBe('purple');
+
+      targetRules.push(decl({ name: 'tone', value: any('green') }));
+      targetRules.push(vardecl({ name: 'toneVar', value: any('blue') }));
+
+      expect(propertyRef.eval(context).valueOf()).toBe('green');
+      expect(variableRef.eval(context).valueOf()).toBe('blue');
+    });
+
     it('explicit target variable fallback uses carried declaration child entries', async () => {
       const childRules = rules([
         vardecl({ name: 'target-color', value: any('blue') })
@@ -3068,8 +3096,13 @@ describe('reference', () => {
 
       expect(root.findProperty('child-color', { searchParents: false })?.value.value.valueOf()).toBe('blue');
       expect(root.directDeclarationChildEntries?.map(entry => entry.node)).toEqual([childRules]);
-      const cachedMatch = [...(root.directDeclarationLookupCache?.values() ?? [])]
-        .find(entry => entry.publicMatch?.node === childRules.value[0]);
+      let cachedMatch = root.directDeclarationLookupCache?.get('__missing__');
+      for (const entry of root.directDeclarationLookupCache?.values() ?? []) {
+        if (entry.publicMatch?.node === childRules.value[0]) {
+          cachedMatch = entry;
+          break;
+        }
+      }
       expect(cachedMatch?.publicMatch).toMatchObject({
         node: childRules.value[0],
         ownerRules: childRules,

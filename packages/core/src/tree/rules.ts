@@ -1534,7 +1534,40 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (frameHit.kind === 'hit') {
           matches = collectCallableBucketResults(frameHit.bucket, includeRulesets);
         } else if (frameHit.kind === 'miss') {
-          return DEFINITE_MIXIN_NAMESPACE_MISS;
+          let fallbackFrame = scope._scopeFrame.fallbackFrame;
+          while (fallbackFrame && matches === undefined) {
+            if (isNode(fallbackFrame.rulesNode, N.Rules)) {
+              fallbackFrame.rulesNode.prepareCallableLookupFrame(fallbackFrame, segment, includeRulesets);
+            }
+            const fallbackHit = lookupScopeFrameCallable(fallbackFrame, segment, {
+              includeRulesets,
+              searchParents: false
+            });
+            if (fallbackHit.kind === 'hit') {
+              matches = collectCallableBucketResults(fallbackHit.bucket, includeRulesets);
+              break;
+            }
+            if (fallbackHit.kind === 'uncovered') {
+              if (isNode(fallbackFrame.rulesNode, N.Rules)) {
+                const directFallback = fallbackFrame.rulesNode.findMixinsFast(segment, {
+                  hasTarget: options.hasTarget,
+                  local: options.local,
+                  includeRulesets,
+                  searchParents: false,
+                  skipCurrentSurface: true
+                });
+                if (directFallback.length > 0) {
+                  matches = directFallback;
+                  break;
+                }
+              }
+              break;
+            }
+            fallbackFrame = fallbackFrame.fallbackFrame;
+          }
+          if (matches === undefined) {
+            return DEFINITE_MIXIN_NAMESPACE_MISS;
+          }
         }
       }
       matches ??= scope.findMixinsFast(segment, {
