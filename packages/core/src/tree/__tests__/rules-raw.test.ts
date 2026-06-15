@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import { any, decl, rawrules } from '../index.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { OutputWriter } from '../util/print.js';
+import { createTriviaMap } from '../util/trivia.js';
 
 class CountingWriter extends OutputWriter {
   reads = 0;
@@ -12,6 +14,17 @@ class CountingWriter extends OutputWriter {
     return super.getSince(mark);
   }
 }
+
+const token = (image: string): IToken => ({
+  image,
+  tokenType: { name: 'WS' } as IToken['tokenType'],
+  startOffset: 0,
+  endOffset: image.length - 1,
+  startLine: 1,
+  endLine: 1,
+  startColumn: 1,
+  endColumn: image.length
+});
 
 describe('RawRules', () => {
   it('serializes raw rules children without parent formatting', () => {
@@ -84,6 +97,28 @@ describe('RawRules', () => {
 
     expect(node.toBraced()).toBe('{color: red}');
     expect(node.toTrimmedString()).toBe('color: red');
+    expect(stringCalls).toBe(0);
+  });
+
+  it('writes raw children without public toString transport when trivia is active', () => {
+    const child = decl({
+      name: any('color'),
+      value: any('red')
+    }, undefined, [0, 1, 1, 10, 1, 11]);
+    const trivia = createTriviaMap({
+      before: new Map([[child.location[0], [token(' ')]]]),
+      after: new Map<number, IToken[]>()
+    });
+    let stringCalls = 0;
+    child.toString = () => {
+      stringCalls++;
+      return '';
+    };
+
+    const node = rawrules([child]);
+
+    expect(node.toTrimmedString({ trivia })).toBe(' color: red');
+    expect(node.toBraced({ trivia })).toBe('{ color: red}');
     expect(stringCalls).toBe(0);
   });
 

@@ -91,6 +91,11 @@ describe('Ampersand', () => {
 
   it('keeps composed selector stack render-local when serializing bare ampersands', () => {
     const parentSelector = sel([el('.foo')]);
+    let parentStringCalls = 0;
+    parentSelector.toString = () => {
+      parentStringCalls++;
+      return '';
+    };
     const composedSelectorStack = [parentSelector];
     const options = getPrintOptions({
       writer: new OutputWriter(),
@@ -101,6 +106,7 @@ describe('Ampersand', () => {
     const out = amp().toTrimmedString(options);
 
     expect(out).toBe('.foo');
+    expect(parentStringCalls).toBe(0);
     expect(options.composedSelectorStack).toBe(composedSelectorStack);
     expect(options.composedSelectorStack).toEqual([parentSelector]);
   });

@@ -575,10 +575,10 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       // resolves to the grandparent, then restore it after rendering.
       const parent = options.composedSelectorStack.pop()!;
       if (options.ampersandFirst !== false) {
-        parent.toString(options);
+        parent.writeSyntax(options);
       } else {
         w.add(':is(');
-        parent.toString(options);
+        parent.writeSyntax(options);
         w.add(')');
       }
       options.composedSelectorStack.push(parent);

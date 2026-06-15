@@ -12,7 +12,7 @@ import {
   getPrintOptions,
   prepareRenderPrintState
 } from './util/print.js';
-import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
+import { consumeTrivia, emitNodeSourceSyntaxWithTrivia, emitTriviaTokens } from './util/trivia.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
@@ -1340,10 +1340,9 @@ export abstract class Node<
    * The authored body form of the node without outer comments and
    * whitespace.
    *
-   * @note - Internally, this still calls `toString()` on each value,
-   * so that the internal spacing of the node serialization is
-   * correct. This method just serializes a node without the outer
-   * whitespace, and does not require a render context.
+   * @note - Child nodes are written directly. When trivia is active, the
+   * source-trivia emitter handles child boundary trivia without routing
+   * through public stringification.
    */
   toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
@@ -1351,7 +1350,12 @@ export abstract class Node<
     const mark = w.mark();
     this._visitValues((v) => {
       if (v instanceof Node) {
-        v.toString(options);
+        const sourceTrivia = options.trivia ?? v.sourceRoot?._treeContext?.opts?.trivia;
+        if (sourceTrivia) {
+          emitNodeSourceSyntaxWithTrivia(v, options);
+        } else {
+          v.writeSyntax(options);
+        }
       } else {
         const s = v === undefined ? '' : String(v);
         if (s) {

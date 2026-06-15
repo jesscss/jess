@@ -1,6 +1,7 @@
 import { Node, F_MAY_ASYNC, F_STATIC, defineType } from './node.js';
 import type { Context } from '../context.js';
 import { type FinalPrintOptions, getPrintOptions, type PrintOptions } from './util/print.js';
+import { emitNodeSourceSyntaxWithTrivia } from './util/trivia.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -34,7 +35,7 @@ export class Url extends Node<Node> {
       const valueMark = w.mark();
       const trivia = options.trivia ?? value.sourceRoot?._treeContext?.opts?.trivia;
       if (trivia) {
-        value.toString(options);
+        emitNodeSourceSyntaxWithTrivia(value, options);
       } else {
         value.writeSyntax(options);
       }

@@ -4,6 +4,7 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Rules } from './rules.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isRenderBuffer, type RenderBuffer } from './util/render-buffer.js';
+import { emitNodeSourceSyntaxWithTrivia } from './util/trivia.js';
 
 /**
  * A rules container that emits its content verbatim inside braces,
@@ -32,7 +33,7 @@ export class RawRules extends Rules {
       const child = this.value[i]!;
       const trivia = options.trivia ?? child.sourceRoot?._treeContext?.opts?.trivia;
       if (trivia) {
-        child.toString(options);
+        emitNodeSourceSyntaxWithTrivia(child, options);
       } else {
         child.writeSyntax(options);
       }
@@ -46,7 +47,7 @@ export class RawRules extends Rules {
       const child = this.value[i]!;
       const trivia = options.trivia ?? child.sourceRoot?._treeContext?.opts?.trivia;
       if (trivia) {
-        child.toString(options);
+        emitNodeSourceSyntaxWithTrivia(child, options);
       } else {
         child.writeSyntax(options);
       }

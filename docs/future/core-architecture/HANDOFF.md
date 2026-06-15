@@ -336,11 +336,22 @@ shape current before commit.
 
    Current partial status: base `Node.writeSyntax(...)` no longer calls child
    public `toString(...)`; child values write syntax directly. Base
-   `renderSource(...)` still routes through `toTrimmedString(...)`, so the item
+   `toTrimmedString(...)` also writes child values directly, using the
+   source-trivia emitter instead of child public stringification when trivia is
+   active. Base `renderSource(...)` still routes through
+   `toTrimmedString(...)`; `node-render-buffer` has a deliberate source-only
+   adapter that currently makes this a compatibility boundary, so the item
    remains open.
 12. [ ] Finish scalar wrapper leftovers in `Block`, `Paren`, `Url`, `Quoted`,
    `Negative`, and `AttributeSelector` where localized mark/readback remains
    outside documented cold/public boundaries.
+
+   Current partial status: `Block` and `Url` no longer route trivia-backed
+   child emission through public child `toString(...)`; they use direct
+   source-trivia syntax emission. `RawRules` received the same child-emission
+   cut even though it is tracked in the node tracker rather than this scalar
+   wrapper row. `Url` context normalization and non-scalar wrapper render still
+   keep localized mark/readback boundaries.
 13. [ ] Finish `List`/`Sequence` public render string-return compatibility:
    either document it as the cold public boundary or split a direct buffer-only
    path that avoids returning a string when callers do not need it.
@@ -414,40 +425,44 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: cross-queue direct syntax cleanup.
+Current pass: direct child-source serialization cleanup.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   object/array scan, generator, or collection helper was added.
-- New node/materialization: one detached `OutputWriter` remains in
-  `Declaration.stringifyDetached(...)`; this is an existing cold/custom
-  fallback string boundary, not a new render node or AST materialization.
-- Render path: selected queue rows were `AtRule`, `Declaration`, `Reference`,
-  `StyleImport`, and `Node`. Internal serialization stopped calling child
-  public string APIs in `AtRule.renderLeafNodeToString(...)`,
-  `Declaration` custom value/fallback paths, `Reference.render(...)`,
-  `StyleImport` configured variable keys, and base `Node.writeSyntax(...)`.
-- Helper/API surface: one file-local `variableNameKey(...)` helper was added
-  in `StyleImport` to replace three public `toString(...)` calls. It has no
-  traversal and is scoped to declaration-name key extraction.
+- New node/materialization: none. No `new Node`, copy, `.inherit(...)`,
+  `.adopt(...)`, wrapper `Rules`, frozen/source/parent metadata mutation, or
+  materialized array was added.
+- Render path: base `Node.toTrimmedString(...)`, `Block.writeBlockSyntax(...)`,
+  `Url.writeUrlSyntax(...)`, `RawRules.writeSyntax(...)`,
+  `RawRules.writeBracedSyntax(...)`, and `Ampersand.writeSyntax(...)` stopped
+  using child/parent public `toString(...)` transport. Child source trivia is
+  now emitted through the existing direct source-trivia writer; ampersand parent
+  selector emission uses `writeSyntax(...)`.
+- Helper/API surface: none added.
 - Metadata mutations: none added. No parent/source/frozen/context metadata
   mutation, lazy options/context creation, `Reflect.*`, generic own-property
-  helper, or source restoration added. The existing configured import surface
-  mutation/copy work remains queue item 10 debt.
+  helper, or source restoration added. Review-script danger tokens were
+  prosecuted: `new Map(...)` and `new TreeContext(...)` appear only in focused
+  test fixtures for trivia; the `sourceRoot?._treeContext` read is the existing
+  direct trivia lookup used to replace public child `toString(...)`, not a new
+  side map, walk, or metadata mutation.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected cut: returning the original empty `Call` arg list from
-  `evalArgNodes(...)` was tested and reverted. Focused `Call` tests prove even
-  empty arg lists carry source-call parent identity, so reusing them would
-  transfer ownership to the evaluated call surface.
-- Remaining blockers: `Call.evalArgNodes(...)`, `AtRule` body ownership,
-  `Rules` render string-return bridges, `List`/`Sequence` buffer compatibility,
-  and `Operation` public resolve materialization all remain open.
-- Evidence: focused core-project tests for `AtRule`, `Declaration`,
-  `node-render-buffer`, `Block`, `Url`, `ImportStyle`, `Reference`, and
-  `Rules` passed. A bounded changed-baseline attempt first exposed
-  `Reference.render(...)` failing to write resolved scalar output through the
-  context-owned print state; that failure is now fixed by the same pass. Core
-  build passed.
-- Verdict: accept as a bounded direct-syntax cleanup across the full queue
-  surface; keep all queue items open because none of the whole-task objectives
-  are complete.
+- Rejected/deferred cut: base `Node.renderSource(...)` still calls
+  `toTrimmedString(...)`. `node-render-buffer` proves source-only adapter nodes
+  can intentionally override only `toTrimmedString(...)`; flipping the base
+  render fallback before that compatibility surface is redesigned would be a
+  behavior change, not a safe cut.
+- Remaining blockers: queue item 11 still needs the base render-source
+  compatibility boundary redesigned; queue item 12 still has localized
+  mark/readback in `Paren`, `Quoted`, `AttributeSelector`, and `Url`
+  normalization/non-scalar cases.
+- Evidence: focused tests passed for `Block`, `Url`, `node-render-buffer`,
+  `Ampersand`, and `RawRules`; core build passed; aggressive-cutting review
+  and `git diff --check` passed. `verify:baseline -- --changed` was started
+  and showed substantial core test progress, then produced no output for about
+  90 seconds with Vitest workers still alive; the process was terminated and
+  the changed-baseline gate is inconclusive, not passed.
+- Verdict: accept as a bounded public-string-transport cut. Keep the active
+  queue at 15 open whole-task items because the affected rows are materially
+  advanced but not complete.

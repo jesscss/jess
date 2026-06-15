@@ -91,6 +91,23 @@ describe('Block', () => {
     expect(node.toTrimmedString({ trivia })).toBe('{foo\n  }');
   });
 
+  it('writes block values with an active trivia map without public toString transport', () => {
+    const value = any('foo', undefined, [1, 1, 2, 3, 1, 4]);
+    const node = block(value, undefined, [0, 1, 1, 7, 2, 3]);
+    const trivia = createTriviaMap({
+      before: new Map([[value.location[0], [token('/*x*/', 'Comment')]]]),
+      after: new Map<number, IToken[]>()
+    }) satisfies TriviaMap;
+    let stringCalls = 0;
+    value.toString = () => {
+      stringCalls++;
+      return '';
+    };
+
+    expect(node.toTrimmedString({ trivia })).toBe('{foo}');
+    expect(stringCalls).toBe(0);
+  });
+
   it('writes block values without public toString transport when trivia is inactive', () => {
     const value = any('foo');
     let stringCalls = 0;

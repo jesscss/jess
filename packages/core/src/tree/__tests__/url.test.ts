@@ -157,6 +157,24 @@ describe('url', () => {
     expect(node.render(context)).toBe('url("image.png")');
   });
 
+  it('writes context url values with trivia without public toString transport', () => {
+    const trivia = createTriviaMap({
+      before: new Map([[4, [token(' ')]]]),
+      after: new Map<number, IToken[]>()
+    });
+    const treeContext = new TreeContext({ trivia });
+    const value = quoted('image.png', undefined, [4, 1, 5, 14, 1, 15], treeContext);
+    const node = url(value, undefined, [0, 1, 1, 15, 1, 16], treeContext);
+    let toStringCalls = 0;
+    value.toString = () => {
+      toStringCalls++;
+      return '';
+    };
+
+    expect(node.toTrimmedString({ context, trivia })).toBe('url("image.png")');
+    expect(toStringCalls).toBe(0);
+  });
+
   it('normalizes multiline url value indentation when rendering evaluated output', () => {
     const node = url(any('data:image/png;base64,\n    aaa\n    bbb'));
 

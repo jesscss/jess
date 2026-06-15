@@ -3,7 +3,7 @@ import { Any } from './any.js';
 import { Node, F_MAY_ASYNC, F_STATIC, defineType } from './node.js';
 import { Nil } from './nil.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
-import { consumeTriviaText } from './util/trivia.js';
+import { consumeTriviaText, emitNodeSourceSyntaxWithTrivia } from './util/trivia.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -45,7 +45,7 @@ export class Block extends Node<Node, BlockOptions> {
     w.add(start);
     const trivia = options.trivia ?? this.sourceRoot?._treeContext?.opts?.trivia;
     if (trivia) {
-      value.toString(options);
+      emitNodeSourceSyntaxWithTrivia(value, options);
     } else {
       value.writeSyntax(options);
     }

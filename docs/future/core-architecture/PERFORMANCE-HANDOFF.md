@@ -3703,6 +3703,27 @@ Interpretation: status only, not a speed claim. This is a dirty-worktree leash
 for direct serialization cleanup; no before/after decision-quality performance
 conclusion is claimed.
 
+### Direct Child Source Serialization Cleanup
+
+Date: 2026-06-15.
+
+Change: base `Node.toTrimmedString`, `Block`, `Url`, `RawRules`, and
+`Ampersand` removed child/parent public `toString(...)` transport from direct
+source syntax paths. Trivia-backed child emission now uses the existing
+source-trivia writer instead of public stringification.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `15.16ms` usable, `import-reference` median
+  `22.92ms` usable, `mixins-guards` median `19.50ms` usable,
+  `extend-chaining` median `5.96ms` usable, and `media` median `6.66ms`
+  unstable.
+
+Interpretation: leash status only, not a speed claim. The pass is a direct
+public-string-transport cleanup; no benchmark comparison was used to claim a
+win.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
