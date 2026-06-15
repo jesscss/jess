@@ -548,33 +548,34 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `List`/`Sequence` compare-time public string transport cut.
+Current pass: `Range` scalar-bound readback cut.
 
-- New traversal: none beyond the existing direct syntax writer loops already
-  owned by `List.renderListSyntax(...)` and
-  `Sequence.renderSequenceSyntax(...)`. No new loop, recursion,
-  parent/source walk, side-map lookup, or object/array scan was added.
+- New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
+  or object/array scan was added.
 - New node/materialization: no runtime nodes, copies, wrappers, arrays, side
-  maps, or materialized render values added. The review script may flag
-  test-only thrown `Error` sentinels in focused tests; they are not production
-  control flow and only prove public string transport is not called.
-- Render path: selected rows are `List` and `Sequence`. This pass does not
-  change render output. It cuts compare-time serialization used as a decision
-  predicate: `compare(Any)` now uses each node's direct syntax renderer instead
-  of calling the public `toString(...)` wrapper on the left operand.
-- Helper/API surface: none added. Existing node methods were simplified in
-  place; no shared abstraction, utility object, or public API was introduced.
+  maps, or materialized render values added. Runtime strings are the scalar
+  range output that `render(...)` and public `toTrimmedString(...)` already
+  return. The review script flags one test-only `CountingWriter` construction
+  used to prove mark/readback counts; it is not production node creation or
+  render materialization.
+- Render path: selected row is `Range`. Simple `Any` and non-compound
+  `Dimension` bounds now build the known range text directly and write it to
+  the supplied writer or render buffer without opening a writer mark/readback
+  window. Trivia-backed or non-scalar bounds stay on the existing direct writer
+  fallback.
+- Helper/API surface: two node-local private helpers were added:
+  `scalarBoundText(...)` and `scalarRangeText(...)`. They add no public API and
+  replace the previous public render/source capture path for common scalar
+  ranges. A one-line writer helper was rejected and removed during review.
 - Metadata mutations: none. No parent/source/frozen/context metadata mutation,
   lazy options/context creation, reflection call, generic own-property helper,
   or structural probe added.
 - Error/control flow: no production error objects or throw/catch control flow
-  added. Focused tests override `toString(...)` with throwing sentinels to prove
-  the forbidden path is not used.
-- Evidence: package-scoped `list.test.ts` and `sequence.test.ts` passed. Tests
-  prove both `Any` operands and `List`/`Sequence` operands avoid public
-  `toString(...)` transport during compare while preserving existing render,
-  buffer, eval, and source canonicality behavior. Final hotpath/profile status
-  belongs in `PERFORMANCE-HANDOFF.md`; no speed claim.
-- Verdict: accept as a bounded `List`/`Sequence` compare-path cut. Both rows
-  remain partial because trivia-backed emission and dynamic render buffer
-  capture boundaries still require separate decisions.
+  added.
+- Evidence: package-scoped `range.test.ts` passed, and core build passed.
+  Tests prove scalar range source/render paths avoid writer marks/readbacks,
+  avoid public resolve, keep render-buffer output correct, and preserve
+  existing resolve/render state behavior. Final hotpath/profile status belongs
+  in `PERFORMANCE-HANDOFF.md`; no speed claim.
+- Verdict: accept as a bounded `Range` scalar-bound cleanup. The remaining
+  fallback is intentional for trivia-backed or non-scalar bounds.

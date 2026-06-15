@@ -6,10 +6,22 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  marks = 0;
+  reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
   }
 }
 
@@ -53,6 +65,8 @@ describe('Range', () => {
       step: num(2)
     }).toTrimmedString({ writer })).toBe('1 to 3 step 2');
     expect(writer.captures).toBe(0);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('writes range bounds without public toString transport', () => {
@@ -71,6 +85,7 @@ describe('Range', () => {
 
   it('renders range values through render(context) without public resolve', () => {
     const context = new Context();
+    const writer = new CountingWriter();
     const node = range({
       start: num(1),
       end: num(3),
@@ -82,7 +97,10 @@ describe('Range', () => {
       return node;
     };
 
-    expect(node.render(context)).toBe('1 to 3 step 2');
+    expect(node.render(context, { writer })).toBe('1 to 3 step 2');
+    expect(writer.toString()).toBe('1 to 3 step 2');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
     expect(resolveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);

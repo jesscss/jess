@@ -3432,6 +3432,37 @@ initial usable `extend-chaining` concern did not remain decision-quality on the
 rerun. Broad writer counts did not move, which is expected because this cuts a
 compare path rather than the main `benchmark.less` render path.
 
+### Range Scalar Bound Readback Cut
+
+Date: 2026-06-15.
+
+Change: `Range` now emits simple `Any` and non-compound `Dimension` bounds as
+known scalar text in public source and render paths. Common numeric ranges no
+longer open a writer mark/readback window just to return or buffer the same
+`1 to 3 step 2` text. Trivia-backed or non-scalar bounds remain on the existing
+writer fallback.
+
+Hotpath status:
+
+- Focused `pnpm --filter @jesscss/core test -- --run
+  src/tree/__tests__/range.test.ts` passed. Tests prove scalar source/render
+  avoids mark/getSince, render avoids public resolve, and flat-buffer output
+  remains correct.
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `15.61ms` unstable, `import-reference` median
+  `24.55ms` usable, `mixins-guards` median `18.01ms` usable,
+  `extend-chaining` median `5.87ms` usable, and `media` median `5.62ms`
+  unstable.
+- Final `node scripts/profile-less-benchmark.mjs --file=benchmark.less`
+  reported broad `OutputWriter.mark` `49903`, `OutputWriter.getSince` `44907`,
+  `Reference.evalNode` `3619` calls / `77.68ms`, and `Rules.find` `1013`
+  calls / `34.10ms`.
+
+Interpretation: accept as a local scalar serialization cleanup only, not a
+speed claim. Broad writer counts did not move, which means this range scalar
+path is not materially represented in `benchmark.less`; the bounded leash did
+not show a usable regression.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
