@@ -3336,6 +3336,36 @@ claim. Broad `benchmark.less` writer counts did not move from the previous
 pass, which means this cut mostly affects focused scalar flat-buffer paths not
 materially represented by the broad benchmark.
 
+### Paren Any Wrapper Cut
+
+Date: 2026-06-15.
+
+Change: `Paren` now writes no-trivia `Any` child wrapper syntax directly in
+public capture and non-escaped render paths. `(foo)` and `[foo]` no longer fall
+through the paren source capture path just to read back the wrapper string.
+Escaped render, trivia-backed source, and non-`Any` children remain on existing
+semantic fallback boundaries.
+
+Hotpath status:
+
+- Focused `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/paren.test.ts --run` passed. Tests prove no-trivia `Any`
+  paren source/render paths avoid writer marks/readbacks while existing nil,
+  dynamic, default guard, trivia, and escaped-list behavior remains green.
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `15.90ms` unstable, `import-reference` median
+  `21.61ms` usable, `mixins-guards` median `18.69ms` unstable,
+  `extend-chaining` median `5.92ms` usable, and `media` median `5.68ms`
+  usable.
+- Final `node scripts/profile-less-benchmark.mjs --file=benchmark.less`
+  reported broad `OutputWriter.mark` `49903`, `OutputWriter.getSince` `44907`,
+  `Reference.evalNode` `3619` calls / `74.86ms`, and `Rules.find` `1013`
+  calls / `29.61ms`.
+
+Interpretation: accept as a bounded serialization cleanup only, not a speed
+claim. Broad writer counts did not move, indicating this scalar paren path is
+not materially represented in `benchmark.less`.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

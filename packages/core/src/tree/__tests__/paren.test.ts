@@ -89,6 +89,25 @@ describe('Paren', () => {
     expect(squareWriter.reads).toBe(0);
   });
 
+  it('writes Any paren syntax without writer readback when trivia is inactive', () => {
+    const writer = new CountingWriter();
+    const squareWriter = new CountingWriter();
+    const escapedWriter = new CountingWriter();
+
+    expect(paren(any('foo')).toTrimmedString({ writer })).toBe('(foo)');
+    expect(writer.toString()).toBe('(foo)');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(paren(any('foo'), { delimiter: 'square' }).toTrimmedString({ writer: squareWriter })).toBe('[foo]');
+    expect(squareWriter.toString()).toBe('[foo]');
+    expect(squareWriter.marks).toBe(0);
+    expect(squareWriter.reads).toBe(0);
+    expect(paren(any('foo'), { escaped: true }).toTrimmedString({ writer: escapedWriter })).toBe('~(foo)');
+    expect(escapedWriter.toString()).toBe('~(foo)');
+    expect(escapedWriter.marks).toBe(0);
+    expect(escapedWriter.reads).toBe(0);
+  });
+
   it('does not allocate options when rendering paren syntax with defaults', () => {
     const rule = paren(any('foo'));
 
@@ -169,6 +188,20 @@ describe('Paren', () => {
     expect(writer.reads).toBe(0);
     expect(parenNode.render(context, buffer, { writer })).toBe('[]');
     expect(buffer.parts).toEqual(['[]']);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
+  it('renders Any paren syntax without writer readback when trivia is inactive', () => {
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+
+    expect(paren(any('foo')).render(context, { writer })).toBe('(foo)');
+    expect(writer.toString()).toBe('(foo)');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(paren(any('foo'), { delimiter: 'square' }).render(context, buffer, { writer })).toBe('[foo]');
+    expect(buffer.parts).toEqual(['[foo]']);
     expect(writer.marks).toBe(0);
     expect(writer.reads).toBe(0);
   });

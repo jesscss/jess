@@ -548,36 +548,36 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: scalar leaf render-buffer mark cut.
+Current pass: `Paren` no-trivia `Any` wrapper cut.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   or object/array scan was added.
 - New node/materialization: no runtime nodes, copies, wrappers, arrays, side
   maps, or materialized render values added. The review script flags test-only
-  `Context`, `CountingWriter`, and scalar `Color` allocations used to prove
-  writer mark/readback counts and scalar color output; they are not production
-  node creation or render materialization. Runtime strings are the existing
-  scalar return values required by `render(...)` and public
+  `CountingWriter` allocations used to prove writer mark/readback counts; they
+  are not production node creation or render materialization. Runtime strings
+  are the existing scalar return values required by `render(...)` and public
   `toTrimmedString(...)`.
-- Render path: selected rows are `Any`/`Keyword`/`Anonymous`, `Bool`,
-  `Combinator`, `Dimension`, and scalar `Color`. These nodes already had
-  direct source/public scalar writers, but flat-buffer render still inherited
-  the base render mark window. Each touched scalar leaf now writes direct
-  string/buffer output in `render(...)`; node-backed `Color` stays on the
-  existing fallback boundary.
-- Helper/API surface: no helper, public method, or utility added. The pass uses
-  concrete node `render(...)` overrides rather than a generic helper ladder, so
-  hot leaf output stays one direct branch and one writer call.
+- Render path: selected row is `Paren`. No-trivia `Any` children now write
+  known wrapper syntax directly in public capture and non-escaped render paths.
+  The path no longer falls back to `renderOutput(context, this, ...)` and the
+  inherited source capture just to return `(value)` or `[value]`. Escaped
+  render, trivia, and non-`Any` children stay on their existing semantic
+  boundaries.
+- Helper/API surface: two private helpers were added only inside `Paren`:
+  `directAnySourceText(...)` computes the scalar wrapper text and
+  `writeDirectAnySourceText(...)` emits the same pieces with source association.
+  They add no public API and avoid a generic helper ladder.
 - Metadata mutations: none. No parent/source/frozen/context metadata mutation,
   lazy options/context creation, reflection call, generic own-property helper,
   or structural probe added.
 - Error/control flow: no new routine error objects or throw/catch control flow.
-- Evidence: package-scoped `any.test.ts`, `bool.test.ts`,
-  `combinator.test.ts`, `dimension.test.ts`, `color.test.ts`, and
-  `node-render-buffer.test.ts` passed. Tests prove direct writer and
-  flat-buffer render avoid writer marks/readbacks for the touched scalar leaves
-  while preserving existing render/buffer alignment. Final hotpath/profile
-  status belongs in `PERFORMANCE-HANDOFF.md`; no speed claim.
-- Verdict: accept as a scalar leaf render-buffer completion batch. `Range`,
-  `List`, `Sequence`, and other composite nodes remain on their own rows
-  because they need child-boundary/trivia/materialization decisions.
+- Evidence: package-scoped `paren.test.ts` passed. Tests prove no-trivia `Any`
+  paren source capture, square delimiter capture, escaped source capture, and
+  non-escaped render/buffer render avoid writer marks/readbacks while existing
+  dynamic, default guard, nil, trivia, and escaped-list behavior remains green.
+  Final hotpath/profile status belongs in `PERFORMANCE-HANDOFF.md`; no speed
+  claim.
+- Verdict: accept as a bounded `Paren` scalar wrapper cut. Non-`Any` parens,
+  escaped render, and trivia-backed source remain on the existing fallback
+  boundaries.

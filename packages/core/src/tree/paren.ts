@@ -1,4 +1,5 @@
 import { type Context } from '../context.js';
+import { Any } from './any.js';
 import { Bool, createPublicBool } from './bool.js';
 import { Expression } from './expression.js';
 import { Operation } from './operation.js';
@@ -101,6 +102,14 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       printOptions.writer.add(out, this);
       return out;
     }
+    const value = this.value;
+    if (value instanceof Any) {
+      const scalar = this.directAnySourceText(value, printOptions);
+      if (scalar !== undefined) {
+        this.writeDirectAnySourceText(value, printOptions);
+        return scalar;
+      }
+    }
     const mark = printOptions.writer.mark();
     this.writeSyntax(printOptions);
     const w = printOptions.writer;
@@ -126,6 +135,18 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         ? writeRenderText(bufferOrOptions, out)
         : out;
     }
+    const directValue = this.value;
+    if (!this._options?.escaped && directValue instanceof Any) {
+      const scalar = this.directAnySourceText(directValue, buffer ? options : bufferOrOptions);
+      if (scalar !== undefined) {
+        if (buffer) {
+          return writeRenderText(buffer, scalar);
+        }
+        const printOptions = getPrintOptions(bufferOrOptions);
+        this.writeDirectAnySourceText(directValue, printOptions);
+        return scalar;
+      }
+    }
     return this.renderResolvedValue(context, bufferOrOptions, options);
   }
 
@@ -137,6 +158,27 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     return this._options?.delimiter === 'square'
       ? `${escapeChar}[]`
       : `${escapeChar}()`;
+  }
+
+  private directAnySourceText(value: Any, options?: PrintOptions): string | undefined {
+    if (options?.trivia) {
+      return undefined;
+    }
+    const escapeChar = this._options?.escaped ? '~' : '';
+    const open = this._options?.delimiter === 'square' ? '[' : '(';
+    const close = this._options?.delimiter === 'square' ? ']' : ')';
+    return escapeChar + open + value.value + close;
+  }
+
+  private writeDirectAnySourceText(value: Any, options: FinalPrintOptions): void {
+    const w = options.writer;
+    const escapeChar = this._options?.escaped ? '~' : '';
+    if (escapeChar) {
+      w.add(escapeChar, this);
+    }
+    w.add(this._options?.delimiter === 'square' ? '[' : '(');
+    w.add(value.value, value);
+    w.add(this._options?.delimiter === 'square' ? ']' : ')');
   }
 
   private renderResolvedValue(
