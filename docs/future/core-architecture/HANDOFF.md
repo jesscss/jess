@@ -155,104 +155,106 @@ Current queue pass removes the remaining production `_indexRules()` calls from
 callable ruleset path helpers. Exact and compound-prefix ruleset namespace
 lookup now reverse-scan the current tree and use carried child-surface flags
 without building broad indexes.
+Latest queue pass deletes the legacy `_indexRules()` method, `_indexing`, and
+`rulesIndexed` state entirely. Direct child-surface lookup now relies on direct
+tree scans and carried child-surface flags rather than indexed/unindexed
+sentinels.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-1. [ ] Dynamic pending declarations get a real affected-key model.
-Scope: `pendingDeclarationNames`, dynamic-name promotion, and static miss
-tests. Goal: do not broad-uncover misses unless an unresolved dynamic name can
-actually affect the requested key. Acceptance: semantic model plus tests for
-unknown dynamic, promoted static, and unaffected static miss.
+1. [ ] Key pending dynamic declaration uncertainty by affected name when
+possible. Scope: `pendingDeclarationNames`, promoted static names, and
+`lookupScopeFrameVariable(...)`. Goal: a pending declaration only uncovers a
+miss when it can still affect the requested key. Acceptance: tests for
+unaffected miss, promoted static hit, and still-dynamic unresolved name.
 
-2. [ ] Callable guard/candidate uncertainty is named separately from child
-and reference-import uncertainty. Scope: guarded mixins/rulesets and
-`ScopeFrameCallableLookupResult`. Goal: only guarded candidate uncertainty
-routes to the bridge. Acceptance: guarded cases return a named uncovered
-reason; unguarded covered misses stop.
+2. [ ] Split guarded callable candidate uncertainty from child/reference
+uncertainty. Scope: guarded mixins/rulesets,
+`ScopeFrameCallableLookupResult`, and direct crawl bridges. Goal: guarded
+candidates route conservatively without poisoning covered child-surface
+misses. Acceptance: guarded uncovered reason plus unguarded covered miss tests.
 
-3. [ ] Array-path callable handles stop rebuilding remainders after warmup.
-Scope: `collectKeyRemainder(...)`, `getCallableLookupKeyRemainder(...)`, and
-array namespace references. Goal: stable path identity carries/reuses the
-needed remainder. Acceptance: counter proof or a documented emitted no-op.
+3. [ ] Reuse callable namespace remainders for array-path handles. Scope:
+`collectKeyRemainder(...)`, `getCallableLookupKeyRemainder(...)`, and
+array-key mixin references. Goal: warm namespace lookup should not rebuild the
+same remainder arrays/strings. Acceptance: counter or spy proof on repeated
+array-path lookup.
 
-4. [ ] Handle access object allocation gets a measured keep/delete decision.
-Scope: `getRulesLookupHandleAccess(...)`, strategy write/read call sites, and
-emitted output. Goal: decide scalar locals versus transient object with
-evidence. Acceptance: emitted audit plus benchmark/profile note, no speed
-claim without stable signal.
+4. [ ] Decide whether handle-access objects can become scalar locals. Scope:
+`getRulesLookupHandleAccess(...)`, reference handle write/read sites, and
+stress profile counters. Goal: remove transient access objects when scalar
+state is simpler and measured neutral/better. Acceptance: emitted audit plus
+profile note; no speed claim without stable signal.
 
-5. [ ] Legacy `_indexRules()` method and `rulesIndexed` fields get a delete
-or isolate plan. Scope: `_indexRules()`, `rulesIndexed`,
-`directChildRuleEntries`, `directDeclarationChildEntries`, and
-`rules-flags.test.ts`. Goal: separate any remaining non-lookup flag/index
-setup from runtime lookup so the broad index method can be deleted or made
-test-only/cold. Acceptance: production `rg "_indexRules\\(" packages/core/src`
-has no lookup callers and the next source cut is identified with tests.
+5. [ ] Make function binding invalidation key-scoped or prove global invalidity.
+Scope: `setFunctionBinding(...)`, `lookupVersion`, function reference handles,
+and plugin function tests. Goal: unrelated function registrations should not
+invalidate cached function hits unless unavoidable. Acceptance: keyed
+invalidation or documented failing-proof with tests.
 
-6. [ ] Function binding invalidation is key-scoped or explicitly proven
-global. Scope: `setFunctionBinding(...)`, lookup handles, and function tests.
-Goal: unrelated declarations should not invalidate function handles unless
-global invalidation is semantically required. Acceptance: keyed invalidation or
-no-op proof with tests. Note: `findFunction(...)` no longer indexes rules;
-this item is about version invalidation only.
+6. [ ] Try assignment through modeled current cells before occurrence fallback.
+Scope: `assignScopeFrameVariable(...)`, `setDefined` eval, readonly cells, and
+declaration occurrence fallback. Goal: covered `:=` writes mutate modeled
+cells without source lookup when readonly semantics are represented.
+Acceptance: occurrence spy proves the covered current-cell path skips direct
+declaration lookup.
 
-7. [ ] Assignment target lookup tries modeled current cells before occurrence
-fallback. Scope: `assignScopeFrameVariable(...)`, set-defined eval, readonly
-rules. Goal: covered `:=` writes mutate modeled cells without source lookup
-when readonly semantics are represented. Acceptance: occurrence spy proves the
-covered current-cell path skips direct declaration lookup.
+7. [ ] Add explicit direct declaration visibility mode for imports/reference.
+Scope: declaration lookup options, reference imports, compose/import
+boundaries, and direct child entries. Goal: direct lookup should carry
+visibility facts instead of rediscovering them through fallback behavior.
+Acceptance: focused import/reference declaration matrix plus fallback spy.
 
-8. [ ] Import/reference declaration visibility becomes an explicit direct
-lookup mode. Scope: declaration lookup options, import/reference fixtures, and
-direct child entries. Goal: direct lookup should carry visibility facts instead
-of rediscovering them through fallback side effects. Acceptance: focused
-import/reference declaration tests plus fallback spy.
-
-9. [ ] Property merge-chain occurrence slots are implemented from the design
-note. Scope: property declaration occurrences, merge metadata, assignment
-normalization. Goal: delete the remaining filtered property registry fallback
-without adding a second name map. Acceptance: merge-chain fixtures use direct
+8. [ ] Implement property merge-chain occurrence slots. Scope: property
+declaration occurrences, merge metadata, assignment normalization, and property
+lookup tests. Goal: delete remaining filtered property fallback without adding
+a second name registry. Acceptance: merge-chain fixtures resolve by direct
 occurrence lookup.
 
-10. [ ] Reference-import callable uncertainty gets direct-crawl boundary
-proof for namespace lookups. Scope: reference imports, namespace callable
-lookup, and fallback frames. Goal: reference-import uncertainty remains
-conservative but does not poison covered frame/key misses. Acceptance:
-namespace/fallback spy tests.
+9. [ ] Prove reference-import callable boundary for namespace lookups. Scope:
+reference imports, namespace callable lookup, fallback frames, and covered
+misses. Goal: reference-import uncertainty remains conservative but does not
+poison covered frame/key misses. Acceptance: namespace/fallback spy tests.
 
-11. [ ] Import/reference declaration visibility gets a direct-mode test matrix.
-Scope: reference imports, compose/import boundaries, declarations vs variables.
-Goal: choose the explicit direct lookup mode before source changes.
-Acceptance: matrix tests or documented unsupported cells.
+10. [ ] Carry reference-import facts without recursive child-body scans. Scope:
+`rulesMayContainReferenceImports(...)`,
+`prepareScopeFrameDeclarationIndex(...)`, reference-mode child `Rules`, and
+style imports. Goal: carry/adopt the fact once instead of recursively
+rediscovering it during lookup prep. Acceptance: focused reference-import
+tests plus traversal spy/counter.
 
-12. [ ] Scope-frame declaration prep tracks dynamic pending facts without a
-second scan. Scope: `prepareScopeFrameDeclarationIndex(...)`,
-`pendingDeclarationNames`, and `getScopeFrame(...)`. Goal: avoid scanning the
-same scope twice for variable declarations and pending names. Acceptance:
-tests prove static and pending dynamic declarations are represented after one
-frame-prep pass.
+11. [ ] Narrow callable miss coverage recomputation to callable callers only.
+Scope: `getScopeFrame(..., false)`, `prepareCallableLookupFrame(...)`, and
+callable miss coverage flags. Goal: variable lookup never computes callable
+coverage; callable lookup computes it once per needed key/frame. Acceptance:
+spy tests for both paths.
 
-13. [ ] Callable miss coverage recomputes only for callable lookup, not
-variable lookup. Scope: `getScopeFrame(..., false)`,
-`prepareCallableLookupFrame(...)`, and callable miss tests. Goal: preserve the
-new variable-prep cut while proving callable callers still compute coverage
-when needed. Acceptance: spy tests for both paths.
+12. [ ] Replace direct child-entry arrays with carried sparse facts where safe.
+Scope: `directChildRuleEntries`, `directDeclarationChildEntries`,
+`hasExact*ChildSurface`, and lookup child-entry scans. Goal: avoid building
+entry arrays for scopes with no relevant child surface. Acceptance: child
+surface tests plus stress counter comparison.
 
-14. [ ] Scope-frame reference-import facts include child reference wrappers
-without child indexing. Scope: `prepareScopeFrameDeclarationIndex(...)`,
-reference imports, and reference-mode child `Rules`. Goal: keep
-`hasReferenceImports` correct without entering child bodies. Acceptance:
-focused tests for direct style imports and reference-mode child rules.
+13. [ ] Collapse direct declaration strategy object branching. Scope:
+`DeclarationLookupStrategy`, `findWithinScopeSurface(...)`, and
+variable/property/any declaration callers. Goal: assign lookup functions once
+per path instead of branching on strategy fields in the inner crawl.
+Acceptance: focused tests plus direct lookup counter comparison.
 
-15. [ ] Direct child-entry guards stop depending on `rulesIndexed`.
-Scope: `collectDirectChildRulesEntries()`,
-`collectDirectDeclarationChildEntries()`, `hasExact*ChildSurface`, and direct
-lookup child-surface skips. Goal: make carried child-surface facts explicit
-enough that direct lookup does not use `rulesIndexed` as an indexed/unindexed
-proxy. Acceptance: focused child-surface tests pass and the remaining
-`rulesIndexed` reads are narrowed to legacy/cold index state or deleted.
+14. [ ] Make public cold `Rules.find*` wrappers thinner or delete unused ones.
+Scope: `Rules.findDeclaration`, `findVariable`, `findProperty`,
+`findAnyDeclaration`, call sites, and package exports. Goal: keep only the
+cold materialization edges repo usage needs. Acceptance: rg-backed call-site
+audit plus focused tests.
+
+15. [ ] Run a measured direct lookup counter pass after the next source cuts.
+Scope: `profile-less-benchmark.mjs`,
+`scripts/fixtures/less-hotpath/scope-lookup-stress.less`, and
+`PERFORMANCE-HANDOFF.md`. Goal: use direct counters to choose the next
+highest-work lookup surface. Acceptance: profile output recorded; one-off
+smoke remains explicitly non-speed evidence.
 
 ## Backlog Sources
 
@@ -304,35 +306,35 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `findVisibleExactCallableRulesetPath(...)` and
-  `findVisibleCallableRulesetPrefixMatches(...)` no longer call `_indexRules()`
-  before searching. They reverse-scan current `Rules.value` directly and use
-  existing carried child-surface flags to skip known non-ruleset child
-  surfaces.
-- Verdict: accepted as a callable lookup-index deletion,
-  not as a speed claim.
-- New traversal: no new traversal shape. The pass keeps the existing reverse
-  current-scope scan in both helpers and removes the broad pre-scan/index.
-  Tests add prototype spies that throw if callable ruleset path lookup tries to
-  index rules.
+- Latest pass: deleted `_indexRules()`, `_indexing`, and `rulesIndexed`, then
+  removed direct lookup guards that used indexed/unindexed state as a proxy for
+  child-surface facts. `registerNode(...)` now carries nested extend facts
+  directly.
+- Verdict: accepted as registry/index architecture deletion, not as a speed
+  claim.
+- New traversal: added `rulesMayContainExtends(...)`, a recursive metadata
+  predicate used only when registering child `Rules` so extend render facts
+  survive without the broad indexer. Direct lookup traversal did not grow; it
+  now scans/caches child entries directly instead of checking `rulesIndexed`.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: none.
-- Metadata mutations: none.
+- Helper/API surface: deleted `_indexRules()` instead of adding public API.
+- Metadata mutations: removed `rulesIndexed` and `_indexing` mutations.
 - Allocation changes: none.
 - Rejected/failed proof: none so far in this pass.
-- Aggressive-review tokens: test-only `throw new Error(...)`/`try/finally`
-  protect the no-index callable path spies.
-- Evidence: focused callable/namespace tests passed (`2` files, `21` passed,
-  `286` skipped), then the full focused lookup gate passed (`8` files, `325`
-  passed, `287` skipped). Production `rg "_indexRules\\("
-  packages/core/src/tree packages/core/src/tree/util -g "*.ts"` now reports
-  only the legacy method definition/comment and `rules-flags.test.ts`; no
-  production lookup caller remains. Focused eslint, residue grep,
+- Aggressive-review tokens: current diff adds no routine error-control tokens.
+  The flagged loops are the new `rulesMayContainExtends(...)` metadata scan and
+  the existing child-entry scan now starting from `0` instead of
+  `rulesIndexed`. Test-only `rules([])` setup appears in `rules-flags.test.ts`.
+- Evidence: focused no-index/child-surface tests passed (`4` files, `23`
+  passed, `368` skipped), then the full focused lookup gate passed (`8` files,
+  `327` passed, `285` skipped). `rg "_indexRules|_indexing|rulesIndexed"
+  packages/core/src packages/jess-plugin-less/src packages/language-service/src
+  -g "*.ts"` now reports only no-index assertions in tests. Focused eslint,
   `git diff --check`, aggressive review, `@jesscss/core` build,
-  node-creation audit, and `jess` build passed. Node-creation audit reported
-  `new-node: 304`, `with-surface: 39`, `derive: 30`, `copy-leaves: 28`. Stress
-  profile passed in direct Jess mode with `Reference.evalNode` `6528` calls /
-  `66.88ms`. One-iteration hotpath smoke passed and is not a speed claim:
-  `mixins-guards.less` `26.76ms`; a follow-up three-iteration stress smoke
-  reported `scope-lookup-stress.less` median `74.22ms`, `3.6%` RSD.
+  node-creation audit, `jess` build, stress profile, and hotpath smoke passed.
+  Node-creation audit improved to `new-node: 302`, `with-surface: 39`,
+  `derive: 30`, `copy-leaves: 28`. Stress profile reported
+  `Reference.evalNode` `6528` calls / `66.46ms`. One-iteration hotpath smoke
+  is not a speed claim: `mixins-guards.less` `24.00ms`,
+  `scope-lookup-stress.less` `91.41ms`.

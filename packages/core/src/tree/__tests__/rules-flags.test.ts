@@ -3,29 +3,30 @@ import { any, el, extend, quoted, rules, style } from '../index.js';
 
 describe('Rules indexing flags', () => {
   it('tracks direct extend nodes', () => {
-    const node = rules([
-      extend({ target: el('.target') })
-    ]);
+    const node = rules([]);
+    const item = extend({ target: el('.target') });
 
-    node._indexRules();
+    node.registerNode(item);
 
     expect(node._hasExtends).toBe(true);
   });
 
   it('tracks extend nodes inside nested rules', () => {
-    const node = rules([
+    const node = rules([]);
+    const item = rules([
       rules([
         extend({ target: el('.target') })
       ])
     ]);
 
-    node._indexRules();
+    node.registerNode(item);
 
     expect(node._hasExtends).toBe(true);
   });
 
   it('tracks reference imports inside nested rules', () => {
-    const node = rules([
+    const node = rules([]);
+    const item = rules([
       rules([
         style({
           path: quoted(any('reference.less'))
@@ -36,7 +37,7 @@ describe('Rules indexing flags', () => {
       ])
     ]);
 
-    node._indexRules();
+    node.registerNode(item);
 
     expect(node._hasReferenceImports).toBe(true);
   });

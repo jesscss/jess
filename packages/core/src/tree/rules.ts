@@ -466,6 +466,24 @@ function rulesMayContainExactRulesetSurface(rules: Rules): boolean {
   return false;
 }
 
+function rulesMayContainExtends(rules: Rules): boolean {
+  if (rules._hasExtends) {
+    return true;
+  }
+  const value = rules.value;
+  for (let i = 0; i < value.length; i++) {
+    const node = value[i]!;
+    if (node.type === 'Extend' || node.type === 'ExtendList') {
+      return true;
+    }
+    const child = childRulesOf(node);
+    if (child && rulesMayContainExtends(child)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function rulesMayContainReferenceImports(rules: Rules): boolean {
   if ((rules.options as { referenceMode?: boolean } | undefined)?.referenceMode === true || rules._hasReferenceImports) {
     return true;
@@ -722,50 +740,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   _hasReferenceImports = false;
 
-  rulesIndexed = 0;
-  _indexing = false;
   private _registrationPrepared = false;
-
-  _indexRules() {
-    if (this._indexing) {
-      return; // Prevent recursive indexing
-    }
-    this._indexing = true;
-    try {
-      if (this.rulesIndexed === 0) {
-        this._hasExtends = false;
-        this._hasReferenceImports = (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
-        this.varsByName = new Map();
-        this.hasDirectChildRuleSurface = false;
-        this.hasExactCallableChildSurface = false;
-        this.hasExactMixinChildSurface = false;
-        this.hasExactRulesetChildSurface = false;
-        this.directChildRuleEntries = undefined;
-        this.directDeclarationChildEntries = undefined;
-      }
-      // Initialize fast maps so the hot-path can distinguish
-      // "indexed (nothing found)" from "not yet indexed" (undefined).
-      this.varsByName ??= new Map();
-      let value = this.value;
-      let length = value.length;
-      for (let i = this.rulesIndexed; i < length; i++) {
-        const node = value[i]!;
-        this.registerNode(node);
-      }
-      this.rulesIndexed = length;
-      if (this._scopeFrame) {
-        this._scopeFrame.declarationsCovered = true;
-        this._scopeFrame.callableBucketsByName = this.callableLookupCache;
-        this._scopeFrame.callablesCovered = this.callableLookupCache !== undefined;
-        this._scopeFrame.callableMissesCovered = !this.hasDirectLookupChildSurface();
-        this._scopeFrame.callableMissCoverageKnown = true;
-        this._scopeFrame.mixinCallableMissesCovered = !this.hasDirectLookupChildSurface(false);
-        this._scopeFrame.mixinCallableMissCoverageKnown = true;
-      }
-    } finally {
-      this._indexing = false;
-    }
-  }
 
   /**
    * Rules clones still need to preserve function bindings so visitor/plugin
@@ -809,10 +784,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
 
     // IMPORTANT: cloned Rules must rebuild their derived lookup state.
-    // Otherwise, a clone can inherit `rulesIndexed` from the source Rules (often == value.length),
-    // while having empty/incorrect lookup maps, causing lookup misses (e.g. @c in detached-rulesets).
-    this.rulesIndexed = 0;
-    this._indexing = false;
+    // Otherwise, a clone can inherit empty/incorrect lookup maps, causing
+    // lookup misses (e.g. @c in detached-rulesets).
     this.varsByName = undefined;
     this.callableLookupCache = undefined;
     this.directChildRuleEntries = undefined;
@@ -948,7 +921,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return true;
     }
     const value = this.value;
-    for (let i = this.rulesIndexed; i < value.length; i++) {
+    for (let i = 0; i < value.length; i++) {
       const child = childCallableRulesOf(value[i]!);
       const childHasSurface = includeRulesets
         ? child && rulesMayContainExactCallableSurface(child)
@@ -1018,15 +991,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
 
-      if (scope.rulesIndexed >= scope.value.length) {
-        const hasIndexedChildSurface = scope._hasReferenceImports
-          || (includeRulesets
-            ? scope.hasExactCallableChildSurface
-            : scope.hasExactMixinChildSurface);
-        if (!hasIndexedChildSurface) {
-          return visited;
-        }
-      }
       const childEntries = scope.directChildRuleEntries !== undefined
         ? (scope.directChildRuleEntries ?? undefined)
         : scope.collectDirectChildRulesEntries();
@@ -1049,24 +1013,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (localContext && entry.node.options?.local) {
           continue;
         }
-        let includeChildCurrentSurface = true;
-        if (entry.node.rulesIndexed >= entry.node.value.length) {
-          const childCandidates = entry.node.getCallableEntriesForKey(key);
-          if (childCandidates.length > 0) {
-            collectBucketResults(childCandidates);
-          }
-          const hasChildDescendantSurface = entry.node.hasDirectLookupChildSurface(includeRulesets);
-          includeChildCurrentSurface = false;
-          if (!hasChildDescendantSurface) {
-            continue;
-          }
-        }
-
         visited = collectWithinScopeSurface(
           entry.node,
           localContext || Boolean(entry.node.options?.local),
           visited,
-          includeChildCurrentSurface
+          true
         );
       }
 
@@ -1275,10 +1226,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (this.directChildRuleEntries !== undefined) {
       return this.directChildRuleEntries ?? undefined;
     }
-    if (this.rulesIndexed >= this.value.length && !this.hasExactCallableChildSurface) {
-      this.directChildRuleEntries = null;
-      return undefined;
-    }
     let out: Array<RulesEntryLike> | undefined;
     const value = this.value;
     for (let i = 0; i < value.length; i++) {
@@ -1302,10 +1249,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   collectDirectDeclarationChildEntries(): Array<RulesEntryLike> | undefined {
     if (this.directDeclarationChildEntries !== undefined) {
       return this.directDeclarationChildEntries ?? undefined;
-    }
-    if (this.rulesIndexed >= this.value.length && !this.hasDirectChildRuleSurface) {
-      this.directDeclarationChildEntries = null;
-      return undefined;
     }
     let out: Array<RulesEntryLike> | undefined;
     const value = this.value;
@@ -2883,7 +2826,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this._scopeFrame.mixinCallableMissesCovered = false;
         this._scopeFrame.mixinCallableMissCoverageKnown = false;
       }
-      if (node._hasExtends) {
+      if (rulesMayContainExtends(node)) {
         this._hasExtends = true;
       }
       if (rulesMayContainReferenceImports(node)) {
@@ -2902,12 +2845,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        * older non-variable declaration placement behavior.
        */
       if (node.options?.setDefined) {
-        // Skip setDefined logic if we're currently indexing to avoid recursive calls
-        if (this._indexing) {
-          // We'll handle setDefined after indexing is complete
-          return;
-        }
-
         let key = node.value.name?.toString();
         const lookupOptions: DeclarationFindOptions = { searchParents: true };
         const lookup = isNode(node, N.VarDeclaration)
@@ -3044,7 +2981,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         (this.functionsByName ??= new Map()).set(node.nameKey, node);
       }
     }
-    if (rebuildCallableCache && !this._indexing && this._scopeFrame) {
+    if (rebuildCallableCache && this._scopeFrame) {
       this._scopeFrame.callableBucketsByName = this.callableLookupCache;
     }
   }

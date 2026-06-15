@@ -703,17 +703,10 @@ describe('Call', () => {
       fn: () => any('ok')
     });
     root.setFunctionBinding('direct-no-index', fnNode);
-    const originalIndexRules = Rules.prototype._indexRules;
-    Rules.prototype._indexRules = function functionLookupShouldNotIndex() {
-      throw new Error('function lookup should use live bindings without indexing rules');
-    };
 
-    try {
-      expect(root.findFunction('direct-no-index')).toBe(fnNode);
-      expect(root.findFunction('missing')).toBeUndefined();
-    } finally {
-      Rules.prototype._indexRules = originalIndexRules;
-    }
+    expect('_indexRules' in Rules.prototype).toBe(false);
+    expect(root.findFunction('direct-no-index')).toBe(fnNode);
+    expect(root.findFunction('missing')).toBeUndefined();
   });
 
   it('resolves option-shaped function lookup from direct function bindings', () => {
