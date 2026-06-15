@@ -514,7 +514,12 @@ export class Call extends Node<CallValue, CallOptions> {
         const activeTrivia = printOptions.trivia ?? arg.sourceRoot?._treeContext?.opts?.trivia;
         if (
           arg.eval === Node.prototype.eval
-          && isNode(arg, N.Num | N.Dimension | N.Color | N.Bool)
+          && (
+            arg.type === 'Num'
+            || arg.type === 'Dimension'
+            || arg.type === 'Color'
+            || arg.type === 'Bool'
+          )
           && !activeTrivia
         ) {
           arg.writeSyntax(printOptions);
@@ -557,7 +562,12 @@ export class Call extends Node<CallValue, CallOptions> {
   ): MaybePromise<void> {
     if (
       node.eval === Node.prototype.eval
-      && isNode(node, N.Num | N.Dimension | N.Color | N.Bool)
+      && (
+        node.type === 'Num'
+        || node.type === 'Dimension'
+        || node.type === 'Color'
+        || node.type === 'Bool'
+      )
     ) {
       node.writeSyntax(printOptions);
       return undefined;

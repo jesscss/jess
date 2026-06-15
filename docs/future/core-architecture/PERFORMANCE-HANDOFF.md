@@ -200,6 +200,31 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-15 Call Scalar Direct-Type Classifier Pass
+
+Hypothesis: the accepted scalar-argument fast path should not pay the generic
+`isNode(...bitmask...)` classifier when the owned node `type` tag is enough.
+
+Patch shape:
+
+- `Call.serializeRenderedArgsFrom(...)` and `Call.writeEvaluatedSyntax(...)`
+  now check `Num`/`Dimension`/`Color`/`Bool` with direct `type` comparisons;
+- no new helper, traversal, node, materialized value, or metadata mutation was
+  added;
+- the active handoff queue was refreshed to exactly 15 unchecked sizable
+  `writeSyntax`-focus tasks.
+
+Evidence:
+
+- focused test: `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/call.test.ts --run` passed;
+- hotpath leash: `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` passed. Results were tripwire-only, not a speed claim:
+  `functions.less` median 14.94ms usable, `import-reference.less` median
+  22.00ms noisy, `mixins-guards.less` median 17.06ms usable,
+  `extend-chaining.less` median 5.89ms usable, `media.less` median 5.88ms
+  usable.
+
 ### 2026-06-15 Call Scalar Argument Trim/Eval Skip
 
 Hypothesis: common scalar CSS call args already have a direct writer contract,

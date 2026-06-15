@@ -271,305 +271,63 @@ Completed highlights:
 
 Open tasks:
 
-Current active queue, in priority order. Each item is a whole task with
-sub-work inside it; do not convert these into micro-items:
+Current active queue, refreshed every pass. Each item is a whole task with its
+own proof surface; do not convert these into micro-items. Keep exactly this
+shape current before commit.
 
-1. [x] Finish `Sequence` by making boundary-trivia emission explicit enough to
-   remove trivia-backed child `toString(...)` transport.
-2. [x] Finish `List` by making trivia-backed item emission direct and auditing
-   eval/render item loops.
-3. [ ] Finish `QueryCondition` dynamic render by removing the child mark probe
+1. [ ] Finish `Call` render/stringification cleanup: callable output selection,
+   remaining whole-call return/readback boundaries, `evalArgNodes(...)` copy
+   pressure, non-scalar/custom/trivia arg trim marks, async helper ladders, and
+   repeated eval.
+
+   Current partial status: empty string-name calls skip writer readback;
+   rendered args are side-effect writes instead of discarded strings; plain and
+   evaluated CSS-call buffer render reuses the caller mark; scalar-contract args
+   (`Num`, `Dimension`, `Color`, `Bool`) skip per-arg trim/eval when no trivia
+   is active and base `Node.eval` is intact; the scalar check uses direct type
+   tags rather than the generic `isNode(...)` classifier.
+2. [ ] Finish `QueryCondition` dynamic render by removing the child mark probe
    only after child render contracts prove write-vs-return behavior directly.
-4. [ ] Finish `Call` callable output selection, whole-call mark/readback, and
-   `evalArgNodes(...)` copy pressure.
-5. [ ] Finish `AtRule` body-state staging and remaining custom
+3. [ ] Finish `AtRule` body-state staging and remaining custom
    eval/import/render branch ladders.
-6. [ ] Finish `Ruleset.getHeaderString(...)` capture removal for frame
-   render/comparison paths.
-7. [ ] Finish `Declaration` custom-property raw-source, merge-state, and
-   materialization boundaries.
-8. [ ] Finish `Rules` root/body render, imports, placement state, and duplicate
-   declaration materialization.
-9. [ ] Finish `Reference` public value materialization, rules-like surfaces,
-   merged assign normalization, and remaining key conversion.
-10. [ ] Finish `Mixin` guard/default/body copy interactions and callable
+4. [ ] Finish `Ruleset.getHeaderString(...)` capture removal for frame
+   render/comparison paths and same-property duplicate declaration pre-render.
+5. [ ] Finish `Declaration` custom-property raw-source, merge-state, internal
+   mark/replace, and materialization boundaries.
+6. [ ] Finish `Rules` root/body render, imports, placement state, merge output,
+   and duplicate declaration materialization.
+7. [ ] Finish `Reference` public value materialization, rules-like surfaces,
+   merged assign normalization, key conversion, and remaining cold copy/inherit
+   ownership.
+8. [ ] Finish `Mixin` guard/default/body copy interactions and callable
    candidate output.
-11. [ ] Finish `Ampersand` structural selector replacement, raw fallback string
-   assembly, and non-basic construction.
-12. [ ] Finish `Interpolated` cold replacement capture, selector/generic
+9. [ ] Finish `Interpolated` cold replacement capture, selector/generic
    materialization, and replacement arrays.
-13. [ ] Finish `StyleImport` first-use placement copies by replacing them with
-   canonical source placement state.
-14. [ ] Finish `Node` base/source render fallback so inherited source render no
+10. [ ] Finish `StyleImport` first-use placement copies by replacing them with
+   canonical source placement state, or document the exact semantic blocker.
+11. [ ] Finish `Node` base/source render fallback so inherited source render no
    longer routes hot render through public `toTrimmedString(...)`.
-15. [ ] Finish scalar wrapper leftovers in `Block`, `Paren`, `Url`, `Quoted`,
-   `Rest`, `Negative`, and `AttributeSelector` where localized mark/readback
-   remains outside documented cold/public boundaries.
-16. [ ] Finish `List`/`Sequence` public render string-return compatibility
-   audit: either document it as the cold public boundary or split a direct
-   buffer-only path that avoids returning a string when callers do not need it.
-17. [ ] Finish `List`/`Sequence` addition/materialization copy audit,
+12. [ ] Finish scalar wrapper leftovers in `Block`, `Paren`, `Url`, `Quoted`,
+   `Negative`, and `AttributeSelector` where localized mark/readback remains
+   outside documented cold/public boundaries.
+13. [ ] Finish `List`/`Sequence` public render string-return compatibility:
+   either document it as the cold public boundary or split a direct buffer-only
+   path that avoids returning a string when callers do not need it.
+14. [ ] Finish `List`/`Sequence` addition/materialization copy ownership,
    including `deriveAdditionSequence(...)`, `copyWithReusableLeaves(...)`, and
-   container output ownership after arithmetic/list operations.
+   output ownership after arithmetic/list operations.
+15. [ ] Finish `Operation` arithmetic materialization and preserve-mode calc
+   fallback ownership without adopting unchanged canonical operands.
 
-14. [ ] Finish the node `writeSyntax` render/stringification rewrite across the
-   remaining node families in `NODE-REWRITE-TRACKER.md`.
+Parked until the current `writeSyntax` focus ends:
 
-   Done enough to know: many node families have direct writers, sync-loop cuts,
-   and public-string transport reductions. Control family is complete for this
-   lane.
+- selector/extend equality and factory cuts;
+- binding-index fallback bridge cleanup;
+- broad copy-stack work that is not required by the selected node family;
+- benchmark tuning that is not a leash for the active serialization task.
 
-   Still open: remaining families need either direct render/stringification
-   separation, documented cold public materialization boundaries, or explicit
-   semantic/benchmark blockers. Known blockers include `Call` output selection,
-   `evalArgNodes(...)` copy pressure, whole-call mark/readback, `AtRule`
-   body-state staging, `Ruleset.getHeaderString(...)` capture/comparison,
-   duplicate declaration pre-render/materialization, custom-property raw
-   source, merge-state boundaries, `Operation.withOperands` ownership, and
-   `QueryCondition` shared-flat-buffer return contract.
-
-   Current partial status: `serialize-helper.ts` now removes callback-array
-   scans and temporary arrays from Ruleset render flattening and hoisted-frame
-   setup. Transparent bare-ampersand flattening uses one pass with rollback
-   instead of `filter(...)` + `some(...)` + a third leaf pass; hoisted parent
-   lookup and renderable-child checks use indexed loops; hoisted frame reset
-   compacts the existing frame array instead of allocating `atRulesOnly`; and
-   source-chain scan no longer uses `queue.shift()`. This does not complete
-   `Ruleset`, because header comparison still needs string keys and duplicate
-   declaration handling still pre-renders same-property declarations.
-
-   Additional partial status: duplicate declaration handling now does a cheap
-   declaration-property pre-scan and only opens detached declaration writers for
-   properties that repeat in the visible render list. Unique declaration
-   properties render once at the normal leaf emission boundary instead of being
-   pre-rendered into `declarationOutputCache` first.
-
-   Additional partial status: `QueryCondition` async-capable render no longer
-   forces static class-contract siblings through dynamic child mark/probe
-   fallback. This covers scalar static subclasses such as `Any`, while
-   per-instance/custom render overrides still use the fallback because they may
-   return text without writing. The remaining dynamic fallback uses
-   `hasContentSince(mark)` instead of a second `mark()` check.
-
-   Additional partial status: `AtRule` dynamic leaf render and scalar header
-   assembly now return scalar `Any` name/prelude text directly when no trivia is
-   active, avoiding child mark/getSince/restore readback for common resolved
-   leaf at-rules and scalar frame headers. `getHeaderString(...)` also skips the
-   post-prelude writer probe when no trivia map exists. `AtRule.valueOf()` reads
-   the name value key directly instead of routing the name through public
-   `toString(...)`.
-
-   Additional partial status: `SelectorList.writeSyntax(...)` now emits
-   top-level `:is(...)` selector-list expansions directly instead of first
-   building a temporary flattened selector array. Reference-mode filtering now
-   does the old extended-target pre-scan only when reference filtering is active
-   and then writes matching candidates directly. `SimpleSelector` base-class
-   deletion was audited and rejected: its `resolve(context)` override calls
-   `evalNode(context)` directly, while inherited `Node.resolve(...)` would enter
-   the public eval ownership path.
-
-   Additional partial status: `Url` scalar `Any` render/context normalization
-   now writes the final `url(...)` text directly and avoids writer
-   mark/getSince/replace scaffolding for the common scalar path; trivia-backed
-   or non-scalar values keep the localized fallback. `Rest.name` no longer uses
-   public `toString(...)` transport for node-valued names. `StyleImport` sync
-   render no longer allocates a local finalizer closure; first-use placement
-   copies and derived `Rules` surfaces were audited and kept as semantic
-   placement state because focused tests require owned placement children plus
-   source-child mapping, not because copying is acceptable as convenience.
-
-   Additional partial status: `Call` render now uses the known empty
-   string-name call text directly for direct and buffer render, so `button()`
-   style output does not open whole-call mark/getSince scaffolding. Empty
-   `List` and `Sequence` source/render paths now return the known empty output
-   before preparing writer state or buffer mark/readback. Broader dynamic
-   `Call` output selection and `List`/`Sequence` buffer string capture remain
-   open.
-
-   Additional partial status: `Call.serializeRenderedArgs(...)` now writes
-   rendered args as a completion-only side effect instead of returning a
-   discarded inner args string. Non-empty CSS-call arg render no longer opens
-   an extra args-level `mark/getSince` readback; focused tests prove the whole
-   call still reads back once for the current call syntax boundary.
-
-   Additional partial status: `VarDeclaration` bare parameter syntax no longer
-   uses public `String(name)` transport in `writeSyntax(...)`. `Any` names read
-   the owned scalar value directly, and non-`Any` names write through
-   `writeSyntax(...)` with writer trim.
-
-   Additional partial status: `Block`, `Paren`, `Quoted`, and
-   `AttributeSelector` render now use known wrapper text directly for safe
-   scalar/empty forms: nil blocks, empty/nil parens, literal non-escaped quoted
-   strings, and bare string-name attributes. These paths write or buffer the
-   final string without opening writer mark/getSince scaffolding; trivia-backed
-   or dynamic child paths stay on existing render boundaries.
-
-   Additional partial status: `ExtendList` render now runs child extend effects
-   directly instead of calling each child's public `render(...)` path through
-   generic `serialForEach(...)` callback iteration. `Extend.runEffect(...)` is
-   the semantic side-effect boundary; focused tests prove list render does not
-   call public list eval or child render.
-
-   Additional partial status: `List` and `Sequence` dynamic flat-buffer render
-   now pass the buffer writer mark into the direct render writer and reuse that
-   same mark for `writePreparedRenderText(...)`. This deletes the outer
-   buffer mark/readback window around the inner direct render readback. The
-   equivalent `QueryCondition` cut was rejected because dynamic child render
-   still needs a localized write-vs-return probe until child render contracts
-   are direct.
-
-   Additional partial status: `List` and `Sequence` source syntax no longer
-   call child public `toString(...)` when trivia is active. Shared
-   `emitNodeSourceSyntaxWithTrivia(...)` emits leading trivia and then calls
-   child `writeSyntax(...)` into the same writer; focused tests prove active
-   trivia preserves output while child `toString(...)` overrides are not used.
-
-   Additional partial status: `Call` plain/evaluated CSS-call buffer render now
-   reuses the buffer writer mark inside `renderPlainFunctionCall(...)`, so the
-   buffer wrapper no longer opens a second call-level readback window around
-   the inner whole-call readback. Focused tests prove shared flat-buffer render
-   has one call-level readback while the remaining per-argument trim marks are
-   still explicit debt.
-
-   Additional partial status: `Call.serializeRenderedArgsFrom(...)` now writes
-   scalar-contract args (`Num`, `Dimension`, `Color`, `Bool`) directly when
-   they still use base `Node.eval` and no trivia is active. This removes the
-   per-argument trim windows and immediate eval calls for common CSS scalar
-   args while preserving custom static eval overrides; the broad `F_STATIC`
-   shortcut was tested and rejected because existing tests prove API-mutated
-   static nodes may evaluate to different output.
-
-   Evidence pointer: use `NODE-REWRITE-TRACKER.md` for per-node status and
-   `PERFORMANCE-HANDOFF.md` for benchmark/profile history. Do not add queue
-   entries for one-line cuts inside this item.
-16. [ ] Continue `Reference` before moving to the next node. Audit and cut the
-   remaining copy/materialization pressure: `createRulesLikeReferenceSurface`,
-   public `evaluateReferenceValueNode(...)` materialization, merged assign
-   normalization, and remaining non-render `.inherit(...)` /
-   `copyWithReusableLeaves(...)` ownership boundaries.
-
-   Done enough to know: Reference passes removed wrapper closures, option
-   objects, redundant post-eval copies on render-only paths, fallback pre-copy,
-   several lookup helper allocations, and calc slash-list finalizer closure
-   overhead.
-
-   Still open: public resolve/materialization boundaries, merged declaration
-   normalization, rules-like public surfaces, shared `List`/`Sequence` public
-   materialization, and any remaining copy/inherit ownership that is not a cold
-   public boundary.
-17. [x] Sweep `Ampersand` template placement. Structured selector-list and
-   generated `:is(...)` parents now stay structural instead of being copied into
-   temporary replacement arrays, and raw comma text no longer pays
-   `toTrimmedString().includes(',')` followed by a second split scan. The
-   remaining raw-text fallback performs one top-level comma scan only after
-   serialization is unavoidable because the parent selector is a scalar
-   `BasicSelector` string containing commas.
-18. [ ] Locked out while `writeSyntax` queue is active: sweep selector
-   matching/extend equality. Replace hot `valueOf()` equality
-   predicates with structural/keyset checks where possible, keeping
-   `valueOf()` only as a measured, cached fast-path when it wins.
-   Partial status: `Any.compare(...)`, `List.compare(...)`, and
-   `Sequence.compare(...)` no longer allocate per-call local normalization
-   closures for `Any` coercion. They share the internal compare normalizers in
-   `tree/util/compare.ts`. This does not complete selector matching/extend
-   equality or remove value/string serialization as a decision mechanism.
-   Additional partial status: compare-time `Any` scalar coercion now reads the
-   owned `Any.value` directly in `Any.compare(...)`, `List.compare(...)`, and
-   `Sequence.compare(...)` instead of routing that already-owned scalar through
-   public `toString(...)` transport. Container left-hand serialization remains
-   because structural equality keys for list/sequence values are not finished.
-   Additional partial status: selector extend recursive search now carries one
-   mutable path stack through `searchWithinSelector*` instead of allocating
-   child path arrays with `forEach(...)` and `[...currentPath, segment]` before
-   a match exists. Stored match locations still copy the path at the ownership
-   boundary.
-   Additional partial status: selector equality predicates now use straight
-   loops for `determineExtensionType(...)`, `componentsMatch(...)`,
-   `areSelectorArgumentsEquivalent(...)`, and
-   `areCompoundSelectorsEquivalent(...)`, removing callback closures and one
-   temporary `numericSegments` array from common selector matching checks.
-19. [x] Split sync immediate eval/render from cold public materialization so
-   routine sync render replacement does not imply `.inherit(...)`. `evalSync`
-   remains the public sync value API and still uses the public materialization
-   finalizer; `evalImmediateSync(...)` is the render-only sync boundary that
-   evaluates through the base `evalNode(...)` path, marks the immediate result
-   evaluated, and skips `.inherit(...)`. The tree has zero non-test
-   `.evalSync(...)` call sites; `Block`, `Url`, `Negative`, `Expression`,
-   `Call`, and `Paren` now use `evalImmediateSync(...)` for their non-async
-   immediate render/value paths. The helper keeps a cold instance-override
-   fallback because focused `Call` tests prove API-mutated nodes may override
-   `eval(...)`; the first attempted direct `evalNode(...)` helper rendered
-   source placeholders instead of evaluated values.
-20. [ ] Replace `StyleImport` first-use placement copies with placement state
-   that points at canonical source children and preserves import visibility.
-   Partial status: first-use placement state no longer stores a redundant
-   `sourceByPlacement` `Map` or unused preservation flag, and nested
-   source-child lookup no longer allocates a defensive `Set` per recursive
-   search. The actual first-use placement child copies remain. A direct
-   `getImportPlacementChildSegments(...)` return was tried and rejected by the
-   focused import test because evaluated placement children can replace the
-   initial segment output; the public segment read must report the current
-   placement child until placement state is redesigned around canonical source
-   children.
-21. [ ] Collapse `StyleImport.deriveRulesSurface(...)` wrappers whose only job
-   is source/visibility/placement bookkeeping.
-22. [ ] Replace remaining `Rules` merge output copies with direct merge
-   placement/render state or a narrow owned-item copier proven by merge tests.
-23. [ ] Convert registration-prep expected misses away from routine `try/catch`
-   only after adding tests for unresolved declaration/identity behavior.
-   Adjacent partial status: `Rules._scanRegistrationNodes(...)` no longer
-   calls lazy `options`/`location` getters for charset/import bookkeeping or
-   canonical declaration reuse checks. It reads `_options`/`_location` directly
-   while preserving the existing registration-prep control flow. Focused
-   rules/import coverage proves charset output-order handling still skips child
-   registration prep and does not allocate an empty charset `_location`. This
-   does not remove the pending-registration `try/catch` miss path.
-24. [ ] Locked out while `writeSyntax` queue is active: continue selector/extend
-   factory cuts separately; do not hide selector placement copies inside
-   another generic copy helper.
-   Partial status: `selector-match-core.ts` recursive search walkers now use
-   indexed loops plus push/pop path-stack state for selector-list, compound,
-   complex, and pseudo-selector descent. This removes per-child callback
-   closures and speculative path-array allocation from the full-search walk
-   while keeping location-path copies only at stored-match boundaries.
-   Additional partial status: selector comparison predicates now avoid
-   `some(...)`, `every(...)`, and `filter(...)` in the extension-type,
-   compound-vs-simple, selector-list argument, and compound equivalence
-   checks. Remainder factory paths still allocate and remain open.
-   Rejected local cut: rewriting `trySmallCompoundExtendMatch(...)` subset and
-   remainder factory callbacks into manual loops was tested and reverted. The
-   third bounded benchmark showed usable regressions on `extend-chaining` and
-   `media`; do not retry this exact shape without a stronger structural change
-   or stable profile evidence. The false assumption was that fewer callback
-   closures and one fewer temporary array would be a local win; benchmark
-   evidence showed the manual loop shape was worse, likely because the real
-   cost is repeated selector matching/branching rather than the callback
-   wrappers themselves.
-25. [ ] Replace callable binding copies for static containers with explicit
-   binding/placement state. Static containers should not be copied merely
-   because they contain child nodes; `F_HAS_NODE_CHILD` is only a cheap current
-   ownership boundary, not a final architecture.
-26. [ ] Attack the measured copy stack next: `copyChild`,
-   `copyWithReusableLeaves`, `copyCallableRulesValue`, `constructCopy`, and
-   `.inherit(...)`. CPU evidence says these are mostly registration derivation,
-   selector header rendering, JS function argument ownership, reference value
-   eval, and binding clone debt; do not justify them as render output copying.
-
-   Done enough to know: reusable-leaf checks and callable reuse/copy predicates
-   now read `_location`/`_options` directly, `constructCopy(...)` no longer uses
-   descriptor probes, and callable copy single-use wrapper helpers are gone.
-
-   Still open: the actual copied callable surface boundary,
-   `copyCallableRulesValue(...)` recursion, generic `copyChild(...)`,
-   `copyWithReusableLeaves(...)`, `constructCopy(...)`, and routine
-   `.inherit(...)` ownership pressure. Rejected local cut: deleting
-   `Operation.withOperands(...)` child copies mutates canonical source parents
-   unless a no-adopt/cold materialization boundary is designed.
-27. [ ] Audit repeated callable/mixin evaluation from the profile before making
-   more local helper cuts. If a mixin candidate or output body is evaluated
-   more than the semantic call count requires, carry placement/binding state or
-   cache the cold public materialization boundary instead of copying/evaluating
-   again.
+Evidence pointer: use `NODE-REWRITE-TRACKER.md` for per-node status and
+`PERFORMANCE-HANDOFF.md` for benchmark/profile history.
 
 ## Gates
 
@@ -625,21 +383,22 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Call` scalar argument trim/eval skip.
+Current pass: fresh 15-item queue plus `Call` scalar classifier cut.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   object/array scan, generator, or collection helper was added.
 - New node/materialization: no runtime nodes, copies, wrappers, side maps, or
   materialized render values added.
-- Render path: selected row is `Call`. `serializeRenderedArgsFrom(...)` now
-  writes scalar-contract args (`Num`, `Dimension`, `Color`, `Bool`) directly
-  when they still use base `Node.eval` and no trivia is active. That skips
-  per-argument mark/trim windows and immediate eval calls for common CSS scalar
-  args without resolving args into arrays/nodes just to stringify. Dynamic,
-  trivia-backed, escaped-paren, async, and custom-eval args keep the existing
-  evaluated trim boundary.
+- Render path: selected row is `Call`. The existing scalar direct path in
+  `serializeRenderedArgsFrom(...)` and `writeEvaluatedSyntax(...)` now uses
+  direct `node.type`/`arg.type` comparisons for `Num`, `Dimension`, `Color`,
+  and `Bool` instead of the generic `isNode(...bitmask...)` classifier. The
+  path still writes syntax directly only when base `Node.eval` is intact and no
+  trivia is active; dynamic, trivia-backed, escaped-paren, async, and
+  custom-eval args keep the existing evaluated trim boundary.
 - Helper/API surface: no helper, method, public API, or new utility added.
-  The scalar check is inlined to avoid adding another hot-path helper call.
+  This pass removes a generic helper call from the scalar branch instead of
+  adding a replacement helper.
 - Metadata mutations: none. No parent/source/frozen/context metadata mutation,
   lazy options/context creation, `Reflect.*`, generic own-property helper, or
   source restoration added. The review script flags that doc phrase as a
@@ -650,18 +409,20 @@ Current pass: `Call` scalar argument trim/eval skip.
   boundary.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected cut: a broader `F_STATIC` shortcut was tried and failed focused
-  tests because `Any` instances can be API-mutated with custom `eval(...)`
-  behavior. That shape was not kept.
+- Rejected cut carried forward: a broader `F_STATIC` shortcut was tried in the
+  prior pass and failed focused tests because `Any` instances can be
+  API-mutated with custom `eval(...)` behavior. That shape remains rejected.
+- Queue discipline: the active queue was refreshed to exactly 15 unchecked
+  sizable tasks in priority order. Parked non-focus work is no longer mixed into
+  the active queue.
 - Remaining blocker: non-scalar/static-custom/trivia args still need trim
-  boundaries, and the larger `Call` queue item still owns callable output
-  selection, `evalArgNodes(...)` copy pressure, async/helper ladders, and
-  repeated eval.
+  boundaries, and active queue item 1 still owns callable output selection,
+  `evalArgNodes(...)` copy pressure, async/helper ladders, and repeated eval.
 - Evidence: package-scoped `call.test.ts` passed. Core build, diff check,
   aggressive review, and bounded hotpath leash ran. The shared flat-buffer test
   proves `rgb(100, 100, 100)` uses one call-level mark/readback and no
   per-argument scalar trim marks. Hotpath leash details belong in
   `PERFORMANCE-HANDOFF.md`; no speed claim.
 - Verdict: accept as a bounded `Call` serialization cleanup. Keep active queue
-  item 4 open until the remaining call-output/copy/argument-readback work is
+  item 1 open until the remaining call-output/copy/argument-readback work is
   removed or isolated.
