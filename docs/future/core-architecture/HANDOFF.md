@@ -338,10 +338,12 @@ shape current before commit.
    identity directly instead of calling public name stringification while
    walking active parent layer records. `evalNode(...)` no longer wraps
    `evalBodyNode(...)` in a catch/rethrow or async rejection handler that only
-   rethrows. `getHeaderString(...)` now writes non-scalar header name/prelude
-   text into detached `OutputWriter` instances instead of using the caller
-   writer with `mark()/getSince()/restore()` rollback; trailing prelude
-   comment trivia also writes to a detached writer while preserving active
+   rethrows, and narrowed async body/prelude branches now call `.then(...)`
+   directly instead of wrapping already-thenable values with
+   `Promise.resolve(...)`. `getHeaderString(...)` now writes non-scalar header
+   name/prelude text into detached `OutputWriter` instances instead of using
+   the caller writer with `mark()/getSince()/restore()` rollback; trailing
+   prelude comment trivia also writes to a detached writer while preserving active
    emitted-trivia state. Dynamic leaf at-rule name/prelude assembly now uses
    the same detached writer boundary for non-scalar pieces instead of
    caller-writer mark/readback.
@@ -576,35 +578,21 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Interpolated generated `:is(...)` serialization cut.
+Current pass: AtRule async/no-op scaffolding cleanup.
 
-- New traversal: `writeInlineSelectorArg(...)`, `writeInlineSelectorItem(...)`,
-  and `inlineSelectorListItems(...)` mirror the existing generated
-  `PseudoSelector.writeSyntax(...)` selector-list inline emission loops. They
-  are bounded to embedded selector interpolation replacements that already
-  require `:is(...)` wrapper text, and replace the previous generated pseudo
-  node's `writeSyntax(...)` pass rather than adding a second traversal.
-- New node/materialization: removed the temporary generated
-  `PseudoSelector.create({ name: ':is', arg })` node, its `generated` mutation,
-  and its disposable writer-only surface. Public selector result
-  materialization still returns `BasicSelector`/`CompoundSelector` as before.
-  The verifier's `readonly Selector[]` hit is the return type for existing
-  selector-list children from `inlineSelectorListItems(...)`; it does not
-  allocate a new array.
-- Render path: this is selector construction, not render output. The path now
-  writes generated wrapper text directly from the selected replacement argument;
-  it does not resolve arrays or nodes just to stringify beyond the already-open
-  public selector construction boundary.
-- Helper/API surface: added private Interpolated-local inline selector helpers
-  and removed the cross-node generated-pseudo serialization hop. No public API
-  was added.
-- Metadata mutations: removed `pseudo.generated = true`. No
-  parent/source/frozen/location/options/context mutation was added.
-- Evidence: focused Interpolated and InterpolatedSelector tests pass. The
-  generated wrapper fixture now poisons `PseudoSelector.create(...)`, proving
-  embedded selector-list wrapper serialization no longer materializes a pseudo
-  node just to write `:is(...)` text. The verifier's `throw new Error(...)` hit
-  is that test sentinel, not runtime control flow.
-- Verdict: accepted as a bounded Interpolated selector serialization deletion.
-  Semantic selector ownership boundaries remain open. No performance claim;
-  performance remains shelved because this was not a measured benchmark pass.
+- New traversal: none. The change deletes wrappers around existing eval/prelude
+  branches and adds no loops, walks, maps, side-map lookups, or scans.
+- New node/materialization: none. No `Node`, copy, inherit, wrapper,
+  materialized array, or ownership mutation was added.
+- Render path: unchanged. The same body/prelude values flow to the same finish
+  callbacks; narrowed thenables now call `.then(...)` directly.
+- Helper/API surface: no helper or public API was added.
+- Metadata mutations: none. No parent/source/frozen/location/options/context
+  mutation was added.
+- Evidence: focused AtRule and nesting-collapse tests pass. The removed
+  `try/catch` only rethrew the same error, and the removed
+  `Promise.resolve(...)` wrappers were after `isThenable(...)` narrowing.
+- Verdict: accepted as a bounded AtRule async/no-op scaffolding deletion. Body
+  state staging and custom eval/import/render branches remain open. No
+  performance claim; performance remains shelved because this was not a
+  measured benchmark pass.

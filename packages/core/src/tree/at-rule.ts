@@ -545,12 +545,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   ): MaybePromise<AtRuleBodyEvalRecord> {
     const finishPrelude = (evaluatedPrelude: Node | undefined): MaybePromise<AtRuleBodyEvalRecord> => {
       const record = this.createBodyEvalRecord(context, evaluatedPrelude, options);
-      let evaluated: MaybePromise<Node>;
-      try {
-        evaluated = this.evalBodyNode(context, record);
-      } catch (error) {
-        throw error;
-      }
+      const evaluated = this.evalBodyNode(context, record);
       const finish = (node: Node): AtRuleBodyEvalRecord => {
         if (!(node instanceof AtRule) && !(node instanceof Nil)) {
           throw new TypeError('Expected at-rule body eval to return AtRule or Nil');
@@ -627,7 +622,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
       const resolvedPrelude = this.evalPreludeValue(prelude, context);
       if (isThenable(resolvedPrelude)) {
-        return Promise.resolve(resolvedPrelude).then(resolved => ({ name, prelude: resolved }));
+        return resolvedPrelude.then(resolved => ({ name, prelude: resolved }));
       }
       return {
         name,
@@ -864,7 +859,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
     const maybeKey = node.value.name.eval(context);
     if (isThenable(maybeKey)) {
-      return Promise.resolve(maybeKey).then((key) => {
+      return maybeKey.then((key) => {
         if (!(key instanceof Any)) {
           throw new TypeError('Expected interpolated at-rule name to resolve to Any');
         }
@@ -1333,7 +1328,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       // This matches Less behavior for mixin parameters referenced from nested @media preludes.
       const out = source.evalPreludeValue(prelude, context);
       if (isThenable(out)) {
-        return Promise.resolve(out).then((n) => {
+        return out.then((n) => {
           setAtRuleBodyEvalPrelude(bodyEvalRecord, n);
           return finishBodyEval();
         });
