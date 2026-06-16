@@ -4130,6 +4130,29 @@ remains open for non-scalar embedded selector assembly, generic
 materialization, non-scalar cold replacement capture, and replacement arrays.
 Do not claim a speed win; one fixture was unstable.
 
+### Interpolated Generic Output String Transport Cut
+
+Date: 2026-06-16.
+
+Change: `Interpolated.createGeneric(...)` now builds the public `Any` result
+value by writing evaluated replacements directly through
+`writeWithReplacements(...)` instead of calling public
+`Interpolated.toTrimmedString(...)` on itself.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `19.74ms` noisy, `import-reference` median
+  `27.43ms` usable, `mixins-guards` median `19.59ms` unstable,
+  `extend-chaining` median `7.40ms` usable, and `media` median `7.00ms`
+  unstable.
+
+Interpretation: generic-materialization string transport cut only; the
+Interpolated row remains open for non-scalar embedded selector assembly,
+remaining generic materialization boundaries, non-scalar cold replacement
+capture, and replacement arrays. Do not claim a speed win; two fixtures were
+unstable and one was noisy.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

@@ -363,9 +363,11 @@ shape current before commit.
    with owned scalar token replacements (`Any`/`Anonymous`/`Keyword`) now build
    selector text from the replacement value directly instead of calling public
    `toTrimmedString(...)`. Public `replace(...)` also reads owned scalar token
-   text directly for those replacements. Non-scalar embedded selector assembly,
-   generic materialization, non-scalar cold replacement capture, and replacement
-   arrays remain.
+   text directly for those replacements. Generic `Any` materialization now
+   writes evaluated replacements directly instead of calling public
+   `Interpolated.toTrimmedString(...)` on itself. Non-scalar embedded selector
+   assembly, remaining generic materialization boundaries, non-scalar cold
+   replacement capture, and replacement arrays remain.
 10. [x] Finish `StyleImport` first-use placement copies by replacing them with
    canonical source placement state, or document the exact semantic blocker.
 

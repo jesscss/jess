@@ -296,6 +296,36 @@ describe('Interpolated', () => {
     expect(node.replace([replacement])).toBe('hello-world');
   });
 
+  it('creates generic output without public interpolated string transport', async () => {
+    const root = rules([
+      vardecl({
+        name: any('name'),
+        value: any('world')
+      })
+    ]);
+    await setEvaluatedRoot(context, root);
+    const descriptor = Object.getOwnPropertyDescriptor(Interpolated.prototype, 'toTrimmedString');
+    if (!descriptor) {
+      throw new Error('Expected Interpolated.toTrimmedString for generic materialization proof');
+    }
+    Object.defineProperty(Interpolated.prototype, 'toTrimmedString', {
+      ...descriptor,
+      value: () => {
+        throw new Error('Interpolated generic output should use direct replacement writing');
+      }
+    });
+    try {
+      const node = interpolated({
+        source: `hello-${INTERPOLATION_PLACEHOLDER}`,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      });
+
+      expect((await node.evalNode(context)).toTrimmedString()).toBe('hello-world');
+    } finally {
+      Object.defineProperty(Interpolated.prototype, 'toTrimmedString', descriptor);
+    }
+  });
+
   it('preserves quoted replacement syntax when requested', () => {
     const node = interpolated({
       source: `progid:test(value=${INTERPOLATION_PLACEHOLDER})`,

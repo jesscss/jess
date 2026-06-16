@@ -282,7 +282,7 @@ export class Interpolated<
   }
 
   createGeneric() {
-    const trimmedString = this.toTrimmedString();
+    const trimmedString = this.writeWithReplacements(this.value.replacements);
     let any = new Any<Role>(trimmedString).inherit(this);
     any.options.role = this.options.role;
     return any;
