@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Context } from '../../context.js';
 import {
   any,
+  Any,
   Dimension,
   dimension,
   negative,
@@ -148,6 +149,35 @@ describe('Negative', () => {
     }
   });
 
+  it('renders resolved Any values without child render or operation transport', async () => {
+    const node = rules([
+      vardecl({
+        name: any('rhs'),
+        value: any('token')
+      })
+    ]);
+    await setRoot(node);
+    const originalRender = Any.prototype.render;
+    const originalOperate = Any.prototype.operate;
+    Any.prototype.render = function renderForCounting() {
+      throw new Error('Negative.render should write resolved Any values directly');
+    };
+    Any.prototype.operate = function operateForCounting() {
+      throw new Error('Negative.render should not operate resolved Any values');
+    };
+
+    try {
+      const negativeNode = negative(ref({ key: 'rhs' }, { type: 'variable' }));
+
+      expect(negativeNode.render(context)).toBe('-token');
+      expect(negativeNode.evaluated).toBe(false);
+      expect(negativeNode.registrationPrepared).toBe(false);
+    } finally {
+      Any.prototype.render = originalRender;
+      Any.prototype.operate = originalOperate;
+    }
+  });
+
   it('renders sync negative values without may-async continuation scaffolding', () => {
     const negativeNode = negative(num(20));
     const originalEval = negativeNode.value.eval;
@@ -211,5 +241,32 @@ describe('Negative', () => {
     expect(negativeNode.evaluated).toBe(false);
     expect(negativeNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('resolves negative Any values as scalar output nodes', async () => {
+    const node = rules([
+      vardecl({
+        name: any('rhs'),
+        value: any('token')
+      })
+    ]);
+    await setRoot(node);
+    const originalOperate = Any.prototype.operate;
+    Any.prototype.operate = function operateForCounting() {
+      throw new Error('Negative.resolve should not operate resolved Any values');
+    };
+
+    try {
+      const negativeNode = negative(ref({ key: 'rhs' }, { type: 'variable' }));
+      const resolved = await negativeNode.resolve(context);
+
+      expect(resolved).toBeInstanceOf(Any);
+      expect(resolved.toTrimmedString()).toBe('-token');
+      expect(negativeNode.evaluated).toBe(false);
+      expect(negativeNode.registrationPrepared).toBe(false);
+      expect(context.printState.writer).toBeUndefined();
+    } finally {
+      Any.prototype.operate = originalOperate;
+    }
   });
 });

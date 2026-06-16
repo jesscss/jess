@@ -200,6 +200,34 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-16 Negative Resolved Any Scalar Cut
+
+Hypothesis: a `Negative` whose dynamic child resolves to `Any` should use the
+same scalar `-value` spelling as source-owned `Any` negatives instead of
+falling into generic operation/render transport.
+
+Patch shape:
+
+- `Negative.renderEvaluatedValue(...)` writes resolved `Any` output directly to
+  the writer or render buffer;
+- public eval/resolve materializes one scalar `Any('-value')` node, preserving
+  the public node-return contract;
+- compound dimensions and arbitrary non-scalar negatives remain on the
+  operation boundary;
+- focused tests prove render does not call `Any.render(...)` or
+  `Any.operate(...)`, and resolve does not call `Any.operate(...)`.
+
+Hotpath status:
+
+- Bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  completed on commit `900e009a660d27f428b05ec0b3b9193423fa87f4`
+  plus the local patch: functions median 15.19ms, import-reference median
+  22.03ms, mixins-guards median 19.37ms, extend-chaining median 5.48ms,
+  media median 7.62ms. `media.less` was noisy at 30.4% RSD.
+
+Interpretation: scalar wrapper transport cut only. Do not claim a speed win;
+keep broader unit/text and non-scalar negative handling open.
+
 ### 2026-06-16 Paren Resolved Any Wrapper Render Cut
 
 Hypothesis: a non-escaped `Paren` whose dynamic child resolves to a no-trivia

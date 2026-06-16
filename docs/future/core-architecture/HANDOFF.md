@@ -420,6 +420,9 @@ shape current before commit.
    writer mark/readback. `Block` scalar `Any` flat-buffer render and
    `Negative` scalar dimension flat-buffer render now write known text without
    print-state setup, writer mark/readback, or a second writer-to-buffer copy.
+   Resolved `Any` negative render now writes `-value` directly instead of
+   entering child render/operation transport, while public resolve materializes
+   the scalar `Any('-value')` node.
    `Url` scalar `Any` render now writes/buffers normalized `url(...)` text
    directly after value selection, without prepared writer setup,
    mark/getSince, replaceSince, or a second writer-to-buffer copy. Non-scalar
@@ -527,25 +530,28 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Paren` resolved `Any` wrapper render cut.
+Current pass: `Negative` resolved `Any` scalar render/eval cut.
 
 - New traversal: none.
-- New node/materialization: none. No node, wrapper, copy, inherit, adopt,
-  source/root metadata, side state, or array materialization was added.
-- Render path: non-escaped no-trivia `Paren.renderEvaluatedNode(...)` now
-  writes resolved `Any` wrapper text directly instead of calling the child
-  render path and wrapping the returned string.
-- Helper/API surface: none added. Existing direct `Any` wrapper helpers are
-  reused.
-- Metadata mutations: none added.
+- New node/materialization: public eval/resolve for a resolved `Any` negative
+  now materializes one scalar `Any('-value')` node and inherits the resolved
+  source scalar. Render does not materialize a node.
+- Render path: `Negative.renderEvaluatedValue(...)` writes resolved `Any`
+  output directly as `-value` to the requested writer or render buffer instead
+  of calling child `render(...)` or generic `operate(...)`.
+- Helper/API surface: one node-local `renderNegativeAnyText(...)` helper owns
+  the direct writer/buffer branch and avoids duplicating it across render
+  paths.
+- Metadata mutations: public eval/resolve uses existing `.inherit(...)` for
+  the materialized scalar output node. Render adds no metadata mutation.
 - Error/control flow: no production error objects or throw/catch control flow
-  added. New throw is test-only monkey-patch proof.
-- Rejected/deferred cut: escaped paren output, guard/default conversion,
-  non-scalar child render, trivia-backed child output, and escaped semicolon
-  list normalization remain on their existing boundaries.
-- Evidence: focused red/green test
-  `renders resolved Any paren values without child render transport` failed
-  before the cut when `Any.prototype.render(...)` was monkey-patched to throw,
-  and passed after direct wrapper text. Full `paren.test.ts` passed.
-- Verdict: accepted as a bounded scalar-wrapper render cut. Keep the scalar
-  wrapper row open for the remaining non-scalar/trivia/escaped boundaries.
+  added. New throws are test-only monkey-patch proof.
+- Rejected/deferred cut: compound dimensions and arbitrary non-scalar negatives
+  remain on the operation boundary; broader unit/text classification remains.
+- Evidence: focused tests
+  `renders resolved Any values without child render or operation transport` and
+  `resolves negative Any values as scalar output nodes` fail before the cut and
+  pass after direct render plus public scalar materialization. Full
+  `negative.test.ts` passed.
+- Verdict: accepted as a bounded scalar-wrapper cut. Keep the scalar wrapper
+  row open for broader non-scalar/unit boundaries.

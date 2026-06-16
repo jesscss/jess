@@ -47,6 +47,17 @@ export class Negative extends Node<Node> {
     return w.getSince(mark);
   }
 
+  private renderNegativeAnyText(value: Any, bufferOrOptions?: RenderBuffer | PrintOptions): string {
+    const out = `-${value.value}`;
+    if (isRenderBuffer(bufferOrOptions)) {
+      return writeRenderText(bufferOrOptions, out);
+    }
+    const writer = getPrintOptions(bufferOrOptions).writer;
+    writer.add('-', this);
+    writer.add(value.value, value);
+    return out;
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
@@ -73,6 +84,9 @@ export class Negative extends Node<Node> {
         return rendered;
       }
       return writeRenderText(bufferOrOptions, rendered);
+    }
+    if (value instanceof Any) {
+      return this.renderNegativeAnyText(value, bufferOrOptions);
     }
     const operated = this.operateNegativeValue(value, context);
     return isThenable(operated)
@@ -106,6 +120,9 @@ export class Negative extends Node<Node> {
   }
 
   private operateNegativeValue(value: Node, context: Context): MaybePromise<Node> {
+    if (value instanceof Any) {
+      return new Any(`-${value.value}`).inherit(value);
+    }
     if (!value.operate) {
       throw new TypeError(`Cannot operate on ${value.type}`);
     }
