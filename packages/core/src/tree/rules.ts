@@ -1751,8 +1751,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // @charset must be first
       if (ctx?.currentCharset && !ctx.charsetEmitted) {
         const charset = ctx.currentCharset;
-        const charsetStr = printDetached(options, nextOptions => charset.toTrimmedString(nextOptions));
-        w.add(charsetStr, charset);
+        charset.writeSyntax(options);
         w.add('\n');
         // Do not permanently flip `charsetEmitted` here; restore at end.
         ctx.charsetEmitted = true;

@@ -4045,6 +4045,26 @@ Hotpath status:
 Interpretation: declaration writer staging cut only; do not claim a speed win
 from the focused test. Two fixtures were unstable.
 
+### Rules Root Charset Direct Syntax Cut
+
+Date: 2026-06-16.
+
+Change: root-aware `Rules.toString(...)` now emits `context.currentCharset`
+through direct `writeSyntax(...)` instead of detached public
+`toTrimmedString(...)` transport. Root imports remain on the existing detached
+stringification path.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `13.88ms` unstable, `import-reference` median
+  `17.15ms` usable, `mixins-guards` median `16.97ms` usable,
+  `extend-chaining` median `5.98ms` noisy, and `media` median `5.39ms`
+  usable.
+
+Interpretation: root serializer transport cut only; do not claim a speed win
+from the focused test. One fixture was unstable and one was noisy.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

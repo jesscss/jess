@@ -339,6 +339,11 @@ shape current before commit.
    space-merge rendering stopped returning an unused captured string.
 6. [ ] Finish `Rules` root/body render, imports, placement state, merge output,
    and duplicate declaration materialization.
+
+   Current partial status: root-owned `@charset` output now writes the
+   context-owned scalar charset syntax directly instead of calling public
+   `toTrimmedString(...)`. Root import stringification, body render, placement
+   state, merge output, and duplicate declaration materialization remain open.
 7. [ ] Finish `Reference` public value materialization, rules-like surfaces,
    merged assign normalization, key conversion, and remaining cold copy/inherit
    ownership.
@@ -494,32 +499,31 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Declaration` direct writer outer-readback cut.
+Current pass: `Rules` root charset public-string transport cut.
 
-- New traversal: none. `packages/core/src/tree/declaration.ts` adds no loop,
+- New traversal: none. `packages/core/src/tree/rules.ts` adds no loop,
   recursion, parent/source walk, side-map lookup, object/array scan, generator,
   or collection helper.
-- New node/materialization: none. No new `Declaration`, wrapper node, copy,
-  inherit, adopt, source/root metadata, or array materialization was added.
-- Render path: render still uses `declValueTrimmedString(...)` where a returned
-  string is part of the public/render-buffer compatibility boundary.
-  `writeSyntax(...)` now calls the direct writer body and no longer opens the
-  outer declaration `mark()`/`getSince(...)` only to discard the returned text.
-- Helper/API surface: one private writer helper split out the existing
-  declaration body. It replaces the previous `writeSyntax(...)` call through
-  the string-return wrapper; no public API changed.
+- New node/materialization: none. The existing context-owned `Any` charset node
+  is written directly; no wrapper, copy, inherit, adopt, source/root metadata,
+  or array materialization was added.
+- Render path: root-aware `Rules.toString(...)` now emits
+  `context.currentCharset.writeSyntax(...)` directly to the active writer
+  instead of using detached public `toTrimmedString(...)` transport.
+- Helper/API surface: none added.
 - Metadata mutations: none added. No parent/source/frozen/context metadata
   mutation, lazy options/context creation, `Reflect.*`, generic own-property
   helper, source restoration, or source/root read was added.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected/deferred cut: internal `replaceSince(...)`, name/value trim marks,
-  custom raw-source normalization, merge-state formatting, and render string
-  returns remain because those paths still need a localized text boundary.
+- Rejected/deferred cut: root imports still use their existing detached
+  stringification path because import prelude evaluation, indentation, and
+  ordering semantics need a separate pass. Rules body render and duplicate
+  declaration materialization remain open.
 - Evidence: focused red/green test
-  `writes non-custom declaration syntax without outer string readback` failed
-  with the extra outer mark before the cut and passed after. Full
-  `declaration.test.ts` passed.
-- Verdict: accepted as a bounded `Declaration` writer cut. Keep item 5 open
-  because custom raw-source branches, merge state, localized mark/replace, and
-  materialization boundaries remain.
+  `streams root charset and imports without capture scaffolding` failed when
+  `currentCharset.toTrimmedString(...)` threw before the cut and passed after.
+  Full `rules.test.ts` passed.
+- Verdict: accepted as a bounded `Rules` root serializer cut. Keep item 6 open
+  because root imports, body render, placement state, merge output, and
+  duplicate declaration materialization remain.

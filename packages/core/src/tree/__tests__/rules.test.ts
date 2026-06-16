@@ -562,7 +562,11 @@ describe('Rules', () => {
 
   it('streams root charset and imports without capture scaffolding', () => {
     const writer = new WholeBufferCountingWriter();
-    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
+    const charset = any('@charset "utf-8";', { role: 'charset' });
+    charset.toTrimmedString = () => {
+      throw new Error('Rules root charset output should use direct syntax');
+    };
+    context.currentCharset = charset;
     context.topImports = [
       atrule({
         name: any('@import', { role: 'atkeyword' }),
