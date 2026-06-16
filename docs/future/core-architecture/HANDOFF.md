@@ -327,7 +327,9 @@ shape current before commit.
    render and direct flat-buffer render now avoid the top-level query
    mark/getSince readback for direct scalar children, and dynamic render carries
    returned text locally so only uncertain/custom children pay the localized
-   probe.
+   probe. A no-op audit kept those localized probes because focused
+   QueryCondition tests prove custom dynamic children may either return text
+   without writing or write different text than they return.
 3. [ ] Finish `AtRule` body-state staging and remaining custom
    eval/import/render branch ladders.
 
@@ -490,7 +492,12 @@ shape current before commit.
    those writers. `Quoted.compare()` now uses value semantics instead of
    public `toString()` transport. `AttributeSelector.valueOf()` now uses node
    value semantics for node-valued names instead of public
-   `toTrimmedString()` transport.
+   `toTrimmedString()` transport. A no-op audit kept Paren escaped
+   semicolon-list render on the existing `renderListValueSyntax(...)` string
+   boundary because the render path already avoids replacement-list
+   materialization; cutting the remaining mark/readback belongs to shared
+   List string-return contracts. The same audit kept Quoted non-scalar/
+   interpolated value wrapping on the cold `renderQuotedSyntax(...)` boundary.
 13. [x] Finish `List`/`Sequence` public render string-return compatibility:
    either document it as the cold public boundary or split a direct buffer-only
    path that avoids returning a string when callers do not need it.
@@ -586,24 +593,25 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Callable single-output mixin slot reuse.
+Current pass: QueryCondition and scalar-wrapper no-op audits.
 
-- New traversal: none. The change checks the existing single-output
-  `mixinOutputSlot` identity fields before finalization and adds no loop,
-  source walk, side-map lookup, or object scan.
-- New node/materialization: no nodes were added. The accepted path skips
-  rebuilding `attachMixinOutputSlot(...)` state when the existing slot already
-  matches the resolved source rules, output rules, and ambient lookup policy.
-- Render path: unchanged. This is callable output finalization state, not
-  render serialization.
+- New traversal: none. This pass records read-only audit results for
+  QueryCondition, Paren, and Quoted and adds no runtime loop, source walk,
+  side-map lookup, or object scan.
+- New node/materialization: none. No `Node`, copy, inherit, wrapper,
+  materialized array, or ownership mutation was added.
+- Render path: unchanged. QueryCondition keeps localized child probes because
+  focused tests prove custom dynamic children may return-only text or write
+  different text than they return. Paren keeps the escaped semicolon-list render
+  mark/readback at the shared List string-return boundary, and Quoted keeps
+  non-scalar/interpolated value wrapping at the cold `renderQuotedSyntax(...)`
+  boundary.
 - Helper/API surface: no helper or public API was added.
 - Metadata mutations: none. No parent/source/frozen/location/options/context
-  mutation was added on the reuse path.
-- Evidence: focused callable-output, callable-candidate-output, callable-guard,
-  callable-default-guard, and Mixin tests pass. A new single-output fixture
-  pre-attaches a slot and proves `finalizeCallableOutput(...)` preserves the
-  same slot object. The verifier's `throw new Error(...)` hits are test
-  sentinels for unreachable empty/wrapper factories, not runtime control flow.
-- Verdict: accepted as a bounded callable output state reuse cut. Mixin
-  guard/default/body ownership remains open. No performance claim; performance
-  remains shelved because this was not a measured benchmark pass.
+  mutation was added.
+- Evidence: sub-agent focused audits passed QueryCondition tests and
+  Paren/Quoted tests and found no safe local cut in those named paths.
+- Verdict: accepted as a documented no-op audit. These seams stay open only for
+  stronger downstream contracts or shared List/string-return work. No
+  performance claim; performance remains shelved because this was not a
+  measured benchmark pass.
