@@ -2117,6 +2117,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           markEmitted(n);
           return;
         }
+        if (mode === 'render' && context && (n.evaluated || canRenderStaticRulesDirectly(n))) {
+          const childMark = w.mark();
+          emitBoundaryIfNeeded(n);
+          const rendered = n._emitRenderRulesBody(options);
+          const finishDirectChildRule = (): void => {
+            options.emittedTrivia = childEmittedTrivia;
+            restorePrintState(options, childSaved);
+            if (!w.hasContentSince(childMark)) {
+              w.restore(childMark);
+              return;
+            }
+            markEmitted(n);
+          };
+          return isThenable(rendered)
+            ? rendered.then(finishDirectChildRule)
+            : finishDirectChildRule();
+        }
         const childRule = w.preview(() => (
           mode === 'render' && context
             ? n.render(context, options)

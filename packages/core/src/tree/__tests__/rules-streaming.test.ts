@@ -69,6 +69,22 @@ describe('Rules streaming', () => {
     expect(writer.previews).toBe(0);
   });
 
+  it('renders static nested rule wrappers without preview readback', () => {
+    const context = new Context();
+    const writer = new CountingWriter();
+    const node = rules([
+      rules([
+        decl({ name: 'color', value: any('red') })
+      ]),
+      decl({ name: 'background', value: any('blue') })
+    ]);
+
+    expect(node.render(context, { writer })).toBe('color: red;\nbackground: blue;\n');
+    expect(writer.toString()).toBe('color: red;\nbackground: blue;');
+    expect(writer.captures).toBe(0);
+    expect(writer.previews).toBe(0);
+  });
+
   it('does not inspect root output for each emitted child boundary', () => {
     const writer = new CountingWriter();
     const declarations = Array.from({ length: 12 }, (_, index) => (

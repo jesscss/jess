@@ -387,9 +387,11 @@ shape current before commit.
    discarding its returned string. Source-mode child `Rules` wrappers now emit
    their body directly through `_emitSourceRulesBody(...)` instead of public
    `toTrimmedString(...)` preview transport; the caller mark is only kept to
-   discard genuinely empty child output. Render-mode child `Rules`, body render,
-   placement state, merge output, and duplicate declaration materialization
-   remain open.
+   discard genuinely empty child output. Render-mode static/evaluated child
+   `Rules` wrappers now emit their body directly through `_emitRenderRulesBody(...)`
+   instead of `writer.preview(...)` around public `render(...)` transport.
+   Unprepared dynamic child `Rules`, broader body render, placement state, merge
+   output, and duplicate declaration materialization remain open.
 7. [ ] Finish `Reference` public value materialization, rules-like surfaces,
    merged assign normalization, key conversion, and remaining cold copy/inherit
    ownership.
@@ -570,35 +572,29 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Declaration custom-property terminal newline regex cut.
+Current pass: Rules render-mode static child `Rules` preview cut.
 
-- New traversal: two bounded backward character scans were added for custom
-  property terminal-newline detection/trimming. They replace regex
-  match/replace allocation on the same string boundary and run only when
-  declaration rendering already has the custom value text. The verifier reports
-  three loop lines because trimming has two scan phases after the detection
-  scan.
-- New node/materialization: no runtime node, copy, inherit, wrapper,
+- New traversal: none. The new branch reuses the existing child `Rules`
+  visibility scan and emits the already-selected child body; it adds no new
+  loop, source walk, or side-map lookup.
+- New node/materialization: no runtime `Node`, copy, inherit, wrapper,
   materialized array, or ownership mutation was added. The verifier's
-  `new CountingWriter()` hit is test-only instrumentation for the focused
-  declaration fixture.
-- Render path: custom scalar values without declaration-terminator line breaks
-  still bypass the normalization mark/readback path. Values with terminal
-  declaration newlines intentionally stay on the existing normalization
-  boundary, but trimming no longer routes through regex replacement. The one
-  `slice(...)` hit returns the final kept prefix after the scan has found a
-  terminal newline; it replaces regex `replace(...)`, not a new array/string
-  transport layer.
-- Helper/API surface: one private local helper,
-  `trimTrailingDeclarationTerminatorLineBreak(...)`, was added beside the
-  existing detection helper. It removes regex machinery without changing public
-  API surface.
-- Metadata mutations: none. No parent/source/frozen/location/options/context
-  mutation or structural runtime probe was added.
-- Evidence: focused Declaration tests pass, including a new custom-property
-  fixture with spaces, tabs, carriage returns, form feeds, and a trailing
-  newline. Lint for touched files passes.
-- Verdict: accepted as a bounded Declaration serialization machinery deletion.
-  Merge state, internal mark/replace boundaries, materialization, and raw
-  custom-property semantics remain open. No performance claim; performance
+  `new Context()` and `new CountingWriter()` hits are test-only instrumentation.
+- Render path: static or already evaluated child `Rules` now write directly to
+  the active render writer through `_emitRenderRulesBody(...)`. This removes
+  `writer.preview(...)` around public `n.render(...)` for that covered path.
+  Unprepared dynamic child `Rules` deliberately stay on `n.render(...)` because
+  that path owns eval/context setup and restoration.
+- Helper/API surface: no helper or public API was added. The pass adds one
+  local branch in `Rules._emitRulesBody(...)` and reuses the existing private
+  body emitter.
+- Metadata mutations: no parent/source/frozen/location/options/context
+  mutation was added. The branch uses the same saved/restored print-state fields
+  as the source child `Rules` path.
+- Evidence: focused Rules, Rules streaming, and node render-buffer tests pass.
+  The new streaming test proves static nested child `Rules` render with zero
+  `preview(...)` calls while output stays aligned.
+- Verdict: accepted as a bounded render string-transport deletion. Dynamic
+  child `Rules`, root/body render, placement state, merge output, and duplicate
+  declaration materialization remain open. No performance claim; performance
   remains shelved because this was not a measured benchmark pass.
