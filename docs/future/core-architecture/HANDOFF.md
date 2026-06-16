@@ -79,12 +79,22 @@ The goal is the fastest credible path from parsed Less to CSS output:
 Less is the optimizing path. Preserve SCSS-enabling seams only when they are
 concrete and cheap or isolated behind cold extension boundaries.
 
-Work shape while `writeSyntax` is active: run full queue batches, not one-node
-dribbles. A full pass must choose from the unfinished node/family rows in
-`NODE-REWRITE-TRACKER.md` and should leave one or more whole families complete
-or materially closer to complete against that tracker. The pass is invalid if
-its primary result is selector/equality cleanup, benchmark-chasing, lookup
-cleanup, copy cleanup, or generic helper polish instead of node serialization
+Work shape while `writeSyntax` is active: run autonomously across the full
+open tracker, not one-node dribbles. When the user asks for a full queue pass
+or to continue, keep selecting the next highest-value unfinished
+node/family row in `NODE-REWRITE-TRACKER.md`, implement the bounded cut, test,
+update docs, commit, push, and immediately continue to the next row. Do not
+stop to report ordinary progress after a single partial cut. Stop only when
+all open tracker rows are complete, a test exposes a real semantic blocker,
+the repo becomes unsafe to proceed, or the next remaining work is explicitly
+benchmark-first tradeoff/design work rather than an evident serialization cut.
+
+If context compacts mid-run, resume from the live tracker and git state rather
+than restarting the audit. Treat each commit as a checkpoint, not the end of
+the user's request. A full autonomous run should leave one or more whole
+families complete whenever the code allows it; a pass is invalid if its
+primary result is selector/equality cleanup, benchmark-chasing, lookup cleanup,
+copy cleanup, or generic helper polish instead of node serialization
 completion.
 
 Queue items must be **entire tasks**, not micro-items. A queue item is a
@@ -102,12 +112,12 @@ queue items** available across the active lane unless the lane is genuinely
 within 15 tasks of completion. If fewer than 15 remain, split by whole
 node-family/runtime boundary, not by one-line edits.
 
-A valid queue pass should complete one or more whole queue items, or explicitly
-record that the current whole item is blocked by a semantic decision,
-benchmark-first tradeoff, or unsafe behavior boundary. If the work is only a
-small partial cut inside a larger task, record it as partial status under that
-task and keep the checkbox open. Do not create new numbered queue entries just
-to memorialize every tiny cut.
+A valid autonomous queue run should complete every currently safe cut across
+the open tracker, preferably closing one or more whole queue items. It may
+record a partial cut under an open item only as an intermediate checkpoint
+before immediately continuing, or when the current whole item is blocked by a
+semantic decision, benchmark-first tradeoff, or unsafe behavior boundary. Do
+not create new numbered queue entries just to memorialize every tiny cut.
 
 Sweep the unchecked node/family list in `NODE-REWRITE-TRACKER.md`, land every
 bounded deletion that shares the same proof surface, and stop only when the

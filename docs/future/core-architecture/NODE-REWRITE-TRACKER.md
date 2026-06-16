@@ -1,8 +1,14 @@
 # Node Rewrite Tracker
 
-This tracker owns the node-by-node cleanup program. The rule is simple: finish
-one node rewrite pass at a time, prove output with focused unit tests before and
-after, and prefer structural facts, straight loops, fewer branches, fewer
+This tracker owns the node-by-node cleanup program. The rule is simple: when
+the user asks to continue or run the full queue, keep working autonomously
+across the open rows. Finish a bounded cut, prove output with focused unit
+tests, update docs, commit/push, then immediately continue to the next
+highest-value open row. Stop only when all rows are complete, a real semantic
+blocker appears, the repo becomes unsafe, or the remaining work is explicitly
+benchmark-first design/tradeoff work.
+
+Within each row, prefer structural facts, straight loops, fewer branches, fewer
 function calls, and fewer conversions.
 
 Do not mark a node complete because one helper changed. A node is complete when
@@ -26,14 +32,14 @@ helper changed.
 
 Current focus lock: this queue is the active focus. Finish unfinished
 node/family serialization rows across the repo before selecting any other core
-architecture work. A pass should complete or materially advance a whole node
-family: direct `writeSyntax(...)`, direct `render(...)` emission after value
-selection, cold public string wrappers only, and removal or documented
-isolation of render-only `mark/getSince`, writer capture/readback, detached
-writers, temporary syntax arrays, and public string transport. Selector/equality
-cleanup, binding-index work, lookup redesign, copy/materialization cleanup,
-benchmark tuning, and generic smell sweeps are not separate queue candidates
-while this focus is active.
+architecture work. A full autonomous run should close one or more whole rows
+whenever possible: direct `writeSyntax(...)`, direct `render(...)` emission
+after value selection, cold public string wrappers only, and removal or
+documented isolation of render-only `mark/getSince`, writer capture/readback,
+detached writers, temporary syntax arrays, and public string transport.
+Selector/equality cleanup, binding-index work, lookup redesign,
+copy/materialization cleanup, benchmark tuning, and generic smell sweeps are not
+separate queue candidates while this focus is active.
 
 Completion contract for each checkbox:
 
