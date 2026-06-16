@@ -134,6 +134,21 @@ function isNodeValueConstructor(value: unknown): value is NodeValueConstructor {
 
 const REF_EVAL_PRESERVE_RULES_LIKE = 1;
 const REF_EVAL_REUSE_SOURCE_FREE = 1 << 1;
+const DIRECT_DECLARATION_LOOKUP_CACHE_KEY_SEPARATOR = '\u001f';
+
+function invalidateDirectDeclarationLookupKey(scope: Rules, key: string): void {
+  scope.directDeclarationsByName?.delete(key);
+  const cache = scope.directDeclarationLookupCache;
+  if (!cache?.size) {
+    return;
+  }
+  const cacheKeyPrefix = `${key}${DIRECT_DECLARATION_LOOKUP_CACHE_KEY_SEPARATOR}`;
+  for (const cacheKey of cache.keys()) {
+    if (cacheKey.startsWith(cacheKeyPrefix)) {
+      cache.delete(cacheKey);
+    }
+  }
+}
 
 function promoteResolvedPendingVarDecls(
   scope: Rules,
@@ -144,6 +159,8 @@ function promoteResolvedPendingVarDecls(
   }
   const remaining: VarDeclaration[] = [];
   let mutated = false;
+  let firstInvalidatedName: string | undefined;
+  let invalidatedNames: Set<string> | undefined;
 
   for (const decl of frame.pendingDeclarationNames) {
     if (decl.parent !== scope) {
@@ -159,6 +176,11 @@ function promoteResolvedPendingVarDecls(
     }
 
     const resolvedName = `${declName.valueOf()}`;
+    if (firstInvalidatedName === undefined) {
+      firstInvalidatedName = resolvedName;
+    } else if (firstInvalidatedName !== resolvedName) {
+      (invalidatedNames ??= new Set([firstInvalidatedName])).add(resolvedName);
+    }
     const sourceIdentity = decl.sourceNode ?? decl;
     let bucket = frame.declarationBucketsByName.get(resolvedName);
     if (!bucket) {
@@ -197,8 +219,13 @@ function promoteResolvedPendingVarDecls(
 
   if (mutated) {
     frame.pendingDeclarationNames = remaining;
-    scope.directDeclarationsByName = undefined;
-    scope.directDeclarationLookupCache = undefined;
+    if (invalidatedNames) {
+      for (const resolvedName of invalidatedNames) {
+        invalidateDirectDeclarationLookupKey(scope, resolvedName);
+      }
+    } else if (firstInvalidatedName !== undefined) {
+      invalidateDirectDeclarationLookupKey(scope, firstInvalidatedName);
+    }
     scope.lookupVersion++;
   }
 }

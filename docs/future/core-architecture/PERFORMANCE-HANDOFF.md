@@ -159,6 +159,15 @@ reported unchanged direct lookup counters: `declaration.cacheMiss` `16560`,
 performance target: child-entry scans and entry allocation, not old registry
 paths.
 
+2026-06-15 dynamic-name promotion cache retention follow-up: after resolved
+dynamic-name promotion started deleting direct declaration bucket/cache state
+by resolved key, the stress fixture again reported unchanged direct lookup
+counters: `declaration.cacheMiss` `16560`, `declaration.scope.v` `16560`,
+`declaration.childEntryEntered` `11520`, `declaration.childEntriesScanned`
+`10530`, and `declaration.framePrep` `139`. `Reference.evalNode` was `6528`
+calls / `62.76ms`. This is correctness/cache-retention evidence for rare
+dynamic-name promotion; the measured hot target remains child-entry scans.
+
 ## Reactivation Threshold
 
 Full performance rounds are currently active. If future work parks performance

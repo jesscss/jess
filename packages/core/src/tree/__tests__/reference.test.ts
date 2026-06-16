@@ -3689,14 +3689,19 @@ describe('reference', () => {
 
         const frame = node.getScopeFrame();
         expect(node.findProperty('x', { searchParents: false })).toBeUndefined();
+        expect(node.findProperty('unaffected', { searchParents: false })).toBeUndefined();
         expect(node.directDeclarationsByName?.get('x')).toBeNull();
+        expect(node.directDeclarationsByName?.get('unaffected')).toBeNull();
         const dynamicDecl = node.at(0)!;
         dynamicDecl.set('name', any('x'));
 
         const resolved = await node.at(1)!.eval(context);
         expect(resolved.toTrimmedString()).toBe('bar: red');
         expect(declarationHits).toHaveLength(0);
-        expect(node.directDeclarationsByName).toBeUndefined();
+        expect(node.directDeclarationsByName?.has('x')).toBe(false);
+        expect(node.directDeclarationsByName?.get('unaffected')).toBeNull();
+        expect([...(node.directDeclarationLookupCache?.keys() ?? [])].filter(key => key.startsWith('x\u001f'))).toHaveLength(0);
+        expect([...(node.directDeclarationLookupCache?.keys() ?? [])].filter(key => key.startsWith('unaffected\u001f')).length).toBeGreaterThan(0);
         expect(frame.pendingDeclarationNames).toHaveLength(0);
         expect(frame.declarationBucketsByName.get('x')?.at(-1)?.sourceNode).toBe(dynamicDecl);
         const promotedHit = lookupScopeFrameVariable(frame, 'x', {

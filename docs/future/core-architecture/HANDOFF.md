@@ -173,6 +173,10 @@ declaration-name state. Static unresolved declaration names now only uncover
 lookups for their own key; unrelated misses can stay covered. Still-dynamic
 names remain conservative and uncover lookup because resolving them belongs to
 registration/eval, not `ScopeFrame` lookup.
+Current queue pass makes resolved dynamic-name promotion invalidate direct
+declaration bucket/cache state by resolved key instead of dropping all direct
+declaration maps. `Rules.lookupVersion` still increments because reference
+handles are versioned at the whole-rules level.
 
 ## Active Queue
 
@@ -264,12 +268,12 @@ child `Rules` registration, `rulesVisibility`, variable/property lookup, and
 cannot contain the requested declaration family before entry allocation.
 Acceptance: variable/property child-surface spy tests plus stress counters.
 
-15. [ ] Make resolved dynamic-name promotion invalidate declaration lookup by
-affected key. Scope: `promoteResolvedPendingVarDecls(...)`,
-`directDeclarationsByName`, `directDeclarationLookupCache`, and
-`lookupVersion`. Goal: when one unresolved name settles, clear only lookup
-state that can observe that key unless broader invalidation is proven required.
-Acceptance: cache invalidation spy tests for affected and unaffected keys.
+15. [ ] Split reference handle versioning by lookup key or prove global
+versioning is required. Scope: `ReferenceRulesLookupHandle`,
+`Rules.lookupVersion`, variable/property/function/callable handle writes, and
+dynamic-name promotion. Goal: affected-key invalidation should not invalidate
+unrelated handles unless a semantic dependency proves it must. Acceptance:
+handle stale/fresh tests for affected and unaffected keys.
 
 ## Backlog Sources
 
@@ -321,36 +325,41 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: made scope-frame variable lookup key-aware for unresolved
-  declaration-name state. Static entries in the dynamic-name list only uncover
-  their own key; still-dynamic entries remain conservative.
-- Verdict: accepted as a covered-miss narrowing, not as a speed claim.
-- New traversal: added one bounded scan over the existing dynamic-name list in
-  `lookupScopeFrameVariable(...)`. The old path already checked the list
-  length on every covered lookup; the new loop only runs when the list is
-  non-empty and the caller requested conservative bailout.
+- Latest pass: made resolved dynamic-name promotion invalidate
+  `directDeclarationsByName` and `directDeclarationLookupCache` by resolved key
+  instead of clearing the whole direct declaration lookup surface.
+- Verdict: accepted as key-scoped cache retention, not as a speed claim.
+- New traversal: added one bounded scan over `directDeclarationLookupCache`
+  keys, only after a dynamic declaration name has resolved and only when the
+  cache exists. This replaces wholesale cache deletion; it is not on the
+  ordinary lookup miss/hit path.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: one private predicate was added inside `scope-frame.ts`;
-  no public API was added.
-- Metadata mutations: none.
-- Allocation changes: none.
-- Rejected/failed proof: callable namespace remainder reuse was inspected but
-  left alone because the current path is intertwined with recursive namespace
-  ownership and needs a focused counter/spy before changing array identity.
-- Aggressive-review tokens: the flagged production loop is the dynamic-name
-  predicate. It scans an existing list only for conservative bailout and avoids
-  sending unrelated static-name misses into fallback lookup. Test-only
-  interpolated-name setup appears in `scope-frame.test.ts`.
-- Evidence: focused eslint passed for touched lookup files/tests.
-  `scope-frame.test.ts` passed (`13` tests). The focused lookup gate passed
-  (`8` files, `320` passed, `295` skipped). Stale registry/lookup wording
-  search returned no matches. `git diff --check`, `@jesscss/core` build,
-  aggressive review, node-creation audit, `jess` build, stress profile, and
-  hotpath smoke passed. Node-creation audit stayed at `new-node: 302`,
-  `with-surface: 39`, `derive: 30`, `copy-leaves: 28`. Stress profile
-  reported unchanged direct lookup counters led by `declaration.cacheMiss`
-  `16560`, `declaration.childEntryEntered` `11520`, and
+- Helper/API surface: one private invalidation helper was added inside
+  `reference.ts`; no public API was added.
+- Metadata mutations: affected direct declaration bucket/cache entries are
+  deleted by key. `lookupVersion` still increments because existing reference
+  handles are versioned at whole-rules granularity.
+- Allocation changes: a `Set` is allocated only when one promotion pass
+  resolves more than one distinct name. Single-key promotion stays scalar.
+- Rejected/failed proof: fully key-scoped handle invalidation was not landed
+  because `ReferenceRulesLookupHandle` currently compares
+  `targetLookupVersion` before consulting value keys, so removing
+  `lookupVersion++` would leave stale unrelated handle semantics unproven.
+- Aggressive-review tokens: the flagged production loop scans direct
+  declaration cache keys during promotion invalidation only. The flagged `Set`
+  is the multi-key promotion fallback and is avoided for the common single-key
+  path. Test-only cache-key array inspection appears in `reference.test.ts`.
+- Evidence: focused eslint passed for touched lookup files/tests. Focused
+  dynamic-promotion tests passed (`7` passed, `145` skipped). The focused
+  lookup gate passed (`8` files, `320` passed, `295` skipped). Stale
+  registry/lookup wording search returned no matches. `git diff --check`,
+  `@jesscss/core` build, aggressive review, node-creation audit, `jess` build,
+  stress profile, and hotpath smoke passed. Node-creation audit is now
+  `new-node: 303`, `with-surface: 39`, `derive: 30`, `copy-leaves: 28`; the
+  increase is the cold multi-key promotion `Set`. Stress profile reported
+  unchanged direct lookup counters led by `declaration.cacheMiss` `16560`,
+  `declaration.childEntryEntered` `11520`, and
   `declaration.childEntriesScanned` `10530`; `Reference.evalNode` was `6528`
-  calls / `62.74ms`. One-iteration hotpath smoke is not a speed claim:
-  `mixins-guards.less` `24.75ms`, `scope-lookup-stress.less` `82.23ms`.
+  calls / `62.76ms`. One-iteration hotpath smoke is not a speed claim:
+  `mixins-guards.less` `26.10ms`, `scope-lookup-stress.less` `95.11ms`.
