@@ -52,8 +52,11 @@ materialization wrapper for that semantic case.
 
 4. **Direct declaration result flattening.**
    `DeclarationLookupStrategy` now carries preselected family predicates.
-   Remaining work is flattening result shapes so simple reads do not allocate
-   public materialization wrappers or fallback-only details.
+   Hot occurrence callers now return `DirectDeclarationOccurrence | undefined`
+   without allocating the `{ occurrence, readonly }` wrapper. Remaining work is
+   isolating the readonly wrapper to cold setDefined assignment and proving
+   simple reads do not allocate public materialization wrappers or fallback-only
+   details.
 
 ### B. ScopeFrame, Current Cells, And Assignment
 
@@ -75,9 +78,12 @@ materialization wrapper for that semantic case.
    `lookupScopeFrameCallable(...)` has `hit`, `miss`, and `uncovered` reasons.
    Candidate, child-surface, and reference-import reasons now route through
    caller-specific decisions before generic direct crawl. Prepared child-rule
-   entries carry exact callable/mixin/ruleset surface facts, so remaining work
-   is deleting the direct-crawl bridges where those facts are complete and
-   making the carried flags the only prepared-entry gate.
+   entries carry exact callable/mixin/ruleset surface facts, but guarded import
+   tests proved prepared arrays cannot be trusted as a blanket aggregate miss.
+   Prepared-null entries can skip child reads. Remaining work is deleting the
+   direct-crawl bridges where facts are complete, especially no-frame
+   reference-import callable misses, without breaking guarded/configured child
+   surfaces.
 
 2. **Parameterized terminal namespace audit.**
    Mixin-ruleset calls with parameters now reject ruleset-only terminal
@@ -92,9 +98,11 @@ materialization wrapper for that semantic case.
    arrays on cold fallback paths. Positive nested namespace, ruleset namespace,
    and compound-prefix namespace hits now use offsets through
    `findMixinNamespacePathFast`; callable lookup-key remainder string slicing
-   has been deleted, and namespace result append logic now uses one shared
-   loop. Remaining work is eliminating any remaining positive-path
-   `collectKeyRemainder(...)` fallback arrays and keeping arrays cold.
+   has been deleted, namespace result append logic now uses one shared loop, and
+   a real Less namespace fixture proves stable namespace positives avoid nested
+   array-path fallback calls. Remaining work is eliminating any remaining
+   positive-path `collectKeyRemainder(...)` fallback arrays and keeping arrays
+   cold for guarded/imported namespaces too.
 
 ### D. Reference Handles And Fallback Bridges
 
@@ -114,8 +122,10 @@ materialization wrapper for that semantic case.
    `searchScope` disqualification now has proof that stale handles are cleared
    and ordinary lookup rebuilds later. Synthetic import/reference covered-hit
    and covered-miss tests plus a real reference-import declaration fixture now
-   prove public declaration bridges stay unused. Each remaining bridge needs a
-   deletion condition and, where possible, a real Less fixture proof.
+   prove public declaration bridges stay unused. A real reference-import
+   callable miss fixture documents that no-frame callable misses still enter the
+   direct-crawl bridge. Each remaining bridge needs a deletion condition and,
+   where possible, a real Less fixture proof.
 
 3. **Final simple-read proof.**
    The lane is not done until ordinary static variable, property, declaration,

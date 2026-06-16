@@ -2547,6 +2547,56 @@ describe('Style import', () => {
       `);
     });
 
+    it('import-reference: rendered callable misses document the remaining no-frame direct-crawl bridge', async () => {
+      const referencedPath = resolve(process.cwd(), 'reference-callable-miss.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        mixin({
+          name: any('.actual-reference-mixin'),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]));
+      const node = rules([
+        style({ path: quoted(any('reference-callable-miss.jess')) }, { type: 'import', importOptions: { reference: true } }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            decl({
+              name: any('missing'),
+              value: ref({ key: '.missing-reference-mixin' }, {
+                type: 'mixin',
+                fallbackValue: true
+              })
+            })
+          ])
+        })
+      ]);
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const directCrawlHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.missing-reference-mixin') {
+          directCrawlHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        node.getScopeFrame();
+        const css = await renderNodeToString(node, context, { context });
+
+        expect(css).toBeString(`
+          .out {
+            missing: .missing-reference-mixin;
+          }
+        `);
+        expect(directCrawlHits).toEqual(['.missing-reference-mixin']);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('import-reference: reference-imported mixins preserve detached ruleset variable closures', async () => {
       const referencedPath = resolve(process.cwd(), 'reference-detached-closure.jess');
       context.sourceTrees.set(referencedPath, rules([

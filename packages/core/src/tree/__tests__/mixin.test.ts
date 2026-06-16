@@ -3084,6 +3084,33 @@ describe('Mixin', () => {
       }
     });
 
+    it('direct callable fast path: prepared null child entries skip child entry reads', () => {
+      const childRules = rules([
+        decl({ name: 'color', value: any('green') })
+      ]);
+      const root = rules([childRules]);
+      root.collectDirectChildRulesEntries();
+      expect(root.directChildRuleEntries).toBeNull();
+
+      const originalValue = childRules.value;
+      Object.defineProperty(childRules, 'value', {
+        configurable: true,
+        get() {
+          throw new Error('mixin-only lookup should trust prepared null child entries');
+        }
+      });
+
+      try {
+        expect(root.findMixin('.prepared-null-direct-missing', 'Mixin')).toBeUndefined();
+      } finally {
+        Object.defineProperty(childRules, 'value', {
+          configurable: true,
+          writable: true,
+          value: originalValue
+        });
+      }
+    });
+
     it('ruleset path misses skip mixin-only child surfaces without a frame', async () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const childRules = rules([
@@ -3653,6 +3680,101 @@ describe('Mixin', () => {
       expect(css).toContain('guarded: namespace;');
       expect(css).toContain('silent: namespace;');
       expect(css).toContain('guarded: with default;');
+    });
+
+    it('namespace fast path: real Less stable namespaces avoid direct-crawl and array fallback', async () => {
+      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const parser = new Parser();
+      const tree = parser.parse(`
+        #theme {
+          .dark {
+            .colors() {
+              color: cyan;
+            }
+          }
+        }
+
+        #panel.dark.navbar {
+          .colors() {
+            background: red;
+          }
+        }
+
+        #ns() {
+          .leaf() {
+            width: 1px;
+          }
+        }
+
+        .parameterized {
+          color: ruleset;
+        }
+
+        .parameterized(@color) {
+          color: @color;
+        }
+
+        .a {
+          #theme > .dark > .colors();
+        }
+
+        .b {
+          #panel > .dark > .navbar > .colors();
+        }
+
+        .c {
+          #ns > .leaf();
+        }
+
+        .d {
+          .parameterized(blue);
+        }
+      `).tree;
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const directCrawlHits: string[] = [];
+      let nestedArrayPathCalls = 0;
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (
+          key === '#theme'
+          || key === '#panel'
+          || key === '.dark'
+          || key === '.navbar'
+          || key === '.colors'
+          || key === '#ns'
+          || key === '.leaf'
+          || key === '.parameterized'
+        ) {
+          directCrawlHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== tree && Array.isArray(args[0])) {
+          nestedArrayPathCalls++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        context.root = tree;
+        const css = await renderNodeToString(tree, context, { context });
+
+        expect(css).toContain('.a {');
+        expect(css).toContain('color: cyan;');
+        expect(css).toContain('.b {');
+        expect(css).toContain('background: red;');
+        expect(css).toContain('.c {');
+        expect(css).toContain('width: 1px;');
+        expect(css).toContain('.d {');
+        expect(css).toContain('color: blue;');
+        expect(directCrawlHits).toEqual([]);
+        expect(nestedArrayPathCalls).toBe(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
     });
 
     it('mixin-ruleset calls with args mark terminal lookup mixin-only', async () => {

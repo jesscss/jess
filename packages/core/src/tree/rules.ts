@@ -1061,6 +1061,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
 
+      if (scope.directChildRuleEntries === null) {
+        return visited;
+      }
       const childEntries = scope.directChildRuleEntries !== undefined
         ? (scope.directChildRuleEntries ?? undefined)
         : scope.collectDirectChildRulesEntries();
