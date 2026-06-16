@@ -111,11 +111,19 @@ export function finalizeCallableOutput({
 
   if (state.outputRules.length === 1) {
     const output = state.outputRules[0]!;
-    attachMixinOutputSlot(
-      output,
-      resolveSingleOutputSourceRules(output),
-      restrictMixinOutputLookup
-    );
+    const sourceRules = resolveSingleOutputSourceRules(output);
+    const existingSlot = output.options.mixinOutputSlot;
+    if (
+      existingSlot?.sourceRules !== sourceRules
+      || existingSlot.outputRules !== output
+      || existingSlot.ambientLookup !== !restrictMixinOutputLookup
+    ) {
+      attachMixinOutputSlot(
+        output,
+        sourceRules,
+        restrictMixinOutputLookup
+      );
+    }
     return output;
   }
 

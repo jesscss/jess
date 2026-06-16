@@ -408,6 +408,11 @@ shape current before commit.
    requested render buffer.
 8. [ ] Finish `Mixin` guard/default/body copy interactions and callable
    candidate output.
+
+   Current partial status: callable finalization now reuses an already-attached
+   single-output mixin slot when it matches the same source rules, output rules,
+   and ambient lookup policy instead of rebuilding child segments, maps, and
+   placement arrays. Guard/default/body ownership remains open.
 9. [ ] Finish `Interpolated` cold replacement capture, selector/generic
    materialization, and replacement arrays.
 
@@ -581,25 +586,24 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Control render `Promise.resolve(...)` wrapper cut.
+Current pass: Callable single-output mixin slot reuse.
 
-- New traversal: none. The change deletes a wrapper around the existing
-  `Rules.render(...)` result and adds no loop, source walk, side-map lookup, or
-  object scan.
-- New node/materialization: none. No `Node`, copy, inherit, wrapper,
-  materialized array, or ownership mutation was added.
-- Render path: shared control body rendering now awaits the native
-  `Rules.render(context, buffer, options)` result directly. Async and sync
-  results still flow through the same trailing-newline trimming logic.
+- New traversal: none. The change checks the existing single-output
+  `mixinOutputSlot` identity fields before finalization and adds no loop,
+  source walk, side-map lookup, or object scan.
+- New node/materialization: no nodes were added. The accepted path skips
+  rebuilding `attachMixinOutputSlot(...)` state when the existing slot already
+  matches the resolved source rules, output rules, and ambient lookup policy.
+- Render path: unchanged. This is callable output finalization state, not
+  render serialization.
 - Helper/API surface: no helper or public API was added.
 - Metadata mutations: none. No parent/source/frozen/location/options/context
-  mutation was added.
-- Evidence: focused control and render-buffer tests pass. The deleted
-  `Promise.resolve(...)` wrapped the value immediately before `await`, so it
-  was redundant async scaffolding rather than semantic error handling. The
-  verifier's `.map(...)` hit is pre-existing tracker prose in the changed `For`
-  row, not a new runtime array helper.
-- Verdict: accepted as a bounded shared control render scaffolding deletion.
-  Loop state/body surface and async branch audits remain open. No performance
-  claim; performance remains shelved because this was not a measured benchmark
-  pass.
+  mutation was added on the reuse path.
+- Evidence: focused callable-output, callable-candidate-output, callable-guard,
+  callable-default-guard, and Mixin tests pass. A new single-output fixture
+  pre-attaches a slot and proves `finalizeCallableOutput(...)` preserves the
+  same slot object. The verifier's `throw new Error(...)` hits are test
+  sentinels for unreachable empty/wrapper factories, not runtime control flow.
+- Verdict: accepted as a bounded callable output state reuse cut. Mixin
+  guard/default/body ownership remains open. No performance claim; performance
+  remains shelved because this was not a measured benchmark pass.

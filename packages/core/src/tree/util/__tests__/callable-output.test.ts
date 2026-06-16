@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Context } from '../../../context.js';
 import { any, decl, rules } from '../../index.js';
 import { CALLABLE_DEFAULT_TRUE, createCallableDefaultState } from '../callable-default-guard.js';
-import { getMixinOutputPlacementRecord } from '../mixin-output-slot.js';
+import { attachMixinOutputSlot, getMixinOutputPlacementRecord } from '../mixin-output-slot.js';
 import {
   createCallableOutputState,
   finalizeCallableEvalOutput,
@@ -78,6 +78,32 @@ describe('callable output helpers', () => {
       source: sourceRules,
       output
     });
+  });
+
+  it('reuses an already attached single output slot', () => {
+    const state = createCallableOutputState();
+    const sourceRules = rules([decl({ name: 'color', value: any('red') })]);
+    const outputRule = rules([decl({ name: 'color', value: any('red') })]);
+
+    recordCallableOutputSourceRules(state, sourceRules);
+    pushCallableOutputRule(state, outputRule);
+    const slot = attachMixinOutputSlot(outputRule, sourceRules, true);
+
+    const output = finalizeCallableOutput({
+      state,
+      restrictMixinOutputLookup: true,
+      createEmptyOutput: () => {
+        throw new Error('should not create empty output');
+      },
+      createWrapperOutput: () => {
+        throw new Error('should not create wrapper output');
+      },
+      resolveSingleOutputSourceRules: () => sourceRules,
+      isIndexedRuleChild: () => true
+    });
+
+    expect(output).toBe(outputRule);
+    expect(output.options.mixinOutputSlot).toBe(slot);
   });
 
   it('finalizes multiple output rules through a wrapper and assigns source indexes', () => {
