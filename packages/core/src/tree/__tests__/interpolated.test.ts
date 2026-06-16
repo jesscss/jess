@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Context } from '../../context.js';
 import {
   any,
@@ -286,16 +286,9 @@ describe('Interpolated', () => {
     expect(selector.toTrimmedString()).toBe('.prefix-theme');
   });
 
-  it('creates generated selector-list wrappers without public pseudo string transport', () => {
-    const descriptor = Object.getOwnPropertyDescriptor(PseudoSelector.prototype, 'toTrimmedString');
-    if (!descriptor) {
-      throw new Error('Expected PseudoSelector.toTrimmedString for generated wrapper proof');
-    }
-    Object.defineProperty(PseudoSelector.prototype, 'toTrimmedString', {
-      ...descriptor,
-      value: () => {
-        throw new Error('generated selector-list wrappers should write pseudo syntax directly');
-      }
+  it('creates generated selector-list wrappers without pseudo node materialization', () => {
+    const createPseudo = vi.spyOn(PseudoSelector, 'create').mockImplementation(() => {
+      throw new Error('generated selector-list wrappers should write pseudo syntax directly');
     });
     try {
       const node = interpolated({
@@ -305,7 +298,7 @@ describe('Interpolated', () => {
 
       expect(node.createSelector('resolve').toTrimmedString()).toBe(':is(.one, .two) .child');
     } finally {
-      Object.defineProperty(PseudoSelector.prototype, 'toTrimmedString', descriptor);
+      createPseudo.mockRestore();
     }
   });
 

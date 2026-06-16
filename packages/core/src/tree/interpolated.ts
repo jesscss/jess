@@ -4,7 +4,6 @@ import type { Context } from '../context.js';
 import { BasicSelector } from './selector-basic.js';
 import { CompoundSelector } from './selector-compound.js';
 import type { Selector } from './selector.js';
-import { PseudoSelector } from './selector-pseudo.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
@@ -48,11 +47,61 @@ function getIsWrapperArg(replacement: Node): Node {
 
 function serializeGeneratedIsWrapper(replacement: Node): string {
   const arg = getIsWrapperArg(replacement);
-  const pseudo = PseudoSelector.create({ name: ':is', arg });
-  pseudo.generated = true;
   const writer = new OutputWriter();
-  pseudo.writeSyntax(getPrintOptions({ writer }));
+  const options = getPrintOptions({ writer });
+  writer.add(':is(');
+  writeInlineSelectorArg(arg, options);
+  writer.add(')');
   return writer.toString().replace(/\n\s*/g, ' ');
+}
+
+function writeInlineSelectorArg(arg: Node, options: FinalPrintOptions): void {
+  if (!isNode(arg, N.SelectorList)) {
+    arg.writeSyntax(options);
+    return;
+  }
+  let emitted = 0;
+  const value = arg.value;
+  for (let i = 0; i < value.length; i++) {
+    emitted = writeInlineSelectorItem(value[i]!, options, emitted);
+  }
+}
+
+function writeInlineSelectorItem(arg: Selector, options: FinalPrintOptions, emitted: number): number {
+  const flattened = inlineSelectorListItems(arg);
+  if (flattened) {
+    for (let i = 0; i < flattened.length; i++) {
+      emitted = writeInlineSelectorItem(flattened[i]!, options, emitted);
+    }
+    return emitted;
+  }
+  if (emitted > 0) {
+    options.writer.add(', ');
+  }
+  arg.writeSyntax(options);
+  return emitted + 1;
+}
+
+function inlineSelectorListItems(arg: Selector): readonly Selector[] | undefined {
+  if (isNode(arg, N.PseudoSelector) && arg.value.name === ':is') {
+    const inner = arg.value.arg;
+    return inner && isNode(inner, N.SelectorList) ? inner.value : undefined;
+  }
+  if (isNode(arg, N.CompoundSelector) && arg.value.length === 1) {
+    const only = arg.value[0]!;
+    if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
+      const inner = only.value.arg;
+      return inner && isNode(inner, N.SelectorList) ? inner.value : undefined;
+    }
+  }
+  if (isNode(arg, N.ComplexSelector) && arg.value.length === 1) {
+    const only = arg.value[0]!;
+    if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
+      const inner = only.value.arg;
+      return inner && isNode(inner, N.SelectorList) ? inner.value : undefined;
+    }
+  }
+  return undefined;
 }
 
 function stringifyReplacement(replacement: Node, options?: PrintOptions, preserveQuotedSyntax?: boolean): string {
