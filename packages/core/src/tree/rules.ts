@@ -352,6 +352,15 @@ function printDetached(options: PrintOptions, fn: (nextOptions: PrintOptions) =>
   return writer.toString() || out;
 }
 
+function canWriteRootImportSyntaxDirectly(node: Node, options: FinalPrintOptions): boolean {
+  return (
+    isNode(node, N.AtRule)
+    && !node.value.rules
+    && !options.trivia
+    && !node.sourceRoot?._treeContext?.opts?.trivia
+  );
+}
+
 export type RulesVisibility = 'public' | 'optional' | 'private';
 
 export interface RuntimeVarBinding {
@@ -1798,6 +1807,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 importRule.value.prelude = maybePrelude as Node;
               }
             }
+          }
+          if (canWriteRootImportSyntaxDirectly(importRule, options)) {
+            importRule.writeSyntax(options);
+            w.add('\n');
+            continue;
           }
           const importStr = printDetached(options, nextOptions => importRule.toString(nextOptions));
           w.add(normalizeIndent(importStr, ''), importRule);

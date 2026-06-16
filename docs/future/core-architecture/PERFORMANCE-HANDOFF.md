@@ -4153,6 +4153,28 @@ remaining generic materialization boundaries, non-scalar cold replacement
 capture, and replacement arrays. Do not claim a speed win; two fixtures were
 unstable and one was noisy.
 
+### Rules Root Import Direct Syntax Cut
+
+Date: 2026-06-16.
+
+Change: root `Rules.toString(...)` now writes plain no-trivia top imports
+through direct `AtRule.writeSyntax(...)` instead of calling public
+`AtRule.toString(...)` on a detached writer. Complex/trivia-backed imports
+remain on the existing detached stringification path.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `16.01ms` noisy, `import-reference` median
+  `21.43ms` usable, `mixins-guards` median `17.67ms` usable,
+  `extend-chaining` median `5.84ms` usable, and `media` median `5.63ms`
+  unstable.
+
+Interpretation: root serializer transport cut only; the Rules row remains open
+for body eval/render, complex imports, placement state, merge output, duplicate
+declaration materialization, and broader root serializer capture. Do not claim
+a speed win; one fixture was unstable and one was noisy.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

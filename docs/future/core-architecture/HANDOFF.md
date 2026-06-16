@@ -342,8 +342,10 @@ shape current before commit.
 
    Current partial status: root-owned `@charset` output now writes the
    context-owned scalar charset syntax directly instead of calling public
-   `toTrimmedString(...)`. Root import stringification, body render, placement
-   state, merge output, and duplicate declaration materialization remain open.
+   `toTrimmedString(...)`. Plain no-trivia root imports now write direct
+   `AtRule` syntax instead of calling public `toString(...)` on a detached
+   writer. Complex root import stringification, body render, placement state,
+   merge output, and duplicate declaration materialization remain open.
 7. [ ] Finish `Reference` public value materialization, rules-like surfaces,
    merged assign normalization, key conversion, and remaining cold copy/inherit
    ownership.
