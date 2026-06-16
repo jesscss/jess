@@ -41,6 +41,10 @@ and consult evaluated/live binding state only when that state already exists.
 
 - Work from repo evidence first.
 - A "full queue pass" means all active queue items below, not one micro-edit.
+- Do not call a pass complete after one or a few queue items. If any active
+  queue item remains unfinished at wrap-up, explicitly explain in the handoff
+  and final response why it was not finished and why you could not immediately
+  continue into it before stopping.
 - Queue items must be whole tasks. Do not create one-line queue items.
 - Before ending a pass, seed the next queue with exactly 15 real
   binding/lookup tasks.
@@ -321,13 +325,17 @@ broader fixture gate.
 At the end of a pass:
 
 1. Replace completed queue items with one concise baseline note if needed.
-2. Seed only the next active binding/lookup queue.
-3. The new active queue must contain exactly 15 real binding/lookup tasks,
+2. If any active queue item was not completed, record a short explicit
+   unfinished-item exception: which item remains, what blocked immediate
+   continuation, and why stopping was necessary.
+3. Seed only the next active binding/lookup queue. Do not reseed in a way that
+   hides unfinished active queue work.
+4. The new active queue must contain exactly 15 real binding/lookup tasks,
    numbered `1` through `15`; reseeding itself is not a queue item.
-4. Keep this file small. Pointers to backlog docs are good; copied backlog
+5. Keep this file small. Pointers to backlog docs are good; copied backlog
    content is not. If old evidence matters, put it in the commit or
    `PERFORMANCE-HANDOFF.md`, not here.
-5. Keep `Aggressive Cutting Self-Prosecution` to the latest pass only.
+6. Keep `Aggressive Cutting Self-Prosecution` to the latest pass only.
 
 ## Aggressive Cutting Self-Prosecution
 
