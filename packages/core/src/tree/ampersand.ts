@@ -343,34 +343,16 @@ function ownComplexComponentForAppend(component: ComplexSelectorComponent): Comp
   return expectComplexAppendComponent(copyOwnedWithReusableLeaves(component));
 }
 
-function createSimpleSelectorLike(selector: SimpleSelector, value: unknown): SimpleSelector {
-  if (selector instanceof BasicSelector) {
-    return new BasicSelector(
-      String(value),
-      selector._options,
-      selector.location.length === 0 ? undefined : selector.location
-    ).inherit(selector);
-  }
-  const node = Reflect.construct(
-    selector.constructor,
-    [
-      value,
-      { ...selector.options },
-      selector.location.length === 0 ? undefined : selector.location
-    ]
-  );
-  if (!(node instanceof SimpleSelector)) {
-    throw new TypeError('Expected simple selector copy');
-  }
-  return node.inherit(selector);
-}
-
 function appendSimpleSelector(selector: SimpleSelector, appendValue: string): AppendSelectorResult<SimpleSelector> {
-  if (typeof selector.value !== 'string') {
+  if (!(selector instanceof BasicSelector) || typeof selector.value !== 'string') {
     throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
   }
   return {
-    selector: createSimpleSelectorLike(selector, selector.value + appendValue),
+    selector: new BasicSelector(
+      selector.value + appendValue,
+      selector._options,
+      selector.location.length === 0 ? undefined : selector.location
+    ).inherit(selector),
     appended: true
   };
 }

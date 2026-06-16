@@ -572,29 +572,30 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Rules render-mode static child `Rules` preview cut.
+Current pass: Ampersand non-basic simple selector generic construction cut.
 
-- New traversal: none. The new branch reuses the existing child `Rules`
-  visibility scan and emits the already-selected child body; it adds no new
-  loop, source walk, or side-map lookup.
-- New node/materialization: no runtime `Node`, copy, inherit, wrapper,
-  materialized array, or ownership mutation was added. The verifier's
-  `new Context()` and `new CountingWriter()` hits are test-only instrumentation.
-- Render path: static or already evaluated child `Rules` now write directly to
-  the active render writer through `_emitRenderRulesBody(...)`. This removes
-  `writer.preview(...)` around public `n.render(...)` for that covered path.
-  Unprepared dynamic child `Rules` deliberately stay on `n.render(...)` because
-  that path owns eval/context setup and restoration.
-- Helper/API surface: no helper or public API was added. The pass adds one
-  local branch in `Rules._emitRulesBody(...)` and reuses the existing private
-  body emitter.
-- Metadata mutations: no parent/source/frozen/location/options/context
-  mutation was added. The branch uses the same saved/restored print-state fields
-  as the source child `Rules` path.
-- Evidence: focused Rules, Rules streaming, and node render-buffer tests pass.
-  The new streaming test proves static nested child `Rules` render with zero
-  `preview(...)` calls while output stays aligned.
-- Verdict: accepted as a bounded render string-transport deletion. Dynamic
-  child `Rules`, root/body render, placement state, merge output, and duplicate
-  declaration materialization remain open. No performance claim; performance
-  remains shelved because this was not a measured benchmark pass.
+- New traversal: none. The append path keeps the existing selector dispatch and
+  adds no loop, source walk, side-map lookup, or object scan.
+- New node/materialization: runtime construction is reduced. The deleted
+  `createSimpleSelectorLike(...)` fallback used `Reflect.construct(...)` plus
+  spread options to materialize arbitrary simple selectors. The remaining
+  append path constructs only the required `BasicSelector` output and preserves
+  the existing `.inherit(selector)` ownership transfer for that semantic output.
+  The verifier's `new StringPseudoSelector(...)`, `rules([])`, `try`, and
+  `Reflect.construct` hits are test-only instrumentation or docs references,
+  not runtime append materialization.
+- Render path: no render path was added. This is a selector placement/eval
+  append cut; raw template replacement still owns its existing string boundary.
+- Helper/API surface: one private helper was deleted and no public API was
+  added. `appendSimpleSelector(...)` now owns the BasicSelector-only contract
+  directly.
+- Metadata mutations: no new metadata mutation was added. The verifier's
+  `.inherit(selector)` hit is the existing BasicSelector output ownership
+  transfer, now on the only append construction path.
+- Evidence: focused Ampersand tests pass for compound suffix merge, non-basic
+  append rejection, and the synthetic string-valued non-Basic simple selector
+  case proving the generic constructor path is not used.
+- Verdict: accepted as a bounded dead-constructor deletion. Raw fallback string
+  assembly and broader structural selector replacement remain open. No
+  performance claim; performance remains shelved because this was not a
+  measured benchmark pass.

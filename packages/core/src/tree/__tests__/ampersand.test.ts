@@ -6,11 +6,12 @@ import {
   ExtendFlag,
   Ampersand,
   BasicSelector,
-  type SimpleSelector, type Combinator
+  SimpleSelector,
+  type Combinator
 } from '../index.js';
 import { Selector } from '../selector.js';
 import { Context } from '../../context.js';
-import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
+import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE, defineType } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { renderNodeToString } from '../util/render-buffer.js';
 
@@ -24,6 +25,14 @@ class CountingWriter extends OutputWriter {
     return super.getSince(mark);
   }
 }
+
+class StringPseudoSelector extends SimpleSelector<string> {
+  override valueOf(): string {
+    return this.value;
+  }
+}
+
+defineType(StringPseudoSelector, 'PseudoSelector');
 
 describe('Ampersand', () => {
   beforeEach(() => {
@@ -582,6 +591,31 @@ describe('Ampersand', () => {
       expect(sourceSelector.toTrimmedString()).toBe('.button.primary');
     } finally {
       sourceSelector.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
+  it('rejects non-basic string simple selector suffixes without generic construction', async () => {
+    const sourceSelector = compound([new StringPseudoSelector('.button')]);
+    const frame = ruleset({
+      selector: sourceSelector,
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+    const originalReflectConstruct = Reflect.construct;
+    let constructCalls = 0;
+    Reflect.construct = function constructShouldNotRun(...args: Parameters<typeof Reflect.construct>) {
+      if (args[0] === StringPseudoSelector) {
+        constructCalls++;
+      }
+      return originalReflectConstruct(...args);
+    };
+
+    try {
+      expect(() => amp('-active').resolve(context)).toThrow('Cannot append "-active" to this type of selector');
+      expect(constructCalls).toBe(0);
+      expect(frame.value.selector).toBe(sourceSelector);
+    } finally {
+      Reflect.construct = originalReflectConstruct;
     }
   });
 
