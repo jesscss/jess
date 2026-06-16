@@ -727,6 +727,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }> | undefined;
 
   lookupVersion = 0;
+  callableLookupVersion = 0;
   functionLookupVersion = 0;
   functionLookupVersionsByName: Map<string, number> | undefined;
   /** ScopeFrame storage; check this when lookup must not lazily build a frame. */
@@ -806,6 +807,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
     this.lookupVersion = 0;
+    this.callableLookupVersion = 0;
     this._hasExtends = false;
     this._hasReferenceImports = false;
     // Preserve only runtime live-slot bindings (mixin params / loop vars) across clones.
@@ -858,7 +860,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         let cursor = this.parent;
         while (cursor) {
           if (isNode(cursor, N.Rules)) {
-            resolvedParent = (cursor as Rules).getScopeFrame();
+            resolvedParent = (cursor as Rules).getScopeFrame(undefined, prepareCallableCoverage);
             break;
           }
           cursor = cursor.parent;
@@ -2785,6 +2787,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   registerNode(node: Node, options?: Record<string, any>, context?: Context) {
     this.lookupVersion++;
     const rebuildCallableCache = this.callableLookupCache !== undefined || this._scopeFrame !== undefined;
+    const directChildRules = childCallableRulesOf(node);
+    const affectsCallableLookup = (
+      isNode(node, N.Mixin | N.Ruleset | N.Rules)
+      || Boolean(directChildRules && !isNode(node, N.Rules))
+      || node.type === 'StyleImport'
+    );
+    if (affectsCallableLookup) {
+      this.callableLookupVersion++;
+    }
     this.callableLookupCache = undefined;
     if (this._scopeFrame) {
       this._scopeFrame.callableBucketsByName = undefined;
@@ -2796,7 +2807,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
-    const directChildRules = childCallableRulesOf(node);
     if (directChildRules && !isNode(node, N.Rules)) {
       this.addDirectChildRuleEntry(directChildRules);
     }
@@ -2869,7 +2879,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        */
       if (node.options?.setDefined) {
         let key = node.value.name?.toString();
-        if (isNode(node, N.VarDeclaration)) {
+        if (isNode(node, N.VarDeclaration) && this._scopeFrame) {
           let assignedValue = node.value.value;
           if (context) {
             const evaluatedValue = assignedValue.eval(context);
@@ -2877,7 +2887,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               assignedValue = evaluatedValue;
             }
           }
-          const variableHit = lookupScopeFrameVariable(this.getScopeFrame(undefined, false), key, {
+          const variableHit = lookupScopeFrameVariable(this._scopeFrame, key, {
             bailOnPendingDeclarations: true,
             blockedSource: source => source === node,
             filter: source => source !== node
@@ -2895,7 +2905,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         const lookupOptions: DeclarationFindOptions = { searchParents: true };
         const lookup = isNode(node, N.VarDeclaration)
-          ? findVariableDeclarationLookup(this, key, lookupOptions)
+          ? findVariableDeclarationLookup(this, key, { ...lookupOptions, includeLiveBindings: false })
           : findPropertyDeclarationLookup(this, key, lookupOptions);
         const resultOccurrence = lookup.occurrence;
         const result = resultOccurrence?.node;
@@ -2913,7 +2923,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
             result.value.value = assignedValue;
             if (isNode(result.parent, N.Rules)) {
-              assignScopeFrameVariable(result.parent.getScopeFrame(), key, assignedValue);
+              assignScopeFrameVariable(result.parent._scopeFrame, key, assignedValue);
             }
             return;
           }

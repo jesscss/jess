@@ -370,18 +370,19 @@ type ReferenceRulesLookupHandle =
   });
 
 function getRulesLookupHandleVersion(access: RulesLookupHandleAccess): number {
-  if (access.lookupType !== 'function') {
-    return access.targetRules.lookupVersion;
+  if (access.lookupType === 'mixin' || access.lookupType === 'mixin-ruleset') {
+    return access.targetRules.callableLookupVersion;
   }
-  return typeof access.valueKey === 'string'
-    ? access.targetRules.functionLookupVersionsByName?.get(access.valueKey) ?? 0
-    : access.targetRules.functionLookupVersion;
+  if (access.lookupType === 'function') {
+    return typeof access.valueKey === 'string'
+      ? access.targetRules.functionLookupVersionsByName?.get(access.valueKey) ?? 0
+      : access.targetRules.functionLookupVersion;
+  }
+  return access.targetRules.lookupVersion;
 }
 
 function isRulesLookupHandleVersionCurrent(handle: ReferenceRulesLookupHandle, access: RulesLookupHandleAccess): boolean {
-  const currentVersion = handle.lookupType === 'function'
-    ? getRulesLookupHandleVersion(access)
-    : access.targetRules.lookupVersion;
+  const currentVersion = getRulesLookupHandleVersion(access);
   return handle.targetLookupVersion === currentVersion;
 }
 

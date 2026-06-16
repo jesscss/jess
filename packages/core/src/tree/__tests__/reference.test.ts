@@ -2920,6 +2920,42 @@ describe('reference', () => {
       }
     });
 
+    it('nested variable references do not prepare callable coverage on auto-wired parents', async () => {
+      const originalGetScopeFrame = RulesClass.prototype.getScopeFrame;
+      const callableCoveragePrep: unknown[] = [];
+      RulesClass.prototype.getScopeFrame = function(...args: Parameters<typeof originalGetScopeFrame>) {
+        callableCoveragePrep.push(args[1]);
+        return originalGetScopeFrame.apply(this, args);
+      };
+
+      try {
+        const colorRef = ref({ key: 'color' }, { type: 'variable' });
+        const childRules = rules([
+          decl({
+            name: any('seen'),
+            value: colorRef
+          })
+        ]);
+        const root = rules([
+          vardecl({ name: 'color', value: any('red') }),
+          ruleset({
+            selector: el('.scope'),
+            rules: childRules
+          })
+        ]);
+        context.root = root;
+        context.rulesContext = childRules;
+
+        const value = await colorRef.eval(context);
+
+        expect(value.valueOf()).toBe('red');
+        expect(callableCoveragePrep).toContain(false);
+        expect(callableCoveragePrep).not.toContain(true);
+      } finally {
+        RulesClass.prototype.getScopeFrame = originalGetScopeFrame;
+      }
+    });
+
     it('static variable handle invalidates when a parent frame replaces the current cell', async () => {
       const colorRef = ref({ key: 'color' }, { type: 'variable' });
       const childRules = rules([
@@ -4407,7 +4443,7 @@ describe('reference', () => {
       }
     });
 
-    it('reuses static callable binding handles until the target rules version changes', async () => {
+    it('reuses static callable binding handles across unrelated target rules version changes', async () => {
       const originalFindMixin = RulesClass.prototype.findMixin;
       const path = ['.a', '.b', '.c'];
       let pathLookups = 0;
@@ -4451,7 +4487,7 @@ describe('reference', () => {
         if (isNode(third)) {
           expect(third.type).toBe('MixinCollection');
         }
-        expect(pathLookups).toBe(2);
+        expect(pathLookups).toBe(1);
       } finally {
         RulesClass.prototype.findMixin = originalFindMixin;
       }
@@ -4671,6 +4707,85 @@ describe('reference', () => {
         expect(isNode(second)).toBe(true);
         expect(callableLookups).toBe(2);
         expect(lookupRef._rulesLookupHandle?.terminalMixinOnly).toBe(true);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('callable handles survive unrelated declaration and function writes', async () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      let callableLookups = 0;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        const [key] = args;
+        if (key === '.callable-handle') {
+          callableLookups++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          mixin({
+            name: any('.callable-handle'),
+            rules: rules([decl({ name: 'color', value: any('blue') })])
+          })
+        ]);
+        setRulesContext(await node.eval(context));
+        const lookupRef = ref({ key: '.callable-handle' }, { type: 'mixin' });
+
+        const first = lookupRef.eval(context);
+        expect(first).toBeDefined();
+        expect(callableLookups).toBe(1);
+
+        node.push(decl({ name: 'unrelated', value: any('1') }));
+        const second = lookupRef.eval(context);
+        expect(second).toBeDefined();
+        expect(callableLookups).toBe(1);
+
+        node.setFunctionBinding('unrelated-fn', new JsFunction({
+          name: 'unrelated-fn',
+          fn: () => any('ok')
+        }));
+        const third = lookupRef.eval(context);
+        expect(third).toBeDefined();
+        expect(callableLookups).toBe(1);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('callable handles invalidate when callable surfaces change', async () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      let callableLookups = 0;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        const [key] = args;
+        if (key === '.callable-handle') {
+          callableLookups++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          mixin({
+            name: any('.callable-handle'),
+            rules: rules([decl({ name: 'color', value: any('blue') })])
+          })
+        ]);
+        setRulesContext(await node.eval(context));
+        const lookupRef = ref({ key: '.callable-handle' }, { type: 'mixin' });
+
+        const first = lookupRef.eval(context);
+        expect(first).toBeDefined();
+        expect(callableLookups).toBe(1);
+
+        node.push(mixin({
+          name: any('.other-callable'),
+          rules: rules([decl({ name: 'color', value: any('red') })])
+        }));
+        const second = lookupRef.eval(context);
+        expect(second).toBeDefined();
+        expect(callableLookups).toBe(2);
       } finally {
         RulesClass.prototype.findMixin = originalFindMixin;
       }

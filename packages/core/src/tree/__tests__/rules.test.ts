@@ -29,6 +29,7 @@ import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import { setScopeFrameLiveBinding } from '../scope-frame.js';
 
 let context: Context;
 
@@ -1460,7 +1461,7 @@ describe('Rules', () => {
         expect(deriveCalls).toBe(0);
       });
 
-      it('updates modeled setDefined cells without direct occurrence crawl', () => {
+      it('updates modeled setDefined live binding cells without direct occurrence crawl', () => {
         const assignment = vardecl(
           { name: 'one', value: any('three') },
           { setDefined: true }
@@ -1470,6 +1471,9 @@ describe('Rules', () => {
           assignment
         ]);
         const frame = node.getScopeFrame(undefined, false);
+        setScopeFrameLiveBinding(frame, 'one', {
+          value: any('one')
+        });
         const originalValue = node.value;
 
         Object.defineProperty(node, 'value', {
@@ -1490,6 +1494,21 @@ describe('Rules', () => {
         }
 
         expect(frame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
+      });
+
+      it('does not build a scope frame just to try setDefined live binding writes', () => {
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const node = rules([
+          vardecl({ name: 'one', value: any('one') }),
+          assignment
+        ]);
+
+        node.registerNode(assignment, undefined, context);
+
+        expect(node._scopeFrame).toBeUndefined();
         expect(getVarWithContext(context, node, 'one')?.toTrimmedString()).toBe('$one: three');
       });
 
