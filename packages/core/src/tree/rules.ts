@@ -726,6 +726,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }> | undefined;
 
   lookupVersion = 0;
+  functionLookupVersion = 0;
+  functionLookupVersionsByName: Map<string, number> | undefined;
   /** ScopeFrame storage; check this when lookup must not lazily build a frame. */
   _scopeFrame: ScopeFrame | undefined;
   /**
@@ -779,8 +781,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // state, which must be rebuilt from AST nodes via lazy indexing.
     if (source.functionsByName) {
       this.functionsByName = new Map(source.functionsByName);
+      this.functionLookupVersion = source.functionLookupVersion;
+      this.functionLookupVersionsByName = source.functionLookupVersionsByName
+        ? new Map(source.functionLookupVersionsByName)
+        : undefined;
     } else {
       this.functionsByName = undefined;
+      this.functionLookupVersion = 0;
+      this.functionLookupVersionsByName = undefined;
     }
 
     // IMPORTANT: cloned Rules must rebuild their derived lookup state.
@@ -949,7 +957,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (!name) {
       return;
     }
-    this.lookupVersion++;
+    this.functionLookupVersion++;
+    const versions = this.functionLookupVersionsByName ??= new Map();
+    versions.set(name, (versions.get(name) ?? 0) + 1);
     (this.functionsByName ??= new Map()).set(name, node);
   }
 

@@ -168,6 +168,15 @@ counters: `declaration.cacheMiss` `16560`, `declaration.scope.v` `16560`,
 calls / `62.76ms`. This is correctness/cache-retention evidence for rare
 dynamic-name promotion; the measured hot target remains child-entry scans.
 
+2026-06-15 function handle versioning follow-up: after function reference
+handles moved to per-function-key versions, the variable-heavy stress fixture
+reported unchanged direct lookup counters: `declaration.cacheMiss` `16560`,
+`declaration.scope.v` `16560`, `declaration.childEntryEntered` `11520`,
+`declaration.childEntriesScanned` `10530`, and `declaration.framePrep` `139`.
+`Reference.evalNode` was `6528` calls / `65.56ms`. This is handle-invalidation
+proof for function lookups; it does not change the active measured target,
+which remains declaration child-entry scans.
+
 ## Reactivation Threshold
 
 Full performance rounds are currently active. If future work parks performance

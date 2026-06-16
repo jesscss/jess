@@ -177,6 +177,10 @@ Current queue pass makes resolved dynamic-name promotion invalidate direct
 declaration bucket/cache state by resolved key instead of dropping all direct
 declaration maps. `Rules.lookupVersion` still increments because reference
 handles are versioned at the whole-rules level.
+Latest queue pass splits function binding versioning from broad
+`Rules.lookupVersion`. Function handles now compare against per-function-key
+versions, so unrelated declaration/callable changes and unrelated function
+registrations do not invalidate cached function handles.
 
 ## Active Queue
 
@@ -200,80 +204,82 @@ stress profile counters. Goal: remove transient access objects when scalar
 locals or existing handle fields are simpler. Acceptance: measured/audited
 before-after note; no speed claim without stable signal.
 
-4. [ ] Make function binding invalidation key-scoped or prove global invalidity.
-Scope: `setFunctionBinding(...)`, `lookupVersion`, function reference handles,
-and plugin function tests. Goal: unrelated function registrations should not
-invalidate cached function hits unless unavoidable. Acceptance: keyed
-invalidation or documented failing-proof with tests.
-
-5. [ ] Try assignment through modeled current cells before occurrence fallback.
+4. [ ] Try assignment through modeled current cells before occurrence fallback.
 Scope: `assignScopeFrameVariable(...)`, `setDefined` eval, readonly cells, and
 declaration occurrence fallback. Goal: covered `:=` writes mutate modeled
 cells without source lookup when readonly semantics are represented.
 Acceptance: occurrence spy proves the covered current-cell path skips direct
 declaration lookup.
 
-6. [ ] Add explicit direct declaration visibility mode for imports/reference.
+5. [ ] Add explicit direct declaration visibility mode for imports/reference.
 Scope: declaration lookup options, reference imports, compose/import
 boundaries, and direct child entries. Goal: direct lookup should carry
 visibility facts instead of rediscovering them through fallback behavior.
 Acceptance: focused import/reference declaration matrix plus fallback spy.
 
-7. [ ] Implement property merge-chain occurrence slots. Scope: property
+6. [ ] Implement property merge-chain occurrence slots. Scope: property
 declaration occurrences, merge metadata, assignment normalization, and property
 lookup tests. Goal: delete remaining filtered property fallback without adding
 a second name registry. Acceptance: merge-chain fixtures resolve by direct
 occurrence lookup.
 
-8. [ ] Prove reference-import callable boundary for namespace lookups. Scope:
+7. [ ] Prove reference-import callable boundary for namespace lookups. Scope:
 reference imports, namespace callable lookup, fallback frames, and covered
 misses. Goal: reference-import uncertainty remains conservative but does not
 poison covered frame/key misses. Acceptance: namespace/fallback spy tests.
 
-9. [ ] Carry reference-import facts without recursive child-body scans. Scope:
+8. [ ] Carry reference-import facts without recursive child-body scans. Scope:
 `rulesMayContainReferenceImports(...)`,
 `prepareScopeFrameDeclarationIndex(...)`, reference-mode child `Rules`, and
 style imports. Goal: carry/adopt the fact once instead of recursively
 rediscovering it during lookup prep. Acceptance: focused reference-import
 tests plus traversal spy/counter.
 
-10. [ ] Narrow callable miss coverage recomputation to callable callers only.
+9. [ ] Narrow callable miss coverage recomputation to callable callers only.
 Scope: `getScopeFrame(..., false)`, `prepareCallableLookupFrame(...)`, and
 callable miss coverage flags. Goal: variable lookup never computes callable
 coverage; callable lookup computes it once per needed key/frame. Acceptance:
 spy tests for both paths.
 
-11. [ ] Replace positive direct child-entry arrays with sparse carried facts.
+10. [ ] Replace positive direct child-entry arrays with sparse carried facts.
 Scope: `directChildRuleEntries`, `directDeclarationChildEntries`,
 `hasExact*ChildSurface`, and lookup child-entry scans. Goal: avoid building
 entry arrays for scopes where per-type child-surface facts can prove the
 requested lookup cannot enter. Acceptance: child surface tests plus direct
 lookup counter comparison.
 
-12. [ ] Collapse direct declaration strategy object branching. Scope:
+11. [ ] Collapse direct declaration strategy object branching. Scope:
 `DeclarationLookupStrategy`, `findWithinScopeSurface(...)`, and
 variable/property/any declaration callers. Goal: assign lookup functions once
 per path instead of branching on strategy fields in the inner crawl.
 Acceptance: focused tests plus direct lookup counter comparison.
 
-13. [ ] Audit and thin cold `Rules.find*` node-materialization wrappers.
+12. [ ] Audit and thin cold `Rules.find*` node-materialization wrappers.
 Scope: `Rules.findDeclaration`, `findVariable`, `findProperty`,
 `findAnyDeclaration`, call sites, and package exports. Goal: keep only the
 cold materialization edges repo usage needs, without compatibility-only
 wrappers. Acceptance: rg-backed call-site audit plus focused tests.
 
-14. [ ] Add declaration child-surface bit facts by lookup family. Scope:
+13. [ ] Add declaration child-surface bit facts by lookup family. Scope:
 child `Rules` registration, `rulesVisibility`, variable/property lookup, and
 `collectDirectDeclarationChildEntries(...)`. Goal: skip child surfaces that
 cannot contain the requested declaration family before entry allocation.
 Acceptance: variable/property child-surface spy tests plus stress counters.
 
-15. [ ] Split reference handle versioning by lookup key or prove global
-versioning is required. Scope: `ReferenceRulesLookupHandle`,
-`Rules.lookupVersion`, variable/property/function/callable handle writes, and
-dynamic-name promotion. Goal: affected-key invalidation should not invalidate
-unrelated handles unless a semantic dependency proves it must. Acceptance:
-handle stale/fresh tests for affected and unaffected keys.
+14. [ ] Split declaration/property handle versioning by lookup key or prove
+global versioning is required. Scope: `ReferenceRulesLookupHandle`,
+`Rules.lookupVersion`, direct declaration cache keys, variable/property handle
+writes, and dynamic-name promotion. Goal: affected declaration invalidation
+should not invalidate unrelated declaration/property handles unless a semantic
+dependency proves it must. Acceptance: handle stale/fresh tests for affected
+and unaffected declaration keys.
+
+15. [ ] Split callable handle versioning by callable key or prove global
+versioning is required. Scope: callable lookup handles,
+`callableLookupCache`, child-surface invalidation, and `Rules.lookupVersion`.
+Goal: unrelated declaration/function writes should not invalidate callable
+handles when callable surfaces are unchanged. Acceptance: stale/fresh tests
+for affected and unaffected callable keys.
 
 ## Backlog Sources
 
@@ -325,41 +331,39 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: made resolved dynamic-name promotion invalidate
-  `directDeclarationsByName` and `directDeclarationLookupCache` by resolved key
-  instead of clearing the whole direct declaration lookup surface.
-- Verdict: accepted as key-scoped cache retention, not as a speed claim.
-- New traversal: added one bounded scan over `directDeclarationLookupCache`
-  keys, only after a dynamic declaration name has resolved and only when the
-  cache exists. This replaces wholesale cache deletion; it is not on the
-  ordinary lookup miss/hit path.
+- Latest pass: split function reference handle invalidation onto per-function
+  key versions. `setFunctionBinding(...)` no longer increments
+  `Rules.lookupVersion`; it bumps a function version lane and the specific
+  registered function key.
+- Verdict: accepted as key-scoped handle invalidation for function lookups, not
+  as a speed claim.
+- New traversal: none.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: one private invalidation helper was added inside
+- Helper/API surface: two private handle-version helpers were added inside
   `reference.ts`; no public API was added.
-- Metadata mutations: affected direct declaration bucket/cache entries are
-  deleted by key. `lookupVersion` still increments because existing reference
-  handles are versioned at whole-rules granularity.
-- Allocation changes: a `Set` is allocated only when one promotion pass
-  resolves more than one distinct name. Single-key promotion stays scalar.
-- Rejected/failed proof: fully key-scoped handle invalidation was not landed
-  because `ReferenceRulesLookupHandle` currently compares
-  `targetLookupVersion` before consulting value keys, so removing
-  `lookupVersion++` would leave stale unrelated handle semantics unproven.
-- Aggressive-review tokens: the flagged production loop scans direct
-  declaration cache keys during promotion invalidation only. The flagged `Set`
-  is the multi-key promotion fallback and is avoided for the common single-key
-  path. Test-only cache-key array inspection appears in `reference.test.ts`.
+- Metadata mutations: `Rules` now tracks `functionLookupVersion` plus
+  `functionLookupVersionsByName`. Function binding registration mutates only
+  those function lanes and the existing function map.
+- Allocation changes: function-version maps are allocated only when functions
+  are registered through `setFunctionBinding(...)`, which already allocates or
+  mutates the function binding map.
+- Rejected/failed proof: declaration/property and callable handles still use
+  broad `lookupVersion`; those remain separate queue items because they need
+  affected-key semantic tests for declaration/callable surfaces.
+- Aggressive-review tokens: current diff adds no production traversal. The
+  flagged maps are explicit function binding version state and are tied to
+  `setFunctionBinding(...)`, not ordinary variable/property lookup.
 - Evidence: focused eslint passed for touched lookup files/tests. Focused
-  dynamic-promotion tests passed (`7` passed, `145` skipped). The focused
-  lookup gate passed (`8` files, `320` passed, `295` skipped). Stale
+  function-handle tests passed (`2` files, `7` passed, `226` skipped). The
+  focused lookup gate passed (`8` files, `320` passed, `295` skipped). Stale
   registry/lookup wording search returned no matches. `git diff --check`,
   `@jesscss/core` build, aggressive review, node-creation audit, `jess` build,
   stress profile, and hotpath smoke passed. Node-creation audit is now
-  `new-node: 303`, `with-surface: 39`, `derive: 30`, `copy-leaves: 28`; the
-  increase is the cold multi-key promotion `Set`. Stress profile reported
+  `new-node: 305`, `with-surface: 39`, `derive: 30`, `copy-leaves: 28`; the
+  increase is the function-version map state. Stress profile reported
   unchanged direct lookup counters led by `declaration.cacheMiss` `16560`,
   `declaration.childEntryEntered` `11520`, and
   `declaration.childEntriesScanned` `10530`; `Reference.evalNode` was `6528`
-  calls / `62.76ms`. One-iteration hotpath smoke is not a speed claim:
-  `mixins-guards.less` `26.10ms`, `scope-lookup-stress.less` `95.11ms`.
+  calls / `65.56ms`. One-iteration hotpath smoke is not a speed claim:
+  `mixins-guards.less` `31.05ms`, `scope-lookup-stress.less` `81.69ms`.

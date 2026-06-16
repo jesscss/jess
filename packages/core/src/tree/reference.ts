@@ -369,6 +369,22 @@ type ReferenceRulesLookupHandle =
     returnVal: VariableRulesLookupHandleValue;
   });
 
+function getRulesLookupHandleVersion(access: RulesLookupHandleAccess): number {
+  if (access.lookupType !== 'function') {
+    return access.targetRules.lookupVersion;
+  }
+  return typeof access.valueKey === 'string'
+    ? access.targetRules.functionLookupVersionsByName?.get(access.valueKey) ?? 0
+    : access.targetRules.functionLookupVersion;
+}
+
+function isRulesLookupHandleVersionCurrent(handle: ReferenceRulesLookupHandle, access: RulesLookupHandleAccess): boolean {
+  const currentVersion = handle.lookupType === 'function'
+    ? getRulesLookupHandleVersion(access)
+    : access.targetRules.lookupVersion;
+  return handle.targetLookupVersion === currentVersion;
+}
+
 function isDirectDeclarationOccurrence(value: unknown): value is DirectDeclarationOccurrence {
   return (
     value !== null
@@ -1087,7 +1103,7 @@ function readRulesLookupHandle(access: RulesLookupHandleAccess | undefined): Rul
   if (
     !handle
     || handle.targetRules !== access.targetRules
-    || handle.targetLookupVersion !== access.targetRules.lookupVersion
+    || !isRulesLookupHandleVersionCurrent(handle, access)
     || handle.lookupType !== access.lookupType
     || handle.inCall !== access.inCall
     || handle.start !== access.shape.start
@@ -1127,7 +1143,7 @@ function writeVariableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void 
     args.referenceNode._rulesLookupHandle = undefined;
     return;
   }
-  const targetLookupVersion = access.targetRules.lookupVersion;
+  const targetLookupVersion = getRulesLookupHandleVersion(access);
   const { valueKey, inCall, shape } = access;
   const { start, local, ignoreParentScopeStart, terminalMixinOnly } = shape;
   if (
@@ -1165,7 +1181,7 @@ function writeDeclarationRulesLookupHandle(args: WriteRulesLookupHandleArgs): vo
     args.referenceNode._rulesLookupHandle = undefined;
     return;
   }
-  const targetLookupVersion = access.targetRules.lookupVersion;
+  const targetLookupVersion = getRulesLookupHandleVersion(access);
   const { valueKey, inCall, shape } = access;
   const { start, local, ignoreParentScopeStart, terminalMixinOnly } = shape;
   args.referenceNode._rulesLookupHandle = {
@@ -1192,7 +1208,7 @@ function writeFunctionRulesLookupHandle(args: WriteRulesLookupHandleArgs): void 
     args.referenceNode._rulesLookupHandle = undefined;
     return;
   }
-  const targetLookupVersion = access.targetRules.lookupVersion;
+  const targetLookupVersion = getRulesLookupHandleVersion(access);
   const { valueKey, inCall, shape } = access;
   const { start, local, ignoreParentScopeStart, terminalMixinOnly } = shape;
   args.referenceNode._rulesLookupHandle = {
@@ -1219,7 +1235,7 @@ function writeCallableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void 
     args.referenceNode._rulesLookupHandle = undefined;
     return;
   }
-  const targetLookupVersion = access.targetRules.lookupVersion;
+  const targetLookupVersion = getRulesLookupHandleVersion(access);
   const { valueKey, inCall, shape } = access;
   const { start, local, ignoreParentScopeStart, terminalMixinOnly } = shape;
   args.referenceNode._rulesLookupHandle = {

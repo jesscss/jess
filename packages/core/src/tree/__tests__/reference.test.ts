@@ -4432,7 +4432,7 @@ describe('reference', () => {
       }
     });
 
-    it('reuses static function binding handles until the target rules version changes', async () => {
+    it('reuses static function binding handles until the function key version changes', async () => {
       const originalFindFunction = RulesClass.prototype.findFunction;
       let functionLookups = 0;
       RulesClass.prototype.findFunction = function(...args: Parameters<typeof originalFindFunction>) {
@@ -4483,7 +4483,18 @@ describe('reference', () => {
         if (isNode(fourth)) {
           expect(fourth.type).toBe('JsFunction');
         }
-        expect(functionLookups).toBe(3);
+        expect(functionLookups).toBe(2);
+
+        node.setFunctionBinding('other-fn', new JsFunction({
+          name: 'other-fn',
+          fn: () => any('black')
+        }));
+        const fifth = lookupRef.eval(context);
+        expect(isNode(fifth)).toBe(true);
+        if (isNode(fifth)) {
+          expect(fifth.type).toBe('JsFunction');
+        }
+        expect(functionLookups).toBe(2);
       } finally {
         RulesClass.prototype.findFunction = originalFindFunction;
       }
