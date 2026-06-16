@@ -2547,7 +2547,7 @@ describe('Style import', () => {
       `);
     });
 
-    it('import-reference: rendered callable misses document the remaining no-frame direct-crawl bridge', async () => {
+    it('import-reference: rendered callable misses avoid no-frame direct-crawl bridge', async () => {
       const referencedPath = resolve(process.cwd(), 'reference-callable-miss.jess');
       context.sourceTrees.set(referencedPath, rules([
         mixin({
@@ -2591,7 +2591,7 @@ describe('Style import', () => {
             missing: .missing-reference-mixin;
           }
         `);
-        expect(directCrawlHits).toEqual(['.missing-reference-mixin']);
+        expect(directCrawlHits).toEqual([]);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }

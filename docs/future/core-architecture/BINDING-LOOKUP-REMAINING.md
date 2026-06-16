@@ -80,11 +80,12 @@ materialization wrapper for that semantic case.
    caller-specific decisions before generic direct crawl. Prepared child-rule
    entries carry exact callable/mixin/ruleset surface facts, but guarded import
    tests proved prepared arrays cannot be trusted as a blanket aggregate miss.
-   Prepared-null entries can skip child reads, and covered child frames can now
-   prove simple exact callable misses without entering the broad child crawl.
-   Remaining work is deleting the direct-crawl bridges where facts are
-   complete, especially frame-less reference-import callable misses, without
-   breaking guarded/configured child surfaces.
+   Prepared-null entries can skip child reads, covered child frames can prove
+   simple exact callable misses without entering the broad child crawl, and
+   rendered reference-import callable misses now prepare the existing frame
+   parent chain instead of entering the no-frame direct crawl. Remaining work is
+   deleting the direct-crawl bridges where facts are complete without breaking
+   guarded/configured child surfaces.
 
 2. **Parameterized terminal namespace audit.**
    Mixin-ruleset calls with parameters now reject ruleset-only terminal
@@ -125,10 +126,9 @@ materialization wrapper for that semantic case.
    reads; `leakyRules` has declaration cold-handle proof. Synthetic
    import/reference covered-hit and covered-miss tests plus a real
    reference-import declaration fixture now prove public declaration bridges
-   stay unused. A real reference-import callable miss fixture documents that
-   frame-less callable misses still enter the direct-crawl bridge. Each
-   remaining bridge needs a deletion condition and, where possible, a real Less
-   fixture proof.
+   stay unused. A real reference-import callable miss fixture now proves the
+   frame-less callable miss can stay zero-bridge. Each remaining bridge needs a
+   deletion condition and, where possible, a real Less fixture proof.
 
 3. **Final simple-read proof.**
    The lane is not done until ordinary static variable, property, declaration,

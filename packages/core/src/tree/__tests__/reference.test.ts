@@ -4977,6 +4977,44 @@ describe('reference', () => {
       }
     });
 
+    it('static variable references use scope-frame bindings before public variable bridge', async () => {
+      const originalFindVariable = RulesClass.prototype.findVariable;
+      let variableLookups = 0;
+      RulesClass.prototype.findVariable = function(...args: Parameters<typeof originalFindVariable>) {
+        const [key] = args;
+        if (key === 'color') {
+          variableLookups++;
+        }
+        return originalFindVariable.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({ name: 'color', value: any('blue') })
+        ]);
+        setRulesContext(await node.eval(context));
+        const lookupRef = ref({ key: 'color' }, { type: 'variable' });
+
+        expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        const handle = lookupRef._rulesLookupHandle;
+        expect(handle?.returnVal).toMatchObject({
+          kind: 'scope-frame-variable-binding-handle'
+        });
+        expect(variableLookups).toBe(0);
+
+        expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        expect(lookupRef._rulesLookupHandle).toBe(handle);
+        expect(variableLookups).toBe(0);
+
+        node.push(decl({ name: 'unrelated', value: any('1') }));
+        expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        expect(lookupRef._rulesLookupHandle).toBe(handle);
+        expect(variableLookups).toBe(0);
+      } finally {
+        RulesClass.prototype.findVariable = originalFindVariable;
+      }
+    });
+
     it('static property occurrence handles invalidate when owner rules changes', async () => {
       const childRules = rules([
         decl({ name: 'color', value: any('blue') })
@@ -5116,6 +5154,66 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle).toBeUndefined();
 
       expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static function handles stay cold while leakyRules disqualifies lookup', async () => {
+      const node = rules([]);
+      node.setFunctionBinding('paint', new JsFunction({
+        name: 'paint',
+        fn: () => any('blue')
+      }));
+      const root = setRulesContext(await node.eval(context));
+      const leakyContext = new Context({ leakyRules: true });
+      leakyContext.root = root;
+      leakyContext.rulesContext = root;
+      const lookupRef = ref({ key: 'paint' }, { type: 'function' });
+      const expectFunctionResult = (value: unknown) => {
+        expect(isNode(value)).toBe(true);
+        if (isNode(value)) {
+          expect(value.type).toBe('JsFunction');
+        }
+      };
+
+      expectFunctionResult(lookupRef.eval(leakyContext));
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expectFunctionResult(lookupRef.eval(context));
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.lookupType).toBe('function');
+
+      expectFunctionResult(lookupRef.eval(leakyContext));
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expectFunctionResult(lookupRef.eval(context));
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static callable handles stay cold while searchScope disqualifies lookup', async () => {
+      const ignoredDeclaration = decl({ name: 'color', value: any('blue') });
+      const callable = mixin({
+        name: any('.paint'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+      const node = rules([ignoredDeclaration, callable]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: '.paint' }, { type: 'mixin' });
+
+      context.searchScope.add(ignoredDeclaration);
+      expect(lookupRef.eval(context)).toBeDefined();
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      context.searchScope.delete(ignoredDeclaration);
+      expect(lookupRef.eval(context)).toBeDefined();
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.lookupType).toBe('mixin');
+
+      context.searchScope.add(ignoredDeclaration);
+      expect(lookupRef.eval(context)).toBeDefined();
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+      context.searchScope.delete(ignoredDeclaration);
+
+      expect(lookupRef.eval(context)).toBeDefined();
       expect(lookupRef._rulesLookupHandle).not.toBe(handle);
     });
 

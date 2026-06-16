@@ -978,8 +978,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return pendingDeclarationNames;
   }
 
+  private hasReferenceImportLookupSurface(): boolean {
+    return (
+      this.hasReferenceImportChildSurface
+      || (
+        this._hasReferenceImports
+        && (this.options as { referenceMode?: boolean } | undefined)?.referenceMode !== true
+      )
+    );
+  }
+
   private hasDirectLookupChildSurface(includeRulesets = true): boolean {
-    if (this._hasReferenceImports) {
+    if (this.hasReferenceImportLookupSurface()) {
       return true;
     }
     if (includeRulesets ? this.hasExactCallableChildSurface : this.hasExactMixinChildSurface) {

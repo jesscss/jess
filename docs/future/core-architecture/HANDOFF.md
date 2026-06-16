@@ -144,6 +144,10 @@ Current hot evidence after the latest queue pass:
 - Simple exact callable misses with covered child frames now skip the broad
   `findMixinsFast` child crawl; frame-less reference-import placements still
   document the remaining bridge.
+- Rendered reference-import callable misses now prepare the existing scope-frame
+  parent chain for reference-import trees and prove zero broad `findMixinsFast`
+  hits for the real miss fixture. Reference-mode wrappers no longer count as
+  lookup-unknown child surfaces by themselves.
 
 Total remaining scope lives in `BINDING-LOOKUP-REMAINING.md`. Treat that file
 as the burn-down inventory; treat the queue below as the next executable slice.
@@ -152,90 +156,88 @@ as the burn-down inventory; treat the queue below as the next executable slice.
 
 Complete every item in this queue before committing the next pass.
 
-1. [ ] Convert the remaining frame-less reference-import callable miss into a
-covered miss. Scope: references inside rendered rulesets, target frame
-selection, reference-import child facts, and fallback values. Goal: the real
-`import-reference: rendered callable misses` fixture records zero
-`findMixinsFast` bridge hits. Acceptance: fixture renamed away from
-"remaining bridge" and guarded/reference-import positives still pass.
-
-2. [ ] Split guarded/configured child-surface uncertainty from simple exact
+1. [ ] Split guarded/configured child-surface uncertainty from simple exact
 child-frame misses. Scope: `findMixinsFastForUncoveredCallable`, imported
-guarded mixins, configured import child surfaces, and `options.context`. Goal:
-only genuinely dynamic guarded/configured surfaces can reach the broad crawl.
-Acceptance: child-frame exact misses stay zero-bridge; guarded/config matrices
-stay green.
+guarded mixins, configured import child surfaces, `options.context`, and
+replacement/additive import config. Goal: only genuinely dynamic
+guarded/configured surfaces can reach the broad crawl. Acceptance: child-frame
+exact misses stay zero-bridge; guarded/config matrices stay green.
 
-3. [ ] Finish callable retry-frame bridge deletion where retry frames are
+2. [ ] Finish callable retry-frame bridge deletion where retry frames are
 covered. Scope: parent/fallback frame loops in `Rules.findMixin`, fallback
-frame `prepareCallableLookupFrame`, and recursive namespace starts. Goal:
-covered retry-frame misses do not keep walking into broad direct crawls.
-Acceptance: parent/fallback callable miss spy tests plus existing fallback
-hit tests.
+frame `prepareCallableLookupFrame`, recursive namespace starts, and
+reference-import fallback frames. Goal: covered retry-frame misses do not keep
+walking into broad direct crawls. Acceptance: parent/fallback callable miss spy
+tests plus existing fallback hit tests.
 
-4. [ ] Build a reference-level static callable no-public-bridge matrix. Scope:
-function, mixin, mixin-ruleset, callable versions, and reference handle reuse.
-Goal: simple static callable references prove no `Rules.findMixin`,
-`Rules.findFunction`, or `findMixinsFast` call after first handle write.
-Acceptance: reference tests spy the bridges and prove unrelated version bumps
-stay cold.
+3. [ ] Add reference-level simple callable bridge proof for `findMixinsFast`.
+Scope: function, mixin, mixin-ruleset, callable versions, and reference handle
+reuse. Goal: simple static callable references prove no public bridge or broad
+child crawl after first handle write. Acceptance: reference tests spy
+`Rules.findMixin`, `Rules.findFunction`, and `Rules.findMixinsFast`.
 
-5. [ ] Build a reference-level static declaration no-public-bridge matrix.
-Scope: variable, property, declaration reads, declaration versions, and
-scope-frame binding handles. Goal: ordinary static reads prove no
-`findVariable`, `findProperty`, `findDeclaration`, or broad `find` bridge.
-Acceptance: variable/property/declaration spy matrix plus handle invalidation
-on same-key mutation.
+4. [ ] Complete leaky/searchScope disqualification across remaining lookup
+families. Scope: `context.leakyRules`, `context.searchScope`, property,
+variable, declaration, function, mixin, and mixin-ruleset handles. Goal: active
+disqualification never writes handles; normal mode rebuilds them. Acceptance:
+focused tests cover every family, including callable leaky and function
+searchScope.
 
-6. [ ] Finish cold assignment lookup naming through readonly/setDefined tests.
-Scope: `find*DeclarationAssignmentLookup`, `setDefined`, readonly propagation,
-and variable live-cell writes. Goal: assignment-only wrapper use is tested and
-hot reads never import or call wrapper-returning helpers. Acceptance: readonly
-setDefined tests plus grep proving helper names are assignment-only.
+5. [ ] Audit `shouldPrepareCallableReferenceFrame` for hot-path cost and
+coverage. Scope: reference callable lookup, root/rulesContext flags,
+reference-import trees, array keys, explicit targets, and local lookup. Goal:
+frame prep stays limited to reference-import callable string lookups that can
+delete broad crawl. Acceptance: tests prove no frame build for ordinary simple
+callable references and zero bridge for reference-import misses.
 
-7. [ ] Prove leaky/searchScope disqualification across all lookup families.
-Scope: `context.leakyRules`, `context.searchScope`, declaration handles,
-variable handles, callable/function handles, and stale handle clearing. Goal:
-active disqualification never writes handles; normal mode rebuilds them.
-Acceptance: focused tests for declaration, variable, property, function, and
-simple callable families.
-
-8. [ ] Retry `ReferencePlan` only for source-static facts. Scope:
+6. [ ] Retry `ReferencePlan` only for source-static facts. Scope:
 `_lookupStrategy`, key node identity, read mode, target presence, `inCall`, and
 static parent/start shape. Goal: cache repeated preparation only when generated
 control/mixin surfaces cannot change the facts. Acceptance: control loop matrix
 plus variable/property/function/callable handle tests.
 
-9. [ ] Eliminate remaining positive-path `collectKeyRemainder(...)` arrays.
+7. [ ] Eliminate remaining positive-path `collectKeyRemainder(...)` arrays.
 Scope: ruleset namespace, compound-prefix namespace, recursive namespace
 fallback paths, and guarded/imported namespace positives. Goal: arrays exist
 only on cold miss/legacy fallback paths. Acceptance: nested array-path spies for
 positive namespace cases stay zero.
 
-10. [ ] Extend stable namespace no-fallback proof to guarded/imported namespace
+8. [ ] Extend stable namespace no-fallback proof to guarded/imported namespace
 surfaces. Scope: namespace path offsets, guarded mixins, reference imports,
 terminal mixin-only mode, and parameterized terminals. Goal: stable positives
 stay on offset paths without breaking Less semantics. Acceptance: Less fixture,
 guarded namespace tests, and reference-import namespace tests.
 
-11. [ ] Confirm scalar excluded-node handle invalidation after output binding.
+9. [ ] Confirm scalar excluded-node handle invalidation after output binding.
 Scope: merge normalization scalar getters, handle shape before/after
 `bindOutput`, and stale occurrence invalidation. Goal: prove scalar exclusion
 identity changes exactly when the output declaration is bound. Acceptance:
 lower-level/materialization-aware handle test; do not use the rejected
 render-level `Reference.eval` spy shape.
 
-12. [ ] Audit scalar declaration exclusion fields as internal-only state.
+10. [ ] Audit scalar declaration exclusion fields as internal-only state.
 Scope: `ReferenceOptions`, `DeclarationFindOptions`, merge normalization, and
 public docs/exports. Goal: scalar excluded-node fields stay implementation
 details, not compatibility surface. Acceptance: repo usage proof and no docs/API
 promise.
 
-13. [ ] Audit prepared child-entry aggregate facts for import/config mutation
+11. [ ] Audit prepared child-entry aggregate facts for import/config mutation
 safety. Scope: `directChildRuleEntries`, `hasExact*ChildSurface`,
 `hasReferenceImportSurface`, replacement configs, and late child additions.
 Goal: trust aggregate facts only when prepared state cannot be stale.
 Acceptance: guarded import tests plus prepared-null/array mutation tests.
+
+12. [ ] Prove assignment-only direct lookup wrappers stay cold. Scope:
+`find*DeclarationAssignmentLookup`, `find*DeclarationOccurrence`, `setDefined`,
+readonly propagation, and reference read imports. Goal: occurrence helpers never
+allocate `DirectDeclarationLookupResult`; wrapper helpers are assignment-only.
+Acceptance: grep plus focused setDefined/direct-reference tests.
+
+13. [ ] Add final public-bridge grep/test for ordinary static declaration
+reads. Scope: variable, property, declaration, index, and merge-chain refs.
+Goal: no hot read imports or calls wrapper-returning helpers or public
+`Rules.find*` materialization wrappers. Acceptance: reference spy matrix plus
+grep.
 
 14. [ ] Run changed-baseline and fix any lookup-owned fallout now that the
 ruleset header streaming blocker is repaired. Scope: changed Less/Jess
@@ -252,20 +254,19 @@ current without claiming speed. Acceptance: profile recorded with old
 
 ## Unfinished-Item Exception
 
-This pass fixed the branch-local ruleset header streaming blocker, proved
-variable/declaration `searchScope` disqualification and declaration
-`leakyRules` disqualification stay cold, renamed wrapper-producing direct
-lookup helpers as assignment-only, and deleted one simple exact callable
-child-surface broad-crawl case by checking covered child frames first.
+This pass converted the rendered reference-import callable miss from a
+documented broad-crawl bridge into a zero-bridge covered miss, using existing
+`getScopeFrame()` parent wiring only for reference-import callable string
+lookups. It also split reference-mode render suppression from lookup
+reference-import uncertainty, added variable/function/callable cold-handle
+proof, and removed the wrapper allocation from hot variable/property occurrence
+helpers.
 
-Deferred: the no-frame reference-import callable miss still reaches the broad
-`findMixinsFast` bridge because that rendered reference starts from a
-frame-less placement before child-frame proof can help. The scalar
-output-binding proof remains active because a render-level `Reference.eval` spy
-was false: merge rendering folded the output without evaluating that generated
-reference. `ReferencePlan`, guarded/configured child-surface splitting,
-positive-path namespace array deletion, and changed-baseline verification are
-reseeded above rather than hidden.
+Deferred: guarded/configured child-surface splitting, retry-frame cleanup,
+`ReferencePlan`, namespace array deletion, scalar output-binding invalidation,
+and changed-baseline verification remain active. Namespace positive-path array
+proof already exists, but the remaining `collectKeyRemainder(...)` fallbacks
+need a deeper namespace pass rather than a speculative one-line cut.
 
 ## Backlog Sources
 
@@ -322,56 +323,60 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: restored ruleset header streaming with `writeSyntax`, added
-  `searchScope`/`leakyRules` cold-handle proofs, renamed direct declaration
-  wrapper helpers as assignment-only, and taught uncovered callable child-surface
-  lookup to prove exact misses from covered child frames before broad crawl.
-- Verdict: accepted as proof plus one bridge deletion for simple exact
-  child-frame misses; not a wall-clock speed claim.
-- New traversal: `findMixinsFastForUncoveredCallable` now continues through
-  eligible child entries instead of breaking on the first child surface. That is
-  accepted because it replaces a broader recursive `findMixinsFast` child crawl
-  when child frames can prove an exact-key miss or hit. It still falls back to
-  the existing broad crawl when a child frame is genuinely uncovered.
-- New node/materialization: test-only `new Context({ leakyRules: true })` creates
-  an isolated disqualified lookup context. Production code adds no new AST node
-  creation.
-- Render path: ruleset header capture now writes syntax directly into the
-  existing writer again; it no longer calls selector `toString(...)` inside the
-  capture.
-- Helper/API surface: no new public helper. Internal
-  `findVariableDeclarationLookup`/`findPropertyDeclarationLookup` were renamed
-  to `find*DeclarationAssignmentLookup` so the wrapper-returning path is
-  assignment-only by name and usage.
-- Metadata mutations: child callable frame preparation uses the existing
-  `getScopeFrame`/`prepareCallableLookupFrame` path. That is accepted only for
-  the uncovered child-surface bridge path; it is not added to ordinary covered
-  handle reads.
-- Allocation changes: no new production arrays on hot reference reads.
-  Test-only arrays record spy hits. The child-frame bridge path may materialize
-  `frameResults` only after child-frame lookup finds callable hits that must be
-  returned; covered exact misses return before the old broad child crawl.
-- Rejected/deferred proof: the render-level scalar output-binding proof was
-  removed because merge rendering did not evaluate the generated `Reference`.
-  The no-frame reference-import callable miss still reaches the broad bridge and
-  is reseeded with an exact fixture.
+- Latest pass: converted the real rendered reference-import callable miss to a
+  covered zero-bridge miss, split reference-mode render state from lookup
+  reference-import uncertainty, added variable/function/callable handle
+  disqualification proofs, and made hot occurrence helpers bypass the
+  assignment wrapper object.
+- Verdict: accepted as bridge deletion plus hot wrapper deletion; not a
+  wall-clock speed claim.
+- New traversal: `shouldPrepareCallableReferenceFrame` checks the current
+  target scope plus existing root/rulesContext flags before calling
+  `getScopeFrame()`. This is accepted only for string-key, no-target, non-local
+  callable references in reference-import trees, where it replaces the broader
+  `findMixinsFast` crawl. It is not used for ordinary callable references,
+  explicit targets, local lookup, or array-path namespace keys.
+- New node/materialization: test-only `new Context({ leakyRules: true })` and
+  `new JsFunction(...)` create isolated disqualified/function lookup fixtures.
+  Production code adds no new AST node creation.
+- Render path: no render materialization was added. The changed render fixture
+  still emits the optional callable miss as text; lookup now reaches the
+  fallback without broad crawl.
+- Helper/API surface: added one private reference helper to share the gated
+  frame-prep decision between mixin and mixin-ruleset lookup. Hot
+  `findVariableDeclarationOccurrence` and `findPropertyDeclarationOccurrence`
+  now call scalar occurrence lookup directly instead of using the
+  wrapper-returning assignment helpers.
+- Metadata mutations: `Rules.hasReferenceImportLookupSurface()` keeps
+  reference-mode wrappers from marking callable miss coverage unknown unless
+  they carry real child reference-import lookup surfaces. No parent/source
+  restoration or new side maps were added.
+- Allocation changes: hot occurrence helpers no longer allocate
+  `DirectDeclarationLookupResult`. Test-only arrays record spy hits. Callable
+  reference frame prep may create an existing `ScopeFrame` only under the gated
+  reference-import condition.
+- Rejected/deferred proof: ordinary callable frame prep remains rejected as too
+  broad. Guarded/configured child-surface splitting, scalar output-binding
+  invalidation, `ReferencePlan`, and namespace fallback array deletion remain
+  queued.
 - Aggressive-review tokens: test-only arrays, spies, `try` blocks, and thrown
   errors restore instrumented methods or prove skipped surfaces are not read.
-- Evidence: focused reference disqualification/handle matrix passed
-  (`18` passed). Focused reference/mixin/import/ruleset lookup matrix passed
-  (`101` passed). Stress profile on `scope-lookup-stress.less` reports no old
-  `Rules.find`, registry, or searchChildren counters and direct counters:
+  The `string | string[]` key type on `shouldPrepareCallableReferenceFrame` is a
+  typed gate that rejects array-path namespace keys before frame prep.
+- Evidence: focused reference-import/mixin/rules-flags matrix passed
+  (`9` passed). Focused reference disqualification/bridge matrix passed
+  (`13` passed). Focused setDefined/direct lookup matrix passed (`16` passed).
+  Broad lookup matrix passed (`339` passed, `306` skipped). Stress profile on
+  `scope-lookup-stress.less` reports no old `Rules.find`, registry, or
+  searchChildren counters and direct counters:
   `declaration.cacheMiss: 7560`, `declaration.scope.v: 7560`,
   `declaration.childEntriesFamilySkip: 5400`,
   `declaration.childEntriesScanned: 1575`,
   `declaration.childEntryEntered: 1575`, and `declaration.framePrep: 1`.
-  Current profile elapsed value (`236.57ms`) is profiler smoke only, not a
+  Current profile elapsed value (`208.64ms`) is profiler smoke only, not a
   speed claim. Final gates passed: stale lookup grep with no hits,
   `git diff --check`, focused eslint, `@jesscss/core` build,
   aggressive-cutting review, node-creation audit, `jess` build, and
   one-iteration hotpath smoke. Hotpath smoke values were `mixins-guards.less`
-  `21.71ms` and `scope-lookup-stress.less` `81.57ms`; smoke only, not speed
-  claims. `pnpm run verify:baseline -- --changed` expanded to full baseline
-  because the upstream tracking ref was not local, then two baseline/Vitest
-  worker trees in this worktree stuck in core tests; they were terminated and
-  this remains the first task in the next queue.
+  `27.15ms` and `scope-lookup-stress.less` `78.12ms`; smoke only, not speed
+  claims.

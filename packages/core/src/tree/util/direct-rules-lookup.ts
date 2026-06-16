@@ -799,7 +799,7 @@ export function findVariableDeclarationOccurrence(
   key: string,
   options?: DirectDeclarationFindOptions
 ): DirectDeclarationOccurrence | undefined {
-  return findVariableDeclarationAssignmentLookup(startRules, key, options).occurrence;
+  return findDeclarationOccurrenceWithStrategy(startRules, key, VARIABLE_LOOKUP, options);
 }
 
 export function findPropertyDeclarationOccurrence(
@@ -807,7 +807,7 @@ export function findPropertyDeclarationOccurrence(
   key: string,
   options?: DirectDeclarationFindOptions
 ): DirectDeclarationOccurrence | undefined {
-  return findPropertyDeclarationAssignmentLookup(startRules, key, options).occurrence;
+  return findDeclarationOccurrenceWithStrategy(startRules, key, PROPERTY_LOOKUP, options);
 }
 
 export function findAnyDeclarationOccurrence(

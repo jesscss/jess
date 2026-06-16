@@ -937,13 +937,36 @@ function performFunctionRulesLookup(
   });
 }
 
+function shouldPrepareCallableReferenceFrame(
+  scope: Rules,
+  lookupContext: RulesReferenceLookupContext,
+  shape: RulesLookupHandleShape,
+  key: string | string[]
+): key is string {
+  if (typeof key !== 'string' || lookupContext.hasTarget || shape.local) {
+    return false;
+  }
+  const root = lookupContext.context.root;
+  const contextRules = lookupContext.context.rulesContext;
+  return (
+    scope._hasReferenceImports
+    || scope.hasReferenceImportChildSurface
+    || (isNode(root, N.Rules) && (root._hasReferenceImports || root.hasReferenceImportChildSurface))
+    || (isNode(contextRules, N.Rules) && (contextRules._hasReferenceImports || contextRules.hasReferenceImportChildSurface))
+  );
+}
+
 function performMixinRulesLookup(
   scope: Rules,
   lookupContext: RulesReferenceLookupContext,
   shape: RulesLookupHandleShape
 ): CallableReferenceLookupReturnValue {
+  const key = Array.isArray(lookupContext.valueKey) ? lookupContext.valueKey : getLookupKeyString(lookupContext.valueKey);
+  if (shouldPrepareCallableReferenceFrame(scope, lookupContext, shape, key)) {
+    scope.getScopeFrame();
+  }
   return scope.findMixin(
-    Array.isArray(lookupContext.valueKey) ? lookupContext.valueKey : getLookupKeyString(lookupContext.valueKey),
+    key,
     'Mixin',
     {
       context: lookupContext.context,
@@ -959,8 +982,12 @@ function performMixinRulesetRulesLookup(
   lookupContext: RulesReferenceLookupContext,
   shape: RulesLookupHandleShape
 ): CallableReferenceLookupReturnValue {
+  const key = Array.isArray(lookupContext.valueKey) ? lookupContext.valueKey : getLookupKeyString(lookupContext.valueKey);
+  if (shouldPrepareCallableReferenceFrame(scope, lookupContext, shape, key)) {
+    scope.getScopeFrame();
+  }
   return scope.findMixin(
-    Array.isArray(lookupContext.valueKey) ? lookupContext.valueKey : getLookupKeyString(lookupContext.valueKey),
+    key,
     undefined,
     {
       context: lookupContext.context,
