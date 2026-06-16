@@ -260,7 +260,7 @@ describe('Call', () => {
     expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
     expect(buffer.parts).toEqual(['rgb', '(', '100', ', ', '100', ', ', '100', ')']);
     expect(writer.marks).toBe(1);
-    expect(writer.readbacks).toBe(1);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('writes call render output into buffers without mutating a provided writer', async () => {
@@ -1015,7 +1015,7 @@ describe('Call', () => {
     expect(rule.render(context, { writer })).toBe('rgb(100, 100, 100)');
     expect(writer.toString()).toBe('rgb(100, 100, 100)');
     expect(writer.captures).toBe(0);
-    expect(writer.readbacks).toBe(1);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('renders token CSS call arguments without per-arg trim marks', () => {
@@ -1028,7 +1028,35 @@ describe('Call', () => {
     expect(rule.render(context, { writer })).toBe('var(--brand, red)');
     expect(writer.toString()).toBe('var(--brand, red)');
     expect(writer.marks).toBe(1);
-    expect(writer.readbacks).toBe(1);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders async scalar CSS call arguments without per-arg trim readback', async () => {
+    const writer = new CountingWriter();
+    const arg = new AsyncRenderedAny('source', '20');
+    const rule = call({
+      name: 'rgb',
+      args: list([num(10), arg, num(30)])
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('rgb(10, 20, 30)');
+    expect(writer.toString()).toBe('rgb(10, 20, 30)');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders async scalar CSS call content without whole-call readback', async () => {
+    const writer = new CountingWriter();
+    const content = new AsyncRenderedAny('source-content', 'body-output');
+    const rule = call({
+      name: 'wrap',
+      contentNode: content
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('wrap(): body-output');
+    expect(writer.toString()).toBe('wrap(): body-output');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('resolves CSS calls without touching render state', async () => {

@@ -90,6 +90,49 @@ export type CallRawArgDiagnosticSource = {
 
 type OptionalFallbackRenderOutput = Node | string;
 
+type CallRenderTextState = {
+  text?: string;
+};
+
+function appendCallRenderText(state: CallRenderTextState | undefined, text: string): void {
+  if (state?.text !== undefined) {
+    state.text += text;
+  }
+}
+
+function disableCallRenderText(state: CallRenderTextState | undefined): void {
+  if (state) {
+    state.text = undefined;
+  }
+}
+
+function finishCallRenderText(
+  state: CallRenderTextState | undefined,
+  writer: ReturnType<typeof getPrintOptions>['writer'],
+  mark: number
+): string {
+  return state?.text !== undefined
+    ? state.text
+    : writer.getSince(mark);
+}
+
+function appendCallArgSeparatorText(
+  state: CallRenderTextState | undefined,
+  left: Node,
+  right: Node,
+  options: ReturnType<typeof getPrintOptions>
+): void {
+  if (
+    options.trivia
+    || left.sourceRoot?._treeContext?.opts?.trivia
+    || right.sourceRoot?._treeContext?.opts?.trivia
+  ) {
+    disableCallRenderText(state);
+    return;
+  }
+  appendCallRenderText(state, ', ');
+}
+
 export function getCallRawArgsPlacement(rawArgs: List<Node>): CallRawArgsPlacementState | undefined {
   const placement = getRawArgsPlacement(rawArgs);
   if (!placement || !(placement.source instanceof Call) || !isNode(placement.sourceArgs, N.List)) {
@@ -459,20 +502,22 @@ export class Call extends Node<CallValue, CallOptions> {
   private serializeRenderedArgs(
     args: List<Node> | undefined,
     context: Context,
-    options: PrintOptions
+    options: PrintOptions,
+    textState?: CallRenderTextState
   ): MaybePromise<void> {
     if (!args || args.value.length === 0) {
       return undefined;
     }
     const printOptions = getPrintOptions(options);
-    return this.serializeRenderedArgsFrom(args.value, context, printOptions, 0);
+    return this.serializeRenderedArgsFrom(args.value, context, printOptions, 0, textState);
   }
 
   private serializeRenderedArgsFrom(
     rawArgs: Node[],
     context: Context,
     printOptions: ReturnType<typeof getPrintOptions>,
-    start: number
+    start: number,
+    textState?: CallRenderTextState
   ): MaybePromise<void> {
     const w = printOptions.writer!;
     const last = rawArgs.length - 1;
@@ -491,25 +536,24 @@ export class Call extends Node<CallValue, CallOptions> {
       const hasNext = next <= last;
       if (arg instanceof Paren && arg.options?.escaped) {
         w.add('(', arg);
+        appendCallRenderText(textState, '(');
         if (arg.value) {
-          const innerMark = w.mark();
-          const rendered = this.writeEvaluatedSyntax(arg.value, context, printOptions);
+          const rendered = this.writeEvaluatedSyntax(arg.value, context, printOptions, textState, true);
           if (isThenable(rendered)) {
             return rendered.then(() => {
-              w.trimHorizontalStartSince(innerMark);
-              w.trimHorizontalEndSince(innerMark);
               w.add(')', arg);
+              appendCallRenderText(textState, ')');
               if (hasNext) {
                 emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
                 w.add(', ');
+                appendCallArgSeparatorText(textState, arg, rawArgs[next]!, printOptions);
               }
-              return this.serializeRenderedArgsFrom(rawArgs, context, printOptions, next);
+              return this.serializeRenderedArgsFrom(rawArgs, context, printOptions, next, textState);
             });
           }
-          w.trimHorizontalStartSince(innerMark);
-          w.trimHorizontalEndSince(innerMark);
         }
         w.add(')', arg);
+        appendCallRenderText(textState, ')');
       } else {
         const activeTrivia = printOptions.trivia ?? arg.sourceRoot?._treeContext?.opts?.trivia;
         if (
@@ -525,33 +569,31 @@ export class Call extends Node<CallValue, CallOptions> {
           )
           && !activeTrivia
         ) {
-          arg.writeSyntax(printOptions);
+          this.writeKnownEvaluatedSyntax(arg, context, printOptions, textState);
           if (hasNext) {
             emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
             w.add(', ');
+            appendCallArgSeparatorText(textState, arg, rawArgs[next]!, printOptions);
           }
           i = next;
           continue;
         }
-        const argMark = w.mark();
-        const rendered = this.writeEvaluatedSyntax(arg, context, printOptions);
+        const rendered = this.writeEvaluatedSyntax(arg, context, printOptions, textState, true);
         if (isThenable(rendered)) {
           return rendered.then(() => {
-            w.trimHorizontalStartSince(argMark);
-            w.trimHorizontalEndSince(argMark);
             if (hasNext) {
               emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
               w.add(', ');
+              appendCallArgSeparatorText(textState, arg, rawArgs[next]!, printOptions);
             }
-            return this.serializeRenderedArgsFrom(rawArgs, context, printOptions, next);
+            return this.serializeRenderedArgsFrom(rawArgs, context, printOptions, next, textState);
           });
         }
-        w.trimHorizontalStartSince(argMark);
-        w.trimHorizontalEndSince(argMark);
       }
       if (hasNext) {
         emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
         w.add(', ');
+        appendCallArgSeparatorText(textState, arg, rawArgs[next]!, printOptions);
       }
       i = next;
     }
@@ -561,8 +603,23 @@ export class Call extends Node<CallValue, CallOptions> {
   private writeEvaluatedSyntax(
     node: Node,
     context: Context,
-    printOptions: ReturnType<typeof getPrintOptions>
+    printOptions: ReturnType<typeof getPrintOptions>,
+    textState?: CallRenderTextState,
+    trimHorizontal = false
   ): MaybePromise<void> {
+    const writeEvaluated = (evaluated: Node): void => {
+      const known = this.writeKnownEvaluatedSyntax(evaluated, context, printOptions, textState);
+      if (known) {
+        return;
+      }
+      const mark = trimHorizontal ? printOptions.writer.mark() : undefined;
+      evaluated.writeSyntax(printOptions);
+      if (mark !== undefined) {
+        printOptions.writer.trimHorizontalStartSince(mark);
+        printOptions.writer.trimHorizontalEndSince(mark);
+      }
+      disableCallRenderText(textState);
+    };
     if (
       node.eval === Node.prototype.eval
       && (
@@ -575,28 +632,53 @@ export class Call extends Node<CallValue, CallOptions> {
         || node.type === 'Keyword'
       )
     ) {
-      node.writeSyntax(printOptions);
+      writeEvaluated(node);
       return undefined;
     }
     if (!node.hasFlag(F_MAY_ASYNC)) {
-      node.evalImmediateSync(context).writeSyntax(printOptions);
+      writeEvaluated(node.evalImmediateSync(context));
       return undefined;
     }
     const rendered = node.eval(context);
     if (isThenable(rendered)) {
       return rendered.then((value) => {
-        value.writeSyntax(printOptions);
+        writeEvaluated(value);
       });
     }
-    rendered.writeSyntax(printOptions);
+    writeEvaluated(rendered);
     return undefined;
+  }
+
+  private writeKnownEvaluatedSyntax(
+    node: Node,
+    context: Context,
+    printOptions: ReturnType<typeof getPrintOptions>,
+    textState?: CallRenderTextState
+  ): boolean {
+    if (
+      printOptions.trivia
+      || node.sourceRoot?._treeContext?.opts?.trivia
+      || !(
+        node.type === 'Num'
+        || node.type === 'Dimension'
+        || node.type === 'Bool'
+        || node.type === 'Any'
+        || node.type === 'Anonymous'
+        || node.type === 'Keyword'
+      )
+    ) {
+      return false;
+    }
+    appendCallRenderText(textState, node.render(context, printOptions));
+    return true;
   }
 
   private renderPlainFunctionCall(
     callNode: Call,
     context: Context,
     prepared: PrintOptions,
-    mark?: number
+    mark?: number,
+    textState?: CallRenderTextState
   ): MaybePromise<string> {
     const printOptions = getPrintOptions(prepared);
     const w = printOptions.writer!;
@@ -604,20 +686,24 @@ export class Call extends Node<CallValue, CallOptions> {
     const { name, contentNode } = callNode.value;
     if (typeof name === 'string') {
       w.add(name, callNode);
+      appendCallRenderText(textState, name);
     } else {
       name.writeSyntax(printOptions);
+      disableCallRenderText(textState);
     }
     if (callNode.options?.silentFail) {
       w.add('?');
+      appendCallRenderText(textState, '?');
     }
     w.add('(');
+    appendCallRenderText(textState, '(');
     const isCalc = name === 'calc';
     if (isCalc) {
       context.calcFrames++;
     }
     let renderedArgs: MaybePromise<void>;
     try {
-      renderedArgs = this.serializeRenderedArgs(callNode.value.args, context, prepared);
+      renderedArgs = this.serializeRenderedArgs(callNode.value.args, context, prepared, textState);
     } catch (error) {
       if (isCalc) {
         context.calcFrames--;
@@ -631,7 +717,8 @@ export class Call extends Node<CallValue, CallOptions> {
         printOptions,
         startMark,
         contentNode,
-        isCalc
+        isCalc,
+        textState
       ), (error: unknown) => {
         if (isCalc) {
           context.calcFrames--;
@@ -639,7 +726,7 @@ export class Call extends Node<CallValue, CallOptions> {
         throw error;
       });
     }
-    return this.finishPlainFunctionCall(callNode, context, printOptions, startMark, contentNode, isCalc);
+    return this.finishPlainFunctionCall(callNode, context, printOptions, startMark, contentNode, isCalc, textState);
   }
 
   private finishPlainFunctionCall(
@@ -648,24 +735,28 @@ export class Call extends Node<CallValue, CallOptions> {
     printOptions: ReturnType<typeof getPrintOptions>,
     mark: number,
     contentNode: Node | undefined,
-    isCalc: boolean
+    isCalc: boolean,
+    textState?: CallRenderTextState
   ): MaybePromise<string> {
     const w = printOptions.writer!;
     if (isCalc) {
       context.calcFrames--;
     }
     w.add(')');
+    appendCallRenderText(textState, ')');
     if (callNode.options?.markImportant) {
       w.add(' !important');
+      appendCallRenderText(textState, ' !important');
     }
     if (!contentNode) {
-      return w.getSince(mark);
+      return finishCallRenderText(textState, w, mark);
     }
     w.add(': ');
-    const renderedContent = this.writeEvaluatedSyntax(contentNode, context, printOptions);
+    appendCallRenderText(textState, ': ');
+    const renderedContent = this.writeEvaluatedSyntax(contentNode, context, printOptions, textState);
     return isThenable(renderedContent)
-      ? renderedContent.then(() => w.getSince(mark))
-      : w.getSince(mark);
+      ? renderedContent.then(() => finishCallRenderText(textState, w, mark))
+      : finishCallRenderText(textState, w, mark);
   }
 
   private renderFinalizedCallSyntax(
@@ -687,39 +778,49 @@ export class Call extends Node<CallValue, CallOptions> {
       }
     }
     const mark = w.mark();
+    const textState: CallRenderTextState = { text: '' };
     if (typeof name === 'string') {
       w.add(name, state.source);
+      appendCallRenderText(textState, name);
     } else if (name instanceof Node) {
       name.writeSyntax(printOptions);
+      disableCallRenderText(textState);
     } else {
-      w.add(stringifyValueOf(name), state.source);
+      const nameText = stringifyValueOf(name);
+      w.add(nameText, state.source);
+      appendCallRenderText(textState, nameText);
     }
     w.add('(');
-    const renderedArgs = this.serializeRenderedArgs(args, context, prepared);
+    appendCallRenderText(textState, '(');
+    const renderedArgs = this.serializeRenderedArgs(args, context, prepared, textState);
     return isThenable(renderedArgs)
-      ? renderedArgs.then(() => this.finishFinalizedCallSyntax(context, printOptions, mark, contentNode))
-      : this.finishFinalizedCallSyntax(context, printOptions, mark, contentNode);
+      ? renderedArgs.then(() => this.finishFinalizedCallSyntax(context, printOptions, mark, contentNode, textState))
+      : this.finishFinalizedCallSyntax(context, printOptions, mark, contentNode, textState);
   }
 
   private finishFinalizedCallSyntax(
     context: Context,
     printOptions: ReturnType<typeof getPrintOptions>,
     mark: number,
-    contentNode: Node | undefined
+    contentNode: Node | undefined,
+    textState?: CallRenderTextState
   ): MaybePromise<string> {
     const w = printOptions.writer!;
     w.add(')');
+    appendCallRenderText(textState, ')');
     if (this._options?.markImportant) {
       w.add(' !important');
+      appendCallRenderText(textState, ' !important');
     }
     if (!contentNode) {
-      return w.getSince(mark);
+      return finishCallRenderText(textState, w, mark);
     }
     w.add(': ');
-    const renderedContent = this.writeEvaluatedSyntax(contentNode, context, printOptions);
+    appendCallRenderText(textState, ': ');
+    const renderedContent = this.writeEvaluatedSyntax(contentNode, context, printOptions, textState);
     return isThenable(renderedContent)
-      ? renderedContent.then(() => w.getSince(mark))
-      : w.getSince(mark);
+      ? renderedContent.then(() => finishCallRenderText(textState, w, mark))
+      : finishCallRenderText(textState, w, mark);
   }
 
   private async renderOptionalFallbackCallSyntax(
@@ -1063,7 +1164,7 @@ export class Call extends Node<CallValue, CallOptions> {
       if (this.evaluated) {
         const prepared = prepareBufferPrintState(context, options, bufferOrOptions);
         const mark = prepared.writer.mark();
-        return writePreparedRenderTextResult(bufferOrOptions, prepared, mark, this.renderPlainFunctionCall(this, context, prepared, mark));
+        return writePreparedRenderTextResult(bufferOrOptions, prepared, mark, this.renderPlainFunctionCall(this, context, prepared, mark, { text: '' }));
       }
       if (typeof this.value.name !== 'string') {
         const prepared = prepareBufferPrintState(context, options, bufferOrOptions);
@@ -1073,7 +1174,7 @@ export class Call extends Node<CallValue, CallOptions> {
       // keep calc-frame cleanup instead of falling back to source text.
       const prepared = prepareBufferPrintState(context, options, bufferOrOptions);
       const mark = prepared.writer.mark();
-      return writePreparedRenderTextResult(bufferOrOptions, prepared, mark, this.renderPlainFunctionCall(this, context, prepared, mark));
+      return writePreparedRenderTextResult(bufferOrOptions, prepared, mark, this.renderPlainFunctionCall(this, context, prepared, mark, { text: '' }));
     }
     const emptyCallText = this.emptyStringNameCallText();
     if (emptyCallText !== undefined) {
@@ -1082,10 +1183,10 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
     if (this.evaluated) {
-      return this.renderPlainFunctionCall(this, context, prepared);
+      return this.renderPlainFunctionCall(this, context, prepared, undefined, { text: '' });
     }
     if (typeof this.value.name === 'string') {
-      return this.renderPlainFunctionCall(this, context, prepared);
+      return this.renderPlainFunctionCall(this, context, prepared, undefined, { text: '' });
     }
     return this.renderDynamicFunctionOutput(context, prepared, bufferOrOptions, options);
   }
