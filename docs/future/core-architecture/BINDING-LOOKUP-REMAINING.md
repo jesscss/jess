@@ -80,13 +80,15 @@ materialization wrapper for that semantic case.
    caller-specific decisions before generic direct crawl. Prepared child-rule
    entries carry exact callable/mixin/ruleset surface facts and now carry
    reference-import child-surface facts separately from exact callable facts.
-   Guarded import tests proved prepared arrays cannot be trusted as a blanket
-   aggregate miss. Prepared-null entries can skip child reads, covered child
-   frames can prove simple exact callable misses without entering the broad
-   child crawl, and rendered reference-import callable misses now prepare the
-   existing frame parent chain instead of entering the no-frame direct crawl.
-   Remaining work is deleting the direct-crawl bridges where facts are complete
-   without breaking guarded/configured child surfaces.
+   Late additions now update exact callable and reference-import child-entry
+   facts without leaving stale covered-miss frame state. Guarded import tests
+   proved prepared arrays cannot be trusted as a blanket aggregate miss.
+   Prepared-null entries can skip child reads, covered child frames can prove
+   simple exact callable misses without entering the broad child crawl, and
+   rendered reference-import callable misses now prepare the existing frame
+   parent chain instead of entering the no-frame direct crawl. Remaining work is
+   deleting the direct-crawl bridges where facts are complete without breaking
+   guarded/configured child surfaces.
 
 2. **Parameterized terminal namespace audit.**
    Mixin-ruleset calls with parameters now reject ruleset-only terminal
@@ -135,9 +137,11 @@ materialization wrapper for that semantic case.
    Ordinary static function, simple mixin, and simple mixin-ruleset handles now
    prove no repeated public callable bridge after the first handle write, and
    simple callable handles also prove no repeated broad `findMixinsFast`
-   bridge. The lane is not done until ordinary static variable, property,
-   declaration, index, merge-chain, and stable namespace reads have final
-   tests/profiles proving they do not enter fallback ladders, public
+   bridge. Hot variable/property/declaration read paths now use occurrence
+   helpers directly; wrapper-returning assignment helpers remain on
+   `setDefined`. The lane is not done until ordinary static variable,
+   property, declaration, index, merge-chain, and stable namespace reads have
+   final tests/profiles proving they do not enter fallback ladders, public
    materialization wrappers, old registry-shaped search, or unnecessary child
    scans.
 

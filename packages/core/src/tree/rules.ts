@@ -1483,9 +1483,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     readonly = Boolean(child.options.readonly)
   ): void {
     this.hasDirectChildRuleSurface = true;
+    const hasReferenceImportSurface = rulesMayContainReferenceImports(child);
     const hasExactCallableSurface = rulesMayContainExactCallableSurface(child);
     const hasExactMixinSurface = hasExactCallableSurface && rulesMayContainExactMixinSurface(child);
     const hasExactRulesetSurface = hasExactCallableSurface && rulesMayContainExactRulesetSurface(child);
+    this.hasReferenceImportChildSurface ||= hasReferenceImportSurface;
     if (hasExactCallableSurface) {
       this.hasExactCallableChildSurface = true;
       if (hasExactMixinSurface) {
@@ -1505,6 +1507,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       node: child,
       rulesVisibility: visibility,
       readonly,
+      hasReferenceImportSurface,
       hasExactCallableSurface,
       hasExactMixinSurface,
       hasExactRulesetSurface

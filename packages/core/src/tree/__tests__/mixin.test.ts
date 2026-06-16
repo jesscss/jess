@@ -2947,6 +2947,66 @@ describe('Mixin', () => {
       expect(root._scopeFrame?.mixinCallableMissesCovered).toBe(false);
     });
 
+    it('ScopeFrame callable buckets: late exact callable children update prepared aggregate facts', () => {
+      const root = rules([]);
+      root.collectDirectChildRulesEntries();
+      expect(root.directChildRuleEntries).toBeNull();
+      root.getScopeFrame();
+      expect(root._scopeFrame?.callableMissesCovered).toBe(true);
+      expect(root._scopeFrame?.callableMissCoverageKnown).toBe(true);
+
+      const childRules = rules([
+        mixin({
+          name: any('.late-child-mixin'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        })
+      ]);
+      root.push(childRules);
+
+      expect(root.directChildRuleEntries).toHaveLength(1);
+      expect(root.directChildRuleEntries?.[0]).toMatchObject({
+        node: childRules,
+        hasExactCallableSurface: true,
+        hasExactMixinSurface: true,
+        hasExactRulesetSurface: false
+      });
+      expect(root.hasExactCallableChildSurface).toBe(true);
+      expect(root.hasExactMixinChildSurface).toBe(true);
+      expect(root._scopeFrame?.callableMissesCovered).toBe(false);
+      expect(root._scopeFrame?.callableMissCoverageKnown).toBe(false);
+    });
+
+    it('ScopeFrame callable buckets: late reference-import children update prepared aggregate facts', () => {
+      const root = rules([]);
+      root.collectDirectChildRulesEntries();
+      expect(root.directChildRuleEntries).toBeNull();
+      root.getScopeFrame();
+      expect(root._scopeFrame?.callableMissesCovered).toBe(true);
+      expect(root._scopeFrame?.callableMissCoverageKnown).toBe(true);
+
+      const childRules = rules([
+        style({
+          path: quoted(any('late-reference-import.jess'))
+        }, {
+          type: 'import',
+          importOptions: { reference: true }
+        })
+      ]);
+      root.push(childRules);
+
+      expect(root.directChildRuleEntries).toHaveLength(1);
+      expect(root.directChildRuleEntries?.[0]).toMatchObject({
+        node: childRules,
+        hasReferenceImportSurface: true,
+        hasExactCallableSurface: false,
+        hasExactMixinSurface: false,
+        hasExactRulesetSurface: false
+      });
+      expect(root.hasReferenceImportChildSurface).toBe(true);
+      expect(root._scopeFrame?.callableMissesCovered).toBe(false);
+      expect(root._scopeFrame?.callableMissCoverageKnown).toBe(false);
+    });
+
     it('ScopeFrame callable buckets: terminal mixin-only miss skips Rules.findMixinsFast for ruleset-only child surfaces', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];
