@@ -4005,6 +4005,26 @@ Interpretation: selector materialization transport cut only; do not claim a
 speed win from the focused test. The two largest fixtures were noisy and one
 fixture was unstable.
 
+### Call Finalized Empty Fallback Readback Cut
+
+Date: 2026-06-15.
+
+Change: `Call.renderFinalizedCallSyntax(...)` now writes and returns known
+empty finalized string-name fallback syntax directly when there are no args and
+no content. This avoids opening a call-level writer mark/readback for optional
+fallback output such as `bad()`.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `14.96ms` unstable, `import-reference` median
+  `20.52ms` unstable, `mixins-guards` median `17.04ms` usable,
+  `extend-chaining` median `5.56ms` unstable, and `media` median `5.37ms`
+  unstable.
+
+Interpretation: fallback syntax staging cut only; do not claim a speed win from
+the focused test. Four fixtures were unstable.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

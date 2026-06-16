@@ -677,9 +677,16 @@ export class Call extends Node<CallValue, CallOptions> {
   ): MaybePromise<string> {
     const printOptions = getPrintOptions(prepared);
     const w = printOptions.writer!;
-    const mark = w.mark();
     const args = syntax && 'args' in syntax ? syntax.args : state.args;
     const contentNode = syntax && 'contentNode' in syntax ? syntax.contentNode : state.contentNode;
+    if (typeof name === 'string') {
+      const emptyCallText = state.source.finalizedEmptyStringNameCallText(name, args, contentNode);
+      if (emptyCallText !== undefined) {
+        w.add(emptyCallText, state.source);
+        return emptyCallText;
+      }
+    }
+    const mark = w.mark();
     if (typeof name === 'string') {
       w.add(name, state.source);
     } else if (name instanceof Node) {
@@ -958,6 +965,17 @@ export class Call extends Node<CallValue, CallOptions> {
       return undefined;
     }
     return `${name}${this._options?.silentFail === true ? '?' : ''}()${this._options?.markImportant === true ? ' !important' : ''}`;
+  }
+
+  private finalizedEmptyStringNameCallText(
+    name: string,
+    args: List<Node> | undefined,
+    contentNode: Node | undefined
+  ): string | undefined {
+    if (contentNode || (args && args.value.length > 0)) {
+      return undefined;
+    }
+    return `${name}()${this._options?.markImportant === true ? ' !important' : ''}`;
   }
 
   override toTrimmedString(options?: PrintOptions) {

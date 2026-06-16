@@ -2361,6 +2361,30 @@ describe('Call', () => {
     }
   });
 
+  it('renders empty optional JS failure fallback syntax without call-level readback', async () => {
+    const writer = new CountingWriter();
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'bad',
+      fn: () => {
+        throw new Error('bad function');
+      },
+      allowOptional: true
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const rule = call({
+      name: ref({ key: 'bad' }, { type: 'function', fallbackValue: true }),
+      args: list([])
+    }, { silentFail: true });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('bad()');
+
+    expect(writer.toString()).toBe('bad()');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
   it('does not clone childless source-free scalar leaves before resolving callback arg lists', async () => {
     const root = rules([]);
     root.register('function', new JsFunction({

@@ -309,7 +309,8 @@ shape current before commit.
    check uses direct type tags rather than the generic `isNode(...)`
    classifier; stylesheet `Func` calls now pass the source arg list to the
    callable binding surface instead of pre-evaluating a copied replacement
-   `List`.
+   `List`; finalized empty string-name fallback calls write the known
+   `name()`/important text directly without opening a call-level mark/readback.
 2. [ ] Finish `QueryCondition` dynamic render by removing the child mark probe
    only after child render contracts prove write-vs-return behavior directly.
 
@@ -491,34 +492,33 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Interpolated` embedded scalar selector materialization cut.
+Current pass: `Call` finalized empty fallback syntax readback cut.
 
-- New traversal: none. `packages/core/src/tree/interpolated.ts` adds no loop,
+- New traversal: none. `packages/core/src/tree/call.ts` adds no loop,
   recursion, parent/source walk, side-map lookup, object/array scan, generator,
   or collection helper.
-- New node/materialization: no new materialization class was introduced. The
-  existing embedded-selector assembly path now reads owned scalar token text
-  directly for `Any`/`Anonymous`/`Keyword` replacements instead of calling
-  public `toTrimmedString(...)` first. Existing `new BasicSelector(...)` and
-  `new CompoundSelector(...)` public materialization paths remain the boundary.
-- Render path: no render path changed. This is selector materialization for
-  `Interpolated.createSelector(...)`, keeping render/eval stringification out
-  of public replacement string APIs for embedded scalar selector replacements.
-- Helper/API surface: none added.
+- New node/materialization: none. Finalized empty string-name fallback syntax
+  now emits the known `name()`/important text directly and returns that same
+  text, without constructing a fallback `Call` or opening a writer readback
+  window just to recover it.
+- Render path: `renderFinalizedCallSyntax(...)` now bypasses call-level
+  `mark()`/`getSince(...)` only for string names with no args and no content.
+  Argument/content fallback syntax remains on the existing writer boundary.
+- Helper/API surface: one private string helper was added to share the known
+  finalized-empty-call text; no public API changed.
 - Metadata mutations: none added. No parent/source/frozen/context metadata
   mutation, lazy options/context creation, `Reflect.*`, generic own-property
   helper, source restoration, or source/root read was added.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected/deferred cut: non-scalar embedded selector replacements still use
-  public string capture where they may need generated `:is(...)` wrapping,
-  compound token splitting, or non-scalar selector/generic materialization.
-  `Interpolated.createGeneric(...)` still owns its cold public generic boundary.
+- Rejected/deferred cut: fallback calls with args or content still need the
+  existing writer boundary for child evaluation, trimming, and content output.
+  Broader callable output selection and `evalArgNodes(...)` copy pressure
+  remain open.
 - Evidence: focused red/green test
-  `creates embedded scalar selector interpolations without public string
-  transport` failed on `replacement.toTrimmedString(...)` before the cut and
-  passed after. Full `interpolated` and `selector-interpolated` focused suites
-  passed.
-- Verdict: accepted as a bounded `Interpolated` materialization cut. Keep item
-  9 open because cold replacement capture, non-scalar embedded selector
-  assembly, generic materialization, and replacement arrays remain.
+  `renders empty optional JS failure fallback syntax without call-level
+  readback` failed with one writer mark/readback before the cut and passed
+  after. Full `call.test.ts` passed.
+- Verdict: accepted as a bounded `Call` fallback syntax cut. Keep item 1 open
+  because callable output, non-empty fallback syntax, async/helper ladders,
+  `evalArgNodes(...)` copy pressure, and repeated eval remain.
