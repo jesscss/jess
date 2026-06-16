@@ -378,7 +378,10 @@ shape current before commit.
    a character scan instead of regex replacement to detect/drop the terminal
    declaration newline. Buffer renders now write declaration syntax directly
    under their existing outer buffer mark instead of nesting the cold
-   `declValueTrimmedString(...)` mark/readback helper.
+   `declValueTrimmedString(...)` mark/readback helper. Render-assignment and
+   custom-interpolated replacement chains now call `.then(...)` directly after
+   `isThenable(...)` narrowing instead of wrapping already-thenable values with
+   `Promise.resolve(...)`.
 6. [ ] Finish `Rules` root/body render, imports, placement state, merge output,
    and duplicate declaration materialization.
 
@@ -396,6 +399,9 @@ shape current before commit.
    discard genuinely empty child output. Render-mode static/evaluated child
    `Rules` wrappers now emit their body directly through `_emitRenderRulesBody(...)`
    instead of `writer.preview(...)` around public `render(...)` transport.
+   Static declaration registration prep now calls `.then(...)` directly after
+   `isThenable(...)` narrowing instead of wrapping already-thenable prepared
+   nodes with `Promise.resolve(...)`.
    Unprepared dynamic child `Rules`, broader body render, placement state, merge
    output, and duplicate declaration materialization remain open.
 7. [ ] Finish `Reference` public value materialization, rules-like surfaces,
@@ -593,25 +599,24 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: QueryCondition and scalar-wrapper no-op audits.
+Current pass: Declaration/Rules async wrapper cut.
 
-- New traversal: none. This pass records read-only audit results for
-  QueryCondition, Paren, and Quoted and adds no runtime loop, source walk,
-  side-map lookup, or object scan.
+- New traversal: none. The change deletes wrappers around existing
+  declaration/render-assignment and registration-prep async branches and adds no
+  loop, source walk, side-map lookup, or object scan.
 - New node/materialization: none. No `Node`, copy, inherit, wrapper,
   materialized array, or ownership mutation was added.
-- Render path: unchanged. QueryCondition keeps localized child probes because
-  focused tests prove custom dynamic children may return-only text or write
-  different text than they return. Paren keeps the escaped semicolon-list render
-  mark/readback at the shared List string-return boundary, and Quoted keeps
-  non-scalar/interpolated value wrapping at the cold `renderQuotedSyntax(...)`
-  boundary.
+- Render path: declaration render-assignment and custom-interpolated
+  replacement chains now call `.then(...)` directly after `isThenable(...)`
+  narrowing. Rules registration-prep does the same for prepared static
+  declaration nodes. The same values still flow to the same finish callbacks.
 - Helper/API surface: no helper or public API was added.
 - Metadata mutations: none. No parent/source/frozen/location/options/context
   mutation was added.
-- Evidence: sub-agent focused audits passed QueryCondition tests and
-  Paren/Quoted tests and found no safe local cut in those named paths.
-- Verdict: accepted as a documented no-op audit. These seams stay open only for
-  stronger downstream contracts or shared List/string-return work. No
-  performance claim; performance remains shelved because this was not a
-  measured benchmark pass.
+- Evidence: focused Declaration and Rules tests pass. The remaining
+  `Promise.resolve(...).finally(...)` in Declaration is intentionally kept
+  because it normalizes cleanup around possible non-native thenables.
+- Verdict: accepted as a bounded async scaffolding deletion. Declaration
+  materialization/merge boundaries and Rules dynamic body/render work remain
+  open. No performance claim; performance remains shelved because this was not
+  a measured benchmark pass.

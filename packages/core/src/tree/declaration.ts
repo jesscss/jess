@@ -817,7 +817,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const evaluateItem = (item: Node): MaybePromise<void> => {
         const out = item.eval(context);
         if (isThenable(out)) {
-          return Promise.resolve(out).then((node) => {
+          return out.then((node) => {
             if (!(node instanceof Nil)) {
               evaluated.push(node);
             }
@@ -834,7 +834,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
         const out = evaluateItem(item);
         if (isThenable(out)) {
-          chain = Promise.resolve(out);
+          chain = out;
         }
       }
       return chain ? chain.then(() => evaluated) : evaluated;
@@ -937,7 +937,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const evaluateReplacement = (replacement: Node, index: number): MaybePromise<void> => {
       const out = replacement.eval(context);
       if (isThenable(out)) {
-        return Promise.resolve(out).then((evaluated) => {
+        return out.then((evaluated) => {
           replacements[index] = evaluated;
         });
       }
@@ -951,7 +951,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       const out = evaluateReplacement(replacement, index);
       if (isThenable(out)) {
-        chain = Promise.resolve(out);
+        chain = out;
       }
     }
     const finish = (): DeclarationRenderState['customInterpolatedValue'] => ({

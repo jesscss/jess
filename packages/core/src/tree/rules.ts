@@ -2904,7 +2904,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       ? node.prepareRegistration(context, { reuseCanonical: true })
       : node.prepareRegistration(context);
     if (isThenable(prepared)) {
-      return Promise.resolve(prepared).then((preparedNode) => {
+      return prepared.then((preparedNode) => {
         this._storePreparedRegistrationNode(rules, preparedNode, index, nodeIndex, prepState, context);
       });
     }
