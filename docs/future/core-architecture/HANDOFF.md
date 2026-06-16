@@ -97,6 +97,15 @@ primary result is selector/equality cleanup, benchmark-chasing, lookup cleanup,
 copy cleanup, or generic helper polish instead of node serialization
 completion.
 
+Use sub-agents when the tool environment supports them. Good sub-agent work is
+independent, evidence-gathering, and bounded: assign separate open node rows,
+hot call-stack audits, test-surface searches, or "smallest equivalent rewrite"
+proposals. Do not ask sub-agents to make overlapping edits in the same files,
+commit independently, or change the active focus. The main agent owns final
+judgment: compare sub-agent findings against repo evidence, implement the
+chosen cuts in the primary worktree, run the gates, update handoff/tracker
+docs, commit, push, and continue.
+
 Queue items must be **entire tasks**, not micro-items. A queue item is a
 meaningful node-family or runtime-path objective with its own proof surface,
 for example "finish the `Call` render/stringification cleanup" or "remove

@@ -11,6 +11,13 @@ benchmark-first design/tradeoff work.
 Within each row, prefer structural facts, straight loops, fewer branches, fewer
 function calls, and fewer conversions.
 
+Use sub-agents as accelerators for independent evidence, not as unmanaged
+editors. Useful assignments include: audit one open row for remaining
+string/capture/copy paths, identify focused tests for a node family, compare
+two possible direct-render rewrites, or review the current diff against the
+aggressive-cutting rules. The primary agent must own the final patch,
+verification, docs, commit, push, and continuation.
+
 Do not mark a node complete because one helper changed. A node is complete when
 its public render/eval/resolve/value methods have been reviewed for:
 
