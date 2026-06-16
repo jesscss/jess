@@ -349,10 +349,10 @@ shape current before commit.
 9. [ ] Finish `Interpolated` cold replacement capture, selector/generic
    materialization, and replacement arrays.
 
-   Current partial status: whole-selector interpolation with owned scalar token
-   replacements (`Any`/`Anonymous`/`Keyword`) now builds the selector from the
-   replacement value directly instead of calling public
-   `toTrimmedString(...)`. Embedded selector replacement assembly, generic
+   Current partial status: whole-selector and embedded selector interpolation
+   with owned scalar token replacements (`Any`/`Anonymous`/`Keyword`) now build
+   selector text from the replacement value directly instead of calling public
+   `toTrimmedString(...)`. Non-scalar embedded selector assembly, generic
    materialization, cold replacement capture, and replacement arrays remain.
 10. [x] Finish `StyleImport` first-use placement copies by replacing them with
    canonical source placement state, or document the exact semantic blocker.
@@ -491,34 +491,34 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Interpolated` scalar whole-selector materialization cut.
+Current pass: `Interpolated` embedded scalar selector materialization cut.
 
 - New traversal: none. `packages/core/src/tree/interpolated.ts` adds no loop,
   recursion, parent/source walk, side-map lookup, object/array scan, generator,
   or collection helper.
 - New node/materialization: no new materialization class was introduced. The
-  existing whole-selector `new BasicSelector(...)` public materialization path
-  now reads owned scalar token text directly for `Any`/`Anonymous`/`Keyword`
-  replacements instead of calling public `toTrimmedString(...)` first.
+  existing embedded-selector assembly path now reads owned scalar token text
+  directly for `Any`/`Anonymous`/`Keyword` replacements instead of calling
+  public `toTrimmedString(...)` first. Existing `new BasicSelector(...)` and
+  `new CompoundSelector(...)` public materialization paths remain the boundary.
 - Render path: no render path changed. This is selector materialization for
   `Interpolated.createSelector(...)`, keeping render/eval stringification out
-  of public replacement string APIs for the scalar whole-selector case.
+  of public replacement string APIs for embedded scalar selector replacements.
 - Helper/API surface: none added.
 - Metadata mutations: none added. No parent/source/frozen/context metadata
   mutation, lazy options/context creation, `Reflect.*`, generic own-property
   helper, source restoration, or source/root read was added.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected/deferred cut: embedded selector replacement assembly still uses
-  public string capture where it may need generated `:is(...)` wrapping,
+- Rejected/deferred cut: non-scalar embedded selector replacements still use
+  public string capture where they may need generated `:is(...)` wrapping,
   compound token splitting, or non-scalar selector/generic materialization.
-  `Interpolated.createGeneric(...)` still owns its cold public generic
-  materialization boundary.
+  `Interpolated.createGeneric(...)` still owns its cold public generic boundary.
 - Evidence: focused red/green test
-  `creates scalar whole-selector interpolations without public string
+  `creates embedded scalar selector interpolations without public string
   transport` failed on `replacement.toTrimmedString(...)` before the cut and
   passed after. Full `interpolated` and `selector-interpolated` focused suites
   passed.
 - Verdict: accepted as a bounded `Interpolated` materialization cut. Keep item
-  9 open because cold replacement capture, embedded selector assembly, generic
-  materialization, and replacement arrays remain.
+  9 open because cold replacement capture, non-scalar embedded selector
+  assembly, generic materialization, and replacement arrays remain.

@@ -268,6 +268,21 @@ describe('Interpolated', () => {
     expect(selector.toTrimmedString()).toBe('.theme');
   });
 
+  it('creates embedded scalar selector interpolations without public string transport', () => {
+    const replacement = any('theme');
+    replacement.toTrimmedString = () => {
+      throw new Error('embedded selector interpolation should read owned scalar text directly');
+    };
+    const interpolatedNode = interpolated({
+      source: `.prefix-${INTERPOLATION_PLACEHOLDER}`,
+      replacements: [replacement]
+    });
+
+    const selector = interpolatedNode.createSelector('resolve');
+
+    expect(selector.toTrimmedString()).toBe('.prefix-theme');
+  });
+
   it('preserves quoted replacement syntax when requested', () => {
     const node = interpolated({
       source: `progid:test(value=${INTERPOLATION_PLACEHOLDER})`,

@@ -3982,6 +3982,29 @@ Hotpath status:
 Interpretation: leash status only, not a speed claim. This is a Call
 render/stringification staging cut; one fixture was unstable.
 
+### Interpolated Embedded Scalar Selector Materialization Cut
+
+Date: 2026-06-15.
+
+Change: `Interpolated.createSelector(...)` now reads owned scalar token text
+directly for embedded selector replacements (`Any`, `Anonymous`, `Keyword`)
+instead of calling public `toTrimmedString(...)` before assembling selector
+text. Non-scalar embedded replacements still use the existing boundary for
+generated `:is(...)` wrapping, compound token splitting, and public
+selector/generic materialization.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `23.22ms` noisy, `import-reference` median
+  `42.06ms` noisy, `mixins-guards` median `18.89ms` unstable,
+  `extend-chaining` median `6.37ms` usable, and `media` median `6.43ms`
+  usable.
+
+Interpretation: selector materialization transport cut only; do not claim a
+speed win from the focused test. The two largest fixtures were noisy and one
+fixture was unstable.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

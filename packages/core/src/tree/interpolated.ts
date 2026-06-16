@@ -242,7 +242,9 @@ export class Interpolated<
       if (mode === 'eval' && !replacement.evaluated) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
-      let part = replacement.toTrimmedString();
+      let part = replacement.type === 'Any' || replacement.type === 'Anonymous' || replacement.type === 'Keyword'
+        ? String(replacement.value).trim()
+        : replacement.toTrimmedString();
       if (shouldWrapSelectorInIs(replacement)) {
         part = serializeGeneratedIsWrapper(replacement);
       }
