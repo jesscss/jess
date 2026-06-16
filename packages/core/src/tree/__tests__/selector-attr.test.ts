@@ -77,6 +77,30 @@ describe('Attribute Selector', () => {
       expect(rule2.toString()).toBe('[FOO="bar"]');
       expect(rule1.valueOf()).toBe(rule2.valueOf());
     });
+
+    test('writes scalar non-bare attribute selector syntax without writer readback', () => {
+      const anyWriter = new CountingWriter();
+      const quotedWriter = new CountingWriter();
+      const modWriter = new CountingWriter();
+
+      expect(attr({ name: 'foo', op: '=', value: any('bar') }).toTrimmedString({ writer: anyWriter }))
+        .toBe('[foo=bar]');
+      expect(anyWriter.toString()).toBe('[foo=bar]');
+      expect(anyWriter.marks).toBe(0);
+      expect(anyWriter.reads).toBe(0);
+
+      expect(attr({ name: 'foo', op: '=', value: quoted('bar') }).toTrimmedString({ writer: quotedWriter }))
+        .toBe('[foo="bar"]');
+      expect(quotedWriter.toString()).toBe('[foo="bar"]');
+      expect(quotedWriter.marks).toBe(0);
+      expect(quotedWriter.reads).toBe(0);
+
+      expect(attr({ name: 'foo', op: '=', value: any('bar'), mod: 'i' }).toTrimmedString({ writer: modWriter }))
+        .toBe('[foo=bar i]');
+      expect(modWriter.toString()).toBe('[foo=bar i]');
+      expect(modWriter.marks).toBe(0);
+      expect(modWriter.reads).toBe(0);
+    });
   });
 
   test('renders resolved attribute selector values through render(context)', async () => {
@@ -100,6 +124,33 @@ describe('Attribute Selector', () => {
     expect(rendered).toBe('[data=foo]');
     expect(attrNode.evaluated).toBe(false);
     expect(attrNode.registrationPrepared).toBe(false);
+  });
+
+  test('renders resolved scalar attribute selector values without writer readback', async () => {
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+    const node = rules([
+      vardecl({
+        name: 'attr-data',
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const attrNode = attr({
+      name: 'data',
+      op: '=',
+      value: ref({ key: 'attr-data' }, { type: 'variable' })
+    });
+
+    expect(attrNode.render(context, { writer })).toBe('[data=foo]');
+    expect(writer.toString()).toBe('[data=foo]');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(attrNode.render(context, buffer)).toBe('[data=foo]');
+    expect(buffer.parts).toEqual(['[data=foo]']);
   });
 
   test('writes resolved attribute selector output into segmented buffers', async () => {

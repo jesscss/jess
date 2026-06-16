@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation, type NodeOptions } from './node.js';
+import { Node, defineType, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type NodeLocation, type NodeOptions } from './node.js';
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -103,7 +103,9 @@ export class Operation extends Node<OperationValue> {
 
   private evaluateRenderOperands(context: Context): MaybePromise<OperationRenderResult> {
     const [left] = this.value;
-    const maybeLeft = left.eval(context);
+    const maybeLeft = left.hasFlag(F_MAY_ASYNC)
+      ? left.eval(context)
+      : left.evalImmediateSync(context);
     if (isThenable(maybeLeft)) {
       return maybeLeft.then(leftNode => this.evaluateRenderRight(context, leftNode));
     }
@@ -112,7 +114,9 @@ export class Operation extends Node<OperationValue> {
 
   private evaluateRenderRight(context: Context, left: Node): MaybePromise<OperationRenderResult> {
     const right = this.value[2];
-    const maybeRight = right.eval(context);
+    const maybeRight = right.hasFlag(F_MAY_ASYNC)
+      ? right.eval(context)
+      : right.evalImmediateSync(context);
     return isThenable(maybeRight)
       ? maybeRight.then(rightNode => this.finalizeRenderOperands(context, left, rightNode))
       : this.finalizeRenderOperands(context, left, maybeRight);
@@ -185,7 +189,9 @@ export class Operation extends Node<OperationValue> {
 
   private evaluateOperands(context: Context): MaybePromise<Node> {
     const [left] = this.value;
-    const maybeLeft = left.eval(context);
+    const maybeLeft = left.hasFlag(F_MAY_ASYNC)
+      ? left.eval(context)
+      : left.evalImmediateSync(context);
     if (isThenable(maybeLeft)) {
       return maybeLeft.then(leftNode => this.evaluateRight(context, leftNode));
     }
@@ -194,7 +200,9 @@ export class Operation extends Node<OperationValue> {
 
   private evaluateRight(context: Context, left: Node): MaybePromise<Node> {
     const right = this.value[2];
-    const maybeRight = right.eval(context);
+    const maybeRight = right.hasFlag(F_MAY_ASYNC)
+      ? right.eval(context)
+      : right.evalImmediateSync(context);
     return isThenable(maybeRight)
       ? maybeRight.then(rightNode => this.finalizeOperands(context, left, rightNode))
       : this.finalizeOperands(context, left, maybeRight);

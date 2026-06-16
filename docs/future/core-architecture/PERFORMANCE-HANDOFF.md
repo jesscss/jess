@@ -3724,6 +3724,27 @@ Interpretation: leash status only, not a speed claim. The pass is a direct
 public-string-transport cleanup; no benchmark comparison was used to claim a
 win.
 
+### Scalar Attribute And Operation Sync Cleanup
+
+Date: 2026-06-15.
+
+Change: `AttributeSelector` common scalar non-bare forms avoid writer
+mark/getSince and direct buffer re-write. `Operation` uses
+`evalImmediateSync(...)` for non-`F_MAY_ASYNC` operands during render/resolve
+evaluation instead of public `eval(...)` plus thenable checks.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `15.38ms` unstable, `import-reference` median
+  `27.40ms` usable, `mixins-guards` median `17.77ms` usable,
+  `extend-chaining` median `5.38ms` usable, and `media` median `6.12ms`
+  unstable.
+
+Interpretation: leash status only, not a speed claim. `import-reference` is
+usable but the pass was not a before/after performance experiment, and two
+fixtures were unstable.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

@@ -3,7 +3,7 @@ import { SimpleSelector } from './selector-simple.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import type { Context } from '../context.js';
 import { Any } from './any.js';
-import { quoted } from './quoted.js';
+import { Quoted, quoted } from './quoted.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -96,6 +96,74 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
       w.add(mod);
     }
     w.add(']');
+  }
+
+  private scalarAttributeValueText(value: Node | undefined): string | undefined {
+    if (!value) {
+      return '';
+    }
+    if (value instanceof Any && typeof value.value === 'string') {
+      return value.value;
+    }
+    if (value instanceof Quoted) {
+      const quotedValue = value.value;
+      const quote = value._options?.quote ?? '"';
+      const escapeChar = value._options?.escaped ? '~' : '';
+      if (typeof quotedValue === 'string') {
+        return escapeChar + quote + quotedValue + quote;
+      }
+      if (quotedValue instanceof Any && typeof quotedValue.value === 'string') {
+        return escapeChar + quote + quotedValue.value + quote;
+      }
+    }
+    return undefined;
+  }
+
+  private writeDirectAttributeText(
+    name: string | Node,
+    value: Node | undefined,
+    options?: FinalPrintOptions
+  ): string | undefined {
+    if (typeof name !== 'string' || options?.trivia) {
+      return undefined;
+    }
+    const { op, mod } = this.value;
+    let out = `[${name}`;
+    if (op) {
+      const valueText = this.scalarAttributeValueText(value);
+      if (valueText === undefined) {
+        return undefined;
+      }
+      out += op + valueText;
+    } else if (value) {
+      return undefined;
+    }
+    if (mod) {
+      out += ` ${mod}`;
+    }
+    out += ']';
+    if (options) {
+      const w = options.writer;
+      w.add('[');
+      w.add(name, this);
+      if (op) {
+        w.add(op);
+        if (value instanceof Any && typeof value.value === 'string') {
+          w.add(value.value, value);
+        } else {
+          const valueText = this.scalarAttributeValueText(value);
+          if (valueText) {
+            w.add(valueText, value);
+          }
+        }
+      }
+      if (mod) {
+        w.add(' ');
+        w.add(mod);
+      }
+      w.add(']');
+    }
+    return out;
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
@@ -209,6 +277,18 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     const name = typeof currentName === 'string' ? currentName : currentName.resolve(context);
     const value = this.resolveAttributeValue(context);
     const finalize = (resolvedName: string | Node, resolvedValue: Node | undefined): string => {
+      const directOptions = !buffer && typeof resolvedName === 'string'
+        ? getPrintOptions(printOptions)
+        : undefined;
+      const direct = buffer && options?.trivia
+        ? undefined
+        : this.writeDirectAttributeText(resolvedName, resolvedValue, directOptions);
+      if (direct !== undefined) {
+        if (buffer) {
+          return writeRenderText(buffer, direct);
+        }
+        return direct;
+      }
       const prepared = buffer
         ? prepareBufferPrintState(context, options, buffer)
         : prepareRenderPrintState(context, printOptions);
@@ -238,6 +318,10 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
       const out = `[${name}]`;
       printOptions.writer.add(out, this);
       return out;
+    }
+    const direct = this.writeDirectAttributeText(name, value, printOptions);
+    if (direct !== undefined) {
+      return direct;
     }
     const mark = printOptions.writer.mark();
     this.renderAttributeParts(name, value, printOptions);

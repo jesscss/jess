@@ -350,8 +350,10 @@ shape current before commit.
    child emission through public child `toString(...)`; they use direct
    source-trivia syntax emission. `RawRules` received the same child-emission
    cut even though it is tracked in the node tracker rather than this scalar
-   wrapper row. `Url` context normalization and non-scalar wrapper render still
-   keep localized mark/readback boundaries.
+   wrapper row. `AttributeSelector` now writes common scalar non-bare forms
+   (`Any`/simple `Quoted` values, including resolved variable values) without
+   writer mark/readback. `Url` context normalization and non-scalar wrapper
+   render still keep localized mark/readback boundaries.
 13. [ ] Finish `List`/`Sequence` public render string-return compatibility:
    either document it as the cold public boundary or split a direct buffer-only
    path that avoids returning a string when callers do not need it.
@@ -360,6 +362,11 @@ shape current before commit.
    output ownership after arithmetic/list operations.
 15. [ ] Finish `Operation` arithmetic materialization and preserve-mode calc
    fallback ownership without adopting unchanged canonical operands.
+
+   Current partial status: sync render/resolve operand evaluation now uses
+   `evalImmediateSync(...)` for non-`F_MAY_ASYNC` operands instead of public
+   `eval(...)` plus thenable checks. `withOperands(...)` copy pressure and
+   preserve-mode `calc(...)` fallback ownership remain open.
 
 Parked until the current `writeSyntax` focus ends:
 
@@ -425,44 +432,43 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: direct child-source serialization cleanup.
+Current pass: scalar attribute/operation sync cleanup.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   object/array scan, generator, or collection helper was added.
 - New node/materialization: none. No `new Node`, copy, `.inherit(...)`,
   `.adopt(...)`, wrapper `Rules`, frozen/source/parent metadata mutation, or
   materialized array was added.
-- Render path: base `Node.toTrimmedString(...)`, `Block.writeBlockSyntax(...)`,
-  `Url.writeUrlSyntax(...)`, `RawRules.writeSyntax(...)`,
-  `RawRules.writeBracedSyntax(...)`, and `Ampersand.writeSyntax(...)` stopped
-  using child/parent public `toString(...)` transport. Child source trivia is
-  now emitted through the existing direct source-trivia writer; ampersand parent
-  selector emission uses `writeSyntax(...)`.
-- Helper/API surface: none added.
+- Render path: `AttributeSelector` now writes and returns common scalar
+  non-bare selectors directly (`Any` and simple `Quoted` values, including
+  resolved scalar variable values) instead of opening writer mark/readback and
+  then re-writing the same string to a render buffer. `Operation` sync operand
+  eval/render now uses `evalImmediateSync(...)` for non-`F_MAY_ASYNC` operands
+  instead of the public `eval(...)` wrapper and thenable branch.
+- Helper/API surface: two private `AttributeSelector` helpers were added:
+  `scalarAttributeValueText(...)` and `writeDirectAttributeText(...)`. They are
+  node-local, add no traversal, and replace the previous generic
+  writer-mark/getSince transport for scalar attribute forms.
 - Metadata mutations: none added. No parent/source/frozen/context metadata
   mutation, lazy options/context creation, `Reflect.*`, generic own-property
-  helper, or source restoration added. Review-script danger tokens were
-  prosecuted: `new Map(...)` and `new TreeContext(...)` appear only in focused
-  test fixtures for trivia; the `sourceRoot?._treeContext` read is the existing
-  direct trivia lookup used to replace public child `toString(...)`, not a new
-  side map, walk, or metadata mutation.
+  helper, or source restoration added. Review-script `new CountingWriter()`
+  danger tokens are focused test fixtures used only to prove mark/getSince
+  counts stayed at zero; no production object construction was added for that
+  probe.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected/deferred cut: base `Node.renderSource(...)` still calls
-  `toTrimmedString(...)`. `node-render-buffer` proves source-only adapter nodes
-  can intentionally override only `toTrimmedString(...)`; flipping the base
-  render fallback before that compatibility surface is redesigned would be a
-  behavior change, not a safe cut.
-- Remaining blockers: queue item 11 still needs the base render-source
-  compatibility boundary redesigned; queue item 12 still has localized
-  mark/readback in `Paren`, `Quoted`, `AttributeSelector`, and `Url`
-  normalization/non-scalar cases.
-- Evidence: focused tests passed for `Block`, `Url`, `node-render-buffer`,
-  `Ampersand`, and `RawRules`; core build passed; aggressive-cutting review
-  and `git diff --check` passed. `verify:baseline -- --changed` was started
-  and showed substantial core test progress, then produced no output for about
-  90 seconds with Vitest workers still alive; the process was terminated and
-  the changed-baseline gate is inconclusive, not passed.
-- Verdict: accept as a bounded public-string-transport cut. Keep the active
-  queue at 15 open whole-task items because the affected rows are materially
-  advanced but not complete.
+- Rejected/deferred cut: `Operation.withOperands(...)` and preserve-mode
+  `calc(...)` ownership were not changed in this pass because replacement
+  operation materialization still adopts operands; that needs a separate
+  ownership-boundary design, not a scalar eval shortcut.
+- Remaining blockers: queue item 12 still has localized mark/readback in
+  `Paren`, `Quoted`, non-scalar `AttributeSelector`, and `Url` normalization
+  cases; queue item 15 still has `withOperands(...)` copy pressure and
+  preserve-mode `calc(...)` ownership.
+- Evidence: focused tests passed for `selector-attr`, `node-render-buffer`,
+  `operation`, and `preserve-mode-output`; core build passed; bounded
+  `measure:less:hotpath` ran and is recorded in `PERFORMANCE-HANDOFF.md` as
+  leash status only.
+- Verdict: accept as a bounded scalar fast-path cleanup. Keep the active queue
+  at 15 open whole-task items because the affected rows are materially advanced
+  but not complete.
