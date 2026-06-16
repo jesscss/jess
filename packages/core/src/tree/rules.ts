@@ -985,6 +985,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (includeRulesets ? this.hasExactCallableChildSurface : this.hasExactMixinChildSurface) {
       return true;
     }
+    if (this.directChildRuleEntries !== undefined) {
+      return false;
+    }
     const value = this.value;
     for (let i = 0; i < value.length; i++) {
       const child = childCallableRulesOf(value[i]!);
@@ -1742,40 +1745,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let nestedResultsOwned = false;
       let sawDefiniteMiss = false;
       for (const match of matches) {
+        let nestedScope: Rules;
         if (isNode(match, N.Ruleset)) {
           if (!includeRulesets) {
             return undefined;
           }
-          const resolved = walk(match.value.rules, path, offset + 1, false);
-          if (resolved === undefined) {
-            return undefined;
-          }
-          if (resolved === DEFINITE_MIXIN_NAMESPACE_MISS) {
+          nestedScope = match.value.rules;
+        } else if (isNode(match, N.Mixin)) {
+          if (!mixinHasNoRequiredParams(match)) {
             sawDefiniteMiss = true;
             continue;
           }
-          if (nestedResults === undefined) {
-            nestedResults = resolved.entries;
-            nestedResultsOwned = resolved.owned;
-            continue;
-          }
-          if (!nestedResultsOwned) {
-            nestedResults = [...nestedResults];
-            nestedResultsOwned = true;
-          }
-          for (let resolvedIndex = 0; resolvedIndex < resolved.entries.length; resolvedIndex++) {
-            nestedResults.push(resolved.entries[resolvedIndex]!);
-          }
-          continue;
-        }
-        if (!isNode(match, N.Mixin)) {
+          nestedScope = match.value.rules;
+        } else {
           return undefined;
         }
-        if (!mixinHasNoRequiredParams(match)) {
-          sawDefiniteMiss = true;
-          continue;
-        }
-        const resolved = walk(match.value.rules, path, offset + 1, false);
+        const resolved = walk(nestedScope, path, offset + 1, false);
         if (resolved === undefined) {
           return undefined;
         }

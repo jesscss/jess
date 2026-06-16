@@ -5078,6 +5078,50 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle).not.toBe(firstHandle);
     });
 
+    it('real Less merge-chain property refs avoid public lookup bridges', async () => {
+      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const parser = new Parser();
+      const tree = parser.parse(`
+        .out {
+          box-shadow+: inset 0 0 1px red;
+          box-shadow+: 0 0 2px blue;
+          background+: red;
+          background+: blue;
+        }
+      `).tree;
+      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
+      const originalFindProperty = RulesClass.prototype.findProperty;
+      const declarationBridgeHits: string[] = [];
+      const propertyBridgeHits: string[] = [];
+      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
+        const [key] = args;
+        if (key === 'box-shadow' || key === 'background') {
+          declarationBridgeHits.push(key);
+        }
+        return originalFindDeclaration.apply(this, args);
+      };
+      RulesClass.prototype.findProperty = function(...args: Parameters<typeof originalFindProperty>) {
+        const [key] = args;
+        if (key === 'box-shadow' || key === 'background') {
+          propertyBridgeHits.push(key);
+        }
+        return originalFindProperty.apply(this, args);
+      };
+
+      try {
+        context.root = tree;
+        const css = await renderNodeToString(tree, context, { context });
+
+        expect(css).toContain('box-shadow: inset 0 0 1px red, 0 0 2px blue;');
+        expect(css).toContain('background: red, blue;');
+        expect(declarationBridgeHits).toEqual([]);
+        expect(propertyBridgeHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findDeclaration = originalFindDeclaration;
+        RulesClass.prototype.findProperty = originalFindProperty;
+      }
+    });
+
     it('keeps wider excluded-node filters cold instead of caching generic filter shape', async () => {
       const first = decl({ name: 'color', value: any('red') });
       const second = decl({ name: 'color', value: any('blue') });

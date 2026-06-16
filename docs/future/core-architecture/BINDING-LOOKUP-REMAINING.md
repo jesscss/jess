@@ -40,8 +40,9 @@ materialization wrapper for that semantic case.
    constraints instead of a generic merge filter, and source-static typed
    property/declaration constraints are handleable. Merge assignment now carries
    source/output exclusions as scalar fields instead of a temporary array.
-   Wider external excluded-node filters stay cold. Remaining work is proving
-   the real Less merge-chain path.
+   Wider external excluded-node filters stay cold. A real Less merge-chain
+   fixture now proves public property/declaration lookup bridges stay unused.
+   Remaining work is proving pre/post output-binding handle identity.
 
 3. **Declaration/property key versioning follow-through.**
    Reference handles now use `Rules.getDeclarationLookupVersion(key)`, but the
@@ -91,7 +92,8 @@ materialization wrapper for that semantic case.
    arrays on cold fallback paths. Positive nested namespace, ruleset namespace,
    and compound-prefix namespace hits now use offsets through
    `findMixinNamespacePathFast`; callable lookup-key remainder string slicing
-   has been deleted. Remaining work is eliminating any remaining positive-path
+   has been deleted, and namespace result append logic now uses one shared
+   loop. Remaining work is eliminating any remaining positive-path
    `collectKeyRemainder(...)` fallback arrays and keeping arrays cold.
 
 ### D. Reference Handles And Fallback Bridges
@@ -111,9 +113,9 @@ materialization wrapper for that semantic case.
    modeled `live-current` lane instead of a duplicate live-only retry. Active
    `searchScope` disqualification now has proof that stale handles are cleared
    and ordinary lookup rebuilds later. Synthetic import/reference covered-hit
-   and covered-miss tests now prove public declaration bridges stay unused.
-   Each remaining bridge needs a deletion condition and, where possible, a real
-   Less fixture proof.
+   and covered-miss tests plus a real reference-import declaration fixture now
+   prove public declaration bridges stay unused. Each remaining bridge needs a
+   deletion condition and, where possible, a real Less fixture proof.
 
 3. **Final simple-read proof.**
    The lane is not done until ordinary static variable, property, declaration,

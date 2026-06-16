@@ -2459,6 +2459,61 @@ describe('Style import', () => {
       expect(resolved.toTrimmedString()).toBe('value: 42');
     });
 
+    it('import-reference: real hit and miss refs avoid public declaration bridges', async () => {
+      const referencedPath = resolve(process.cwd(), 'reference-hit-miss.jess');
+      const sourceValue = any('42');
+      const fallbackValue = any('fallback');
+      context.sourceTrees.set(referencedPath, rules([
+        vardecl({ name: 'fromRef', value: sourceValue })
+      ]));
+      const node = rules([
+        style({ path: quoted(any('reference-hit-miss.jess')) }, { type: 'import', importOptions: { reference: true } }),
+        ruleset({
+          selector: sellist([sel([el('.test')])]),
+          rules: rules([
+            decl({ name: any('hit'), value: ref('fromRef', { type: 'variable' }) }),
+            decl({ name: any('miss'), value: ref('missingFromRef', {
+              type: 'variable',
+              fallbackValue
+            }) })
+          ])
+        })
+      ]);
+      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
+      const originalCopy = Any.prototype.copy;
+      const declarationBridgeHits: string[] = [];
+      let scalarCopies = 0;
+      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
+        const [key] = args;
+        if (key === 'fromRef' || key === 'missingFromRef') {
+          declarationBridgeHits.push(key);
+        }
+        return originalFindDeclaration.apply(this, args);
+      };
+      Any.prototype.copy = function(...args: Parameters<typeof originalCopy>) {
+        if (this === sourceValue || this === fallbackValue) {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const css = await renderNodeToString(node, context);
+
+        expect(css).toBeString(`
+          .test {
+            hit: 42;
+            miss: fallback;
+          }
+        `);
+        expect(declarationBridgeHits).toEqual([]);
+        expect(scalarCopies).toBe(0);
+      } finally {
+        RulesClass.prototype.findDeclaration = originalFindDeclaration;
+        Any.prototype.copy = originalCopy;
+      }
+    });
+
     it('import-reference: reference-imported mixins remain callable', async () => {
       const referencedPath = resolve(process.cwd(), 'reference-mixin.jess');
       context.sourceTrees.set(referencedPath, rules([

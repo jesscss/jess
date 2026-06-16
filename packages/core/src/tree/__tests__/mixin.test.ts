@@ -2886,6 +2886,43 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: prepared child entries stop recursive surface rediscovery', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const childRules = rules([
+        decl({ name: 'color', value: any('green') })
+      ]);
+      const root = rules([childRules]);
+      root.collectDirectChildRulesEntries();
+      expect(root.directChildRuleEntries).toBeNull();
+      root.getScopeFrame();
+
+      const originalValue = childRules.value;
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.prepared-child-missing') {
+          return [];
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+      Object.defineProperty(childRules, 'value', {
+        configurable: true,
+        get() {
+          throw new Error('prepared callable child entries should prevent recursive rediscovery');
+        }
+      });
+
+      try {
+        expect(root.findMixin('.prepared-child-missing', 'Mixin')).toBeUndefined();
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        Object.defineProperty(childRules, 'value', {
+          configurable: true,
+          writable: true,
+          value: originalValue
+        });
+      }
+    });
+
     it('ScopeFrame callable buckets: terminal mixin-only miss skips Rules.findMixinsFast for ruleset-only child surfaces', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];
