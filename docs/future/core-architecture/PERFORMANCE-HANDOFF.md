@@ -136,6 +136,19 @@ registry wrappers.
 target child-entry scans/entries and cache identity before splitting smaller
 strategy fields.
 
+2026-06-15 pending declaration prep follow-up: after folding
+`pendingDeclarationNames` into declaration frame prep, the same stress fixture
+still reported the same leading direct lookup counters:
+`declaration.cacheMiss` `16560`, `declaration.scope.v` `16560`,
+`declaration.childEntryEntered` `11520`, `declaration.childEntriesScanned`
+`10530`, `declaration.childEntryStartSkip` `2295`, and
+`declaration.framePrep` `139`. `Reference.evalNode` was `6528` calls /
+`59.88ms`. A no-child-surface shortcut using only `hasDirectChildRuleSurface`
+failed import/optional/local child-surface tests and was rejected; the next
+child-entry pruning attempt needs stronger per-family carried facts. Treat this
+as diagnostic counter evidence only; profiler elapsed is not a benchmark speed
+claim.
+
 ## Reactivation Threshold
 
 Full performance rounds are currently active. If future work parks performance

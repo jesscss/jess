@@ -3470,6 +3470,47 @@ describe('reference', () => {
       }
     });
 
+    it('scope-frame prep records pending dynamic names without a second value scan', () => {
+      const node = rules([
+        vardecl({
+          name: interpolated({
+            source: '%%',
+            replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+          }),
+          value: any('red')
+        }),
+        vardecl({
+          name: any('x'),
+          value: any('blue')
+        })
+      ]);
+      const originalValue = node.value;
+      let reads = 0;
+      Object.defineProperty(node, 'value', {
+        configurable: true,
+        get() {
+          reads++;
+          if (reads > 1) {
+            throw new Error('scope-frame declaration prep should collect pending names in the first scan');
+          }
+          return originalValue;
+        }
+      });
+
+      try {
+        const frame = node.getScopeFrame(undefined, false);
+        expect(frame.pendingDeclarationNames).toHaveLength(1);
+        expect(frame.pendingDeclarationNames[0]).toBe(originalValue[0]);
+        expect(frame.declarationBucketsByName.get('x')?.at(-1)?.sourceNode).toBe(originalValue[1]);
+      } finally {
+        Object.defineProperty(node, 'value', {
+          configurable: true,
+          writable: true,
+          value: originalValue
+        });
+      }
+    });
+
     it('prunes stale pendingDeclarationNames entries when a dynamic name resolves after ScopeFrame creation', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];

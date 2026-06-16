@@ -840,8 +840,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   getScopeFrame(parent?: ScopeFrame, prepareCallableCoverage = true): ScopeFrame {
     if (!this._scopeFrame) {
+      let pendingDeclarationNames: VarDeclaration[] | undefined;
       if (this.varsByName === undefined) {
-        this.prepareScopeFrameDeclarationIndex();
+        pendingDeclarationNames = this.prepareScopeFrameDeclarationIndex();
       }
       let resolvedParent = parent;
       if (resolvedParent === undefined) {
@@ -854,19 +855,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           cursor = cursor.parent;
         }
       }
-      const pendingDeclarationNames: VarDeclaration[] = [];
-      for (let i = 0; i < this.value.length; i++) {
-        const node = this.value[i]!;
-        if (isNode(node, N.VarDeclaration) && !this._hasStaticName(node)) {
-          pendingDeclarationNames.push(node);
-        }
-      }
       this._scopeFrame = buildScopeFrame(
         this.varsByName,
         this,
         resolvedParent,
         undefined,
-        pendingDeclarationNames,
+        pendingDeclarationNames ?? this.collectScopeFramePendingDeclarationNames(),
         undefined,
         this.callableLookupCache,
         undefined,
@@ -880,9 +874,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return this._scopeFrame;
   }
 
-  private prepareScopeFrameDeclarationIndex(): void {
+  private collectScopeFramePendingDeclarationNames(): VarDeclaration[] | undefined {
+    let pendingDeclarationNames: VarDeclaration[] | undefined;
+    const value = this.value;
+    for (let i = 0; i < value.length; i++) {
+      const node = value[i]!;
+      if (isNode(node, N.VarDeclaration) && !this._hasStaticName(node)) {
+        (pendingDeclarationNames ??= []).push(node);
+      }
+    }
+    return pendingDeclarationNames;
+  }
+
+  private prepareScopeFrameDeclarationIndex(): VarDeclaration[] | undefined {
     const varsByName = this.varsByName = new Map();
     const value = this.value;
+    let pendingDeclarationNames: VarDeclaration[] | undefined;
     this._hasReferenceImports = (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
     for (let i = 0; i < value.length; i++) {
       const node = value[i]!;
@@ -901,7 +908,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         continue;
       }
-      if (!isNode(node, N.VarDeclaration) || !this._hasStaticName(node)) {
+      if (!isNode(node, N.VarDeclaration)) {
+        continue;
+      }
+      if (!this._hasStaticName(node)) {
+        (pendingDeclarationNames ??= []).push(node);
         continue;
       }
       const name = node.value.name.valueOf();
@@ -911,6 +922,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       bucket.push(node);
     }
+    return pendingDeclarationNames;
   }
 
   private hasDirectLookupChildSurface(includeRulesets = true): boolean {

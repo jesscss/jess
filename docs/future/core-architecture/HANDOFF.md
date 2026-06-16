@@ -159,6 +159,15 @@ Latest queue pass deletes the legacy `_indexRules()` method, `_indexing`, and
 `rulesIndexed` state entirely. Direct child-surface lookup now relies on direct
 tree scans and carried child-surface flags rather than indexed/unindexed
 sentinels.
+Current queue pass folds pending dynamic declaration collection into
+`prepareScopeFrameDeclarationIndex(...)`, so cold scope-frame declaration prep
+does not rescan `Rules.value` just to populate `pendingDeclarationNames`.
+An attempted child-entry no-surface shortcut was rejected by import/optional
+scope tests because `hasDirectChildRuleSurface` is not yet a complete proof for
+all prepared/imported child surfaces. The refreshed stress profile still points
+at direct declaration child-entry work: `declaration.cacheMiss` `16560`,
+`declaration.childEntryEntered` `11520`, and
+`declaration.childEntriesScanned` `10530`.
 
 ## Active Queue
 
@@ -182,11 +191,11 @@ array-key mixin references. Goal: warm namespace lookup should not rebuild the
 same remainder arrays/strings. Acceptance: counter or spy proof on repeated
 array-path lookup.
 
-4. [ ] Decide whether handle-access objects can become scalar locals. Scope:
+4. [ ] Split or delete handle-access object allocation. Scope:
 `getRulesLookupHandleAccess(...)`, reference handle write/read sites, and
 stress profile counters. Goal: remove transient access objects when scalar
-state is simpler and measured neutral/better. Acceptance: emitted audit plus
-profile note; no speed claim without stable signal.
+locals or existing handle fields are simpler. Acceptance: measured/audited
+before-after note; no speed claim without stable signal.
 
 5. [ ] Make function binding invalidation key-scoped or prove global invalidity.
 Scope: `setFunctionBinding(...)`, `lookupVersion`, function reference handles,
@@ -231,11 +240,12 @@ callable miss coverage flags. Goal: variable lookup never computes callable
 coverage; callable lookup computes it once per needed key/frame. Acceptance:
 spy tests for both paths.
 
-12. [ ] Replace direct child-entry arrays with carried sparse facts where safe.
+12. [ ] Replace positive direct child-entry arrays with sparse carried facts.
 Scope: `directChildRuleEntries`, `directDeclarationChildEntries`,
 `hasExact*ChildSurface`, and lookup child-entry scans. Goal: avoid building
-entry arrays for scopes with no relevant child surface. Acceptance: child
-surface tests plus stress counter comparison.
+entry arrays for scopes where per-type child-surface facts can prove the
+requested lookup cannot enter. Acceptance: child surface tests plus direct
+lookup counter comparison.
 
 13. [ ] Collapse direct declaration strategy object branching. Scope:
 `DeclarationLookupStrategy`, `findWithinScopeSurface(...)`, and
@@ -243,18 +253,17 @@ variable/property/any declaration callers. Goal: assign lookup functions once
 per path instead of branching on strategy fields in the inner crawl.
 Acceptance: focused tests plus direct lookup counter comparison.
 
-14. [ ] Make public cold `Rules.find*` wrappers thinner or delete unused ones.
+14. [ ] Audit and thin cold `Rules.find*` node-materialization wrappers.
 Scope: `Rules.findDeclaration`, `findVariable`, `findProperty`,
 `findAnyDeclaration`, call sites, and package exports. Goal: keep only the
-cold materialization edges repo usage needs. Acceptance: rg-backed call-site
-audit plus focused tests.
+cold materialization edges repo usage needs, without compatibility-only
+wrappers. Acceptance: rg-backed call-site audit plus focused tests.
 
-15. [ ] Run a measured direct lookup counter pass after the next source cuts.
-Scope: `profile-less-benchmark.mjs`,
-`scripts/fixtures/less-hotpath/scope-lookup-stress.less`, and
-`PERFORMANCE-HANDOFF.md`. Goal: use direct counters to choose the next
-highest-work lookup surface. Acceptance: profile output recorded; one-off
-smoke remains explicitly non-speed evidence.
+15. [ ] Add declaration child-surface bit facts by lookup family. Scope:
+child `Rules` registration, `rulesVisibility`, variable/property lookup, and
+`collectDirectDeclarationChildEntries(...)`. Goal: skip child surfaces that
+cannot contain the requested declaration family before entry allocation.
+Acceptance: variable/property child-surface spy tests plus stress counters.
 
 ## Backlog Sources
 
@@ -306,35 +315,45 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: deleted `_indexRules()`, `_indexing`, and `rulesIndexed`, then
-  removed direct lookup guards that used indexed/unindexed state as a proxy for
-  child-surface facts. `registerNode(...)` now carries nested extend facts
-  directly.
-- Verdict: accepted as registry/index architecture deletion, not as a speed
-  claim.
-- New traversal: added `rulesMayContainExtends(...)`, a recursive metadata
-  predicate used only when registering child `Rules` so extend render facts
-  survive without the broad indexer. Direct lookup traversal did not grow; it
-  now scans/caches child entries directly instead of checking `rulesIndexed`.
+- Latest pass: folded dynamic declaration name collection into
+  `prepareScopeFrameDeclarationIndex(...)` so normal cold scope-frame
+  declaration prep collects static declaration buckets and dynamic declaration
+  names from one scan.
+- Verdict: accepted as repeated-scan removal, not as a speed claim.
+- New traversal: no new normal hot-path traversal. The new private fallback
+  helper is the old inline `getScopeFrame(...)` dynamic-name loop moved behind
+  a fallback used only when `varsByName` was already prepared before frame
+  creation. The cold frame-prep path now gets static declarations and dynamic
+  declaration names from the same `Rules.value` scan.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: deleted `_indexRules()` instead of adding public API.
-- Metadata mutations: removed `rulesIndexed` and `_indexing` mutations.
-- Allocation changes: none.
-- Rejected/failed proof: none so far in this pass.
-- Aggressive-review tokens: current diff adds no routine error-control tokens.
-  The flagged loops are the new `rulesMayContainExtends(...)` metadata scan and
-  the existing child-entry scan now starting from `0` instead of
-  `rulesIndexed`. Test-only `rules([])` setup appears in `rules-flags.test.ts`.
-- Evidence: focused no-index/child-surface tests passed (`4` files, `23`
-  passed, `368` skipped), then the full focused lookup gate passed (`8` files,
-  `327` passed, `285` skipped). `rg "_indexRules|_indexing|rulesIndexed"
-  packages/core/src packages/jess-plugin-less/src packages/language-service/src
-  -g "*.ts"` now reports only no-index assertions in tests. Focused eslint,
-  `git diff --check`, aggressive review, `@jesscss/core` build,
-  node-creation audit, `jess` build, stress profile, and hotpath smoke passed.
-  Node-creation audit improved to `new-node: 302`, `with-surface: 39`,
-  `derive: 30`, `copy-leaves: 28`. Stress profile reported
-  `Reference.evalNode` `6528` calls / `66.46ms`. One-iteration hotpath smoke
-  is not a speed claim: `mixins-guards.less` `24.00ms`,
-  `scope-lookup-stress.less` `91.41ms`.
+- Helper/API surface: one private fallback helper replaced an inline loop so
+  the normal frame-prep path could delete a second scan. No public lookup API
+  was added.
+- Metadata mutations: none.
+- Allocation changes: dynamic declaration name arrays are only allocated when
+  the declaration prep scan finds a dynamic declaration name.
+- Rejected/failed proof: a no-child-surface shortcut in
+  `collectDirectChildRulesEntries(...)` and
+  `collectDirectDeclarationChildEntries(...)` failed import/reference and
+  optional/local child-surface tests, so it was removed. Carry forward
+  child-surface pruning only with stronger per-family facts.
+- Aggressive-review tokens: the flagged production loop is the fallback
+  dynamic-name scan, which is the old inline scan moved out of
+  `getScopeFrame(...)`. The flagged production array allocations are the same
+  dynamic declaration name arrays that already existed; the normal prep path
+  now allocates them from the first declaration scan. The flagged source-node
+  assertion, `try`, and thrown `Error` are test-only proof that a second
+  `Rules.value` read would fail.
+- Evidence: focused eslint passed for touched lookup files/tests. The focused
+  lookup gate passed (`8` files, `318` passed, `295` skipped). Stale
+  registry/lookup wording search returned no matches. `git diff --check`,
+  `@jesscss/core` build, aggressive review, node-creation audit, `jess` build,
+  stress profile, and hotpath smoke passed. Node-creation audit stayed at
+  `new-node: 302`, `with-surface: 39`, `derive: 30`, `copy-leaves: 28`.
+  Stress profile reported `Reference.evalNode` `6528` calls / `59.88ms` and
+  direct lookup counters led by `declaration.cacheMiss` `16560`,
+  `declaration.childEntryEntered` `11520`, and
+  `declaration.childEntriesScanned` `10530`. One-iteration hotpath smoke is
+  not a speed claim: `mixins-guards.less` `26.38ms`,
+  `scope-lookup-stress.less` `80.65ms`.
