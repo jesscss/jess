@@ -355,8 +355,11 @@ shape current before commit.
    writer mark/readback. `Block` scalar `Any` flat-buffer render and
    `Negative` scalar dimension flat-buffer render now write known text without
    print-state setup, writer mark/readback, or a second writer-to-buffer copy.
-   `Url` context normalization and non-scalar wrapper render still keep
-   localized mark/readback boundaries.
+   `Url` scalar `Any` render now writes/buffers normalized `url(...)` text
+   directly after value selection, without prepared writer setup,
+   mark/getSince, replaceSince, or a second writer-to-buffer copy. Non-scalar
+   URL normalization and non-scalar wrapper render still keep localized
+   mark/readback boundaries.
 13. [ ] Finish `List`/`Sequence` public render string-return compatibility:
    either document it as the cold public boundary or split a direct buffer-only
    path that avoids returning a string when callers do not need it.
@@ -435,40 +438,36 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Block`/`Negative` scalar render-buffer print-state cut.
+Current pass: `Url` scalar render print-state/readback cut.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   object/array scan, generator, or collection helper was added.
 - New node/materialization: none. No `new Node`, copy, `.inherit(...)`,
   `.adopt(...)`, wrapper `Rules`, frozen/source/parent metadata mutation, or
   materialized array was added.
-- Render path: `Negative.render(...)` now writes a resolved simple dimension
-  directly to a render buffer after value selection, instead of calling a
-  helper that initialized print options and wrote to a detached/public writer.
-  `Block.render(...)` now writes scalar `Any` block text directly to a flat
-  render buffer after value selection, matching the existing nil-block direct
-  path. Non-scalar block values still use the prepared-writer boundary because
-  child syntax can write complex output that must be returned and/or buffered.
-- Helper/API surface: `Negative.renderNegatedDimension(...)` was replaced with
-  `negatedDimensionText(...)`, removing the hidden writer side effect from the
-  render-buffer path. `Block` added node-local `directBlockText(...)` and
-  `renderEvaluatedValue(...)` so sync and async resolved values share the same
-  direct-scalar gate before prepared writer setup; no public API was added.
+- Render path: `Url.render(...)` now resolves/selects the child value first and
+  writes scalar `Any` URL output directly as normalized `url(...)` text. Flat
+  render-buffer output no longer prepares print state, opens a writer mark, or
+  copies detached writer output back into the buffer for this scalar path.
+  Public render with an explicit writer writes the same direct text to that
+  writer without readback. Non-scalar URL values still use the existing
+  prepared-writer boundary because context-mode URL normalization transforms
+  the child-rendered syntax.
+- Helper/API surface: one private `directUrlText(...)` helper and one private
+  `renderEvaluatedValue(...)` continuation were added in `Url`. They are
+  node-local, add no traversal, and replace the old unconditional prepared
+  writer/mark setup in `render(...)`; no public API was added.
 - Metadata mutations: none added. No parent/source/frozen/context metadata
   mutation, lazy options/context creation, `Reflect.*`, generic own-property
-  helper, or source restoration added. The review-script parent/source token
-  is the existing source-root trivia guard moved into `directBlockText(...)`;
-  it is a direct field read for "do not bypass trivia syntax", not a source
-  walk or mutation.
+  helper, source restoration, or source/root read was added.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected/deferred cut: `Block` non-scalar render and `Url` normalization
-  still keep localized writer readback because the child syntax must be
-  captured/transformed before returning a string. That is a remaining
-  queue-item 12 boundary, not completed work.
-- Evidence: focused tests passed for `negative`, `block`, and
-  `node-render-buffer`; core build passed; `verify:aggressive-cutting-review`
-  passed with the documented parent/source trivia-read token; bounded
+- Rejected/deferred cut: non-scalar URL normalization still uses localized
+  writer readback because the child syntax must be captured and normalized
+  before returning a string. That is a remaining queue-item 12 boundary, not
+  completed work.
+- Evidence: focused tests passed for `url` and `node-render-buffer`; core
+  build passed; `verify:aggressive-cutting-review` passed; bounded
   `measure:less:hotpath` ran and is recorded in `PERFORMANCE-HANDOFF.md` as
   leash status only.
 - Verdict: accept as a bounded scalar render-buffer cleanup. Keep the active

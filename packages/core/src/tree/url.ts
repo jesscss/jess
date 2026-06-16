@@ -5,7 +5,7 @@ import { emitNodeSourceSyntaxWithTrivia } from './util/trivia.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { isRenderBuffer, prepareBufferPrintState, writePreparedRenderText, type RenderBuffer } from './util/render-buffer.js';
+import { isRenderBuffer, prepareBufferPrintState, writePreparedRenderText, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
 import { prepareRenderPrintState } from './util/print.js';
 
 /**
@@ -64,6 +64,13 @@ export class Url extends Node<Node> {
     return w.getSince(mark);
   }
 
+  private directUrlText(value: Node, useContext: boolean): string | undefined {
+    if (isNode(value, N.Any) && typeof value.value === 'string') {
+      return `url(${useContext ? this.normalizeUrlValue(value.value) : value.value})`;
+    }
+    return undefined;
+  }
+
   /**
    * @todo - enable URL rewriting
    */
@@ -91,24 +98,36 @@ export class Url extends Node<Node> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const prepared = buffer
-      ? prepareBufferPrintState(context, options, buffer)
-      : prepareRenderPrintState(context, bufferOrOptions);
-    const mark = buffer ? prepared.writer.mark() : 0;
     const value = this.hasFlag(F_STATIC)
       ? this.value
       : this.value.hasFlag(F_MAY_ASYNC)
         ? this.value.eval(context)
         : this.value.evalImmediateSync(context);
     if (isThenable(value)) {
-      return value.then((resolved) => {
-        const out = this.renderUrlSyntax(resolved, prepared);
-        return buffer
-          ? writePreparedRenderText(buffer, prepared, mark, out)
-          : out;
-      });
+      return value.then(resolved => this.renderEvaluatedValue(context, resolved, bufferOrOptions, options));
     }
+    return this.renderEvaluatedValue(context, value, bufferOrOptions, options);
+  }
+
+  private renderEvaluatedValue(
+    context: Context,
+    value: Node,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const direct = this.directUrlText(value, true);
+    if (direct !== undefined) {
+      if (buffer) {
+        return writeRenderText(buffer, direct);
+      }
+      bufferOrOptions?.writer?.add(direct, this);
+      return direct;
+    }
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options, buffer)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const mark = buffer ? prepared.writer.mark() : 0;
     const out = this.renderUrlSyntax(value, prepared);
     return buffer
       ? writePreparedRenderText(buffer, prepared, mark, out)

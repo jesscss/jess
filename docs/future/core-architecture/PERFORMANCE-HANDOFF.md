@@ -3767,6 +3767,29 @@ Interpretation: leash status only, not a speed claim. The change is accepted
 as a direct render-buffer staging cleanup; no before/after performance
 conclusion is claimed, and two fixtures were unstable.
 
+### Url Scalar Render Readback Cut
+
+Date: 2026-06-15.
+
+Change: `Url.render(...)` now resolves/selects the child first and writes
+scalar `Any` URL render output directly as normalized `url(...)` text. Flat
+render-buffer output skips prepared print-state setup, writer mark/getSince,
+replaceSince, and writer-to-buffer copy for this scalar path. Non-scalar URL
+normalization remains on the localized capture boundary.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `15.68ms` usable, `import-reference` median
+  `51.60ms` noisy, `mixins-guards` median `17.93ms` usable,
+  `extend-chaining` median `5.79ms` unstable, and `media` median `5.84ms`
+  unstable.
+
+Interpretation: leash status only, not a speed claim. The
+`import-reference` sample was too noisy to use as decision-quality evidence;
+the patch is accepted as a direct scalar render cleanup, not as a measured
+performance win.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
