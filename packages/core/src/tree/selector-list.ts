@@ -109,6 +109,7 @@ export class SelectorList extends Selector<Selector[]> {
     return owned;
   }
 
+  /** @internal */
   override writeSyntax(printOptions: FinalPrintOptions): void {
     const onlyReferenceFiltered = (
       printOptions.referenceMode === true

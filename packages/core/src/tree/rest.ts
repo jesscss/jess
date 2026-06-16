@@ -25,6 +25,7 @@ export class Rest extends Node<Node | string | undefined> {
     return '';
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('...$');

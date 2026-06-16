@@ -444,6 +444,7 @@ export class If extends Node<IfValue> {
     return w.getSince(mark);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     const branches = this.value.branches;
@@ -608,6 +609,7 @@ export class For extends Node<StructuredLoopValue> {
     return w.getSince(mark);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('$for ', this);
@@ -712,6 +714,7 @@ export class While extends Node<WhileValue> {
     return w.getSince(mark);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('$while (', this);

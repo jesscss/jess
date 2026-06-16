@@ -491,6 +491,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return serializeRulesContainer(this, getPrintOptions(options));
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const { name, prelude, rules } = this.value;
     const w = options.writer;

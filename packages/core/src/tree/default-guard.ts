@@ -19,6 +19,7 @@ export class DefaultGuard extends Node<string> {
     return 'default';
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     options.writer.add('default', this);
   }

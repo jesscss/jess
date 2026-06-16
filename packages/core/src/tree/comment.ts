@@ -36,6 +36,7 @@ export class Comment extends Node<string, CommentOptions> {
     return out;
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     options.writer.add(this.value, this);
   }

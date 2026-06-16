@@ -43,6 +43,7 @@ export class Log extends Node<LogValue, NodeOptions> {
     return '';
   }
 
+  /** @internal */
   override writeSyntax(_options: FinalPrintOptions): void {}
 
   private runLogEffect(context: Context): MaybePromise<void> {

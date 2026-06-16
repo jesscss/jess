@@ -103,6 +103,7 @@ export class Block extends Node<Node, BlockOptions> {
     return this.renderBlockSyntax(this.value, options);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     this.writeBlockSyntax(this.value, options);
   }

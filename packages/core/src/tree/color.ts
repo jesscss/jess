@@ -493,6 +493,7 @@ export class Color extends Node<ColorData, ColorOptions> {
     return w.getSince(mark);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
 

@@ -563,6 +563,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     return w.getSince(mark);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     const { appendValue } = this.value;

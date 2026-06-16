@@ -105,6 +105,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     return emitted;
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     let { name, arg } = this.value;

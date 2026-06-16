@@ -179,6 +179,7 @@ export class Interpolated<
     return w.getSince(mark);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     this.writeInterpolated(this.value.replacements, options);
   }

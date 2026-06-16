@@ -72,6 +72,7 @@ export class Extend extends Node<ExtendValue> {
     return `$extend ${this.value.target.valueOf()}`;
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     let { target, selector, flag, namespace } = this.value;

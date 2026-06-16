@@ -110,6 +110,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return owned;
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer!;
     let { value } = this;

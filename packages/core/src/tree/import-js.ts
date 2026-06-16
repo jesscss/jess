@@ -34,6 +34,7 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     const { path } = this.value;

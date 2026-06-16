@@ -97,6 +97,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return owned;
   }
 
+  /** @internal */
   override writeSyntax(printOptions: FinalPrintOptions): void {
     const value = this.value;
     const saved = savePrintState(printOptions, ['ampersandFirst']);

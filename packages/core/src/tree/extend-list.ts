@@ -27,6 +27,7 @@ export class ExtendList extends Node<Extend[]> {
     this.removeFlag(F_VISIBLE);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     super.writeSyntax(options);
     // writeSyntax side effect is already emitted to writer. Add ';'.

@@ -616,6 +616,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return this.declTrimmedString(options);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     this.declTrimmedString(options);
   }

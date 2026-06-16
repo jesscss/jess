@@ -21,6 +21,7 @@ export class Combinator extends Selector<Combinators> {
     return this.evalNode(context);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     options.writer.add(this.value, this);
   }

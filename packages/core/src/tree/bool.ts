@@ -29,6 +29,7 @@ export class Bool extends Node<boolean> {
     return out;
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     options.writer.add(this.value ? 'true' : 'false', this);
   }

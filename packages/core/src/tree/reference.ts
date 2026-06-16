@@ -1958,6 +1958,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     return '';
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     let { type = 'variable', resolution, fallbackValue, readMode } = this.options;

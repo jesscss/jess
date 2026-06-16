@@ -48,6 +48,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
     return String(name.valueOf());
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     const { name, params, body } = this.value;

@@ -68,6 +68,7 @@ export class Expression extends Node<Node> {
         : node.render(context, bufferOrOptions);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('$', this);

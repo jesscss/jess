@@ -75,6 +75,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     }
   }
 
+  /** @internal */
   override writeSyntax(printOptions: FinalPrintOptions): void {
     const w = printOptions.writer;
     const escapeChar = this._options?.escaped ? '~' : '';

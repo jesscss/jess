@@ -24,6 +24,7 @@ const isSelectorNode = (value: unknown): value is Selector => (
  * (e.g. Less `*[ ... ]`, Sass `selector.parse(\"...\")`).
  */
 export class SelectorCapture extends Node<Selector> {
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('*[', this);

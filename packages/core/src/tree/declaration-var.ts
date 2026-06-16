@@ -43,6 +43,7 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     }
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     // Vars always print with `$` prefix; setDefined affects the assignment token.

@@ -334,6 +334,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return this.renderListSyntax(this.value, options);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     writeListValueSyntax(this.value, options, this._options?.sep ?? ',');
   }

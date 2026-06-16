@@ -49,6 +49,7 @@ export class Nil extends Node<''> {
     return '';
   }
 
+  /** @internal */
   override writeSyntax(_options: FinalPrintOptions): void {}
 
   override resolve(_context: Context): this {

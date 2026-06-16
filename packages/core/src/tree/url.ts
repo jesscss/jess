@@ -83,6 +83,7 @@ export class Url extends Node<Node> {
     return this.renderUrlSyntax(this.value, options);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     this.writeUrlSyntax(this.value, options);
   }

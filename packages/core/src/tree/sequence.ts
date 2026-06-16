@@ -480,6 +480,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return this.renderSequenceSyntax(this.value, options);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     this.writeSequenceSyntax(this.value, options);
   }

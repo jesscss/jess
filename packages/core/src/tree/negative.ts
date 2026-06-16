@@ -14,6 +14,7 @@ import round from 'lodash-es/round.js';
 const NEGATIVE_ONE = new Dimension({ number: -1 });
 
 export class Negative extends Node<Node> {
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('-', this);

@@ -168,6 +168,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     return w.getSince(mark);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     let { name, rules, params, guard } = this.value;

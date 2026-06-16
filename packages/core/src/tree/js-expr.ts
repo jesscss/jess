@@ -20,6 +20,7 @@ export interface JsExpression extends Node<string> {
 }
 
 export class JsExpression extends Node<string> {
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('`', this);

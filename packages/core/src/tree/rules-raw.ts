@@ -42,6 +42,7 @@ export class RawRules extends Rules {
   }
 
   // Keep trimmed output minimal – emit children verbatim without extras
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     for (let i = 0; i < this.value.length; i++) {
       const child = this.value[i]!;

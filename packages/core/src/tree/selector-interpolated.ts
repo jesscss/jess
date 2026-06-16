@@ -29,6 +29,7 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
     return first !== undefined && first !== '.' && first !== '#' && first !== '*';
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     this.value.writeSyntax(options);
   }

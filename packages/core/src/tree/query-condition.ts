@@ -190,6 +190,7 @@ export class QueryCondition extends Sequence {
     return this.renderQueryConditionSyntax(this.value, options);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     this.writeQueryConditionSyntax(this.value, options);
   }

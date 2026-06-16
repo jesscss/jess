@@ -72,6 +72,7 @@ export class Any<
     return out;
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     options.writer.add(this.value, this);
   }

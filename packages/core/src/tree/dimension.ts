@@ -273,6 +273,7 @@ export class Dimension extends Node<DimensionValue> {
     return out;
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     options.writer.add(this.serializeSyntax(), this);
   }

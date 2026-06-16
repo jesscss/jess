@@ -25,6 +25,7 @@ export class Collection extends Rules {
     return w.getSince(mark);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     this.writeBracedSyntax(options);
   }

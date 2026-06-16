@@ -968,6 +968,7 @@ export class Call extends Node<CallValue, CallOptions> {
     return w.getSince(mark);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const silentFail = this._options?.silentFail;
     const w = options.writer;

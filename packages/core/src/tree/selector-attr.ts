@@ -245,6 +245,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return w.getSince(mark);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     this.renderAttributeParts(this.value.name, this.value.value, options);
   }

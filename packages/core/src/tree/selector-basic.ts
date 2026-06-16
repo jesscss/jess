@@ -51,6 +51,7 @@ export class BasicSelector extends SimpleSelector<string> {
     return out;
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     options.writer.add(this.value, this);
   }

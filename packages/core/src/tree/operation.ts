@@ -63,6 +63,7 @@ export class Operation extends Node<OperationValue> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     let [left, op, right] = this.value;

@@ -1366,6 +1366,7 @@ export abstract class Node<
     return w.getSince(mark);
   }
 
+  /** @internal */
   writeSyntax(options: FinalPrintOptions): void {
     this._visitValues((v) => {
       if (v instanceof Node) {

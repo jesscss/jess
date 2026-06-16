@@ -74,6 +74,7 @@ export class Range extends Node<RangeValue, RangeOptions> {
     return this.evalNode(context);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     const { start, end, step } = this.value;

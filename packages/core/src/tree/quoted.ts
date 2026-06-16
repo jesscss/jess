@@ -101,6 +101,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return this.renderQuotedSyntax(this.value, options);
   }
 
+  /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     this.writeQuotedSyntax(this.value, options);
   }
