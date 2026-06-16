@@ -352,8 +352,11 @@ shape current before commit.
    cut even though it is tracked in the node tracker rather than this scalar
    wrapper row. `AttributeSelector` now writes common scalar non-bare forms
    (`Any`/simple `Quoted` values, including resolved variable values) without
-   writer mark/readback. `Url` context normalization and non-scalar wrapper
-   render still keep localized mark/readback boundaries.
+   writer mark/readback. `Block` scalar `Any` flat-buffer render and
+   `Negative` scalar dimension flat-buffer render now write known text without
+   print-state setup, writer mark/readback, or a second writer-to-buffer copy.
+   `Url` context normalization and non-scalar wrapper render still keep
+   localized mark/readback boundaries.
 13. [ ] Finish `List`/`Sequence` public render string-return compatibility:
    either document it as the cold public boundary or split a direct buffer-only
    path that avoids returning a string when callers do not need it.
@@ -432,43 +435,42 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: scalar attribute/operation sync cleanup.
+Current pass: `Block`/`Negative` scalar render-buffer print-state cut.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   object/array scan, generator, or collection helper was added.
 - New node/materialization: none. No `new Node`, copy, `.inherit(...)`,
   `.adopt(...)`, wrapper `Rules`, frozen/source/parent metadata mutation, or
   materialized array was added.
-- Render path: `AttributeSelector` now writes and returns common scalar
-  non-bare selectors directly (`Any` and simple `Quoted` values, including
-  resolved scalar variable values) instead of opening writer mark/readback and
-  then re-writing the same string to a render buffer. `Operation` sync operand
-  eval/render now uses `evalImmediateSync(...)` for non-`F_MAY_ASYNC` operands
-  instead of the public `eval(...)` wrapper and thenable branch.
-- Helper/API surface: two private `AttributeSelector` helpers were added:
-  `scalarAttributeValueText(...)` and `writeDirectAttributeText(...)`. They are
-  node-local, add no traversal, and replace the previous generic
-  writer-mark/getSince transport for scalar attribute forms.
+- Render path: `Negative.render(...)` now writes a resolved simple dimension
+  directly to a render buffer after value selection, instead of calling a
+  helper that initialized print options and wrote to a detached/public writer.
+  `Block.render(...)` now writes scalar `Any` block text directly to a flat
+  render buffer after value selection, matching the existing nil-block direct
+  path. Non-scalar block values still use the prepared-writer boundary because
+  child syntax can write complex output that must be returned and/or buffered.
+- Helper/API surface: `Negative.renderNegatedDimension(...)` was replaced with
+  `negatedDimensionText(...)`, removing the hidden writer side effect from the
+  render-buffer path. `Block` added node-local `directBlockText(...)` and
+  `renderEvaluatedValue(...)` so sync and async resolved values share the same
+  direct-scalar gate before prepared writer setup; no public API was added.
 - Metadata mutations: none added. No parent/source/frozen/context metadata
   mutation, lazy options/context creation, `Reflect.*`, generic own-property
-  helper, or source restoration added. Review-script `new CountingWriter()`
-  danger tokens are focused test fixtures used only to prove mark/getSince
-  counts stayed at zero; no production object construction was added for that
-  probe.
+  helper, or source restoration added. The review-script parent/source token
+  is the existing source-root trivia guard moved into `directBlockText(...)`;
+  it is a direct field read for "do not bypass trivia syntax", not a source
+  walk or mutation.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected/deferred cut: `Operation.withOperands(...)` and preserve-mode
-  `calc(...)` ownership were not changed in this pass because replacement
-  operation materialization still adopts operands; that needs a separate
-  ownership-boundary design, not a scalar eval shortcut.
-- Remaining blockers: queue item 12 still has localized mark/readback in
-  `Paren`, `Quoted`, non-scalar `AttributeSelector`, and `Url` normalization
-  cases; queue item 15 still has `withOperands(...)` copy pressure and
-  preserve-mode `calc(...)` ownership.
-- Evidence: focused tests passed for `selector-attr`, `node-render-buffer`,
-  `operation`, and `preserve-mode-output`; core build passed; bounded
+- Rejected/deferred cut: `Block` non-scalar render and `Url` normalization
+  still keep localized writer readback because the child syntax must be
+  captured/transformed before returning a string. That is a remaining
+  queue-item 12 boundary, not completed work.
+- Evidence: focused tests passed for `negative`, `block`, and
+  `node-render-buffer`; core build passed; `verify:aggressive-cutting-review`
+  passed with the documented parent/source trivia-read token; bounded
   `measure:less:hotpath` ran and is recorded in `PERFORMANCE-HANDOFF.md` as
   leash status only.
-- Verdict: accept as a bounded scalar fast-path cleanup. Keep the active queue
-  at 15 open whole-task items because the affected rows are materially advanced
-  but not complete.
+- Verdict: accept as a bounded scalar render-buffer cleanup. Keep the active
+  queue at 15 open whole-task items because queue item 12 is materially
+  advanced but not complete.

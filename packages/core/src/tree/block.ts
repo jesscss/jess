@@ -56,7 +56,29 @@ export class Block extends Node<Node, BlockOptions> {
   }
 
   private renderDirectBlockSyntax(value: Node, options: FinalPrintOptions): string | undefined {
-    const trivia = options.trivia ?? this.sourceRoot?._treeContext?.opts?.trivia;
+    const type = this._options?.type;
+    const open = type === 'square' ? '[' : '{';
+    const close = type === 'square' ? ']' : '}';
+    const out = this.directBlockText(value, options);
+    if (out === undefined) {
+      return undefined;
+    }
+    const w = options.writer;
+    if (value instanceof Nil) {
+      w.add(out, this);
+      return out;
+    }
+    if (value instanceof Any) {
+      w.add(open);
+      w.add(value.value, value);
+      w.add(close);
+      return out;
+    }
+    return undefined;
+  }
+
+  private directBlockText(value: Node, options?: PrintOptions): string | undefined {
+    const trivia = options?.trivia ?? this.sourceRoot?._treeContext?.opts?.trivia;
     if (trivia) {
       return undefined;
     }
@@ -64,17 +86,10 @@ export class Block extends Node<Node, BlockOptions> {
     const open = type === 'square' ? '[' : '{';
     const close = type === 'square' ? ']' : '}';
     if (value instanceof Nil) {
-      const out = open + close;
-      options.writer.add(out, this);
-      return out;
+      return open + close;
     }
     if (value instanceof Any) {
-      const out = open + value.value + close;
-      const w = options.writer;
-      w.add(open);
-      w.add(value.value, value);
-      w.add(close);
-      return out;
+      return open + value.value + close;
     }
     return undefined;
   }
@@ -120,23 +135,35 @@ export class Block extends Node<Node, BlockOptions> {
       getPrintOptions(bufferOrOptions).writer.add(nilText, this);
       return nilText;
     }
-    const prepared = buffer
-      ? prepareBufferPrintState(context, options, buffer)
-      : prepareRenderPrintState(context, bufferOrOptions);
-    const mark = buffer ? prepared.writer.mark() : 0;
     const value = this.hasFlag(F_STATIC)
       ? this.value
       : this.value.hasFlag(F_MAY_ASYNC)
         ? this.value.eval(context)
         : this.value.evalImmediateSync(context);
     if (isThenable(value)) {
-      return value.then((resolved) => {
-        const out = this.renderBlockSyntax(resolved, prepared);
-        return buffer
-          ? writePreparedRenderText(buffer, prepared, mark, out)
-          : out;
-      });
+      return value.then(resolved => this.renderEvaluatedValue(context, resolved, bufferOrOptions, options));
     }
+    return this.renderEvaluatedValue(context, value, bufferOrOptions, options);
+  }
+
+  private renderEvaluatedValue(
+    context: Context,
+    value: Node,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const direct = this.directBlockText(value, buffer ? options : bufferOrOptions);
+    if (direct !== undefined) {
+      if (buffer) {
+        return writeRenderText(buffer, direct);
+      }
+      return this.renderBlockSyntax(value, bufferOrOptions);
+    }
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options, buffer)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const mark = buffer ? prepared.writer.mark() : 0;
     const out = this.renderBlockSyntax(value, prepared);
     return buffer
       ? writePreparedRenderText(buffer, prepared, mark, out)

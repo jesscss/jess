@@ -3745,6 +3745,28 @@ Interpretation: leash status only, not a speed claim. `import-reference` is
 usable but the pass was not a before/after performance experiment, and two
 fixtures were unstable.
 
+### Block Negative Scalar Render-Buffer Print-State Cut
+
+Date: 2026-06-15.
+
+Change: `Negative` simple dimension render-buffer output and `Block` scalar
+`Any` render-buffer output now write known text directly after value selection,
+without setting up render print state, opening writer mark/readback, or copying
+detached writer output back into the buffer. Public string paths and non-scalar
+wrapper paths remain on their existing syntax/capture boundaries.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `14.17ms` unstable, `import-reference` median
+  `18.05ms` usable, `mixins-guards` median `16.28ms` usable,
+  `extend-chaining` median `5.40ms` unstable, and `media` median `5.12ms`
+  usable.
+
+Interpretation: leash status only, not a speed claim. The change is accepted
+as a direct render-buffer staging cleanup; no before/after performance
+conclusion is claimed, and two fixtures were unstable.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

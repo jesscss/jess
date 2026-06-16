@@ -67,10 +67,12 @@ export class Negative extends Node<Node> {
     options?: PrintOptions
   ): MaybePromise<string> {
     if (value instanceof Dimension && !this.isCompoundDimension(value)) {
-      const rendered = this.renderNegatedDimension(value, isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions);
-      return isRenderBuffer(bufferOrOptions)
-        ? writeRenderText(bufferOrOptions, rendered)
-        : rendered;
+      const rendered = this.negatedDimensionText(value);
+      if (!isRenderBuffer(bufferOrOptions)) {
+        getPrintOptions(bufferOrOptions).writer.add(rendered, value);
+        return rendered;
+      }
+      return writeRenderText(bufferOrOptions, rendered);
     }
     const operated = this.operateNegativeValue(value, context);
     return isThenable(operated)
@@ -87,13 +89,9 @@ export class Negative extends Node<Node> {
     return Boolean(unit && (unit.includes('/') || unit.includes('*') || unit.includes('±')));
   }
 
-  private renderNegatedDimension(value: Dimension, options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
+  private negatedDimensionText(value: Dimension): string {
     const unit = value.value.unit ?? '';
-    const out = `${round(value.value.number * -1, 8)}`.toLowerCase() + unit;
-    w.add(out, value);
-    return out;
+    return `${round(value.value.number * -1, 8)}`.toLowerCase() + unit;
   }
 
   override evalNode(context: Context): MaybePromise<Node> {

@@ -212,6 +212,14 @@ describe('Block', () => {
     expect(resolvedWriter.reads).toBe(0);
   });
 
+  it('writes scalar Any blocks to flat buffers without print-state setup', () => {
+    const buffer = createRenderBuffer('flat');
+
+    expect(block(any('foo')).render(context, buffer)).toBe('{foo}');
+    expect(buffer.parts).toEqual(['{foo}']);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
   it('renders resolved block values without materializing a replacement block', async () => {
     const node = rules([
       vardecl({

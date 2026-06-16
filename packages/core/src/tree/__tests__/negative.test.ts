@@ -116,6 +116,14 @@ describe('Negative', () => {
     expect(negativeNode.registrationPrepared).toBe(false);
   });
 
+  it('writes scalar negative dimensions to flat buffers without print-state setup', () => {
+    const buffer = createRenderBuffer('flat');
+
+    expect(negative(num(20)).render(context, buffer)).toBe('-20');
+    expect(buffer.parts).toEqual(['-20']);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
   it('renders resolved dimensions without creating an operated result node', async () => {
     const node = rules([
       vardecl({
