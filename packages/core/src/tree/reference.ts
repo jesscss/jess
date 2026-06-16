@@ -2032,7 +2032,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     const renderBuffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const renderOptions = renderBuffer ? options : bufferOrOptions;
     const childRenderOptions = renderBuffer
-      ? options
+      ? this.bufferChildPrintOptions(options)
       : prepareRenderPrintState(context, renderOptions);
     if (canRenderRawVariableReferenceDirectly(this) && this.options.fallbackValue === undefined) {
       const rawValue = resolveRawReferenceLookupTarget(this, context);
@@ -2045,7 +2045,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             && canReturnReferenceValue(value)
           ) {
             return renderBuffer
-              ? writeRenderTextResult(renderBuffer, value.render(context, options))
+              ? writeRenderTextResult(renderBuffer, value.render(context, childRenderOptions))
               : value.render(context, childRenderOptions);
           }
           const evaluated = evaluateReferenceNode({
@@ -2062,11 +2062,11 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           return isThenable(evaluated)
             ? Promise.resolve(evaluated).then((node) => {
                 return renderBuffer
-                  ? writeRenderTextResult(renderBuffer, node.render(context, options))
+                  ? writeRenderTextResult(renderBuffer, node.render(context, childRenderOptions))
                   : node.render(context, childRenderOptions);
               })
             : renderBuffer
-              ? writeRenderTextResult(renderBuffer, evaluated.render(context, options))
+              ? writeRenderTextResult(renderBuffer, evaluated.render(context, childRenderOptions))
               : evaluated.render(context, childRenderOptions);
         });
       }
@@ -2077,7 +2077,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         && canReturnReferenceValue(rawValue)
       ) {
         return renderBuffer
-          ? writeRenderTextResult(renderBuffer, rawValue.render(context, options))
+          ? writeRenderTextResult(renderBuffer, rawValue.render(context, childRenderOptions))
           : rawValue.render(context, childRenderOptions);
       }
     }
@@ -2095,12 +2095,21 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     return isThenable(evaluated)
       ? Promise.resolve(evaluated).then((node) => {
           return renderBuffer
-            ? writeRenderTextResult(renderBuffer, node.render(context, options))
+            ? writeRenderTextResult(renderBuffer, node.render(context, childRenderOptions))
             : node.render(context, childRenderOptions);
         })
       : renderBuffer
-        ? writeRenderTextResult(renderBuffer, evaluated.render(context, options))
+        ? writeRenderTextResult(renderBuffer, evaluated.render(context, childRenderOptions))
         : evaluated.render(context, childRenderOptions);
+  }
+
+  private bufferChildPrintOptions(options?: PrintOptions): PrintOptions | undefined {
+    if (!options?.writer) {
+      return options;
+    }
+    const detached = { ...options };
+    delete detached.writer;
+    return detached;
   }
 
   /**

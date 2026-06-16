@@ -351,7 +351,9 @@ shape current before commit.
    Current partial status: non-buffer `Reference.render(...)` now prepares the
    context-owned render print state once and passes it to resolved child
    renders, fixing detached scalar child writes without adding public
-   materialization.
+   materialization. Buffer `Reference.render(...)` now strips explicit writers
+   before resolved child renders and writes only the returned text to the
+   requested render buffer.
 8. [ ] Finish `Mixin` guard/default/body copy interactions and callable
    candidate output.
 9. [ ] Finish `Interpolated` cold replacement capture, selector/generic

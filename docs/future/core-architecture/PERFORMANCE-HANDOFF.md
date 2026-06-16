@@ -4087,6 +4087,28 @@ Interpretation: render-buffer ownership cut only; row 15 remains open for
 `withOperands(...)` copy pressure and preserve-mode `calc(...)` fallback
 ownership. Do not claim a speed win; two fixtures were unstable.
 
+### Reference Buffer Writer Leak Cut
+
+Date: 2026-06-16.
+
+Change: buffer `Reference.render(...)` now strips caller-supplied explicit
+writers before rendering resolved child nodes. Reference buffer output writes
+only the returned child text to the requested render buffer, instead of also
+mutating the caller writer during child rendering.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `12.33ms` unstable, `import-reference` median
+  `17.65ms` usable, `mixins-guards` median `16.67ms` usable,
+  `extend-chaining` median `5.91ms` noisy, and `media` median `5.32ms`
+  unstable.
+
+Interpretation: render-buffer ownership cut only; the Reference row remains
+open for rules-like surfaces, public value materialization, merged assign
+normalization, and key conversion. Do not claim a speed win; two fixtures were
+unstable and one was noisy.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

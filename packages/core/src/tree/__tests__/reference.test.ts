@@ -3,6 +3,7 @@ import { Context } from '../../context.js';
 import { JsExpression } from '../js-expr.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
+import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { buildScopeFrame, lookupScopeFrameVariable } from '../scope-frame.js';
 let context: Context;
@@ -35,6 +36,15 @@ class NativeRenderAny extends Any<string> {
   override render(renderContext: Context) {
     expect(renderContext).toBe(context);
     return `rendered-${this.value}`;
+  }
+}
+
+class CountingWriter extends OutputWriter {
+  marks = 0;
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
   }
 }
 
@@ -174,6 +184,24 @@ describe('reference', () => {
       expect(resolveCalls).toBe(0);
       expect(refNode.evaluated).toBe(false);
       expect(refNode.registrationPrepared).toBe(false);
+    });
+
+    it('keeps resolved reference buffer output out of explicit writers', async () => {
+      const node = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        })
+      ]);
+      setRulesContext(await node.eval(context));
+      const buffer = createRenderBuffer('flat');
+      const writer = new CountingWriter();
+      const refNode = ref({ key: 'foo' }, { type: 'variable' });
+
+      expect(refNode.render(context, buffer, { writer })).toBe('red');
+      expect(buffer.parts).toEqual(['red']);
+      expect(writer.toString()).toBe('');
+      expect(writer.marks).toBe(0);
     });
 
     it('renders resolved reference output directly without public resolve', async () => {
