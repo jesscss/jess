@@ -978,6 +978,34 @@ export class Call extends Node<CallValue, CallOptions> {
     return `${name}()${this._options?.markImportant === true ? ' !important' : ''}`;
   }
 
+  private writeSimpleSourceArgs(args: List<Node>, options: FinalPrintOptions): boolean {
+    if ((args.options?.sep ?? ',') !== ',' || options.trivia || args.sourceRoot?._treeContext?.opts?.trivia) {
+      return false;
+    }
+    const values = args.value;
+    for (let i = 0; i < values.length; i++) {
+      const arg = values[i]!;
+      if (
+        arg.sourceRoot?._treeContext?.opts?.trivia
+        || !(
+          arg.type === 'Num'
+          || arg.type === 'Dimension'
+          || arg.type === 'Color'
+          || arg.type === 'Bool'
+        )
+      ) {
+        return false;
+      }
+    }
+    for (let i = 0; i < values.length; i++) {
+      if (i > 0) {
+        options.writer.add(', ');
+      }
+      values[i]!.writeSyntax(options);
+    }
+    return true;
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     const emptyCallText = this.emptyStringNameCallText();
     if (emptyCallText !== undefined) {
@@ -1007,10 +1035,12 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     w.add('(');
     if (args && args.value.length > 0) {
-      const argsMark = w.mark();
-      args.writeSyntax(options);
-      w.trimHorizontalStartSince(argsMark);
-      w.trimHorizontalEndSince(argsMark);
+      if (!this.writeSimpleSourceArgs(args, options)) {
+        const argsMark = w.mark();
+        args.writeSyntax(options);
+        w.trimHorizontalStartSince(argsMark);
+        w.trimHorizontalEndSince(argsMark);
+      }
     }
     w.add(')');
     if (this._options?.markImportant) {

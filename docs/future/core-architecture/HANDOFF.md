@@ -310,7 +310,9 @@ shape current before commit.
    classifier; stylesheet `Func` calls now pass the source arg list to the
    callable binding surface instead of pre-evaluating a copied replacement
    `List`; finalized empty string-name fallback calls write the known
-   `name()`/important text directly without opening a call-level mark/readback.
+   `name()`/important text directly without opening a call-level mark/readback;
+   source syntax for no-trivia numeric/bool/color comma arg lists writes args
+   directly without the inner trim mark/readback.
 2. [ ] Finish `QueryCondition` dynamic render by removing the child mark probe
    only after child render contracts prove write-vs-return behavior directly.
 
@@ -532,54 +534,28 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: JS import syntax cleanup, Less `@plugin` deprecation marker, and
-resolved stylesheet import specifier capture for canonical Jess conversion
-serialization.
+Current pass: `Call.writeSyntax(...)` simple source arg trim-mark cut.
 
-- New traversal: `JsImport.writeSyntax(...)` loops over explicit named imports
-  only when serializing cold source syntax for `@-from`; it writes directly to
-  the output writer and does not walk AST children or allocate a joined import
-  list. The style-import path helper maps an already-proven source path to its
-  converted `.jess` output path and computes one relative import specifier from
-  the converted importer path. Test-only plugin stubs loop over tiny
-  path-candidate arrays and use `find(...)` only to prove resolver behavior.
-- New node/materialization: production code creates no AST nodes for the
-  canonical rewrite. `StyleImport.writeSyntax(...)` writes the canonical path
-  directly when `PrintOptions.syntax === 'jess'`. The added
-  `new Deprecation('less-plugin', ...)` is a static registry entry for warning
-  metadata, not eval/render materialization. Test-only setup constructs a
-  `Context`, `TreeContext`, and tiny plugin object to exercise real resolution.
-- Render path: CSS render still calls `StyleImport.evalNode(...)`; it does not
-  consult `syntax: 'jess'` and does not create nodes or arrays to stringify.
-  The canonical rewrite and `@-from` named-import formatting live only on
-  cold/public source serialization (`toTrimmedString(...)`/`writeSyntax(...)`).
-- Helper/API surface: `PrintOptions.syntax` selects Jess serialization, while
-  `PrintOptions.conversion` carries source/output roots or a custom `.jess`
-  layout mapper. `StyleImportOptions.resolvedPath`, `resolvedFromPath`, and
-  `resolvedFromFilePath` carry facts already available during import evaluation
-  so later conversion does not rediscover the filesystem target. `JsImport`
-  reuses its existing `imports` option/value shape; no new AST API is needed for
-  the `@-from` serializer form.
-- Metadata mutations: import evaluation now stores `resolvedPath` and
-  importer source path metadata on the existing `StyleImport` options. This is
-  semantic conversion metadata, not parent/source repair; the authored
-  `value.path` remains unchanged so parser/source round-tripping stays honest.
-  `conversion.sourceRoot` is caller-supplied output policy, not recovered by
-  walking source nodes.
+- New traversal: `Call.writeSimpleSourceArgs(...)` adds two straight loops over
+  the existing source arg list on the cold public source serialization path:
+  one loop proves every arg is a no-trivia `Num`/`Dimension`/`Color`/`Bool`,
+  and one loop writes those args with comma separators. The fact cannot be
+  carried from parser/adoption because this is a public serialization call that
+  may receive mutated nodes/options; the proof is local and bails out to the
+  existing mark/trim path for any trivia, custom separator, or non-contract arg.
+- New node/materialization: none.
+- Render path: unchanged. `render(...)` and dynamic CSS-call arg rendering keep
+  their existing value-selection paths; this cut only removes an inner
+  source-serialization mark for public `toTrimmedString(...)`/`writeSyntax(...)`.
+- Helper/API surface: one private helper added and scoped to `Call`. It avoids
+  the inner writer mark/readback for a common source arg contract and preserves
+  the old fallback for arbitrary args.
+- Metadata mutations: none.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Evidence: focused test
-  `records the concrete resolved path for canonical import-specifier rewrites`
-  proves a bare authored `theme` specifier records the concrete resolved
-  `.scss` path, preserves source serialization as `@-compose "theme";`, and
-  emits canonical Jess source as
-  `@-compose "./canonical-import-target.jess";`. Focused test
-  `rewrites canonical import specifiers relative to the converted output layout`
-  proves `src/entry.scss -> dist/entry.jess` references
-  `src/components/_theme.scss -> dist/components/_theme.jess` as
-  `@-compose "./components/_theme.jess";`. Full `import-style.test.ts` passed;
-  `verify:aggressive-cutting-review` reports the expected source-serializer,
-  deprecation-registry, conversion-metadata, and test-fixture danger tokens.
-- Verdict: accepted as cold source-conversion machinery. No performance claim;
-  performance remains shelved because the normal render path is intentionally
-  unchanged.
+- Evidence: focused test `streams canonical function arguments without capture
+  scaffolding` now proves `rgb(100, 100, 100)` source serialization uses only
+  the outer public `toTrimmedString(...)` mark/readback and no inner arg-list
+  trim mark.
+- Verdict: accepted as a bounded cold source-stringification cut. No
+  performance claim; the normal render hot path is intentionally unchanged.

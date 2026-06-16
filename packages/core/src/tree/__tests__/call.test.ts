@@ -161,6 +161,8 @@ describe('Call', () => {
 
     expect(rule.toTrimmedString({ writer })).toBe('rgb(100, 100, 100)');
     expect(writer.captures).toBe(0);
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(1);
   });
 
   it('serializes empty CSS calls without writer readback scaffolding', () => {
