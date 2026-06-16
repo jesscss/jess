@@ -498,7 +498,9 @@ shape current before commit.
    mark/getSince, replaceSince, or a second writer-to-buffer copy. Non-scalar
    URL buffer render now writes syntax directly under the existing outer buffer
    mark instead of nesting the cold `renderUrlSyntax(...)` mark/readback helper;
-   non-scalar URL normalization still keeps its localized replacement boundary.
+   simple non-escaped quoted URL values now take the direct flat-buffer text
+   path as well. Non-buffer quoted rendering and non-scalar URL normalization
+   still keep their localized boundaries.
    `Paren` dynamic wrapped render now keeps child
    intermediate render text out of explicit writers and writes only the final
    wrapped string to the requested writer or buffer. Resolved no-trivia `Any`
@@ -613,29 +615,26 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Call token source-arg trim mark cut.
+Current pass: Url quoted scalar flat-buffer direct text.
 
-- New traversal: none. The existing source-arg eligibility loop now accepts
-  trim-stable token args; no new loop, recursion, side-map lookup, parent/source
-  walk, object scan, or array allocation was added.
+- New traversal: none. The change adds no loop, recursion, side-map lookup,
+  parent/source walk, object scan, or array allocation.
 - New node/materialization: none. No `Node`, copy, inherit, wrapper,
-  materialized array, or ownership mutation was added. The focused test
-  constructs a `CountingWriter` only to prove the inner arg-list mark/readback
-  is gone.
-- Render path: source stringification for CSS calls with comma-separated
-  trim-stable token args now uses `writeSimpleSourceArgs(...)` instead of
-  opening the inner arg-list mark/readback boundary. Whitespace-bearing,
-  non-token, and trivia-backed args stay on the existing conservative path.
-- Helper/API surface: no helper or public API was added. The existing helper's
-  scalar contract was widened to cover token args that preserve the same text.
+  materialized array, or ownership mutation was added.
+- Render path: simple non-escaped `Quoted` URL values now use the direct
+  flat-buffer text path, so `url(quoted(...)).render(context, flatBuffer)` skips
+  prepared writer setup, writer mark/readback, and `writePreparedRenderText(...)`
+  for that case. Non-buffer quoted rendering, escaped/interpolated/trivia cases,
+  and non-scalar normalization stay on existing boundaries.
+- Helper/API surface: no helper or public API was added. The existing
+  `directUrlText(...)` private helper is narrowed by an explicit buffer-only
+  `includeQuoted` gate.
 - Metadata mutations: none. No parent/source/frozen/location/options/context
-  mutation was added. Existing source-root trivia checks remain in place so the
-  simple source-arg writer is still disabled for trivia-backed args.
-- Evidence: focused Call tests pass, including a new `var(--brand, red)` source
-  serialization fixture proving only the outer public string-return mark remains
-  for trim-stable token args. Core build and lint pass for the touched files.
-- Verdict: accepted as a bounded source stringification trim-mark deletion.
-  Broader Call callable output, evalArg copy pressure, custom/trivia arg
-  boundaries, async ladders, and repeated eval remain open. No performance
+  mutation was added.
+- Evidence: focused Url and render-buffer tests pass. The new URL fixture proves
+  a quoted scalar URL writes one flat-buffer part and leaves
+  `context.printState.writer` unset.
+- Verdict: accepted as a bounded scalar-wrapper flat-buffer cut. Broader scalar
+  wrapper leftovers and URL normalization boundaries remain open. No performance
   claim; performance remains shelved because this was not a measured benchmark
   pass.

@@ -219,6 +219,15 @@ describe('url', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('writes quoted scalar url render values to flat buffers without print-state setup', () => {
+    const buffer = createRenderBuffer('flat');
+    const node = url(quoted('image.png'));
+
+    expect(node.render(context, buffer)).toBe('url("image.png")');
+    expect(buffer.parts).toEqual(['url("image.png")']);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
   it('writes source url values without public toString transport when no render context is active', () => {
     const value = quoted('image.png');
     let toStringCalls = 0;

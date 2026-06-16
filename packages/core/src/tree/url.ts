@@ -4,6 +4,7 @@ import { type FinalPrintOptions, getPrintOptions, type PrintOptions } from './ut
 import { emitNodeSourceSyntaxWithTrivia } from './util/trivia.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
+import { Quoted } from './quoted.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isRenderBuffer, prepareBufferPrintState, writePreparedRenderText, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
 import { prepareRenderPrintState } from './util/print.js';
@@ -64,9 +65,19 @@ export class Url extends Node<Node> {
     return w.getSince(mark);
   }
 
-  private directUrlText(value: Node, useContext: boolean): string | undefined {
+  private directUrlText(value: Node, useContext: boolean, includeQuoted = false): string | undefined {
     if (isNode(value, N.Any) && typeof value.value === 'string') {
       return `url(${useContext ? this.normalizeUrlValue(value.value) : value.value})`;
+    }
+    if (
+      includeQuoted
+      && value instanceof Quoted
+      && !value._options?.escaped
+      && typeof value.value === 'string'
+    ) {
+      const quote = value._options?.quote ?? '"';
+      const urlValue = useContext ? this.normalizeUrlValue(value.value) : value.value;
+      return `url(${quote}${urlValue}${quote})`;
     }
     return undefined;
   }
@@ -116,7 +127,7 @@ export class Url extends Node<Node> {
     options?: PrintOptions
   ): string {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const direct = this.directUrlText(value, true);
+    const direct = this.directUrlText(value, true, buffer !== undefined);
     if (direct !== undefined) {
       if (buffer) {
         return writeRenderText(buffer, direct);
