@@ -45,6 +45,13 @@ function setRulesContext(root: Node): RulesClass {
   return root;
 }
 
+function expectNodeType(value: unknown, type: string): void {
+  expect(isNode(value)).toBe(true);
+  if (isNode(value)) {
+    expect(value.type).toBe(type);
+  }
+}
+
 class AsyncRulesContextAny extends Any<string> {
   constructor(value: string) {
     super(value);
@@ -4855,6 +4862,34 @@ describe('reference', () => {
       }
     });
 
+    it('ordinary simple callable references do not prepare scope frames', async () => {
+      const node = rules([
+        mixin({
+          name: any('.paint'),
+          rules: rules([decl({ name: 'color', value: any('blue') })])
+        })
+      ]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: '.paint' }, { type: 'mixin' });
+      const originalGetScopeFrame = RulesClass.prototype.getScopeFrame;
+      const framePreparations: string[] = [];
+      RulesClass.prototype.getScopeFrame = function(...args: Parameters<typeof originalGetScopeFrame>) {
+        framePreparations.push(this.toTrimmedString());
+        return originalGetScopeFrame.apply(this, args);
+      };
+
+      try {
+        expectNodeType(lookupRef.eval(context), 'MixinCollection');
+        expect(lookupRef._rulesLookupHandle?.lookupType).toBe('mixin');
+        expect(framePreparations).toEqual([]);
+
+        expectNodeType(lookupRef.eval(context), 'MixinCollection');
+        expect(framePreparations).toEqual([]);
+      } finally {
+        RulesClass.prototype.getScopeFrame = originalGetScopeFrame;
+      }
+    });
+
     it('reuses static function binding handles until the function key version changes', async () => {
       const originalFindFunction = RulesClass.prototype.findFunction;
       let functionLookups = 0;
@@ -5157,6 +5192,62 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle).not.toBe(handle);
     });
 
+    it('static property handles stay cold while leakyRules disqualifies lookup', async () => {
+      const declaration = decl({ name: 'color', value: any('blue') });
+      const node = rules([declaration]);
+      const root = setRulesContext(await node.eval(context));
+      const leakyContext = new Context({ leakyRules: true });
+      leakyContext.root = root;
+      leakyContext.rulesContext = root;
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'property',
+        fallbackValue: any('fallback')
+      });
+
+      expect(lookupRef.eval(leakyContext).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+
+      expect(lookupRef.eval(leakyContext).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static variable handles stay cold while leakyRules disqualifies lookup', async () => {
+      const declaration = vardecl({ name: 'color', value: any('blue') });
+      const node = rules([declaration]);
+      const root = setRulesContext(await node.eval(context));
+      const leakyContext = new Context({ leakyRules: true });
+      leakyContext.root = root;
+      leakyContext.rulesContext = root;
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'variable',
+        fallbackValue: any('fallback')
+      });
+
+      expect(lookupRef.eval(leakyContext).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'scope-frame-variable-binding-handle'
+      });
+
+      expect(lookupRef.eval(leakyContext).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
     it('static function handles stay cold while leakyRules disqualifies lookup', async () => {
       const node = rules([]);
       node.setFunctionBinding('paint', new JsFunction({
@@ -5168,24 +5259,72 @@ describe('reference', () => {
       leakyContext.root = root;
       leakyContext.rulesContext = root;
       const lookupRef = ref({ key: 'paint' }, { type: 'function' });
-      const expectFunctionResult = (value: unknown) => {
-        expect(isNode(value)).toBe(true);
-        if (isNode(value)) {
-          expect(value.type).toBe('JsFunction');
-        }
-      };
 
-      expectFunctionResult(lookupRef.eval(leakyContext));
+      expectNodeType(lookupRef.eval(leakyContext), 'JsFunction');
       expect(lookupRef._rulesLookupHandle).toBeUndefined();
 
-      expectFunctionResult(lookupRef.eval(context));
+      expectNodeType(lookupRef.eval(context), 'JsFunction');
       const handle = lookupRef._rulesLookupHandle;
       expect(handle?.lookupType).toBe('function');
 
-      expectFunctionResult(lookupRef.eval(leakyContext));
+      expectNodeType(lookupRef.eval(leakyContext), 'JsFunction');
       expect(lookupRef._rulesLookupHandle).toBeUndefined();
 
-      expectFunctionResult(lookupRef.eval(context));
+      expectNodeType(lookupRef.eval(context), 'JsFunction');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static function handles stay cold while searchScope disqualifies lookup', async () => {
+      const ignoredDeclaration = decl({ name: 'color', value: any('blue') });
+      const node = rules([ignoredDeclaration]);
+      node.setFunctionBinding('paint', new JsFunction({
+        name: 'paint',
+        fn: () => any('blue')
+      }));
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'paint' }, { type: 'function' });
+
+      context.searchScope.add(ignoredDeclaration);
+      expectNodeType(lookupRef.eval(context), 'JsFunction');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      context.searchScope.delete(ignoredDeclaration);
+      expectNodeType(lookupRef.eval(context), 'JsFunction');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.lookupType).toBe('function');
+
+      context.searchScope.add(ignoredDeclaration);
+      expectNodeType(lookupRef.eval(context), 'JsFunction');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+      context.searchScope.delete(ignoredDeclaration);
+
+      expectNodeType(lookupRef.eval(context), 'JsFunction');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static callable handles stay cold while leakyRules disqualifies lookup', async () => {
+      const callable = mixin({
+        name: any('.paint'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+      const node = rules([callable]);
+      const root = setRulesContext(await node.eval(context));
+      const leakyContext = new Context({ leakyRules: true });
+      leakyContext.root = root;
+      leakyContext.rulesContext = root;
+      const lookupRef = ref({ key: '.paint' }, { type: 'mixin' });
+
+      expectNodeType(lookupRef.eval(leakyContext), 'MixinCollection');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expectNodeType(lookupRef.eval(context), 'MixinCollection');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.lookupType).toBe('mixin');
+
+      expectNodeType(lookupRef.eval(leakyContext), 'MixinCollection');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expectNodeType(lookupRef.eval(context), 'MixinCollection');
       expect(lookupRef._rulesLookupHandle).not.toBe(handle);
     });
 
@@ -5214,6 +5353,60 @@ describe('reference', () => {
       context.searchScope.delete(ignoredDeclaration);
 
       expect(lookupRef.eval(context)).toBeDefined();
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static mixin-ruleset handles stay cold while leakyRules disqualifies lookup', async () => {
+      const callable = ruleset({
+        selector: el('.paint'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+      const node = rules([callable]);
+      const root = setRulesContext(await node.eval(context));
+      const leakyContext = new Context({ leakyRules: true });
+      leakyContext.root = root;
+      leakyContext.rulesContext = root;
+      const lookupRef = ref({ key: '.paint' }, { type: 'mixin-ruleset' });
+
+      expectNodeType(lookupRef.eval(leakyContext), 'MixinCollection');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expectNodeType(lookupRef.eval(context), 'MixinCollection');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.lookupType).toBe('mixin-ruleset');
+
+      expectNodeType(lookupRef.eval(leakyContext), 'MixinCollection');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expectNodeType(lookupRef.eval(context), 'MixinCollection');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static mixin-ruleset handles stay cold while searchScope disqualifies lookup', async () => {
+      const ignoredDeclaration = decl({ name: 'color', value: any('blue') });
+      const callable = ruleset({
+        selector: el('.paint'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+      const node = rules([ignoredDeclaration, callable]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: '.paint' }, { type: 'mixin-ruleset' });
+
+      context.searchScope.add(ignoredDeclaration);
+      expectNodeType(lookupRef.eval(context), 'MixinCollection');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      context.searchScope.delete(ignoredDeclaration);
+      expectNodeType(lookupRef.eval(context), 'MixinCollection');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.lookupType).toBe('mixin-ruleset');
+
+      context.searchScope.add(ignoredDeclaration);
+      expectNodeType(lookupRef.eval(context), 'MixinCollection');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+      context.searchScope.delete(ignoredDeclaration);
+
+      expectNodeType(lookupRef.eval(context), 'MixinCollection');
       expect(lookupRef._rulesLookupHandle).not.toBe(handle);
     });
 
@@ -5446,13 +5639,22 @@ describe('reference', () => {
 
     it('callable handles survive unrelated declaration and function writes', async () => {
       const originalFindMixin = RulesClass.prototype.findMixin;
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       let callableLookups = 0;
+      let broadCallableLookups = 0;
       RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         const [key] = args;
         if (key === '.callable-handle') {
           callableLookups++;
         }
         return originalFindMixin.apply(this, args);
+      };
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.callable-handle') {
+          broadCallableLookups++;
+        }
+        return originalFindMixinsFast.apply(this, args);
       };
 
       try {
@@ -5477,6 +5679,7 @@ describe('reference', () => {
         const first = lookupRef.eval(context);
         expect(first).toBeDefined();
         expect(callableLookups).toBe(1);
+        expect(broadCallableLookups).toBe(1);
         const callableCache = node.callableLookupCache;
         const callableBuckets = node._scopeFrame?.callableBucketsByName;
         const firstHandle = lookupRef._rulesLookupHandle;
@@ -5490,6 +5693,7 @@ describe('reference', () => {
         const second = lookupRef.eval(context);
         expect(second).toBeDefined();
         expect(callableLookups).toBe(1);
+        expect(broadCallableLookups).toBe(1);
         expect(lookupRef._rulesLookupHandle).toBe(firstHandle);
         expect(node.callableLookupCache).toBe(callableCache);
         expect(node._scopeFrame?.callableBucketsByName).toBe(callableBuckets);
@@ -5501,8 +5705,57 @@ describe('reference', () => {
         const third = lookupRef.eval(context);
         expect(third).toBeDefined();
         expect(callableLookups).toBe(1);
+        expect(broadCallableLookups).toBe(1);
       } finally {
         RulesClass.prototype.findMixin = originalFindMixin;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('mixin-ruleset handles skip public and broad callable lookup after cache write', async () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      let callableLookups = 0;
+      let broadCallableLookups = 0;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        const [key] = args;
+        if (key === '.ruleset-handle') {
+          callableLookups++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.ruleset-handle') {
+          broadCallableLookups++;
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          ruleset({
+            selector: el('.ruleset-handle'),
+            rules: rules([decl({ name: 'color', value: any('blue') })])
+          })
+        ]);
+        setRulesContext(await node.eval(context));
+        const lookupRef = ref({ key: '.ruleset-handle' }, { type: 'mixin-ruleset' });
+
+        expectNodeType(lookupRef.eval(context), 'MixinCollection');
+        expect(callableLookups).toBe(1);
+        expect(broadCallableLookups).toBe(1);
+        const firstHandle = lookupRef._rulesLookupHandle;
+        expect(firstHandle?.lookupType).toBe('mixin-ruleset');
+
+        node.push(decl({ name: 'unrelated', value: any('1') }));
+        expectNodeType(lookupRef.eval(context), 'MixinCollection');
+        expect(lookupRef._rulesLookupHandle).toBe(firstHandle);
+        expect(callableLookups).toBe(1);
+        expect(broadCallableLookups).toBe(1);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }
     });
 

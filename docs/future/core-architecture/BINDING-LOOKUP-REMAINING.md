@@ -121,9 +121,9 @@ materialization wrapper for that semantic case.
    callable child/reference-import bridges, property filtered fallback, leaky
    rules, and `searchScope` disqualification. Variable lookup now has one
    modeled `live-current` lane instead of a duplicate live-only retry. Active
-   `searchScope` disqualification now has proof that stale handles are cleared
-   and ordinary lookup rebuilds later for property, variable, and declaration
-   reads; `leakyRules` has declaration cold-handle proof. Synthetic
+   `searchScope` and `leakyRules` disqualification now have proof that stale
+   handles are cleared and ordinary lookup rebuilds later for variable,
+   property, declaration, function, mixin, and mixin-ruleset reads. Synthetic
    import/reference covered-hit and covered-miss tests plus a real
    reference-import declaration fixture now prove public declaration bridges
    stay unused. A real reference-import callable miss fixture now proves the
@@ -131,10 +131,14 @@ materialization wrapper for that semantic case.
    deletion condition and, where possible, a real Less fixture proof.
 
 3. **Final simple-read proof.**
-   The lane is not done until ordinary static variable, property, declaration,
-   function, simple callable, and stable namespace reads have tests/profiles
-   proving they do not enter fallback ladders, public materialization wrappers,
-   old registry-shaped search, or unnecessary child scans.
+   Ordinary static function, simple mixin, and simple mixin-ruleset handles now
+   prove no repeated public callable bridge after the first handle write, and
+   simple callable handles also prove no repeated broad `findMixinsFast`
+   bridge. The lane is not done until ordinary static variable, property,
+   declaration, index, merge-chain, and stable namespace reads have final
+   tests/profiles proving they do not enter fallback ladders, public
+   materialization wrappers, old registry-shaped search, or unnecessary child
+   scans.
 
 ## Dependency Order
 
