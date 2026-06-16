@@ -426,27 +426,56 @@ describe('reference', () => {
     });
 
     it('does not rediscover fallback-frame parent declarations after covered misses', async () => {
+      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
+      const declarationBridgeHits: string[] = [];
+      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
+        const [key] = args;
+        if (key === 'tone') {
+          declarationBridgeHits.push(key);
+        }
+        return originalFindDeclaration.apply(this, args);
+      };
+
       const fallbackParent = rules([
         vardecl({ name: any('tone'), value: any('blue') })
       ]);
-      const fallbackChild = rules([]);
-      fallbackParent.push(fallbackChild);
-      await fallbackParent.eval(context);
-      const runtimeScope = rules([]);
-      await runtimeScope.eval(context);
-      fallbackChild.scopeFrame = buildScopeFrame(undefined, fallbackChild);
-      const fallbackFrame = fallbackChild.getScopeFrame();
-      runtimeScope.getScopeFrame().fallbackFrame = fallbackFrame;
-      context.rulesContext = runtimeScope;
+      const originalValue = fallbackParent.value;
 
-      const resolved = await ref({
-        key: 'tone'
-      }, {
-        type: 'variable',
-        fallbackValue: any('fallback')
-      }).eval(context);
+      try {
+        const fallbackChild = rules([]);
+        fallbackParent.push(fallbackChild);
+        await fallbackParent.eval(context);
+        const runtimeScope = rules([]);
+        await runtimeScope.eval(context);
+        fallbackChild.scopeFrame = buildScopeFrame(undefined, fallbackChild);
+        const fallbackFrame = fallbackChild.getScopeFrame();
+        runtimeScope.getScopeFrame().fallbackFrame = fallbackFrame;
+        context.rulesContext = runtimeScope;
 
-      expect(resolved.toTrimmedString()).toBe('fallback');
+        Object.defineProperty(fallbackParent, 'value', {
+          configurable: true,
+          get() {
+            throw new Error('covered fallback-frame miss should not rediscover fallback parent declarations');
+          }
+        });
+
+        const resolved = await ref({
+          key: 'tone'
+        }, {
+          type: 'variable',
+          fallbackValue: any('fallback')
+        }).eval(context);
+
+        expect(resolved.toTrimmedString()).toBe('fallback');
+        expect(declarationBridgeHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findDeclaration = originalFindDeclaration;
+        Object.defineProperty(fallbackParent, 'value', {
+          configurable: true,
+          writable: true,
+          value: originalValue
+        });
+      }
     });
 
     it('keeps runtime-binding containers on the owned output path for default guards', async () => {
@@ -3520,6 +3549,25 @@ describe('reference', () => {
     });
 
     it('direct variable lookup enters reference-import child surfaces even when family flags are absent', async () => {
+      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
+      const originalFindVariable = RulesClass.prototype.findVariable;
+      const declarationBridgeHits: string[] = [];
+      const variableBridgeHits: string[] = [];
+      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
+        const [key] = args;
+        if (key === 'from-ref') {
+          declarationBridgeHits.push(key);
+        }
+        return originalFindDeclaration.apply(this, args);
+      };
+      RulesClass.prototype.findVariable = function(...args: Parameters<typeof originalFindVariable>) {
+        const [key] = args;
+        if (this !== root && key === 'from-ref') {
+          variableBridgeHits.push(key);
+        }
+        return originalFindVariable.apply(this, args);
+      };
+
       const childRules = rules([
         vardecl({ name: any('from-ref'), value: any('blue') })
       ], {
@@ -3540,12 +3588,29 @@ describe('reference', () => {
       entry.hasVarDeclarationSurface = false;
       entry.hasReferenceImportSurface = true;
 
-      const found = root.findVariable('from-ref', { searchParents: false });
+      try {
+        const found = root.findVariable('from-ref', { searchParents: false });
 
-      expect(found?.value.value.valueOf()).toBe('blue');
+        expect(found?.value.value.valueOf()).toBe('blue');
+        expect(declarationBridgeHits).toHaveLength(0);
+        expect(variableBridgeHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findDeclaration = originalFindDeclaration;
+        RulesClass.prototype.findVariable = originalFindVariable;
+      }
     });
 
     it('direct variable lookup still skips children without variable or reference-import surfaces', async () => {
+      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
+      const declarationBridgeHits: string[] = [];
+      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
+        const [key] = args;
+        if (key === 'from-ref') {
+          declarationBridgeHits.push(key);
+        }
+        return originalFindDeclaration.apply(this, args);
+      };
+
       const childRules = rules([
         vardecl({ name: any('from-ref'), value: any('blue') })
       ], {
@@ -3577,7 +3642,9 @@ describe('reference', () => {
       try {
         const found = root.findVariable('from-ref', { searchParents: false });
         expect(found).toBeUndefined();
+        expect(declarationBridgeHits).toHaveLength(0);
       } finally {
+        RulesClass.prototype.findDeclaration = originalFindDeclaration;
         Object.defineProperty(childRules, 'value', {
           configurable: true,
           writable: true,
@@ -4806,7 +4873,16 @@ describe('reference', () => {
           fn: () => any('blue')
         }));
         setRulesContext(await node.eval(context));
-        const lookupRef = ref({ key: 'paint' }, { type: 'function' });
+        const ignoredExcludedNodes = [
+          decl({ name: 'color', value: any('red') }),
+          decl({ name: 'color', value: any('green') }),
+          decl({ name: 'color', value: any('black') })
+        ];
+        const lookupRef = ref({ key: 'paint' }, {
+          type: 'function',
+          excludedNodes: ignoredExcludedNodes,
+          requiredNormalizedFromAssign: ['one', 'two', 'three', 'four', 'five']
+        });
 
         const first = lookupRef.eval(context);
         expect(isNode(first)).toBe(true);
@@ -4814,12 +4890,18 @@ describe('reference', () => {
           expect(first.type).toBe('JsFunction');
         }
         expect(functionLookups).toBe(1);
+        const firstHandle = lookupRef._rulesLookupHandle;
+        expect(firstHandle?.lookupType).toBe('function');
+        expect(firstHandle && 'requiredNormalizedFromAssignKey' in firstHandle).toBe(false);
+        expect(firstHandle && 'excludedNodesLength' in firstHandle).toBe(false);
 
+        ignoredExcludedNodes[0] = decl({ name: 'color', value: any('mutated') });
         const second = lookupRef.eval(context);
         expect(isNode(second)).toBe(true);
         if (isNode(second)) {
           expect(second.type).toBe('JsFunction');
         }
+        expect(lookupRef._rulesLookupHandle).toBe(firstHandle);
         expect(functionLookups).toBe(1);
 
         node.setFunctionBinding('paint', new JsFunction({
@@ -5153,19 +5235,34 @@ describe('reference', () => {
           })
         ]);
         setRulesContext(await node.eval(context));
-        const lookupRef = ref({ key: '.callable-handle' }, { type: 'mixin' });
+        const ignoredExcludedNodes = [
+          decl({ name: 'color', value: any('red') }),
+          decl({ name: 'color', value: any('green') }),
+          decl({ name: 'color', value: any('black') })
+        ];
+        const lookupRef = ref({ key: '.callable-handle' }, {
+          type: 'mixin',
+          excludedNodes: ignoredExcludedNodes,
+          requiredNormalizedFromAssign: ['one', 'two', 'three', 'four', 'five']
+        });
 
         const first = lookupRef.eval(context);
         expect(first).toBeDefined();
         expect(callableLookups).toBe(1);
         const callableCache = node.callableLookupCache;
         const callableBuckets = node._scopeFrame?.callableBucketsByName;
+        const firstHandle = lookupRef._rulesLookupHandle;
         expect(callableCache).toBeDefined();
+        expect(firstHandle?.lookupType).toBe('mixin');
+        expect(firstHandle && 'requiredNormalizedFromAssignKey' in firstHandle).toBe(false);
+        expect(firstHandle && 'excludedNodesLength' in firstHandle).toBe(false);
 
+        ignoredExcludedNodes[0] = decl({ name: 'color', value: any('mutated') });
         node.push(decl({ name: 'unrelated', value: any('1') }));
         const second = lookupRef.eval(context);
         expect(second).toBeDefined();
         expect(callableLookups).toBe(1);
+        expect(lookupRef._rulesLookupHandle).toBe(firstHandle);
         expect(node.callableLookupCache).toBe(callableCache);
         expect(node._scopeFrame?.callableBucketsByName).toBe(callableBuckets);
 

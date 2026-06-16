@@ -38,9 +38,10 @@ materialization wrapper for that semantic case.
    carry a `slot` for same-parent source ordering. Filtered merge-chain/
    property assignment modes now use typed `requiredNormalizedFromAssign`
    constraints instead of a generic merge filter, and source-static typed
-   property/declaration constraints are handleable. Wider excluded-node filters
-   stay cold. Remaining work is proving the real Less merge-chain path and
-   scalarizing the temporary excluded-node array.
+   property/declaration constraints are handleable. Merge assignment now carries
+   source/output exclusions as scalar fields instead of a temporary array.
+   Wider external excluded-node filters stay cold. Remaining work is proving
+   the real Less merge-chain path.
 
 3. **Declaration/property key versioning follow-through.**
    Reference handles now use `Rules.getDeclarationLookupVersion(key)`, but the
@@ -86,18 +87,19 @@ materialization wrapper for that semantic case.
    matrix.
 
 3. **Namespace path/remainder allocation.**
-   `collectKeyRemainder(...)`, `getCallableLookupKeyRemainder(...)`, and
-   recursive namespace helpers still rebuild arrays/strings. Positive nested
-   namespace hits can now use an offset into `findMixinNamespacePathFast`
-   before falling back to remainder arrays. Remaining work is extending the
-   offset/path view through ruleset prefix and compound paths, then replacing
-   string slicing with normalized path-key offsets.
+   `collectKeyRemainder(...)` and recursive namespace helpers still rebuild
+   arrays on cold fallback paths. Positive nested namespace, ruleset namespace,
+   and compound-prefix namespace hits now use offsets through
+   `findMixinNamespacePathFast`; callable lookup-key remainder string slicing
+   has been deleted. Remaining work is eliminating any remaining positive-path
+   `collectKeyRemainder(...)` fallback arrays and keeping arrays cold.
 
 ### D. Reference Handles And Fallback Bridges
 
 1. **ReferencePlan shape.**
    `_lookupStrategy` caches the lookup family, but key normalization, shape
-   prep, filters, and handle access are still per-lookup work. A broad
+   prep, filters, and handle access are still per-lookup work. Declaration-only
+   constraint fields no longer ride on function/callable handles. A broad
    `ReferencePlan` attempt was rejected because generated control surfaces can
    change runtime facts. Retry only for source-static facts that prove they
    delete repeated hot-path preparation.
@@ -108,8 +110,10 @@ materialization wrapper for that semantic case.
    rules, and `searchScope` disqualification. Variable lookup now has one
    modeled `live-current` lane instead of a duplicate live-only retry. Active
    `searchScope` disqualification now has proof that stale handles are cleared
-   and ordinary lookup rebuilds later. Each remaining bridge needs a deletion
-   condition and a covered-hit/miss spy.
+   and ordinary lookup rebuilds later. Synthetic import/reference covered-hit
+   and covered-miss tests now prove public declaration bridges stay unused.
+   Each remaining bridge needs a deletion condition and, where possible, a real
+   Less fixture proof.
 
 3. **Final simple-read proof.**
    The lane is not done until ordinary static variable, property, declaration,

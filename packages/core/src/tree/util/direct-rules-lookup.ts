@@ -150,10 +150,16 @@ function passesDeclarationFilter(
   node: Node,
   key: string,
   strategy: DeclarationLookupStrategy,
-  options: Pick<DeclarationFindOptions, 'excludedNodes' | 'filter' | 'requiredNormalizedFromAssign'>,
+  options: Pick<
+    DeclarationFindOptions,
+    'excludedNode0' | 'excludedNode1' | 'excludedNodes' | 'excludedNodesLength' | 'filter' | 'requiredNormalizedFromAssign'
+  >,
   start: number | undefined
 ): node is Declaration {
   if (!strategy.acceptsNode(node)) {
+    return false;
+  }
+  if (options.excludedNode0 === node || options.excludedNode1 === node) {
     return false;
   }
   if (options.excludedNodes?.includes(node)) {

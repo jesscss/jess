@@ -979,11 +979,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       switch (assign) {
         case AssignmentType.MergeList:
         case AssignmentType.MergeSequence: {
-          const excludedNodes: Node[] = [this];
+          let boundOutputNode: Declaration | undefined;
           const ref = new Reference({ key: referenceKey }, {
             type,
             fallbackValue: new Nil(),
-            excludedNodes,
+            excludedNode0: this,
+            get excludedNode1() {
+              return boundOutputNode;
+            },
+            get excludedNodesLength() {
+              return boundOutputNode ? 2 : 1;
+            },
             requiredNormalizedFromAssign: [
               AssignmentType.MergeList,
               AssignmentType.MergeSequence,
@@ -993,7 +999,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           });
           state.bindOutput = (node: Declaration) => {
             outputNode = node;
-            excludedNodes[1] = node;
+            boundOutputNode = node;
           };
           /**
            * @note - It's up to Sequence and List to handle

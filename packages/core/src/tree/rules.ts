@@ -83,7 +83,6 @@ import {
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
-const CALLABLE_LOOKUP_PATH_KEY_SEPARATOR = '\u001f';
 type StyleImportRegistrationNode = Node<{ path: unknown }>;
 type PathResolutionError = Error & { _isPathResolutionError?: boolean };
 type FlagLikeNode = { hasFlag(flag: number): boolean };
@@ -150,23 +149,6 @@ function collectKeyRemainder(keys: readonly string[], start: number): string[] {
     remainder[i] = keys[start + i]!;
   }
   return remainder;
-}
-
-function getCallableLookupKeyRemainder(lookupKey: string | undefined, start: number): string | undefined {
-  if (!lookupKey || start <= 0) {
-    return lookupKey;
-  }
-  let segments = 0;
-  for (let i = 0; i < lookupKey.length; i++) {
-    if (lookupKey.charCodeAt(i) !== 31) {
-      continue;
-    }
-    segments++;
-    if (segments === start) {
-      return lookupKey.slice(i + 1);
-    }
-  }
-  return undefined;
 }
 
 function splitStaticCallablePathKey(key: string): string[] | undefined {
@@ -1693,7 +1675,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return DEFINITE_MIXIN_NAMESPACE_MISS;
       }
 
-      const includeRulesets = restLength === 0 && filterType !== 'Mixin' && options.terminalMixinOnly !== true;
+      const includeRulesets = filterType !== 'Mixin' && (restLength > 0 || options.terminalMixinOnly !== true);
       let matches: MixinEntry[] | undefined;
       if (scope._scopeFrame && !options.hasTarget && !options.local) {
         scope.prepareCallableLookupFrame(scope._scopeFrame, segment, includeRulesets);
@@ -1760,6 +1742,32 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let nestedResultsOwned = false;
       let sawDefiniteMiss = false;
       for (const match of matches) {
+        if (isNode(match, N.Ruleset)) {
+          if (!includeRulesets) {
+            return undefined;
+          }
+          const resolved = walk(match.value.rules, path, offset + 1, false);
+          if (resolved === undefined) {
+            return undefined;
+          }
+          if (resolved === DEFINITE_MIXIN_NAMESPACE_MISS) {
+            sawDefiniteMiss = true;
+            continue;
+          }
+          if (nestedResults === undefined) {
+            nestedResults = resolved.entries;
+            nestedResultsOwned = resolved.owned;
+            continue;
+          }
+          if (!nestedResultsOwned) {
+            nestedResults = [...nestedResults];
+            nestedResultsOwned = true;
+          }
+          for (let resolvedIndex = 0; resolvedIndex < resolved.entries.length; resolvedIndex++) {
+            nestedResults.push(resolved.entries[resolvedIndex]!);
+          }
+          continue;
+        }
         if (!isNode(match, N.Mixin)) {
           return undefined;
         }
@@ -1804,8 +1812,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private findRulesetNamespacePathFast(
     keys: string[],
-    options: CallableFindOptions = {},
-    normalizedPathKey?: string
+    options: CallableFindOptions = {}
   ): MixinEntry[] | undefined {
     if (keys.length < 2) {
       return undefined;
@@ -1922,8 +1929,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             resolved = ruleset.value.rules.findMixin(
               collectKeyRemainder(path, remainderStart),
               undefined,
-              nestedOptions,
-              getCallableLookupKeyRemainder(normalizedPathKey, remainderStart)
+              nestedOptions
             );
           }
         }
@@ -1941,8 +1947,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private findCompoundPrefixCallableRulesetPathFast(
     keys: string[],
-    options: CallableFindOptions = {},
-    normalizedPathKey?: string
+    options: CallableFindOptions = {}
   ): CallableRulesetPathResult | undefined {
     if (keys.length < 2) {
       return undefined;
@@ -1988,8 +1993,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           resolved = ruleset.value.rules.findMixin(
             collectKeyRemainder(keys, consumed.length),
             undefined,
-            nestedOptions,
-            getCallableLookupKeyRemainder(normalizedPathKey, consumed.length)
+            nestedOptions
           );
         }
       }
@@ -2004,8 +2008,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private findCallableDescendantsWithinMixinNamespaces(
     namespaceMixins: MixinEntry[],
     keys: string[],
-    options: CallableFindOptions = {},
-    normalizedPathKey?: string
+    options: CallableFindOptions = {}
   ): MixinEntry[] | undefined {
     if (keys.length < 2 || namespaceMixins.length === 0) {
       return undefined;
@@ -2052,8 +2055,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           nested = entry.value.rules.findMixin(
             remainder,
             undefined,
-            nestedOptions,
-            getCallableLookupKeyRemainder(normalizedPathKey, 1)
+            nestedOptions
           );
         }
       }
@@ -2078,8 +2080,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   findMixin(
     keys: string | string[],
     filterType?: string,
-    options: CallableFindOptions = {},
-    normalizedPathKey?: string
+    options: CallableFindOptions = {}
   ): MixinEntry[] | undefined {
     if (typeof keys === 'string') {
       const includeRulesets = filterType !== 'Mixin' && options.terminalMixinOnly !== true;
@@ -2094,7 +2095,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (frameHit.kind === 'miss' && options.searchParents === false) {
           const pathKeys = splitStaticCallablePathKey(keys);
           if (pathKeys) {
-            return this.findMixin(pathKeys, filterType, options, keys);
+            return this.findMixin(pathKeys, filterType, options);
           }
           return undefined;
         }
@@ -2170,14 +2171,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (frameHit.kind === 'miss') {
             const pathKeys = splitStaticCallablePathKey(keys);
             if (pathKeys) {
-              return this.findMixin(pathKeys, filterType, options, keys);
+              return this.findMixin(pathKeys, filterType, options);
             }
             return undefined;
           }
           if (frameMissCovered) {
             const pathKeys = splitStaticCallablePathKey(keys);
             if (pathKeys) {
-              return this.findMixin(pathKeys, filterType, options, keys);
+              return this.findMixin(pathKeys, filterType, options);
             }
             return undefined;
           }
@@ -2185,7 +2186,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       const pathKeys = splitStaticCallablePathKey(keys);
       if (pathKeys) {
-        return this.findMixin(pathKeys, filterType, options, keys);
+        return this.findMixin(pathKeys, filterType, options);
       }
       const direct = this.findMixinsFast(keys, {
         hasTarget: options.hasTarget,
@@ -2199,12 +2200,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     } else if (isArray(keys) && keys.length === 1) {
       return this.findMixin(keys[0]!, filterType, options);
     } else if (isArray(keys) && keys.length > 1) {
-      const lookupKey = normalizedPathKey ?? keys.join(CALLABLE_LOOKUP_PATH_KEY_SEPARATOR);
       const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
       let compoundPrefixFast: CallableRulesetPathResult | undefined;
       let mixinNamespaceFast: MixinEntry[] | undefined;
       if (mixinFilterType !== 'Mixin') {
-        const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options, lookupKey);
+        const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
         if (rulesetNamespaceFast !== undefined && (rulesetNamespaceFast.length > 0 || options.terminalMixinOnly !== true)) {
           return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
         }
@@ -2248,12 +2248,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
           return undefined;
         }
-        compoundPrefixFast = this.findCompoundPrefixCallableRulesetPathFast(keys, options, lookupKey);
+        compoundPrefixFast = this.findCompoundPrefixCallableRulesetPathFast(keys, options);
         mixinNamespaceFast = this.findCallableDescendantsWithinMixinNamespaces(
           namespaceMixins,
           keys,
-          options,
-          lookupKey
+          options
         );
       }
       const fast = mixinNamespaceFast ?? this.findMixinNamespacePathFast(keys, mixinFilterType, options);

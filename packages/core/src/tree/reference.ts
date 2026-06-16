@@ -115,6 +115,9 @@ export type ReferenceOptions = {
   fallbackValue?: Node | true;
   filter?: (node: Node) => boolean;
   excludedNodes?: readonly Node[];
+  excludedNode0?: Node;
+  excludedNode1?: Node;
+  excludedNodesLength?: number;
   requiredNormalizedFromAssign?: string | readonly string[];
   role?: AnyRole;
   preserveRulesLike?: boolean;
@@ -354,10 +357,6 @@ type ReferenceRulesLookupHandleBase = {
   targetRules: Rules;
   targetLookupVersion: number;
   valueKey: string | string[];
-  requiredNormalizedFromAssignKey: string | undefined;
-  excludedNode0: Node | undefined;
-  excludedNode1: Node | undefined;
-  excludedNodesLength: number;
   currentBindingKey?: string;
   currentBindingFrame?: ScopeFrame;
   currentBindingVersion?: number;
@@ -370,8 +369,15 @@ type ReferenceRulesLookupHandleBase = {
   terminalMixinOnly: boolean;
 };
 
+type ReferenceRulesLookupDeclarationConstraints = {
+  requiredNormalizedFromAssignKey: string | undefined;
+  excludedNode0: Node | undefined;
+  excludedNode1: Node | undefined;
+  excludedNodesLength: number;
+};
+
 type ReferenceRulesLookupHandle =
-  | (ReferenceRulesLookupHandleBase & {
+  | (ReferenceRulesLookupHandleBase & ReferenceRulesLookupDeclarationConstraints & {
     lookupType: 'declaration' | 'property';
     returnVal: DeclarationRulesLookupHandleValue;
   })
@@ -383,7 +389,7 @@ type ReferenceRulesLookupHandle =
     lookupType: 'mixin' | 'mixin-ruleset';
     returnVal: CallableRulesLookupHandleValue;
   })
-  | (ReferenceRulesLookupHandleBase & {
+  | (ReferenceRulesLookupHandleBase & ReferenceRulesLookupDeclarationConstraints & {
     lookupType: 'variable';
     returnVal: VariableRulesLookupHandleValue;
   });
@@ -672,11 +678,13 @@ function prepareRulesLookupShape(
     isInterpolatedVariable: lookupContext.isInterpolatedVariable,
     context: lookupContext.context
   });
-  const declarationConstraints = getRulesLookupHandleDeclarationConstraintShape(lookupContext.referenceNode);
-  shape.requiredNormalizedFromAssignKey = declarationConstraints.requiredNormalizedFromAssignKey;
-  shape.excludedNode0 = declarationConstraints.excludedNode0;
-  shape.excludedNode1 = declarationConstraints.excludedNode1;
-  shape.excludedNodesLength = declarationConstraints.excludedNodesLength;
+  if (lookupTypeUsesDeclarationConstraints(lookupContext.lookupType)) {
+    const declarationConstraints = getRulesLookupHandleDeclarationConstraintShape(lookupContext.referenceNode);
+    shape.requiredNormalizedFromAssignKey = declarationConstraints.requiredNormalizedFromAssignKey;
+    shape.excludedNode0 = declarationConstraints.excludedNode0;
+    shape.excludedNode1 = declarationConstraints.excludedNode1;
+    shape.excludedNodesLength = declarationConstraints.excludedNodesLength;
+  }
   lookupContext.preparedRules = targetRules;
   lookupContext.preparedShape = shape;
   return shape;
@@ -851,6 +859,9 @@ function buildReferenceDeclarationFindOptions(
   return {
     filter: lookupContext.filter,
     excludedNodes: lookupContext.referenceNode.options.excludedNodes,
+    excludedNode0: lookupContext.referenceNode.options.excludedNode0,
+    excludedNode1: lookupContext.referenceNode.options.excludedNode1,
+    excludedNodesLength: lookupContext.referenceNode.options.excludedNodesLength,
     requiredNormalizedFromAssign: lookupContext.referenceNode.options.requiredNormalizedFromAssign,
     semanticFilter: lookupContext.semanticFilter,
     context: lookupContext.context,
@@ -1082,6 +1093,12 @@ function isHandleableLookupKey(valueKey: NormalizedLookupKey): valueKey is strin
 
 type RulesLookupHandleLookupType = 'declaration' | 'function' | 'mixin' | 'mixin-ruleset' | 'property' | 'variable';
 
+function lookupTypeUsesDeclarationConstraints(
+  lookupType: LookupType | RulesLookupHandleLookupType | undefined
+): lookupType is 'declaration' | 'property' | 'variable' {
+  return lookupType === 'declaration' || lookupType === 'property' || lookupType === 'variable';
+}
+
 function getRequiredNormalizedFromAssignHandleKey(
   required: ReferenceOptions['requiredNormalizedFromAssign']
 ): string | undefined {
@@ -1112,21 +1129,23 @@ function getRulesLookupHandleDeclarationConstraintShape(referenceNode: Reference
   'requiredNormalizedFromAssignKey' | 'excludedNode0' | 'excludedNode1' | 'excludedNodesLength'
 > {
   const excludedNodes = referenceNode.options.excludedNodes;
+  const excludedNodesLength = referenceNode.options.excludedNodesLength ?? excludedNodes?.length ?? 0;
   return {
     requiredNormalizedFromAssignKey: getRequiredNormalizedFromAssignHandleKey(
       referenceNode.options.requiredNormalizedFromAssign
     ),
-    excludedNode0: excludedNodes?.[0],
-    excludedNode1: excludedNodes?.[1],
-    excludedNodesLength: excludedNodes?.length ?? 0
+    excludedNode0: referenceNode.options.excludedNode0 ?? excludedNodes?.[0],
+    excludedNode1: referenceNode.options.excludedNode1 ?? excludedNodes?.[1],
+    excludedNodesLength
   };
 }
 
 function hasHandleableDeclarationConstraints(referenceNode: Reference): boolean {
   const excludedNodes = referenceNode.options.excludedNodes;
+  const excludedNodesLength = referenceNode.options.excludedNodesLength ?? excludedNodes?.length ?? 0;
   const requiredNormalizedFromAssign = referenceNode.options.requiredNormalizedFromAssign;
   return (
-    (excludedNodes === undefined || excludedNodes.length <= 2)
+    excludedNodesLength <= 2
     && (
       !Array.isArray(requiredNormalizedFromAssign)
       || requiredNormalizedFromAssign.length <= 4
@@ -1164,7 +1183,10 @@ function isRulesLookupHandleEligible(
     && target === undefined
     && originalFilter === undefined
     && !env.semanticFilter
-    && hasHandleableDeclarationConstraints(referenceNode)
+    && (
+      !lookupTypeUsesDeclarationConstraints(lookupType)
+      || hasHandleableDeclarationConstraints(referenceNode)
+    )
     && !env.hasTarget
     && !env.isInterpolatedVariable
     && context.leakyRules !== true
@@ -1335,11 +1357,16 @@ function readRulesLookupHandle(
     || handle.local !== shape.local
     || handle.ignoreParentScopeStart !== shape.ignoreParentScopeStart
     || handle.terminalMixinOnly !== shape.terminalMixinOnly
-    || handle.requiredNormalizedFromAssignKey !== shape.requiredNormalizedFromAssignKey
-    || handle.excludedNodesLength !== (shape.excludedNodesLength ?? 0)
-    || handle.excludedNode0 !== shape.excludedNode0
-    || handle.excludedNode1 !== shape.excludedNode1
     || handle.valueKey !== valueKey
+    || (
+      lookupTypeUsesDeclarationConstraints(handle.lookupType)
+      && (
+        handle.requiredNormalizedFromAssignKey !== shape.requiredNormalizedFromAssignKey
+        || handle.excludedNodesLength !== (shape.excludedNodesLength ?? 0)
+        || handle.excludedNode0 !== shape.excludedNode0
+        || handle.excludedNode1 !== shape.excludedNode1
+      )
+    )
   ) {
     return undefined;
   }
@@ -1474,10 +1501,6 @@ function writeFunctionRulesLookupHandle(args: WriteRulesLookupHandleArgs): void 
     targetRules,
     targetLookupVersion,
     valueKey,
-    requiredNormalizedFromAssignKey: shape.requiredNormalizedFromAssignKey,
-    excludedNode0: shape.excludedNode0,
-    excludedNode1: shape.excludedNode1,
-    excludedNodesLength: shape.excludedNodesLength ?? 0,
     lookupType: 'function',
     inCall,
     start,
@@ -1506,10 +1529,6 @@ function writeCallableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void 
     targetRules,
     targetLookupVersion,
     valueKey,
-    requiredNormalizedFromAssignKey: shape.requiredNormalizedFromAssignKey,
-    excludedNode0: shape.excludedNode0,
-    excludedNode1: shape.excludedNode1,
-    excludedNodesLength: shape.excludedNodesLength ?? 0,
     lookupType,
     inCall,
     start,

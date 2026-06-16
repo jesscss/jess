@@ -3148,17 +3148,80 @@ describe('Mixin', () => {
         })
       ]);
       const originalFindMixin = RulesClass.prototype.findMixin;
-      let arrayPathCalls = 0;
+      const nestedArrayPathCalls: unknown[] = [];
       RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
-        if (Array.isArray(args[0])) {
-          arrayPathCalls++;
+        if (this !== root && Array.isArray(args[0])) {
+          nestedArrayPathCalls.push(args[0]);
         }
         return originalFindMixin.apply(this, args);
       };
 
       try {
         expect(root.findMixin(['#theme', '.dark', '.colors'], undefined, { searchParents: false })).toEqual([leaf]);
-        expect(arrayPathCalls).toBe(1);
+        expect(nestedArrayPathCalls).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('ruleset namespace path lookup reuses path offsets instead of materializing remainder arrays', () => {
+      const leaf = mixin({
+        name: any('.colors'),
+        rules: rules([decl({ name: 'primary', value: any('red') })])
+      });
+      const root = rules([
+        ruleset({
+          selector: el('#theme'),
+          rules: rules([
+            ruleset({
+              selector: el('.dark'),
+              rules: rules([leaf])
+            })
+          ])
+        })
+      ]);
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const nestedArrayPathCalls: unknown[] = [];
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== root && Array.isArray(args[0])) {
+          nestedArrayPathCalls.push(args[0]);
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        expect(root.findMixin(['#theme', '.dark', '.colors'], undefined, { searchParents: false })).toEqual([leaf]);
+        expect(nestedArrayPathCalls).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('compound-prefix ruleset lookup reuses path offsets instead of materializing remainder arrays', () => {
+      const leaf = mixin({
+        name: any('.colors'),
+        rules: rules([decl({ name: 'primary', value: any('red') })])
+      });
+      const root = rules([
+        ruleset({
+          selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+          rules: rules([leaf])
+        })
+      ]);
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      let nestedArrayPathCalls = 0;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== root && Array.isArray(args[0])) {
+          nestedArrayPathCalls++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        expect(root.findMixin(['#theme', '.dark', '.navbar', '.colors'], undefined, {
+          searchParents: false
+        })).toEqual([leaf]);
+        expect(nestedArrayPathCalls).toBe(0);
       } finally {
         RulesClass.prototype.findMixin = originalFindMixin;
       }
