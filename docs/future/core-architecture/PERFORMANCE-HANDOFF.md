@@ -4196,6 +4196,26 @@ Interpretation: cold public replacement string transport cut only. Do not claim
 a speed win; keep the `Interpolated` row open for remaining selector/generic
 materialization boundaries and replacement arrays. One fixture was unstable.
 
+### Interpolated Non-Scalar Selector Assembly String Transport Cut
+
+Date: 2026-06-16.
+
+Change: whole and embedded non-scalar selector interpolation now reuse the
+direct replacement syntax writer instead of calling public replacement
+`toTrimmedString(...)` before building selector output.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `16.50ms` noisy, `import-reference` median
+  `25.75ms` unstable, `mixins-guards` median `18.15ms` usable,
+  `extend-chaining` median `5.91ms` usable, and `media` median `5.99ms`
+  usable.
+
+Interpretation: selector assembly string-transport cut only. Do not claim a
+speed win; keep the `Interpolated` row open for replacement-array and selector
+ownership boundaries. One fixture was noisy and one was unstable.
+
 ### Rules Root Import Direct Syntax Cut
 
 Date: 2026-06-16.

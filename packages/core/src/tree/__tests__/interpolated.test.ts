@@ -309,6 +309,28 @@ describe('Interpolated', () => {
     }
   });
 
+  it('creates non-scalar selector text without public replacement string transport', () => {
+    const original = List.prototype.toTrimmedString;
+    List.prototype.toTrimmedString = () => {
+      throw new Error('non-scalar selector interpolation should write replacement syntax directly');
+    };
+    try {
+      const wholeSelector = interpolated({
+        source: INTERPOLATION_PLACEHOLDER,
+        replacements: [list([any('.one'), any('.two')])]
+      });
+      const embeddedSelector = interpolated({
+        source: `${INTERPOLATION_PLACEHOLDER} .child`,
+        replacements: [list([any('.one'), any('.two')])]
+      });
+
+      expect(wholeSelector.createSelector('resolve').toTrimmedString()).toBe('.one, .two');
+      expect(embeddedSelector.createSelector('resolve').toTrimmedString()).toBe('.one,.two.child');
+    } finally {
+      List.prototype.toTrimmedString = original;
+    }
+  });
+
   it('replaces scalar tokens without public string transport', () => {
     const replacement = any('world');
     replacement.toTrimmedString = () => {

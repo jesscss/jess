@@ -55,7 +55,7 @@ function serializeGeneratedIsWrapper(replacement: Node): string {
   return writer.toString().replace(/\n\s*/g, ' ');
 }
 
-function stringifyReplacement(replacement: Node, options: PrintOptions, preserveQuotedSyntax?: boolean): string {
+function stringifyReplacement(replacement: Node, options?: PrintOptions, preserveQuotedSyntax?: boolean): string {
   if (isNode(replacement, N.Quoted) && !preserveQuotedSyntax) {
     return String(replacement.valueOf());
   }
@@ -63,10 +63,8 @@ function stringifyReplacement(replacement: Node, options: PrintOptions, preserve
     return String(replacement.value).trim();
   }
   const writer = new OutputWriter();
-  replacement.writeSyntax(getPrintOptions({
-    ...options,
-    writer
-  }));
+  const printOptions = options ? { ...options, writer } : { writer };
+  replacement.writeSyntax(getPrintOptions(printOptions));
   const result = writer.toString();
   return isNode(replacement, N.Reference) ? result : result.trim();
 }
@@ -238,7 +236,7 @@ export class Interpolated<
       if (replacement.type === 'Any' || replacement.type === 'Anonymous' || replacement.type === 'Keyword') {
         return new BasicSelector(String(replacement.value).trim()).inherit(this);
       }
-      return new BasicSelector(replacement.toTrimmedString().trim()).inherit(this);
+      return new BasicSelector(stringifyReplacement(replacement, undefined, true)).inherit(this);
     }
     let output = '';
     let sourceOffset = 0;
@@ -250,7 +248,7 @@ export class Interpolated<
       }
       let part = replacement.type === 'Any' || replacement.type === 'Anonymous' || replacement.type === 'Keyword'
         ? String(replacement.value).trim()
-        : replacement.toTrimmedString();
+        : stringifyReplacement(replacement, undefined, true);
       if (shouldWrapSelectorInIs(replacement)) {
         part = serializeGeneratedIsWrapper(replacement);
       }

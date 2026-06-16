@@ -373,8 +373,10 @@ shape current before commit.
    public `PseudoSelector.toTrimmedString(...)`. Public `replace(...)` now
    writes non-scalar replacements through direct `writeSyntax(...)` on its cold
    string boundary instead of calling public replacement
-   `toTrimmedString(...)`. Remaining selector/generic materialization
-   boundaries and replacement arrays remain.
+   `toTrimmedString(...)`. Whole and embedded non-scalar selector assembly now
+   use the same direct replacement writer instead of public replacement
+   `toTrimmedString(...)`. Replacement arrays and semantic selector ownership
+   boundaries remain.
 10. [x] Finish `StyleImport` first-use placement copies by replacing them with
    canonical source placement state, or document the exact semantic blocker.
 
@@ -514,34 +516,33 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Interpolated` non-scalar replacement string-transport cut.
+Current pass: `Interpolated` non-scalar selector assembly string-transport cut.
 
 - New traversal: none. `packages/core/src/tree/interpolated.ts` adds no loop,
   recursion, parent/source walk, side-map lookup, object/array scan, generator,
   or collection helper.
-- New node/materialization: no new node, copy, inherit, adopt, source/root
-  metadata, or array materialization was added. `new OutputWriter()` is the
-  explicit version of the detached writer previously hidden behind replacement
-  `toTrimmedString(...)`, not an added render-path writer or node
-  materialization. The empty `replacements: []` array is test-only fixture
-  setup for calling public `replace(...)` with an explicit replacement list.
+- New node/materialization: no new production node, copy, inherit, adopt,
+  source/root metadata, or array materialization was added. The existing
+  `BasicSelector` materialization remains the selector ownership boundary.
+  `new OutputWriter()` is the explicit detached writer used by the shared
+  replacement syntax helper, not an added render-path writer. The new
+  replacement arrays are test-only fixture setup.
 - Render path: public `Interpolated.replace(...)` still returns a cold public
-  string, but non-scalar replacements now write directly with
-  `replacement.writeSyntax(...)` before the existing reference-vs-trim decision
-  instead of calling public replacement `toTrimmedString(...)`.
+  string. `Interpolated.createSelector(...)` still materializes selector text
+  before creating selector nodes, but whole and embedded non-scalar replacement
+  text now comes from `replacement.writeSyntax(...)` instead of public
+  replacement `toTrimmedString(...)`.
 - Helper/API surface: none added.
 - Metadata mutations: none added.
 - Error/control flow: no production error objects or throw/catch control flow
   added. The new `throw` and `try/finally` sites are test-only monkey-patch
   restoration scaffolding.
-- Rejected/deferred cut: this does not remove public `replace(...)` itself; that
-  API is the cold string materialization boundary. Whole/embedded non-scalar
-  selector materialization, remaining generic materialization, and replacement
+- Rejected/deferred cut: this does not remove selector materialization itself;
+  `BasicSelector`/selector ownership is still semantic output, and replacement
   arrays remain open.
 - Evidence: focused red/green test
-  `replaces non-scalar tokens without public replacement string transport`
-  failed when `List.toTrimmedString(...)` threw before the cut and passed after.
-  Full `interpolated.test.ts` passed.
-- Verdict: accepted as a bounded `Interpolated` cold public replacement cut.
-  Keep item 9 open for remaining selector/generic materialization and
-  replacement-array boundaries.
+  `creates non-scalar selector text without public replacement string
+  transport` failed when `List.toTrimmedString(...)` threw before the cut and
+  passed after. Full `interpolated.test.ts` passed.
+- Verdict: accepted as a bounded `Interpolated` selector assembly cut. Keep
+  item 9 open for replacement-array and selector ownership boundaries.
