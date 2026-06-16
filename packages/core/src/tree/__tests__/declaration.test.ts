@@ -154,6 +154,26 @@ describe('Declaration', () => {
     expect(resolveCalls).toBe(0);
   });
 
+  it('writes resolved declaration buffers without cold string helper transport', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+    const buffer = createRenderBuffer('segmented');
+    const node = decl({
+      name: any('color'),
+      value: ref({ key: 'tone' }, { type: 'variable' })
+    });
+    Reflect.set(node, 'declValueTrimmedString', () => {
+      throw new Error('Buffer declaration render should write syntax directly');
+    });
+
+    expect(node.render(context, buffer)).toBe('color: red');
+    expect(buffer.segments).toEqual(['color: red']);
+  });
+
   it('renders resolved declaration output directly without public resolve', async () => {
     const root = rules([
       vardecl({ name: any('tone'), value: any('red') })
@@ -521,6 +541,26 @@ describe('Declaration', () => {
     expect(node.render(context, buffer)).toBe('--color:red');
     expect(buffer.segments).toEqual(['--color:red']);
     expect(resolveCalls).toBe(0);
+  });
+
+  it('writes resolved custom declaration buffers without cold string helper transport', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+    const buffer = createRenderBuffer('segmented');
+    const node = customdecl({
+      name: any('--color'),
+      value: ref({ key: 'tone' }, { type: 'variable' })
+    });
+    Reflect.set(node, 'declValueTrimmedString', () => {
+      throw new Error('Buffer custom declaration render should write syntax directly');
+    });
+
+    expect(node.render(context, buffer)).toBe('--color:red');
+    expect(buffer.segments).toEqual(['--color:red']);
   });
 
   it('renders indexed references inside custom property values through render(context)', async () => {

@@ -372,7 +372,9 @@ shape current before commit.
    custom value mark/replace/readback normalization boundary; trailing-line-break
    values intentionally stay on the normalization path, and that path now uses
    a character scan instead of regex replacement to detect/drop the terminal
-   declaration newline.
+   declaration newline. Buffer renders now write declaration syntax directly
+   under their existing outer buffer mark instead of nesting the cold
+   `declValueTrimmedString(...)` mark/readback helper.
 6. [ ] Finish `Rules` root/body render, imports, placement state, merge output,
    and duplicate declaration materialization.
 
@@ -572,30 +574,27 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Ampersand non-basic simple selector generic construction cut.
+Current pass: Declaration buffer render nested string-helper cut.
 
-- New traversal: none. The append path keeps the existing selector dispatch and
-  adds no loop, source walk, side-map lookup, or object scan.
-- New node/materialization: runtime construction is reduced. The deleted
-  `createSimpleSelectorLike(...)` fallback used `Reflect.construct(...)` plus
-  spread options to materialize arbitrary simple selectors. The remaining
-  append path constructs only the required `BasicSelector` output and preserves
-  the existing `.inherit(selector)` ownership transfer for that semantic output.
-  The verifier's `new StringPseudoSelector(...)`, `rules([])`, `try`, and
-  `Reflect.construct` hits are test-only instrumentation or docs references,
-  not runtime append materialization.
-- Render path: no render path was added. This is a selector placement/eval
-  append cut; raw template replacement still owns its existing string boundary.
-- Helper/API surface: one private helper was deleted and no public API was
-  added. `appendSimpleSelector(...)` now owns the BasicSelector-only contract
-  directly.
-- Metadata mutations: no new metadata mutation was added. The verifier's
-  `.inherit(selector)` hit is the existing BasicSelector output ownership
-  transfer, now on the only append construction path.
-- Evidence: focused Ampersand tests pass for compound suffix merge, non-basic
-  append rejection, and the synthetic string-valued non-Basic simple selector
-  case proving the generic constructor path is not used.
-- Verdict: accepted as a bounded dead-constructor deletion. Raw fallback string
-  assembly and broader structural selector replacement remain open. No
-  performance claim; performance remains shelved because this was not a
-  measured benchmark pass.
+- New traversal: none. The buffer path writes the already-selected declaration
+  parts to the prepared writer and does not add a loop, source walk, side-map
+  lookup, or object scan.
+- New node/materialization: none. No `Node`, copy, inherit, wrapper,
+  materialized array, or ownership mutation was added.
+- Render path: buffer renders now use `writeDeclarationValueSyntax(...)`
+  directly under the existing outer buffer mark and read that mark once for
+  `writePreparedRenderText(...)`. Public string-return render still uses
+  `declValueTrimmedString(...)`, so cold string API behavior is unchanged.
+- Helper/API surface: no helper or public API was added. Existing direct writer
+  and cold string helper boundaries were split by sink. The verifier's
+  `Reflect.set(...)` hits are test-only poisoning of the cold helper.
+- Metadata mutations: none. The new value/render-state locals carry existing
+  render facts and do not mutate parent/source/frozen/location/options/context.
+- Evidence: focused Declaration tests pass, including new ordinary and custom
+  declaration buffer fixtures that poison `declValueTrimmedString(...)` and
+  prove buffer rendering writes syntax directly. The verifier's `throw new
+  Error(...)` hits are those test sentinels, not runtime control flow.
+- Verdict: accepted as a bounded Declaration buffer string-transport deletion.
+  Raw-source custom property semantics, merge state, internal mark/replace
+  boundaries, and materialization remain open. No performance claim; performance
+  remains shelved because this was not a measured benchmark pass.

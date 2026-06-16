@@ -717,7 +717,20 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const prepared = buffer
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const mark = buffer ? prepared.writer.mark() : 0;
+    if (buffer) {
+      const mark = prepared.writer.mark();
+      if (state.value) {
+        this.writeDeclarationValueSyntax({
+          name: state.name ?? state.output.value.name,
+          value: state.value,
+          important: state.important
+        }, prepared);
+      } else {
+        state.output.writeDeclarationValueSyntax(state.output.value, prepared);
+      }
+      const out = prepared.writer.getSince(mark);
+      return writePreparedRenderText(buffer, prepared, mark, out);
+    }
     const out = state.value
       ? this.declValueTrimmedString({
           name: state.name ?? state.output.value.name,
@@ -725,9 +738,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           important: state.important
         }, prepared)
       : state.output.declTrimmedString(prepared);
-    return buffer
-      ? writePreparedRenderText(buffer, prepared, mark, out)
-      : out;
+    return out;
   }
 
   private renderDeclarationRenderState(
@@ -746,7 +757,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const prepared = buffer
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const mark = buffer ? prepared.writer.mark() : 0;
+    if (buffer) {
+      const mark = prepared.writer.mark();
+      this.writeDeclarationValueSyntax({
+        name: state.name,
+        value: state.value,
+        important: state.important
+      }, prepared, {
+        mergeAdapter: state.mergeAdapter,
+        customInterpolatedValue: state.customInterpolatedValue,
+        importantText: state.importantText,
+        normalizedFromAssign: state.normalizedFromAssign
+      });
+      const out = prepared.writer.getSince(mark);
+      return writePreparedRenderText(buffer, prepared, mark, out);
+    }
     const out = this.declValueTrimmedString({
       name: state.name,
       value: state.value,
@@ -757,9 +782,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       importantText: state.importantText,
       normalizedFromAssign: state.normalizedFromAssign
     });
-    return buffer
-      ? writePreparedRenderText(buffer, prepared, mark, out)
-      : out;
+    return out;
   }
 
   override resolve(context: Context): MaybePromise<Node> {
