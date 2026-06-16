@@ -35,7 +35,7 @@ import { Rules as RulesClass } from '../index.js';
 import { getImportPlacementChildSegments, getImportPlacementReferenceMode, getImportPlacementRenderState, getImportPlacementRulesVisibility, getImportPlacementSegmentSourceChild, getImportPlacementSourceChild, getImportPostludePlacement, getImportPostludeRenderOrder, getImportPostludeRenderState } from '../import-style.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
-import { Context } from '../../context.js';
+import { Context, TreeContext } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
@@ -3260,6 +3260,83 @@ describe('Style import', () => {
       const declaration = evald.at(1) as any;
       const resolved = await declaration.eval(remoteContext);
       expect(resolved.toTrimmedString()).toBe('value: 42');
+    });
+
+    it('records the concrete resolved path for canonical import-specifier rewrites', async () => {
+      const canonicalPath = resolve(process.cwd(), 'canonical-import-target.scss');
+      const canonicalContext = new Context({}, [{
+        name: 'canonical-map',
+        supportedExtensions: ['.scss'],
+        resolve(filePath: string | string[]) {
+          const paths = Array.isArray(filePath) ? filePath : [filePath];
+          const out: string[] = [];
+          for (let i = 0; i < paths.length; i++) {
+            const candidate = paths[i]!;
+            out.push(candidate === 'theme' ? canonicalPath : candidate);
+          }
+          return out;
+        },
+        locate(pathCandidates: string[]) {
+          return pathCandidates.find(candidate => candidate === canonicalPath) ?? null;
+        }
+      }]);
+      canonicalContext.treeContext = new TreeContext({
+        file: { name: 'entry.scss', path: process.cwd(), fullPath: resolve(process.cwd(), 'entry.scss') }
+      });
+      canonicalContext.sourceTrees.set(canonicalPath, rules([
+        vardecl({ name: 'tone', value: any('blue') })
+      ]));
+
+      const importNode = style({ path: quoted(any('theme')) }, { type: 'compose' });
+      await rules([importNode]).eval(canonicalContext);
+
+      expect(importNode.options.resolvedPath).toBe(canonicalPath);
+      expect(importNode.options.resolvedFromPath).toBe(process.cwd());
+      expect(importNode.options.resolvedFromFilePath).toBe(resolve(process.cwd(), 'entry.scss'));
+      expect(importNode.value.path.valueOf()).toBe('theme');
+      expect(importNode.toTrimmedString()).toBe('@-compose "theme";');
+      expect(importNode.toTrimmedString({ syntax: 'jess' })).toBe('@-compose "./canonical-import-target.jess";');
+    });
+
+    it('rewrites canonical import specifiers relative to the converted output layout', async () => {
+      const sourceRoot = resolve(process.cwd(), 'src');
+      const outputDir = resolve(process.cwd(), 'dist');
+      const entryPath = resolve(sourceRoot, 'entry.scss');
+      const canonicalPath = resolve(sourceRoot, 'components', '_theme.scss');
+      const canonicalContext = new Context({}, [{
+        name: 'canonical-output-map',
+        supportedExtensions: ['.scss'],
+        resolve(filePath: string | string[]) {
+          const paths = Array.isArray(filePath) ? filePath : [filePath];
+          const out: string[] = [];
+          for (let i = 0; i < paths.length; i++) {
+            const candidate = paths[i]!;
+            out.push(candidate === 'theme' ? canonicalPath : candidate);
+          }
+          return out;
+        },
+        locate(pathCandidates: string[]) {
+          return pathCandidates.find(candidate => candidate === canonicalPath) ?? null;
+        }
+      }]);
+      canonicalContext.treeContext = new TreeContext({
+        file: { name: 'entry.scss', path: sourceRoot, fullPath: entryPath }
+      });
+      canonicalContext.sourceTrees.set(canonicalPath, rules([
+        vardecl({ name: 'tone', value: any('blue') })
+      ]));
+
+      const importNode = style({ path: quoted(any('theme')) }, { type: 'compose' });
+      await rules([importNode]).eval(canonicalContext);
+
+      expect(importNode.toTrimmedString({
+        syntax: 'jess',
+        conversion: {
+          sourceRoot,
+          outputDir,
+          fromFilePath: resolve(outputDir, 'entry.jess')
+        }
+      })).toBe('@-compose "./components/_theme.jess";');
     });
 
     it('import.less: optional missing imports do not throw and produce empty rules', async () => {

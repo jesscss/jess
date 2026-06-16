@@ -44,6 +44,25 @@ export type PrintOptions = {
   /** Render-local override for one at-rule frame stack during direct render. */
   atRuleFrameNode?: AtRule;
   atRuleFrameOverride?: (Ruleset | AtRule)[];
+  /** Source serialization target. Default preserves authored syntax. */
+  syntax?: 'source' | 'jess';
+  /**
+   * Source-to-Jess conversion output mapping for canonical import specifiers.
+   *
+   * When `syntax: 'jess'`, evaluated stylesheet imports can be rewritten to
+   * where the converted `.jess` module will be written instead of where the
+   * source Sass/Less file was loaded from.
+   */
+  conversion?: {
+    /** Root directory of the source tree being converted. */
+    sourceRoot?: string;
+    /** Root directory where converted `.jess` files will be written. */
+    outputDir?: string;
+    /** Converted output path of the stylesheet currently being serialized. */
+    fromFilePath?: string;
+    /** Optional source-to-output mapper for callers with custom `.jess` layouts. */
+    mapPath?: (sourcePath: string) => string;
+  };
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
   trivia?: TriviaMap;
@@ -66,6 +85,7 @@ type RestorablePrintStateKey =
   | 'collapseNesting'
   | 'context'
   | 'composedSelectorStack'
+  | 'conversion'
   | 'depth'
   | 'inCustom'
   | 'inFrames'
@@ -74,6 +94,7 @@ type RestorablePrintStateKey =
   | 'referenceRenderEnabled'
   | 'sourceMap'
   | 'suppressBoundaryTrivia'
+  | 'syntax'
   | 'writer';
 
 const DEFAULT_SPACER_SHOULD_ADD = (nextText: string): boolean => !/^[ \t\r\n\f]/u.test(nextText);
@@ -247,6 +268,8 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.frameHeaders = [];
   state.depth = 0;
   state.sourceMap = seed?.sourceMap ?? Boolean(context.opts.sourceMap);
+  state.syntax = seed?.syntax;
+  state.conversion = seed?.conversion;
   state.writer = seed?.writer ?? new OutputWriter(state.sourceMap === true);
   state.compress = seed?.compress;
   state.collapseNesting = seed?.collapseNesting;

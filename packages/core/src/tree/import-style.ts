@@ -1,4 +1,4 @@
-import { basename, dirname } from 'node:path';
+import { basename, dirname, extname, join, relative } from 'node:path';
 import { TreeContext, type Context } from '../context.js';
 import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType, type NodeLocation } from './node.js';
 import { type Reference } from './reference.js';
@@ -21,7 +21,7 @@ import {
   isRenderBuffer,
   type RenderBuffer
 } from './util/render-buffer.js';
-import type { PrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { createPlacementChildSegment, type PlacementChildSegment } from './util/placement-state.js';
 import { queueTopImport } from './util/import-queue.js';
 
@@ -41,6 +41,44 @@ function isParseError(error: unknown): boolean {
   }
   return error.phase === 'parse'
     || (typeof error.code === 'string' && error.code.startsWith('parse/'));
+}
+
+function escapeQuotedImportPath(value: string, quote: '"' | '\''): string {
+  return value.replaceAll('\\', '\\\\').replaceAll(quote, `\\${quote}`);
+}
+
+function toCanonicalRelativeImportPath(fromDir: string | undefined, resolvedPath: string): string {
+  if (!fromDir) {
+    return resolvedPath.replace(/\\/g, '/');
+  }
+  let out = relative(fromDir, resolvedPath).replace(/\\/g, '/');
+  if (!out.startsWith('.') && !out.startsWith('/')) {
+    out = `./${out}`;
+  }
+  return out || './';
+}
+
+function replaceFileExtension(filePath: string, extension: string): string {
+  const current = extname(filePath);
+  return current
+    ? `${filePath.substring(0, filePath.length - current.length)}${extension}`
+    : `${filePath}${extension}`;
+}
+
+function mapConvertedFilePath(
+  sourcePath: string,
+  options: FinalPrintOptions,
+  fallbackRoot: string | undefined
+): string {
+  const conversion = options.conversion;
+  if (conversion?.mapPath) {
+    return replaceFileExtension(conversion.mapPath(sourcePath), '.jess');
+  }
+  if (!conversion?.outputDir) {
+    return replaceFileExtension(sourcePath, '.jess');
+  }
+  const sourceRoot = conversion.sourceRoot ?? fallbackRoot ?? dirname(sourcePath);
+  return replaceFileExtension(join(conversion.outputDir, relative(sourceRoot, sourcePath)), '.jess');
 }
 
 function throwMissingImportSourceGetter(): never {
@@ -249,6 +287,17 @@ export type StyleImportOptions = {
   /** Set on the import node instead of on rules */
   local?: boolean;
   rulesVisibility?: RulesOptions['rulesVisibility'];
+
+  /**
+   * Resolved import target captured during evaluation. Parsers preserve the
+   * authored specifier; conversion passes can use this to rewrite the canonical
+   * Jess tree after the resolver has proven where the import actually landed.
+   */
+  resolvedPath?: string;
+  /** Directory of the importing file at the time `resolvedPath` was proven. */
+  resolvedFromPath?: string;
+  /** Full path of the importing file at the time `resolvedPath` was proven. */
+  resolvedFromFilePath?: string;
 };
 
 export type StyleImportValue = {
@@ -798,6 +847,58 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 
+  private getCanonicalSourcePath(options: FinalPrintOptions): string | undefined {
+    if (options.syntax !== 'jess' || !this.options.resolvedPath) {
+      return undefined;
+    }
+    const resolvedFromRoot = this.options.resolvedFromPath;
+    const targetPath = mapConvertedFilePath(this.options.resolvedPath, options, resolvedFromRoot);
+    const fromFilePath = options.conversion?.fromFilePath
+      ?? (this.options.resolvedFromFilePath
+        ? mapConvertedFilePath(this.options.resolvedFromFilePath, options, resolvedFromRoot)
+        : undefined);
+    return toCanonicalRelativeImportPath(
+      fromFilePath ? dirname(fromFilePath) : resolvedFromRoot,
+      targetPath
+    );
+  }
+
+  private writeImportPathSyntax(options: FinalPrintOptions): void {
+    const canonicalPath = this.getCanonicalSourcePath(options);
+    if (canonicalPath === undefined) {
+      this.value.path.writeSyntax(options);
+      return;
+    }
+    const quote = this.value.path instanceof Url
+      ? '"'
+      : this.value.path.options?.quote ?? '"';
+    options.writer.add(quote, this.value.path);
+    options.writer.add(escapeQuotedImportPath(canonicalPath, quote), this.value.path);
+    options.writer.add(quote, this.value.path);
+  }
+
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const importOptions = this.options.importOptions;
+    const atRuleName = this.options.type === 'compose'
+      ? importOptions?.forward === true ? '@-export' : '@-compose'
+      : '@import';
+    const w = options.writer;
+    w.add(`${atRuleName} `, this);
+    this.writeImportPathSyntax(options);
+    if (this.options.namespace) {
+      w.add(` as ${this.options.namespace}`);
+    }
+    w.add(';');
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    return options.writer.getSince(mark);
+  }
+
   getFinalRules(evaluatedRules: Rules) {
     let { importOptions, type } = this.options;
     const reference = importOptions!.reference;
@@ -931,6 +1032,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
     const finalize = async (finalPath: string, evaluatedPathNode: Quoted | Url) => {
       const previousTreeContext = context.treeContext;
+      const resolvedFromFile = (node.sourceRoot?._treeContext ?? previousTreeContext)?.file;
+      const resolvedFromPath = resolvedFromFile?.path;
+      const resolvedFromFilePath = resolvedFromFile?.fullPath;
       // Inherit "reference branch" semantics lexically for nested imports unless
       // `multiple` explicitly opts into fresh output.
       const inheritedReferenceMode = context.inReferenceImportScope;
@@ -991,6 +1095,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         }
         // Mark import-boundary semantics on the Rules surface directly instead
         // of depending on source-node provenance walks.
+        node.options.resolvedPath = resolvedPath;
+        node.options.resolvedFromPath = resolvedFromPath;
+        node.options.resolvedFromFilePath = resolvedFromFilePath;
         rules.options.importBoundary ??= this.options.type !== 'import';
         let evaldRules = context.evaldTrees.get(resolvedPath);
         if (type === 'import' && !evaldRules && !withValues) {

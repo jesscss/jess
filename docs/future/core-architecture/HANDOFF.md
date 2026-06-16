@@ -532,32 +532,54 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Operation.withOperands(...)` source operand ownership cut.
+Current pass: JS import syntax cleanup, Less `@plugin` deprecation marker, and
+resolved stylesheet import specifier capture for canonical Jess conversion
+serialization.
 
-- New traversal: none.
-- New node/materialization: `Operation.withOperands(...)` now uses
-  `copyOwnedWithReusableLeaves(...)` for unchanged source operands instead of
-  `copyWithReusableLeaves(...)`. This is public materialization for
-  `resolve(...)`/eval operation output, not render-only materialization; the
-  render path still returns `{ left, right }` for preserved-operation text and
-  does not call `withOperands(...)`.
-- Render path: no render path now creates operands just to stringify. The
-  existing focused test still monkey-patches `withOperands(...)` to throw
-  during preserved-operation render, proving render streams evaluated operands
-  without replacement operation materialization.
-- Helper/API surface: none added.
-- Metadata mutations: copied output operands keep the existing cloning helper's
-  frozen/inherited metadata behavior. The source operand remains attached to
-  the canonical source operation.
+- New traversal: `JsImport.writeSyntax(...)` loops over explicit named imports
+  only when serializing cold source syntax for `@-from`; it writes directly to
+  the output writer and does not walk AST children or allocate a joined import
+  list. The style-import path helper maps an already-proven source path to its
+  converted `.jess` output path and computes one relative import specifier from
+  the converted importer path. Test-only plugin stubs loop over tiny
+  path-candidate arrays and use `find(...)` only to prove resolver behavior.
+- New node/materialization: production code creates no AST nodes for the
+  canonical rewrite. `StyleImport.writeSyntax(...)` writes the canonical path
+  directly when `PrintOptions.syntax === 'jess'`. The added
+  `new Deprecation('less-plugin', ...)` is a static registry entry for warning
+  metadata, not eval/render materialization. Test-only setup constructs a
+  `Context`, `TreeContext`, and tiny plugin object to exercise real resolution.
+- Render path: CSS render still calls `StyleImport.evalNode(...)`; it does not
+  consult `syntax: 'jess'` and does not create nodes or arrays to stringify.
+  The canonical rewrite and `@-from` named-import formatting live only on
+  cold/public source serialization (`toTrimmedString(...)`/`writeSyntax(...)`).
+- Helper/API surface: `PrintOptions.syntax` selects Jess serialization, while
+  `PrintOptions.conversion` carries source/output roots or a custom `.jess`
+  layout mapper. `StyleImportOptions.resolvedPath`, `resolvedFromPath`, and
+  `resolvedFromFilePath` carry facts already available during import evaluation
+  so later conversion does not rediscover the filesystem target. `JsImport`
+  reuses its existing `imports` option/value shape; no new AST API is needed for
+  the `@-from` serializer form.
+- Metadata mutations: import evaluation now stores `resolvedPath` and
+  importer source path metadata on the existing `StyleImport` options. This is
+  semantic conversion metadata, not parent/source repair; the authored
+  `value.path` remains unchanged so parser/source round-tripping stays honest.
+  `conversion.sourceRoot` is caller-supplied output policy, not recovered by
+  walking source nodes.
 - Error/control flow: no production error objects or throw/catch control flow
-  added. New throw is test-only proof.
-- Rejected/deferred cut: `createCalcFallback(...)` still stamps
-  `operationNode.evaluated`, `left.evaluated`, and `right.evaluated`; that
-  preserve-mode `calc(...)` fallback ownership remains open.
+  added.
 - Evidence: focused test
-  `owns unchanged source operands when materializing preserved operations`
-  proves a materialized preserved `Operation` no longer shares an unchanged
-  source-free scalar operand object with the canonical source operation. Full
-  `operation.test.ts` passed.
-- Verdict: accepted as a bounded public materialization ownership cut. Keep
-  queue item 15 open for the separate `calc(...)` fallback mutation boundary.
+  `records the concrete resolved path for canonical import-specifier rewrites`
+  proves a bare authored `theme` specifier records the concrete resolved
+  `.scss` path, preserves source serialization as `@-compose "theme";`, and
+  emits canonical Jess source as
+  `@-compose "./canonical-import-target.jess";`. Focused test
+  `rewrites canonical import specifiers relative to the converted output layout`
+  proves `src/entry.scss -> dist/entry.jess` references
+  `src/components/_theme.scss -> dist/components/_theme.jess` as
+  `@-compose "./components/_theme.jess";`. Full `import-style.test.ts` passed;
+  `verify:aggressive-cutting-review` reports the expected source-serializer,
+  deprecation-registry, conversion-metadata, and test-fixture danger tokens.
+- Verdict: accepted as cold source-conversion machinery. No performance claim;
+  performance remains shelved because the normal render path is intentionally
+  unchanged.
