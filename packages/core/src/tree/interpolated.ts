@@ -118,6 +118,59 @@ function stringifyReplacement(replacement: Node, options?: PrintOptions, preserv
   return isNode(replacement, N.Reference) ? result : result.trim();
 }
 
+function isSimpleSelectorTokenCode(code: number): boolean {
+  if (Number.isNaN(code) || code === 0x23 || code === 0x2e) {
+    return false;
+  }
+  return !(
+    code === 0x20
+    || (code >= 0x09 && code <= 0x0d)
+    || code === 0xa0
+    || code === 0x1680
+    || (code >= 0x2000 && code <= 0x200a)
+    || code === 0x2028
+    || code === 0x2029
+    || code === 0x202f
+    || code === 0x205f
+    || code === 0x3000
+    || code === 0xfeff
+  );
+}
+
+function createCompoundSelectorFromSimpleTokens(output: string): CompoundSelector | undefined {
+  if (output.includes(':') || output.includes('[') || output.includes('&')) {
+    return undefined;
+  }
+  let first: string | undefined;
+  let selectors: BasicSelector[] | undefined;
+  let i = 0;
+  while (i < output.length) {
+    const ch = output[i]!;
+    const start = i;
+    if (ch === '#' || ch === '.') {
+      if (!isSimpleSelectorTokenCode(output.charCodeAt(i + 1))) {
+        i++;
+        continue;
+      }
+      i++;
+    } else if (!isSimpleSelectorTokenCode(output.charCodeAt(i))) {
+      i++;
+      continue;
+    }
+    while (isSimpleSelectorTokenCode(output.charCodeAt(i))) {
+      i++;
+    }
+    const token = output.slice(start, i);
+    if (first === undefined) {
+      first = token;
+    } else {
+      selectors ??= [new BasicSelector(first)];
+      selectors.push(new BasicSelector(token));
+    }
+  }
+  return selectors ? CompoundSelector.create(selectors) : undefined;
+}
+
 export type InterpolatedValue = {
   /** String with INTERPOLATION_PLACEHOLDER placeholders */
   source: string;
@@ -333,18 +386,9 @@ export class Interpolated<
     }
     // Interpolated selector output can produce compound selectors (e.g. ".a#b").
     // Preserve token boundaries so keySet/registry lookup can match correctly.
-    const simpleTokens = output.match(/[#.][^#.\s]+|[^#.\s]+/g) ?? [output];
-    if (
-      simpleTokens.length > 1
-      && !output.includes(':')
-      && !output.includes('[')
-      && !output.includes('&')
-    ) {
-      const selectors = new Array<BasicSelector>(simpleTokens.length);
-      for (let i = 0; i < simpleTokens.length; i++) {
-        selectors[i] = new BasicSelector(simpleTokens[i]!);
-      }
-      return new CompoundSelector(selectors).inherit(this);
+    const compoundSelector = createCompoundSelectorFromSimpleTokens(output);
+    if (compoundSelector) {
+      return compoundSelector.inherit(this);
     }
     return new BasicSelector(output).inherit(this);
   }

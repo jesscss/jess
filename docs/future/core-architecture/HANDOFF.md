@@ -354,7 +354,11 @@ shape current before commit.
    the same detached writer boundary for non-scalar pieces instead of
    caller-writer mark/readback. The root-only hoisted-parent frame scan now runs
    only when `context.bubbleRootAtRules && this.isRootOnly()` can use it, so
-   ordinary at-rule body eval skips the frame walk.
+   ordinary at-rule body eval skips the frame walk. Leaf/header whitespace
+   checks now use direct character scans instead of regex `trim()`/`replace()`
+   probes, and prelude/post spacing no longer concatenates temporary strings
+   only to test trailing whitespace. Body eval result finishing is lifted out of
+   per-call nested closure scaffolding into node methods.
 4. [ ] Finish `Ruleset.getHeaderString(...)` capture removal for frame
    render/comparison paths and same-property duplicate declaration pre-render.
 
@@ -455,7 +459,9 @@ shape current before commit.
    through a private direct text builder instead of routing through
    `writeWithReplacements(...)` and its writer mark/readback capture. Eval and
    resolve replacement arrays are now allocated lazily only after a replacement
-   changes. Semantic selector ownership boundaries remain.
+   changes. Compound selector interpolation now scans simple selector tokens
+   directly instead of using regex `match(...)`, a token array, and a pre-sized
+   selector array. Semantic selector ownership boundaries remain.
 10. [x] Finish `StyleImport` first-use placement copies by replacing them with
    canonical source placement state, or document the exact semantic blocker.
 
@@ -619,34 +625,36 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Declaration merge-state and Ruleset selector identity cleanup.
+Current pass: AtRule spacing scans and Interpolated selector token scanner.
 
-- New traversal: none. The change adds no loop, recursion, side-map lookup,
-  parent/source walk, object scan, or array allocation.
-- New node/materialization: no runtime node/materialization changes. The
-  focused Declaration test has one failure branch that throws `TypeError` if the
-  private method probe is not callable; that is test assertion failure, not
-  routine eval/render control flow.
-- Render path: Declaration render-assignment state now omits an unused
-  `mergeAdapter.value` field. The actual selected render value remains on the
-  outer render state and focused tests prove merged output is unchanged.
-  Ruleset registration calls `selector.eval(context)` directly instead of
-  passing through a private forwarding helper.
-- Helper/API surface: `_prepareRulesetSelectorIdentity(...)` was deleted and
-  no helper or public API was added. Declaration state shape was narrowed by
-  deleting an unused field.
-- Metadata mutations: no runtime metadata mutations. The focused Declaration
-  test uses `Reflect.get/set` to wrap a private method and observe the render
-  state shape without weakening TypeScript invariants; it is test-only and not
-  on any eval/render path.
-- Evidence: focused Declaration/Ruleset/nesting tests, eslint on touched source
-  and test files, scoped `git diff --check`, `@jesscss/core` build, and
+- New traversal: AtRule adds straight character scans that replace regex
+  whitespace probes and avoid temporary string concatenation for trailing-space
+  tests. Interpolated adds a straight selector-token scan that replaces
+  `String.match(...)` plus regex-token array materialization. No parent/source
+  walk, recursion, side-map lookup, or object graph scan was added.
+- New node/materialization: AtRule adds none. Interpolated still materializes
+  `BasicSelector` nodes and a `CompoundSelector` only for the existing semantic
+  compound-selector boundary; the new path delays the selector array until a
+  second token is found instead of pre-sizing an array from regex matches.
+- Render path: AtRule leaf/header spacing now checks whitespace with direct
+  scalar predicates and trims leading/trailing whitespace with small scans.
+  Body eval finishing uses class methods instead of per-call nested closures.
+  Interpolated selector creation scans the final selector text directly and
+  preserves the existing compound-token behavior without regex transport.
+- Helper/API surface: private helper surface grew locally for whitespace/token
+  predicates and body-eval finalizers. This is accepted because it deletes
+  regex/callback/token-array transport and per-call closure ladders on the
+  touched paths; no public API was added.
+- Metadata mutations: Interpolated still calls `inherit(this)` at the existing
+  selector materialization boundary. No new parent/source/frozen/location or
+  options/context mutation was added.
+- Evidence: focused AtRule and Interpolated tests, eslint on touched source and
+  test files, scoped `git diff --check`, `@jesscss/core` build, and
   `verify:aggressive-cutting-review` all pass in the parent worktree.
-- Review noise: `pnpm run verify:aggressive-cutting-review` also reports
-  danger tokens from unrelated pre-existing dirty worktree files (JS module
-  scripts/docs, AtRule/Interpolated worker edits, and other uncommitted areas).
-  Those are outside this scoped commit and were not staged here.
-- Verdict: accepted as a bounded partial cut only. `Declaration` merge/raw-source
-  boundaries and deeper `Ruleset` render/composition work remain open. No
-  performance claim; performance remains shelved because this was not a
-  measured benchmark pass.
+- Review noise: `pnpm run verify:aggressive-cutting-review` may also report
+  danger tokens from unrelated pre-existing dirty worktree files. Those are
+  outside this scoped commit and must not be staged here.
+- Verdict: accepted as bounded partial cuts only. AtRule still returns header
+  strings for `serializeRulesContainer(...)`, and Interpolated replacement
+  arrays/selector ownership remain semantic boundaries. No performance claim;
+  performance remains shelved because this was not a measured benchmark pass.

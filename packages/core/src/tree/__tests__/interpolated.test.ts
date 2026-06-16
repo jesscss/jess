@@ -286,6 +286,31 @@ describe('Interpolated', () => {
     expect(selector.toTrimmedString()).toBe('.prefix-theme');
   });
 
+  it('creates compound selector interpolations without regex token arrays', () => {
+    const originalMatch = String.prototype.match;
+    let matchCalls = 0;
+    String.prototype.match = function countMatchCalls(
+      this: string,
+      ...args: Parameters<typeof originalMatch>
+    ): ReturnType<typeof originalMatch> {
+      matchCalls++;
+      return originalMatch.apply(this, args);
+    };
+    try {
+      const interpolatedNode = interpolated({
+        source: `.prefix-${INTERPOLATION_PLACEHOLDER}#id`,
+        replacements: [any('theme')]
+      });
+
+      const selector = interpolatedNode.createSelector('resolve');
+
+      expect(selector.toTrimmedString()).toBe('.prefix-theme#id');
+      expect(matchCalls).toBe(0);
+    } finally {
+      String.prototype.match = originalMatch;
+    }
+  });
+
   it('creates generated selector-list wrappers without pseudo node materialization', () => {
     const createPseudo = vi.spyOn(PseudoSelector, 'create').mockImplementation(() => {
       throw new Error('generated selector-list wrappers should write pseudo syntax directly');
