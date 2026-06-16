@@ -1,13 +1,31 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { any, F_MAY_ASYNC, F_STATIC, num, op, query, ref, rules, Sequence, Rules as RulesClass, vardecl } from '../index.js';
-import { OutputWriter } from '../util/print.js';
-import { createRenderBuffer } from '../util/render-buffer.js';
+import {
+  any,
+  bool,
+  color,
+  dimension,
+  F_MAY_ASYNC,
+  F_NON_STATIC,
+  F_STATIC,
+  Node,
+  num,
+  op,
+  query,
+  ref,
+  rules,
+  Sequence,
+  Rules as RulesClass,
+  vardecl
+} from '../index.js';
+import { OutputWriter, getPrintOptions, prepareRenderPrintState, type PrintOptions } from '../util/print.js';
+import { createRenderBuffer, type FlatRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
   marks = 0;
   reads = 0;
+  hasContentReads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
@@ -22,6 +40,34 @@ class CountingWriter extends OutputWriter {
   override getSince(mark: number): string {
     this.reads++;
     return super.getSince(mark);
+  }
+
+  override hasContentSince(mark: number): boolean {
+    this.hasContentReads++;
+    return super.hasContentSince(mark);
+  }
+}
+
+class ReturnOnlyNode extends Node<string> {
+  constructor(value: string) {
+    super(value);
+    this.addFlag(F_NON_STATIC);
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    getPrintOptions(options).writer.add(`source-${this.value}`);
+    return `source-${this.value}`;
+  }
+
+  override render(): string {
+    return this.value;
+  }
+}
+
+class WritingNode extends ReturnOnlyNode {
+  override render(_context: Context, options?: PrintOptions): string {
+    getPrintOptions(options).writer.add(this.value);
+    return `returned-${this.value}`;
   }
 }
 
@@ -135,7 +181,7 @@ describe('QueryCondition', () => {
 
     expect(queryNode.render(context, { writer })).toBe('3 and (color)');
     expect(writer.toString()).toBe('3 and (color)');
-    expect(writer.marks).toBe(2);
+    expect(writer.marks).toBe(1);
   });
 
   it('renders resolved query-condition values through render(context)', async () => {
@@ -173,7 +219,7 @@ describe('QueryCondition', () => {
     expect(queryNode.registrationPrepared).toBe(false);
   });
 
-  it('writes static query-condition output into shared flat buffers with one mark', () => {
+  it('writes static query-condition output into shared flat buffers without mark readback', () => {
     const buffer = createRenderBuffer('flat');
     buffer.shareWriter = true;
     const writer = new CountingWriter(false, buffer.parts);
@@ -182,7 +228,8 @@ describe('QueryCondition', () => {
 
     expect(queryNode.render(context, buffer)).toBe('screen and (color)');
     expect(buffer.parts).toEqual(['screen', ' ', 'and', ' ', '(color)']);
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('renders query conditions through their own resolved syntax instead of Sequence.render()', async () => {
@@ -255,7 +302,7 @@ describe('QueryCondition', () => {
 
     await expect(Promise.resolve(queryNode.render(context, { writer }))).resolves.toBe('print and (color)');
     expect(writer.toString()).toBe('print and (color)');
-    expect(writer.marks).toBe(2);
+    expect(writer.marks).toBe(1);
   });
 
   it('resolves query-condition values without touching render state', async () => {
@@ -274,5 +321,66 @@ describe('QueryCondition', () => {
     expect(queryNode.evaluated).toBe(false);
     expect(queryNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('renders scalar static conditions into a shared flat buffer without mark readback', () => {
+    const node = query([
+      any('screen'),
+      any('and'),
+      any('(min-width:'),
+      dimension([10, 'px']),
+      any(')'),
+      bool(true),
+      color('#fff')
+    ]);
+    const buffer: FlatRenderBuffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    const writer = new CountingWriter(false, buffer.parts);
+
+    prepareRenderPrintState(context, { writer });
+    const rendered = node.render(context, buffer);
+
+    expect(rendered).toBe('screen and (min-width: 10px ) true #fff');
+    expect(buffer.parts).toEqual(['screen', ' ', 'and', ' ', '(min-width:', ' ', '10px', ' ', ')', ' ', 'true', ' ', '#fff']);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(writer.hasContentReads).toBe(0);
+    expect(writer.captures).toBe(0);
+  });
+
+  it('probes only custom dynamic children that return without writing', () => {
+    const writer = new CountingWriter();
+    const node = query([
+      any('screen'),
+      any('and'),
+      new ReturnOnlyNode('custom')
+    ]);
+
+    const rendered = node.render(context, { writer });
+
+    expect(rendered).toBe('screen and custom');
+    expect(writer.toString()).toBe(rendered);
+    expect(writer.marks).toBe(1);
+    expect(writer.reads).toBe(0);
+    expect(writer.hasContentReads).toBe(1);
+    expect(writer.captures).toBe(0);
+  });
+
+  it('preserves custom dynamic children that write different text than they return', () => {
+    const writer = new CountingWriter();
+    const node = query([
+      any('screen'),
+      any('and'),
+      new WritingNode('written')
+    ]);
+
+    const rendered = node.render(context, { writer });
+
+    expect(rendered).toBe('screen and written');
+    expect(writer.toString()).toBe(rendered);
+    expect(writer.marks).toBe(1);
+    expect(writer.reads).toBe(1);
+    expect(writer.hasContentReads).toBe(1);
+    expect(writer.captures).toBe(0);
   });
 });

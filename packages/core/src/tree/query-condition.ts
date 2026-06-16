@@ -11,8 +11,7 @@ import {
   isRenderBuffer,
   prepareBufferPrintState,
   type RenderBuffer,
-  writePreparedRenderTextResult,
-  writePreparedRenderText
+  writeRenderText
 } from './util/render-buffer.js';
 
 /**
@@ -24,6 +23,43 @@ import {
  * @todo - add more structure?
  */
 export class QueryCondition extends Sequence {
+  private canRenderDirectQueryChild(node: Node): boolean {
+    const nodeType = node.type;
+    return node.hasFlag(F_STATIC)
+      && (node.visible || node.fullRender)
+      && (
+        (
+          (
+            nodeType === 'Any'
+            || nodeType === 'Anonymous'
+            || nodeType === 'Keyword'
+          )
+          && node.render === Any.prototype.render
+        )
+        || (nodeType === 'Bool' && node.render === Bool.prototype.render)
+        || (
+          (
+            nodeType === 'Dimension'
+            || nodeType === 'Num'
+          )
+          && node.render === Dimension.prototype.render
+        )
+        || (
+          node instanceof Color
+          && node.render === Color.prototype.render
+          && (
+            node.value.node === undefined
+            || typeof node.value.node === 'string'
+          )
+        )
+      );
+  }
+
+  private writeQueryChildBoundary(options: FinalPrintOptions): string {
+    options.writer.add(' ');
+    return ' ';
+  }
+
   private writeQueryConditionSyntax(value: Node[], options: FinalPrintOptions): void {
     const w = options.writer;
     const length = value.length;
@@ -57,6 +93,38 @@ export class QueryCondition extends Sequence {
     return w.getSince(mark);
   }
 
+  private renderStaticQueryConditionValue(value: Node[], options: FinalPrintOptions, context: Context): string {
+    const length = value.length;
+
+    if (length === 0) {
+      return '';
+    }
+
+    const w = options.writer;
+    let out = '';
+    for (let i = 0; i < length; i++) {
+      if (i > 0) {
+        out += this.writeQueryChildBoundary(options);
+      }
+      const node = value[i]!;
+      const saved = options.suppressBoundaryTrivia;
+      options.suppressBoundaryTrivia = 'pre';
+      try {
+        if (this.canRenderDirectQueryChild(node)) {
+          out += node.render(context, options);
+          continue;
+        }
+        const before = w.mark();
+        node.writeSyntax(options);
+        out += w.getSince(before);
+      } finally {
+        options.suppressBoundaryTrivia = saved;
+      }
+    }
+
+    return out;
+  }
+
   private renderQueryConditionValue(value: Node[], options: FinalPrintOptions, context: Context): MaybePromise<string> {
     const length = value.length;
 
@@ -65,52 +133,33 @@ export class QueryCondition extends Sequence {
     }
 
     const w = options.writer;
-    const mark = w.mark();
+    let out = '';
     for (let i = 0; i < length; i++) {
       if (i > 0) {
-        w.add(' ');
+        out += this.writeQueryChildBoundary(options);
       }
       const node = value[i]!;
       const saved = options.suppressBoundaryTrivia;
       options.suppressBoundaryTrivia = 'pre';
       let asyncOut = false;
       try {
-        const nodeType = node.type;
-        const canWriteStatic =
-          node.hasFlag(F_STATIC)
-          && (
-            (
-              (
-                nodeType === 'Any'
-                || nodeType === 'Anonymous'
-                || nodeType === 'Keyword'
-              )
-              && node.render === Any.prototype.render
-            )
-            || (nodeType === 'Bool' && node.render === Bool.prototype.render)
-            || (
-              (
-                nodeType === 'Dimension'
-                || nodeType === 'Num'
-              )
-              && node.render === Dimension.prototype.render
-            )
-            || (nodeType === 'Color' && node.render === Color.prototype.render)
-          );
-        if (canWriteStatic) {
-          node.writeSyntax(options);
+        if (this.canRenderDirectQueryChild(node)) {
+          out += node.render(context, options);
         } else {
           const before = w.mark();
           const rendered = node.render(context, options);
           if (isThenable(rendered)) {
             asyncOut = true;
             return rendered.then(
-              (out) => {
+              (renderedOut) => {
                 if (!w.hasContentSince(before)) {
-                  w.add(out);
+                  w.add(renderedOut);
+                  options.suppressBoundaryTrivia = saved;
+                  return this.renderQueryConditionValueRest(value, options, context, out + renderedOut, i + 1);
                 }
+                const written = w.getSince(before);
                 options.suppressBoundaryTrivia = saved;
-                return this.renderQueryConditionValueRest(value, options, context, mark, i + 1);
+                return this.renderQueryConditionValueRest(value, options, context, out + written, i + 1);
               },
               (error) => {
                 options.suppressBoundaryTrivia = saved;
@@ -120,6 +169,9 @@ export class QueryCondition extends Sequence {
           }
           if (!w.hasContentSince(before)) {
             w.add(rendered);
+            out += rendered;
+          } else {
+            out += w.getSince(before);
           }
         }
       } finally {
@@ -129,61 +181,58 @@ export class QueryCondition extends Sequence {
       }
     }
 
-    return w.getSince(mark);
+    return out;
   }
 
   private async renderQueryConditionValueRest(
     value: Node[],
     options: FinalPrintOptions,
     context: Context,
-    mark: number,
+    out: string,
     start: number
   ): Promise<string> {
     const w = options.writer;
     for (let i = start; i < value.length; i++) {
       if (i > 0) {
-        w.add(' ');
+        out += this.writeQueryChildBoundary(options);
       }
       const node = value[i]!;
       const saved = options.suppressBoundaryTrivia;
       options.suppressBoundaryTrivia = 'pre';
       try {
-        const nodeType = node.type;
-        const canWriteStatic =
-          node.hasFlag(F_STATIC)
-          && (
-            (
-              (
-                nodeType === 'Any'
-                || nodeType === 'Anonymous'
-                || nodeType === 'Keyword'
-              )
-              && node.render === Any.prototype.render
-            )
-            || (nodeType === 'Bool' && node.render === Bool.prototype.render)
-            || (
-              (
-                nodeType === 'Dimension'
-                || nodeType === 'Num'
-              )
-              && node.render === Dimension.prototype.render
-            )
-            || (nodeType === 'Color' && node.render === Color.prototype.render)
-          );
-        if (canWriteStatic) {
-          node.writeSyntax(options);
+        if (this.canRenderDirectQueryChild(node)) {
+          out += node.render(context, options);
           continue;
         }
         const before = w.mark();
         const rendered = await node.render(context, options);
         if (!w.hasContentSince(before)) {
           w.add(rendered);
+          out += rendered;
+        } else {
+          out += w.getSince(before);
         }
       } finally {
         options.suppressBoundaryTrivia = saved;
       }
     }
-    return w.getSince(mark);
+    return out;
+  }
+
+  private writeQueryConditionRenderText(buffer: RenderBuffer, options: FinalPrintOptions, text: string): string {
+    return buffer.kind === 'flat' && options.writer.writesTo(buffer.parts)
+      ? text
+      : writeRenderText(buffer, text);
+  }
+
+  private writeQueryConditionRenderTextResult(
+    buffer: RenderBuffer,
+    options: FinalPrintOptions,
+    text: MaybePromise<string>
+  ): MaybePromise<string> {
+    return isThenable(text)
+      ? text.then(resolved => this.writeQueryConditionRenderText(buffer, options, resolved))
+      : this.writeQueryConditionRenderText(buffer, options, text);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -203,21 +252,16 @@ export class QueryCondition extends Sequence {
     const prepared = buffer
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, printOptions);
-    const mark = buffer ? prepared.writer.mark() : 0;
-    if (buffer && this.hasFlag(F_STATIC)) {
-      this.writeQueryConditionSyntax(this.value, prepared);
-      return writePreparedRenderText(buffer, prepared, mark, prepared.writer.getSince(mark));
-    }
     const rendered = this.hasFlag(F_STATIC)
-      ? this.renderQueryConditionSyntax(this.value, prepared)
+      ? this.renderStaticQueryConditionValue(this.value, prepared, context)
       : this.renderQueryConditionValue(this.value, prepared, context);
     if (isThenable(rendered)) {
       return buffer
-        ? writePreparedRenderTextResult(buffer, prepared, mark, rendered)
+        ? this.writeQueryConditionRenderTextResult(buffer, prepared, rendered)
         : rendered;
     }
     return buffer
-      ? writePreparedRenderText(buffer, prepared, mark, rendered)
+      ? this.writeQueryConditionRenderText(buffer, prepared, rendered)
       : rendered;
   }
 }

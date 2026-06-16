@@ -323,7 +323,11 @@ shape current before commit.
    `Object.getPrototypeOf(...)` per child. QueryCondition now uses explicit
    owned scalar type/prototype contracts (`Any`/`Anonymous`/`Keyword`, `Bool`,
    `Dimension`/`Num`, `Color`) before direct `writeSyntax(...)`; custom render
-   overrides still use the localized write-vs-return mark fallback.
+   overrides still use the localized write-vs-return mark fallback. Static
+   render and direct flat-buffer render now avoid the top-level query
+   mark/getSince readback for direct scalar children, and dynamic render carries
+   returned text locally so only uncertain/custom children pay the localized
+   probe.
 3. [ ] Finish `AtRule` body-state staging and remaining custom
    eval/import/render branch ladders.
 
@@ -564,30 +568,29 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Call scalar render text-state readback cut.
+Current pass: QueryCondition top-level render readback cut.
 
-- New traversal: none. Existing argument iteration remains the same straight
-  sync loop plus async continuation.
-- New node/materialization: one tiny `CallRenderTextState` object is allocated
-  for plain/finalized render paths that can return known text. It is semantic
-  render state, not node materialization, and it replaces whole-call
-  `writer.getSince(...)` readback when all rendered pieces are known. No arrays
-  are built just to join. The added `CountingWriter` and `AsyncRenderedAny`
-  construction is test-only instrumentation for sync/async readback coverage.
-- Render path: scalar/no-trivia evaluated args and content now write directly
-  and append their known text to the state, including async scalar resolutions.
-  Arbitrary nodes, custom writers, trivia boundaries, dynamic names, calc frame
-  cleanup, optional syntax, and buffer writes still fall back to the writer
-  boundary.
-- Helper/API surface: private text-state helpers were added to keep the
-  accumulator local to `Call`. They remove render-only readback on covered
-  paths but do not add public API.
-- Metadata mutations: existing source-root trivia probes remain so text state is
-  disabled when child-boundary trivia may alter emitted text. No parent/source
-  metadata mutation was added.
-- Evidence: focused Call tests prove scalar sync/async args and content render
-  without per-arg or whole-call readback while preserving output. Eslint,
-  diff-check, and core build were run for the slice.
-- Verdict: accepted as a bounded scalar render readback cut. Non-scalar/custom
-  and trivia-backed arg/content readbacks remain open. No performance claim;
-  performance remains shelved because this was not a measured benchmark pass.
+- New traversal: `renderStaticQueryConditionValue(...)` has one straight child
+  loop over the existing `Node[]` value, matching the existing query-condition
+  child iteration. It replaces a whole-query writer mark/readback and keeps
+  fallback behavior for non-direct children.
+- New node/materialization: none in production; the `Node[]` signature is the
+  existing child array input, not a new allocation. Test-only `ReturnOnlyNode`
+  and `WritingNode` classes plus `CountingWriter` counters prove the kept
+  custom child probe behavior.
+- Render path: static scalar children write and return known text directly.
+  Dynamic render carries returned text locally and only opens a per-child probe
+  when the child may write different text than it returns. Flat-buffer output
+  skips copying when the prepared writer already targets the buffer parts.
+- Helper/API surface: private direct-child and render-text helpers were added
+  inside `QueryCondition`; no public API was added.
+- Metadata mutations: `suppressBoundaryTrivia` save/restore remains the
+  existing child-boundary behavior; the added static loop uses `try/finally` for
+  that restoration only. Node-backed `Color`, invisible static children, custom
+  children, and trivia-sensitive branches stay on fallbacks.
+- Evidence: focused QueryCondition and node render-buffer tests prove static,
+  dynamic, async, flat-buffer, and custom write-vs-return behavior.
+- Verdict: accepted as a bounded top-level readback cut. The custom dynamic
+  child mark fallback remains intentionally open until child render contracts
+  prove write-vs-return behavior directly. No performance claim; performance
+  remains shelved because this was not a measured benchmark pass.
