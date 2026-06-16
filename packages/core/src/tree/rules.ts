@@ -2104,6 +2104,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         options.depth = depth;
         options.referenceMode = childReferenceMode;
         options.referenceRenderEnabled = childReferenceRenderEnabled;
+        if (mode === 'source') {
+          const childMark = w.mark();
+          emitBoundaryIfNeeded(n);
+          n._emitSourceRulesBody(options);
+          options.emittedTrivia = childEmittedTrivia;
+          restorePrintState(options, childSaved);
+          if (!w.hasContentSince(childMark)) {
+            w.restore(childMark);
+            return;
+          }
+          markEmitted(n);
+          return;
+        }
         const childRule = w.preview(() => (
           mode === 'render' && context
             ? n.render(context, options)

@@ -662,6 +662,33 @@ describe('Declaration', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('writes raw custom property scalar values without value mark/readback normalization', () => {
+    const writer = new CountingWriter();
+    const node = decl({
+      name: any('--custom'),
+      value: any(' red /* kept raw */')
+    });
+
+    expect(node.toTrimmedString({ writer })).toBe('--custom: red /* kept raw */');
+    expect(writer.toString()).toBe('--custom: red /* kept raw */');
+    expect(writer.captures).toBe(0);
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(1);
+  });
+
+  it('keeps trailing-line-break custom property values on the normalization boundary', () => {
+    const writer = new CountingWriter();
+    const node = decl({
+      name: any('--custom'),
+      value: any('red\n  ')
+    });
+
+    expect(node.toTrimmedString({ writer })).toBe('--custom:red');
+    expect(writer.toString()).toBe('--custom:red');
+    expect(writer.marks).toBeGreaterThan(1);
+    expect(writer.readbacks).toBeGreaterThan(1);
+  });
+
   it('serializes important declarations with one space before !important', async () => {
     const node = rules([
       decl({

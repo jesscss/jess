@@ -360,7 +360,10 @@ shape current before commit.
    declaration mark/readback used only by cold string-return callers;
    space-merge rendering stopped returning an unused captured string; simple
    no-trivia `Any` property names and important flags now write known text
-   directly without local trim marks.
+   directly without local trim marks. Raw custom-property scalar `Any` values
+   without declaration-terminator line breaks now write directly and skip the
+   custom value mark/replace/readback normalization boundary; trailing-line-break
+   values intentionally stay on the normalization path.
 6. [ ] Finish `Rules` root/body render, imports, placement state, merge output,
    and duplicate declaration materialization.
 
@@ -374,9 +377,13 @@ shape current before commit.
    only allocates the leading-comment suppression list when it actually
    suppresses comments. Source-mode non-container leaf rules now write direct
    syntax instead of calling public `toTrimmedString(...)` and discarding its
-   returned string. Complex root import and trivia-backed leading-comment
-   stringification, body render, placement state, merge output, and duplicate
-   declaration materialization remain open.
+   returned string. Source-mode child `Rules` wrappers now emit their body
+   directly through `_emitSourceRulesBody(...)` instead of public
+   `toTrimmedString(...)` preview transport; the caller mark is only kept to
+   discard genuinely empty child output. Complex root import and trivia-backed
+   leading-comment stringification, render-mode child `Rules`, body render,
+   placement state, merge output, and duplicate declaration materialization
+   remain open.
 7. [ ] Finish `Reference` public value materialization, rules-like surfaces,
    merged assign normalization, key conversion, and remaining cold copy/inherit
    ownership.
@@ -554,43 +561,34 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: AtRule header/trivia/leaf writer isolation.
+Current pass: Declaration raw custom scalar and Rules source child streaming.
 
-- New traversal: none. `AtRule.getHeaderString(...)` still writes at most the
-  name, leading prelude trivia, prelude, and optional post-prelude comment
-  trivia once. Dynamic leaf render still writes the name and prelude pieces
-  once while assembling the final leaf string.
-- New node/materialization: two detached `OutputWriter` instances replace
-  caller-writer `mark()/getSince()/restore()` rollback for non-scalar header
-  name/prelude string boundaries; a third detached writer replaces the same
-  rollback pattern for post-prelude comment trivia; a fourth detached writer
-  replaces the same rollback pattern for dynamic leaf name/prelude temporary
-  strings. No AST nodes, wrappers, copies, arrays, `.inherit`, `.adopt`, or
-  semantic placement records were added. The extra `CountingWriter`
-  construction is test-only instrumentation for the caller-writer counter
-  assertion.
-- Render path: header rendering still returns a string for frame serialization,
-  but name/prelude text no longer mutates the caller writer only to be
-  discarded. Post-prelude comment trivia still consumes active emitted-trivia
-  state, but its temporary text no longer mutates the caller writer only to be
-  discarded. Dynamic leaf rendering still returns or buffers one final string,
-  but its name/prelude temporary text no longer mutates the caller writer only
-  to be discarded.
-- Helper/API surface: none added. The pass imports the existing
-  `OutputWriter` class from `util/print.js`; no public API was added.
-- Metadata mutations: caller `writer` and `trivia` are restored in `finally`
-  for header rendering; dynamic leaf temporary rendering restores caller
-  `writer` in `finally`. Existing prelude detached print-state behavior for
-  context/trivia remains. Post-prelude comment trivia shares the active
-  `emittedTrivia` set intentionally so repeated serialization still consumes
-  each trivia token run once.
-- Evidence: focused `at-rule.test.ts` header/render/restoration coverage
-  passed, including the updated "streams at-rule headers without capture
-  scaffolding" assertion that the caller writer receives no `mark`, `getSince`,
-  `restore`, `capture`, or `preview` traffic for non-scalar preludes while
-  `options.writer` is restored after the call. Dynamic leaf prelude rendering
-  and post-prelude comment trivia now have the same caller-writer counter
+- New traversal: none. Declaration adds a scalar string boundary predicate.
+  Rules source-mode child `Rules` emission reuses the existing child body
+  writer traversal instead of public string preview transport.
+- New node/materialization: none in production. The added `CountingWriter`
+  constructions are test-only instrumentation for caller-writer counter
   assertions.
-- Verdict: accepted as a caller-writer rollback cut. No performance claim;
-  performance remains shelved because this was a code-path deletion pass, not a
-  measured benchmark pass.
+- Render path: raw custom-property scalar `Any` values without trailing
+  declaration-terminator line breaks now write directly and skip the custom
+  mark/replace/readback normalization boundary. Source-mode child `Rules`
+  wrappers now write their body directly through `_emitSourceRulesBody(...)`
+  instead of `preview(() => n.toTrimmedString(...))`; the local writer mark is
+  retained only to discard genuinely empty child output. Render-mode child
+  `Rules` remains on the compatibility path. The existing custom fallback
+  function `valueOut.slice(...)` assembly remains only inside the old
+  normalization branch for non-scalar/trailing-line-break custom values; it was
+  moved under the guard, not added to the scalar fast path.
+- Helper/API surface: one private declaration predicate,
+  `hasTrailingDeclarationTerminatorLineBreak(...)`, gates the scalar custom
+  fast path. No public API was added.
+- Metadata mutations: Rules source child emission saves/restores the same
+  print-state keys as the old preview path and preserves child emitted-trivia
+  handoff before restoring parent state. Declaration metadata is unchanged.
+- Evidence: focused Declaration tests prove the raw scalar custom path only
+  uses the outer Declaration readback while the unsafe trailing-line-break
+  value stays on the normalization boundary. Focused Rules streaming tests
+  prove plain/nested source wrappers use zero `capture` and zero `preview`.
+- Verdict: accepted as two bounded source-serialization cuts. No performance
+  claim; performance remains shelved because this was not a measured benchmark
+  pass.

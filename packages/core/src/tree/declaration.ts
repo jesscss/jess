@@ -70,6 +70,10 @@ function hasEdgeHorizontalWhitespace(value: string): boolean {
     );
 }
 
+function hasTrailingDeclarationTerminatorLineBreak(value: string): boolean {
+  return /[ \t\r\f]*\n[ \t\r\f]*$/u.test(value);
+}
+
 function isClosingDeclarationLine(value: string): boolean {
   const length = value.length;
   if (length === 0 || length > 2) {
@@ -561,28 +565,32 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     // Custom properties must preserve value text exactly as provided.
     const isCustomProperty = name.valueOf().startsWith('--');
     if (isCustomProperty) {
-      const saved = savePrintState(options, ['inCustom']);
-      options.inCustom = true;
-      // Preserve custom value text, but normalize boundary artifacts:
-      // - if capture ended with a line break before declaration termination,
-      //   drop that trailing line break so semicolon insertion stays inline.
-      const valueMark = w.mark();
-      if (renderState?.customInterpolatedValue?.source === value) {
-        renderState.customInterpolatedValue.source.writeWithReplacements(
-          renderState.customInterpolatedValue.replacements,
-          options
-        );
+      if (value instanceof Any && !hasTrailingDeclarationTerminatorLineBreak(value.value)) {
+        w.add(value.value, value);
       } else {
-        value.writeSyntax(options);
+        const saved = savePrintState(options, ['inCustom']);
+        options.inCustom = true;
+        // Preserve custom value text, but normalize boundary artifacts:
+        // - if capture ended with a line break before declaration termination,
+        //   drop that trailing line break so semicolon insertion stays inline.
+        const valueMark = w.mark();
+        if (renderState?.customInterpolatedValue?.source === value) {
+          renderState.customInterpolatedValue.source.writeWithReplacements(
+            renderState.customInterpolatedValue.replacements,
+            options
+          );
+        } else {
+          value.writeSyntax(options);
+        }
+        w.replaceSince(valueMark, (valueOut) => {
+          const fallbackOut = stringifyCustomFallbackFunctionCall(value, options);
+          const customOut = fallbackOut === undefined
+            ? valueOut
+            : `${valueOut.slice(0, leadingHorizontalWhitespaceLength(valueOut))}${fallbackOut}`;
+          return customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
+        }, value);
+        restorePrintState(options, saved);
       }
-      w.replaceSince(valueMark, (valueOut) => {
-        const fallbackOut = stringifyCustomFallbackFunctionCall(value, options);
-        const customOut = fallbackOut === undefined
-          ? valueOut
-          : `${valueOut.slice(0, leadingHorizontalWhitespaceLength(valueOut))}${fallbackOut}`;
-        return customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
-      }, value);
-      restorePrintState(options, saved);
     } else {
       const valueMark = w.mark();
       if (mergeAdapter?.kind === 'list') {

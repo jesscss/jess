@@ -5,6 +5,7 @@ import { getPrintOptions, OutputWriter, type PrintOptions } from '../util/print.
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  previews = 0;
   wholeBufferReads = 0;
 
   override getSince(mark: number): string {
@@ -17,6 +18,13 @@ class CountingWriter extends OutputWriter {
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override preview(fn: () => string | void, preserveSegments?: boolean): string;
+  override preview(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
+  override preview(fn: () => string | Promise<string | void> | void, preserveSegments?: boolean): string | Promise<string> {
+    this.previews++;
+    return super.preview(fn, preserveSegments);
   }
 }
 
@@ -43,6 +51,7 @@ describe('Rules streaming', () => {
 
     expect(node.toString({ context, writer })).toBe('color: red;\nbackground: blue;\n');
     expect(writer.captures).toBe(0);
+    expect(writer.previews).toBe(0);
   });
 
   it('streams nested rule wrappers without capture scaffolding', () => {
@@ -57,6 +66,7 @@ describe('Rules streaming', () => {
 
     expect(node.toString({ context, writer })).toBe('color: red;\nbackground: blue;\n');
     expect(writer.captures).toBe(0);
+    expect(writer.previews).toBe(0);
   });
 
   it('does not inspect root output for each emitted child boundary', () => {
