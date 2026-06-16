@@ -71,7 +71,26 @@ function hasEdgeHorizontalWhitespace(value: string): boolean {
 }
 
 function hasTrailingDeclarationTerminatorLineBreak(value: string): boolean {
-  return /[ \t\r\f]*\n[ \t\r\f]*$/u.test(value);
+  let index = value.length - 1;
+  while (index >= 0 && isHorizontalWhitespaceCode(value.charCodeAt(index))) {
+    index--;
+  }
+  return index >= 0 && value.charCodeAt(index) === 10;
+}
+
+function trimTrailingDeclarationTerminatorLineBreak(value: string): string {
+  let index = value.length - 1;
+  while (index >= 0 && isHorizontalWhitespaceCode(value.charCodeAt(index))) {
+    index--;
+  }
+  if (index < 0 || value.charCodeAt(index) !== 10) {
+    return value;
+  }
+  index--;
+  while (index >= 0 && isHorizontalWhitespaceCode(value.charCodeAt(index))) {
+    index--;
+  }
+  return value.slice(0, index + 1);
 }
 
 function isClosingDeclarationLine(value: string): boolean {
@@ -587,7 +606,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           const customOut = fallbackOut === undefined
             ? valueOut
             : `${valueOut.slice(0, leadingHorizontalWhitespaceLength(valueOut))}${fallbackOut}`;
-          return customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
+          return trimTrailingDeclarationTerminatorLineBreak(customOut);
         }, value);
         restorePrintState(options, saved);
       }

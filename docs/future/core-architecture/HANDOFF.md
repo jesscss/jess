@@ -370,7 +370,9 @@ shape current before commit.
    directly without local trim marks. Raw custom-property scalar `Any` values
    without declaration-terminator line breaks now write directly and skip the
    custom value mark/replace/readback normalization boundary; trailing-line-break
-   values intentionally stay on the normalization path.
+   values intentionally stay on the normalization path, and that path now uses
+   a character scan instead of regex replacement to detect/drop the terminal
+   declaration newline.
 6. [ ] Finish `Rules` root/body render, imports, placement state, merge output,
    and duplicate declaration materialization.
 
@@ -568,28 +570,35 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: SelectorList unchanged eval/resolve array allocation cut.
+Current pass: Declaration custom-property terminal newline regex cut.
 
-- New traversal: backfill loops copy prior unchanged selectors only after a
-  later item requires materialization. They replace eager full-array allocation
-  and iteration over an output array for unchanged multi-selector lists.
-- New node/materialization: unchanged multi-selector eval/resolve now returns
-  the source `SelectorList` without allocating an evaluated `Selector[]`.
-  Materialization remains for single-item collapse, top-level `:is(...)`
-  flattening, and changed selector outputs. The remaining `new Array<Selector>`
-  sites are lazy finalization boundaries, not eager unchanged-list allocation.
-- Render path: no render path was added. This pass affects eval/resolve
-  materialization before selector output.
-- Helper/API surface: no public API was added. Existing private evaluator
-  helpers now return `undefined` to mean "source list unchanged".
-- Metadata mutations: no parent/source metadata mutation was added. Ownership
-  and copying rules remain in `finalizeEvaluatedSelectors(...)`. The tracker
-  row's `MaybePromise`/status prose is documentation, not a new runtime probe.
-- Evidence: focused SelectorList and InterpolatedSelector tests prove unchanged
-  multi-selector lists return the source list, single-item lists still collapse,
-  top-level flattening still materializes, and adjacent interpolated selector
-  behavior remains intact.
-- Verdict: accepted as a bounded eval/resolve materialization cut. `valueOf`
-  joins and other flattening outside direct writer paths remain open. No
-  performance claim; performance remains shelved because this was not a
-  measured benchmark pass.
+- New traversal: two bounded backward character scans were added for custom
+  property terminal-newline detection/trimming. They replace regex
+  match/replace allocation on the same string boundary and run only when
+  declaration rendering already has the custom value text. The verifier reports
+  three loop lines because trimming has two scan phases after the detection
+  scan.
+- New node/materialization: no runtime node, copy, inherit, wrapper,
+  materialized array, or ownership mutation was added. The verifier's
+  `new CountingWriter()` hit is test-only instrumentation for the focused
+  declaration fixture.
+- Render path: custom scalar values without declaration-terminator line breaks
+  still bypass the normalization mark/readback path. Values with terminal
+  declaration newlines intentionally stay on the existing normalization
+  boundary, but trimming no longer routes through regex replacement. The one
+  `slice(...)` hit returns the final kept prefix after the scan has found a
+  terminal newline; it replaces regex `replace(...)`, not a new array/string
+  transport layer.
+- Helper/API surface: one private local helper,
+  `trimTrailingDeclarationTerminatorLineBreak(...)`, was added beside the
+  existing detection helper. It removes regex machinery without changing public
+  API surface.
+- Metadata mutations: none. No parent/source/frozen/location/options/context
+  mutation or structural runtime probe was added.
+- Evidence: focused Declaration tests pass, including a new custom-property
+  fixture with spaces, tabs, carriage returns, form feeds, and a trailing
+  newline. Lint for touched files passes.
+- Verdict: accepted as a bounded Declaration serialization machinery deletion.
+  Merge state, internal mark/replace boundaries, materialization, and raw
+  custom-property semantics remain open. No performance claim; performance
+  remains shelved because this was not a measured benchmark pass.

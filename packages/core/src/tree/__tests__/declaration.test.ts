@@ -689,6 +689,19 @@ describe('Declaration', () => {
     expect(writer.readbacks).toBeGreaterThan(1);
   });
 
+  it('normalizes custom property trailing declaration newlines with horizontal whitespace by scan', () => {
+    const writer = new CountingWriter();
+    const node = decl({
+      name: any('--custom'),
+      value: any('red \t\r\f\n\t \r\f')
+    });
+
+    expect(node.toTrimmedString({ writer })).toBe('--custom:red');
+    expect(writer.toString()).toBe('--custom:red');
+    expect(writer.marks).toBeGreaterThan(1);
+    expect(writer.readbacks).toBeGreaterThan(1);
+  });
+
   it('serializes important declarations with one space before !important', async () => {
     const node = rules([
       decl({
