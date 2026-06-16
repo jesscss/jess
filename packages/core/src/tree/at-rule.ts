@@ -680,13 +680,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (!printOptions.trivia && node instanceof Any) {
       return node.value;
     }
-    const writer = printOptions.writer;
-    const mark = writer.mark();
+    const writer = new OutputWriter(printOptions.sourceMap === true);
+    const savedWriter = printOptions.writer;
     try {
+      printOptions.writer = writer;
       node.writeSyntax(printOptions);
-      return writer.getSince(mark);
+      return writer.toString();
     } finally {
-      writer.restore(mark);
+      printOptions.writer = savedWriter;
     }
   }
 

@@ -669,6 +669,13 @@ describe('AtRule', () => {
 
     try {
       expect(await Promise.resolve(node.render(context))).toBe('@namespace svg;');
+      const writer = new CountingWriter();
+      expect(await Promise.resolve(node.render(context, { writer }))).toBe('@namespace svg;');
+      expect(writer.marks).toBe(0);
+      expect(writer.reads).toBe(0);
+      expect(writer.restores).toBe(0);
+      expect(writer.captures).toBe(0);
+      expect(writer.previews).toBe(0);
       const buffer = createRenderBuffer('flat');
       expect(await Promise.resolve(node.render(context, buffer))).toBe('@namespace svg;');
       expect(buffer.parts).toEqual(['@namespace svg;']);
