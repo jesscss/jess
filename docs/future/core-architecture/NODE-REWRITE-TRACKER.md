@@ -63,8 +63,8 @@ Completion contract for each checkbox:
 Priority comes from the latest broad `benchmark.less` caller-stack evidence
 when choosing among unfinished serialization rows. Hot unfinished rows include
 `Ruleset.getHeaderString`, declaration duplicate pre-rendering/materialization,
-`Sequence`, `List`, `QueryCondition`, `Call`, `Rules`, `AtRule`, `Reference`,
-`Mixin`, `Ampersand`, and `Interpolated`.
+`QueryCondition`, `Call`, `Rules`, `AtRule`, `Reference`, `Mixin`,
+`Ampersand`, and `Interpolated`.
 
 - [ ] `Node` base: generic `writeSyntax(options): void` hook exists, and base
   child `toTrimmedString(...)` now uses direct child syntax/source-trivia
@@ -215,12 +215,10 @@ Current hard leftovers after the broad hook sweep:
   binding/signature helpers. This does not complete any node family; it removes
   callback/crawl/allocation scaffolding from existing cast/copy/binding
   ownership boundaries.
-- `Sequence` and `List` have writer hooks, but are not complete until resolved
-  render paths stop capturing strings before writing buffers and child emission
-  stops routing through public `toString(...)` where direct hooks preserve
-  semantics. `Sequence` general source children cannot blindly use
-  `writeSyntax(...)` yet because boundary trivia currently lives in
-  `Node.toString(...)`; a focused test caught the dropped source whitespace.
+- `Sequence` and `List` are complete for the render/string boundary. Their
+  remaining work is the separate addition/copy ownership row in the active
+  handoff; do not reopen public render string-return compatibility unless the
+  `RenderBufferNode.render(...)` API changes.
 - `PseudoSelector` has a writer hook and child writer, its cold private
   source-string wrapper is gone, and generated selector-list normalization now
   writes inline comma-space syntax directly instead of capturing/restoring a
@@ -316,7 +314,7 @@ Current hard leftovers after the broad hook sweep:
   carries kind. Body eval/registration async branches now use `MaybePromise`
   narrowing, render sync-path helper closures are lifted out of `render(...)`,
   and leaf render no longer allocates a local render-node closure.
-- [ ] `StyleImport`: direct import/render writer and placement state; no
+- [x] `StyleImport`: direct import/render writer and placement state; no
   first-use copied rules surfaces on render-only paths. Placement-state
   bookkeeping no longer stores a redundant top-level `Map`, unused preservation
   flag, or defensive recursive `Set`, but first-use child copies still remain.
