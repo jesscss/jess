@@ -460,17 +460,18 @@ shape current before commit.
    `NODE-REWRITE-TRACKER.md` as semantic placement state: focused tests require
    owned placement children and source-child mapping. Do not remove them as a
    convenience-copy cut without a replacement placement-state model.
-11. [ ] Finish `Node` base/source render fallback so inherited source render no
+11. [x] Finish `Node` base/source render fallback so inherited source render no
    longer routes hot render through public `toTrimmedString(...)`.
 
-   Current partial status: base `Node.writeSyntax(...)` no longer calls child
+   Completion status: base `Node.writeSyntax(...)` no longer calls child
    public `toString(...)`; child values write syntax directly. Base
    `toTrimmedString(...)` also writes child values directly, using the
    source-trivia emitter instead of child public stringification when trivia is
-   active. Base `renderSource(...)` still routes through
-   `toTrimmedString(...)`; `node-render-buffer` has a deliberate source-only
-   adapter that currently makes this a compatibility boundary, so the item
-   remains open.
+   active. Base `renderSource(...)` now writes inherited no-trivia source syntax
+   directly through `writeSyntax(...)` instead of routing through public
+   `toTrimmedString(...)`. Custom `toTrimmedString(...)` overrides and active
+   source-trivia emission remain documented compatibility/source-preservation
+   boundaries.
 12. [ ] Finish scalar wrapper leftovers in `Block`, `Paren`, `Url`, `Quoted`,
    `Negative`, and `AttributeSelector` where localized mark/readback remains
    outside documented cold/public boundaries.
@@ -610,26 +611,29 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: QueryCondition boundary helper cut.
+Current pass: base Node source render direct path.
 
 - New traversal: none. The change adds no loop, recursion, side-map lookup,
   parent/source walk, object scan, or array allocation.
 - New node/materialization: none. No `Node`, copy, inherit, wrapper,
-  materialized array, or ownership mutation was added.
-- Render path: query child boundary spacing now writes the literal space and
-  appends the same returned text at each existing boundary site. Rendering still
-  uses the existing direct scalar paths and the localized custom-child mark
-  probe; no arrays or nodes are created just to stringify.
-- Helper/API surface: the private `writeQueryChildBoundary(...)` helper was
-  deleted. It only wrote and returned a literal space, so inlining removes a
-  hot-path function hop without adding public API.
+  materialized array, or ownership mutation was added. The focused test defines
+  local test-only subclasses to prove inherited and custom boundaries.
+- Render path: inherited no-trivia `Node.renderSource(...)` now writes source
+  syntax directly with `writeSyntax(...)` and reads back the same writer slice
+  that the public string-return API requires. It does not call public
+  `toTrimmedString(...)` on the hot inherited source path. Custom
+  `toTrimmedString(...)` overrides and active source-trivia rendering stay on
+  the compatibility/source-preservation boundary.
+- Helper/API surface: no helper or public API was added.
 - Metadata mutations: none. No parent/source/frozen/location/options/context
-  mutation was added.
-- Evidence: focused QueryCondition and render-buffer tests pass. The focused
-  QueryCondition tests still prove the remaining localized custom-child mark
-  probe is semantic: one custom child returns text without writing, another
-  writes different text than it returns.
-- Verdict: accepted as a bounded helper deletion. The main QueryCondition
-  dynamic child probe task remains open until child render contracts can prove
-  write-vs-return behavior without probing. No performance claim; performance
-  remains shelved because this was not a measured benchmark pass.
+  mutation was added. The `sourceRoot` read preserves the existing source-trivia
+  boundary; inherited direct render is used only when no explicit or source-root
+  trivia is active.
+- Evidence: focused base Node render and render-buffer tests pass. The new
+  focused test monkey-patches base `Node.prototype.toTrimmedString(...)` to
+  throw and proves inherited render still writes string and buffer output
+  directly, while a custom override still routes through the compatibility
+  boundary.
+- Verdict: accepted as the base `Node` render fallback completion. No
+  performance claim; performance remains shelved because this was not a measured
+  benchmark pass.

@@ -1316,7 +1316,16 @@ export abstract class Node<
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, printOptions);
     const mark = buffer ? prepared.writer.mark() : 0;
-    const out = this.toTrimmedString(prepared);
+    const usesBaseTrimmedString = this.toTrimmedString === Node.prototype.toTrimmedString;
+    const hasSourceTrivia = prepared.trivia ?? this.sourceRoot?._treeContext?.opts?.trivia;
+    let out: string;
+    if (usesBaseTrimmedString && !hasSourceTrivia) {
+      const sourceMark = buffer ? mark : prepared.writer.mark();
+      this.writeSyntax(prepared);
+      out = prepared.writer.getSince(sourceMark);
+    } else {
+      out = this.toTrimmedString(prepared);
+    }
     return buffer
       ? writePreparedRenderText(buffer, prepared, mark, out)
       : out;
