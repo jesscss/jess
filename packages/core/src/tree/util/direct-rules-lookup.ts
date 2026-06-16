@@ -25,6 +25,11 @@ type DeclarationLookupStrategy = {
   includeFallbackFrames: boolean;
   prepareScopeFrame: boolean;
   acceptsNode: (node: Node) => node is Declaration;
+  scopeMayContainFamily: (scope: Rules) => boolean;
+  childEntryMayContainFamily: (entry: {
+    hasDeclarationSurface?: boolean;
+    hasVarDeclarationSurface?: boolean;
+  }) => boolean;
   skipVarsAfterBindingHit: boolean;
 };
 
@@ -51,6 +56,8 @@ const VARIABLE_LOOKUP: DeclarationLookupStrategy = {
   includeFallbackFrames: true,
   prepareScopeFrame: true,
   acceptsNode: (node): node is Declaration => isNode(node, N.VarDeclaration),
+  scopeMayContainFamily: scope => scope.hasVarDeclarationChildSurface,
+  childEntryMayContainFamily: entry => entry.hasVarDeclarationSurface !== false,
   skipVarsAfterBindingHit: true
 };
 
@@ -62,6 +69,8 @@ const PROPERTY_LOOKUP: DeclarationLookupStrategy = {
   includeFallbackFrames: false,
   prepareScopeFrame: false,
   acceptsNode: (node): node is Declaration => isNode(node, N.Declaration),
+  scopeMayContainFamily: scope => scope.hasDeclarationChildSurface,
+  childEntryMayContainFamily: entry => entry.hasDeclarationSurface !== false,
   skipVarsAfterBindingHit: false
 };
 
@@ -73,6 +82,10 @@ const ANY_DECLARATION_LOOKUP: DeclarationLookupStrategy = {
   includeFallbackFrames: false,
   prepareScopeFrame: false,
   acceptsNode: (node): node is Declaration => isNode(node, N.Declaration | N.VarDeclaration),
+  scopeMayContainFamily: scope => scope.hasDeclarationChildSurface || scope.hasVarDeclarationChildSurface,
+  childEntryMayContainFamily: entry => (
+    entry.hasDeclarationSurface !== false || entry.hasVarDeclarationSurface !== false
+  ),
   skipVarsAfterBindingHit: false
 };
 const EMPTY_DIRECT_DECLARATION_FIND_OPTIONS: DirectDeclarationFindOptions = {};
@@ -83,6 +96,7 @@ export type DirectDeclarationOccurrence = {
   readonly ownerRules: Rules | undefined;
   readonly ownerLookupVersion: number | undefined;
   readonly index: number | undefined;
+  readonly slot: number | undefined;
 };
 
 type DeclarationMatchState = {
@@ -122,32 +136,6 @@ function getDeclarationVisibility(
   return strategy.visibilityKey === undefined
     ? undefined
     : rules.options.rulesVisibility?.[strategy.visibilityKey];
-}
-
-function childEntryMayContainLookupFamily(
-  entry: { hasDeclarationSurface?: boolean; hasVarDeclarationSurface?: boolean },
-  strategy: DeclarationLookupStrategy
-): boolean {
-  if (strategy.visibilityKey === 'VarDeclaration') {
-    return entry.hasVarDeclarationSurface !== false;
-  }
-  if (strategy.visibilityKey === 'Declaration') {
-    return entry.hasDeclarationSurface !== false;
-  }
-  return entry.hasDeclarationSurface !== false || entry.hasVarDeclarationSurface !== false;
-}
-
-function scopeMayContainChildLookupFamily(
-  scope: Rules,
-  strategy: DeclarationLookupStrategy
-): boolean {
-  if (strategy.visibilityKey === 'VarDeclaration') {
-    return scope.hasVarDeclarationChildSurface;
-  }
-  if (strategy.visibilityKey === 'Declaration') {
-    return scope.hasDeclarationChildSurface;
-  }
-  return scope.hasDeclarationChildSurface || scope.hasVarDeclarationChildSurface;
 }
 
 function passesDeclarationFilter(
@@ -225,10 +213,20 @@ function chooseTraversalMatch(
   ) {
     return current.index < next.index ? next : current;
   }
+  if (
+    current.node.parent === next.node.parent
+    && typeof current.slot === 'number'
+    && typeof next.slot === 'number'
+  ) {
+    return current.slot < next.slot ? next : current;
+  }
   return current;
 }
 
-function createDeclarationOccurrence(node: Declaration): DirectDeclarationOccurrence {
+function createDeclarationOccurrence(
+  node: Declaration,
+  slot?: number
+): DirectDeclarationOccurrence {
   const ownerRules = isNode(node.parent, N.Rules) ? node.parent : undefined;
   const key = String(node.value.name.valueOf());
   return {
@@ -236,7 +234,8 @@ function createDeclarationOccurrence(node: Declaration): DirectDeclarationOccurr
     node,
     ownerRules,
     ownerLookupVersion: ownerRules?.getDeclarationLookupVersion(key),
-    index: node.index
+    index: node.index,
+    slot
   };
 }
 
@@ -404,7 +403,7 @@ function findLocalDeclaration(
       continue;
     }
     if (passesDeclarationFilter(node, key, strategy, filter, start)) {
-      return createDeclarationOccurrence(node);
+      return createDeclarationOccurrence(node, i);
     }
   }
   return undefined;
@@ -573,7 +572,9 @@ function findWithinScopeSurface(
     writeCachedMatch(scope, cacheKey, state);
     return state;
   }
-  if (!scopeMayContainChildLookupFamily(scope, strategy)) {
+  const scopeMayContainFamily = strategy.scopeMayContainFamily;
+  const childEntryMayContainFamily = strategy.childEntryMayContainFamily;
+  if (!scopeMayContainFamily(scope)) {
     countDirectLookup?.('declaration.childEntriesFamilySkip');
     writeCachedMatch(scope, cacheKey, state);
     return state;
@@ -584,7 +585,7 @@ function findWithinScopeSurface(
   const context = options.context;
   for (let i = childEntries.length - 1; i >= 0; i--) {
     const entry = childEntries[i]!;
-    if (!childEntryMayContainLookupFamily(entry, strategy)) {
+    if (!childEntryMayContainFamily(entry)) {
       countDirectLookup?.('declaration.childEntryFamilySkip');
       continue;
     }
@@ -695,8 +696,7 @@ function findDeclarationLookupWithStrategy(
     }
     optionalMatch = chooseTraversalMatch(optionalMatch, state.optionalMatch);
     if (searchingFallback) {
-      rules = rules._scopeFrame?.fallbackFrame?.rulesNode
-        ?? (isNode(rules.parent, N.Rules) ? rules.parent : undefined);
+      rules = rules._scopeFrame?.fallbackFrame?.rulesNode;
       continue;
     }
     if (!searchParents) {

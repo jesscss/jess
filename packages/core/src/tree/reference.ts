@@ -310,6 +310,11 @@ type ScopeFrameVariableBindingHandle = {
   cellLookupIdentity: number;
   ownerFrame: ScopeFrame;
   ownerFrameCurrentBindingsVersion: number;
+  currentBindingKey?: string;
+  currentBindingFrame?: ScopeFrame;
+  currentBindingVersion?: number;
+  currentBindingRestFrames?: ScopeFrame[];
+  currentBindingRestVersions?: number[];
   sourceNode?: Node;
   rulesContext?: Rules;
 };
@@ -347,6 +352,11 @@ type ReferenceRulesLookupHandleBase = {
   targetRules: Rules;
   targetLookupVersion: number;
   valueKey: string | string[];
+  currentBindingKey?: string;
+  currentBindingFrame?: ScopeFrame;
+  currentBindingVersion?: number;
+  currentBindingRestFrames?: ScopeFrame[];
+  currentBindingRestVersions?: number[];
   inCall: boolean;
   start: number | undefined;
   local: boolean;
@@ -433,14 +443,22 @@ function isScopeFrameVariableBindingHandle(value: unknown): value is ScopeFrameV
 function createScopeFrameVariableBindingHandle(
   cell: BindingCell,
   sourceNode: Node | undefined,
-  ownerFrame: ScopeFrame
+  ownerFrame: ScopeFrame,
+  targetFrame: ScopeFrame,
+  key: string
 ): ScopeFrameVariableBindingHandle {
+  const currentBindingFact = getAncestorFrameCurrentBindingFacts(targetFrame, key, ownerFrame);
   return {
     kind: 'scope-frame-variable-binding-handle',
     cell,
     cellLookupIdentity: ensureBindingCellLookupIdentity(cell),
     ownerFrame,
     ownerFrameCurrentBindingsVersion: ownerFrame.currentBindingsVersion,
+    currentBindingKey: currentBindingFact?.currentBindingKey,
+    currentBindingFrame: currentBindingFact?.currentBindingFrame,
+    currentBindingVersion: currentBindingFact?.currentBindingVersion,
+    currentBindingRestFrames: currentBindingFact?.currentBindingRestFrames,
+    currentBindingRestVersions: currentBindingFact?.currentBindingRestVersions,
     sourceNode,
     rulesContext: isNode(cell.rulesContext, N.Rules) ? cell.rulesContext : undefined
   };
@@ -487,7 +505,7 @@ type PreparedReferenceLookup = {
 };
 
 type ReferenceDeclarationFindOptions = DeclarationFindOptions & { context: Context };
-type ScopeFrameVariableBindingMode = 'full' | 'live-only';
+type ScopeFrameVariableBindingMode = 'full' | 'live-current';
 type ReferenceLookupStrategy = {
   readonly lookupType: LookupType;
   readonly performRulesLookup: (
@@ -720,8 +738,8 @@ function lookupScopeFrameVariableBinding(
     start: mode === 'full' ? opts.start : undefined,
     filter: env.filter,
     blockedSource: node => env.context.searchScope.has(node),
-    includeLive: mode === 'live-only' || env.readMode !== 'snapshot',
-    includeDeclarations: mode === 'live-only' ? false : undefined,
+    includeLive: mode === 'live-current' || env.readMode !== 'snapshot',
+    includeDeclarations: mode === 'live-current' ? false : undefined,
     bailOnPendingDeclarations: mode === 'full'
   });
   if (hit.kind === 'uncovered') {
@@ -730,11 +748,11 @@ function lookupScopeFrameVariableBinding(
   if (hit.kind === 'miss') {
     return mode === 'full' ? SCOPE_FRAME_VARIABLE_MISS : undefined;
   }
-  if (mode === 'live-only' && hit.kind !== 'live') {
+  if (mode === 'live-current' && hit.kind !== 'live') {
     return undefined;
   }
   const { cell, sourceNode, frame: ownerFrame } = hit;
-  return createScopeFrameVariableBindingHandle(cell, sourceNode, ownerFrame);
+  return createScopeFrameVariableBindingHandle(cell, sourceNode, ownerFrame, frame, key);
 }
 
 function lookupIndexReference(
@@ -748,7 +766,7 @@ function lookupIndexReference(
   }
   const keyStr = getLookupKeyString(valueKey);
   if (!isNode(env.keyNode, N.Quoted)) {
-    const live = lookupScopeFrameVariableBinding(targetRules, keyStr, opts, env, 'live-only');
+    const live = lookupScopeFrameVariableBinding(targetRules, keyStr, opts, env, 'live-current');
     if (live && live !== SCOPE_FRAME_VARIABLE_MISS) {
       return live;
     }
@@ -774,8 +792,16 @@ function lookupVariableReference(
   env: RulesLookupAdapterEnv
 ): VariableReferenceLookupReturnValue {
   const keyStr = getLookupKeyString(valueKey);
-  if (typeof valueKey === 'string') {
-    const frameHit = lookupScopeFrameVariableBinding(targetRules, keyStr, opts, env);
+  const frameMode: ScopeFrameVariableBindingMode | undefined = typeof valueKey === 'string'
+    && !env.hasTarget
+    && !env.isInterpolatedVariable
+    && !(opts.start !== undefined && env.readMode !== 'snapshot')
+    ? 'full'
+    : env.readMode !== 'snapshot'
+      ? 'live-current'
+      : undefined;
+  if (frameMode) {
+    const frameHit = lookupScopeFrameVariableBinding(targetRules, keyStr, opts, env, frameMode);
     if (frameHit) {
       if (frameHit === SCOPE_FRAME_VARIABLE_MISS) {
         if (env.readMode !== 'snapshot') {
@@ -784,12 +810,6 @@ function lookupVariableReference(
       } else {
         return frameHit;
       }
-    }
-  }
-  if (env.readMode !== 'snapshot') {
-    const live = lookupScopeFrameVariableBinding(targetRules, keyStr, opts, env, 'live-only');
-    if (live && live !== SCOPE_FRAME_VARIABLE_MISS) {
-      return live;
     }
   }
   return findVariableDeclarationOccurrence(targetRules, keyStr, {
@@ -1102,6 +1122,126 @@ type WriteRulesLookupHandleArgs = {
   returnVal: ReferenceLookupReturnValue;
 };
 
+function getAncestorFrameCurrentBindingFacts(
+  targetFrame: ScopeFrame,
+  key: string,
+  ownerFrame: ScopeFrame
+): {
+  currentBindingKey: string;
+  currentBindingFrame?: ScopeFrame;
+  currentBindingVersion?: number;
+  currentBindingRestFrames?: ScopeFrame[];
+  currentBindingRestVersions?: number[];
+} | undefined {
+  if (ownerFrame === targetFrame) {
+    return {
+      currentBindingKey: key
+    };
+  }
+  let currentBindingFrame: ScopeFrame | undefined;
+  let currentBindingVersion: number | undefined;
+  let currentBindingRestFrames: ScopeFrame[] | undefined;
+  let currentBindingRestVersions: number[] | undefined;
+  let frame: ScopeFrame | undefined = targetFrame;
+  while (frame) {
+    if (frame === ownerFrame) {
+      return {
+        currentBindingKey: key,
+        currentBindingFrame,
+        currentBindingVersion,
+        currentBindingRestFrames,
+        currentBindingRestVersions
+      };
+    }
+    if (frame.currentBindingsByName.has(key)) {
+      return undefined;
+    }
+    if (currentBindingFrame === undefined) {
+      currentBindingFrame = frame;
+      currentBindingVersion = frame.currentBindingsVersion;
+    } else {
+      if (!currentBindingRestFrames || !currentBindingRestVersions) {
+        currentBindingRestFrames = [currentBindingFrame];
+        currentBindingRestVersions = [currentBindingVersion!];
+      }
+      currentBindingRestFrames.push(frame);
+      currentBindingRestVersions.push(frame.currentBindingsVersion);
+    }
+    frame = frame.parent;
+  }
+  return undefined;
+}
+
+function getAncestorVariableCurrentBindingFacts(
+  targetRules: Rules,
+  key: string,
+  occurrence: DirectDeclarationOccurrence
+): ReturnType<typeof getAncestorFrameCurrentBindingFacts> {
+  if (occurrence.ownerRules === targetRules) {
+    return {
+      currentBindingKey: key
+    };
+  }
+  if (!occurrence.ownerRules) {
+    return undefined;
+  }
+  const targetFrame = targetRules.getScopeFrame(undefined, false);
+  let ownerFrame: ScopeFrame | undefined = targetFrame;
+  while (ownerFrame) {
+    if (ownerFrame.rulesNode === occurrence.ownerRules) {
+      return getAncestorFrameCurrentBindingFacts(targetFrame, key, ownerFrame);
+    }
+    ownerFrame = ownerFrame.parent;
+  }
+  return undefined;
+}
+
+function areCurrentBindingFactsCurrent(args: {
+  currentBindingKey: string | undefined;
+  currentBindingFrame: ScopeFrame | undefined;
+  currentBindingVersion: number | undefined;
+  currentBindingRestFrames: ScopeFrame[] | undefined;
+  currentBindingRestVersions: number[] | undefined;
+}): boolean {
+  const {
+    currentBindingKey,
+    currentBindingFrame,
+    currentBindingVersion,
+    currentBindingRestFrames,
+    currentBindingRestVersions
+  } = args;
+  if (currentBindingKey === undefined) {
+    return true;
+  }
+  if (
+    currentBindingFrame
+    && (
+      currentBindingFrame.currentBindingsVersion !== currentBindingVersion
+      || currentBindingFrame.currentBindingsByName.has(currentBindingKey)
+    )
+  ) {
+    return false;
+  }
+  if (!currentBindingRestFrames) {
+    return true;
+  }
+  if (
+    !currentBindingRestVersions
+    || currentBindingRestVersions.length !== currentBindingRestFrames.length
+  ) {
+    return false;
+  }
+  for (let i = 0; i < currentBindingRestFrames.length; i++) {
+    if (
+      currentBindingRestFrames[i]!.currentBindingsVersion !== currentBindingRestVersions[i]
+      || currentBindingRestFrames[i]!.currentBindingsByName.has(currentBindingKey)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function readRulesLookupHandle(
   referenceNode: Reference,
   targetRules: Rules | undefined,
@@ -1132,10 +1272,14 @@ function readRulesLookupHandle(
     if (
       handle.returnVal.ownerFrame.currentBindingsVersion !== handle.returnVal.ownerFrameCurrentBindingsVersion
       || handle.returnVal.cell.lookupIdentity !== handle.returnVal.cellLookupIdentity
+      || !areCurrentBindingFactsCurrent(handle.returnVal)
     ) {
       return undefined;
     }
     return handle.returnVal;
+  }
+  if (!areCurrentBindingFactsCurrent(handle)) {
+    return undefined;
   }
   if (isDirectDeclarationOccurrence(handle.returnVal)) {
     const node = handle.returnVal.node;
@@ -1173,11 +1317,23 @@ function writeVariableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void 
     args.referenceNode._rulesLookupHandle = undefined;
     return;
   }
+  const currentBindingFact = isDirectDeclarationOccurrence(args.returnVal)
+    ? getAncestorVariableCurrentBindingFacts(targetRules, getLookupKeyString(valueKey), args.returnVal)
+    : undefined;
+  if (isDirectDeclarationOccurrence(args.returnVal) && !currentBindingFact) {
+    args.referenceNode._rulesLookupHandle = undefined;
+    return;
+  }
   const targetLookupVersion = getRulesLookupHandleVersion(targetRules, lookupType, valueKey);
   args.referenceNode._rulesLookupHandle = {
     targetRules,
     targetLookupVersion,
     valueKey,
+    currentBindingKey: currentBindingFact?.currentBindingKey,
+    currentBindingFrame: currentBindingFact?.currentBindingFrame,
+    currentBindingVersion: currentBindingFact?.currentBindingVersion,
+    currentBindingRestFrames: currentBindingFact?.currentBindingRestFrames,
+    currentBindingRestVersions: currentBindingFact?.currentBindingRestVersions,
     lookupType: 'variable',
     inCall,
     start,

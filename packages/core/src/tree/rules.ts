@@ -51,7 +51,8 @@ import {
   lookupScopeFrameCallable,
   lookupScopeFrameVariable,
   setScopeFrameDeclarationBinding,
-  type ScopeFrame
+  type ScopeFrame,
+  type ScopeFrameCallableLookupResult
 } from './scope-frame.js';
 import { consumeTriviaText } from './util/trivia.js';
 import {
@@ -1134,6 +1135,56 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return results ?? [];
   }
 
+  private findMixinsFastForUncoveredCallable(
+    key: string,
+    reason: Extract<ScopeFrameCallableLookupResult, { kind: 'uncovered' }>['reason'],
+    includeRulesets: boolean,
+    options: CallableFindOptions
+  ): MixinEntry[] | undefined {
+    if (reason !== 'child-surface' && reason !== 'reference-import') {
+      return undefined;
+    }
+    const childEntries = this.directChildRuleEntries !== undefined
+      ? (this.directChildRuleEntries ?? undefined)
+      : this.collectDirectChildRulesEntries();
+    if (!childEntries?.length) {
+      return undefined;
+    }
+    let canSearchChildSurface = false;
+    for (let i = childEntries.length - 1; i >= 0; i--) {
+      const entry = childEntries[i]!;
+      if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options.hasTarget })) {
+        continue;
+      }
+      if (includeRulesets) {
+        if (!rulesMayContainExactCallableSurface(entry.node)) {
+          continue;
+        }
+      } else if (!rulesMayContainExactMixinSurface(entry.node)) {
+        continue;
+      }
+      if (entry.node.options?.forward) {
+        continue;
+      }
+      if (options.local && entry.node.options?.local) {
+        continue;
+      }
+      canSearchChildSurface = true;
+      break;
+    }
+    if (!canSearchChildSurface) {
+      return undefined;
+    }
+    const direct = this.findMixinsFast(key, {
+      hasTarget: options.hasTarget,
+      local: options.local,
+      includeRulesets,
+      searchParents: false,
+      skipCurrentSurface: true
+    });
+    return direct.length > 0 ? direct : undefined;
+  }
+
   private addCallableEntry(
     lookupKey: string,
     key: string | undefined,
@@ -1657,14 +1708,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               && (fallbackHit.reason === 'child-surface' || fallbackHit.reason === 'reference-import')
             ) {
               if (isNode(fallbackFrame.rulesNode, N.Rules)) {
-                const directFallback = fallbackFrame.rulesNode.findMixinsFast(segment, {
-                  hasTarget: options.hasTarget,
-                  local: options.local,
+                const directFallback = fallbackFrame.rulesNode.findMixinsFastForUncoveredCallable(
+                  segment,
+                  fallbackHit.reason,
                   includeRulesets,
-                  searchParents: false,
-                  skipCurrentSurface: true
-                });
-                if (directFallback.length > 0) {
+                  options
+                );
+                if (directFallback) {
                   matches = directFallback;
                   break;
                 }
@@ -1998,6 +2048,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           includeRulesets,
           searchParents: false
         });
+        let frameMissCovered = false;
         if (frameHit.kind === 'miss' && options.searchParents === false) {
           const pathKeys = splitStaticCallablePathKey(keys);
           if (pathKeys) {
@@ -2015,16 +2066,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           frameHit.kind === 'uncovered'
           && (frameHit.reason === 'child-surface' || frameHit.reason === 'reference-import')
         ) {
-          const direct = this.findMixinsFast(keys, {
-            hasTarget: options.hasTarget,
-            local: options.local,
+          const direct = this.findMixinsFastForUncoveredCallable(
+            keys,
+            frameHit.reason,
             includeRulesets,
-            searchParents: false,
-            skipCurrentSurface: true
-          });
-          if (direct.length > 0) {
+            options
+          );
+          frameMissCovered = true;
+          if (direct) {
             return direct;
           }
+        }
+        if (frameHit.kind === 'uncovered' && frameHit.reason === 'candidate') {
+          frameMissCovered = true;
         }
         if (frameHit.kind === 'miss' || frameHit.kind === 'uncovered') {
           let retryFrame = callableFrame.parent;
@@ -2054,14 +2108,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               && (retryHit.reason === 'child-surface' || retryHit.reason === 'reference-import')
             ) {
               if (isNode(retryFrame.rulesNode, N.Rules)) {
-                const direct = retryFrame.rulesNode.findMixinsFast(keys, {
-                  hasTarget: options.hasTarget,
-                  local: options.local,
+                const direct = retryFrame.rulesNode.findMixinsFastForUncoveredCallable(
+                  keys,
+                  retryHit.reason,
                   includeRulesets,
-                  searchParents: false,
-                  skipCurrentSurface: true
-                });
-                if (direct.length > 0) {
+                  options
+                );
+                if (direct) {
                   return direct;
                 }
               }
@@ -2073,6 +2126,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
           }
           if (frameHit.kind === 'miss') {
+            const pathKeys = splitStaticCallablePathKey(keys);
+            if (pathKeys) {
+              return this.findMixin(pathKeys, filterType, options, keys);
+            }
+            return undefined;
+          }
+          if (frameMissCovered) {
             const pathKeys = splitStaticCallablePathKey(keys);
             if (pathKeys) {
               return this.findMixin(pathKeys, filterType, options, keys);

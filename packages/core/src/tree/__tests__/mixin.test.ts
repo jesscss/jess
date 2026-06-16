@@ -2432,7 +2432,7 @@ describe('Mixin', () => {
       }
     });
 
-    it('ScopeFrame callable buckets: uncovered fallback frame still uses direct bridge only on fallback surface', () => {
+    it('ScopeFrame callable buckets: uncovered fallback reference-import miss skips empty direct bridge', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];
       const parentRules = rules([]);
@@ -2457,7 +2457,7 @@ describe('Mixin', () => {
         childFrame.fallbackFrame = fallbackRules.getScopeFrame();
 
         expect(childRules.findMixin('.fallback-reference-missing', 'Mixin')).toBeUndefined();
-        expect(fastPathHits).toEqual(['fallback:.fallback-reference-missing']);
+        expect(fastPathHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }
@@ -2820,7 +2820,7 @@ describe('Mixin', () => {
         });
         expect(root._scopeFrame?.mixinCallableMissesCovered).toBe(false);
         expect(root._scopeFrame?.mixinCallableMissCoverageKnown).toBe(true);
-        expect(fastPathHits.length).toBeGreaterThan(0);
+        expect(fastPathHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }
@@ -2942,6 +2942,40 @@ describe('Mixin', () => {
           includeRulesets: false,
           searchParents: false
         })).toEqual({ kind: 'miss' });
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: simple misses stop on compound-prefix candidates', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.compound-prefix-only') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          ruleset({
+            selector: compound([el('.compound-prefix-only'), el('.leaf')]),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          })
+        ]);
+        root.getScopeFrame();
+
+        expect(root.findMixin('.compound-prefix-only', undefined)).toBeUndefined();
+        expect(lookupScopeFrameCallable(root._scopeFrame, '.compound-prefix-only', {
+          includeRulesets: true,
+          searchParents: false
+        })).toEqual({
+          kind: 'uncovered',
+          reason: 'candidate'
+        });
         expect(fastPathHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;

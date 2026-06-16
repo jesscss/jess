@@ -21,6 +21,20 @@ function getDirectDeclarationOwnerLookupVersion(value: unknown): number | undefi
   return undefined;
 }
 
+function getDirectDeclarationSlot(value: unknown): number | undefined {
+  if (
+    value
+    && typeof value === 'object'
+    && 'kind' in value
+    && value.kind === 'direct-declaration-occurrence'
+    && 'slot' in value
+    && typeof value.slot === 'number'
+  ) {
+    return value.slot;
+  }
+  return undefined;
+}
+
 function setRulesContext(root: Node): RulesClass {
   expect(root).toBeInstanceOf(RulesClass);
   if (!(root instanceof RulesClass)) {
@@ -409,6 +423,30 @@ describe('reference', () => {
       } finally {
         RulesClass.prototype.find = originalFind;
       }
+    });
+
+    it('does not rediscover fallback-frame parent declarations after covered misses', async () => {
+      const fallbackParent = rules([
+        vardecl({ name: any('tone'), value: any('blue') })
+      ]);
+      const fallbackChild = rules([]);
+      fallbackParent.push(fallbackChild);
+      await fallbackParent.eval(context);
+      const runtimeScope = rules([]);
+      await runtimeScope.eval(context);
+      fallbackChild.scopeFrame = buildScopeFrame(undefined, fallbackChild);
+      const fallbackFrame = fallbackChild.getScopeFrame();
+      runtimeScope.getScopeFrame().fallbackFrame = fallbackFrame;
+      context.rulesContext = runtimeScope;
+
+      const resolved = await ref({
+        key: 'tone'
+      }, {
+        type: 'variable',
+        fallbackValue: any('fallback')
+      }).eval(context);
+
+      expect(resolved.toTrimmedString()).toBe('fallback');
     });
 
     it('keeps runtime-binding containers on the owned output path for default guards', async () => {
@@ -3039,6 +3077,74 @@ describe('reference', () => {
       expect(second.valueOf()).toBe('blue');
     });
 
+    it('covered variable misses avoid duplicate live-current retries', async () => {
+      const originalGetScopeFrame = RulesClass.prototype.getScopeFrame;
+      let variableFramePreps = 0;
+      RulesClass.prototype.getScopeFrame = function(...args: Parameters<typeof originalGetScopeFrame>) {
+        if (args[1] === false) {
+          variableFramePreps++;
+        }
+        return originalGetScopeFrame.apply(this, args);
+      };
+
+      try {
+        const missingRef = ref({ key: 'missing' }, { type: 'variable' });
+        const node = rules([
+          decl({
+            name: any('seen'),
+            value: missingRef
+          })
+        ]);
+        setRulesContext(node);
+
+        await expect(async () => await missingRef.eval(context)).rejects.toThrow();
+
+        expect(variableFramePreps).toBe(1);
+      } finally {
+        RulesClass.prototype.getScopeFrame = originalGetScopeFrame;
+      }
+    });
+
+    it('ancestor variable binding handles invalidate when a child frame gains a current binding', async () => {
+      const colorRef = ref({ key: 'color' }, { type: 'variable' });
+      const childRules = rules([
+        decl({
+          name: any('seen'),
+          value: colorRef
+        })
+      ]);
+      const root = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        ruleset({
+          selector: el('.scope'),
+          rules: childRules
+        })
+      ]);
+      context.root = root;
+      context.rulesContext = childRules;
+      const rootFrame = root.getScopeFrame();
+      childRules.scopeFrame = childRules.getScopeFrame(rootFrame);
+
+      const first = await colorRef.eval(context);
+      expect(first.valueOf()).toBe('red');
+      expect(colorRef._rulesLookupHandle?.lookupType).toBe('variable');
+      expect(colorRef._rulesLookupHandle?.returnVal).toMatchObject({
+        kind: 'scope-frame-variable-binding-handle'
+      });
+      const firstHandle = colorRef._rulesLookupHandle;
+
+      setScopeFrameLiveBinding(childRules.scopeFrame, 'color', {
+        value: any('blue')
+      });
+      const second = await colorRef.eval(context);
+
+      expect(second.valueOf()).toBe('blue');
+      expect(colorRef._rulesLookupHandle).not.toBe(firstHandle);
+      expect(colorRef._rulesLookupHandle?.returnVal).toMatchObject({
+        kind: 'scope-frame-variable-binding-handle'
+      });
+    });
+
     it('findDeclaration VarDeclaration lookup uses direct lookup', async () => {
       const node = rules([
         vardecl({ name: 'color', value: any('red') })
@@ -3135,6 +3241,41 @@ describe('reference', () => {
       const found = node.findProperty('color');
 
       expect(found?.value.value.valueOf()).toBe('red');
+    });
+
+    it('direct property lookup records merge-chain occurrence slots', async () => {
+      const directLookupNode = rules([
+        decl({
+          name: any('background-color'),
+          value: any('red')
+        }, { assign: '+:' }),
+        decl({
+          name: any('background-color'),
+          value: any('foo')
+        }, { assign: '+:' })
+      ]);
+      const directFound = directLookupNode.findProperty('background-color', { searchParents: false });
+      const cachedSlot = getDirectDeclarationSlot(
+        directLookupNode.directDeclarationLookupCache?.values().next().value?.publicMatch
+      );
+
+      const renderNode = rules([
+        decl({
+          name: any('background-color'),
+          value: any('red')
+        }, { assign: '+:' }),
+        decl({
+          name: any('background-color'),
+          value: any('foo')
+        }, { assign: '+:' })
+      ]);
+      const css = await renderNodeToString(renderNode, context);
+
+      expect(directFound?.value.value.valueOf()).toBe('foo');
+      expect(cachedSlot).toBe(1);
+      expect(css).toBeString(`
+        background-color: red, foo;
+      `);
     });
 
     it('findProperty uses direct Declaration lookup for covered unfiltered misses', async () => {

@@ -33,32 +33,31 @@ materialization wrapper for that semantic case.
    import/reference declaration hits and misses should carry visibility facts
    instead of discovering them by fallback behavior.
 
-2. **Property merge-chain occurrence slots.**
-   Property lookup returns `DirectDeclarationOccurrence`, but filtered
-   merge-chain/property assignment modes still need occurrence slots that carry
-   merge metadata and assignment normalization. Delete the remaining filtered
-   fallback for modeled property modes rather than shadowing it.
+2. **Property merge-chain occurrence follow-through.**
+   Property lookup returns `DirectDeclarationOccurrence`, and occurrences now
+   carry a `slot` for same-parent source ordering. Filtered merge-chain/
+   property assignment modes still need the remaining merge metadata and
+   assignment normalization before the filtered fallback can be deleted.
 
 3. **Declaration/property key versioning follow-through.**
    Reference handles now use `Rules.getDeclarationLookupVersion(key)`, but the
    new per-name version map must stay a freshness mechanism, not become a
    second registry. Remaining work is proving dynamic-name/import/rules
-   promotions and replacing the temporary ancestor-variable occurrence cache
-   guard with modeled frame-shadow freshness.
+   promotions and finishing property/declaration no-fallback proof.
 
-4. **Direct declaration strategy flattening.**
-   After child-entry scans are under control, collapse
-   `DeclarationLookupStrategy` object branching by assigning the lookup
-   functions and constants once per typed path.
+4. **Direct declaration result flattening.**
+   `DeclarationLookupStrategy` now carries preselected family predicates.
+   Remaining work is flattening result shapes so simple reads do not allocate
+   public materialization wrappers or fallback-only details.
 
 ### B. ScopeFrame, Current Cells, And Assignment
 
 1. **Frame-slot identity follow-through.**
    `BindingCell.lookupIdentity` and `ScopeFrame.currentBindingsVersion` now let
    cached variable handles validate without re-reading the current binding map.
-   Remaining work is replacing parent direct-occurrence guards with positive
-   frame-shadow freshness and keeping cold object materialization out of simple
-   reads.
+   Ancestor variable handles now carry positive current-binding freshness
+   facts. Remaining work is compressing that side state further and keeping
+   cold object materialization out of simple reads.
 
 2. **Evaluated-value cache prerequisites.**
    Cell/current-pointer lookup identity exists. Evaluated-value caching remains
@@ -69,8 +68,9 @@ materialization wrapper for that semantic case.
 
 1. **Callable coverage decisions.**
    `lookupScopeFrameCallable(...)` has `hit`, `miss`, and `uncovered` reasons.
-   Finish caller-specific handling for `candidate`, `child-surface`, and
-   `reference-import` so ordinary covered misses stop before direct crawl.
+   Candidate, child-surface, and reference-import reasons now route through
+   caller-specific decisions before generic direct crawl. Remaining work is
+   deleting the direct-crawl bridges where surface facts are complete.
 
 2. **Parameterized terminal namespace audit.**
    Mixin-ruleset calls with parameters now reject ruleset-only terminal
@@ -93,10 +93,11 @@ materialization wrapper for that semantic case.
    delete repeated hot-path preparation.
 
 2. **Leaky/fallback bridges.**
-   Shrink fallback cases one by one: variable live-only fallback, declaration
-   fallback frames, callable child/reference-import bridges, leaky rules, and
-   `searchScope` disqualification. Each bridge needs a deletion condition and a
-   covered-hit/miss spy.
+   Shrink fallback cases one by one: declaration fallback frames,
+   callable child/reference-import bridges, property filtered fallback, leaky
+   rules, and `searchScope` disqualification. Variable lookup now has one
+   modeled `live-current` lane instead of a duplicate live-only retry. Each
+   remaining bridge needs a deletion condition and a covered-hit/miss spy.
 
 3. **Final simple-read proof.**
    The lane is not done until ordinary static variable, property, declaration,
