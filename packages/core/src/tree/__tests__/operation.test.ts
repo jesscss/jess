@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { any, call, decl, dimension, list, num, op, Operation, paren, ref, rules, Rules, ruleset, vardecl } from '../index.js';
+import { any, call, Call, decl, dimension, List, list, num, op, Operation, paren, ref, rules, Rules, ruleset, vardecl } from '../index.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
@@ -301,6 +301,50 @@ describe('Operation', () => {
     expect(leftOperand.parent).toBe(operationNode);
     expect(operationNode.parent).toBeUndefined();
     expect(evald.parent).toBeUndefined();
+  });
+
+  it('owns unchanged source operands when materializing calc fallback operations', async () => {
+    const leftOperand = dimension([10, 'px']);
+    const rightOperand = dimension([0, 'px']);
+    const operationNode = op([
+      leftOperand,
+      '/',
+      rightOperand
+    ]);
+    const renderOperation = op([
+      dimension([10, 'px']),
+      '/',
+      dimension([0, 'px'])
+    ]);
+
+    const fallbackContext = new Context();
+    fallbackContext.opts.mathMode = 'always';
+    expect(fallbackContext.opts.unitMode ?? 'preserve').toBe('preserve');
+
+    const resolved = await operationNode.resolve(fallbackContext);
+
+    expect(renderOperation.render(fallbackContext)).toBe('calc(10px / 0px)');
+    expect(resolved.toTrimmedString()).toBe('calc(10px / 0px)');
+    expect(resolved.render(fallbackContext)).toBe('calc(10px / 0px)');
+    expect(resolved).toBeInstanceOf(Call);
+    if (!(resolved instanceof Call)) {
+      throw new Error('Expected calc fallback Call result');
+    }
+    expect(resolved.value.args).toBeInstanceOf(List);
+    const calcArg = resolved.value.args.value[0];
+    expect(calcArg).toBeInstanceOf(Operation);
+    if (!(calcArg instanceof Operation)) {
+      throw new Error('Expected calc fallback Operation argument');
+    }
+    expect(calcArg).not.toBe(operationNode);
+    expect(calcArg.value[0]).not.toBe(leftOperand);
+    expect(calcArg.value[2]).not.toBe(rightOperand);
+    expect(calcArg.evaluated).toBe(true);
+    expect(calcArg.value[0].evaluated).toBe(true);
+    expect(calcArg.value[2].evaluated).toBe(true);
+    expect(leftOperand.parent).toBe(operationNode);
+    expect(rightOperand.parent).toBe(operationNode);
+    expect(operationNode.evaluated).toBe(false);
   });
 
   it('normalizes slash-list variable refs inside calc while preserving direct calc arithmetic', async () => {

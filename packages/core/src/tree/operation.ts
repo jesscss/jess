@@ -47,13 +47,12 @@ export class Operation extends Node<OperationValue> {
     return node.inherit(this);
   }
 
-  private createCalcFallback(left: Node, right: Node, baseLeft: Node, baseRight: Node): Call {
-    const operationNode = (left === baseLeft && right === baseRight)
-      ? this
-      : this.withOperands(left, right);
+  private createCalcFallback(left: Node, right: Node): Call {
+    const operationNode = this.withOperands(left, right);
+    const [operationLeft, , operationRight] = operationNode.value;
     operationNode.evaluated = true;
-    left.evaluated = true;
-    right.evaluated = true;
+    operationLeft.evaluated = true;
+    operationRight.evaluated = true;
     return (new Call({ name: 'calc', args: list([operationNode]) })).inherit(this);
   }
 
@@ -145,7 +144,7 @@ export class Operation extends Node<OperationValue> {
         return out.inherit(this);
       } catch (error) {
         if (error instanceof TypeError) {
-          return this.createCalcFallback(left, right, sourceLeft, sourceRight);
+          return this.createCalcFallback(left, right);
         }
         throw error;
       }
@@ -242,7 +241,7 @@ export class Operation extends Node<OperationValue> {
         return out.inherit(this);
       } catch (error) {
         if (error instanceof TypeError) {
-          return this.createCalcFallback(left, right, sourceLeft, sourceRight);
+          return this.createCalcFallback(left, right);
         }
         throw error;
       }

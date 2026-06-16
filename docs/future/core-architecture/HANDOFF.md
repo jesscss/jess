@@ -529,7 +529,8 @@ shape current before commit.
    including `deriveAdditionSequence(...)`, `copyWithReusableLeaves(...)`, and
    output ownership after arithmetic/list operations.
 15. [ ] Finish `Operation` arithmetic materialization and preserve-mode calc
-   fallback ownership without adopting unchanged canonical operands.
+   fallback/materialization ownership without adopting unchanged canonical
+   operands.
 
    Current partial status: sync render/resolve operand evaluation now uses
    `evalImmediateSync(...)` for non-`F_MAY_ASYNC` operands instead of public
@@ -537,7 +538,10 @@ shape current before commit.
    longer leaks intermediate operand text into a caller-supplied explicit
    writer. `withOperands(...)` now owns unchanged source operands with
    `copyOwnedWithReusableLeaves(...)` instead of reusing source-free scalar
-   leaves as output operands. Preserve-mode `calc(...)` fallback ownership
+   leaves as output operands. Preserve-mode `calc(...)` fallback now always
+   builds an owned operation wrapper through `withOperands(...)` before marking
+   fallback operands evaluated, so unchanged source operands stay parented to
+   the canonical source operation. Broader arithmetic/list materialization
    remains open.
 
 Parked until the current `writeSyntax` focus ends:
@@ -604,32 +608,28 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Rules unprepared child render direct emission.
+Current pass: Operation calc fallback ownership.
 
 - New traversal: none. The change adds no loop, recursion, side-map lookup,
-  parent/source walk, or object scan. It removes the `writer.preview(...)`
-  capture around public child `Rules.render(...)` for the unprepared dynamic
-  child render path.
-- New node/materialization: none in runtime code. The focused test constructs a
-  counting writer, an empty root `Rules`, and sentinel `Error` instances only to
-  prove the branch does not enter public string transport.
-- Render path: child `Rules` render now sets up the child rules context and
-  calls `_emitRenderRulesBody(...)` directly, keeping the existing caller mark
-  only to discard genuinely empty child output. It no longer captures a child
-  render string through `writer.preview(...)` and re-emits that string.
+  parent/source walk, or object scan.
+- New node/materialization: preserve-mode calc fallback now always creates the
+  owned operation via the existing `withOperands(...)` boundary instead of
+  reusing `this` when evaluated operands match source operands. This is semantic
+  placement state for a public fallback `calc(...)` result, and it reuses the
+  same ownership path already used by changed-operand operations. The focused
+  test constructs a `Context` and sentinel `Error` instances only to pin the
+  public fallback shape without unsafe casts.
+- Render path: render/eval fallback still returns the same `Call('calc', ...)`
+  shape and string output; the change only prevents unchanged source operands
+  from being marked evaluated through the canonical operation.
 - Helper/API surface: no helper or public API was added.
-- Metadata mutations: the branch uses the existing `_setupContextForRules(...)`
-  and restores the saved render context on sync success, sync throw, and async
-  rejection. The new `try/catch` is exceptional cleanup for the context mutation
-  introduced by direct emission, not routine branch control. This is required
-  because the removed public render transport used `evalForRender(...)` to own
-  the same setup/restore boundary.
-- Evidence: focused Rules coverage proves an unprepared child `Rules` render
-  does not call child public `render(...)`, child public
-  `toTrimmedString(...)`, or `writer.preview(...)`, and restores the prior
-  root/rules context. Focused Rules/render-buffer/Declaration/Mixin coverage
-  passes.
-- Verdict: accepted as a bounded string-transport deletion. Broader Rules body
-  render, placement state, merge output, duplicate declaration materialization,
-  and root serializer capture remain open. No performance claim; performance
-  remains shelved because this was not a measured benchmark pass.
+- Metadata mutations: the evaluated flags now land on the owned fallback
+  operation and its owned operands. The source operation and unchanged canonical
+  operands remain unmarked and parented to the source.
+- Evidence: focused Operation/preserve-mode/Dimension tests pass. The new
+  Operation fixture pins that default unit mode remains `preserve`, preserves
+  the current `calc(10px / 0px)` fallback text, and asserts the fallback
+  operation/operands are owned rather than source-adopted.
+- Verdict: accepted as a bounded public materialization ownership fix. Broader
+  Operation arithmetic/list materialization remains open. No performance claim;
+  performance remains shelved because this was not a measured benchmark pass.
