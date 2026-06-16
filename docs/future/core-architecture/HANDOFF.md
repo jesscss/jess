@@ -10,6 +10,7 @@ Use the doc split:
 - `PERFORMANCE-HANDOFF.md`: benchmark protocol and performance evidence.
 - `NODE-REWRITE-TRACKER.md`: node-family rewrite status.
 - `BINDING-INDEX-PROPOSAL.md`: binding/index design target.
+- `BINDING-LOOKUP-REMAINING.md`: total remaining binding/lookup inventory.
 
 ## Focus
 
@@ -40,11 +41,15 @@ and consult evaluated/live binding state only when that state already exists.
 ## Working Rules
 
 - Work from repo evidence first.
-- A "full queue pass" means all active queue items below, not one micro-edit.
-- Do not call a pass complete after one or a few queue items. If any active
-  queue item remains unfinished at wrap-up, explicitly explain in the handoff
-  and final response why it was not finished and why you could not immediately
-  continue into it before stopping.
+- A "full queue pass" means an automated uninterrupted burn through every
+  active queue item below, not one micro-edit and not one commit-sized nibble.
+- Do not stop at a wrap-up point merely because one item passed tests. Continue
+  into the next queue item until the queue is empty, a semantic blocker is
+  proven, or the next item would conflict with uncommitted work from a parallel
+  agent.
+- If any active queue item remains unfinished at wrap-up, explicitly explain
+  in the handoff and final response which items remain, what blocked immediate
+  continuation, and why stopping was necessary.
 - Queue items must be whole tasks. Do not create one-line queue items.
 - Before ending a pass, seed the next queue with exactly 15 real
   binding/lookup tasks.
@@ -60,228 +65,137 @@ and consult evaluated/live binding state only when that state already exists.
 - Commit and push after a completed queue pass. Use `--no-verify` for commit
   and push in this branch because hooks have previously looped.
 
+## Automated Loop And Sub-Agents
+
+When the user says `continue`, `do all queue items`, or `complete the queue`,
+run this loop without asking for another permission ping:
+
+1. Snapshot `git status --short --branch`.
+2. Read the active queue and `BINDING-LOOKUP-REMAINING.md`.
+3. Dispatch sub-agents when available for independent slices:
+   declaration/property, callable/namespace, reference handles/plans,
+   import/reference visibility, and verification/review.
+4. Work locally on the critical-path item while sub-agents inspect or edit
+   disjoint owned files.
+5. Integrate returned work, run focused tests, then continue to the next item.
+6. Run commit gates only at a coherent batch boundary, not after every tiny
+   edit, unless a risky semantic split needs its own checkpoint.
+7. Update this handoff and the remaining-work inventory only with facts that
+   change the next worker's decisions.
+8. Commit and push with `--no-verify`.
+
+Sub-agent rules:
+
+- Prefer sub-agents for sidecar analysis, targeted implementation, and review
+  when their file ownership can be made disjoint.
+- Tell worker agents they are not alone in the codebase and must not revert
+  other workers' changes.
+- The controller owns final integration, gates, handoff, commit, and push.
+- Do not use sub-agents to avoid the critical path; keep moving locally while
+  they run.
+
 ## Current Architecture Baseline
 
-Registryless lookup is the active runtime direction.
+Registryless lookup is still the active runtime direction, but the scope is
+larger than the earlier "three passes" estimate. The old registry classes and
+`_indexRules()` lookup path are no longer the main blocker. The remaining work
+is finishing the binding-frame/direct-crawl replacement so covered simple paths
+do not enter fallback ladders, public materialization wrappers, unnecessary
+child scans, or broad invalidation lanes.
 
-- Covered simple callable lookup should resolve from `ScopeFrame` or direct
-  `Rules` lookup and return hit or miss without old lookup bridges.
-- Uncovered or complex shapes may route to direct tree search, but each bridge
-  needs a deletion condition.
-- Direct declaration lookup is per `Rules` and per key. It skips dynamic and
-  `setDefined` declaration names until promotion/registration makes them safe.
-- Callable lookup coverage is key-specific. An unprepared callable key is
-  `uncovered`; a prepared key with no hits is a covered miss.
-- Reference lookup carries prepared target shape when the target `Rules`
-  identity is known.
-- Current miss sentinel: `null` inside existing direct declaration and
-  callable lookup maps means the key was prepared and missed. Absent key means
-  uncovered.
-- Current prepared shape helper:
-  - `prepareRulesLookupShape(...)`
+Current hot evidence:
 
-Recent baseline commit: `054fc959` trimmed this handoff to active guidance.
-Recent passes moved simple callable/declaration lookup toward `ScopeFrame` and
-direct `Rules` search, removed old lookup bridges from covered paths, and
-stopped caching arrays produced by direct callable lookup.
-Latest pass deletes the dead last-callable cache surface, removes the raw
-`copyLiveBindingSlots(...)` helper, keeps live binding writes synchronized
-through `setScopeFrameLiveBinding(...)`, and names immutable direct-declaration
-miss states separately from mutable traversal state.
-Current passes store declaration occurrence identity inside direct declaration
-cache records, share those occurrence records with reference handles, delete
-the dead `RuntimeVarBinding` model, and use callable frame facts for guarded
-and recursive namespace paths before direct crawl.
-Latest passes make direct Rules/index and variable reference fallback return
-declaration occurrences, delete the unreachable direct `Rules` target branch,
-move selector attribute and setDefined internals off node-returning lookup
-helpers, move function return lookup to occurrences, and consume
-parent/fallback callable covered misses before direct crawl.
-Variable reference handles now have a variable-specific cached value type that
-excludes bare nodes.
-Reference result types are split by lookup family: declaration/property
-references return declaration occurrences, variable references return live
-binding handles or declaration occurrences, callable references return callable
-families, and direct target/index lookup is the only remaining broad node
-result lane. `Rules.find*` is now the cold node-materialization edge for direct
-declarations; `direct-rules-lookup.ts` exports occurrence-returning helpers
-only.
-Rules lookup handles now use a generic cached-miss sentinel; the scope-frame
-variable miss sentinel is only for live variable lookup. Reference lookup now
-selects a lookup-family strategy once and uses that for rules lookup and handle
-write validation. Callable frame uncovered results carry `frame`, `key`, or
-`child-surface` reason; direct callable crawl is gated to child-surface state.
-Reference lookup strategy selection is cached on the `Reference` node and
-guarded by the current lookup type. Callable namespace lookups now treat
-non-child-surface uncovered frame results as covered misses instead of falling
-through to direct crawl.
-The reference strategy cache now uses a single node slot; the strategy object
-carries its own lookup type for stale-type checks.
-Last full gate smoke was usable but not a speed claim:
-`mixins-guards.less` `30.37ms`, `scope-lookup-stress.less` `84.79ms`.
-Latest queue pass finished the prior handle/callable/direct-declaration queue:
-new source changes added public `Rules.findVariable` cold-path proof for
-covered variable handles and deleted dead handle writer call fields after
-`handleAccess` became the selected shape. Existing production tests/code
-covered the remaining stale items: separate callable miss surface facts,
-no-frame child-surface pruning, dynamic pending promotion, array-path handle
-identity, and registryless public `Rules.find*` cold paths.
-Current queue pass moved readonly assignment lookup off option mutation,
-deleted redundant callable frame-coverage writes, and purged stale registry
-fallback wording from the active handoff. Items that require broader semantic
-modeling were carried forward as new concrete tasks below.
-Latest queue pass names callable reference-import uncertainty as a
-`ScopeFrame` fact, keeps that path conservative instead of treating it as a
-covered child-surface miss, proves direct property lookup skips child rules
-whose visibility cannot contain properties, refreshes the active lookup
-benchmark leash, and records the property merge-chain occurrence-slot target.
-Dynamic pending declaration affected-key precision, keyed function invalidation,
-assignment current-cell-first writes, and handle allocation splitting remain
-larger semantic/measured cuts, not micro-edits.
-Latest queue pass adds handle-shape proof for stale lookup-type rejection and
-terminal mixin-only rejection, prebuilds the direct property child-visibility
-spy so it tests traversal instead of setup, and records that the
-`benchmark-v39.less` profile no longer exercises the lookup counters needed
-for direct declaration strategy splitting.
-Current queue pass removes the broad `_indexRules()` prep from variable
-lookup's scope-frame path. `getScopeFrame(..., false)` now builds only the
-static variable declaration buckets and cheap reference-import facts needed by
-variable lookup, so variable-family child visibility can skip child `Rules`
-without indexing or entering their bodies. The pass also adds readonly
-provenance coverage for static declaration cells and makes
-`profile-less-benchmark.mjs --fixture ... --compat=false` produce lookup
-counters for `scope-lookup-stress.less`.
-Latest queue pass removes `findFunction(...)`'s `_indexRules()` call because
-function lookup is a live/evaluated binding-map parent walk, then adds direct
-declaration crawl counters to the lookup stress profile. `_indexRules()` is
-now explicitly documented as legacy lookup debt, not the target architecture.
-Current queue pass removes the remaining production `_indexRules()` calls from
-callable ruleset path helpers. Exact and compound-prefix ruleset namespace
-lookup now reverse-scan the current tree and use carried child-surface flags
-without building broad indexes.
-Latest queue pass deletes the legacy `_indexRules()` method, `_indexing`, and
-`rulesIndexed` state entirely. Direct child-surface lookup now relies on direct
-tree scans and carried child-surface flags rather than indexed/unindexed
-sentinels.
-Current queue pass folds pending dynamic declaration collection into
-`prepareScopeFrameDeclarationIndex(...)`, so cold scope-frame declaration prep
-does not rescan `Rules.value` just to populate `pendingDeclarationNames`.
-An attempted child-entry no-surface shortcut was rejected by import/optional
-scope tests because `hasDirectChildRuleSurface` is not yet a complete proof for
-all prepared/imported child surfaces. The refreshed stress profile still points
-at direct declaration child-entry work: `declaration.cacheMiss` `16560`,
-`declaration.childEntryEntered` `11520`, and
-`declaration.childEntriesScanned` `10530`.
-Latest queue pass makes scope-frame variable lookup key-aware for unresolved
-declaration-name state. Static unresolved declaration names now only uncover
-lookups for their own key; unrelated misses can stay covered. Still-dynamic
-names remain conservative and uncover lookup because resolving them belongs to
-registration/eval, not `ScopeFrame` lookup.
-Current queue pass makes resolved dynamic-name promotion invalidate direct
-declaration bucket/cache state by resolved key instead of dropping all direct
-declaration maps. `Rules.lookupVersion` still increments because reference
-handles are versioned at the whole-rules level.
-Latest queue pass splits function binding versioning from broad
-`Rules.lookupVersion`. Function handles now compare against per-function-key
-versions, so unrelated declaration/callable changes and unrelated function
-registrations do not invalidate cached function handles.
-Latest queue pass moves variable reference frame prep to
-`getScopeFrame(undefined, false)`, splits unconsumed callable candidates from
-child/reference-import uncertainty, and makes covered `setDefined`
-VarDeclaration writes target the current live/modeled binding cell first. Tree
-occurrence lookup is only the fallback for uncovered or unmodeled cases.
-The same pass audited cold `Rules.find*` wrappers and found repo usage still
-needs them as thin node-materialization edges. A declaration child-surface
-family-bit attempt was rejected: it regressed
-`rules.test.ts` `"doesn't preserve readonly later"` during registration-time
-`setDefined`, so that work must be redesigned around registration-complete
-facts rather than kept as a partial optimization.
-Current queue pass splits variable lookup parent-frame auto-wiring from
-callable coverage prep, keeps `setDefined` live-binding writes from creating
-scope frames just to probe modeled state, and versions callable reference
-handles on a callable-surface lane instead of broad `Rules.lookupVersion`.
-Callable handles now survive unrelated declaration/function writes and go stale
-when callable surfaces change. A reference-import recursive-scan cut was
-inspected but not attempted because it still crosses registration/import
-semantics.
+- `scope-lookup-stress.less` still reports
+  `declaration.cacheMiss: 16560`,
+  `declaration.childEntryEntered: 11520`, and
+  `declaration.childEntriesScanned: 10530`.
+- Function handles are per-key; callable handles use
+  `Rules.callableLookupVersion`.
+- Variable/property/declaration handles still use broad `Rules.lookupVersion`.
+- Reference lookup still allocates handle/access/context shapes around some
+  typed paths.
+- Callable namespace lookup still has direct-crawl bridges for child-surface,
+  candidate, terminal, and reference-import cases.
+
+Total remaining scope lives in `BINDING-LOOKUP-REMAINING.md`. Treat that file
+as the burn-down inventory; treat the queue below as the next executable slice.
 
 ## Active Queue
 
 Complete every item in this queue before committing the next pass.
 
-1. [ ] Replace callable namespace remainder arrays with an offset/path view.
-Scope: `collectKeyRemainder(...)`, `getCallableLookupKeyRemainder(...)`,
-recursive namespace lookup, and reference callable handles. Goal: avoid
-rebuilding remainder arrays/strings end-to-end; do not add a cache map that
-costs more than it saves. Acceptance: repeated array-path lookup proof plus
-focused namespace tests.
+1. [ ] Take a fresh direct-lookup profile baseline for the next pass. Scope:
+`scripts/profile-less-benchmark.mjs`, `scope-lookup-stress.less`, and direct
+lookup counters. Goal: know whether the pass moved child-entry scans, cache
+misses, or `Reference.evalNode`. Acceptance: baseline counters recorded before
+the first semantic edit.
 
-2. [ ] Split or delete handle-access object allocation. Scope:
-`getRulesLookupHandleAccess(...)`, reference handle write/read sites, and
-stress profile counters. Goal: remove transient access objects when scalar
-locals or existing handle fields are simpler. Acceptance: measured/audited
-before-after note; no speed claim without stable signal.
+2. [ ] Redesign declaration child-surface family facts around
+registration-complete state. Scope: `registerNode(...)`,
+`collectDirectDeclarationChildEntries(...)`, child `Rules` adoption, import
+boundaries, and `setDefined` registration. Goal: know whether a child can
+contain variable and/or property hits before allocating/entering child entries.
+Acceptance: child-surface tests plus `"doesn't preserve readonly later"`.
 
-3. [ ] Add explicit direct declaration visibility mode for imports/reference.
-Scope: declaration lookup options, reference imports, compose/import
-boundaries, and direct child entries. Goal: direct lookup should carry
-visibility facts instead of rediscovering them through fallback behavior.
-Acceptance: focused import/reference declaration matrix plus fallback spy.
+3. [ ] Replace declaration child-entry scans with family-specific carried
+facts where possible. Scope: `findWithinScopeSurface(...)`,
+`directDeclarationChildEntries`, and `canEnter*ForLookup(...)`. Goal: simple
+exact variable/property misses skip child surfaces that cannot contain that
+family. Acceptance: direct lookup counter comparison for
+`childEntriesScanned`/`childEntryEntered`.
 
-4. [ ] Implement property merge-chain occurrence slots. Scope: property
+4. [ ] Add explicit direct declaration visibility mode for imports/reference.
+Scope: `DeclarationLookupStrategy`, reference imports, compose/import
+boundaries, optional/public visibility, and direct child entries. Goal:
+visibility facts travel with direct lookup rather than being rediscovered by
+fallback behavior. Acceptance: focused import/reference declaration matrix plus
+fallback spy.
+
+5. [ ] Carry reference-import facts without recursive child-body scans. Scope:
+`rulesMayContainReferenceImports(...)`,
+`prepareScopeFrameDeclarationIndex(...)`, reference-mode child `Rules`, and
+style imports. Goal: carry/adopt the fact once instead of recursively
+rediscovering it during lookup prep. Acceptance: focused reference-import tests
+plus traversal spy/counter.
+
+6. [ ] Prove reference-import callable boundary for namespace lookups. Scope:
+reference imports, namespace callable lookup, fallback frames, and covered
+misses. Goal: reference-import uncertainty stays conservative without
+poisoning covered frame/key misses. Acceptance: namespace/fallback spy tests.
+
+7. [ ] Convert callable candidate uncertainty into caller-specific decisions.
+Scope: `ScopeFrameCallableLookupResult.reason === 'candidate'`, namespace
+lookup, terminal mixin-only lookup, and direct bridge gates. Goal: candidate
+uncertainty routes through namespace logic instead of generic child-surface or
+reference-import bridges. Acceptance: namespace candidate and terminal
+mixin-only tests.
+
+8. [ ] Make parameterized terminal namespace lookup mixin-only at the terminal
+segment. Scope: recursive mixin-ruleset namespace lookup, ruleset container
+lookup, and `terminalMixinOnly`. Goal: keep rulesets as namespace containers
+but stop exact ruleset terminals when params require mixins. Acceptance:
+mixin-ruleset calls-with-args fixtures and recursive namespace tests.
+
+9. [ ] Make `setDefined` writes update only semantically current live/current
+cells before occurrence fallback. Scope: `lookupScopeFrameVariable(...)`,
+`setDefined`, declaration cells, loop/mixin live bindings, and readonly
+propagation. Goal: stop using static declaration buckets as an assignment
+registry. Acceptance: loop/mixin live-binding fixtures plus static
+readonly/setDefined fixtures.
+
+10. [ ] Implement property merge-chain occurrence slots. Scope: property
 declaration occurrences, merge metadata, assignment normalization, and property
 lookup tests. Goal: delete remaining filtered property fallback without adding
 a second name registry. Acceptance: merge-chain fixtures resolve by direct
 occurrence lookup.
 
-5. [ ] Prove reference-import callable boundary for namespace lookups. Scope:
-reference imports, namespace callable lookup, fallback frames, and covered
-misses. Goal: reference-import uncertainty remains conservative but does not
-poison covered frame/key misses. Acceptance: namespace/fallback spy tests.
-
-6. [ ] Carry reference-import facts without recursive child-body scans. Scope:
-`rulesMayContainReferenceImports(...)`,
-`prepareScopeFrameDeclarationIndex(...)`, reference-mode child `Rules`, and
-style imports. Goal: carry/adopt the fact once instead of recursively
-rediscovering it during lookup prep. Acceptance: focused reference-import
-tests plus traversal spy/counter.
-
-7. [ ] Replace positive direct child-entry arrays with sparse carried facts.
-Scope: `directChildRuleEntries`, `directDeclarationChildEntries`,
-`hasExact*ChildSurface`, and lookup child-entry scans. Goal: avoid building
-entry arrays for scopes where per-type child-surface facts can prove the
-requested lookup cannot enter. Acceptance: child surface tests plus direct
-lookup counter comparison.
-
-8. [ ] Collapse direct declaration strategy object branching. Scope:
-`DeclarationLookupStrategy`, `findWithinScopeSurface(...)`, and
-variable/property/any declaration callers. Goal: assign lookup functions once
-per path instead of branching on strategy fields in the inner crawl.
-Acceptance: focused tests plus direct lookup counter comparison.
-
-9. [ ] Split declaration/property handle versioning by lookup key or prove
+11. [ ] Split declaration/property handle versioning by lookup key or prove
 global versioning is required. Scope: `ReferenceRulesLookupHandle`,
 `Rules.lookupVersion`, direct declaration cache keys, variable/property handle
 writes, and dynamic-name promotion. Goal: affected declaration invalidation
-should not invalidate unrelated declaration/property handles unless a semantic
+does not invalidate unrelated declaration/property handles unless a semantic
 dependency proves it must. Acceptance: handle stale/fresh tests for affected
 and unaffected declaration keys.
-
-10. [ ] Split callable handle versioning by callable key if the broad
-callable-surface lane proves noisy. Scope: callable lookup handles,
-`callableLookupCache`, child-surface invalidation, and
-`Rules.callableLookupVersion`. Goal: keep the current callable-surface version
-unless measured/profiled evidence shows same-surface unrelated callable writes
-are a real invalidation cost. Acceptance: stale/fresh tests for affected and
-unaffected callable keys, or a profile note proving broad callable-surface
-versioning is the right tradeoff.
-
-11. [ ] Redesign declaration child-surface family facts around registration
-completion. Scope: `registerNode(...)`, `_stampRegistrationMaps(...)`,
-`collectDirectDeclarationChildEntries(...)`, and registration-time
-`setDefined`. Goal: skip variable/property-impossible child surfaces before
-entry allocation without regressing `"doesn't preserve readonly later"`.
-Acceptance: allocation spy plus that readonly fixture in the focused gate.
 
 12. [ ] Remove duplicate callable cache/frame invalidation writes after
 `callableLookupVersion` split. Scope: `registerNode(...)`,
@@ -290,45 +204,37 @@ tests. Goal: callable-surface writes invalidate exactly the callable state
 they must, while declaration-only writes do not pay callable cache churn.
 Acceptance: callable handle tests plus focused callable/frame coverage tests.
 
-13. [ ] Make `setDefined` live-binding writes update only live cells when
-declaration cells are not semantically current. Scope: `lookupScopeFrameVariable`
-options, `setDefined`, declaration cells, loop/mixin live bindings, and
-readonly propagation. Goal: keep the current live-binding target crisp and
-avoid treating static declaration buckets as an assignment registry when they
-are only fallback tree state. Acceptance: loop/mixin live-binding fixtures plus
-static readonly/setDefined fixtures.
+13. [ ] Replace callable namespace remainder arrays with an offset/path view.
+Scope: `collectKeyRemainder(...)`, `getCallableLookupKeyRemainder(...)`,
+recursive namespace lookup, and reference callable handles. Goal: avoid
+rebuilding remainder arrays/strings end-to-end after namespace semantics are
+stable. Acceptance: repeated array-path lookup proof plus focused namespace
+tests.
 
-14. [ ] Convert callable candidate uncertainty into caller-specific decisions.
-Scope: `ScopeFrameCallableLookupResult.reason === 'candidate'`, namespace
-lookup, terminal mixin-only lookup, and direct bridge gates. Goal: candidate
-uncertainty routes through namespace-specific logic without falling into
-child-surface or reference-import bridges. Acceptance: namespace candidate and
-terminal mixin-only tests.
+14. [ ] Split or delete handle-access object allocation. Scope:
+`getRulesLookupHandleAccess(...)`, reference handle read/write sites, and
+stress profile counters. Goal: remove transient access objects when scalar
+locals or existing handle fields are simpler. Acceptance: measured/audited
+before-after note; no speed claim without stable signal.
 
-15. [ ] Refresh the lookup stress profile after the next child-surface or
-handle-version cut that touches direct declaration traversal. Scope:
-`scripts/profile-less-benchmark.mjs`, `scope-lookup-stress.less`, direct
-declaration counters, and hotpath smoke. Goal: compare
-`declaration.childEntriesScanned`, `declaration.childEntryEntered`, and
-`Reference.evalNode` after a real direct-declaration structural change.
-Acceptance: profile output recorded in this handoff or
-`PERFORMANCE-HANDOFF.md`; no speed claim from one-iteration smoke.
+15. [ ] Refresh profile and reseed from `BINDING-LOOKUP-REMAINING.md`. Scope:
+direct lookup profile, one-iteration hotpath smoke, handoff, and remaining
+inventory. Goal: record what changed, explain any unfinished items, and seed
+the next 15 real tasks from the burn-down inventory. Acceptance: profile
+output recorded; no speed claim from one-iteration smoke.
 
 ## Unfinished-Item Exception
 
-This pass did not complete the full active queue. It completed prior items 10,
-12, and 13, and item 15 for the callable-handle slice through the required
-profile/hotpath smoke. Prior items 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, and 14
-remain because they require broader semantic rewrites or measured allocation
-work than could be safely finished after the callable/setDefined changes and
-focused gate repair. Immediate continuation stopped to run the full gates,
-update this handoff honestly, commit, and push a green slice instead of
-leaving mixed lookup semantics uncommitted.
+This docs-only scoping pass did not implement the active queue. It corrected
+the remaining-work model, added `BINDING-LOOKUP-REMAINING.md`, and reseeded the
+next active queue from dependency order. Immediate continuation stopped because
+the user's request was to scope and update guidance before more implementation.
 
 ## Backlog Sources
 
 When the active queue is empty, pull the next binding/lookup task from:
 
+- `BINDING-LOOKUP-REMAINING.md` for the total remaining burn-down inventory.
 - `BINDING-INDEX-PROPOSAL.md` for the larger binding-index migration agenda.
 - `PERFORMANCE-HANDOFF.md` for measured lookup/profile follow-ups.
 - `AGGRESSIVE-CUTTING-REVIEW.md` for rejected patch shapes to avoid.
