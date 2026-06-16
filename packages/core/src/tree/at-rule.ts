@@ -1233,23 +1233,13 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         output: hasHoistedRulesetParent ? { hoistToRoot: true } : undefined
       })
     };
-    let out: MaybePromise<AtRule | Nil>;
-    try {
-      out = this.evalBodyNode(context, record);
-    } catch (error) {
-      throw error;
-    }
+    const out = this.evalBodyNode(context, record);
     if (isThenable(out)) {
-      return out.then(
-        (value) => {
-          return value instanceof AtRule
-            ? createAtRuleEvalResultNode(this, record)
-            : value;
-        },
-        (error) => {
-          throw error;
-        }
-      );
+      return out.then((value) => {
+        return value instanceof AtRule
+          ? createAtRuleEvalResultNode(this, record)
+          : value;
+      });
     }
     return out instanceof AtRule
       ? createAtRuleEvalResultNode(this, record)

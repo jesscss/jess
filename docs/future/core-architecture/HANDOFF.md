@@ -329,7 +329,9 @@ shape current before commit.
    syntax directly and keeps the existing localized mark only for the needed
    string boundary. Nested `@layer` registration now reads at-rule name value
    identity directly instead of calling public name stringification while
-   walking active parent layer records.
+   walking active parent layer records. `evalNode(...)` no longer wraps
+   `evalBodyNode(...)` in a catch/rethrow or async rejection handler that only
+   rethrows.
 4. [ ] Finish `Ruleset.getHeaderString(...)` capture removal for frame
    render/comparison paths and same-property duplicate declaration pre-render.
 5. [ ] Finish `Declaration` custom-property raw-source, merge-state, internal
@@ -534,28 +536,18 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Call.writeSyntax(...)` simple source arg trim-mark cut.
+Current pass: `AtRule.evalNode(...)` no-op error-control scaffold cut.
 
-- New traversal: `Call.writeSimpleSourceArgs(...)` adds two straight loops over
-  the existing source arg list on the cold public source serialization path:
-  one loop proves every arg is a no-trivia `Num`/`Dimension`/`Color`/`Bool`,
-  and one loop writes those args with comma separators. The fact cannot be
-  carried from parser/adoption because this is a public serialization call that
-  may receive mutated nodes/options; the proof is local and bails out to the
-  existing mark/trim path for any trivia, custom separator, or non-contract arg.
+- New traversal: none.
 - New node/materialization: none.
-- Render path: unchanged. `render(...)` and dynamic CSS-call arg rendering keep
-  their existing value-selection paths; this cut only removes an inner
-  source-serialization mark for public `toTrimmedString(...)`/`writeSyntax(...)`.
-- Helper/API surface: one private helper added and scoped to `Call`. It avoids
-  the inner writer mark/readback for a common source arg contract and preserves
-  the old fallback for arbitrary args.
+- Render path: unchanged. This deletes eval error-control scaffolding only; no
+  render path resolves arrays/nodes to stringify.
+- Helper/API surface: none added.
 - Metadata mutations: none.
-- Error/control flow: no production error objects or throw/catch control flow
-  added.
-- Evidence: focused test `streams canonical function arguments without capture
-  scaffolding` now proves `rgb(100, 100, 100)` source serialization uses only
-  the outer public `toTrimmedString(...)` mark/readback and no inner arg-list
-  trim mark.
-- Verdict: accepted as a bounded cold source-stringification cut. No
-  performance claim; the normal render hot path is intentionally unchanged.
+- Error/control flow: removed one `try/catch` that only rethrew from
+  `evalBodyNode(...)` and one promise rejection handler that only rethrew.
+- Evidence: focused AtRule error-restoration tests prove synchronous and async
+  body-eval failures still restore runtime state after the deletion. Full
+  `at-rule.test.ts` passed.
+- Verdict: accepted as a bounded eval branch-ladder deletion. No performance
+  claim; performance remains shelved.
