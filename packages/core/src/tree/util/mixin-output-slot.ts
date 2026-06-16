@@ -8,6 +8,8 @@ export type RulesEntryLike = {
   node: Rules;
   rulesVisibility?: RulesOptions['rulesVisibility'];
   readonly?: boolean;
+  hasDeclarationSurface?: boolean;
+  hasVarDeclarationSurface?: boolean;
 };
 
 export type RulesEntryVisibility = {

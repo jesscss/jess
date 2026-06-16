@@ -467,6 +467,36 @@ function rulesMayContainExactRulesetSurface(rules: Rules): boolean {
   return false;
 }
 
+function rulesMayContainDeclarationSurface(rules: Rules): boolean {
+  const value = rules.value;
+  for (let i = 0; i < value.length; i++) {
+    const node = value[i]!;
+    if (isNode(node, N.Declaration) && !isNode(node, N.VarDeclaration) && !node.options?.setDefined) {
+      return true;
+    }
+    const child = childRulesOf(node);
+    if (child && rulesMayContainDeclarationSurface(child)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function rulesMayContainVarDeclarationSurface(rules: Rules): boolean {
+  const value = rules.value;
+  for (let i = 0; i < value.length; i++) {
+    const node = value[i]!;
+    if (isNode(node, N.VarDeclaration) && !node.options?.setDefined) {
+      return true;
+    }
+    const child = childRulesOf(node);
+    if (child && rulesMayContainVarDeclarationSurface(child)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function rulesMayContainExtends(rules: Rules): boolean {
   if (rules._hasExtends) {
     return true;
@@ -716,6 +746,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   directChildRuleEntries: Array<RulesEntryLike> | null | undefined;
   directDeclarationChildEntries: Array<RulesEntryLike> | null | undefined;
   hasDirectChildRuleSurface = false;
+  hasDeclarationChildSurface = false;
+  hasVarDeclarationChildSurface = false;
   hasExactCallableChildSurface = false;
   hasExactMixinChildSurface = false;
   hasExactRulesetChildSurface = false;
@@ -801,6 +833,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.directChildRuleEntries = undefined;
     this.directDeclarationChildEntries = undefined;
     this.hasDirectChildRuleSurface = false;
+    this.hasDeclarationChildSurface = false;
+    this.hasVarDeclarationChildSurface = false;
     this.hasExactCallableChildSurface = false;
     this.hasExactMixinChildSurface = false;
     this.hasExactRulesetChildSurface = false;
@@ -1282,10 +1316,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!child) {
         continue;
       }
+      const hasDeclarationSurface = rulesMayContainDeclarationSurface(child);
+      const hasVarDeclarationSurface = rulesMayContainVarDeclarationSurface(child);
+      this.hasDeclarationChildSurface ||= hasDeclarationSurface;
+      this.hasVarDeclarationChildSurface ||= hasVarDeclarationSurface;
       (out ??= []).push({
         node: child,
         rulesVisibility: this.getDirectChildRulesVisibility(child),
-        readonly: Boolean(child.options.readonly)
+        readonly: Boolean(child.options.readonly),
+        hasDeclarationSurface,
+        hasVarDeclarationSurface
       });
     }
     this.directDeclarationChildEntries = out ?? null;
@@ -1302,6 +1342,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     readonly = Boolean(child.options.readonly)
   ): void {
     this.hasDirectChildRuleSurface = true;
+    const hasDeclarationSurface = rulesMayContainDeclarationSurface(child);
+    const hasVarDeclarationSurface = rulesMayContainVarDeclarationSurface(child);
+    this.hasDeclarationChildSurface ||= hasDeclarationSurface;
+    this.hasVarDeclarationChildSurface ||= hasVarDeclarationSurface;
     if (this.directDeclarationChildEntries === undefined) {
       return;
     }
@@ -1310,7 +1354,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     entries.push({
       node: child,
       rulesVisibility: visibility,
-      readonly
+      readonly,
+      hasDeclarationSurface,
+      hasVarDeclarationSurface
     });
   }
 
@@ -2786,24 +2832,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   registerNode(node: Node, options?: Record<string, any>, context?: Context) {
     this.lookupVersion++;
-    const rebuildCallableCache = this.callableLookupCache !== undefined || this._scopeFrame !== undefined;
     const directChildRules = childCallableRulesOf(node);
     const affectsCallableLookup = (
       isNode(node, N.Mixin | N.Ruleset | N.Rules)
       || Boolean(directChildRules && !isNode(node, N.Rules))
       || node.type === 'StyleImport'
     );
+    const rebuildCallableCache = affectsCallableLookup && (this.callableLookupCache !== undefined || this._scopeFrame !== undefined);
     if (affectsCallableLookup) {
       this.callableLookupVersion++;
-    }
-    this.callableLookupCache = undefined;
-    if (this._scopeFrame) {
-      this._scopeFrame.callableBucketsByName = undefined;
-      this._scopeFrame.callablesCovered = false;
-      this._scopeFrame.callableMissesCovered = false;
-      this._scopeFrame.callableMissCoverageKnown = false;
-      this._scopeFrame.mixinCallableMissesCovered = false;
-      this._scopeFrame.mixinCallableMissCoverageKnown = false;
+      this.callableLookupCache = undefined;
+      if (this._scopeFrame) {
+        this._scopeFrame.callableBucketsByName = undefined;
+        this._scopeFrame.callablesCovered = false;
+        this._scopeFrame.callableMissesCovered = false;
+        this._scopeFrame.callableMissCoverageKnown = false;
+        this._scopeFrame.mixinCallableMissesCovered = false;
+        this._scopeFrame.mixinCallableMissCoverageKnown = false;
+      }
     }
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;

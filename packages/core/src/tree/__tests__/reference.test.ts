@@ -3260,6 +3260,12 @@ describe('reference', () => {
       await root.eval(context);
       root.getScopeFrame();
       root.collectDirectDeclarationChildEntries();
+      expect(root.hasDeclarationChildSurface).toBe(false);
+      expect(root.hasVarDeclarationChildSurface).toBe(true);
+      expect(root.directDeclarationChildEntries?.[0]).toMatchObject({
+        hasDeclarationSurface: false,
+        hasVarDeclarationSurface: true
+      });
 
       const originalValue = childRules.value;
       Object.defineProperty(childRules, 'value', {
@@ -3293,6 +3299,12 @@ describe('reference', () => {
       const root = rules([childRules]);
       await root.eval(context);
       root.collectDirectDeclarationChildEntries();
+      expect(root.hasDeclarationChildSurface).toBe(true);
+      expect(root.hasVarDeclarationChildSurface).toBe(false);
+      expect(root.directDeclarationChildEntries?.[0]).toMatchObject({
+        hasDeclarationSurface: true,
+        hasVarDeclarationSurface: false
+      });
 
       const originalValue = childRules.value;
       Object.defineProperty(childRules, 'value', {
@@ -4736,11 +4748,16 @@ describe('reference', () => {
         const first = lookupRef.eval(context);
         expect(first).toBeDefined();
         expect(callableLookups).toBe(1);
+        const callableCache = node.callableLookupCache;
+        const callableBuckets = node._scopeFrame?.callableBucketsByName;
+        expect(callableCache).toBeDefined();
 
         node.push(decl({ name: 'unrelated', value: any('1') }));
         const second = lookupRef.eval(context);
         expect(second).toBeDefined();
         expect(callableLookups).toBe(1);
+        expect(node.callableLookupCache).toBe(callableCache);
+        expect(node._scopeFrame?.callableBucketsByName).toBe(callableBuckets);
 
         node.setFunctionBinding('unrelated-fn', new JsFunction({
           name: 'unrelated-fn',

@@ -124,6 +124,32 @@ function getDeclarationVisibility(
     : rules.options.rulesVisibility?.[strategy.visibilityKey];
 }
 
+function childEntryMayContainLookupFamily(
+  entry: { hasDeclarationSurface?: boolean; hasVarDeclarationSurface?: boolean },
+  strategy: DeclarationLookupStrategy
+): boolean {
+  if (strategy.visibilityKey === 'VarDeclaration') {
+    return entry.hasVarDeclarationSurface !== false;
+  }
+  if (strategy.visibilityKey === 'Declaration') {
+    return entry.hasDeclarationSurface !== false;
+  }
+  return entry.hasDeclarationSurface !== false || entry.hasVarDeclarationSurface !== false;
+}
+
+function scopeMayContainChildLookupFamily(
+  scope: Rules,
+  strategy: DeclarationLookupStrategy
+): boolean {
+  if (strategy.visibilityKey === 'VarDeclaration') {
+    return scope.hasVarDeclarationChildSurface;
+  }
+  if (strategy.visibilityKey === 'Declaration') {
+    return scope.hasDeclarationChildSurface;
+  }
+  return scope.hasDeclarationChildSurface || scope.hasVarDeclarationChildSurface;
+}
+
 function passesDeclarationFilter(
   node: Node,
   key: string,
@@ -546,12 +572,21 @@ function findWithinScopeSurface(
     writeCachedMatch(scope, cacheKey, state);
     return state;
   }
+  if (!scopeMayContainChildLookupFamily(scope, strategy)) {
+    countDirectLookup?.('declaration.childEntriesFamilySkip');
+    writeCachedMatch(scope, cacheKey, state);
+    return state;
+  }
 
   countDirectLookup?.('declaration.childEntriesScanned');
   const lookupType = strategy.lookupVisibility;
   const context = options.context;
   for (let i = childEntries.length - 1; i >= 0; i--) {
     const entry = childEntries[i]!;
+    if (!childEntryMayContainLookupFamily(entry, strategy)) {
+      countDirectLookup?.('declaration.childEntryFamilySkip');
+      continue;
+    }
     if (!canEnterRulesEntryForLookup(entry, {
       type: lookupType,
       hasTarget: options.hasTarget

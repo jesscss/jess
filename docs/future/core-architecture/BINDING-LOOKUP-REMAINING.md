@@ -26,33 +26,25 @@ materialization wrapper for that semantic case.
 
 ### A. Direct Declaration And Property Lookup
 
-1. **Registration-complete child-surface facts.**
-   `findWithinScopeSurface(...)` still enters `directDeclarationChildEntries`
-   and then filters by `canEnterRulesEntryForLookup(...)` and
-   `canEnterMixinOutputForLookup(...)`. The profile leash still points at
-   `declaration.childEntriesScanned` and `declaration.childEntryEntered`.
-   Target files: `packages/core/src/tree/util/direct-rules-lookup.ts`,
-   `packages/core/src/tree/rules.ts`, and child-surface tests.
-
-2. **Explicit declaration visibility/import modes.**
+1. **Explicit declaration visibility/import modes.**
    `DeclarationLookupStrategy` carries visibility pieces, but import/reference
    mode is not yet a complete first-class direct lookup mode. Covered
    import/reference declaration hits and misses should carry visibility facts
    instead of discovering them by fallback behavior.
 
-3. **Property merge-chain occurrence slots.**
+2. **Property merge-chain occurrence slots.**
    Property lookup returns `DirectDeclarationOccurrence`, but filtered
    merge-chain/property assignment modes still need occurrence slots that carry
    merge metadata and assignment normalization. Delete the remaining filtered
    fallback for modeled property modes rather than shadowing it.
 
-4. **Declaration/property key versioning.**
+3. **Declaration/property key versioning.**
    Variable/property/declaration handles still depend on broad
    `Rules.lookupVersion`. Split key/family versions only when the affected-key
    semantics are clear enough to prove unrelated writes keep cached handles
    fresh.
 
-5. **Direct declaration strategy flattening.**
+4. **Direct declaration strategy flattening.**
    After child-entry scans are under control, collapse
    `DeclarationLookupStrategy` object branching by assigning the lookup
    functions and constants once per typed path.
@@ -98,12 +90,6 @@ materialization wrapper for that semantic case.
    recursive namespace helpers still rebuild arrays/strings. Replace with an
    offset/path view after namespace semantics are stable.
 
-13. **Callable cache/frame invalidation.**
-   `callableLookupVersion` exists, but `registerNode(...)` still clears
-   callable cache/frame state broadly. Remove duplicate invalidation first;
-   split callable versions by key only if profiling proves the broad callable
-   lane is noisy.
-
 ### D. Reference Handles And Fallback Bridges
 
 14. **Handle-access allocation.**
@@ -131,7 +117,7 @@ materialization wrapper for that semantic case.
 
 ## Dependency Order
 
-1. Child/reference/import coverage facts: clusters A1, A2, C9, C10.
+1. Child/reference/import coverage facts: clusters A1, C9, C10.
 2. Assignment/current-cell semantics: cluster B6.
 3. Property and declaration occurrence/versioning: clusters A3, A4.
 4. Callable namespace semantics: clusters C11, C12.
