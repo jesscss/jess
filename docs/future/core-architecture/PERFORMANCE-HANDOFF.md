@@ -3871,6 +3871,28 @@ Hotpath status:
 Interpretation: leash status only, not a speed claim. This is a public
 stringification transport cut; three fixtures were unstable.
 
+### Sequence Single-Item Buffer Sink Fix
+
+Date: 2026-06-15.
+
+Change: `Sequence.renderResolvedValue(...)` no longer passes an explicit caller
+writer into single-child render when a render buffer is the requested sink. The
+child render result is written once to the buffer, keeping buffer-only render
+from also mutating an unrelated writer. `List` was checked for the same leak;
+its buffer path already strips explicit writers through
+`prepareBufferPrintState(...)`.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `15.32ms` unstable, `import-reference` median
+  `20.29ms` usable, `mixins-guards` median `16.24ms` usable,
+  `extend-chaining` median `5.40ms` usable, and `media` median `5.30ms`
+  unstable.
+
+Interpretation: leash status only, not a speed claim. This is a
+sink-correctness and staging cleanup; two fixtures were unstable.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

@@ -429,6 +429,37 @@ describe('Sequence', () => {
     expect(writer.marks).toBe(1);
   });
 
+  it('keeps single-item sequence buffer output out of explicit writers', () => {
+    const buffer = createRenderBuffer('flat');
+    const writer = new CountingWriter();
+    const sequenceNode = seq([any('left')]);
+
+    expect(sequenceNode.render(context, buffer, { writer })).toBe('left');
+    expect(buffer.parts).toEqual(['left']);
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
+  it('keeps resolved single-item sequence buffer output out of explicit writers', async () => {
+    const root = rules([
+      vardecl({
+        name: any('item'),
+        value: any('resolved')
+      })
+    ]);
+    await setEvaluatedRoot(context, root);
+    const buffer = createRenderBuffer('flat');
+    const writer = new CountingWriter();
+    const sequenceNode = seq([ref({ key: 'item' }, { type: 'variable' })]);
+
+    expect(await Promise.resolve(sequenceNode.render(context, buffer, { writer }))).toBe('resolved');
+    expect(buffer.parts).toEqual(['resolved']);
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
   it('keeps source sequence child containers canonical after resolve(context)', async () => {
     const root = rules([
       vardecl({

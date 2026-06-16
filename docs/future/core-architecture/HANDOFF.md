@@ -370,6 +370,15 @@ shape current before commit.
 13. [ ] Finish `List`/`Sequence` public render string-return compatibility:
    either document it as the cold public boundary or split a direct buffer-only
    path that avoids returning a string when callers do not need it.
+
+   Current partial status: `Sequence.renderResolvedValue(...)` no longer passes
+   an explicit caller writer into the single-node child render when a render
+   buffer is the requested sink. The child result is rendered to a string and
+   written once to the render buffer, so buffer-only sequence rendering no
+   longer also mutates an unrelated explicit writer. This covers both the
+   resolved `value instanceof Node` branch and the single non-`Nil` child
+   branch. `List` does not share this exact leak because its buffer path already
+   goes through `prepareBufferPrintState(...)`, which strips explicit writers.
 14. [ ] Finish `List`/`Sequence` addition/materialization copy ownership,
    including `deriveAdditionSequence(...)`, `copyWithReusableLeaves(...)`, and
    output ownership after arithmetic/list operations.
@@ -445,31 +454,35 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Quoted.compare()` public stringification cut.
+Current pass: `Sequence.renderResolvedValue(...)` single-item buffer sink fix.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   object/array scan, generator, or collection helper was added.
-- New node/materialization: none. No `new Node`, copy, `.inherit(...)`,
-  `.adopt(...)`, wrapper `Rules`, frozen/source/parent metadata mutation, or
-  materialized array was added.
-- Render path: no render branch changed. This pass removes public
-  stringification from the `Quoted.compare(...)` fallback path: comparison now
-  uses `this.valueOf()` and `other.valueOf?.()` rather than `this.toString()`
-  and `other.toString()`.
-- Helper/API surface: none added. The existing `compare(...)` fallback was
-  tightened in place; no new method or public API was added.
+- New node/materialization: no production node/materialization. Two
+  `new CountingWriter()` instances were added in focused tests only to prove
+  that single-child buffer rendering does not mutate an unrelated explicit
+  writer. No `new Node`, copy, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`,
+  frozen/source/parent metadata mutation, or materialized array was added.
+- Render path: `Sequence.renderResolvedValue(...)` buffer rendering still
+  returns the public compatibility string, but the single-child branches no
+  longer pass a caller-provided explicit writer into the child render. The
+  child result is written once to the requested render buffer via the existing
+  `writeRenderedSequenceNode(...)` boundary.
+- Helper/API surface: none added. The existing single-child branches were
+  tightened in place; no new helper, method, or public API was added.
 - Metadata mutations: none added. No parent/source/frozen/context metadata
   mutation, lazy options/context creation, `Reflect.*`, generic own-property
   helper, source restoration, or source/root read was added.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected/deferred cut: `Quoted` non-scalar/interpolated render still has
-  localized fallback boundaries where child output can be complex. That is a
-  remaining queue-item 12 boundary, not completed work.
-- Evidence: focused tests passed for `quoted` and `node-render-buffer`; core
-  build passed; `verify:aggressive-cutting-review` passed; bounded
-  `measure:less:hotpath` ran and is recorded in `PERFORMANCE-HANDOFF.md` as
-  leash status only.
-- Verdict: accept as a bounded public-stringification transport cut. Keep the
-  active queue at 15 open whole-task items because queue item 12 is materially
+- Rejected/deferred cut: broader `List`/`Sequence` public render string-return
+  compatibility remains. `List` was audited for the same explicit-writer leak
+  and rejected as a same-patch target because its buffer path already strips
+  explicit writers through `prepareBufferPrintState(...)`.
+- Evidence: focused `sequence` and `node-render-buffer` tests passed; core
+  build passed; `verify:aggressive-cutting-review` passed with the test-only
+  `CountingWriter` probes prosecuted above; bounded `measure:less:hotpath` ran
+  and is recorded in `PERFORMANCE-HANDOFF.md` as leash status only.
+- Verdict: accept as a bounded sink-correctness and staging cut. Keep the
+  active queue at 15 open whole-task items because queue item 13 is materially
   advanced but not complete.

@@ -506,7 +506,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     if (value instanceof Node) {
       return buffer
-        ? writeRenderedSequenceNode(buffer, value.render(context, options))
+        ? writeRenderedSequenceNode(buffer, value.render(context, options?.writer ? undefined : options))
         : value.render(context, bufferOrOptions);
     }
     if (value.length === 0) {
@@ -525,7 +525,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     if (count === 1 && !this._options?.preserveWhitespace) {
       const node = only!;
       return buffer
-        ? writeRenderedSequenceNode(buffer, node.render(context, options))
+        ? writeRenderedSequenceNode(buffer, node.render(context, options?.writer ? undefined : options))
         : node.render(context, bufferOrOptions);
     }
     if (buffer) {

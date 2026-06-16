@@ -121,6 +121,8 @@ when choosing among unfinished serialization rows. Hot unfinished rows include
   `writePreparedRenderText(...)` instead of opening an outer buffer mark around
   an inner render readback. Trivia-backed child-boundary emission uses direct
   trivia-aware `writeSyntax(...)` instead of public child `toString(...)`.
+  Single-child buffer render no longer leaks child output into an unrelated
+  explicit writer before writing the result to the requested render buffer.
   Public render string return compatibility remains.
 - [x] `Quoted`: direct quoted/interpolated emission; child node syntax uses
   `writeSyntax(...)` with no public `toTrimmedString(...)` transport,
