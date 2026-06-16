@@ -188,7 +188,8 @@ registrations do not invalidate cached function handles.
 Latest queue pass moves variable reference frame prep to
 `getScopeFrame(undefined, false)`, splits unconsumed callable candidates from
 child/reference-import uncertainty, and makes covered `setDefined`
-VarDeclaration writes try modeled scope-frame cells before occurrence fallback.
+VarDeclaration writes target the current live/modeled binding cell first. Tree
+occurrence lookup is only the fallback for uncovered or unmodeled cases.
 The same pass audited cold `Rules.find*` wrappers and found repo usage still
 needs them as thin node-materialization edges. A declaration child-surface
 family-bit attempt was rejected: it regressed
@@ -278,12 +279,12 @@ and live binding fallback frames. Goal: `getScopeFrame(undefined, false)` should
 not prepare callable coverage on auto-wired parent frames. Acceptance: nested
 variable reference spy proves no callable-coverage `true` call on parents.
 
-13. [ ] Keep `setDefined` current-cell writes off eval-time scope-frame side
+13. [ ] Keep `setDefined` current live-binding writes off eval-time scope-frame side
 effects. Scope: `registerNode(...)`, scope-frame construction during
 registration, fallback occurrence lookup, and readonly propagation. Goal:
-covered cell writes stay fast, but misses do not create incomplete frames that
-change direct lookup semantics. Acceptance: current-cell no-crawl test plus
-readonly-later and nested readonly fixtures.
+covered live/modeled binding writes stay fast, but misses do not create
+incomplete frames that change direct lookup semantics. Acceptance: live-binding
+no-crawl test plus readonly-later and nested readonly fixtures.
 
 14. [ ] Convert callable candidate uncertainty into caller-specific decisions.
 Scope: `ScopeFrameCallableLookupResult.reason === 'candidate'`, namespace
@@ -366,8 +367,8 @@ At the end of a pass:
 
 - Latest pass: narrowed variable reference frame prep, added callable
   candidate uncertainty as a separate frame result, made covered `setDefined`
-  variable writes try modeled scope-frame cells before occurrence lookup, and
-  audited cold `Rules.find*` wrappers.
+  variable writes target the current live/modeled binding cell before any tree
+  occurrence fallback, and audited cold `Rules.find*` wrappers.
 - Verdict: accepted as lookup slimming and code-path proof, not as a speed
   claim. The declaration child-surface family-bit attempt was rejected and
   removed after it regressed the readonly-later fixture.
@@ -381,8 +382,8 @@ At the end of a pass:
 - Metadata mutations: none kept. A temporary direct declaration child-surface
   fact model was removed before commit.
 - Allocation changes: variable reference lookup now avoids callable miss
-  coverage prep on its target frame. `setDefined` covered-cell writes avoid the
-  occurrence crawl; uncovered/miss paths still fall back.
+  coverage prep on its target frame. `setDefined` covered live/modeled binding
+  writes avoid the tree occurrence crawl; uncovered/miss paths still fall back.
 - Rejected/failed proof: sparse declaration child-surface family facts need a
   registration-complete proof. The reverted attempt failed
   `rules.test.ts` `"doesn't preserve readonly later"`.
