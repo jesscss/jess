@@ -435,7 +435,9 @@ shape current before commit.
    renders, fixing detached scalar child writes without adding public
    materialization. Buffer `Reference.render(...)` now strips explicit writers
    before resolved child renders and writes only the returned text to the
-   requested render buffer.
+   requested render buffer. Array-valued reference syntax keys now stream each
+   owned key segment to the writer instead of concatenating a temporary key
+   string before one write.
 8. [ ] Finish `Mixin` guard/default/body copy interactions and callable
    candidate output.
 
@@ -638,40 +640,34 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: AttributeSelector raw interpolation, Call arg eval, and Declaration state cleanup.
+Current pass: Ampersand merge-template string helpers and Reference array-key
+syntax emission.
 
-- New traversal: none. The new raw interpolation parser performs fixed boundary
-  checks plus one `includes('}')` check on the parsed key, replacing duplicate
-  regex `match(...)` calls. Call arg evaluation keeps its existing arg loop but
-  no longer allocates an async state machine for the all-sync path. No
-  parent/source walk, recursion, side-map lookup, or object graph scan was
-  added.
-- New node/materialization: no new materialization. Call keeps the existing
-  `copyWithReusableLeaves(...)` ownership boundary only for args that evaluate
-  to themselves; Declaration keeps existing semantic `Nil`/`List`/`Operation`/
-  `Reference` materialization points and only removes local setter closures.
-- Render path: AttributeSelector eval/resolve for parser-left raw
-  interpolation tokens now reuses the direct parser before looking up the
-  variable declaration; render output and ownership stay on the existing
-  attribute selector paths. Call CSS fallback arg evaluation now returns
-  synchronously for sync args and keeps async/calc cleanup behavior for thenable
-  args. Declaration eval/registration state changes are assignment-only cleanup,
-  not render materialization.
-- Helper/API surface: one private AttributeSelector parser helper was added and
-  two regex match sites were removed. Call adds one private async continuation
-  helper but removes routine `async`/per-arg `await` from `evalArgNodes(...)`.
-  Declaration removes local setter/helper closures. No public API was added.
-- Metadata mutations: no new parent/source/frozen/location/options/context
-  mutation was added. Existing Declaration state mutation points are unchanged
-  semantically, only expressed directly.
-- Evidence: focused AttributeSelector, Call, Declaration, and render-buffer
-  tests, eslint on touched source and test files, scoped `git diff --check`,
-  `@jesscss/core` build, and `verify:aggressive-cutting-review` all pass in the
-  parent worktree.
+- New traversal: Ampersand template replacement keeps the existing `indexOf('&')`
+  scan but performs the replacement in the loop instead of delegating to
+  `replaceAll(...)`; ident-join classification uses direct character-code
+  checks instead of a regex test. Reference array-key syntax keeps the existing
+  key loop and writes each segment directly instead of concatenating a temporary
+  string.
+- New node/materialization: none. No new node, copy, inherit, adopt, wrapper,
+  side map, or metadata object is introduced.
+- Render path: no render path is changed. Ampersand placement still returns the
+  same selector ownership surfaces, and Reference unresolved source syntax now
+  streams array-key text directly to the active writer.
+- Helper/API surface: no public API was added. Existing Ampersand helpers keep
+  their names and lose regex/`replaceAll(...)` helper transport.
+- Metadata mutations: no parent/source/frozen/location/options/context mutation
+  was added.
+- Evidence: Reference focused subset for array/static-key/direct render cases
+  passed; Ampersand merge-template focused subset passed; eslint on
+  `ampersand.ts` and `reference.ts` passed. Full `ampersand.test.ts` currently
+  fails the same two hoist/appended collapse tests before and after this hunk in
+  the dirty parent worktree, with `Expected compound selector component`.
 - Review noise: `verify:aggressive-cutting-review` may report unrelated dirty
-  worktree tokens from JS/runtime/docs work outside this slice.
-- Verdict: accepted as bounded partial cuts if final gates pass. Non-scalar
-  AttributeSelector render capture, Call whole-call readback/custom/trivia arg
-  boundaries, and Declaration raw-source/merge materialization remain open. No
-  performance claim; performance remains shelved because this was not a measured
-  benchmark pass.
+  worktree tokens from JS/runtime/docs work outside this slice, including the
+  pre-existing `Reference` JS-expression removal in the same file.
+- Verdict: accepted as bounded partial cuts if final gates pass. Ampersand raw
+  fallback string assembly, structural selector replacement, Reference
+  rules-like surfaces, public value materialization, merged assign
+  normalization, and key conversion remain open. No performance claim;
+  performance remains shelved because this was not a measured benchmark pass.

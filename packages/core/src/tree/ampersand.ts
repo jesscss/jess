@@ -145,7 +145,15 @@ function createAmpersandAppendPlacementState(
 }
 
 function isIdentJoinChar(char: string | undefined): boolean {
-  return !!char && /[a-zA-Z0-9_-]/.test(char);
+  if (!char) {
+    return false;
+  }
+  const code = char.charCodeAt(0);
+  return (code >= 65 && code <= 90)
+    || (code >= 97 && code <= 122)
+    || (code >= 48 && code <= 57)
+    || code === 45
+    || code === 95;
 }
 
 function assertValidAmpersandTemplateJoin(template: string, replacement: string): void {
@@ -183,7 +191,18 @@ function selectorTemplateReplacementText(selector: Selector): string {
 }
 
 function mergeAmpersandTemplateText(template: string, replacement: string): string {
-  return template.replaceAll('&', replacement);
+  let out = '';
+  let start = 0;
+  while (true) {
+    const idx = template.indexOf('&', start);
+    if (idx === -1) {
+      break;
+    }
+    out += template.slice(start, idx);
+    out += replacement;
+    start = idx + 1;
+  }
+  return out + template.slice(start);
 }
 
 function mergeAmpersandTemplateItem(
