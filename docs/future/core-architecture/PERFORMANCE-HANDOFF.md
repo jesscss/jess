@@ -4109,6 +4109,27 @@ open for rules-like surfaces, public value materialization, merged assign
 normalization, and key conversion. Do not claim a speed win; two fixtures were
 unstable and one was noisy.
 
+### Interpolated Scalar Replacement Capture Cut
+
+Date: 2026-06-16.
+
+Change: public `Interpolated.replace(...)` now reads owned scalar replacement
+text directly for `Any`/`Anonymous`/`Keyword` replacements instead of routing
+through public `toTrimmedString(...)` on a detached writer.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `13.81ms` unstable, `import-reference` median
+  `18.01ms` usable, `mixins-guards` median `16.45ms` usable,
+  `extend-chaining` median `4.71ms` usable, and `media` median `4.99ms`
+  usable.
+
+Interpretation: cold scalar replacement capture cut only; the Interpolated row
+remains open for non-scalar embedded selector assembly, generic
+materialization, non-scalar cold replacement capture, and replacement arrays.
+Do not claim a speed win; one fixture was unstable.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

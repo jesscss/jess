@@ -283,6 +283,19 @@ describe('Interpolated', () => {
     expect(selector.toTrimmedString()).toBe('.prefix-theme');
   });
 
+  it('replaces scalar tokens without public string transport', () => {
+    const replacement = any('world');
+    replacement.toTrimmedString = () => {
+      throw new Error('interpolated scalar replacement should read owned token text directly');
+    };
+    const node = interpolated({
+      source: `hello-${INTERPOLATION_PLACEHOLDER}`,
+      replacements: []
+    });
+
+    expect(node.replace([replacement])).toBe('hello-world');
+  });
+
   it('preserves quoted replacement syntax when requested', () => {
     const node = interpolated({
       source: `progid:test(value=${INTERPOLATION_PLACEHOLDER})`,

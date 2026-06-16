@@ -57,6 +57,9 @@ function stringifyReplacement(replacement: Node, options: PrintOptions, preserve
   if (isNode(replacement, N.Quoted) && !preserveQuotedSyntax) {
     return String(replacement.valueOf());
   }
+  if (replacement.type === 'Any' || replacement.type === 'Anonymous' || replacement.type === 'Keyword') {
+    return String(replacement.value).trim();
+  }
   const printOpts = getPrintOptions(options);
   const result = replacement.toTrimmedString({
     ...printOpts,
