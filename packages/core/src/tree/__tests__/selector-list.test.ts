@@ -210,6 +210,29 @@ describe('Selector list', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  test('derives resolved selector-list surfaces without generic construction', async () => {
+    const first = el('.source');
+    const resolvedFirst = el('.resolved');
+    first.resolve = () => resolvedFirst;
+    const selector = sellist([
+      first,
+      el('.other')
+    ]);
+    const originalConstruct = Reflect.construct;
+    Reflect.construct = () => {
+      throw new Error('selector-list resolve should not use generic construction');
+    };
+
+    try {
+      const resolved = await selector.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('.resolved,\n.other');
+      expect(first.parent).toBe(selector);
+    } finally {
+      Reflect.construct = originalConstruct;
+    }
+  });
+
   test('keeps source selector-list values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({

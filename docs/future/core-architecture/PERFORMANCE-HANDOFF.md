@@ -4284,6 +4284,26 @@ keep the `AtRule` row open for body-state staging, non-scalar header/leaf
 capture boundaries, and custom/import/render branch ladders. Three fixtures
 were unstable.
 
+### SelectorList Direct Surface Construction Cut
+
+Date: 2026-06-16.
+
+Change: changed selector-list eval/resolve surfaces now construct
+`SelectorList` directly instead of using generic `Reflect.construct(...)`.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `15.75ms` usable, `import-reference` median
+  `28.01ms` usable, `mixins-guards` median `19.26ms` unstable,
+  `extend-chaining` median `5.69ms` usable, and `media` median `5.91ms`
+  usable.
+
+Interpretation: construction-surface cut only. Do not claim a speed win; keep
+the `SelectorList` tracker row open for eval/resolve materialization arrays,
+value-key joins, and flattening outside direct writer paths. One fixture was
+unstable.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

@@ -523,26 +523,25 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `AtRule` layer-name value identity cut.
+Current pass: `SelectorList` direct surface construction cut.
 
-- New traversal: none. The existing active at-rule record walk is unchanged.
-- New node/materialization: none. No node, wrapper, copy, inherit, adopt,
-  source/root metadata, or array/object materialization was added.
-- Render path: nested `@layer` body evaluation now reads at-rule names through
-  `valueOf()` identity instead of public `toTrimmedString(...)`/`toString(...)`
-  fallbacks. Prelude text remains on the existing `valueOf()`-first layer-name
-  path.
-- Helper/API surface: none added.
-- Metadata mutations: none added.
+- New traversal: none. Existing selector loops are unchanged.
+- New node/materialization: no extra node, wrapper, copy, inherit, adopt,
+  source/root metadata, or array materialization was added. Changed eval/resolve
+  selector-list surfaces still materialize a `SelectorList`, but now do so with
+  direct `new SelectorList(...)` instead of generic `Reflect.construct(...)`.
+- Render path: no render behavior changed. This is an eval/resolve surface
+  construction cut for changed selector-list surfaces.
+- Helper/API surface: none added. Generic constructor dispatch was removed.
+- Metadata mutations: none added. Existing `.inherit(this)` remains the
+  materialized result ownership boundary.
 - Error/control flow: no production error objects or throw/catch control flow
   added. The new throw is test-only monkey-patch proof.
-- Rejected/deferred cut: `AtRule` body-state staging, non-scalar header/leaf
-  capture boundaries, custom/import/render branch ladders, and prelude
-  stringification boundaries remain open.
+- Rejected/deferred cut: selector-list eval/resolve materialization arrays,
+  value-key joins, and flattening outside direct writer paths remain open.
 - Evidence: focused red/green test
-  `registers nested layer names without public name stringification` failed
-  when the active parent layer name called public `toTrimmedString(...)` and
-  passed after the value-identity cut. Full `at-rule.test.ts` passed.
-- Verdict: accepted as a bounded `AtRule` eval-side string-transport cut. Keep
-  item 3 open for the remaining body-state and non-scalar serializer
-  boundaries.
+  `derives resolved selector-list surfaces without generic construction` failed
+  when `withSelectors(...)` called `Reflect.construct(...)` and passed after
+  direct construction. Full `selector-list.test.ts` passed.
+- Verdict: accepted as a bounded `SelectorList` construction-surface cut. Keep
+  the tracker row open for materialization arrays and non-writer flattening.

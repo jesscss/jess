@@ -70,20 +70,17 @@ export class SelectorList extends Selector<Selector[]> {
     return owned;
   }
 
-  private withSelectors(value: Selector[], sourceValue: readonly Selector[] = this.value): this {
+  private withSelectors(value: Selector[], sourceValue: readonly Selector[] = this.value): SelectorList {
     const ownedValue = new Array<Selector>(value.length);
     for (let i = 0; i < value.length; i++) {
       const item = value[i]!;
       ownedValue[i] = this.isSourceSelector(item, sourceValue) ? this.ownSelector(item) : item;
     }
-    const node: this = Reflect.construct(
-      this.constructor,
-      [
-        // Own unchanged source children; evaluated clones may carry runtime state.
-        ownedValue,
-        this._options ? { ...this._options } : undefined,
-        this.location
-      ]
+    // Own unchanged source children; evaluated clones may carry runtime state.
+    const node = new SelectorList(
+      ownedValue,
+      this._options ? { ...this._options } : undefined,
+      this.location
     );
     return node.inherit(this);
   }
@@ -97,7 +94,7 @@ export class SelectorList extends Selector<Selector[]> {
     return false;
   }
 
-  private createEvaluatedSelectorListSurface(value: Selector[], sourceValue: readonly Selector[]): this {
+  private createEvaluatedSelectorListSurface(value: Selector[], sourceValue: readonly Selector[]): SelectorList {
     return this.withSelectors(value, sourceValue);
   }
 
