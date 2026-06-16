@@ -342,7 +342,9 @@ shape current before commit.
    `toString(...)`; custom value writing also uses direct syntax; non-custom
    declaration `writeSyntax(...)` now writes directly without the outer
    declaration mark/readback used only by cold string-return callers;
-   space-merge rendering stopped returning an unused captured string.
+   space-merge rendering stopped returning an unused captured string; simple
+   no-trivia `Any` property names and important flags now write known text
+   directly without local trim marks.
 6. [ ] Finish `Rules` root/body render, imports, placement state, merge output,
    and duplicate declaration materialization.
 
@@ -536,18 +538,25 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `AtRule.evalNode(...)` no-op error-control scaffold cut.
+Current pass: `Declaration.writeSyntax(...)` simple name/important trim-mark
+cut.
 
 - New traversal: none.
 - New node/materialization: none.
-- Render path: unchanged. This deletes eval error-control scaffolding only; no
-  render path resolves arrays/nodes to stringify.
-- Helper/API surface: none added.
-- Metadata mutations: none.
-- Error/control flow: removed one `try/catch` that only rethrew from
-  `evalBodyNode(...)` and one promise rejection handler that only rethrew.
-- Evidence: focused AtRule error-restoration tests prove synchronous and async
-  body-eval failures still restore runtime state after the deletion. Full
-  `at-rule.test.ts` passed.
-- Verdict: accepted as a bounded eval branch-ladder deletion. No performance
+- Render path: declaration render already routes through
+  `writeDeclarationValueSyntax(...)`, so simple no-trivia names/important flags
+  now write known scalar text directly there. No render path creates nodes or
+  arrays to stringify.
+- Helper/API surface: one private scalar predicate
+  `hasEdgeHorizontalWhitespace(...)` added beside existing whitespace helpers
+  so the direct path can prove it does not need trim machinery.
+- Metadata mutations: none. The two `sourceRoot?._treeContext?.opts?.trivia`
+  reads are guard probes for existing source trivia; if either finds trivia,
+  the code falls back to the old trim-mark path instead of taking the scalar
+  shortcut.
+- Error/control flow: none added.
+- Evidence: focused declaration writer-counter test proves the common
+  `color: red !important` source writer now uses one local mark/readback
+  instead of three while preserving direct child writes and public output.
+- Verdict: accepted as a bounded source/render writer mark cut. No performance
   claim; performance remains shelved.

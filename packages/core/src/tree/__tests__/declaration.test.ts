@@ -107,7 +107,7 @@ describe('Declaration', () => {
 
     expect(writer.toString()).toBe('color: red !important');
     expect(writer.captures).toBe(0);
-    expect(writer.marks).toBe(3);
+    expect(writer.marks).toBe(1);
     expect(writer.readbacks).toBe(1);
   });
 

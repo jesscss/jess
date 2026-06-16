@@ -62,6 +62,14 @@ function trimLeadingSpacesAndTabs(value: string): string {
   return i === 0 ? value : value.slice(i);
 }
 
+function hasEdgeHorizontalWhitespace(value: string): boolean {
+  return value.length > 0
+    && (
+      isHorizontalWhitespaceCode(value.charCodeAt(0))
+      || isHorizontalWhitespaceCode(value.charCodeAt(value.length - 1))
+    );
+}
+
 function isClosingDeclarationLine(value: string): boolean {
   const length = value.length;
   if (length === 0 || length > 2) {
@@ -539,10 +547,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       : assign;
     const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
     let a = effAssign === ':' ? ':' : ` ${effAssign}`;
-    // Normalize property name by trimming trailing whitespace
-    const nameMark = w.mark();
-    name.writeSyntax(options);
-    w.trimEndSince(nameMark);
+    const nameTrivia = options.trivia ?? name.sourceRoot?._treeContext?.opts?.trivia;
+    if (name instanceof Any && !nameTrivia && !hasEdgeHorizontalWhitespace(name.value)) {
+      w.add(name.value, name);
+    } else {
+      // Normalize property name by trimming trailing whitespace.
+      const nameMark = w.mark();
+      name.writeSyntax(options);
+      w.trimEndSince(nameMark);
+    }
     emitCommentTriviaAfterNode(name, options);
     w.add(a);
     // Custom properties must preserve value text exactly as provided.
@@ -584,10 +597,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         if (important || importantText) {
           w.add(' ');
           if (important) {
-            const importantMark = w.mark();
-            important.writeSyntax(options);
-            w.trimStartSince(importantMark);
-            w.trimEndSince(importantMark);
+            const importantTrivia = options.trivia ?? important.sourceRoot?._treeContext?.opts?.trivia;
+            if (important instanceof Any && !importantTrivia && !hasEdgeHorizontalWhitespace(important.value)) {
+              w.add(important.value, important);
+            } else {
+              const importantMark = w.mark();
+              important.writeSyntax(options);
+              w.trimStartSince(importantMark);
+              w.trimEndSince(importantMark);
+            }
           } else {
             w.add(importantText!, value);
           }
