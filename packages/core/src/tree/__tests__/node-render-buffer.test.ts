@@ -421,7 +421,7 @@ describe('renderNodeToBuffer', () => {
       { surface: 'RawRules', node: rawrules([decl({ name: 'color', value: any('red') })]) },
       { surface: 'JsExpression', node: jsexpr('"ok"'), expected: 'ok' },
       { surface: 'JsImport', node: js({ path: quoted('tools.js') }, { namespace: 'tools' }), expected: '@-use "tools.js" as tools;' },
-      { surface: 'JsImportNamed', node: js({ path: quoted('tools.js'), imports: ['color'] }), expected: '@-from "tools.js" import (color);' },
+      { surface: 'JsImportNamed', node: js({ path: quoted('tools.js'), imports: ['color'] }, { source: 'from' }), expected: '@-from "tools.js" import (color);' },
       { surface: 'Ampersand', node: amp({ appendValue: '-item' }), expected: '', expectedParts: [] }
     ];
 

@@ -15,6 +15,8 @@ type JsImportSpecifier = string | [string, string] | { name: string; alias?: str
 export type JsImportOptions = {
   /** e.g. `@-use 'foo.js' as foo` or `@-from 'foo.js' import * as foo` sets namespace to `foo` */
   namespace?: string;
+  /** Authored source form. Defaults to `use` so `@use` / `@-use` round-trip as `@-use`. */
+  source?: 'use' | 'from';
   /**
    * - In array,
    *   - string is a plain import identifier
@@ -42,7 +44,7 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
     const namespace = this._options?.namespace;
     const imports = this.value.imports ?? (Array.isArray(this._options?.imports) ? this._options.imports : undefined);
 
-    if (imports?.length) {
+    if (this._options?.source === 'from' && imports?.length) {
       w.add('@-from ');
       path.writeSyntax(options);
       w.add(' import ');

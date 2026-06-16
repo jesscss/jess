@@ -11,15 +11,30 @@ describe('JsImport', () => {
   });
 
   it('serializes named JS imports with @-from source syntax', () => {
-    const node = js({ path: quoted('foo.js'), imports: ['bar', ['baz', 'renamed']] });
+    const node = js(
+      { path: quoted('foo.js'), imports: ['bar', ['baz', 'renamed']] },
+      { source: 'from' }
+    );
 
     expect(node.toTrimmedString()).toBe('@-from "foo.js" import (bar, baz as renamed);');
   });
 
   it('serializes namespace JS imports from @-from source syntax', () => {
-    const node = js({ path: quoted('foo.js'), imports: [['*', 'foo']] });
+    const node = js(
+      { path: quoted('foo.js'), imports: [['*', 'foo']] },
+      { source: 'from' }
+    );
 
     expect(node.toTrimmedString()).toBe('@-from "foo.js" import * as foo;');
+  });
+
+  it('preserves use-form JS imports even when import options are present', () => {
+    const node = js(
+      { path: quoted('foo.js'), imports: ['bar', ['baz', 'renamed']] },
+      { namespace: 'foo' }
+    );
+
+    expect(node.toTrimmedString()).toBe('@-use "foo.js" as foo;');
   });
 
   it('resolves JS import directives without eval stamping source nodes', () => {
