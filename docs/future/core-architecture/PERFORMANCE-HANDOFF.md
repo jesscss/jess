@@ -200,6 +200,30 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-16 Operation Source Operand Ownership Cut
+
+Hypothesis: public `Operation` materialization should own unchanged source
+operands instead of sharing reusable scalar source leaves as output operands.
+
+Patch shape:
+
+- `Operation.withOperands(...)` now uses `copyOwnedWithReusableLeaves(...)` for
+  unchanged source operands;
+- preserved-operation render still streams `{ left, right }` text and does not
+  call `withOperands(...)`;
+- preserve-mode `calc(...)` fallback mutation remains open.
+
+Hotpath status:
+
+- Bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  completed on commit `d36a88d8ea02cc6c5f9af64d30947719e2e00dc2`
+  plus the local patch: functions median 14.27ms, import-reference median
+  19.65ms, mixins-guards median 19.39ms, extend-chaining median 5.74ms,
+  media median 5.50ms. `functions.less` and `media.less` were unstable.
+
+Interpretation: public materialization ownership cut only. Do not claim a
+speed win.
+
 ### 2026-06-16 Negative Resolved Any Scalar Cut
 
 Hypothesis: a `Negative` whose dynamic child resolves to `Any` should use the

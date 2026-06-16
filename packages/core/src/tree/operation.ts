@@ -9,7 +9,7 @@ import { Call } from './call.js';
 import { list } from './list.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import { isRenderBuffer, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
+import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 
 export type { Operator };
 /** Operation is always a tuple */
@@ -37,8 +37,8 @@ export class Operation extends Node<OperationValue> {
   }
 
   private withOperands(left: Node, right: Node): Operation {
-    const finalLeft = left === this.value[0] ? copyWithReusableLeaves(left) : left;
-    const finalRight = right === this.value[2] ? copyWithReusableLeaves(right) : right;
+    const finalLeft = left === this.value[0] ? copyOwnedWithReusableLeaves(left) : left;
+    const finalRight = right === this.value[2] ? copyOwnedWithReusableLeaves(right) : right;
     const node = new Operation(
       [finalLeft, this.value[1], finalRight],
       this._options ? { ...this._options } : undefined,

@@ -463,8 +463,10 @@ shape current before commit.
    `evalImmediateSync(...)` for non-`F_MAY_ASYNC` operands instead of public
    `eval(...)` plus thenable checks. Preserved-operation flat-buffer render no
    longer leaks intermediate operand text into a caller-supplied explicit
-   writer. `withOperands(...)` copy pressure and preserve-mode `calc(...)`
-   fallback ownership remain open.
+   writer. `withOperands(...)` now owns unchanged source operands with
+   `copyOwnedWithReusableLeaves(...)` instead of reusing source-free scalar
+   leaves as output operands. Preserve-mode `calc(...)` fallback ownership
+   remains open.
 
 Parked until the current `writeSyntax` focus ends:
 
@@ -530,30 +532,32 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Context` unit-mode default alignment.
+Current pass: `Operation.withOperands(...)` source operand ownership cut.
 
 - New traversal: none.
-- New node/materialization: no AST nodes, copies, inherit/adopt calls, or
-  render/eval materialization were added. `Context` construction now allocates
-  one options object with the documented `unitMode: 'preserve'` default before
-  spreading caller options; this is context setup state, not render-only or
-  eval-to-string materialization. The focused test adds one explicit
-  `new Context({ unitMode: 'loose' })` fixture to keep Less loose behavior
-  opt-in instead of accidental.
-- Render path: no render path now resolves through arrays/nodes just to
-  stringify. Arithmetic render/eval now sees the same documented preserve
-  default that plugins/config already advertise unless callers explicitly pass
-  `unitMode: 'loose'` or `unitMode: 'strict'`.
+- New node/materialization: `Operation.withOperands(...)` now uses
+  `copyOwnedWithReusableLeaves(...)` for unchanged source operands instead of
+  `copyWithReusableLeaves(...)`. This is public materialization for
+  `resolve(...)`/eval operation output, not render-only materialization; the
+  render path still returns `{ left, right }` for preserved-operation text and
+  does not call `withOperands(...)`.
+- Render path: no render path now creates operands just to stringify. The
+  existing focused test still monkey-patches `withOperands(...)` to throw
+  during preserved-operation render, proving render streams evaluated operands
+  without replacement operation materialization.
 - Helper/API surface: none added.
-- Metadata mutations: none added.
+- Metadata mutations: copied output operands keep the existing cloning helper's
+  frozen/inherited metadata behavior. The source operand remains attached to
+  the canonical source operation.
 - Error/control flow: no production error objects or throw/catch control flow
-  added.
-- Rejected/deferred cut: unrelated dirty `import-js` lazy plugin loading and
-  deprecation edits remain outside this pass; Less function-library defaults
-  such as `min`/`max` are not changed here.
-- Evidence: `dimension.test.ts` now proves default `Context` arithmetic and
-  context-free `Dimension.operate(...)` preserve incompatible units as
-  `calc(...)`, while explicit `loose` tests keep legacy Less coercion. Focused
-  `dimension`, `operation`, `preserve-mode-output`, and `color` suites passed.
-- Verdict: accepted as a correctness/default alignment fix, not a performance
-  claim.
+  added. New throw is test-only proof.
+- Rejected/deferred cut: `createCalcFallback(...)` still stamps
+  `operationNode.evaluated`, `left.evaluated`, and `right.evaluated`; that
+  preserve-mode `calc(...)` fallback ownership remains open.
+- Evidence: focused test
+  `owns unchanged source operands when materializing preserved operations`
+  proves a materialized preserved `Operation` no longer shares an unchanged
+  source-free scalar operand object with the canonical source operation. Full
+  `operation.test.ts` passed.
+- Verdict: accepted as a bounded public materialization ownership cut. Keep
+  queue item 15 open for the separate `calc(...)` fallback mutation boundary.

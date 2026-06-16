@@ -274,6 +274,35 @@ describe('Operation', () => {
     expect(rightOperand.parent).toBe(resolvedOperation);
   });
 
+  it('owns unchanged source operands when materializing preserved operations', async () => {
+    const node = rules([
+      vardecl({
+        name: any('div-op'),
+        value: list([dimension([10, 'px']), num(2)], { sep: '/' })
+      })
+    ]);
+    const evald = await setEvaluatedRoot(context, node);
+    const leftOperand = dimension([2, 'em']);
+    const operationNode = op([
+      leftOperand,
+      '*',
+      ref({ key: 'div-op' }, { type: 'variable' })
+    ]);
+
+    const resolved = await operationNode.resolve(context);
+
+    expect(resolved).toBeInstanceOf(Operation);
+    if (!(resolved instanceof Operation)) {
+      throw new Error('Expected Operation result');
+    }
+    expect(resolved.toTrimmedString()).toBe('2em * 10px / 2');
+    expect(resolved.value[0]).not.toBe(leftOperand);
+    expect(resolved.value[0]?.toTrimmedString()).toBe('2em');
+    expect(leftOperand.parent).toBe(operationNode);
+    expect(operationNode.parent).toBeUndefined();
+    expect(evald.parent).toBeUndefined();
+  });
+
   it('normalizes slash-list variable refs inside calc while preserving direct calc arithmetic', async () => {
     const node = rules([
       vardecl({
