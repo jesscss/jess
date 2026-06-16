@@ -348,7 +348,9 @@ shape current before commit.
    prelude comment trivia also writes to a detached writer while preserving active
    emitted-trivia state. Dynamic leaf at-rule name/prelude assembly now uses
    the same detached writer boundary for non-scalar pieces instead of
-   caller-writer mark/readback.
+   caller-writer mark/readback. The root-only hoisted-parent frame scan now runs
+   only when `context.bubbleRootAtRules && this.isRootOnly()` can use it, so
+   ordinary at-rule body eval skips the frame walk.
 4. [ ] Finish `Ruleset.getHeaderString(...)` capture removal for frame
    render/comparison paths and same-property duplicate declaration pre-render.
 
@@ -599,24 +601,26 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Declaration/Rules async wrapper cut.
+Current pass: AtRule hoisted ruleset frame-scan guard.
 
-- New traversal: none. The change deletes wrappers around existing
-  declaration/render-assignment and registration-prep async branches and adds no
-  loop, source walk, side-map lookup, or object scan.
+- New traversal: none. The existing `context.frames` scan in
+  `packages/core/src/tree/at-rule.ts` is now guarded so it only runs when
+  `context.bubbleRootAtRules && this.isRootOnly()` can make the hoisted-parent
+  fact observable; ordinary at-rules skip that scan.
 - New node/materialization: none. No `Node`, copy, inherit, wrapper,
   materialized array, or ownership mutation was added.
-- Render path: declaration render-assignment and custom-interpolated
-  replacement chains now call `.then(...)` directly after `isThenable(...)`
-  narrowing. Rules registration-prep does the same for prepared static
-  declaration nodes. The same values still flow to the same finish callbacks.
+- Render path: body eval record creation and `evalNode(...)` carry the same
+  hoisted-parent boolean to the existing body-state branches. Rendering still
+  writes through the existing AtRule body/header paths and does not resolve into
+  arrays or nodes just to stringify.
 - Helper/API surface: no helper or public API was added.
 - Metadata mutations: none. No parent/source/frozen/location/options/context
   mutation was added.
-- Evidence: focused Declaration and Rules tests pass. The remaining
-  `Promise.resolve(...).finally(...)` in Declaration is intentionally kept
-  because it normalizes cleanup around possible non-native thenables.
-- Verdict: accepted as a bounded async scaffolding deletion. Declaration
-  materialization/merge boundaries and Rules dynamic body/render work remain
-  open. No performance claim; performance remains shelved because this was not
-  a measured benchmark pass.
+- Evidence: focused AtRule/nesting tests and less-compat at-plugin integration
+  tests pass. The isolated aggressive-cutting review flags the touched `for`
+  loops as danger tokens; they are the pre-existing frame scans moved behind the
+  semantic root-only bubbling guard, not new traversal.
+- Verdict: accepted as a bounded hot-path guard. AtRule body-state staging and
+  remaining custom eval/import/render branch ladders remain open. No performance
+  claim; performance remains shelved because this was not a measured benchmark
+  pass.

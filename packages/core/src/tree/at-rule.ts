@@ -572,16 +572,16 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   ): AtRuleBodyEvalRecord {
     const evalFrame = this;
     const sourceRules = this.value.rules;
-    let hasRulesetFrame = false;
-    for (let i = 0; i < context.frames.length; i++) {
-      if (isNode(context.frames[i], N.Ruleset)) {
-        hasRulesetFrame = true;
-        break;
+    const shouldCheckHoistedRulesetParent = context.bubbleRootAtRules && this.isRootOnly();
+    let hasHoistedRulesetParent = false;
+    if (shouldCheckHoistedRulesetParent) {
+      for (let i = 0; i < context.frames.length; i++) {
+        if (isNode(context.frames[i], N.Ruleset)) {
+          hasHoistedRulesetParent = true;
+          break;
+        }
       }
     }
-    const hasHoistedRulesetParent = context.bubbleRootAtRules
-      && this.isRootOnly()
-      && hasRulesetFrame;
     const renderSourceBody = Boolean(
       sourceRules
       && canRenderStaticRulesDirectly(sourceRules)
@@ -1216,16 +1216,16 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<AtRule | Nil> {
-    let hasRulesetFrame = false;
-    for (let i = 0; i < context.frames.length; i++) {
-      if (isNode(context.frames[i], N.Ruleset)) {
-        hasRulesetFrame = true;
-        break;
+    const shouldCheckHoistedRulesetParent = context.bubbleRootAtRules && this.isRootOnly();
+    let hasHoistedRulesetParent = false;
+    if (shouldCheckHoistedRulesetParent) {
+      for (let i = 0; i < context.frames.length; i++) {
+        if (isNode(context.frames[i], N.Ruleset)) {
+          hasHoistedRulesetParent = true;
+          break;
+        }
       }
     }
-    const hasHoistedRulesetParent = context.bubbleRootAtRules
-      && this.isRootOnly()
-      && hasRulesetFrame;
     const record = {
       source: this,
       evalFrame: this,
