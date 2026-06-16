@@ -4065,6 +4065,28 @@ Hotpath status:
 Interpretation: root serializer transport cut only; do not claim a speed win
 from the focused test. One fixture was unstable and one was noisy.
 
+### Operation Buffer Writer Leak Cut
+
+Date: 2026-06-16.
+
+Change: preserved-operation flat-buffer render now strips caller-supplied
+explicit writers before rendering evaluated operands to the intermediate
+operation string. The final combined operation text is written to the render
+buffer once, so buffer render no longer also mutates the caller writer with
+operand fragments.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `12.41ms` unstable, `import-reference` median
+  `16.80ms` usable, `mixins-guards` median `14.42ms` usable,
+  `extend-chaining` median `4.56ms` usable, and `media` median `4.33ms`
+  unstable.
+
+Interpretation: render-buffer ownership cut only; row 15 remains open for
+`withOperands(...)` copy pressure and preserve-mode `calc(...)` fallback
+ownership. Do not claim a speed win; two fixtures were unstable.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

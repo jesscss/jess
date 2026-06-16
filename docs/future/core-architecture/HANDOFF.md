@@ -432,8 +432,10 @@ shape current before commit.
 
    Current partial status: sync render/resolve operand evaluation now uses
    `evalImmediateSync(...)` for non-`F_MAY_ASYNC` operands instead of public
-   `eval(...)` plus thenable checks. `withOperands(...)` copy pressure and
-   preserve-mode `calc(...)` fallback ownership remain open.
+   `eval(...)` plus thenable checks. Preserved-operation flat-buffer render no
+   longer leaks intermediate operand text into a caller-supplied explicit
+   writer. `withOperands(...)` copy pressure and preserve-mode `calc(...)`
+   fallback ownership remain open.
 
 Parked until the current `writeSyntax` focus ends:
 

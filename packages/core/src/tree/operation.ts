@@ -162,7 +162,9 @@ export class Operation extends Node<OperationValue> {
     if (output instanceof Node) {
       return this.renderOutput(context, output, bufferOrOptions, options);
     }
-    const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
+    const printOptions = isRenderBuffer(bufferOrOptions)
+      ? this.bufferChildPrintOptions(options)
+      : bufferOrOptions;
     const left = output.left.render(context, printOptions);
     const rendered = isThenable(left)
       ? left.then(leftOut => this.renderEvaluatedRight(output.right, leftOut, context, printOptions))
@@ -173,6 +175,15 @@ export class Operation extends Node<OperationValue> {
     return isThenable(rendered)
       ? rendered.then(out => writeRenderText(bufferOrOptions, out))
       : writeRenderText(bufferOrOptions, rendered);
+  }
+
+  private bufferChildPrintOptions(options?: PrintOptions): PrintOptions | undefined {
+    if (!options?.writer) {
+      return options;
+    }
+    const detached = { ...options };
+    delete detached.writer;
+    return detached;
   }
 
   private renderEvaluatedRight(

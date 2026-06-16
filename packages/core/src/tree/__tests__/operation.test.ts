@@ -6,10 +6,16 @@ import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  marks = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
   }
 }
 
@@ -159,6 +165,28 @@ describe('Operation', () => {
     } finally {
       Object.defineProperty(Operation.prototype, 'withOperands', descriptor);
     }
+  });
+
+  it('keeps preserved operation buffer output out of explicit writers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('div-op'),
+        value: list([dimension([10, 'px']), num(2)], { sep: '/' })
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+    const operationNode = op([
+      ref({ key: 'div-op' }, { type: 'variable' }),
+      '*',
+      num(2)
+    ]);
+
+    expect(await Promise.resolve(operationNode.render(context, buffer, { writer }))).toBe('10px / 2 * 2');
+    expect(buffer.parts).toEqual(['10px / 2 * 2']);
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
   });
 
   it('resolves operation values without touching render state', async () => {
