@@ -78,14 +78,15 @@ materialization wrapper for that semantic case.
    `lookupScopeFrameCallable(...)` has `hit`, `miss`, and `uncovered` reasons.
    Candidate, child-surface, and reference-import reasons now route through
    caller-specific decisions before generic direct crawl. Prepared child-rule
-   entries carry exact callable/mixin/ruleset surface facts, but guarded import
-   tests proved prepared arrays cannot be trusted as a blanket aggregate miss.
-   Prepared-null entries can skip child reads, covered child frames can prove
-   simple exact callable misses without entering the broad child crawl, and
-   rendered reference-import callable misses now prepare the existing frame
-   parent chain instead of entering the no-frame direct crawl. Remaining work is
-   deleting the direct-crawl bridges where facts are complete without breaking
-   guarded/configured child surfaces.
+   entries carry exact callable/mixin/ruleset surface facts and now carry
+   reference-import child-surface facts separately from exact callable facts.
+   Guarded import tests proved prepared arrays cannot be trusted as a blanket
+   aggregate miss. Prepared-null entries can skip child reads, covered child
+   frames can prove simple exact callable misses without entering the broad
+   child crawl, and rendered reference-import callable misses now prepare the
+   existing frame parent chain instead of entering the no-frame direct crawl.
+   Remaining work is deleting the direct-crawl bridges where facts are complete
+   without breaking guarded/configured child surfaces.
 
 2. **Parameterized terminal namespace audit.**
    Mixin-ruleset calls with parameters now reject ruleset-only terminal

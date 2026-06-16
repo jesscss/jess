@@ -1087,7 +1087,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
           continue;
         }
-        if (!includeRulesets && entry.hasExactMixinSurface === false) {
+        if (
+          !includeRulesets
+          && entry.hasExactMixinSurface === false
+          && entry.hasReferenceImportSurface !== true
+        ) {
           continue;
         }
         if (entry.node.options?.forward) {
@@ -1157,10 +1161,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         continue;
       }
       if (includeRulesets) {
-        if (entry.hasExactCallableSurface === false) {
+        if (
+          entry.hasExactCallableSurface === false
+          && !(reason === 'reference-import' && entry.hasReferenceImportSurface === true)
+        ) {
           continue;
         }
-      } else if (entry.hasExactMixinSurface === false) {
+      } else if (
+        entry.hasExactMixinSurface === false
+        && !(reason === 'reference-import' && entry.hasReferenceImportSurface === true)
+      ) {
         continue;
       }
       if (entry.node.options?.forward) {
@@ -1384,16 +1394,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!child) {
         continue;
       }
-      if (!rulesMayContainExactCallableSurface(child)) {
+      const hasReferenceImportSurface = rulesMayContainReferenceImports(child);
+      this.hasReferenceImportChildSurface ||= hasReferenceImportSurface;
+      const hasExactCallableSurface = rulesMayContainExactCallableSurface(child);
+      if (!hasReferenceImportSurface && !hasExactCallableSurface) {
         continue;
       }
-      const hasExactMixinSurface = rulesMayContainExactMixinSurface(child);
-      const hasExactRulesetSurface = rulesMayContainExactRulesetSurface(child);
+      const hasExactMixinSurface = hasExactCallableSurface && rulesMayContainExactMixinSurface(child);
+      const hasExactRulesetSurface = hasExactCallableSurface && rulesMayContainExactRulesetSurface(child);
       (out ??= []).push({
         node: child,
         rulesVisibility: this.getDirectChildRulesVisibility(child),
         readonly: Boolean(child.options.readonly),
-        hasExactCallableSurface: true,
+        hasReferenceImportSurface,
+        hasExactCallableSurface,
         hasExactMixinSurface,
         hasExactRulesetSurface
       });

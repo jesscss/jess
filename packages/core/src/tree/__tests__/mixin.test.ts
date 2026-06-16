@@ -2920,6 +2920,33 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: child reference imports are carried apart from exact callable surfaces', () => {
+      const childRules = rules([
+        style({
+          path: quoted(any('reference-import.jess'))
+        }, {
+          type: 'import',
+          importOptions: { reference: true }
+        })
+      ]);
+      const root = rules([childRules]);
+
+      root.collectDirectChildRulesEntries();
+      expect(root.hasReferenceImportChildSurface).toBe(true);
+      expect(root.directChildRuleEntries).toHaveLength(1);
+      expect(root.directChildRuleEntries?.[0]).toMatchObject({
+        node: childRules,
+        hasReferenceImportSurface: true,
+        hasExactCallableSurface: false,
+        hasExactMixinSurface: false,
+        hasExactRulesetSurface: false
+      });
+
+      root.getScopeFrame();
+      expect(root._scopeFrame?.callableMissesCovered).toBe(false);
+      expect(root._scopeFrame?.mixinCallableMissesCovered).toBe(false);
+    });
+
     it('ScopeFrame callable buckets: terminal mixin-only miss skips Rules.findMixinsFast for ruleset-only child surfaces', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];
