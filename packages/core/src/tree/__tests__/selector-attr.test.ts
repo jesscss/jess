@@ -271,6 +271,49 @@ describe('Attribute Selector', () => {
     expect(attrNode.toTrimmedString()).toBe('[data=$attr-data]');
   });
 
+  test('resolves raw interpolated attribute values without regex match transport', async () => {
+    const originalMatch = String.prototype.match;
+    let matchCalls = 0;
+    String.prototype.match = function countMatchCalls(
+      this: string,
+      ...args: Parameters<typeof originalMatch>
+    ): ReturnType<typeof originalMatch> {
+      matchCalls++;
+      return originalMatch.apply(this, args);
+    };
+    const attrNode = attr({
+      name: 'data',
+      op: '=',
+      value: any('@{attr-data}')
+    });
+    const node = rules([
+      vardecl({
+        name: 'attr-data',
+        value: any('foo')
+      }),
+      ruleset({
+        selector: attrNode,
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    try {
+      const evaluated = await attrNode.eval(context);
+      const resolved = await attrNode.resolve(context);
+
+      expect(evaluated.toTrimmedString()).toBe('[data="foo"]');
+      expect(resolved.render(context)).toBe('[data="foo"]');
+      expect(matchCalls).toBe(0);
+    } finally {
+      String.prototype.match = originalMatch;
+    }
+  });
+
   test('keeps interpolated attribute selector values isolated across repeated mixin calls', async () => {
     context = new Context({
       collapseNesting: true,

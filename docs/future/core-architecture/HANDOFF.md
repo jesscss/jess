@@ -317,7 +317,10 @@ shape current before commit.
    skip the inner arg-list trim mark when no trivia is active; plain/finalized
    call render now carries a string-only text state for known scalar/no-trivia
    args and content, including async scalar resolutions, so those paths return
-   known text without whole-call writer readback.
+   known text without whole-call writer readback. `evalArgNodes(...)` now runs a
+   sync-first loop and only enters an async continuation after an evaluated arg
+   is actually thenable, while preserving the existing `copyWithReusableLeaves`
+   ownership boundary and `calcFrames` cleanup.
 2. [ ] Finish `QueryCondition` dynamic render by removing the child mark probe
    only after child render contracts prove write-vs-return behavior directly.
 
@@ -395,7 +398,9 @@ shape current before commit.
    `isThenable(...)` narrowing instead of wrapping already-thenable values with
    `Promise.resolve(...)`. Render-assignment merge adapter state no longer
    carries the unused stale `value` field; the selected render value remains on
-   the outer declaration render state.
+   the outer declaration render state. Assignment normalization and eval value
+   state now mutate the existing state object directly instead of allocating
+   local setter closures and shadow state variables.
 6. [ ] Finish `Rules` root/body render, imports, placement state, merge output,
    and duplicate declaration materialization.
 
@@ -497,7 +502,9 @@ shape current before commit.
    cut even though it is tracked in the node tracker rather than this scalar
    wrapper row. `AttributeSelector` now writes common scalar non-bare forms
    (`Any`/simple `Quoted` values, including resolved variable values) without
-   writer mark/readback. `Block` scalar `Any` flat-buffer render and
+   writer mark/readback, and raw `@{...}` attribute interpolation now uses one
+   direct token parser instead of duplicate regex `match(...)` paths in eval and
+   resolve. `Block` scalar `Any` flat-buffer render and
    `Negative` scalar dimension flat-buffer render now write known text without
    print-state setup, writer mark/readback, or a second writer-to-buffer copy.
    Non-scalar `Block` buffer render now writes syntax directly under the
@@ -631,25 +638,40 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Paren resolved flat-buffer child streaming.
+Current pass: AttributeSelector raw interpolation, Call arg eval, and Declaration state cleanup.
 
-- New traversal: none. The change adds no loop, recursion, side-map lookup,
-  parent/source walk, object scan, or array allocation.
-- New node/materialization: none. No `Node`, copy, inherit, wrapper,
-  materialized array, or ownership mutation was added.
-- Render path: resolved synchronous non-scalar `Paren` children now stream to
-  flat buffers as delimiter, child render output, delimiter. Async-capable and
-  segmented-buffer cases stay on the existing wrapped-string boundary.
-- Helper/API surface: no helper or public API was added.
-- Metadata mutations: none. No parent/source/frozen/location/options/context
-  mutation was added.
-- Evidence: focused Paren and render-buffer tests, eslint on touched source and
-  test files, scoped `git diff --check`, `@jesscss/core` build, and
-  `verify:aggressive-cutting-review` all pass in the parent worktree.
+- New traversal: none. The new raw interpolation parser performs fixed boundary
+  checks plus one `includes('}')` check on the parsed key, replacing duplicate
+  regex `match(...)` calls. Call arg evaluation keeps its existing arg loop but
+  no longer allocates an async state machine for the all-sync path. No
+  parent/source walk, recursion, side-map lookup, or object graph scan was
+  added.
+- New node/materialization: no new materialization. Call keeps the existing
+  `copyWithReusableLeaves(...)` ownership boundary only for args that evaluate
+  to themselves; Declaration keeps existing semantic `Nil`/`List`/`Operation`/
+  `Reference` materialization points and only removes local setter closures.
+- Render path: AttributeSelector eval/resolve for parser-left raw
+  interpolation tokens now reuses the direct parser before looking up the
+  variable declaration; render output and ownership stay on the existing
+  attribute selector paths. Call CSS fallback arg evaluation now returns
+  synchronously for sync args and keeps async/calc cleanup behavior for thenable
+  args. Declaration eval/registration state changes are assignment-only cleanup,
+  not render materialization.
+- Helper/API surface: one private AttributeSelector parser helper was added and
+  two regex match sites were removed. Call adds one private async continuation
+  helper but removes routine `async`/per-arg `await` from `evalArgNodes(...)`.
+  Declaration removes local setter/helper closures. No public API was added.
+- Metadata mutations: no new parent/source/frozen/location/options/context
+  mutation was added. Existing Declaration state mutation points are unchanged
+  semantically, only expressed directly.
+- Evidence: focused AttributeSelector, Call, Declaration, and render-buffer
+  tests, eslint on touched source and test files, scoped `git diff --check`,
+  `@jesscss/core` build, and `verify:aggressive-cutting-review` all pass in the
+  parent worktree.
 - Review noise: `verify:aggressive-cutting-review` may report unrelated dirty
-  worktree tokens. This slice should add no new danger-token categories beyond
-  render-buffer writes.
-- Verdict: accepted as a bounded scalar-wrapper cut if final gates pass. Paren
-  escaped semicolon-list rendering and public string wrappers remain documented
-  boundaries. No performance claim; performance remains shelved because this
-  was not a measured benchmark pass.
+  worktree tokens from JS/runtime/docs work outside this slice.
+- Verdict: accepted as bounded partial cuts if final gates pass. Non-scalar
+  AttributeSelector render capture, Call whole-call readback/custom/trivia arg
+  boundaries, and Declaration raw-source/merge materialization remain open. No
+  performance claim; performance remains shelved because this was not a measured
+  benchmark pass.

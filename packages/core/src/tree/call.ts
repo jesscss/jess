@@ -251,10 +251,10 @@ export class Call extends Node<CallValue, CallOptions> {
     return state.source.markCallOutput(new Any(rendered, { role: 'any' }));
   }
 
-  private async evalArgNodes(
+  private evalArgNodes(
     context: Context,
     nodes?: List<Node>
-  ): Promise<List<Node> | undefined> {
+  ): MaybePromise<List<Node> | undefined> {
     if (!nodes) {
       return undefined;
     }
@@ -262,8 +262,32 @@ export class Call extends Node<CallValue, CallOptions> {
     const out = new Array<Node>(source.length);
     for (let i = 0; i < source.length; i++) {
       const node = source[i]!;
-      const evald = await node.eval(context) as Node;
+      const evald = node.eval(context);
+      if (isThenable(evald)) {
+        return evald.then(value => this.finishEvalArgNodes(context, nodes, out, i, node, value));
+      }
       out[i] = evald === node ? copyWithReusableLeaves(evald) : evald;
+    }
+    return list(out, nodes.options);
+  }
+
+  private finishEvalArgNodes(
+    context: Context,
+    nodes: List<Node>,
+    out: Node[],
+    index: number,
+    node: Node,
+    evald: Node
+  ): MaybePromise<List<Node>> {
+    const source = nodes.value;
+    out[index] = evald === node ? copyWithReusableLeaves(evald) : evald;
+    for (let i = index + 1; i < source.length; i++) {
+      const next = source[i]!;
+      const nextEvald = next.eval(context);
+      if (isThenable(nextEvald)) {
+        return nextEvald.then(value => this.finishEvalArgNodes(context, nodes, out, i, next, value));
+      }
+      out[i] = nextEvald === next ? copyWithReusableLeaves(nextEvald) : nextEvald;
     }
     return list(out, nodes.options);
   }
@@ -1450,12 +1474,25 @@ export class Call extends Node<CallValue, CallOptions> {
       if (n === 'calc') {
         context.calcFrames++;
       }
-      const evaluatedArgs = await this.evalArgNodes(context, args)
-        .finally(() => {
-          if (n === 'calc') {
-            context.calcFrames--;
-          }
-        });
+      let evaluatedArgsResult: MaybePromise<List<Node> | undefined>;
+      try {
+        evaluatedArgsResult = this.evalArgNodes(context, args);
+      } catch (error) {
+        if (n === 'calc') {
+          context.calcFrames--;
+        }
+        throw error;
+      }
+      const evaluatedArgs = isThenable(evaluatedArgsResult)
+        ? await evaluatedArgsResult.finally(() => {
+            if (n === 'calc') {
+              context.calcFrames--;
+            }
+          })
+        : evaluatedArgsResult;
+      if (n === 'calc' && !isThenable(evaluatedArgsResult)) {
+        context.calcFrames--;
+      }
       if (
         n === 'calc' && evaluatedArgs
       ) {

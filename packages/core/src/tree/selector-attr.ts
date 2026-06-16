@@ -27,6 +27,20 @@ export type AttributeSelectorValue = {
   mod?: string;
 };
 
+function rawInterpolationKey(value: string): string | undefined {
+  const raw = value.trim();
+  if (
+    raw.length < 4
+    || raw.charCodeAt(0) !== 0x40
+    || raw.charCodeAt(1) !== 0x7b
+    || raw.charCodeAt(raw.length - 1) !== 0x7d
+  ) {
+    return undefined;
+  }
+  const key = raw.slice(2, -1);
+  return key.includes('}') ? undefined : key;
+}
+
 /**
  * An attribute selector
  * @see https://developer.mozilla.org/en-US/docs/Web/CSS/Attribute_selectors
@@ -51,10 +65,8 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   private resolveAttributeValue(context: Context): MaybePromise<Node | undefined> {
     const { value } = this.value;
     if (value instanceof Any && typeof value.value === 'string') {
-      const raw = value.value.trim();
-      const m = raw.match(/^@\{([^}]+)\}$/);
-      if (m) {
-        const key = m[1]!;
+      const key = rawInterpolationKey(value.value);
+      if (key !== undefined) {
         const rules = this.rulesParent;
         if (rules) {
           const found = rules.find('declaration', key, 'VarDeclaration');
@@ -180,10 +192,8 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     //   [data=@{attr-data}]
     // In Less semantics this should resolve to the variable value and be serialized quoted.
     if (value instanceof Any && typeof value.value === 'string') {
-      const raw = value.value.trim();
-      const m = raw.match(/^@\{([^}]+)\}$/);
-      if (m) {
-        const key = m[1]!;
+      const key = rawInterpolationKey(value.value);
+      if (key !== undefined) {
         const rules = this.rulesParent;
         if (rules) {
           const found = rules.find('declaration', key, 'VarDeclaration');

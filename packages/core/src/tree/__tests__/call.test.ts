@@ -83,6 +83,12 @@ class RejectingAny extends Any<string> {
   }
 }
 
+class ThrowingAny extends Any<string> {
+  override eval() {
+    throw new Error(this.value);
+  }
+}
+
 function countDeriveCallUse(): { readonly count: number; restore(): void } {
   const descriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
   const original = descriptor?.value;
@@ -1207,6 +1213,16 @@ describe('Call', () => {
     const buffer = createRenderBuffer('flat');
     await expect(nested.render(context, buffer)).resolves.toBe('calc(15vh)');
     expect(buffer.parts).toEqual(['calc(15vh)']);
+  });
+
+  it('restores calc eval frames when synchronous CSS call argument evaluation throws', async () => {
+    const rule = call({
+      name: 'calc',
+      args: list([new ThrowingAny('bad arg')])
+    });
+
+    await expect(rule.eval(context)).rejects.toThrow('bad arg');
+    expect(context.calcFrames).toBe(0);
   });
 
   it('keeps canonical function syntax separate from evaluated CSS-call normalization', () => {

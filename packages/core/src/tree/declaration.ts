@@ -1105,11 +1105,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private _normalizeAssignmentValue(state: DeclarationRegistrationState, key: Any<'property'>): void {
-    let { value } = state;
-    const setValue = (newValue: Node) => {
-      state.value = newValue;
-      value = newValue;
-    };
     /** Normalize assignment types */
     let assign = this.options?.assign;
     const rawAssign = assign as string | undefined;
@@ -1125,7 +1120,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (assign) {
       const normalizedAssign = assign;
       const referenceKey = state.renderOnly ? this.copyNameForDerived(key) : key;
-      const inputValue = state.renderOnly ? this.ownRenderAssignmentInput(value) : value;
+      const inputValue = state.renderOnly ? this.ownRenderAssignmentInput(state.value) : state.value;
       /** Reference type */
       let type: 'declaration' | 'variable' =
         this.type === 'VarDeclaration' ? 'variable' : 'declaration';
@@ -1169,10 +1164,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             };
             state.normalizedFromAssign = normalizedAssign;
           } else {
-            value = isMergeListAssign
+            state.value = isMergeListAssign
               ? new List([ref, inputValue])
               : spaced([ref, inputValue]);
-            setValue(value);
           }
           break;
         }
@@ -1194,26 +1188,22 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               };
               state.normalizedFromAssign = normalizedAssign;
             } else {
-              setValue(new List([ref, inputValue]));
+              state.value = new List([ref, inputValue]);
             }
           } else {
-            setValue(
-              new Operation([
-                new Reference({ key: referenceKey }, { type }),
-                '+',
-                inputValue
-              ])
-            );
+            state.value = new Operation([
+              new Reference({ key: referenceKey }, { type }),
+              '+',
+              inputValue
+            ]);
           }
           break;
         }
         case AssignmentType.CondAssign: {
-          setValue(
-            new Reference({ key: referenceKey }, {
-              type,
-              fallbackValue: inputValue
-            })
-          );
+          state.value = new Reference({ key: referenceKey }, {
+            type,
+            fallbackValue: inputValue
+          });
           break;
         }
       }
@@ -1262,27 +1252,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       };
     }
     {
-      let node = this;
       const state: DeclarationValueState = {
-        source: node,
-        value: node.value.value,
-        important: node.value.important,
+        source: this,
+        value: this.value.value,
+        important: this.value.important,
         changed: false
       };
-      const setVal = (newValue: Node) => {
-        if (state.value !== newValue) {
-          state.value = newValue;
-          state.changed = true;
-        }
-      };
-      const setImportant = (important: Any<'flag'>) => {
-        if (state.important !== important) {
-          state.important = important;
-          state.changed = true;
-        }
-      };
       const normalizeMergedLeadingPlaceholder = () => {
-        const normalizedAssign = node.options.normalizedFromAssign;
+        const normalizedAssign = this.options.normalizedFromAssign;
         const isListMergedAssign =
             normalizedAssign === AssignmentType.Add
             || normalizedAssign === AssignmentType.MergeList;
@@ -1291,25 +1268,31 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
         const mergedItems = collectDeclarationMergeAdapterItems(state.value, { includeSequences: false });
         if (mergedItems.length === 0) {
-          setVal(new Nil());
+          state.value = new Nil();
+          state.changed = true;
           return;
         }
         if (mergedItems.length === 1) {
           const item = mergedItems[0]!;
-          setVal(this.ownMergedAssignmentOutputItem(item));
+          const newValue = this.ownMergedAssignmentOutputItem(item);
+          if (state.value !== newValue) {
+            state.value = newValue;
+            state.changed = true;
+          }
           return;
         }
         const outputItems = new Array<Node>(mergedItems.length);
         for (let i = 0; i < mergedItems.length; i++) {
           outputItems[i] = this.ownMergedAssignmentOutputItem(mergedItems[i]!);
         }
-        setVal(new List(outputItems));
+        state.value = new List(outputItems);
+        state.changed = true;
       };
-        /** Registration prep already stabilized the name; eval handles the value. */
-      if (node.type === 'VarDeclaration') {
+      /** Registration prep already stabilized the name; eval handles the value. */
+      if (this.type === 'VarDeclaration') {
         return state;
       }
-      const { name, value } = node.value;
+      const { name, value } = this.value;
       if (value instanceof Node) {
         const isCustomProperty = name.valueOf().startsWith('--');
         if (isCustomProperty) {
@@ -1323,29 +1306,37 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           return maybeNewValue.then((newValue: Node | Nil) => {
             context.inCustom = false;
             if (newValue instanceof Nil) {
-              return newValue.inherit(node);
+              return newValue.inherit(this);
             }
-            setVal(newValue);
+            if (state.value !== newValue) {
+              state.value = newValue;
+              state.changed = true;
+            }
             normalizeMergedLeadingPlaceholder();
             const importantState = finalizeContextualImportantPublicState(context, state.important);
             if (importantState.important && importantState.important !== state.important) {
-              setImportant(importantState.important);
+              state.important = importantState.important;
+              state.changed = true;
             }
             return state;
           });
         }
         context.inCustom = false;
         if (maybeNewValue instanceof Nil) {
-          return maybeNewValue.inherit(node);
+          return maybeNewValue.inherit(this);
         }
         if (!(maybeNewValue instanceof Node)) {
-          return node;
+          return this;
         }
-        setVal(maybeNewValue);
+        if (state.value !== maybeNewValue) {
+          state.value = maybeNewValue;
+          state.changed = true;
+        }
         normalizeMergedLeadingPlaceholder();
         const importantState = finalizeContextualImportantPublicState(context, state.important);
         if (importantState.important && importantState.important !== state.important) {
-          setImportant(importantState.important);
+          state.important = importantState.important;
+          state.changed = true;
         }
       }
       return state;
