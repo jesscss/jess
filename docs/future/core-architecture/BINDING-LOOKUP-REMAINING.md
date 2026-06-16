@@ -28,16 +28,17 @@ materialization wrapper for that semantic case.
 ### A. Direct Declaration And Property Lookup
 
 1. **Explicit declaration visibility/import modes.**
-   `DeclarationLookupStrategy` carries visibility pieces, but import/reference
-   mode is not yet a complete first-class direct lookup mode. Covered
-   import/reference declaration hits and misses should carry visibility facts
-   instead of discovering them by fallback behavior.
+   `DeclarationLookupStrategy` carries visibility pieces, and direct
+   declaration child entries now carry `hasReferenceImportSurface`. Remaining
+   work is proving covered import/reference hits and misses do not widen
+   ordinary child scans or rediscover visibility by fallback behavior.
 
 2. **Property merge-chain occurrence follow-through.**
    Property lookup returns `DirectDeclarationOccurrence`, and occurrences now
    carry a `slot` for same-parent source ordering. Filtered merge-chain/
-   property assignment modes still need the remaining merge metadata and
-   assignment normalization before the filtered fallback can be deleted.
+   property assignment modes now use typed `requiredNormalizedFromAssign`
+   constraints instead of a generic merge filter. Remaining work is proving
+   final handle eligibility and scalarizing the temporary excluded-node array.
 
 3. **Declaration/property key versioning follow-through.**
    Reference handles now use `Rules.getDeclarationLookupVersion(key)`, but the
@@ -56,8 +57,8 @@ materialization wrapper for that semantic case.
    `BindingCell.lookupIdentity` and `ScopeFrame.currentBindingsVersion` now let
    cached variable handles validate without re-reading the current binding map.
    Ancestor variable handles now carry positive current-binding freshness
-   facts. Remaining work is compressing that side state further and keeping
-   cold object materialization out of simple reads.
+   facts, and rest arrays no longer duplicate the scalar frame. Remaining work
+   is keeping cold object materialization out of simple reads.
 
 2. **Evaluated-value cache prerequisites.**
    Cell/current-pointer lookup identity exists. Evaluated-value caching remains

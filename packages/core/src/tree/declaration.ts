@@ -979,26 +979,22 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       switch (assign) {
         case AssignmentType.MergeList:
         case AssignmentType.MergeSequence: {
-          const isLessMergeAssign = (assignValue: string): boolean => (
-            assignValue === AssignmentType.MergeList
-            || assignValue === AssignmentType.MergeSequence
-            || assignValue === '+,:'
-            || assignValue === '+_:'
-          );
+          const excludedNodes: Node[] = [this];
           const ref = new Reference({ key: referenceKey }, {
             type,
             fallbackValue: new Nil(),
-            // Assignment normalization clears `assign` to Default, so matching by
-            // assignment flag prevents later merge iterations from seeing prior values.
-            // For Less-style property merges, any prior merge node participates in the chain,
-            // but plain declarations do not.
-            // Exclude only the current node to avoid self-reference.
-            filter: n => (
-              n !== outputNode
-              && n !== this
-              && isLessMergeAssign(String(n.options?.normalizedFromAssign ?? ''))
-            )
+            excludedNodes,
+            requiredNormalizedFromAssign: [
+              AssignmentType.MergeList,
+              AssignmentType.MergeSequence,
+              '+,:',
+              '+_:'
+            ]
           });
+          state.bindOutput = (node: Declaration) => {
+            outputNode = node;
+            excludedNodes[1] = node;
+          };
           /**
            * @note - It's up to Sequence and List to handle
            *         the merging of the values, if Nil()

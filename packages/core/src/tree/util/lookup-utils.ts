@@ -77,6 +77,8 @@ export function isNonClassicImportBoundary(rules: Rules | undefined): boolean {
 
 export type DeclarationFindOptions = {
   filter?: (n: Node) => boolean;
+  excludedNodes?: readonly Node[];
+  requiredNormalizedFromAssign?: string | readonly string[];
   semanticFilter?: boolean;
   candidates?: Set<Node>;
   optionalCandidates?: Set<Node>;

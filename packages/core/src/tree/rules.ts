@@ -1403,7 +1403,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         rulesVisibility: this.getDirectChildRulesVisibility(child),
         readonly: Boolean(child.options.readonly),
         hasDeclarationSurface,
-        hasVarDeclarationSurface
+        hasVarDeclarationSurface,
+        hasReferenceImportSurface
       });
     }
     this.directDeclarationChildEntries = out ?? null;
@@ -1436,7 +1437,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       rulesVisibility: visibility,
       readonly,
       hasDeclarationSurface,
-      hasVarDeclarationSurface
+      hasVarDeclarationSurface,
+      hasReferenceImportSurface
     });
   }
 

@@ -10,6 +10,7 @@ export type RulesEntryLike = {
   readonly?: boolean;
   hasDeclarationSurface?: boolean;
   hasVarDeclarationSurface?: boolean;
+  hasReferenceImportSurface?: boolean;
 };
 
 export type RulesEntryVisibility = {

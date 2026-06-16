@@ -29,6 +29,7 @@ type DeclarationLookupStrategy = {
   childEntryMayContainFamily: (entry: {
     hasDeclarationSurface?: boolean;
     hasVarDeclarationSurface?: boolean;
+    hasReferenceImportSurface?: boolean;
   }) => boolean;
   skipVarsAfterBindingHit: boolean;
 };
@@ -56,8 +57,10 @@ const VARIABLE_LOOKUP: DeclarationLookupStrategy = {
   includeFallbackFrames: true,
   prepareScopeFrame: true,
   acceptsNode: (node): node is Declaration => isNode(node, N.VarDeclaration),
-  scopeMayContainFamily: scope => scope.hasVarDeclarationChildSurface,
-  childEntryMayContainFamily: entry => entry.hasVarDeclarationSurface !== false,
+  scopeMayContainFamily: scope => scope.hasVarDeclarationChildSurface || scope.hasReferenceImportChildSurface,
+  childEntryMayContainFamily: entry => (
+    entry.hasVarDeclarationSurface !== false || entry.hasReferenceImportSurface === true
+  ),
   skipVarsAfterBindingHit: true
 };
 
@@ -69,8 +72,10 @@ const PROPERTY_LOOKUP: DeclarationLookupStrategy = {
   includeFallbackFrames: false,
   prepareScopeFrame: false,
   acceptsNode: (node): node is Declaration => isNode(node, N.Declaration),
-  scopeMayContainFamily: scope => scope.hasDeclarationChildSurface,
-  childEntryMayContainFamily: entry => entry.hasDeclarationSurface !== false,
+  scopeMayContainFamily: scope => scope.hasDeclarationChildSurface || scope.hasReferenceImportChildSurface,
+  childEntryMayContainFamily: entry => (
+    entry.hasDeclarationSurface !== false || entry.hasReferenceImportSurface === true
+  ),
   skipVarsAfterBindingHit: false
 };
 
@@ -82,9 +87,12 @@ const ANY_DECLARATION_LOOKUP: DeclarationLookupStrategy = {
   includeFallbackFrames: false,
   prepareScopeFrame: false,
   acceptsNode: (node): node is Declaration => isNode(node, N.Declaration | N.VarDeclaration),
-  scopeMayContainFamily: scope => scope.hasDeclarationChildSurface || scope.hasVarDeclarationChildSurface,
+  scopeMayContainFamily: scope => (
+    scope.hasDeclarationChildSurface || scope.hasVarDeclarationChildSurface || scope.hasReferenceImportChildSurface
+  ),
   childEntryMayContainFamily: entry => (
     entry.hasDeclarationSurface !== false || entry.hasVarDeclarationSurface !== false
+    || entry.hasReferenceImportSurface === true
   ),
   skipVarsAfterBindingHit: false
 };
@@ -142,14 +150,28 @@ function passesDeclarationFilter(
   node: Node,
   key: string,
   strategy: DeclarationLookupStrategy,
-  filter: DeclarationFindOptions['filter'] | undefined,
+  options: Pick<DeclarationFindOptions, 'excludedNodes' | 'filter' | 'requiredNormalizedFromAssign'>,
   start: number | undefined
 ): node is Declaration {
   if (!strategy.acceptsNode(node)) {
     return false;
   }
+  if (options.excludedNodes?.includes(node)) {
+    return false;
+  }
   if (node.options?.setDefined) {
     return false;
+  }
+  const requiredNormalizedFromAssign = options.requiredNormalizedFromAssign;
+  if (requiredNormalizedFromAssign !== undefined) {
+    const normalizedFromAssign = String(node.options?.normalizedFromAssign ?? '');
+    if (Array.isArray(requiredNormalizedFromAssign)) {
+      if (!requiredNormalizedFromAssign.includes(normalizedFromAssign)) {
+        return false;
+      }
+    } else if (normalizedFromAssign !== requiredNormalizedFromAssign) {
+      return false;
+    }
   }
   if (String(node.value.name.valueOf()) !== key) {
     return false;
@@ -157,7 +179,7 @@ function passesDeclarationFilter(
   if (start !== undefined && !(node.index !== undefined && node.index < start)) {
     return false;
   }
-  return !filter || filter(node);
+  return !options.filter || options.filter(node);
 }
 
 function getDirectDeclarationBucket(
@@ -254,14 +276,14 @@ function chooseCandidateMatch(
   candidates: Set<Node> | undefined,
   key: string,
   strategy: DeclarationLookupStrategy,
-  filter: DeclarationFindOptions['filter'] | undefined
+  options: Pick<DeclarationFindOptions, 'excludedNodes' | 'filter' | 'requiredNormalizedFromAssign'>
 ): DirectDeclarationOccurrence | undefined {
   if (!candidates?.size) {
     return current;
   }
   let out = current;
   for (const candidate of candidates) {
-    if (passesDeclarationFilter(candidate, key, strategy, filter, undefined)) {
+    if (passesDeclarationFilter(candidate, key, strategy, options, undefined)) {
       out = chooseTraversalMatch(out, createDeclarationOccurrence(candidate));
     }
   }
@@ -389,7 +411,7 @@ function findLocalDeclaration(
   scope: Rules,
   key: string,
   strategy: DeclarationLookupStrategy,
-  filter: DeclarationFindOptions['filter'] | undefined,
+  options: Pick<DeclarationFindOptions, 'excludedNodes' | 'filter' | 'requiredNormalizedFromAssign'>,
   start: number | undefined,
   skipVarDeclarations = false
 ): DirectDeclarationOccurrence | undefined {
@@ -402,7 +424,7 @@ function findLocalDeclaration(
     if (skipVarDeclarations && isNode(node, N.VarDeclaration)) {
       continue;
     }
-    if (passesDeclarationFilter(node, key, strategy, filter, start)) {
+    if (passesDeclarationFilter(node, key, strategy, options, start)) {
       return createDeclarationOccurrence(node, i);
     }
   }
@@ -522,7 +544,7 @@ function findWithinScopeSurface(
       scope,
       key,
       strategy,
-      options.filter,
+      options,
       start,
       Boolean(localMatch && strategy.skipVarsAfterBindingHit)
     );
@@ -657,8 +679,8 @@ function findDeclarationLookupWithStrategy(
   let start = lookupOptions.start;
   let rules: Rules | undefined = startRules;
   let searchingFallback = false;
-  let optionalMatch = chooseCandidateMatch(undefined, lookupOptions.optionalCandidates, key, strategy, lookupOptions.filter);
-  let publicMatch = chooseCandidateMatch(undefined, lookupOptions.candidates, key, strategy, lookupOptions.filter);
+  let optionalMatch = chooseCandidateMatch(undefined, lookupOptions.optionalCandidates, key, strategy, lookupOptions);
+  let publicMatch = chooseCandidateMatch(undefined, lookupOptions.candidates, key, strategy, lookupOptions);
   let readonly = Boolean(lookupOptions.readonly);
 
   while (rules) {

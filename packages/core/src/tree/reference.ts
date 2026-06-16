@@ -114,6 +114,8 @@ export type ReferenceOptions = {
    */
   fallbackValue?: Node | true;
   filter?: (node: Node) => boolean;
+  excludedNodes?: readonly Node[];
+  requiredNormalizedFromAssign?: string | readonly string[];
   role?: AnyRole;
   preserveRulesLike?: boolean;
   /** Internal call-site hint: terminal mixin-ruleset lookup cannot use rulesets when args are present. */
@@ -839,6 +841,8 @@ function buildReferenceDeclarationFindOptions(
 ): ReferenceDeclarationFindOptions {
   return {
     filter: lookupContext.filter,
+    excludedNodes: lookupContext.referenceNode.options.excludedNodes,
+    requiredNormalizedFromAssign: lookupContext.referenceNode.options.requiredNormalizedFromAssign,
     semanticFilter: lookupContext.semanticFilter,
     context: lookupContext.context,
     hasTarget: lookupContext.hasTarget,
@@ -1161,8 +1165,8 @@ function getAncestorFrameCurrentBindingFacts(
       currentBindingVersion = frame.currentBindingsVersion;
     } else {
       if (!currentBindingRestFrames || !currentBindingRestVersions) {
-        currentBindingRestFrames = [currentBindingFrame];
-        currentBindingRestVersions = [currentBindingVersion!];
+        currentBindingRestFrames = [];
+        currentBindingRestVersions = [];
       }
       currentBindingRestFrames.push(frame);
       currentBindingRestVersions.push(frame.currentBindingsVersion);

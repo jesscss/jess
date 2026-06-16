@@ -3519,6 +3519,73 @@ describe('reference', () => {
       }
     });
 
+    it('direct variable lookup enters reference-import child surfaces even when family flags are absent', async () => {
+      const childRules = rules([
+        vardecl({ name: any('from-ref'), value: any('blue') })
+      ], {
+        rulesVisibility: {
+          VarDeclaration: 'public'
+        }
+      });
+      const root = rules([childRules]);
+      await root.eval(context);
+      root.collectDirectDeclarationChildEntries();
+      const entry = root.directDeclarationChildEntries?.[0];
+      expect(entry).toBeDefined();
+      if (!entry) {
+        throw new Error('expected carried child entry');
+      }
+      root.hasVarDeclarationChildSurface = false;
+      root.hasReferenceImportChildSurface = true;
+      entry.hasVarDeclarationSurface = false;
+      entry.hasReferenceImportSurface = true;
+
+      const found = root.findVariable('from-ref', { searchParents: false });
+
+      expect(found?.value.value.valueOf()).toBe('blue');
+    });
+
+    it('direct variable lookup still skips children without variable or reference-import surfaces', async () => {
+      const childRules = rules([
+        vardecl({ name: any('from-ref'), value: any('blue') })
+      ], {
+        rulesVisibility: {
+          VarDeclaration: 'public'
+        }
+      });
+      const root = rules([childRules]);
+      await root.eval(context);
+      root.collectDirectDeclarationChildEntries();
+      const entry = root.directDeclarationChildEntries?.[0];
+      expect(entry).toBeDefined();
+      if (!entry) {
+        throw new Error('expected carried child entry');
+      }
+      root.hasVarDeclarationChildSurface = false;
+      root.hasReferenceImportChildSurface = false;
+      entry.hasVarDeclarationSurface = false;
+      entry.hasReferenceImportSurface = false;
+
+      const originalValue = childRules.value;
+      Object.defineProperty(childRules, 'value', {
+        configurable: true,
+        get() {
+          throw new Error('variable lookup should skip non-variable non-reference-import child surfaces');
+        }
+      });
+
+      try {
+        const found = root.findVariable('from-ref', { searchParents: false });
+        expect(found).toBeUndefined();
+      } finally {
+        Object.defineProperty(childRules, 'value', {
+          configurable: true,
+          writable: true,
+          value: originalValue
+        });
+      }
+    });
+
     it('setDefined variable assignment uses occurrence lookup without Rules.findVariable', async () => {
       const originalFindVariable = RulesClass.prototype.findVariable;
       let variableLookups = 0;
