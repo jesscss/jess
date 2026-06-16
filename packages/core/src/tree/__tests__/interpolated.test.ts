@@ -253,6 +253,21 @@ describe('Interpolated', () => {
     }
   });
 
+  it('creates scalar whole-selector interpolations without public string transport', () => {
+    const replacement = any('.theme');
+    replacement.toTrimmedString = () => {
+      throw new Error('whole-selector interpolation should read owned scalar text directly');
+    };
+    const interpolatedNode = interpolated({
+      source: INTERPOLATION_PLACEHOLDER,
+      replacements: [replacement]
+    });
+
+    const selector = interpolatedNode.createSelector('resolve');
+
+    expect(selector.toTrimmedString()).toBe('.theme');
+  });
+
   it('preserves quoted replacement syntax when requested', () => {
     const node = interpolated({
       source: `progid:test(value=${INTERPOLATION_PLACEHOLDER})`,

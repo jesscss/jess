@@ -200,6 +200,39 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-16 Interpolated Scalar Whole-Selector Cut
+
+Hypothesis: whole-selector interpolation with an owned scalar token replacement
+should not call the replacement public string API before constructing the
+selector materialization.
+
+Patch shape:
+
+- `Interpolated.createSelector(...)` reads direct scalar token text for
+  `Any`/`Anonymous`/`Keyword` replacements in the whole-selector interpolation
+  path;
+- non-scalar selector/generic materialization stays on the existing path;
+- a focused test proves the scalar path does not call replacement
+  `toTrimmedString(...)`.
+
+Evidence:
+
+- focused red/green proof: `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/interpolated.test.ts --run -t "creates scalar
+  whole-selector interpolations without public string transport"` failed on
+  replacement `toTrimmedString(...)` before the cut and passed after;
+- focused suites: `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/interpolated.test.ts
+  src/tree/__tests__/selector-interpolated.test.ts --run` passed;
+- core build: `pnpm --filter @jesscss/core build` passed with the known
+  `src/tree/js-expr.ts` direct-eval warning;
+- hotpath leash: `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` passed. Results are tripwire-only, not a speed claim:
+  `functions.less` median 14.88ms unstable, `import-reference.less` median
+  24.97ms noisy, `mixins-guards.less` median 40.70ms noisy,
+  `extend-chaining.less` median 5.89ms noisy, `media.less` median 5.93ms
+  unstable.
+
 ### 2026-06-16 Call Stylesheet Func Arg Surface Cut
 
 Hypothesis: stylesheet `Func` calls should not pre-evaluate call args into a

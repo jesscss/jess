@@ -229,6 +229,9 @@ export class Interpolated<
         }
         return copied.inherit(this);
       }
+      if (replacement.type === 'Any' || replacement.type === 'Anonymous' || replacement.type === 'Keyword') {
+        return new BasicSelector(String(replacement.value).trim()).inherit(this);
+      }
       return new BasicSelector(replacement.toTrimmedString().trim()).inherit(this);
     }
     let output = '';

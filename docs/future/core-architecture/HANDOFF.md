@@ -348,6 +348,12 @@ shape current before commit.
    candidate output.
 9. [ ] Finish `Interpolated` cold replacement capture, selector/generic
    materialization, and replacement arrays.
+
+   Current partial status: whole-selector interpolation with owned scalar token
+   replacements (`Any`/`Anonymous`/`Keyword`) now builds the selector from the
+   replacement value directly instead of calling public
+   `toTrimmedString(...)`. Embedded selector replacement assembly, generic
+   materialization, cold replacement capture, and replacement arrays remain.
 10. [x] Finish `StyleImport` first-use placement copies by replacing them with
    canonical source placement state, or document the exact semantic blocker.
 
@@ -485,35 +491,34 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `StyleImport` and `List`/`Sequence` boundary closeout.
+Current pass: `Interpolated` scalar whole-selector materialization cut.
 
-- New traversal: none. This pass changes only
-  `docs/future/core-architecture/HANDOFF.md` and
-  `docs/future/core-architecture/NODE-REWRITE-TRACKER.md`.
-- New node/materialization: none. No production node, copy, `.inherit(...)`,
-  `.adopt(...)`, wrapper `Rules`, materialized array, frozen/source/parent
-  metadata mutation, or ownership behavior changed.
-- Render path: no render code changed. Queue item 13 is closed because
-  `List.render(...)`, `Sequence.render(...)`, and the shared
-  `RenderBufferNode.render(...)` contract all return
-  `MaybePromise<string>`, while current buffer paths strip unrelated explicit
-  writers and write the same returned text to the requested buffer. That string
-  return is now the documented public compatibility boundary.
+- New traversal: none. `packages/core/src/tree/interpolated.ts` adds no loop,
+  recursion, parent/source walk, side-map lookup, object/array scan, generator,
+  or collection helper.
+- New node/materialization: no new materialization class was introduced. The
+  existing whole-selector `new BasicSelector(...)` public materialization path
+  now reads owned scalar token text directly for `Any`/`Anonymous`/`Keyword`
+  replacements instead of calling public `toTrimmedString(...)` first.
+- Render path: no render path changed. This is selector materialization for
+  `Interpolated.createSelector(...)`, keeping render/eval stringification out
+  of public replacement string APIs for the scalar whole-selector case.
 - Helper/API surface: none added.
 - Metadata mutations: none added. No parent/source/frozen/context metadata
   mutation, lazy options/context creation, `Reflect.*`, generic own-property
   helper, source restoration, or source/root read was added.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected/deferred cut: `StyleImport` first-use child copies are not deleted;
-  `NODE-REWRITE-TRACKER.md` documents them as semantic placement state because
-  focused tests require owned placement children and source-child mapping.
-  `List`/`Sequence` addition and copy ownership remain separate queue item 14.
-- Evidence: code inspection of `packages/core/src/tree/list.ts`,
-  `packages/core/src/tree/sequence.ts`,
-  `packages/core/src/tree/util/render-buffer.ts`, and the existing
-  `StyleImport` tracker entry. No production behavior changed, so no focused
-  runtime test was needed for this docs-only queue closeout.
-- Verdict: accepted. Close the two whole queue items whose completion criteria
-  were satisfied by documented public/semantic boundaries; keep all remaining
-  implementation rows open.
+- Rejected/deferred cut: embedded selector replacement assembly still uses
+  public string capture where it may need generated `:is(...)` wrapping,
+  compound token splitting, or non-scalar selector/generic materialization.
+  `Interpolated.createGeneric(...)` still owns its cold public generic
+  materialization boundary.
+- Evidence: focused red/green test
+  `creates scalar whole-selector interpolations without public string
+  transport` failed on `replacement.toTrimmedString(...)` before the cut and
+  passed after. Full `interpolated` and `selector-interpolated` focused suites
+  passed.
+- Verdict: accepted as a bounded `Interpolated` materialization cut. Keep item
+  9 open because cold replacement capture, embedded selector assembly, generic
+  materialization, and replacement arrays remain.
