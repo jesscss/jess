@@ -322,6 +322,24 @@ describe('Interpolated', () => {
     expect(node.replace([replacement])).toBe('hello-world');
   });
 
+  it('replaces non-scalar tokens without public replacement string transport', () => {
+    const original = List.prototype.toTrimmedString;
+    List.prototype.toTrimmedString = () => {
+      throw new Error('interpolated non-scalar replacement should write syntax directly');
+    };
+    try {
+      const replacement = list([any('one'), any('two')]);
+      const node = interpolated({
+        source: `hello-${INTERPOLATION_PLACEHOLDER}`,
+        replacements: []
+      });
+
+      expect(node.replace([replacement])).toBe('hello-one, two');
+    } finally {
+      List.prototype.toTrimmedString = original;
+    }
+  });
+
   it('creates generic output without public interpolated string transport', async () => {
     const root = rules([
       vardecl({

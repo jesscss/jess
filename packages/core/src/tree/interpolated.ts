@@ -62,11 +62,12 @@ function stringifyReplacement(replacement: Node, options: PrintOptions, preserve
   if (replacement.type === 'Any' || replacement.type === 'Anonymous' || replacement.type === 'Keyword') {
     return String(replacement.value).trim();
   }
-  const printOpts = getPrintOptions(options);
-  const result = replacement.toTrimmedString({
-    ...printOpts,
-    writer: new OutputWriter()
-  });
+  const writer = new OutputWriter();
+  replacement.writeSyntax(getPrintOptions({
+    ...options,
+    writer
+  }));
+  const result = writer.toString();
   return isNode(replacement, N.Reference) ? result : result.trim();
 }
 

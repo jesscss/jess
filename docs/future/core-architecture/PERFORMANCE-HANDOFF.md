@@ -4175,6 +4175,27 @@ claim a speed win; keep the `Interpolated` row open for remaining generic
 materialization boundaries, non-scalar cold replacement capture, and
 replacement arrays. Two fixtures were unstable.
 
+### Interpolated Non-Scalar Replacement String Transport Cut
+
+Date: 2026-06-16.
+
+Change: public `Interpolated.replace(...)` still owns a cold string
+materialization boundary, but non-scalar replacements now write through direct
+`replacement.writeSyntax(...)` on a detached writer instead of calling public
+replacement `toTrimmedString(...)`.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `18.10ms` unstable, `import-reference` median
+  `29.04ms` usable, `mixins-guards` median `18.64ms` usable,
+  `extend-chaining` median `6.09ms` usable, and `media` median `6.47ms`
+  usable.
+
+Interpretation: cold public replacement string transport cut only. Do not claim
+a speed win; keep the `Interpolated` row open for remaining selector/generic
+materialization boundaries and replacement arrays. One fixture was unstable.
+
 ### Rules Root Import Direct Syntax Cut
 
 Date: 2026-06-16.
