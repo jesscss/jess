@@ -449,7 +449,10 @@ export class Context {
   }
 
   constructor(opts: ContextOptions = {}, plugins?: PluginInterface[]) {
-    this.opts = opts;
+    this.opts = {
+      unitMode: 'preserve',
+      ...opts
+    };
     this.plugins = plugins ?? [];
     this.extendRoots = new ExtendRootRegistry();
     if (opts.leakyRules !== undefined) {

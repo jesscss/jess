@@ -20,10 +20,12 @@ class CountingWriter extends OutputWriter {
 }
 
 let context: Context;
+let looseContext: Context;
 
 describe('Dimension', () => {
   beforeEach(() => {
     context = new Context();
+    looseContext = new Context({ unitMode: 'loose' });
   });
 
   async function renderOperate(
@@ -132,10 +134,18 @@ describe('Dimension', () => {
       await expect(renderOperate(left, right, '-')).resolves.toBe('-10px');
     });
 
+    it('defaults arithmetic to preserve mode', async () => {
+      let left = dimension([10, 'px']);
+      let right = dimension([20, 'rem']);
+
+      await expect(renderOperate(left, right, '-')).resolves.toBe('calc(1px + 1rem)');
+      expect(left.operate(right, '-').render(context)).toBe('calc(1px + 1rem)');
+    });
+
     it('should use left-hand units in non-strict mode', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([20, 'rem']);
-      await expect(renderOperate(left, right, '-')).resolves.toBe('-10px');
+      await expect(renderOperate(left, right, '-', looseContext)).resolves.toBe('-10px');
     });
 
     it('should use left-hand units when right has no unit', async () => {
@@ -190,7 +200,7 @@ describe('Dimension', () => {
     it('should ignore double units in non-strict mode', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'px']);
-      await expect(renderOperate(left, right, '*')).resolves.toBe('20px');
+      await expect(renderOperate(left, right, '*', looseContext)).resolves.toBe('20px');
     });
   });
 
@@ -203,12 +213,12 @@ describe('Dimension', () => {
     it('should divide number by unit (non-strict)', async () => {
       let left = num(10);
       let right = dimension([2, 'px']);
-      await expect(renderOperate(left, right, '/')).resolves.toBe('5px');
+      await expect(renderOperate(left, right, '/', looseContext)).resolves.toBe('5px');
     });
     it('should not cancel units in non-strict mode', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'px']);
-      await expect(renderOperate(left, right, '/')).resolves.toBe('5px');
+      await expect(renderOperate(left, right, '/', looseContext)).resolves.toBe('5px');
     });
     it('should cancel units in strict mode', async () => {
       let left = dimension([10, 'px']);

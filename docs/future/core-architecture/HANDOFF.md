@@ -530,28 +530,30 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Negative` resolved `Any` scalar render/eval cut.
+Current pass: `Context` unit-mode default alignment.
 
 - New traversal: none.
-- New node/materialization: public eval/resolve for a resolved `Any` negative
-  now materializes one scalar `Any('-value')` node and inherits the resolved
-  source scalar. Render does not materialize a node.
-- Render path: `Negative.renderEvaluatedValue(...)` writes resolved `Any`
-  output directly as `-value` to the requested writer or render buffer instead
-  of calling child `render(...)` or generic `operate(...)`.
-- Helper/API surface: one node-local `renderNegativeAnyText(...)` helper owns
-  the direct writer/buffer branch and avoids duplicating it across render
-  paths.
-- Metadata mutations: public eval/resolve uses existing `.inherit(...)` for
-  the materialized scalar output node. Render adds no metadata mutation.
+- New node/materialization: no AST nodes, copies, inherit/adopt calls, or
+  render/eval materialization were added. `Context` construction now allocates
+  one options object with the documented `unitMode: 'preserve'` default before
+  spreading caller options; this is context setup state, not render-only or
+  eval-to-string materialization. The focused test adds one explicit
+  `new Context({ unitMode: 'loose' })` fixture to keep Less loose behavior
+  opt-in instead of accidental.
+- Render path: no render path now resolves through arrays/nodes just to
+  stringify. Arithmetic render/eval now sees the same documented preserve
+  default that plugins/config already advertise unless callers explicitly pass
+  `unitMode: 'loose'` or `unitMode: 'strict'`.
+- Helper/API surface: none added.
+- Metadata mutations: none added.
 - Error/control flow: no production error objects or throw/catch control flow
-  added. New throws are test-only monkey-patch proof.
-- Rejected/deferred cut: compound dimensions and arbitrary non-scalar negatives
-  remain on the operation boundary; broader unit/text classification remains.
-- Evidence: focused tests
-  `renders resolved Any values without child render or operation transport` and
-  `resolves negative Any values as scalar output nodes` fail before the cut and
-  pass after direct render plus public scalar materialization. Full
-  `negative.test.ts` passed.
-- Verdict: accepted as a bounded scalar-wrapper cut. Keep the scalar wrapper
-  row open for broader non-scalar/unit boundaries.
+  added.
+- Rejected/deferred cut: unrelated dirty `import-js` lazy plugin loading and
+  deprecation edits remain outside this pass; Less function-library defaults
+  such as `min`/`max` are not changed here.
+- Evidence: `dimension.test.ts` now proves default `Context` arithmetic and
+  context-free `Dimension.operate(...)` preserve incompatible units as
+  `calc(...)`, while explicit `loose` tests keep legacy Less coercion. Focused
+  `dimension`, `operation`, `preserve-mode-output`, and `color` suites passed.
+- Verdict: accepted as a correctness/default alignment fix, not a performance
+  claim.

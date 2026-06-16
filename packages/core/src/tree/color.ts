@@ -587,7 +587,7 @@ export class Color extends Node<ColorData, ColorOptions> {
 
     if (isNode(b, N.Dimension)) {
       const { number: bVal, unit: bUnit } = b.value;
-      const unitMode = context?.opts?.unitMode ?? 'loose';
+      const unitMode = context?.opts?.unitMode ?? 'preserve';
       const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
       if (bUnit && isStrictLikeMode) {
         throw new TypeError(`Cannot convert "${b}" to a color`);

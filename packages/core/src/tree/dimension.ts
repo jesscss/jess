@@ -67,7 +67,7 @@ export class Dimension extends Node<DimensionValue> {
 
   private operateAsColor(b: Color, op: Operator, context?: Context): Color {
     const { number, unit } = this.value;
-    const unitMode = context?.opts?.unitMode ?? 'loose';
+    const unitMode = context?.opts?.unitMode ?? 'preserve';
     const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
     if (unit && isStrictLikeMode) {
       throw new TypeError(`Cannot convert "${this}" to a color`);
@@ -94,7 +94,7 @@ export class Dimension extends Node<DimensionValue> {
     }
     let { number: aVal, unit: aUnit } = this.value;
     let { number: bVal, unit: bUnit } = b.value;
-    let unitMode = context?.opts.unitMode ?? 'loose';
+    let unitMode = context?.opts.unitMode ?? 'preserve';
     let isStrictMode = unitMode === 'strict';
     let isPreserveMode = unitMode === 'preserve';
 
@@ -199,7 +199,7 @@ export class Dimension extends Node<DimensionValue> {
       return undefined;
     }
     let unitToGroup = this.unitToGroup;
-    let unitMode = context?.opts?.unitMode ?? 'loose';
+    let unitMode = context?.opts?.unitMode ?? 'preserve';
     let isStrictMode = unitMode === 'strict';
     let isPreserveMode = unitMode === 'preserve';
     let { number: aVal, unit: aUnit } = this.value;
