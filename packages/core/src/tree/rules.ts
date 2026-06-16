@@ -516,7 +516,11 @@ function rulesMayContainExtends(rules: Rules): boolean {
 }
 
 function rulesMayContainReferenceImports(rules: Rules): boolean {
-  if ((rules.options as { referenceMode?: boolean } | undefined)?.referenceMode === true || rules._hasReferenceImports) {
+  if (
+    (rules.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
+    || rules._hasReferenceImports
+    || rules.hasReferenceImportChildSurface
+  ) {
     return true;
   }
   const value = rules.value;
@@ -537,6 +541,14 @@ function rulesMayContainReferenceImports(rules: Rules): boolean {
     }
   }
   return false;
+}
+
+function rulesHasCarriedReferenceImportSurface(rules: Rules): boolean {
+  return (
+    (rules.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
+    || rules._hasReferenceImports
+    || rules.hasReferenceImportChildSurface
+  );
 }
 
 function sourceRulesOf(rules: Rules): Rules {
@@ -748,6 +760,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   hasDirectChildRuleSurface = false;
   hasDeclarationChildSurface = false;
   hasVarDeclarationChildSurface = false;
+  hasReferenceImportChildSurface = false;
   hasExactCallableChildSurface = false;
   hasExactMixinChildSurface = false;
   hasExactRulesetChildSurface = false;
@@ -835,6 +848,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.hasDirectChildRuleSurface = false;
     this.hasDeclarationChildSurface = false;
     this.hasVarDeclarationChildSurface = false;
+    this.hasReferenceImportChildSurface = false;
     this.hasExactCallableChildSurface = false;
     this.hasExactMixinChildSurface = false;
     this.hasExactRulesetChildSurface = false;
@@ -935,7 +949,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const varsByName = this.varsByName = new Map();
     const value = this.value;
     let pendingDeclarationNames: VarDeclaration[] | undefined;
-    this._hasReferenceImports = (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
+    this._hasReferenceImports = (
+      this._hasReferenceImports
+      || this.hasReferenceImportChildSurface
+      || (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
+    );
     for (let i = 0; i < value.length; i++) {
       const node = value[i]!;
       if (node.type === 'StyleImport') {
@@ -948,7 +966,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         continue;
       }
       if (isNode(node, N.Rules)) {
-        if (rulesMayContainReferenceImports(node)) {
+        if (
+          rulesHasCarriedReferenceImportSurface(node)
+          || (!node._registrationPrepared && rulesMayContainReferenceImports(node))
+        ) {
           this._hasReferenceImports = true;
         }
         continue;
@@ -1318,8 +1339,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       const hasDeclarationSurface = rulesMayContainDeclarationSurface(child);
       const hasVarDeclarationSurface = rulesMayContainVarDeclarationSurface(child);
+      const hasReferenceImportSurface = rulesMayContainReferenceImports(child);
       this.hasDeclarationChildSurface ||= hasDeclarationSurface;
       this.hasVarDeclarationChildSurface ||= hasVarDeclarationSurface;
+      this.hasReferenceImportChildSurface ||= hasReferenceImportSurface;
       (out ??= []).push({
         node: child,
         rulesVisibility: this.getDirectChildRulesVisibility(child),
@@ -1344,8 +1367,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.hasDirectChildRuleSurface = true;
     const hasDeclarationSurface = rulesMayContainDeclarationSurface(child);
     const hasVarDeclarationSurface = rulesMayContainVarDeclarationSurface(child);
+    const hasReferenceImportSurface = rulesMayContainReferenceImports(child);
     this.hasDeclarationChildSurface ||= hasDeclarationSurface;
     this.hasVarDeclarationChildSurface ||= hasVarDeclarationSurface;
+    this.hasReferenceImportChildSurface ||= hasReferenceImportSurface;
     if (this.directDeclarationChildEntries === undefined) {
       return;
     }
@@ -1746,8 +1771,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           mixinNamespaceCovered = true;
         } else if (frameHit.kind === 'miss') {
           mixinNamespaceCovered = true;
-        } else if (frameHit.reason === 'frame' || frameHit.reason === 'key') {
-          mixinNamespaceCovered = true;
         }
       }
       if (!mixinNamespaceCovered) {
@@ -2090,8 +2113,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (frameHit.kind === 'hit') {
             namespaceMixins = collectCallableBucketResults(frameHit.bucket, false) ?? [];
           } else if (frameHit.kind === 'miss') {
-            namespaceMixinMissCovered = true;
-          } else if (frameHit.reason === 'frame' || frameHit.reason === 'key') {
             namespaceMixinMissCovered = true;
           }
         }
@@ -2908,8 +2929,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (rulesMayContainExtends(node)) {
         this._hasExtends = true;
       }
-      if (rulesMayContainReferenceImports(node)) {
+      if (rulesHasCarriedReferenceImportSurface(node) || rulesMayContainReferenceImports(node)) {
         this._hasReferenceImports = true;
+        this.hasReferenceImportChildSurface = true;
         if (this._scopeFrame) {
           this._scopeFrame.hasReferenceImports = true;
         }

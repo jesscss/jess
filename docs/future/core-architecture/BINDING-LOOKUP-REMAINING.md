@@ -11,9 +11,10 @@ The old `DeclarationRegistry`, `MixinRegistry`, core `FunctionRegistry`, and
 is to delete registry-shaped behavior that survived the migration:
 
 - fallback ladders after a covered binding/frame lookup;
-- recursive rediscovery of child/reference/import facts;
+- recursive rediscovery of child/import facts not yet carried by placement
+  state;
 - broad version invalidation where a key or family version is enough;
-- object-heavy handle/access/result shapes on hot reference reads;
+- object-heavy handle/result shapes on hot reference reads;
 - child-entry scans where carried surface facts can prove a miss;
 - cold `Rules.find*` materialization edges that still leak into hot paths.
 
@@ -51,65 +52,49 @@ materialization wrapper for that semantic case.
 
 ### B. ScopeFrame, Current Cells, And Assignment
 
-6. **`setDefined` current-cell semantics.**
-   `setDefined` may update live/current cells, but static declaration buckets
-   are not an assignment registry. Make assignment writes update only
-   semantically current cells and fall back to tree occurrence search only when
-   coverage is incomplete.
-
-7. **Frame-slot identity.**
+1. **Frame-slot identity.**
    Current variable handles are `ScopeFrameVariableBindingHandle` objects and
    declaration hits are `DirectDeclarationOccurrence` objects. The end state is
    closer to frame plus slot/cell identity, with cold object materialization
    only where a public/cold API needs it.
 
-8. **Cell/current-pointer versions.**
+2. **Cell/current-pointer versions.**
    `BindingCell` has value state but not explicit value/current-pointer
    versions. Evaluated-value caching stays out of scope until those versions
    exist. Lookup identity caching can proceed first.
 
 ### C. Callable, Namespace, And Reference Imports
 
-9. **Reference-import fact carrying.**
-   `_hasReferenceImports` and `ScopeFrame.hasReferenceImports` exist, but
-   `rulesMayContainReferenceImports(...)` can still recursively rediscover the
-   fact. Carry/adopt the fact once during registration/import prep.
-
-10. **Callable coverage decisions.**
+1. **Callable coverage decisions.**
    `lookupScopeFrameCallable(...)` has `hit`, `miss`, and `uncovered` reasons.
    Finish caller-specific handling for `candidate`, `child-surface`, and
    `reference-import` so ordinary covered misses stop before direct crawl.
 
-11. **Parameterized terminal namespace lookup.**
+2. **Parameterized terminal namespace lookup.**
    Mixin-ruleset calls with parameters should keep rulesets as namespace
    containers but reject exact ruleset terminals at the terminal segment when
    only mixins can satisfy the call.
 
-12. **Namespace path/remainder allocation.**
+3. **Namespace path/remainder allocation.**
    `collectKeyRemainder(...)`, `getCallableLookupKeyRemainder(...)`, and
    recursive namespace helpers still rebuild arrays/strings. Replace with an
    offset/path view after namespace semantics are stable.
 
 ### D. Reference Handles And Fallback Bridges
 
-14. **Handle-access allocation.**
-   `getRulesLookupHandleAccess(...)` builds an access object before reading a
-   cached handle. Split/delete that object shape with scalar locals or fields
-   already present on the `Reference`/handle.
-
-15. **ReferencePlan shape.**
+1. **ReferencePlan shape.**
    `_lookupStrategy` caches the lookup family, but key normalization, shape
    prep, filters, and handle access are still per-lookup work. Promote stable
    static reference facts into a small plan shape only when it deletes repeated
    hot-path preparation.
 
-16. **Leaky/fallback bridges.**
+2. **Leaky/fallback bridges.**
    Shrink fallback cases one by one: variable live-only fallback, declaration
    fallback frames, callable child/reference-import bridges, leaky rules, and
    `searchScope` disqualification. Each bridge needs a deletion condition and a
    covered-hit/miss spy.
 
-17. **Final simple-read proof.**
+3. **Final simple-read proof.**
    The lane is not done until ordinary static variable, property, declaration,
    function, simple callable, and stable namespace reads have tests/profiles
    proving they do not enter fallback ladders, public materialization wrappers,
@@ -117,14 +102,12 @@ materialization wrapper for that semantic case.
 
 ## Dependency Order
 
-1. Child/reference/import coverage facts: clusters A1, C9, C10.
-2. Assignment/current-cell semantics: cluster B6.
-3. Property and declaration occurrence/versioning: clusters A3, A4.
-4. Callable namespace semantics: clusters C11, C12.
-5. Handle/plan/object slimming: clusters A5, B7, D14, D15.
-6. Cache/frame invalidation cleanup: cluster C13.
-7. Bridge deletion and final proof: clusters D16, D17.
-8. Evaluated-value caching: cluster B8, only after slot/cell versions exist.
+1. Child/import coverage facts: clusters A1, C1.
+2. Property and declaration occurrence/versioning: clusters A2, A3.
+3. Callable namespace semantics: clusters C1, C2, C3.
+4. Handle/plan/object slimming: clusters A4, B1, D1.
+5. Bridge deletion and final proof: clusters D2, D3.
+6. Evaluated-value caching: cluster B2, only after slot/cell versions exist.
 
 This is not three small passes. It is roughly seven semantic swaths plus final
 proof, and some swaths may require more than one commit if tests expose a

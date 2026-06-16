@@ -3358,6 +3358,29 @@ describe('reference', () => {
       }
     });
 
+    it('setDefined current-cell probes do not use historical declaration buckets', async () => {
+      const latest = vardecl({ name: 'color', value: any('green') });
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        latest
+      ]);
+
+      await node.eval(context);
+      const frame = node.getScopeFrame();
+      const assignmentProbe = lookupScopeFrameVariable(frame, 'color', {
+        bailOnPendingDeclarations: true,
+        blockedSource: source => source === latest,
+        filter: source => source !== latest
+      });
+      const sourceOrderRead = lookupScopeFrameVariable(frame, 'color', {
+        start: latest.index
+      });
+
+      expect(assignmentProbe.kind).toBe('miss');
+      expect(sourceOrderRead.kind).toBe('declaration');
+      expect(sourceOrderRead.kind === 'declaration' && sourceOrderRead.cell.value?.valueOf()).toBe('red');
+    });
+
     it('nested static variable hits build parent scope frames without Rules.find fallback', async () => {
       const originalFind = RulesClass.prototype.find;
       let declarationHits = 0;

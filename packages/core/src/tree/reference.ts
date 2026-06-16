@@ -369,20 +369,29 @@ type ReferenceRulesLookupHandle =
     returnVal: VariableRulesLookupHandleValue;
   });
 
-function getRulesLookupHandleVersion(access: RulesLookupHandleAccess): number {
-  if (access.lookupType === 'mixin' || access.lookupType === 'mixin-ruleset') {
-    return access.targetRules.callableLookupVersion;
+function getRulesLookupHandleVersion(
+  targetRules: Rules,
+  lookupType: RulesLookupHandleLookupType,
+  valueKey: string | string[]
+): number {
+  if (lookupType === 'mixin' || lookupType === 'mixin-ruleset') {
+    return targetRules.callableLookupVersion;
   }
-  if (access.lookupType === 'function') {
-    return typeof access.valueKey === 'string'
-      ? access.targetRules.functionLookupVersionsByName?.get(access.valueKey) ?? 0
-      : access.targetRules.functionLookupVersion;
+  if (lookupType === 'function') {
+    return typeof valueKey === 'string'
+      ? targetRules.functionLookupVersionsByName?.get(valueKey) ?? 0
+      : targetRules.functionLookupVersion;
   }
-  return access.targetRules.lookupVersion;
+  return targetRules.lookupVersion;
 }
 
-function isRulesLookupHandleVersionCurrent(handle: ReferenceRulesLookupHandle, access: RulesLookupHandleAccess): boolean {
-  const currentVersion = getRulesLookupHandleVersion(access);
+function isRulesLookupHandleVersionCurrent(
+  handle: ReferenceRulesLookupHandle,
+  targetRules: Rules,
+  lookupType: RulesLookupHandleLookupType,
+  valueKey: string | string[]
+): boolean {
+  const currentVersion = getRulesLookupHandleVersion(targetRules, lookupType, valueKey);
   return handle.targetLookupVersion === currentVersion;
 }
 
@@ -1025,62 +1034,40 @@ function isHandleableLookupKey(valueKey: NormalizedLookupKey): valueKey is strin
 
 type RulesLookupHandleLookupType = 'declaration' | 'function' | 'mixin' | 'mixin-ruleset' | 'property' | 'variable';
 
-type RulesLookupHandleAccess = {
-  referenceNode: Reference;
-  targetRules: Rules;
-  lookupType: RulesLookupHandleLookupType;
-  valueKey: string | string[];
-  inCall: boolean;
-  shape: RulesLookupHandleShape;
-};
-
-function getRulesLookupHandleAccess(args: {
-  referenceNode: Reference;
-  targetRules: Rules;
-  lookupType: LookupType;
-  valueKey: NormalizedLookupKey;
-  target: ReferenceValue['target'];
-  originalFilter: ReferenceOptions['filter'] | undefined;
-  env: RulesLookupAdapterEnv;
-  context: Context;
-  shape: RulesLookupHandleShape;
-}): RulesLookupHandleAccess | undefined {
+function isRulesLookupHandleEligible(
+  lookupType: LookupType,
+  valueKey: NormalizedLookupKey,
+  target: ReferenceValue['target'],
+  originalFilter: ReferenceOptions['filter'] | undefined,
+  env: RulesLookupAdapterEnv,
+  context: Context
+): valueKey is string | string[] {
   const handleableKey = (
-    args.lookupType === 'declaration'
-    || args.lookupType === 'function'
-    || args.lookupType === 'property'
-    || args.lookupType === 'variable'
+    lookupType === 'declaration'
+    || lookupType === 'function'
+    || lookupType === 'property'
+    || lookupType === 'variable'
   )
-    ? typeof args.valueKey === 'string'
-    : isHandleableLookupKey(args.valueKey);
-  if (!(
+    ? typeof valueKey === 'string'
+    : isHandleableLookupKey(valueKey);
+  return (
     (
-      args.lookupType === 'declaration'
-      || args.lookupType === 'function'
-      || args.lookupType === 'mixin'
-      || args.lookupType === 'mixin-ruleset'
-      || args.lookupType === 'property'
-      || args.lookupType === 'variable'
+      lookupType === 'declaration'
+      || lookupType === 'function'
+      || lookupType === 'mixin'
+      || lookupType === 'mixin-ruleset'
+      || lookupType === 'property'
+      || lookupType === 'variable'
     )
     && handleableKey
-    && args.target === undefined
-    && args.originalFilter === undefined
-    && !args.env.semanticFilter
-    && !args.env.hasTarget
-    && !args.env.isInterpolatedVariable
-    && args.context.leakyRules !== true
-    && args.context.searchScope.size === 0
-  )) {
-    return undefined;
-  }
-  return {
-    referenceNode: args.referenceNode,
-    targetRules: args.targetRules,
-    lookupType: args.lookupType,
-    valueKey: args.valueKey,
-    inCall: args.env.inCall,
-    shape: args.shape
-  };
+    && target === undefined
+    && originalFilter === undefined
+    && !env.semanticFilter
+    && !env.hasTarget
+    && !env.isInterpolatedVariable
+    && context.leakyRules !== true
+    && context.searchScope.size === 0
+  );
 }
 
 type RulesLookupHandleShape = {
@@ -1092,32 +1079,43 @@ type RulesLookupHandleShape = {
 
 type WriteRulesLookupHandleArgs = {
   referenceNode: Reference;
-  handleAccess: RulesLookupHandleAccess | undefined;
+  targetRules: Rules | undefined;
+  lookupType: RulesLookupHandleLookupType | undefined;
+  valueKey: string | string[] | undefined;
+  inCall: boolean;
+  shape: RulesLookupHandleShape | undefined;
   returnVal: ReferenceLookupReturnValue;
 };
 
-function readRulesLookupHandle(access: RulesLookupHandleAccess | undefined): RulesLookupHandleReadResult {
-  if (!access) {
+function readRulesLookupHandle(
+  referenceNode: Reference,
+  targetRules: Rules | undefined,
+  lookupType: RulesLookupHandleLookupType | undefined,
+  valueKey: string | string[] | undefined,
+  inCall: boolean,
+  shape: RulesLookupHandleShape | undefined
+): RulesLookupHandleReadResult {
+  if (!targetRules || !lookupType || !valueKey || !shape) {
     return undefined;
   }
-  const handle = access.referenceNode._rulesLookupHandle;
+  const handle = referenceNode._rulesLookupHandle;
   if (
     !handle
-    || handle.targetRules !== access.targetRules
-    || !isRulesLookupHandleVersionCurrent(handle, access)
-    || handle.lookupType !== access.lookupType
-    || handle.inCall !== access.inCall
-    || handle.start !== access.shape.start
-    || handle.local !== access.shape.local
-    || handle.ignoreParentScopeStart !== access.shape.ignoreParentScopeStart
-    || handle.terminalMixinOnly !== access.shape.terminalMixinOnly
-    || handle.valueKey !== access.valueKey
+    || handle.targetRules !== targetRules
+    || !isRulesLookupHandleVersionCurrent(handle, targetRules, lookupType, valueKey)
+    || handle.lookupType !== lookupType
+    || handle.inCall !== inCall
+    || handle.start !== shape.start
+    || handle.local !== shape.local
+    || handle.ignoreParentScopeStart !== shape.ignoreParentScopeStart
+    || handle.terminalMixinOnly !== shape.terminalMixinOnly
+    || handle.valueKey !== valueKey
   ) {
     return undefined;
   }
   if (isScopeFrameVariableBindingHandle(handle.returnVal)) {
-    if (typeof access.valueKey === 'string') {
-      const currentCell = handle.returnVal.ownerFrame.currentBindingsByName.get(access.valueKey);
+    if (typeof valueKey === 'string') {
+      const currentCell = handle.returnVal.ownerFrame.currentBindingsByName.get(valueKey);
       if (currentCell !== handle.returnVal.cell) {
         return undefined;
       }
@@ -1139,16 +1137,14 @@ function readRulesLookupHandle(access: RulesLookupHandleAccess | undefined): Rul
 }
 
 function writeVariableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {
-  const access = args.handleAccess;
-  if (!access) {
+  const { targetRules, lookupType, valueKey, inCall, shape } = args;
+  if (!targetRules || !lookupType || !valueKey || !shape) {
     args.referenceNode._rulesLookupHandle = undefined;
     return;
   }
-  const targetLookupVersion = getRulesLookupHandleVersion(access);
-  const { valueKey, inCall, shape } = access;
   const { start, local, ignoreParentScopeStart, terminalMixinOnly } = shape;
   if (
-    access.lookupType !== 'variable'
+    lookupType !== 'variable'
     || (
       args.returnVal !== undefined
       && !isScopeFrameVariableBindingHandle(args.returnVal)
@@ -1158,8 +1154,9 @@ function writeVariableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void 
     args.referenceNode._rulesLookupHandle = undefined;
     return;
   }
+  const targetLookupVersion = getRulesLookupHandleVersion(targetRules, lookupType, valueKey);
   args.referenceNode._rulesLookupHandle = {
-    targetRules: access.targetRules,
+    targetRules,
     targetLookupVersion,
     valueKey,
     lookupType: 'variable',
@@ -1173,23 +1170,25 @@ function writeVariableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void 
 }
 
 function writeDeclarationRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {
-  const access = args.handleAccess;
+  const { targetRules, lookupType, valueKey, inCall, shape } = args;
   if (
-    !access
-    || (access.lookupType !== 'property' && access.lookupType !== 'declaration')
+    !targetRules
+    || !lookupType
+    || !valueKey
+    || !shape
+    || (lookupType !== 'property' && lookupType !== 'declaration')
     || (args.returnVal !== undefined && !isDirectDeclarationOccurrence(args.returnVal))
   ) {
     args.referenceNode._rulesLookupHandle = undefined;
     return;
   }
-  const targetLookupVersion = getRulesLookupHandleVersion(access);
-  const { valueKey, inCall, shape } = access;
+  const targetLookupVersion = getRulesLookupHandleVersion(targetRules, lookupType, valueKey);
   const { start, local, ignoreParentScopeStart, terminalMixinOnly } = shape;
   args.referenceNode._rulesLookupHandle = {
-    targetRules: access.targetRules,
+    targetRules,
     targetLookupVersion,
     valueKey,
-    lookupType: access.lookupType,
+    lookupType,
     inCall,
     start,
     local,
@@ -1200,20 +1199,21 @@ function writeDeclarationRulesLookupHandle(args: WriteRulesLookupHandleArgs): vo
 }
 
 function writeFunctionRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {
-  const access = args.handleAccess;
+  const { targetRules, lookupType, valueKey, inCall, shape } = args;
   if (
-    !access
-    || access.lookupType !== 'function'
+    !targetRules
+    || lookupType !== 'function'
+    || !valueKey
+    || !shape
     || (args.returnVal !== undefined && !isNode(args.returnVal, N.Func | N.JsFunction))
   ) {
     args.referenceNode._rulesLookupHandle = undefined;
     return;
   }
-  const targetLookupVersion = getRulesLookupHandleVersion(access);
-  const { valueKey, inCall, shape } = access;
+  const targetLookupVersion = getRulesLookupHandleVersion(targetRules, lookupType, valueKey);
   const { start, local, ignoreParentScopeStart, terminalMixinOnly } = shape;
   args.referenceNode._rulesLookupHandle = {
-    targetRules: access.targetRules,
+    targetRules,
     targetLookupVersion,
     valueKey,
     lookupType: 'function',
@@ -1227,23 +1227,24 @@ function writeFunctionRulesLookupHandle(args: WriteRulesLookupHandleArgs): void 
 }
 
 function writeCallableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {
-  const access = args.handleAccess;
+  const { targetRules, lookupType, valueKey, inCall, shape } = args;
   if (
-    !access
-    || (access.lookupType !== 'mixin' && access.lookupType !== 'mixin-ruleset')
+    !targetRules
+    || !valueKey
+    || !shape
+    || (lookupType !== 'mixin' && lookupType !== 'mixin-ruleset')
     || (!Array.isArray(args.returnVal) && args.returnVal !== undefined)
   ) {
     args.referenceNode._rulesLookupHandle = undefined;
     return;
   }
-  const targetLookupVersion = getRulesLookupHandleVersion(access);
-  const { valueKey, inCall, shape } = access;
+  const targetLookupVersion = getRulesLookupHandleVersion(targetRules, lookupType, valueKey);
   const { start, local, ignoreParentScopeStart, terminalMixinOnly } = shape;
   args.referenceNode._rulesLookupHandle = {
-    targetRules: access.targetRules,
+    targetRules,
     targetLookupVersion,
     valueKey,
-    lookupType: access.lookupType,
+    lookupType,
     inCall,
     start,
     local,
@@ -1373,21 +1374,29 @@ function lookupResolvedReference(args: {
 
   const targetRules = isNode(resolvedTarget, N.Rules) ? resolvedTarget : undefined;
   let handleShape: RulesLookupHandleShape | undefined;
-  let handleAccess: RulesLookupHandleAccess | undefined;
+  let handleLookupType: RulesLookupHandleLookupType | undefined;
+  let handleValueKey: string | string[] | undefined;
   if (targetRules) {
     handleShape = prepareRulesLookupShape(lookupContext, targetRules);
-    handleAccess = getRulesLookupHandleAccess({
-      referenceNode,
-      targetRules,
+    if (isRulesLookupHandleEligible(
       lookupType,
       valueKey,
       target,
       originalFilter,
       env,
-      context,
-      shape: handleShape
-    });
-    const handleResult = readRulesLookupHandle(handleAccess);
+      context
+    )) {
+      handleLookupType = lookupType;
+      handleValueKey = valueKey;
+    }
+    const handleResult = readRulesLookupHandle(
+      referenceNode,
+      targetRules,
+      handleLookupType,
+      handleValueKey,
+      env.inCall,
+      handleShape
+    );
     if (handleResult !== undefined) {
       return {
         returnVal: handleResult === CACHED_RULES_LOOKUP_MISS ? undefined : handleResult,
@@ -1411,7 +1420,11 @@ function lookupResolvedReference(args: {
       if (targetRules) {
         strategy.writeHandle({
           referenceNode,
-          handleAccess,
+          targetRules,
+          lookupType: handleLookupType,
+          valueKey: handleValueKey,
+          inCall: env.inCall,
+          shape: handleShape,
           returnVal: resolved
         });
       }
@@ -1424,7 +1437,11 @@ function lookupResolvedReference(args: {
   if (targetRules) {
     strategy.writeHandle({
       referenceNode,
-      handleAccess,
+      targetRules,
+      lookupType: handleLookupType,
+      valueKey: handleValueKey,
+      inCall: env.inCall,
+      shape: handleShape,
       returnVal
     });
   }

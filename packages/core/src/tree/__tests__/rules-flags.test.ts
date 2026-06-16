@@ -40,5 +40,25 @@ describe('Rules indexing flags', () => {
     node.registerNode(item);
 
     expect(node._hasReferenceImports).toBe(true);
+    expect(node.hasReferenceImportChildSurface).toBe(true);
+  });
+
+  it('carries reference import child surface facts into scope frames', () => {
+    const node = rules([]);
+    const item = rules([
+      rules([
+        style({
+          path: quoted(any('reference.less'))
+        }, {
+          type: 'import',
+          importOptions: { reference: true }
+        })
+      ])
+    ]);
+
+    node.registerNode(item);
+    const frame = node.getScopeFrame(undefined, false);
+
+    expect(frame.hasReferenceImports).toBe(true);
   });
 });

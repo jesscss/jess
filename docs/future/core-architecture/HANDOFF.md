@@ -103,7 +103,7 @@ is finishing the binding-frame/direct-crawl replacement so covered simple paths
 do not enter fallback ladders, public materialization wrappers, unnecessary
 child scans, or broad invalidation lanes.
 
-Current hot evidence after the child-family fact pass:
+Current hot evidence after the latest queue pass:
 
 - `scope-lookup-stress.less` direct profile now reports
   `declaration.cacheMiss: 7560`,
@@ -122,10 +122,13 @@ Current hot evidence after the child-family fact pass:
 - Function handles are per-key; callable handles use
   `Rules.callableLookupVersion`.
 - Variable/property/declaration handles still use broad `Rules.lookupVersion`.
-- Reference lookup still allocates handle/access/context shapes around some
-  typed paths.
+- Reference lookup still allocates handle/context shapes around some typed
+  paths.
+- Reference handle access no longer allocates a separate access object; handle
+  reads/writes use scalar locals and the cached handle shape.
 - Callable namespace lookup still has direct-crawl bridges for child-surface,
-  candidate, terminal, and reference-import cases.
+  candidate, terminal, and reference-import cases, but frame/key `uncovered`
+  results no longer get collapsed into covered namespace misses.
 
 Total remaining scope lives in `BINDING-LOOKUP-REMAINING.md`. Treat that file
 as the burn-down inventory; treat the queue below as the next executable slice.
@@ -141,47 +144,32 @@ visibility facts travel with direct lookup rather than being rediscovered by
 fallback behavior. Acceptance: focused import/reference declaration matrix plus
 fallback spy.
 
-2. [ ] Carry reference-import facts without recursive child-body scans. Scope:
-`rulesMayContainReferenceImports(...)`,
-`prepareScopeFrameDeclarationIndex(...)`, reference-mode child `Rules`, and
-style imports. Goal: carry/adopt the fact once instead of recursively
-rediscovering it during lookup prep. Acceptance: focused reference-import tests
-plus traversal spy/counter.
+2. [ ] Finish callable coverage decisions by reason. Scope:
+`ScopeFrameCallableLookupResult.reason`, namespace lookup, child-surface
+bridges, reference-import bridges, and candidate routing. Goal: every
+`uncovered` reason has a caller-specific path instead of generic direct-crawl
+fallback. Acceptance: namespace/fallback spy tests.
 
-3. [ ] Prove reference-import callable boundary for namespace lookups. Scope:
-reference imports, namespace callable lookup, fallback frames, and covered
-misses. Goal: reference-import uncertainty stays conservative without
-poisoning covered frame/key misses. Acceptance: namespace/fallback spy tests.
-Note: the previous sub-agent attempt was rejected because namespace-focused
-tests failed with `No matching mixins found for '#theme.dark.navbar.colors'`.
-
-4. [ ] Convert callable candidate uncertainty into caller-specific decisions.
+3. [ ] Convert callable candidate uncertainty into caller-specific decisions.
 Scope: `ScopeFrameCallableLookupResult.reason === 'candidate'`, namespace
 lookup, terminal mixin-only lookup, and direct bridge gates. Goal: candidate
 uncertainty routes through namespace logic instead of generic child-surface or
 reference-import bridges. Acceptance: namespace candidate and terminal
 mixin-only tests.
 
-5. [ ] Make parameterized terminal namespace lookup mixin-only at the terminal
+4. [ ] Make parameterized terminal namespace lookup mixin-only at the terminal
 segment. Scope: recursive mixin-ruleset namespace lookup, ruleset container
 lookup, and `terminalMixinOnly`. Goal: keep rulesets as namespace containers
 but stop exact ruleset terminals when params require mixins. Acceptance:
 mixin-ruleset calls-with-args fixtures and recursive namespace tests.
 
-6. [ ] Make `setDefined` writes update only semantically current live/current
-cells before occurrence fallback. Scope: `lookupScopeFrameVariable(...)`,
-`setDefined`, declaration cells, loop/mixin live bindings, and readonly
-propagation. Goal: stop using static declaration buckets as an assignment
-registry. Acceptance: loop/mixin live-binding fixtures plus static
-readonly/setDefined fixtures.
-
-7. [ ] Implement property merge-chain occurrence slots. Scope: property
+5. [ ] Implement property merge-chain occurrence slots. Scope: property
 declaration occurrences, merge metadata, assignment normalization, and property
 lookup tests. Goal: delete remaining filtered property fallback without adding
 a second name registry. Acceptance: merge-chain fixtures resolve by direct
 occurrence lookup.
 
-8. [ ] Split declaration/property handle versioning by lookup key or prove
+6. [ ] Split declaration/property handle versioning by lookup key or prove
 global versioning is required. Scope: `ReferenceRulesLookupHandle`,
 `Rules.lookupVersion`, direct declaration cache keys, variable/property handle
 writes, and dynamic-name promotion. Goal: affected declaration invalidation
@@ -189,44 +177,52 @@ does not invalidate unrelated declaration/property handles unless a semantic
 dependency proves it must. Acceptance: handle stale/fresh tests for affected
 and unaffected declaration keys.
 
-9. [ ] Replace callable namespace remainder arrays with an offset/path view.
+7. [ ] Replace callable namespace remainder arrays with an offset/path view.
 Scope: `collectKeyRemainder(...)`, `getCallableLookupKeyRemainder(...)`,
 recursive namespace lookup, and reference callable handles. Goal: avoid
 rebuilding remainder arrays/strings end-to-end after namespace semantics are
 stable. Acceptance: repeated array-path lookup proof plus focused namespace
 tests.
 
-10. [ ] Split or delete handle-access object allocation. Scope:
-`getRulesLookupHandleAccess(...)`, reference handle read/write sites, and
-stress profile counters. Goal: remove transient access objects when scalar
-locals or existing handle fields are simpler. Acceptance: measured/audited
-before-after note; no speed claim without stable signal.
-Note: the previous scalarization attempt was rejected and cut back because the
-same namespace-focused tests failed.
-
-11. [ ] Promote stable reference facts into a small `ReferencePlan` shape only
+8. [ ] Promote stable reference facts into a small `ReferencePlan` shape only
 where it deletes repeated hot-path preparation. Scope: `_lookupStrategy`, key
 normalization, static filters, handle access, and typed reference tests. Goal:
 remove per-lookup prep without adding a generic wrapper ladder. Acceptance:
 focused variable/property/function/callable handle tests and allocation audit.
 
-12. [ ] Replace variable/declaration handle identity with frame plus slot/cell
+9. [ ] Replace variable/declaration handle identity with frame plus slot/cell
 identity where coverage is complete. Scope: `ScopeFrameVariableBindingHandle`,
 `DirectDeclarationOccurrence`, reference handle read/write sites, and direct
 lookup tests. Goal: keep cold materialization out of ordinary reference reads.
 Acceptance: handle freshness tests and no new public materialization path.
 
-13. [ ] Add lookup-identity versions to cells/current pointers before any
+10. [ ] Add lookup-identity versions to cells/current pointers before any
 evaluated-value cache work. Scope: `BindingCell`, live/current binding writes,
 variable/declaration handle freshness, and loop/mixin binding tests. Goal:
 make current-cell identity explicit without caching evaluated values yet.
 Acceptance: stale/fresh tests for current-cell writes and dynamic promotion.
 
-14. [ ] Delete one covered leaky/fallback bridge end-to-end. Scope: choose a
-single modeled bridge from variable live-only fallback, declaration fallback
-frames, callable child/reference-import bridges, leaky rules, or `searchScope`
-disqualification. Goal: prove one simple read cannot enter fallback after a
-covered direct/frame miss. Acceptance: spy test plus focused fixture matrix.
+11. [ ] Delete the variable live-only fallback bridge end-to-end. Scope:
+`lookupScopeFrameVariable(...)`, variable references, direct lookup fallback,
+and live-slot-only frames. Goal: prove covered live/current misses do not enter
+legacy fallback. Acceptance: spy test plus variable/live binding fixtures.
+
+12. [ ] Delete one declaration fallback-frame bridge end-to-end. Scope: direct
+declaration lookup, fallback frames, optional candidates, and readonly
+propagation. Goal: one covered declaration/property miss stops without public
+materialization or parent rediscovery. Acceptance: spy test plus property and
+declaration fixtures.
+
+13. [ ] Delete one callable child/reference-import bridge end-to-end. Scope:
+callable child-surface and reference-import direct crawl in namespace lookup.
+Goal: a covered callable miss with no relevant child/import surface returns
+without fallback. Acceptance: namespace/callable spy tests.
+
+14. [ ] Delete one leaky/searchScope disqualification bridge end-to-end.
+Scope: `context.leakyRules`, `context.searchScope`, reference filters, and
+handle eligibility. Goal: keep disqualified lookups cold and prove ordinary
+covered lookups bypass that bridge. Acceptance: focused leaky/searchScope
+tests plus handle reuse tests.
 
 15. [ ] Refresh profile, update `BINDING-LOOKUP-REMAINING.md`, and reseed the
 next handoff queue. Scope: direct lookup profile, one-iteration hotpath smoke,
@@ -237,15 +233,17 @@ tasks. Acceptance: profile output recorded; no speed claim from smoke.
 ## Unfinished-Item Exception
 
 This implementation pass did not complete the full active queue. Completed:
-pre-pass profile, declaration child-surface family facts, family-specific
-child-entry skips, and callable cache/frame invalidation cleanup. Attempted and
-rejected/cut back: reference-import/callable namespace work and handle-access
-scalarization, because namespace-focused tests failed with
-`ReferenceError: No matching mixins found for '#theme.dark.navbar.colors'`.
-Items now queued as `1` through `15` remain because committing the green
-child-family/invalidation slice was necessary after isolating and reverting the
-failed side slices; continuing immediately would have mixed proven and unsafe
-namespace changes in one dirty tree.
+reference-import fact carrying for declaration frame prep, setDefined
+current-cell guard semantics, handle-access object deletion, and the callable
+namespace frame/key uncovered correction that fixed the previous
+`#theme.dark.navbar.colors` failure. Did not complete: explicit direct
+declaration import/reference mode, full callable reason routing, terminal
+parameter semantics, property merge occurrences, declaration/property key
+versioning, remainder offset views, ReferencePlan, frame-slot identity, cell
+versions, and fallback bridge deletions. Immediate continuation stopped at a
+coherent green batch because the next items are larger semantic swaths that
+touch the same files and should not be mixed with the integrated sub-agent
+patches without a fresh queue pass.
 
 ## Backlog Sources
 
@@ -302,50 +300,55 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: carried declaration child-family facts onto direct child
-  entries, skipped impossible variable/property child families during direct
-  declaration lookup, and kept declaration/function-only registrations from
-  clearing callable cache/frame state.
-- Verdict: accepted as direct lookup work reduction and narrower invalidation,
-  not as a wall-clock speed claim.
-- New traversal: two production recursive loops in
-  `rulesMayContainDeclarationSurface(...)` and
-  `rulesMayContainVarDeclarationSurface(...)`. They run while collecting or
-  registering direct declaration child entries, not per reference read. They
-  were accepted because they carry child-family facts onto the existing child
-  entry state and the direct profile drops `childEntriesScanned` from `10530`
-  to `1575` and `childEntryEntered` from `11520` to `1575`.
+- Latest pass: carried reference-import child facts into declaration frame
+  prep, kept setDefined current-cell probes from falling through to historical
+  buckets, deleted the transient `RulesLookupHandleAccess` object, and fixed
+  callable namespace frame/key `uncovered` results so they no longer become
+  covered misses.
+- Verdict: accepted as lookup state carrying, object-shape deletion, and
+  namespace correctness work; not a wall-clock speed claim.
+- New traversal: no new hot reference-read traversal. The diff still contains
+  registration/frame-prep recursive helpers for declaration and
+  reference-import surface facts. They run when collecting/registering child
+  surfaces or preparing declaration frames, not on every cached handle read.
+  Reference-import recursion remains only as a cold fallback for unprepared raw
+  child `Rules`; prepared/registered child rules use carried
+  `hasReferenceImportChildSurface`.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: two private family-fact helpers in `rules.ts`, two
-  private direct-lookup family guards, two private `Rules` booleans, and two
-  optional child-entry fields. No public API added.
-- Metadata mutations: `Rules` now carries
-  `hasDeclarationChildSurface`/`hasVarDeclarationChildSurface`; child entries
-  carry matching optional family facts. Callable-surface registration still
-  mutates `callableLookupVersion`; declaration/function-only writes no longer
-  clear callable cache/frame state.
-- Allocation changes: no new hot reference object shapes. The rejected
-  handle-access scalarization was cut back.
-- Rejected/failed proof: callable namespace/reference-import side work and
-  handle-access scalarization were rejected because
-  `pnpm --filter @jesscss/core exec vitest src/tree/__tests__/reference.test.ts
-  src/tree/__tests__/mixin.test.ts --run --testNamePattern
-  "namespace|recursive namespace|ruleset namespace|reference imports check
-  fallback|candidate" --reporter=dot` failed three namespace tests with
-  `No matching mixins found for '#theme.dark.navbar.colors'`.
-- Aggressive-review tokens: the gate flags the two production loops above.
-  They are documented here and must be prosecuted again if later work can carry
-  the same facts during adoption without recursion.
-- Evidence: focused eslint passed for touched lookup files/tests. Focused
-  reference/rules tests passed (`2` files, `11` passed, `213` skipped). The
-  broader focused lookup gate passed (`8` files, `327` passed, `295` skipped).
-  Stale registry/lookup wording search returned no matches. `git diff
-  --check`, `@jesscss/core` build, `jess` build, aggressive review,
-  node-creation audit, and one-iteration hotpath smoke passed. Node-creation
-  audit remains `new-node: 306`, `with-surface: 39`, `derive: 30`,
-  `copy-leaves: 28`. Stress profile on `scope-lookup-stress.less` reports
-  `declaration.cacheMiss: 7560`, `declaration.childEntriesScanned: 1575`,
-  `declaration.childEntryEntered: 1575`, and `Reference.evalNode` `6528` calls
-  / `50.88ms`. One-iteration hotpath smoke is not a speed claim:
-  `mixins-guards.less` `18.37ms`, `scope-lookup-stress.less` `72.58ms`.
+- Helper/API surface: added private `rulesHasCarriedReferenceImportSurface`.
+  Deleted `RulesLookupHandleAccess` and `getRulesLookupHandleAccess(...)`,
+  replacing them with scalar handle eligibility/read/write parameters. No
+  public API added.
+- Metadata mutations: `Rules` now carries `hasReferenceImportChildSurface`.
+  Scope frames preserve carried `_hasReferenceImports` during declaration prep.
+  `lookupScopeFrameVariable(...)` now records when the current cell was
+  rejected by a guard and avoids falling through to the same frame's historical
+  declaration bucket without an explicit source-order `start`.
+- Allocation changes: reference handle reads/writes no longer allocate the
+  transient handle-access object. Existing handle and shape objects remain.
+- Rejected/failed proof: namespace remainder offset/path view was inspected and
+  left queued because it threads through recursive namespace semantics and
+  should follow the stabilized namespace correctness fix in a separate pass.
+- Aggressive-review tokens: any production loop tokens in this diff are covered
+  by the traversal note above. The guard/filter tokens in `scope-frame.ts` are
+  the setDefined current-cell safety check; they prevent same-frame historical
+  bucket fallback after a guarded current-cell rejection. The `string |
+  string[]` tokens in `reference.ts` are existing callable/declaration key
+  shapes passed as scalar locals after deleting `RulesLookupHandleAccess`, not
+  new materialized arrays. Test-only object/array tokens are in focused
+  reference-import flag tests.
+- Evidence: focused eslint passed for touched lookup files/tests. Import/reference
+  fact tests passed (`2` files, `23` passed, `66` skipped). SetDefined/current
+  cell tests passed (`1` file, `4` passed, `153` skipped). Handle tests passed
+  (`1` file, `72` passed, `85` skipped). Namespace/reference tests passed (`2`
+  files, `59` passed, `254` skipped). The broader focused lookup gate passed
+  (`8` files, `331` passed, `293` skipped). Stale lookup/access grep returned
+  no matches. `git diff --check`, `@jesscss/core` build, aggressive review,
+  node-creation audit, and `jess` build passed. Node-creation audit remains
+  `new-node: 306`, `with-surface: 39`, `derive: 30`, `copy-leaves: 28`.
+  Stress profile on `scope-lookup-stress.less` reports unchanged direct
+  counters: `declaration.cacheMiss: 7560`, `declaration.childEntriesScanned:
+  1575`, `declaration.childEntryEntered: 1575`. One-iteration hotpath smoke is
+  not a speed claim: `mixins-guards.less` `27.20ms`,
+  `scope-lookup-stress.less` `85.78ms`.

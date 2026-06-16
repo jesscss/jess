@@ -371,6 +371,7 @@ export function lookupScopeFrameVariable(
   let fallbackFrame = frame?.fallbackFrame;
   while (true) {
     while (f) {
+      let currentCellRejectedByGuard = false;
       if (start === undefined) {
         const currentCell = f.currentBindingsByName.get(name);
         if (
@@ -387,19 +388,26 @@ export function lookupScopeFrameVariable(
               frame: f
             };
           }
+          currentCellRejectedByGuard = sourceNode !== undefined
+            && options?.blockedSource?.(sourceNode) === true;
         } else if (
           currentCell
           && options?.includeDeclarations !== false
           && f.declarationsCovered
           && currentCell.sourceNode
-          && (!options?.filter || options.filter(currentCell.sourceNode))
         ) {
-          return {
-            kind: 'declaration',
-            cell: currentCell,
-            sourceNode: currentCell.sourceNode,
-            frame: f
-          };
+          if (
+            !options?.blockedSource?.(currentCell.sourceNode)
+            && (!options?.filter || options.filter(currentCell.sourceNode))
+          ) {
+            return {
+              kind: 'declaration',
+              cell: currentCell,
+              sourceNode: currentCell.sourceNode,
+              frame: f
+            };
+          }
+          currentCellRejectedByGuard = true;
         }
       }
 
@@ -416,6 +424,7 @@ export function lookupScopeFrameVariable(
       }
 
       const bucket = options?.includeDeclarations === false
+        || currentCellRejectedByGuard
         ? undefined
         : f.declarationBucketsByName.get(name);
       if (bucket?.length) {
