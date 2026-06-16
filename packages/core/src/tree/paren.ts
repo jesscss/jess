@@ -261,18 +261,29 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     if (value === currentValue) {
       return this.renderOutput(context, this, bufferOrOptions, options);
     }
-    const rendered = value.render(context, isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions);
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const renderOptions = buffer
+      ? options?.writer ? undefined : options
+      : bufferOrOptions?.writer ? undefined : bufferOrOptions;
+    const rendered = value.render(context, renderOptions);
     const open = this._options?.delimiter === 'square' ? '[' : '(';
     const close = this._options?.delimiter === 'square' ? ']' : ')';
     const wrapped = isThenable(rendered)
       ? rendered.then(out => `${open}${out}${close}`)
       : `${open}${rendered}${close}`;
-    if (!isRenderBuffer(bufferOrOptions)) {
+    if (!buffer) {
+      if (isThenable(wrapped)) {
+        return wrapped.then(out => {
+          bufferOrOptions?.writer?.add(out, this);
+          return out;
+        });
+      }
+      bufferOrOptions?.writer?.add(wrapped, this);
       return wrapped;
     }
     return isThenable(wrapped)
-      ? wrapped.then(out => writeRenderText(bufferOrOptions, out))
-      : writeRenderText(bufferOrOptions, wrapped);
+      ? wrapped.then(out => writeRenderText(buffer, out))
+      : writeRenderText(buffer, wrapped);
   }
 
   private renderEscapedSemicolonList(

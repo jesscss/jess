@@ -3790,6 +3790,27 @@ Interpretation: leash status only, not a speed claim. The
 the patch is accepted as a direct scalar render cleanup, not as a measured
 performance win.
 
+### Paren Dynamic Wrapped Render Sink Fix
+
+Date: 2026-06-15.
+
+Change: `Paren.renderEvaluatedNode(...)` now keeps dynamically resolved child
+render output out of explicit caller writers until the paren has wrapped the
+returned string. Explicit writer render now writes `(child)` instead of letting
+the child write `child`, and buffer render with a writer option writes only the
+final wrapped string to the buffer.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `15.33ms` unstable, `import-reference` median
+  `23.27ms` usable, `mixins-guards` median `18.81ms` usable,
+  `extend-chaining` median `6.52ms` usable, and `media` median `5.34ms`
+  unstable.
+
+Interpretation: leash status only, not a speed claim. This is a
+sink-correctness and staging cleanup; two fixtures were unstable.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

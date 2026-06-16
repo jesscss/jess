@@ -162,6 +162,40 @@ describe('Paren', () => {
     expect(parenNode.registrationPrepared).toBe(false);
   });
 
+  it('writes resolved wrapped paren output to explicit writers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    await evalRoot(node, context);
+    const writer = new CountingWriter();
+
+    expect(paren(ref({ key: 'value' }, { type: 'variable' })).render(context, { writer })).toBe('(foo)');
+    expect(writer.toString()).toBe('(foo)');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
+  it('keeps resolved wrapped paren buffer output out of explicit writers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    await evalRoot(node, context);
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+
+    expect(paren(ref({ key: 'value' }, { type: 'variable' })).render(context, buffer, { writer })).toBe('(foo)');
+    expect(buffer.parts).toEqual(['(foo)']);
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
   it('renders empty paren syntax without writer readback', () => {
     const writer = new CountingWriter();
     const buffer = createRenderBuffer('flat');

@@ -359,7 +359,9 @@ shape current before commit.
    directly after value selection, without prepared writer setup,
    mark/getSince, replaceSince, or a second writer-to-buffer copy. Non-scalar
    URL normalization and non-scalar wrapper render still keep localized
-   mark/readback boundaries.
+   mark/readback boundaries. `Paren` dynamic wrapped render now keeps child
+   intermediate render text out of explicit writers and writes only the final
+   wrapped string to the requested writer or buffer.
 13. [ ] Finish `List`/`Sequence` public render string-return compatibility:
    either document it as the cold public boundary or split a direct buffer-only
    path that avoids returning a string when callers do not need it.
@@ -438,38 +440,37 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Url` scalar render print-state/readback cut.
+Current pass: `Paren` dynamic wrapped render sink fix.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   object/array scan, generator, or collection helper was added.
 - New node/materialization: none. No `new Node`, copy, `.inherit(...)`,
   `.adopt(...)`, wrapper `Rules`, frozen/source/parent metadata mutation, or
-  materialized array was added.
-- Render path: `Url.render(...)` now resolves/selects the child value first and
-  writes scalar `Any` URL output directly as normalized `url(...)` text. Flat
-  render-buffer output no longer prepares print state, opens a writer mark, or
-  copies detached writer output back into the buffer for this scalar path.
-  Public render with an explicit writer writes the same direct text to that
-  writer without readback. Non-scalar URL values still use the existing
-  prepared-writer boundary because context-mode URL normalization transforms
-  the child-rendered syntax.
-- Helper/API surface: one private `directUrlText(...)` helper and one private
-  `renderEvaluatedValue(...)` continuation were added in `Url`. They are
-  node-local, add no traversal, and replace the old unconditional prepared
-  writer/mark setup in `render(...)`; no public API was added.
+  materialized array was added. The review-script node-construction matches are
+  test-only counting writer instances used to prove explicit writer sinks; no
+  production node/object construction was added for render.
+- Render path: `Paren.renderEvaluatedNode(...)` no longer lets a dynamically
+  resolved child render into the caller's explicit writer before the paren has
+  wrapped the returned string. When the caller supplies a writer, the child is
+  rendered for its string result and only the final wrapped string is written
+  to that writer. When the caller supplies a render buffer and a writer option,
+  the child is kept out of the writer and only the final wrapped string is
+  written to the buffer. This removes a split sink where return value was
+  `(foo)` but the explicit writer received `foo`.
+- Helper/API surface: none added. The existing dynamic wrapped render branch
+  was tightened in place; no new method or public API was added.
 - Metadata mutations: none added. No parent/source/frozen/context metadata
   mutation, lazy options/context creation, `Reflect.*`, generic own-property
   helper, source restoration, or source/root read was added.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected/deferred cut: non-scalar URL normalization still uses localized
-  writer readback because the child syntax must be captured and normalized
-  before returning a string. That is a remaining queue-item 12 boundary, not
-  completed work.
-- Evidence: focused tests passed for `url` and `node-render-buffer`; core
+- Rejected/deferred cut: `Paren` still has a localized writer readback for
+  escaped semicolon list normalization and public source capture. Those are
+  remaining queue-item 12 boundaries, not completed work.
+- Evidence: focused tests passed for `paren` and `node-render-buffer`; core
   build passed; `verify:aggressive-cutting-review` passed; bounded
   `measure:less:hotpath` ran and is recorded in `PERFORMANCE-HANDOFF.md` as
   leash status only.
-- Verdict: accept as a bounded scalar render-buffer cleanup. Keep the active
-  queue at 15 open whole-task items because queue item 12 is materially
+- Verdict: accept as a bounded dynamic wrapper serialization fix. Keep the
+  active queue at 15 open whole-task items because queue item 12 is materially
   advanced but not complete.
