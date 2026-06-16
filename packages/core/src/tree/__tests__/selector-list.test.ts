@@ -210,6 +210,41 @@ describe('Selector list', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  test('keeps unchanged multi-selector evaluation on the source list', async () => {
+    const selector = sellist([
+      el('.foo'),
+      el('.bar')
+    ]);
+
+    const evaluated = await selector.eval(context);
+    const resolved = await selector.resolve(context);
+
+    expect(evaluated).toBe(selector);
+    expect(resolved).toBe(selector);
+  });
+
+  test('still collapses unchanged single-selector evaluation', async () => {
+    const selector = sellist([el('.solo')]);
+    const evaluated = await selector.eval(context);
+
+    expect(evaluated).not.toBe(selector);
+    expect(evaluated.toTrimmedString()).toBe('.solo');
+  });
+
+  test('still materializes unchanged top-level selector-list flattening', async () => {
+    const selector = sellist([
+      pseudo({
+        name: ':is',
+        arg: sellist([el('.a'), el('.b')])
+      }),
+      el('.c')
+    ]);
+    const evaluated = await selector.eval(context);
+
+    expect(evaluated).not.toBe(selector);
+    expect(evaluated.toTrimmedString()).toBe('.a,\n.b,\n.c');
+  });
+
   test('derives resolved selector-list surfaces without generic construction', async () => {
     const first = el('.source');
     const resolvedFirst = el('.resolved');

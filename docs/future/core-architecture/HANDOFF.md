@@ -568,24 +568,28 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Ampersand raw BasicSelector comma source cut.
+Current pass: SelectorList unchanged eval/resolve array allocation cut.
 
-- New traversal: none. Existing raw comma splitting remains; its input now comes
-  from owned `BasicSelector.value` instead of public `toTrimmedString(...)`.
-- New node/materialization: none in production. Existing `BasicSelector`
-  materialization for split comma items remains the semantic output of raw
-  comma distribution.
-- Render path: no render path was added. This pass affects ampersand
-  resolve/template placement before selector output.
-- Helper/API surface: none added.
-- Metadata mutations: none added. The test-only `try/finally` restores a
-  monkeypatched source selector method after instrumentation; it is not
-  production control flow.
-- Evidence: focused Ampersand tests prove raw comma template distribution still
-  prefixes every item and does not call the source `BasicSelector` public
-  string method. Adjacent selector-list, compound suffix, and validation tests
-  still pass.
-- Verdict: accepted as a bounded raw scalar source cut. Broader raw string
-  assembly and non-basic generic construction remain open. No performance
-  claim; performance remains shelved because this was not a measured benchmark
-  pass.
+- New traversal: backfill loops copy prior unchanged selectors only after a
+  later item requires materialization. They replace eager full-array allocation
+  and iteration over an output array for unchanged multi-selector lists.
+- New node/materialization: unchanged multi-selector eval/resolve now returns
+  the source `SelectorList` without allocating an evaluated `Selector[]`.
+  Materialization remains for single-item collapse, top-level `:is(...)`
+  flattening, and changed selector outputs. The remaining `new Array<Selector>`
+  sites are lazy finalization boundaries, not eager unchanged-list allocation.
+- Render path: no render path was added. This pass affects eval/resolve
+  materialization before selector output.
+- Helper/API surface: no public API was added. Existing private evaluator
+  helpers now return `undefined` to mean "source list unchanged".
+- Metadata mutations: no parent/source metadata mutation was added. Ownership
+  and copying rules remain in `finalizeEvaluatedSelectors(...)`. The tracker
+  row's `MaybePromise`/status prose is documentation, not a new runtime probe.
+- Evidence: focused SelectorList and InterpolatedSelector tests prove unchanged
+  multi-selector lists return the source list, single-item lists still collapse,
+  top-level flattening still materializes, and adjacent interpolated selector
+  behavior remains intact.
+- Verdict: accepted as a bounded eval/resolve materialization cut. `valueOf`
+  joins and other flattening outside direct writer paths remain open. No
+  performance claim; performance remains shelved because this was not a
+  measured benchmark pass.

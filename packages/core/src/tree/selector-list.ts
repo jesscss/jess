@@ -247,56 +247,95 @@ export class SelectorList extends Selector<Selector[]> {
   override evalNode(context: Context): MaybePromise<SelectorList | Selector> {
     attachSelectorBitLibrary(this, context.selectorBits);
     if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this.finalizeEvaluatedSelectors(this.evaluateSelectorsSync(context, false), true);
+      const evaluatedValue = this.evaluateSelectorsSync(context, false);
+      return evaluatedValue ? this.finalizeEvaluatedSelectors(evaluatedValue, true) : this;
     }
     const evaluatedValue = this.evaluateSelectors(context, false);
     return isThenable(evaluatedValue)
-      ? evaluatedValue.then(value => this.finalizeEvaluatedSelectors(value, true))
-      : this.finalizeEvaluatedSelectors(evaluatedValue, true);
+      ? evaluatedValue.then(value => value ? this.finalizeEvaluatedSelectors(value, true) : this)
+      : evaluatedValue ? this.finalizeEvaluatedSelectors(evaluatedValue, true) : this;
   }
 
   protected override resolveForRender(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
     if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this.finalizeEvaluatedSelectors(this.evaluateSelectorsSync(context, true), false);
+      const resolvedValue = this.evaluateSelectorsSync(context, true);
+      return resolvedValue ? this.finalizeEvaluatedSelectors(resolvedValue, false) : this;
     }
     const resolvedValue = this.evaluateSelectors(context, true);
     return isThenable(resolvedValue)
-      ? resolvedValue.then(value => this.finalizeEvaluatedSelectors(value, false))
-      : this.finalizeEvaluatedSelectors(resolvedValue, false);
+      ? resolvedValue.then(value => value ? this.finalizeEvaluatedSelectors(value, false) : this)
+      : resolvedValue ? this.finalizeEvaluatedSelectors(resolvedValue, false) : this;
   }
 
-  private evaluateSelectorsSync(context: Context, resolve: boolean): Selector[] {
+  private evaluateSelectorsSync(context: Context, resolve: boolean): Selector[] | undefined {
     const currentValue = this.value;
-    const evaluatedValue = new Array<Selector>(currentValue.length);
+    let evaluatedValue: Selector[] | undefined;
     for (let i = 0; i < currentValue.length; i++) {
       const item = currentValue[i]!;
       const out = resolve ? item.resolve(context) : item.eval(context);
+      let next: Selector;
       if (!(out instanceof Node)) {
         if (out !== null && typeof out === 'object') {
           throw new TypeError('Expected sync selector evaluation to return a node');
         }
-        evaluatedValue[i] = item;
-        continue;
+        next = item;
+      } else {
+        next = isNode(out, N.Selector) ? out : item;
       }
-      evaluatedValue[i] = isNode(out, N.Selector) ? out : item;
+      const needsMaterialization = currentValue.length === 1
+        || next !== item
+        || flattenedSelectorListValue(next) !== undefined;
+      if (evaluatedValue || needsMaterialization) {
+        if (!evaluatedValue) {
+          evaluatedValue = new Array<Selector>(currentValue.length);
+          for (let j = 0; j < i; j++) {
+            evaluatedValue[j] = currentValue[j]!;
+          }
+        }
+        evaluatedValue[i] = next;
+      }
     }
     return evaluatedValue;
   }
 
-  private evaluateSelectors(context: Context, resolve: boolean): MaybePromise<Selector[]> {
+  private evaluateSelectors(context: Context, resolve: boolean): MaybePromise<Selector[] | undefined> {
     const currentValue = this.value;
-    const evaluatedValue = new Array<Selector>(currentValue.length);
+    let evaluatedValue: Selector[] | undefined;
     for (let i = 0; i < currentValue.length; i++) {
       const item = currentValue[i]!;
       const out = resolve ? item.resolve(context) : item.eval(context);
       if (isThenable(out)) {
         return out.then((res) => {
-          evaluatedValue[i] = isNode(res, N.Selector) ? res : item;
+          const next = isNode(res, N.Selector) ? res : item;
+          const needsMaterialization = currentValue.length === 1
+            || next !== item
+            || flattenedSelectorListValue(next) !== undefined;
+          if (evaluatedValue || needsMaterialization) {
+            if (!evaluatedValue) {
+              evaluatedValue = new Array<Selector>(currentValue.length);
+              for (let j = 0; j < i; j++) {
+                evaluatedValue[j] = currentValue[j]!;
+              }
+            }
+            evaluatedValue[i] = next;
+          }
           return this.evaluateSelectorsRest(context, resolve, evaluatedValue, i + 1);
         });
       }
-      evaluatedValue[i] = isNode(out, N.Selector) ? out : item;
+      const next = isNode(out, N.Selector) ? out : item;
+      const needsMaterialization = currentValue.length === 1
+        || next !== item
+        || flattenedSelectorListValue(next) !== undefined;
+      if (evaluatedValue || needsMaterialization) {
+        if (!evaluatedValue) {
+          evaluatedValue = new Array<Selector>(currentValue.length);
+          for (let j = 0; j < i; j++) {
+            evaluatedValue[j] = currentValue[j]!;
+          }
+        }
+        evaluatedValue[i] = next;
+      }
     }
     return evaluatedValue;
   }
@@ -304,20 +343,44 @@ export class SelectorList extends Selector<Selector[]> {
   private evaluateSelectorsRest(
     context: Context,
     resolve: boolean,
-    evaluatedValue: Selector[],
+    evaluatedValue: Selector[] | undefined,
     start: number
-  ): MaybePromise<Selector[]> {
+  ): MaybePromise<Selector[] | undefined> {
     const currentValue = this.value;
     for (let i = start; i < currentValue.length; i++) {
       const item = currentValue[i]!;
       const out = resolve ? item.resolve(context) : item.eval(context);
       if (isThenable(out)) {
         return out.then((res) => {
-          evaluatedValue[i] = isNode(res, N.Selector) ? res : item;
+          const next = isNode(res, N.Selector) ? res : item;
+          const needsMaterialization = currentValue.length === 1
+            || next !== item
+            || flattenedSelectorListValue(next) !== undefined;
+          if (evaluatedValue || needsMaterialization) {
+            if (!evaluatedValue) {
+              evaluatedValue = new Array<Selector>(currentValue.length);
+              for (let j = 0; j < i; j++) {
+                evaluatedValue[j] = currentValue[j]!;
+              }
+            }
+            evaluatedValue[i] = next;
+          }
           return this.evaluateSelectorsRest(context, resolve, evaluatedValue, i + 1);
         });
       }
-      evaluatedValue[i] = isNode(out, N.Selector) ? out : item;
+      const next = isNode(out, N.Selector) ? out : item;
+      const needsMaterialization = currentValue.length === 1
+        || next !== item
+        || flattenedSelectorListValue(next) !== undefined;
+      if (evaluatedValue || needsMaterialization) {
+        if (!evaluatedValue) {
+          evaluatedValue = new Array<Selector>(currentValue.length);
+          for (let j = 0; j < i; j++) {
+            evaluatedValue[j] = currentValue[j]!;
+          }
+        }
+        evaluatedValue[i] = next;
+      }
     }
     return evaluatedValue;
   }
