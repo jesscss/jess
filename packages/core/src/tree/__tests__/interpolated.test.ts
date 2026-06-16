@@ -392,6 +392,47 @@ describe('Interpolated', () => {
     }
   });
 
+  it('creates generic output without public replacement writer capture', async () => {
+    const root = rules([
+      vardecl({
+        name: any('name'),
+        value: any('world')
+      })
+    ]);
+    await setEvaluatedRoot(context, root);
+    const descriptor = Object.getOwnPropertyDescriptor(Interpolated.prototype, 'writeWithReplacements');
+    if (!descriptor) {
+      throw new Error('Expected Interpolated.writeWithReplacements for generic capture proof');
+    }
+    Object.defineProperty(Interpolated.prototype, 'writeWithReplacements', {
+      ...descriptor,
+      value: () => {
+        throw new Error('Interpolated generic output should not capture replacement writer output');
+      }
+    });
+    try {
+      const node = interpolated({
+        source: `hello-${INTERPOLATION_PLACEHOLDER}`,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      });
+
+      expect((await node.evalNode(context)).toTrimmedString()).toBe('hello-world');
+    } finally {
+      Object.defineProperty(Interpolated.prototype, 'writeWithReplacements', descriptor);
+    }
+  });
+
+  it('creates generic output from async changed replacements', async () => {
+    const replacement = any('source');
+    replacement.eval = async () => any('world');
+    const node = interpolated({
+      source: `hello-${INTERPOLATION_PLACEHOLDER}`,
+      replacements: [replacement]
+    });
+
+    expect((await node.evalNode(context)).toTrimmedString()).toBe('hello-world');
+  });
+
   it('preserves quoted replacement syntax when requested', () => {
     const node = interpolated({
       source: `progid:test(value=${INTERPOLATION_PLACEHOLDER})`,

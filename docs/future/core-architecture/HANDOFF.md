@@ -413,8 +413,11 @@ shape current before commit.
    string boundary instead of calling public replacement
    `toTrimmedString(...)`. Whole and embedded non-scalar selector assembly now
    use the same direct replacement writer instead of public replacement
-   `toTrimmedString(...)`. Replacement arrays and semantic selector ownership
-   boundaries remain.
+   `toTrimmedString(...)`. Generic materialization now builds interpolated text
+   through a private direct text builder instead of routing through
+   `writeWithReplacements(...)` and its writer mark/readback capture. Eval and
+   resolve replacement arrays are now allocated lazily only after a replacement
+   changes. Semantic selector ownership boundaries remain.
 10. [x] Finish `StyleImport` first-use placement copies by replacing them with
    canonical source placement state, or document the exact semantic blocker.
 
@@ -561,34 +564,27 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Declaration raw custom scalar and Rules source child streaming.
+Current pass: Interpolated generic materialization and lazy replacement arrays.
 
-- New traversal: none. Declaration adds a scalar string boundary predicate.
-  Rules source-mode child `Rules` emission reuses the existing child body
-  writer traversal instead of public string preview transport.
-- New node/materialization: none in production. The added `CountingWriter`
-  constructions are test-only instrumentation for caller-writer counter
-  assertions.
-- Render path: raw custom-property scalar `Any` values without trailing
-  declaration-terminator line breaks now write directly and skip the custom
-  mark/replace/readback normalization boundary. Source-mode child `Rules`
-  wrappers now write their body directly through `_emitSourceRulesBody(...)`
-  instead of `preview(() => n.toTrimmedString(...))`; the local writer mark is
-  retained only to discard genuinely empty child output. Render-mode child
-  `Rules` remains on the compatibility path. The existing custom fallback
-  function `valueOut.slice(...)` assembly remains only inside the old
-  normalization branch for non-scalar/trailing-line-break custom values; it was
-  moved under the guard, not added to the scalar fast path.
-- Helper/API surface: one private declaration predicate,
-  `hasTrailingDeclarationTerminatorLineBreak(...)`, gates the scalar custom
-  fast path. No public API was added.
-- Metadata mutations: Rules source child emission saves/restores the same
-  print-state keys as the old preview path and preserves child emitted-trivia
-  handoff before restoring parent state. Declaration metadata is unchanged.
-- Evidence: focused Declaration tests prove the raw scalar custom path only
-  uses the outer Declaration readback while the unsafe trailing-line-break
-  value stays on the normalization boundary. Focused Rules streaming tests
-  prove plain/nested source wrappers use zero `capture` and zero `preview`.
-- Verdict: accepted as two bounded source-serialization cuts. No performance
-  claim; performance remains shelved because this was not a measured benchmark
-  pass.
+- New traversal: one private loop in `writeInterpolatedText(...)` builds generic
+  interpolated text directly from source segments and replacements. It replaces
+  the previous `writeWithReplacements(...)` writer mark/readback path for
+  generic materialization.
+- New node/materialization: eval/resolve replacement arrays are no longer
+  allocated up front; they are created with `currentReplacements.slice(...)`
+  only after a replacement changes. Test-only `Error` throws guard monkeypatch
+  proofs and are not production control flow.
+- Render path: no render path was added. `createGeneric()` still materializes
+  the public/eval `Any` result, but no longer captures replacement writer output
+  through `writeWithReplacements(...)`.
+- Helper/API surface: one private helper, `writeInterpolatedText(...)`, was
+  added to keep the direct generic text boundary local. No public API was
+  added.
+- Metadata mutations: none added. Selector ownership boundaries are unchanged.
+- Evidence: focused Interpolated tests prove generic output does not call
+  public replacement writer capture and async changed replacements still
+  produce the expected generic output. Selector-interpolated coverage was run
+  by the worker to guard adjacent selector behavior.
+- Verdict: accepted as a bounded generic materialization and unchanged-path
+  allocation cut. No performance claim; performance remains shelved because
+  this was not a measured benchmark pass.

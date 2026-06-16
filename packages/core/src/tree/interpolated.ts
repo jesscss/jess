@@ -139,6 +139,24 @@ export class Interpolated<
     return output + source.slice(sourceOffset);
   }
 
+  private writeInterpolatedText(replacements: Node[], options?: PrintOptions): string {
+    const { source } = this.value;
+    let output = '';
+    let sourceOffset = 0;
+    for (let i = 0; i < replacements.length; i++) {
+      const next = source.indexOf(INTERPOLATION_PLACEHOLDER, sourceOffset);
+      if (next < 0) {
+        output += source.slice(sourceOffset);
+        sourceOffset = source.length;
+      } else {
+        output += source.slice(sourceOffset, next);
+        sourceOffset = next + INTERPOLATION_PLACEHOLDER.length;
+      }
+      output += stringifyReplacement(replacements[i]!, options, this.options.preserveQuotedSyntax);
+    }
+    return output + source.slice(sourceOffset);
+  }
+
   private writeReplacement(replacement: Node, options: PrintOptions): void {
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
@@ -283,7 +301,7 @@ export class Interpolated<
   }
 
   createGeneric() {
-    const trimmedString = this.writeWithReplacements(this.value.replacements);
+    const trimmedString = this.writeInterpolatedText(this.value.replacements);
     let any = new Any<Role>(trimmedString).inherit(this);
     any.options.role = this.options.role;
     return any;
@@ -387,29 +405,37 @@ export class Interpolated<
   _evalToInterpolated(context: Context, mode: 'eval' | 'resolve' = 'eval'): MaybePromise<Interpolated<Role>> {
     const node = this;
     const currentReplacements = node.value.replacements;
-    const evaluatedReplacements = new Array<Node>(currentReplacements.length);
+    let evaluatedReplacements: Node[] | undefined;
     let changed = false;
     for (let idx = 0; idx < currentReplacements.length; idx++) {
       const n = currentReplacements[idx]!;
       const out = this.evaluateReplacement(context, n, mode);
       if (isThenable(out)) {
         return out.then((result) => {
-          evaluatedReplacements[idx] = result;
-          changed ||= result !== n;
-          return this.evaluateInterpolatedRest(context, mode, evaluatedReplacements, idx + 1, changed);
+          const nextChanged = changed || result !== n;
+          if (nextChanged) {
+            evaluatedReplacements ??= currentReplacements.slice(0, idx);
+            evaluatedReplacements[idx] = result;
+          }
+          return this.evaluateInterpolatedRest(context, mode, evaluatedReplacements, idx + 1, nextChanged);
         });
       }
       const result = out;
-      evaluatedReplacements[idx] = result;
-      changed ||= result !== n;
+      if (result !== n) {
+        evaluatedReplacements ??= currentReplacements.slice(0, idx);
+        evaluatedReplacements[idx] = result;
+        changed = true;
+      } else if (changed) {
+        evaluatedReplacements![idx] = result;
+      }
     }
-    return this.finalizeEvaluatedInterpolated(evaluatedReplacements, changed);
+    return this.finalizeEvaluatedInterpolated(evaluatedReplacements ?? currentReplacements, changed);
   }
 
   private evaluateInterpolatedRest(
     context: Context,
     mode: 'eval' | 'resolve',
-    evaluatedReplacements: Node[],
+    evaluatedReplacements: Node[] | undefined,
     start: number,
     changed: boolean
   ): MaybePromise<Interpolated<Role>> {
@@ -419,15 +445,24 @@ export class Interpolated<
       const out = this.evaluateReplacement(context, n, mode);
       if (isThenable(out)) {
         return out.then((result) => {
-          evaluatedReplacements[idx] = result;
-          return this.evaluateInterpolatedRest(context, mode, evaluatedReplacements, idx + 1, changed || result !== n);
+          const nextChanged = changed || result !== n;
+          if (nextChanged) {
+            evaluatedReplacements ??= currentReplacements.slice(0, idx);
+            evaluatedReplacements[idx] = result;
+          }
+          return this.evaluateInterpolatedRest(context, mode, evaluatedReplacements, idx + 1, nextChanged);
         });
       }
       const result = out;
-      evaluatedReplacements[idx] = result;
-      changed ||= result !== n;
+      if (result !== n) {
+        evaluatedReplacements ??= currentReplacements.slice(0, idx);
+        evaluatedReplacements[idx] = result;
+        changed = true;
+      } else if (changed) {
+        evaluatedReplacements![idx] = result;
+      }
     }
-    return this.finalizeEvaluatedInterpolated(evaluatedReplacements, changed);
+    return this.finalizeEvaluatedInterpolated(evaluatedReplacements ?? currentReplacements, changed);
   }
 
   private evaluateReplacement(context: Context, node: Node, mode: 'eval' | 'resolve'): MaybePromise<Node> {
