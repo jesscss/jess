@@ -464,6 +464,9 @@ shape current before commit.
    writer mark/readback. `Block` scalar `Any` flat-buffer render and
    `Negative` scalar dimension flat-buffer render now write known text without
    print-state setup, writer mark/readback, or a second writer-to-buffer copy.
+   Non-scalar `Block` buffer render now writes syntax directly under the
+   existing outer buffer mark instead of nesting the cold
+   `renderBlockSyntax(...)` mark/readback helper.
    Resolved `Any` negative render now writes `-value` directly instead of
    entering child render/operation transport, while public resolve materializes
    the scalar `Any('-value')` node.
@@ -578,21 +581,27 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: AtRule async/no-op scaffolding cleanup.
+Current pass: Block non-scalar buffer render nested string-helper cut.
 
-- New traversal: none. The change deletes wrappers around existing eval/prelude
-  branches and adds no loops, walks, maps, side-map lookups, or scans.
+- New traversal: none. The buffer path writes the already-selected block value
+  to the prepared writer and adds no loop, source walk, side-map lookup, or
+  object scan.
 - New node/materialization: none. No `Node`, copy, inherit, wrapper,
   materialized array, or ownership mutation was added.
-- Render path: unchanged. The same body/prelude values flow to the same finish
-  callbacks; narrowed thenables now call `.then(...)` directly.
-- Helper/API surface: no helper or public API was added.
+- Render path: non-scalar buffer renders now call `writeBlockSyntax(...)`
+  directly under the existing outer buffer mark and read that mark once for
+  `writePreparedRenderText(...)`. Public string-return render still uses
+  `renderBlockSyntax(...)`, so cold string API behavior is unchanged.
+- Helper/API surface: no helper or public API was added. Existing direct writer
+  and cold string helper boundaries were split by sink. The verifier's
+  `Reflect.set(...)` hit is test-only poisoning of the cold helper.
 - Metadata mutations: none. No parent/source/frozen/location/options/context
   mutation was added.
-- Evidence: focused AtRule and nesting-collapse tests pass. The removed
-  `try/catch` only rethrew the same error, and the removed
-  `Promise.resolve(...)` wrappers were after `isThenable(...)` narrowing.
-- Verdict: accepted as a bounded AtRule async/no-op scaffolding deletion. Body
-  state staging and custom eval/import/render branches remain open. No
+- Evidence: focused Block tests pass, including a new buffer fixture that
+  poisons `renderBlockSyntax(...)` and proves buffer rendering writes syntax
+  directly. The verifier's `throw new Error(...)` hit is that test sentinel,
+  not runtime control flow.
+- Verdict: accepted as a bounded Block buffer string-transport deletion.
+  Non-scalar public string-return render remains on the cold helper. No
   performance claim; performance remains shelved because this was not a
   measured benchmark pass.

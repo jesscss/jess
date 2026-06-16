@@ -175,6 +175,24 @@ describe('Block', () => {
     expect(blockNode.registrationPrepared).toBe(false);
   });
 
+  it('writes resolved block buffers without cold string helper transport', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+    const buffer = createRenderBuffer('flat');
+    const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
+    Reflect.set(blockNode, 'renderBlockSyntax', () => {
+      throw new Error('Buffer block render should write syntax directly');
+    });
+
+    expect(await blockNode.render(context, buffer)).toBe('{foo}');
+    expect(buffer.parts).toEqual(['{foo}']);
+  });
+
   it('renders nil block delimiters without writer readback', () => {
     const writer = new CountingWriter();
     const buffer = createRenderBuffer('flat');

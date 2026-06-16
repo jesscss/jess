@@ -163,11 +163,14 @@ export class Block extends Node<Node, BlockOptions> {
     const prepared = buffer
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const mark = buffer ? prepared.writer.mark() : 0;
+    if (buffer) {
+      const mark = prepared.writer.mark();
+      this.writeBlockSyntax(value, prepared);
+      const out = prepared.writer.getSince(mark);
+      return writePreparedRenderText(buffer, prepared, mark, out);
+    }
     const out = this.renderBlockSyntax(value, prepared);
-    return buffer
-      ? writePreparedRenderText(buffer, prepared, mark, out)
-      : out;
+    return out;
   }
 
   override evalNode(context: Context): MaybePromise<Block> {
