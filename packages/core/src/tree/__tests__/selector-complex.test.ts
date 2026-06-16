@@ -191,6 +191,30 @@ describe('Complex selector', () => {
       expect(context.printState.writer).toBeUndefined();
     });
 
+    test('derives resolved complex selector surfaces without generic construction', async () => {
+      const first = el('.source');
+      const resolvedFirst = el('.resolved');
+      first.resolve = () => resolvedFirst;
+      const selector = sel([
+        first,
+        co('>'),
+        el('.other')
+      ]);
+      const originalConstruct = Reflect.construct;
+      Reflect.construct = () => {
+        throw new Error('complex selector resolve should not use generic construction');
+      };
+
+      try {
+        const resolved = await selector.resolve(context);
+
+        expect(resolved.toTrimmedString()).toBe('.resolved > .other');
+        expect(first.parent).toBe(selector);
+      } finally {
+        Reflect.construct = originalConstruct;
+      }
+    });
+
     test('keeps source complex selector values canonical after resolve(context)', async () => {
       const node = rules([
         vardecl({

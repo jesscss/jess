@@ -58,7 +58,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   private withComponents(
     value: ComplexSelectorValue,
     sourceValue: readonly ComplexSelectorComponent[] = this.value
-  ): this {
+  ): ComplexSelector {
     const ownedValue = new Array<ComplexSelectorComponent>(value.length);
     let hoistToRoot = false;
     for (let i = 0; i < value.length; i++) {
@@ -68,14 +68,11 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         hoistToRoot = true;
       }
     }
-    const node: this = Reflect.construct(
-      this.constructor,
-      [
-        // Own unchanged source children; evaluated clones may carry runtime state.
-        ownedValue,
-        this._options ? { ...this._options } : undefined,
-        this.location
-      ]
+    // Own unchanged source children; evaluated clones may carry runtime state.
+    const node = new ComplexSelector(
+      ownedValue,
+      this._options ? { ...this._options } : undefined,
+      this.location
     );
     if (hoistToRoot) {
       node.hoistToRoot = true;
@@ -95,7 +92,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   private createEvaluatedComponentSurface(
     value: Node[],
     sourceValue: readonly ComplexSelectorComponent[]
-  ): this {
+  ): ComplexSelector {
     return this.withComponents(this.compactComplexComponents(value), sourceValue);
   }
 

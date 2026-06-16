@@ -186,6 +186,29 @@ describe('Compound Selector', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  test('derives resolved compound selector surfaces without generic construction', async () => {
+    const first = el('.source');
+    const resolvedFirst = el('.resolved');
+    first.resolve = () => resolvedFirst;
+    const selector = compound([
+      first,
+      el('.other')
+    ]);
+    const originalConstruct = Reflect.construct;
+    Reflect.construct = () => {
+      throw new Error('compound selector resolve should not use generic construction');
+    };
+
+    try {
+      const resolved = await selector.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('.resolved.other');
+      expect(first.parent).toBe(selector);
+    } finally {
+      Reflect.construct = originalConstruct;
+    }
+  });
+
   test('keeps source compound selector values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({

@@ -4304,6 +4304,27 @@ the `SelectorList` tracker row open for eval/resolve materialization arrays,
 value-key joins, and flattening outside direct writer paths. One fixture was
 unstable.
 
+### Compound And Complex Selector Direct Surface Construction Cut
+
+Date: 2026-06-16.
+
+Change: changed compound and complex selector eval/resolve surfaces now
+construct concrete `CompoundSelector`/`ComplexSelector` nodes directly instead
+of using generic `Reflect.construct(...)`.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `15.98ms` usable, `import-reference` median
+  `25.12ms` usable, `mixins-guards` median `17.49ms` usable,
+  `extend-chaining` median `5.74ms` usable, and `media` median `5.93ms`
+  unstable.
+
+Interpretation: construction-surface cut only. Do not claim a speed win; keep
+the `CompoundSelector` and `ComplexSelector` tracker rows open for allocation
+arrays, value-key classification, malformed repair, and metadata audits. One
+fixture was unstable.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

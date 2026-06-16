@@ -6,7 +6,7 @@ import {
 import type { Context } from '../context.js';
 import { createPublicNil, Nil } from './nil.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
-import type { SimpleSelector } from './selector-simple.js';
+import { SimpleSelector } from './selector-simple.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
@@ -43,16 +43,16 @@ function emitCompoundPart(
 }
 
 export class CompoundSelector extends Selector<SimpleSelector[]> {
-  private ownSelector(item: Selector): Selector {
+  private ownSelector(item: SimpleSelector): SimpleSelector {
     const owned = canReuseLeaf(item) ? reuseLeaf(item) : copyWithReusableLeaves(item);
-    if (!(owned instanceof Selector)) {
+    if (!(owned instanceof SimpleSelector)) {
       throw new TypeError('Expected selector copy');
     }
     return owned;
   }
 
-  private withComponents(value: Selector[], sourceValue: readonly Selector[] = this.value): this {
-    const ownedValue = new Array<Selector>(value.length);
+  private withComponents(value: SimpleSelector[], sourceValue: readonly Selector[] = this.value): CompoundSelector {
+    const ownedValue = new Array<SimpleSelector>(value.length);
     let hoistToRoot = false;
     for (let i = 0; i < value.length; i++) {
       const item = value[i]!;
@@ -61,14 +61,11 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         hoistToRoot = true;
       }
     }
-    const node: this = Reflect.construct(
-      this.constructor,
-      [
-        // Own unchanged source children; evaluated clones may carry runtime state.
-        ownedValue,
-        this._options ? { ...this._options } : undefined,
-        this.location
-      ]
+    // Own unchanged source children; evaluated clones may carry runtime state.
+    const node = new CompoundSelector(
+      ownedValue,
+      this._options ? { ...this._options } : undefined,
+      this.location
     );
     if (hoistToRoot) {
       node.hoistToRoot = true;
@@ -85,7 +82,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return false;
   }
 
-  private createEvaluatedComponentSurface(value: Selector[], sourceValue: readonly Selector[]): this {
+  private createEvaluatedComponentSurface(value: SimpleSelector[], sourceValue: readonly Selector[]): CompoundSelector {
     return this.withComponents(value, sourceValue);
   }
 
@@ -248,10 +245,13 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
 
   private finalizeComponents(evaluatedValue: Array<Selector | Nil>, evaluated: boolean): Node {
     const currentValue = this.value;
-    const value: Selector[] = [];
+    const value: SimpleSelector[] = [];
     for (let i = 0; i < evaluatedValue.length; i++) {
       const item = evaluatedValue[i]!;
       if (!(item instanceof Nil)) {
+        if (!(item instanceof SimpleSelector)) {
+          throw new TypeError('Expected compound selector component');
+        }
         value.push(item);
       }
     }

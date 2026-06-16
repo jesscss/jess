@@ -523,25 +523,34 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `SelectorList` direct surface construction cut.
+Current pass: `CompoundSelector`/`ComplexSelector` direct surface construction
+cut.
 
 - New traversal: none. Existing selector loops are unchanged.
 - New node/materialization: no extra node, wrapper, copy, inherit, adopt,
   source/root metadata, or array materialization was added. Changed eval/resolve
-  selector-list surfaces still materialize a `SelectorList`, but now do so with
-  direct `new SelectorList(...)` instead of generic `Reflect.construct(...)`.
+  compound/complex selector surfaces still materialize selector nodes, but now
+  do so with direct `new CompoundSelector(...)` and `new ComplexSelector(...)`
+  instead of generic `Reflect.construct(...)`.
 - Render path: no render behavior changed. This is an eval/resolve surface
-  construction cut for changed selector-list surfaces.
+  construction cut for changed selector surfaces.
 - Helper/API surface: none added. Generic constructor dispatch was removed.
 - Metadata mutations: none added. Existing `.inherit(this)` remains the
   materialized result ownership boundary.
 - Error/control flow: no production error objects or throw/catch control flow
-  added. The new throw is test-only monkey-patch proof.
-- Rejected/deferred cut: selector-list eval/resolve materialization arrays,
-  value-key joins, and flattening outside direct writer paths remain open.
+  added. New throws are test-only monkey-patch proof. The new compound
+  component `TypeError` guards the existing `CompoundSelector` component
+  invariant before direct construction.
+- Rejected/deferred cut: compound/complex eval/resolve materialization arrays,
+  value-key classification, malformed repair, and broader metadata audits
+  remain open.
 - Evidence: focused red/green test
-  `derives resolved selector-list surfaces without generic construction` failed
-  when `withSelectors(...)` called `Reflect.construct(...)` and passed after
-  direct construction. Full `selector-list.test.ts` passed.
-- Verdict: accepted as a bounded `SelectorList` construction-surface cut. Keep
-  the tracker row open for materialization arrays and non-writer flattening.
+  `derives resolved compound selector surfaces without generic construction`
+  failed when `CompoundSelector.withComponents(...)` called
+  `Reflect.construct(...)` and passed after direct construction. Focused
+  complex selector red/green proved the same for
+  `ComplexSelector.withComponents(...)`. Full `selector-compound.test.ts` and
+  `selector-complex.test.ts` passed.
+- Verdict: accepted as a bounded selector construction-surface cut. Keep both
+  tracker rows open for materialization arrays, value-key work, malformed
+  repair, and metadata audits.
