@@ -4025,6 +4025,26 @@ Hotpath status:
 Interpretation: fallback syntax staging cut only; do not claim a speed win from
 the focused test. Four fixtures were unstable.
 
+### Declaration Direct Writer Outer-Readback Cut
+
+Date: 2026-06-16.
+
+Change: `Declaration.writeSyntax(...)` now calls a direct writer body instead of
+calling the string-return `declValueTrimmedString(...)` wrapper and discarding
+its result. Public `toTrimmedString(...)` and render string-return boundaries
+still keep the wrapper.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `12.54ms` unstable, `import-reference` median
+  `23.59ms` usable, `mixins-guards` median `14.74ms` usable,
+  `extend-chaining` median `4.77ms` usable, and `media` median `4.55ms`
+  unstable.
+
+Interpretation: declaration writer staging cut only; do not claim a speed win
+from the focused test. Two fixtures were unstable.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

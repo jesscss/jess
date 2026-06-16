@@ -518,7 +518,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return this.declValueTrimmedString(this.value, options);
   }
 
-  private declValueTrimmedString(
+  private writeDeclarationValueSyntax(
     valueParts: DeclarationValue,
     options?: PrintOptions,
     renderState?: {
@@ -533,7 +533,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const { name, value, important } = valueParts;
     const { mergeAdapter, importantText } = renderState ?? {};
     const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
-    const mark = w.mark();
     // setDefined uses `:=` with default spacing rules.
     const printedAssign = (normalizedFromAssign || renderState?.normalizedFromAssign)
       ? AssignmentType.Default
@@ -598,6 +597,22 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (this.valueRequiresSemi(value)) {
       emitCommentTriviaAfterNode(important ?? value, options);
     }
+  }
+
+  private declValueTrimmedString(
+    valueParts: DeclarationValue,
+    options?: PrintOptions,
+    renderState?: {
+      customInterpolatedValue?: DeclarationRenderState['customInterpolatedValue'];
+      mergeAdapter?: DeclarationMergeAdapterState;
+      importantText?: string;
+      normalizedFromAssign?: AssignmentType;
+    }
+  ) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    this.writeDeclarationValueSyntax(valueParts, options, renderState);
     return w.getSince(mark);
   }
 
@@ -618,7 +633,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
-    this.declTrimmedString(options);
+    this.writeDeclarationValueSyntax(this.value, options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;

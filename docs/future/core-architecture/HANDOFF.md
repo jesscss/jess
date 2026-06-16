@@ -333,8 +333,10 @@ shape current before commit.
 
    Current partial status: custom-property fallback stringification now uses
    direct `writeSyntax(...)` with a detached writer instead of child
-   `toString(...)`; custom value writing also uses direct syntax; space-merge
-   rendering stopped returning an unused captured string.
+   `toString(...)`; custom value writing also uses direct syntax; non-custom
+   declaration `writeSyntax(...)` now writes directly without the outer
+   declaration mark/readback used only by cold string-return callers;
+   space-merge rendering stopped returning an unused captured string.
 6. [ ] Finish `Rules` root/body render, imports, placement state, merge output,
    and duplicate declaration materialization.
 7. [ ] Finish `Reference` public value materialization, rules-like surfaces,
@@ -492,33 +494,32 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Call` finalized empty fallback syntax readback cut.
+Current pass: `Declaration` direct writer outer-readback cut.
 
-- New traversal: none. `packages/core/src/tree/call.ts` adds no loop,
+- New traversal: none. `packages/core/src/tree/declaration.ts` adds no loop,
   recursion, parent/source walk, side-map lookup, object/array scan, generator,
   or collection helper.
-- New node/materialization: none. Finalized empty string-name fallback syntax
-  now emits the known `name()`/important text directly and returns that same
-  text, without constructing a fallback `Call` or opening a writer readback
-  window just to recover it.
-- Render path: `renderFinalizedCallSyntax(...)` now bypasses call-level
-  `mark()`/`getSince(...)` only for string names with no args and no content.
-  Argument/content fallback syntax remains on the existing writer boundary.
-- Helper/API surface: one private string helper was added to share the known
-  finalized-empty-call text; no public API changed.
+- New node/materialization: none. No new `Declaration`, wrapper node, copy,
+  inherit, adopt, source/root metadata, or array materialization was added.
+- Render path: render still uses `declValueTrimmedString(...)` where a returned
+  string is part of the public/render-buffer compatibility boundary.
+  `writeSyntax(...)` now calls the direct writer body and no longer opens the
+  outer declaration `mark()`/`getSince(...)` only to discard the returned text.
+- Helper/API surface: one private writer helper split out the existing
+  declaration body. It replaces the previous `writeSyntax(...)` call through
+  the string-return wrapper; no public API changed.
 - Metadata mutations: none added. No parent/source/frozen/context metadata
   mutation, lazy options/context creation, `Reflect.*`, generic own-property
   helper, source restoration, or source/root read was added.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected/deferred cut: fallback calls with args or content still need the
-  existing writer boundary for child evaluation, trimming, and content output.
-  Broader callable output selection and `evalArgNodes(...)` copy pressure
-  remain open.
+- Rejected/deferred cut: internal `replaceSince(...)`, name/value trim marks,
+  custom raw-source normalization, merge-state formatting, and render string
+  returns remain because those paths still need a localized text boundary.
 - Evidence: focused red/green test
-  `renders empty optional JS failure fallback syntax without call-level
-  readback` failed with one writer mark/readback before the cut and passed
-  after. Full `call.test.ts` passed.
-- Verdict: accepted as a bounded `Call` fallback syntax cut. Keep item 1 open
-  because callable output, non-empty fallback syntax, async/helper ladders,
-  `evalArgNodes(...)` copy pressure, and repeated eval remain.
+  `writes non-custom declaration syntax without outer string readback` failed
+  with the extra outer mark before the cut and passed after. Full
+  `declaration.test.ts` passed.
+- Verdict: accepted as a bounded `Declaration` writer cut. Keep item 5 open
+  because custom raw-source branches, merge state, localized mark/replace, and
+  materialization boundaries remain.
