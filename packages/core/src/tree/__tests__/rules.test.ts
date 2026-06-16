@@ -24,6 +24,7 @@ import {
   atrule
 } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
+import { F_NON_STATIC } from '../node-base.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
@@ -69,6 +70,7 @@ function getDeclEitherWithContext(context: Context, n: Rules, key: string, opts:
 class WholeBufferCountingWriter extends OutputWriter {
   wholeBufferReads = 0;
   captures = 0;
+  previews = 0;
 
   override getSince(mark: number): string {
     if (mark === 0) {
@@ -80,6 +82,13 @@ class WholeBufferCountingWriter extends OutputWriter {
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override preview(fn: () => string | void, preserveSegments?: boolean): string;
+  override preview(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
+  override preview(fn: () => string | void | Promise<string | void>, preserveSegments?: boolean): string | Promise<string> {
+    this.previews++;
+    return super.preview(fn, preserveSegments);
   }
 }
 
@@ -594,6 +603,28 @@ describe('Rules', () => {
 
     expect(node.toString({ context, writer })).toBe('@charset "utf-8";\n/* keep */\n@import "theme.css";\n');
     expect(writer.captures).toBe(0);
+  });
+
+  it('streams unevaluated child rules render without public rules string transport', () => {
+    const writer = new WholeBufferCountingWriter();
+    const child = rules([decl({ name: 'color', value: any('red') })]);
+    child.addFlags(F_NON_STATIC);
+    child.render = () => {
+      throw new Error('Child Rules render should not be used as string transport');
+    };
+    child.toTrimmedString = () => {
+      throw new Error('Child Rules source stringification should not be used as render transport');
+    };
+    const root = rules([]);
+    const node = rules([child]);
+    context.root = root;
+    context.rulesContext = root;
+
+    expect(node.render(context, { writer })).toBe('color: red;');
+    expect(writer.toString()).toBe('color: red;');
+    expect(writer.previews).toBe(0);
+    expect(context.root).toBe(root);
+    expect(context.rulesContext).toBe(root);
   });
 
   it('writes trivia-backed root import comments and imports through direct detached syntax', () => {

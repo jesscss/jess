@@ -2134,6 +2134,43 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             ? rendered.then(finishDirectChildRule)
             : finishDirectChildRule();
         }
+        if (mode === 'render' && context) {
+          const contextSaved = n._snapshotContext(context);
+          n._setupContextForRules(context, n);
+          const childMark = w.mark();
+          emitBoundaryIfNeeded(n);
+          let rendered: MaybePromise<void>;
+          try {
+            rendered = n._emitRenderRulesBody(options);
+          } catch (error) {
+            restoreRulesRenderContext(context, contextSaved);
+            options.emittedTrivia = childEmittedTrivia;
+            restorePrintState(options, childSaved);
+            throw error;
+          }
+          const finishDirectChildRule = (): void => {
+            restoreRulesRenderContext(context, contextSaved);
+            options.emittedTrivia = childEmittedTrivia;
+            restorePrintState(options, childSaved);
+            if (!w.hasContentSince(childMark)) {
+              w.restore(childMark);
+              return;
+            }
+            markEmitted(n);
+          };
+          if (isThenable(rendered)) {
+            return rendered.then(
+              finishDirectChildRule,
+              (error) => {
+                restoreRulesRenderContext(context, contextSaved);
+                options.emittedTrivia = childEmittedTrivia;
+                restorePrintState(options, childSaved);
+                throw error;
+              }
+            );
+          }
+          return finishDirectChildRule();
+        }
         const childRule = w.preview(() => (
           mode === 'render' && context
             ? n.render(context, options)

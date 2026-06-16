@@ -403,9 +403,12 @@ shape current before commit.
    instead of `writer.preview(...)` around public `render(...)` transport.
    Static declaration registration prep now calls `.then(...)` directly after
    `isThenable(...)` narrowing instead of wrapping already-thenable prepared
-   nodes with `Promise.resolve(...)`.
-   Unprepared dynamic child `Rules`, broader body render, placement state, merge
-   output, and duplicate declaration materialization remain open.
+   nodes with `Promise.resolve(...)`. Render-mode unprepared dynamic child
+   `Rules` wrappers now set up the child rules context and stream the child body
+   directly instead of entering `writer.preview(...)` around public
+   `render(...)` transport.
+   Broader body render, placement state, merge output, and duplicate declaration
+   materialization remain open.
 7. [ ] Finish `Reference` public value materialization, rules-like surfaces,
    merged assign normalization, key conversion, and remaining cold copy/inherit
    ownership.
@@ -601,26 +604,32 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: AtRule hoisted ruleset frame-scan guard.
+Current pass: Rules unprepared child render direct emission.
 
-- New traversal: none. The existing `context.frames` scan in
-  `packages/core/src/tree/at-rule.ts` is now guarded so it only runs when
-  `context.bubbleRootAtRules && this.isRootOnly()` can make the hoisted-parent
-  fact observable; ordinary at-rules skip that scan.
-- New node/materialization: none. No `Node`, copy, inherit, wrapper,
-  materialized array, or ownership mutation was added.
-- Render path: body eval record creation and `evalNode(...)` carry the same
-  hoisted-parent boolean to the existing body-state branches. Rendering still
-  writes through the existing AtRule body/header paths and does not resolve into
-  arrays or nodes just to stringify.
+- New traversal: none. The change adds no loop, recursion, side-map lookup,
+  parent/source walk, or object scan. It removes the `writer.preview(...)`
+  capture around public child `Rules.render(...)` for the unprepared dynamic
+  child render path.
+- New node/materialization: none in runtime code. The focused test constructs a
+  counting writer, an empty root `Rules`, and sentinel `Error` instances only to
+  prove the branch does not enter public string transport.
+- Render path: child `Rules` render now sets up the child rules context and
+  calls `_emitRenderRulesBody(...)` directly, keeping the existing caller mark
+  only to discard genuinely empty child output. It no longer captures a child
+  render string through `writer.preview(...)` and re-emits that string.
 - Helper/API surface: no helper or public API was added.
-- Metadata mutations: none. No parent/source/frozen/location/options/context
-  mutation was added.
-- Evidence: focused AtRule/nesting tests and less-compat at-plugin integration
-  tests pass. The isolated aggressive-cutting review flags the touched `for`
-  loops as danger tokens; they are the pre-existing frame scans moved behind the
-  semantic root-only bubbling guard, not new traversal.
-- Verdict: accepted as a bounded hot-path guard. AtRule body-state staging and
-  remaining custom eval/import/render branch ladders remain open. No performance
-  claim; performance remains shelved because this was not a measured benchmark
-  pass.
+- Metadata mutations: the branch uses the existing `_setupContextForRules(...)`
+  and restores the saved render context on sync success, sync throw, and async
+  rejection. The new `try/catch` is exceptional cleanup for the context mutation
+  introduced by direct emission, not routine branch control. This is required
+  because the removed public render transport used `evalForRender(...)` to own
+  the same setup/restore boundary.
+- Evidence: focused Rules coverage proves an unprepared child `Rules` render
+  does not call child public `render(...)`, child public
+  `toTrimmedString(...)`, or `writer.preview(...)`, and restores the prior
+  root/rules context. Focused Rules/render-buffer/Declaration/Mixin coverage
+  passes.
+- Verdict: accepted as a bounded string-transport deletion. Broader Rules body
+  render, placement state, merge output, duplicate declaration materialization,
+  and root serializer capture remain open. No performance claim; performance
+  remains shelved because this was not a measured benchmark pass.
