@@ -17,6 +17,7 @@ import {
   type PrintOptions,
   type FinalPrintOptions,
   getPrintOptions,
+  OutputWriter,
   prepareRenderPrintState,
   savePrintState,
   restorePrintState,
@@ -1292,7 +1293,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
         return '';
       }
     }
-    const saved = savePrintState(options, ['referenceFilterTargets']);
+    const saved = savePrintState(options, ['referenceFilterTargets', 'writer']);
     if (
       options.referenceMode === true
       && options.referenceRenderEnabled === true
@@ -1311,16 +1312,15 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       options.trivia = createTriviaMap();
     }
     let selOut: string;
-    const writer = options.writer;
-    const mark = writer.mark();
+    const writer = new OutputWriter(options.sourceMap === true);
     try {
+      options.writer = writer;
       renderSelector.writeSyntax(options);
-      selOut = writer.getSince(mark);
+      selOut = writer.toString();
     } finally {
-      writer.restore(mark);
       options.trivia = savedTrivia;
+      restorePrintState(options, saved);
     }
-    restorePrintState(options, saved);
     const header = selOut.replace(/\s+$/, '') + ' {';
     return (/^\s*\/\*/u.test(header)
       ? normalizeLeadingBlockTrivia(header, idt)

@@ -12,7 +12,10 @@ let context: Context;
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  getSinceCalls = 0;
+  marks = 0;
   previews = 0;
+  restores = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
@@ -24,6 +27,21 @@ class CountingWriter extends OutputWriter {
   override preview(fn: () => MaybePromise<string | void>, preserveSegments?: boolean): MaybePromise<string> {
     this.previews++;
     return super.preview(fn, preserveSegments);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.getSinceCalls++;
+    return super.getSince(mark);
+  }
+
+  override restore(mark: number): void {
+    this.restores++;
+    super.restore(mark);
   }
 }
 
@@ -1067,6 +1085,7 @@ describe('Rule', () => {
     const originalWriteSyntax = selector.writeSyntax;
     let selectorToStringCalls = 0;
     let selectorUsedActiveWriter = false;
+    let selectorUsedDetachedWriter = false;
     selector.toString = function toStringWithWriterCheck(
       this: typeof selector,
       nextOptions?: Parameters<typeof originalSelectorToString>[0]
@@ -1079,6 +1098,7 @@ describe('Rule', () => {
       nextOptions: Parameters<typeof originalWriteSyntax>[0]
     ): void {
       selectorUsedActiveWriter = nextOptions.writer === writer;
+      selectorUsedDetachedWriter = nextOptions.writer instanceof OutputWriter && nextOptions.writer !== writer;
       return originalWriteSyntax.call(this, nextOptions);
     };
 
@@ -1086,9 +1106,14 @@ describe('Rule', () => {
       expect(node.getHeaderString(options)).toBe('.foo {\n');
       expect(writer.toString()).toBe('');
       expect(writer.captures).toBe(0);
+      expect(writer.getSinceCalls).toBe(0);
+      expect(writer.marks).toBe(0);
       expect(writer.previews).toBe(0);
+      expect(writer.restores).toBe(0);
       expect(selectorToStringCalls).toBe(0);
-      expect(selectorUsedActiveWriter).toBe(true);
+      expect(selectorUsedActiveWriter).toBe(false);
+      expect(selectorUsedDetachedWriter).toBe(true);
+      expect(options.writer).toBe(writer);
     } finally {
       selector.toString = originalSelectorToString;
       selector.writeSyntax = originalWriteSyntax;

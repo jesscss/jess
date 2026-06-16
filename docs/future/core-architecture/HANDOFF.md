@@ -334,6 +334,15 @@ shape current before commit.
    rethrows.
 4. [ ] Finish `Ruleset.getHeaderString(...)` capture removal for frame
    render/comparison paths and same-property duplicate declaration pre-render.
+
+   Current partial status: `getHeaderString(...)` no longer writes selector
+   syntax into the caller's active writer and then rolls it back with
+   `mark()/getSince()/restore()`. Header selector text now uses a detached
+   `OutputWriter`, restores the caller writer/trivia/reference-filter state in
+   `finally`, and the focused Ruleset test asserts the caller writer receives
+   no mark/readback/restore traffic. Same-property duplicate declaration
+   pre-rendering, deeper selector composition, body prep, wrappers, and render
+   branches remain open.
 5. [ ] Finish `Declaration` custom-property raw-source, merge-state, internal
    mark/replace, and materialization boundaries.
 
@@ -538,25 +547,32 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Declaration.writeSyntax(...)` simple name/important trim-mark
-cut.
+Current pass: Ruleset header selector writer isolation.
 
-- New traversal: none.
-- New node/materialization: none.
-- Render path: declaration render already routes through
-  `writeDeclarationValueSyntax(...)`, so simple no-trivia names/important flags
-  now write known scalar text directly there. No render path creates nodes or
-  arrays to stringify.
-- Helper/API surface: one private scalar predicate
-  `hasEdgeHorizontalWhitespace(...)` added beside existing whitespace helpers
-  so the direct path can prove it does not need trim machinery.
-- Metadata mutations: none. The two `sourceRoot?._treeContext?.opts?.trivia`
-  reads are guard probes for existing source trivia; if either finds trivia,
-  the code falls back to the old trim-mark path instead of taking the scalar
-  shortcut.
-- Error/control flow: none added.
-- Evidence: focused declaration writer-counter test proves the common
-  `color: red !important` source writer now uses one local mark/readback
-  instead of three while preserving direct child writes and public output.
-- Verdict: accepted as a bounded source/render writer mark cut. No performance
-  claim; performance remains shelved.
+- New traversal: none. `Ruleset.getHeaderString(...)` still renders the same
+  selected/composed selector once and does not add loops, recursive walks,
+  filters, parent/source walks, or side-map lookups.
+- New node/materialization: one detached `OutputWriter` replaces use of the
+  caller's active writer plus `mark()/getSince()/restore()` rollback. No AST
+  nodes, wrappers, copies, `.inherit`, `.adopt`, arrays, or semantic placement
+  records were added. Existing selector metadata copies for reference filtering
+  and visibility remain unchanged.
+- Render path: header rendering still stringifies because
+  `getHeaderString(...)` returns a string consumed by frame serialization, but
+  selector text no longer mutates the caller writer only to be discarded.
+  Same-property duplicate declaration pre-rendering remains open.
+- Helper/API surface: none added. The pass imports the existing
+  `OutputWriter` class from `util/print.js`; no public API was added.
+- Metadata mutations: caller `writer`, `trivia`, and `referenceFilterTargets`
+  state are restored in `finally`. Existing selector visibility/reference
+  metadata handling remains unchanged. The `Ruleset` eval/registration cleanup
+  `catch` blocks were explicitly rejected as cuts because they restore
+  `context.rulesetFrames`/`context.frames` on thrown or rejected body prep/eval.
+- Evidence: `ruleset.test.ts` covers comment-free headers, reference-filtered
+  headers, thrown/rejected eval-frame restoration, and the updated "streams
+  header selectors without capture scaffolding" assertion that the caller
+  writer receives no `mark`, `getSince`, `restore`, `capture`, or `preview`
+  traffic while `options.writer` is restored after the call.
+- Verdict: accepted as a caller-writer rollback cut. No performance claim;
+  performance remains shelved because this was a code-path deletion pass, not
+  a measured benchmark pass.
