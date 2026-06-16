@@ -1089,7 +1089,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
           continue;
         }
-        if (!includeRulesets && !rulesMayContainExactMixinSurface(entry.node)) {
+        if (!includeRulesets && entry.hasExactMixinSurface === false) {
           continue;
         }
         if (entry.node.options?.forward) {
@@ -1157,10 +1157,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         continue;
       }
       if (includeRulesets) {
-        if (!rulesMayContainExactCallableSurface(entry.node)) {
+        if (entry.hasExactCallableSurface === false) {
           continue;
         }
-      } else if (!rulesMayContainExactMixinSurface(entry.node)) {
+      } else if (entry.hasExactMixinSurface === false) {
         continue;
       }
       if (entry.node.options?.forward) {
@@ -1371,10 +1371,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!rulesMayContainExactCallableSurface(child)) {
         continue;
       }
+      const hasExactMixinSurface = rulesMayContainExactMixinSurface(child);
+      const hasExactRulesetSurface = rulesMayContainExactRulesetSurface(child);
       (out ??= []).push({
         node: child,
         rulesVisibility: this.getDirectChildRulesVisibility(child),
-        readonly: Boolean(child.options.readonly)
+        readonly: Boolean(child.options.readonly),
+        hasExactCallableSurface: true,
+        hasExactMixinSurface,
+        hasExactRulesetSurface
       });
     }
     this.directChildRuleEntries = out ?? null;
@@ -1448,12 +1453,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     readonly = Boolean(child.options.readonly)
   ): void {
     this.hasDirectChildRuleSurface = true;
-    if (rulesMayContainExactCallableSurface(child)) {
+    const hasExactCallableSurface = rulesMayContainExactCallableSurface(child);
+    const hasExactMixinSurface = hasExactCallableSurface && rulesMayContainExactMixinSurface(child);
+    const hasExactRulesetSurface = hasExactCallableSurface && rulesMayContainExactRulesetSurface(child);
+    if (hasExactCallableSurface) {
       this.hasExactCallableChildSurface = true;
-      if (rulesMayContainExactMixinSurface(child)) {
+      if (hasExactMixinSurface) {
         this.hasExactMixinChildSurface = true;
       }
-      if (rulesMayContainExactRulesetSurface(child)) {
+      if (hasExactRulesetSurface) {
         this.hasExactRulesetChildSurface = true;
       }
     }
@@ -1466,7 +1474,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     entries.push({
       node: child,
       rulesVisibility: visibility,
-      readonly
+      readonly,
+      hasExactCallableSurface,
+      hasExactMixinSurface,
+      hasExactRulesetSurface
     });
   }
 
@@ -1525,7 +1536,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
           continue;
         }
-        if (!rulesMayContainExactRulesetSurface(entry.node)) {
+        if (entry.hasExactRulesetSurface === false) {
           continue;
         }
         if (entry.node.options?.forward) {
@@ -1620,7 +1631,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
           continue;
         }
-        if (!rulesMayContainExactRulesetSurface(entry.node)) {
+        if (entry.hasExactRulesetSurface === false) {
           continue;
         }
         if (entry.node.options?.forward) {
@@ -1663,9 +1674,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   findMixinNamespacePathFast(
     keys: string[],
     filterType: 'Mixin' | undefined,
-    options: CallableFindOptions = {}
+    options: CallableFindOptions = {},
+    pathStart = 0
   ): MixinEntry[] | undefined {
-    if (keys.length < 2) {
+    if (keys.length - pathStart < 2) {
       return undefined;
     }
 
@@ -1786,7 +1798,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return sawDefiniteMiss ? DEFINITE_MIXIN_NAMESPACE_MISS : undefined;
     };
 
-    const result = walk(this, keys, 0, true);
+    const result = walk(this, keys, pathStart, options.searchParents !== false);
     return result === DEFINITE_MIXIN_NAMESPACE_MISS ? [] : result?.entries;
   }
 
@@ -1900,12 +1912,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             searchParents: false
           };
           const remainderStart = consumed.length;
-          resolved = ruleset.value.rules.findMixin(
-            collectKeyRemainder(path, remainderStart),
+          resolved = ruleset.value.rules.findMixinNamespacePathFast(
+            path,
             undefined,
             nestedOptions,
-            getCallableLookupKeyRemainder(normalizedPathKey, remainderStart)
+            remainderStart
           );
+          if (!resolved?.length) {
+            resolved = ruleset.value.rules.findMixin(
+              collectKeyRemainder(path, remainderStart),
+              undefined,
+              nestedOptions,
+              getCallableLookupKeyRemainder(normalizedPathKey, remainderStart)
+            );
+          }
         }
         if (resolved?.length) {
           return resolved;
@@ -1954,14 +1974,25 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ...options,
         searchParents: false
       };
-      const resolved = ruleset.value.rules.findMixin(
-        remainderLength === 1 ? keys[consumed.length]! : collectKeyRemainder(keys, consumed.length),
-        undefined,
-        nestedOptions,
-        remainderLength === 1
-          ? undefined
-          : getCallableLookupKeyRemainder(normalizedPathKey, consumed.length)
-      );
+      let resolved: MixinEntry[] | undefined;
+      if (remainderLength === 1) {
+        resolved = ruleset.value.rules.findMixin(keys[consumed.length]!, undefined, nestedOptions);
+      } else {
+        resolved = ruleset.value.rules.findMixinNamespacePathFast(
+          keys,
+          undefined,
+          nestedOptions,
+          consumed.length
+        );
+        if (!resolved?.length) {
+          resolved = ruleset.value.rules.findMixin(
+            collectKeyRemainder(keys, consumed.length),
+            undefined,
+            nestedOptions,
+            getCallableLookupKeyRemainder(normalizedPathKey, consumed.length)
+          );
+        }
+      }
       if (resolved?.length) {
         return { entries: resolved, owned: false };
       }
@@ -2006,17 +2037,26 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           continue;
         }
       }
-      remainder ??= keys.length === 2 ? keys[1]! : collectKeyRemainder(keys, 1);
       nestedOptions ??= existingNoParentOptions ?? {
         ...options,
         searchParents: false
       };
-      const nested = entry.value.rules.findMixin(
-        remainder,
-        undefined,
-        nestedOptions,
-        getCallableLookupKeyRemainder(normalizedPathKey, 1)
-      );
+      let nested: MixinEntry[] | undefined;
+      if (keys.length === 2) {
+        remainder ??= keys[1]!;
+        nested = entry.value.rules.findMixin(remainder, undefined, nestedOptions);
+      } else {
+        nested = entry.value.rules.findMixinNamespacePathFast(keys, undefined, nestedOptions, 1);
+        if (!nested?.length) {
+          remainder ??= collectKeyRemainder(keys, 1);
+          nested = entry.value.rules.findMixin(
+            remainder,
+            undefined,
+            nestedOptions,
+            getCallableLookupKeyRemainder(normalizedPathKey, 1)
+          );
+        }
+      }
       if (nested?.length) {
         if (resolved === undefined) {
           resolved = nested;

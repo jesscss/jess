@@ -37,8 +37,10 @@ materialization wrapper for that semantic case.
    Property lookup returns `DirectDeclarationOccurrence`, and occurrences now
    carry a `slot` for same-parent source ordering. Filtered merge-chain/
    property assignment modes now use typed `requiredNormalizedFromAssign`
-   constraints instead of a generic merge filter. Remaining work is proving
-   final handle eligibility and scalarizing the temporary excluded-node array.
+   constraints instead of a generic merge filter, and source-static typed
+   property/declaration constraints are handleable. Wider excluded-node filters
+   stay cold. Remaining work is proving the real Less merge-chain path and
+   scalarizing the temporary excluded-node array.
 
 3. **Declaration/property key versioning follow-through.**
    Reference handles now use `Rules.getDeclarationLookupVersion(key)`, but the
@@ -70,19 +72,26 @@ materialization wrapper for that semantic case.
 1. **Callable coverage decisions.**
    `lookupScopeFrameCallable(...)` has `hit`, `miss`, and `uncovered` reasons.
    Candidate, child-surface, and reference-import reasons now route through
-   caller-specific decisions before generic direct crawl. Remaining work is
-   deleting the direct-crawl bridges where surface facts are complete.
+   caller-specific decisions before generic direct crawl. Prepared child-rule
+   entries carry exact callable/mixin/ruleset surface facts, so remaining work
+   is deleting the direct-crawl bridges where those facts are complete and
+   making the carried flags the only prepared-entry gate.
 
 2. **Parameterized terminal namespace audit.**
    Mixin-ruleset calls with parameters now reject ruleset-only terminal
-   candidates while keeping rulesets as namespace containers. Remaining work is
-   auditing recursive namespace/error cases and deleting any now-redundant
-   terminal fallback.
+   candidates while keeping rulesets as namespace containers. Existing tests
+   cover recursive namespace terminals, exact ruleset terminal rejection,
+   namespace containers, and ruleset-only exclusion. Remaining work is deleting
+   any terminal fallback proved redundant by the final namespace no-fallback
+   matrix.
 
 3. **Namespace path/remainder allocation.**
    `collectKeyRemainder(...)`, `getCallableLookupKeyRemainder(...)`, and
-   recursive namespace helpers still rebuild arrays/strings. Replace with an
-   offset/path view after namespace semantics are stable.
+   recursive namespace helpers still rebuild arrays/strings. Positive nested
+   namespace hits can now use an offset into `findMixinNamespacePathFast`
+   before falling back to remainder arrays. Remaining work is extending the
+   offset/path view through ruleset prefix and compound paths, then replacing
+   string slicing with normalized path-key offsets.
 
 ### D. Reference Handles And Fallback Bridges
 
@@ -97,8 +106,10 @@ materialization wrapper for that semantic case.
    Shrink fallback cases one by one: declaration fallback frames,
    callable child/reference-import bridges, property filtered fallback, leaky
    rules, and `searchScope` disqualification. Variable lookup now has one
-   modeled `live-current` lane instead of a duplicate live-only retry. Each
-   remaining bridge needs a deletion condition and a covered-hit/miss spy.
+   modeled `live-current` lane instead of a duplicate live-only retry. Active
+   `searchScope` disqualification now has proof that stale handles are cleared
+   and ordinary lookup rebuilds later. Each remaining bridge needs a deletion
+   condition and a covered-hit/miss spy.
 
 3. **Final simple-read proof.**
    The lane is not done until ordinary static variable, property, declaration,

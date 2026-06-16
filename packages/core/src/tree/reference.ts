@@ -354,6 +354,10 @@ type ReferenceRulesLookupHandleBase = {
   targetRules: Rules;
   targetLookupVersion: number;
   valueKey: string | string[];
+  requiredNormalizedFromAssignKey: string | undefined;
+  excludedNode0: Node | undefined;
+  excludedNode1: Node | undefined;
+  excludedNodesLength: number;
   currentBindingKey?: string;
   currentBindingFrame?: ScopeFrame;
   currentBindingVersion?: number;
@@ -668,6 +672,11 @@ function prepareRulesLookupShape(
     isInterpolatedVariable: lookupContext.isInterpolatedVariable,
     context: lookupContext.context
   });
+  const declarationConstraints = getRulesLookupHandleDeclarationConstraintShape(lookupContext.referenceNode);
+  shape.requiredNormalizedFromAssignKey = declarationConstraints.requiredNormalizedFromAssignKey;
+  shape.excludedNode0 = declarationConstraints.excludedNode0;
+  shape.excludedNode1 = declarationConstraints.excludedNode1;
+  shape.excludedNodesLength = declarationConstraints.excludedNodesLength;
   lookupContext.preparedRules = targetRules;
   lookupContext.preparedShape = shape;
   return shape;
@@ -1073,7 +1082,60 @@ function isHandleableLookupKey(valueKey: NormalizedLookupKey): valueKey is strin
 
 type RulesLookupHandleLookupType = 'declaration' | 'function' | 'mixin' | 'mixin-ruleset' | 'property' | 'variable';
 
+function getRequiredNormalizedFromAssignHandleKey(
+  required: ReferenceOptions['requiredNormalizedFromAssign']
+): string | undefined {
+  if (required === undefined) {
+    return undefined;
+  }
+  if (Array.isArray(required)) {
+    switch (required.length) {
+      case 0:
+        return '0:';
+      case 1:
+        return `1:${required[0]}`;
+      case 2:
+        return `2:${required[0]}\u001e${required[1]}`;
+      case 3:
+        return `3:${required[0]}\u001e${required[1]}\u001e${required[2]}`;
+      case 4:
+        return `4:${required[0]}\u001e${required[1]}\u001e${required[2]}\u001e${required[3]}`;
+      default:
+        return undefined;
+    }
+  }
+  return `1:${required}`;
+}
+
+function getRulesLookupHandleDeclarationConstraintShape(referenceNode: Reference): Pick<
+  RulesLookupHandleShape,
+  'requiredNormalizedFromAssignKey' | 'excludedNode0' | 'excludedNode1' | 'excludedNodesLength'
+> {
+  const excludedNodes = referenceNode.options.excludedNodes;
+  return {
+    requiredNormalizedFromAssignKey: getRequiredNormalizedFromAssignHandleKey(
+      referenceNode.options.requiredNormalizedFromAssign
+    ),
+    excludedNode0: excludedNodes?.[0],
+    excludedNode1: excludedNodes?.[1],
+    excludedNodesLength: excludedNodes?.length ?? 0
+  };
+}
+
+function hasHandleableDeclarationConstraints(referenceNode: Reference): boolean {
+  const excludedNodes = referenceNode.options.excludedNodes;
+  const requiredNormalizedFromAssign = referenceNode.options.requiredNormalizedFromAssign;
+  return (
+    (excludedNodes === undefined || excludedNodes.length <= 2)
+    && (
+      !Array.isArray(requiredNormalizedFromAssign)
+      || requiredNormalizedFromAssign.length <= 4
+    )
+  );
+}
+
 function isRulesLookupHandleEligible(
+  referenceNode: Reference,
   lookupType: LookupType,
   valueKey: NormalizedLookupKey,
   target: ReferenceValue['target'],
@@ -1102,6 +1164,7 @@ function isRulesLookupHandleEligible(
     && target === undefined
     && originalFilter === undefined
     && !env.semanticFilter
+    && hasHandleableDeclarationConstraints(referenceNode)
     && !env.hasTarget
     && !env.isInterpolatedVariable
     && context.leakyRules !== true
@@ -1114,6 +1177,10 @@ type RulesLookupHandleShape = {
   local: boolean;
   ignoreParentScopeStart: boolean;
   terminalMixinOnly: boolean;
+  requiredNormalizedFromAssignKey?: string;
+  excludedNode0?: Node;
+  excludedNode1?: Node;
+  excludedNodesLength?: number;
 };
 
 type WriteRulesLookupHandleArgs = {
@@ -1268,6 +1335,10 @@ function readRulesLookupHandle(
     || handle.local !== shape.local
     || handle.ignoreParentScopeStart !== shape.ignoreParentScopeStart
     || handle.terminalMixinOnly !== shape.terminalMixinOnly
+    || handle.requiredNormalizedFromAssignKey !== shape.requiredNormalizedFromAssignKey
+    || handle.excludedNodesLength !== (shape.excludedNodesLength ?? 0)
+    || handle.excludedNode0 !== shape.excludedNode0
+    || handle.excludedNode1 !== shape.excludedNode1
     || handle.valueKey !== valueKey
   ) {
     return undefined;
@@ -1333,6 +1404,10 @@ function writeVariableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void 
     targetRules,
     targetLookupVersion,
     valueKey,
+    requiredNormalizedFromAssignKey: shape.requiredNormalizedFromAssignKey,
+    excludedNode0: shape.excludedNode0,
+    excludedNode1: shape.excludedNode1,
+    excludedNodesLength: shape.excludedNodesLength ?? 0,
     currentBindingKey: currentBindingFact?.currentBindingKey,
     currentBindingFrame: currentBindingFact?.currentBindingFrame,
     currentBindingVersion: currentBindingFact?.currentBindingVersion,
@@ -1367,6 +1442,10 @@ function writeDeclarationRulesLookupHandle(args: WriteRulesLookupHandleArgs): vo
     targetRules,
     targetLookupVersion,
     valueKey,
+    requiredNormalizedFromAssignKey: shape.requiredNormalizedFromAssignKey,
+    excludedNode0: shape.excludedNode0,
+    excludedNode1: shape.excludedNode1,
+    excludedNodesLength: shape.excludedNodesLength ?? 0,
     lookupType,
     inCall,
     start,
@@ -1395,6 +1474,10 @@ function writeFunctionRulesLookupHandle(args: WriteRulesLookupHandleArgs): void 
     targetRules,
     targetLookupVersion,
     valueKey,
+    requiredNormalizedFromAssignKey: shape.requiredNormalizedFromAssignKey,
+    excludedNode0: shape.excludedNode0,
+    excludedNode1: shape.excludedNode1,
+    excludedNodesLength: shape.excludedNodesLength ?? 0,
     lookupType: 'function',
     inCall,
     start,
@@ -1423,6 +1506,10 @@ function writeCallableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void 
     targetRules,
     targetLookupVersion,
     valueKey,
+    requiredNormalizedFromAssignKey: shape.requiredNormalizedFromAssignKey,
+    excludedNode0: shape.excludedNode0,
+    excludedNode1: shape.excludedNode1,
+    excludedNodesLength: shape.excludedNodesLength ?? 0,
     lookupType,
     inCall,
     start,
@@ -1558,6 +1645,7 @@ function lookupResolvedReference(args: {
   if (targetRules) {
     handleShape = prepareRulesLookupShape(lookupContext, targetRules);
     if (isRulesLookupHandleEligible(
+      referenceNode,
       lookupType,
       valueKey,
       target,

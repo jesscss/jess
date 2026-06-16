@@ -4922,6 +4922,96 @@ describe('reference', () => {
       expect(getDirectDeclarationOwnerLookupVersion(updatedOccurrence)).not.toBe(ownerLookupVersion);
     });
 
+    it('static property handles stay cold while searchScope disqualifies lookup', async () => {
+      const declaration = decl({ name: 'color', value: any('blue') });
+      const node = rules([declaration]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'property',
+        fallbackValue: any('fallback')
+      });
+
+      context.searchScope.add(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('fallback');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      context.searchScope.delete(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+
+      context.searchScope.add(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('fallback');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+      context.searchScope.delete(declaration);
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static property handles reuse source-static normalized assignment constraints', async () => {
+      const node = rules([
+        decl({ name: 'background-color', value: any('red') }),
+        decl({ name: 'background-color', value: any('blue') }, { normalizedFromAssign: '+,:' })
+      ]);
+      setRulesContext(await node.eval(context));
+      const requiredNormalizedFromAssign = ['+,:'];
+      const lookupRef = ref({ key: 'background-color' }, {
+        type: 'property',
+        requiredNormalizedFromAssign
+      });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBe(handle);
+    });
+
+    it('static property handles include excluded source/output identities', async () => {
+      const earlier = decl({ name: 'color', value: any('red') });
+      const later = decl({ name: 'color', value: any('blue') });
+      const node = rules([earlier, later]);
+      setRulesContext(await node.eval(context));
+      const excludedNodes: Node[] = [later];
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'property',
+        excludedNodes
+      });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('red');
+      const firstHandle = lookupRef._rulesLookupHandle;
+      expect(firstHandle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+
+      excludedNodes[0] = earlier;
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(firstHandle);
+    });
+
+    it('keeps wider excluded-node filters cold instead of caching generic filter shape', async () => {
+      const first = decl({ name: 'color', value: any('red') });
+      const second = decl({ name: 'color', value: any('blue') });
+      const third = decl({ name: 'other', value: any('green') });
+      const node = rules([first, second, third]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'property',
+        excludedNodes: [first, second, third],
+        fallbackValue: any('fallback')
+      });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('fallback');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+    });
+
     it('static declaration references use direct declaration lookup before binding handle reuse', async () => {
       const originalFindDeclaration = RulesClass.prototype.findDeclaration;
       let declarationLookups = 0;
@@ -4956,6 +5046,31 @@ describe('reference', () => {
       } finally {
         RulesClass.prototype.findDeclaration = originalFindDeclaration;
       }
+    });
+
+    it('static declaration handles reuse source-static normalized assignment constraints', async () => {
+      const node = rules([
+        decl({ name: 'background-color', value: any('red') }),
+        decl({ name: 'background-color', value: any('blue') }, { normalizedFromAssign: '&,:' }),
+        decl({ name: 'background-color', value: any('green') }, { normalizedFromAssign: '+,:' })
+      ]);
+      setRulesContext(await node.eval(context));
+      const requiredNormalizedFromAssign = ['&,:'];
+      const lookupRef = ref({ key: 'background-color' }, {
+        type: 'declaration',
+        requiredNormalizedFromAssign
+      });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+
+      requiredNormalizedFromAssign[0] = '+,:';
+
+      expect(lookupRef.eval(context).valueOf()).toBe('green');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
     });
 
     it('reference strategy cache rejects stale lookup types in one node slot', async () => {

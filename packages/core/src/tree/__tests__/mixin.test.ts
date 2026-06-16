@@ -2876,6 +2876,8 @@ describe('Mixin', () => {
           ])
         ]);
         root.getScopeFrame();
+        root.collectDirectChildRulesEntries();
+        expect(root.directChildRuleEntries).toBeNull();
 
         expect(root.findMixin('.frame-child-declaration-missing', 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
@@ -2905,6 +2907,12 @@ describe('Mixin', () => {
           ])
         ]);
         root.getScopeFrame();
+        root.collectDirectChildRulesEntries();
+        expect(root.directChildRuleEntries?.[0]).toMatchObject({
+          hasExactCallableSurface: true,
+          hasExactMixinSurface: false,
+          hasExactRulesetSurface: true
+        });
 
         expect(root.findMixin('.ruleset-only-child-missing', 'Mixin', {
           terminalMixinOnly: true
@@ -3121,6 +3129,39 @@ describe('Mixin', () => {
       expect('_indexRules' in RulesClass.prototype).toBe(false);
       expect(found).toHaveLength(1);
       expect(found?.[0]?.type).toBe('Mixin');
+    });
+
+    it('mixin namespace path lookup reuses path offsets instead of materializing remainder arrays', () => {
+      const leaf = mixin({
+        name: any('.colors'),
+        rules: rules([decl({ name: 'primary', value: any('red') })])
+      });
+      const root = rules([
+        mixin({
+          name: any('#theme'),
+          rules: rules([
+            mixin({
+              name: any('.dark'),
+              rules: rules([leaf])
+            })
+          ])
+        })
+      ]);
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      let arrayPathCalls = 0;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (Array.isArray(args[0])) {
+          arrayPathCalls++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        expect(root.findMixin(['#theme', '.dark', '.colors'], undefined, { searchParents: false })).toEqual([leaf]);
+        expect(arrayPathCalls).toBe(1);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
     });
 
     it('callable lookup does not build a scope frame just to try the frame shortcut', () => {

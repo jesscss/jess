@@ -11,6 +11,9 @@ export type RulesEntryLike = {
   hasDeclarationSurface?: boolean;
   hasVarDeclarationSurface?: boolean;
   hasReferenceImportSurface?: boolean;
+  hasExactCallableSurface?: boolean;
+  hasExactMixinSurface?: boolean;
+  hasExactRulesetSurface?: boolean;
 };
 
 export type RulesEntryVisibility = {
