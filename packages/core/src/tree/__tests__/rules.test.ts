@@ -566,6 +566,10 @@ describe('Rules', () => {
     charset.toTrimmedString = () => {
       throw new Error('Rules root charset output should use direct syntax');
     };
+    const leadingComment = comment('/* keep */');
+    leadingComment.toTrimmedString = () => {
+      throw new Error('Rules root leading import comments should use direct syntax');
+    };
     const importRule = atrule({
       name: any('@import', { role: 'atkeyword' }),
       prelude: quoted(any('theme.css'))
@@ -575,9 +579,9 @@ describe('Rules', () => {
     };
     context.currentCharset = charset;
     context.topImports = [importRule];
-    const node = rules([]);
+    const node = rules([leadingComment]);
 
-    expect(node.toString({ context, writer })).toBe('@charset "utf-8";\n@import "theme.css";\n');
+    expect(node.toString({ context, writer })).toBe('@charset "utf-8";\n/* keep */\n@import "theme.css";\n');
     expect(writer.captures).toBe(0);
   });
 

@@ -344,7 +344,10 @@ shape current before commit.
    context-owned scalar charset syntax directly instead of calling public
    `toTrimmedString(...)`. Plain no-trivia root imports now write direct
    `AtRule` syntax instead of calling public `toString(...)` on a detached
-   writer. Complex root import stringification, body render, placement state,
+   writer. Plain no-trivia leading comments before root imports now write
+   direct `Comment` syntax instead of calling public
+   `Comment.toTrimmedString(...)` on a detached writer. Complex root import and
+   trivia-backed leading-comment stringification, body render, placement state,
    merge output, and duplicate declaration materialization remain open.
 7. [ ] Finish `Reference` public value materialization, rules-like surfaces,
    merged assign normalization, key conversion, and remaining cold copy/inherit
@@ -516,33 +519,31 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Interpolated` non-scalar selector assembly string-transport cut.
+Current pass: `Rules` root leading-comment direct syntax cut.
 
-- New traversal: none. `packages/core/src/tree/interpolated.ts` adds no loop,
+- New traversal: none. `packages/core/src/tree/rules.ts` adds no loop,
   recursion, parent/source walk, side-map lookup, object/array scan, generator,
   or collection helper.
-- New node/materialization: no new production node, copy, inherit, adopt,
-  source/root metadata, or array materialization was added. The existing
-  `BasicSelector` materialization remains the selector ownership boundary.
-  `new OutputWriter()` is the explicit detached writer used by the shared
-  replacement syntax helper, not an added render-path writer. The new
-  replacement arrays are test-only fixture setup.
-- Render path: public `Interpolated.replace(...)` still returns a cold public
-  string. `Interpolated.createSelector(...)` still materializes selector text
-  before creating selector nodes, but whole and embedded non-scalar replacement
-  text now comes from `replacement.writeSyntax(...)` instead of public
-  replacement `toTrimmedString(...)`.
-- Helper/API surface: none added.
-- Metadata mutations: none added.
+- New node/materialization: none. Existing visible root `Comment` nodes are
+  written directly; no wrapper, copy, inherit, adopt, source/root metadata, or
+  array materialization was added.
+- Render path: plain no-trivia leading comments before root hoisted imports now
+  emit `node.writeSyntax(options)` directly instead of
+  `printDetached(...node.toTrimmedString...)`. Trivia-backed comments remain on
+  the detached stringification boundary.
+- Helper/API surface: one local predicate,
+  `canWriteRootLeadingCommentSyntaxDirectly(...)`, guards only the already
+  direct no-trivia comment case and keeps complex comments on the old path.
+- Metadata mutations: none added. The new source-root read only keeps
+  source-trivia-backed comments on the existing detached path; existing
+  visible-comment suppression/restoral around top imports is unchanged.
 - Error/control flow: no production error objects or throw/catch control flow
-  added. The new `throw` and `try/finally` sites are test-only monkey-patch
-  restoration scaffolding.
-- Rejected/deferred cut: this does not remove selector materialization itself;
-  `BasicSelector`/selector ownership is still semantic output, and replacement
-  arrays remain open.
+  added. The new throw is test-only monkey-patch proof.
+- Rejected/deferred cut: root body serialization, complex/trivia-backed leading
+  comments, complex imports, placement state, merge output, and duplicate
+  declaration materialization remain open.
 - Evidence: focused red/green test
-  `creates non-scalar selector text without public replacement string
-  transport` failed when `List.toTrimmedString(...)` threw before the cut and
-  passed after. Full `interpolated.test.ts` passed.
-- Verdict: accepted as a bounded `Interpolated` selector assembly cut. Keep
-  item 9 open for replacement-array and selector ownership boundaries.
+  `streams root charset and imports without capture scaffolding` failed when
+  leading `Comment.toTrimmedString(...)` threw before the cut and passed after.
+- Verdict: accepted as a bounded `Rules` root serializer cut. Keep item 6 open
+  for the remaining root/body serializer and materialization boundaries.

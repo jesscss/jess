@@ -361,6 +361,15 @@ function canWriteRootImportSyntaxDirectly(node: Node, options: FinalPrintOptions
   );
 }
 
+function canWriteRootLeadingCommentSyntaxDirectly(node: Node, options: FinalPrintOptions): boolean {
+  return (
+    isNode(node, N.Comment)
+    && node.visible
+    && !options.trivia
+    && !node.sourceRoot?._treeContext?.opts?.trivia
+  );
+}
+
 export type RulesVisibility = 'public' | 'optional' | 'private';
 
 export interface RuntimeVarBinding {
@@ -1786,9 +1795,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (!isCommentLike(node)) {
             break;
           }
-          const commentStr = printDetached(options, nextOptions => node.toTrimmedString(nextOptions));
-          w.add(normalizeIndent(commentStr, ''), node);
-          w.add('\n');
+          if (canWriteRootLeadingCommentSyntaxDirectly(node, options)) {
+            node.writeSyntax(options);
+            w.add('\n');
+          } else {
+            const commentStr = printDetached(options, nextOptions => node.toTrimmedString(nextOptions));
+            w.add(normalizeIndent(commentStr, ''), node);
+            w.add('\n');
+          }
           const wasVisible = node.hasFlag(F_VISIBLE);
           suppressedLeadingComments.push({ node, visible: wasVisible });
           if (wasVisible) {

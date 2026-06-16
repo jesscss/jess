@@ -4238,6 +4238,30 @@ for body eval/render, complex imports, placement state, merge output, duplicate
 declaration materialization, and broader root serializer capture. Do not claim
 a speed win; one fixture was unstable and one was noisy.
 
+### Rules Root Leading Comment Direct Syntax Cut
+
+Date: 2026-06-16.
+
+Change: root `Rules.toString(...)` now writes plain no-trivia visible comments
+that precede hoisted imports through direct `Comment.writeSyntax(...)` instead
+of calling public `Comment.toTrimmedString(...)` on a detached writer.
+Trivia-backed leading comments remain on the existing detached stringification
+path.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `17.46ms` unstable, `import-reference` median
+  `25.02ms` usable, `mixins-guards` median `18.28ms` usable,
+  `extend-chaining` median `5.48ms` usable, and `media` median `5.65ms`
+  unstable.
+
+Interpretation: root serializer transport cut only. Do not claim a speed win;
+keep the `Rules` row open for body eval/render, complex imports,
+trivia-backed leading comments, placement state, merge output, duplicate
+declaration materialization, and broader root serializer capture. Two fixtures
+were unstable.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should
