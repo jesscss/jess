@@ -55,11 +55,6 @@ export class QueryCondition extends Sequence {
       );
   }
 
-  private writeQueryChildBoundary(options: FinalPrintOptions): string {
-    options.writer.add(' ');
-    return ' ';
-  }
-
   private writeQueryConditionSyntax(value: Node[], options: FinalPrintOptions): void {
     const w = options.writer;
     const length = value.length;
@@ -104,7 +99,8 @@ export class QueryCondition extends Sequence {
     let out = '';
     for (let i = 0; i < length; i++) {
       if (i > 0) {
-        out += this.writeQueryChildBoundary(options);
+        w.add(' ');
+        out += ' ';
       }
       const node = value[i]!;
       const saved = options.suppressBoundaryTrivia;
@@ -136,7 +132,8 @@ export class QueryCondition extends Sequence {
     let out = '';
     for (let i = 0; i < length; i++) {
       if (i > 0) {
-        out += this.writeQueryChildBoundary(options);
+        w.add(' ');
+        out += ' ';
       }
       const node = value[i]!;
       const saved = options.suppressBoundaryTrivia;
@@ -194,7 +191,8 @@ export class QueryCondition extends Sequence {
     const w = options.writer;
     for (let i = start; i < value.length; i++) {
       if (i > 0) {
-        out += this.writeQueryChildBoundary(options);
+        w.add(' ');
+        out += ' ';
       }
       const node = value[i]!;
       const saved = options.suppressBoundaryTrivia;

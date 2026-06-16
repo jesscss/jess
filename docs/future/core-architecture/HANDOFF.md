@@ -327,9 +327,11 @@ shape current before commit.
    render and direct flat-buffer render now avoid the top-level query
    mark/getSince readback for direct scalar children, and dynamic render carries
    returned text locally so only uncertain/custom children pay the localized
-   probe. A no-op audit kept those localized probes because focused
-   QueryCondition tests prove custom dynamic children may either return text
-   without writing or write different text than they return.
+   probe. QueryCondition child boundary spacing now writes the literal boundary
+   directly instead of calling a one-line helper. A no-op audit kept the
+   localized child probes because focused QueryCondition tests prove custom
+   dynamic children may either return text without writing or write different
+   text than they return.
 3. [ ] Finish `AtRule` body-state staging and remaining custom
    eval/import/render branch ladders.
 
@@ -608,28 +610,26 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Operation calc fallback ownership.
+Current pass: QueryCondition boundary helper cut.
 
 - New traversal: none. The change adds no loop, recursion, side-map lookup,
-  parent/source walk, or object scan.
-- New node/materialization: preserve-mode calc fallback now always creates the
-  owned operation via the existing `withOperands(...)` boundary instead of
-  reusing `this` when evaluated operands match source operands. This is semantic
-  placement state for a public fallback `calc(...)` result, and it reuses the
-  same ownership path already used by changed-operand operations. The focused
-  test constructs a `Context` and sentinel `Error` instances only to pin the
-  public fallback shape without unsafe casts.
-- Render path: render/eval fallback still returns the same `Call('calc', ...)`
-  shape and string output; the change only prevents unchanged source operands
-  from being marked evaluated through the canonical operation.
-- Helper/API surface: no helper or public API was added.
-- Metadata mutations: the evaluated flags now land on the owned fallback
-  operation and its owned operands. The source operation and unchanged canonical
-  operands remain unmarked and parented to the source.
-- Evidence: focused Operation/preserve-mode/Dimension tests pass. The new
-  Operation fixture pins that default unit mode remains `preserve`, preserves
-  the current `calc(10px / 0px)` fallback text, and asserts the fallback
-  operation/operands are owned rather than source-adopted.
-- Verdict: accepted as a bounded public materialization ownership fix. Broader
-  Operation arithmetic/list materialization remains open. No performance claim;
-  performance remains shelved because this was not a measured benchmark pass.
+  parent/source walk, object scan, or array allocation.
+- New node/materialization: none. No `Node`, copy, inherit, wrapper,
+  materialized array, or ownership mutation was added.
+- Render path: query child boundary spacing now writes the literal space and
+  appends the same returned text at each existing boundary site. Rendering still
+  uses the existing direct scalar paths and the localized custom-child mark
+  probe; no arrays or nodes are created just to stringify.
+- Helper/API surface: the private `writeQueryChildBoundary(...)` helper was
+  deleted. It only wrote and returned a literal space, so inlining removes a
+  hot-path function hop without adding public API.
+- Metadata mutations: none. No parent/source/frozen/location/options/context
+  mutation was added.
+- Evidence: focused QueryCondition and render-buffer tests pass. The focused
+  QueryCondition tests still prove the remaining localized custom-child mark
+  probe is semantic: one custom child returns text without writing, another
+  writes different text than it returns.
+- Verdict: accepted as a bounded helper deletion. The main QueryCondition
+  dynamic child probe task remains open until child render contracts can prove
+  write-vs-return behavior without probing. No performance claim; performance
+  remains shelved because this was not a measured benchmark pass.
