@@ -89,7 +89,7 @@ export type ScopeFrameCallableLookupResult =
   }
   | {
     kind: 'uncovered';
-    reason: 'frame' | 'key' | 'child-surface' | 'reference-import';
+    reason: 'frame' | 'key' | 'candidate' | 'child-surface' | 'reference-import';
   };
 
 /**
@@ -472,6 +472,7 @@ export function lookupScopeFrameCallable(
     }
 
     const bucket = callableBucketsByName.get(name);
+    let hasUnconsumedCandidate = false;
     if (bucket?.length) {
       for (let i = bucket.length - 1; i >= 0; i--) {
         const entry = bucket[i]!;
@@ -481,7 +482,11 @@ export function lookupScopeFrameCallable(
         ) {
           return { kind: 'hit', bucket };
         }
+        hasUnconsumedCandidate = true;
       }
+    }
+    if (hasUnconsumedCandidate) {
+      return { kind: 'uncovered', reason: 'candidate' };
     }
 
     const missesCovered = options?.includeRulesets === false

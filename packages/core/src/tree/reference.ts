@@ -687,7 +687,7 @@ function lookupScopeFrameVariableBinding(
   )) {
     return undefined;
   }
-  const frame = targetRules.getScopeFrame();
+  const frame = targetRules.getScopeFrame(undefined, false);
   if (mode === 'full') {
     promoteResolvedPendingVarDecls(targetRules, frame);
   }

@@ -1,8 +1,9 @@
-import { any, interpolated, ref, vardecl, rules } from '../index.js';
+import { any, decl, interpolated, mixin, ref, vardecl, rules } from '../index.js';
 import { Context } from '../../context.js';
 import {
   assignScopeFrameVariable,
   buildScopeFrame,
+  lookupScopeFrameCallable,
   lookupScopeFrameVariable,
   setScopeFrameLiveBinding
 } from '../scope-frame.js';
@@ -220,5 +221,38 @@ describe('ScopeFrame variable facade', () => {
     });
 
     expect(hit.kind).toBe('miss');
+  });
+
+  it('separates unconsumed callable candidates from child-surface uncertainty', () => {
+    const namespace = mixin({
+      name: any('.namespace'),
+      rules: rules([decl({ name: 'color', value: any('blue') })])
+    });
+    const frame = buildScopeFrame(
+      undefined,
+      rules([]),
+      undefined,
+      undefined,
+      undefined,
+      true,
+      new Map([
+        ['.namespace', [{ value: namespace, match: ['.leaf'] }]]
+      ]),
+      true,
+      true,
+      true,
+      true,
+      true
+    );
+
+    const hit = lookupScopeFrameCallable(frame, '.namespace', {
+      includeRulesets: false,
+      searchParents: false
+    });
+
+    expect(hit).toEqual({
+      kind: 'uncovered',
+      reason: 'candidate'
+    });
   });
 });

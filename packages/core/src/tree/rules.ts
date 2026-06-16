@@ -49,6 +49,7 @@ import {
   buildScopeFrame,
   copyScopeFrameLiveBindingSlots,
   lookupScopeFrameCallable,
+  lookupScopeFrameVariable,
   setScopeFrameDeclarationBinding,
   type ScopeFrame
 } from './scope-frame.js';
@@ -2868,6 +2869,30 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        */
       if (node.options?.setDefined) {
         let key = node.value.name?.toString();
+        if (isNode(node, N.VarDeclaration)) {
+          let assignedValue = node.value.value;
+          if (context) {
+            const evaluatedValue = assignedValue.eval(context);
+            if (!isThenable(evaluatedValue)) {
+              assignedValue = evaluatedValue;
+            }
+          }
+          const variableHit = lookupScopeFrameVariable(this.getScopeFrame(undefined, false), key, {
+            bailOnPendingDeclarations: true,
+            blockedSource: source => source === node,
+            filter: source => source !== node
+          });
+          if (variableHit.kind === 'live' || variableHit.kind === 'declaration') {
+            if (variableHit.cell.readonly) {
+              throw new ReferenceError(`"${key}" is readonly`);
+            }
+            variableHit.cell.value = assignedValue;
+            if (isNode(variableHit.sourceNode, N.VarDeclaration)) {
+              variableHit.sourceNode.value.value = assignedValue;
+            }
+            return;
+          }
+        }
         const lookupOptions: DeclarationFindOptions = { searchParents: true };
         const lookup = isNode(node, N.VarDeclaration)
           ? findVariableDeclarationLookup(this, key, lookupOptions)

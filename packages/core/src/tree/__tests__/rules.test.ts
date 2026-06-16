@@ -1460,6 +1460,39 @@ describe('Rules', () => {
         expect(deriveCalls).toBe(0);
       });
 
+      it('updates modeled setDefined cells without direct occurrence crawl', () => {
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const node = rules([
+          vardecl({ name: 'one', value: any('one') }),
+          assignment
+        ]);
+        const frame = node.getScopeFrame(undefined, false);
+        const originalValue = node.value;
+
+        Object.defineProperty(node, 'value', {
+          configurable: true,
+          get() {
+            throw new Error('setDefined current-cell path should not crawl Rules.value');
+          }
+        });
+
+        try {
+          node.registerNode(assignment, undefined, context);
+        } finally {
+          Object.defineProperty(node, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalValue
+          });
+        }
+
+        expect(frame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
+        expect(getVarWithContext(context, node, 'one')?.toTrimmedString()).toBe('$one: three');
+      });
+
       // @todo: Fix nested readonly rules inheritance - variables in nested readonly Rules aren't being found
       it.skip('fails to set if existing variable is in readonly rules', async () => {
         let node = rules([

@@ -2895,6 +2895,31 @@ describe('reference', () => {
       }
     });
 
+    it('variable references prepare scope frames without callable miss coverage', async () => {
+      const originalGetScopeFrame = RulesClass.prototype.getScopeFrame;
+      const callableCoveragePrep: unknown[] = [];
+      RulesClass.prototype.getScopeFrame = function(...args: Parameters<typeof originalGetScopeFrame>) {
+        callableCoveragePrep.push(args[1]);
+        return originalGetScopeFrame.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({ name: 'color', value: any('red') })
+        ]);
+        setRulesContext(node);
+        const colorRef = ref({ key: 'color' }, { type: 'variable' });
+
+        const value = await colorRef.eval(context);
+
+        expect(value.valueOf()).toBe('red');
+        expect(callableCoveragePrep).toContain(false);
+        expect(callableCoveragePrep).not.toContain(true);
+      } finally {
+        RulesClass.prototype.getScopeFrame = originalGetScopeFrame;
+      }
+    });
+
     it('static variable handle invalidates when a parent frame replaces the current cell', async () => {
       const colorRef = ref({ key: 'color' }, { type: 'variable' });
       const childRules = rules([
