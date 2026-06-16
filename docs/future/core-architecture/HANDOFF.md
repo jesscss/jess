@@ -363,9 +363,10 @@ shape current before commit.
    intermediate render text out of explicit writers and writes only the final
    wrapped string to the requested writer or buffer. `Quoted` escaped literal
    render now writes final raw text to explicit writers and keeps buffer output
-   out of those writers. `AttributeSelector.valueOf()` now uses node value
-   semantics for node-valued names instead of public `toTrimmedString()`
-   transport.
+   out of those writers. `Quoted.compare()` now uses value semantics instead
+   of public `toString()` transport. `AttributeSelector.valueOf()` now uses
+   node value semantics for node-valued names instead of public
+   `toTrimmedString()` transport.
 13. [ ] Finish `List`/`Sequence` public render string-return compatibility:
    either document it as the cold public boundary or split a direct buffer-only
    path that avoids returning a string when callers do not need it.
@@ -444,28 +445,28 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `AttributeSelector.valueOf()` name stringification cut.
+Current pass: `Quoted.compare()` public stringification cut.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   object/array scan, generator, or collection helper was added.
 - New node/materialization: none. No `new Node`, copy, `.inherit(...)`,
   `.adopt(...)`, wrapper `Rules`, frozen/source/parent metadata mutation, or
   materialized array was added.
-- Render path: no render branch changed. This pass removes public source
-  stringification from the `AttributeSelector.valueOf()` comparison-key path:
-  node-valued attribute names now use `String(name.valueOf())` rather than
-  `name.toTrimmedString()`.
-- Helper/API surface: none added. The existing `valueOf()` key path was
+- Render path: no render branch changed. This pass removes public
+  stringification from the `Quoted.compare(...)` fallback path: comparison now
+  uses `this.valueOf()` and `other.valueOf?.()` rather than `this.toString()`
+  and `other.toString()`.
+- Helper/API surface: none added. The existing `compare(...)` fallback was
   tightened in place; no new method or public API was added.
 - Metadata mutations: none added. No parent/source/frozen/context metadata
   mutation, lazy options/context creation, `Reflect.*`, generic own-property
   helper, source restoration, or source/root read was added.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected/deferred cut: `AttributeSelector` render still has a localized
-  mark/getSince fallback for non-scalar names/values. That is a remaining
-  queue-item 12 boundary, not completed work.
-- Evidence: focused tests passed for `selector-attr` and `node-render-buffer`; core
+- Rejected/deferred cut: `Quoted` non-scalar/interpolated render still has
+  localized fallback boundaries where child output can be complex. That is a
+  remaining queue-item 12 boundary, not completed work.
+- Evidence: focused tests passed for `quoted` and `node-render-buffer`; core
   build passed; `verify:aggressive-cutting-review` passed; bounded
   `measure:less:hotpath` ran and is recorded in `PERFORMANCE-HANDOFF.md` as
   leash status only.

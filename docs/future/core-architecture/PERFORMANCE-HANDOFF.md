@@ -3851,6 +3851,26 @@ Hotpath status:
 Interpretation: leash status only, not a speed claim. This is a public
 stringification transport cut; two fixtures were unstable.
 
+### Quoted Compare Stringification Cut
+
+Date: 2026-06-15.
+
+Change: `Quoted.compare(...)` fallback now compares `valueOf()` results instead
+of calling public `toString()` on either operand. This removes public
+stringification transport from a comparison path without changing render
+behavior.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `14.57ms` usable, `import-reference` median
+  `20.91ms` unstable, `mixins-guards` median `16.10ms` usable,
+  `extend-chaining` median `5.68ms` unstable, and `media` median `5.26ms`
+  unstable.
+
+Interpretation: leash status only, not a speed claim. This is a public
+stringification transport cut; three fixtures were unstable.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

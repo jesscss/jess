@@ -75,6 +75,15 @@ describe('quoted', () => {
     expect(Object.getOwnPropertyDescriptor(right, '_options')?.value).toBeUndefined();
   });
 
+  it('compares without public stringification transport', () => {
+    const left = quoted('hello', { escaped: true });
+    const right = any('hello');
+    left.toString = () => 'SHOULD-NOT-USE';
+    right.toString = () => 'SHOULD-NOT-USE';
+
+    expect(left.compare(right)).toBe(0);
+  });
+
   it('renders a resolved quoted value through render(context)', async () => {
     const node = rules([
       vardecl({

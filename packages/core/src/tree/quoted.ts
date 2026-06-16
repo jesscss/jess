@@ -168,7 +168,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
       }
       return left > right ? 1 : -1;
     }
-    return typeof other.toString === 'function' && this.toString() === other.toString() ? 0 : undefined;
+    return this.valueOf() === other.valueOf?.() ? 0 : undefined;
   }
 
   private evaluateValue(context: Context): MaybePromise<Quoted | Node> {
