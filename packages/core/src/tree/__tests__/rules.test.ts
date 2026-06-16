@@ -29,6 +29,7 @@ import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import { createTriviaMap } from '../util/trivia.js';
 
 let context: Context;
 
@@ -592,6 +593,27 @@ describe('Rules', () => {
     const node = rules([leadingComment]);
 
     expect(node.toString({ context, writer })).toBe('@charset "utf-8";\n/* keep */\n@import "theme.css";\n');
+    expect(writer.captures).toBe(0);
+  });
+
+  it('writes trivia-backed root import comments and imports through direct detached syntax', () => {
+    const writer = new WholeBufferCountingWriter();
+    const leadingComment = comment('/* keep */');
+    leadingComment.toTrimmedString = () => {
+      throw new Error('Rules root leading import comment fallback should use direct syntax');
+    };
+    const importRule = atrule({
+      name: any('@import', { role: 'atkeyword' }),
+      prelude: quoted(any('theme.css'))
+    });
+    importRule.toString = () => {
+      throw new Error('Rules root import fallback should use direct syntax');
+    };
+    context.topImports = [importRule];
+    const node = rules([leadingComment]);
+
+    expect(node.toString({ context, writer, trivia: createTriviaMap() }))
+      .toBe('/* keep */\n@import "theme.css";\n');
     expect(writer.captures).toBe(0);
   });
 

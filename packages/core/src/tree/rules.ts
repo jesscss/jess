@@ -343,13 +343,13 @@ function consumeEofTrivia(node: Node, options: PrintOptions): string {
   return trivia ? consumeTriviaText(trivia, Infinity, 'before', options) : '';
 }
 
-function printDetached(options: PrintOptions, fn: (nextOptions: PrintOptions) => string): string {
+function writeSyntaxDetached(options: PrintOptions, node: Node): string {
   const writer = new OutputWriter();
-  const out = fn({
+  node.writeSyntax(getPrintOptions({
     ...options,
     writer
-  });
-  return writer.toString() || out;
+  }));
+  return writer.toString();
 }
 
 function canWriteRootImportSyntaxDirectly(node: Node, options: FinalPrintOptions): boolean {
@@ -1799,7 +1799,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             node.writeSyntax(options);
             w.add('\n');
           } else {
-            const commentStr = printDetached(options, nextOptions => node.toTrimmedString(nextOptions));
+            const commentStr = writeSyntaxDetached(options, node);
             w.add(normalizeIndent(commentStr, ''), node);
             w.add('\n');
           }
@@ -1827,7 +1827,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             w.add('\n');
             continue;
           }
-          const importStr = printDetached(options, nextOptions => importRule.toString(nextOptions));
+          const importStr = writeSyntaxDetached(options, importRule);
           w.add(normalizeIndent(importStr, ''), importRule);
           w.add('\n');
         }

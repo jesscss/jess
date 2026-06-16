@@ -369,19 +369,16 @@ shape current before commit.
 
    Current partial status: root-owned `@charset` output now writes the
    context-owned scalar charset syntax directly instead of calling public
-   `toTrimmedString(...)`. Plain no-trivia root imports now write direct
-   `AtRule` syntax instead of calling public `toString(...)` on a detached
-   writer. Plain no-trivia leading comments before root imports now write
-   direct `Comment` syntax instead of calling public
-   `Comment.toTrimmedString(...)` on a detached writer, and the root serializer
-   only allocates the leading-comment suppression list when it actually
-   suppresses comments. Source-mode non-container leaf rules now write direct
-   syntax instead of calling public `toTrimmedString(...)` and discarding its
-   returned string. Source-mode child `Rules` wrappers now emit their body
-   directly through `_emitSourceRulesBody(...)` instead of public
+   `toTrimmedString(...)`. Root imports and leading comments before root imports
+   now write direct syntax in both no-trivia and trivia-backed detached-writer
+   branches instead of public `toString(...)`/`toTrimmedString(...)` transport,
+   and the root serializer only allocates the leading-comment suppression list
+   when it actually suppresses comments. Source-mode non-container leaf rules
+   now write direct syntax instead of calling public `toTrimmedString(...)` and
+   discarding its returned string. Source-mode child `Rules` wrappers now emit
+   their body directly through `_emitSourceRulesBody(...)` instead of public
    `toTrimmedString(...)` preview transport; the caller mark is only kept to
-   discard genuinely empty child output. Complex root import and trivia-backed
-   leading-comment stringification, render-mode child `Rules`, body render,
+   discard genuinely empty child output. Render-mode child `Rules`, body render,
    placement state, merge output, and duplicate declaration materialization
    remain open.
 7. [ ] Finish `Reference` public value materialization, rules-like surfaces,
@@ -564,27 +561,30 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Interpolated generic materialization and lazy replacement arrays.
+Current pass: Rules root import/comment detached syntax fallback.
 
-- New traversal: one private loop in `writeInterpolatedText(...)` builds generic
-  interpolated text directly from source segments and replacements. It replaces
-  the previous `writeWithReplacements(...)` writer mark/readback path for
-  generic materialization.
-- New node/materialization: eval/resolve replacement arrays are no longer
-  allocated up front; they are created with `currentReplacements.slice(...)`
-  only after a replacement changes. Test-only `Error` throws guard monkeypatch
-  proofs and are not production control flow.
-- Render path: no render path was added. `createGeneric()` still materializes
-  the public/eval `Any` result, but no longer captures replacement writer output
-  through `writeWithReplacements(...)`.
-- Helper/API surface: one private helper, `writeInterpolatedText(...)`, was
-  added to keep the direct generic text boundary local. No public API was
-  added.
-- Metadata mutations: none added. Selector ownership boundaries are unchanged.
-- Evidence: focused Interpolated tests prove generic output does not call
-  public replacement writer capture and async changed replacements still
-  produce the expected generic output. Selector-interpolated coverage was run
-  by the worker to guard adjacent selector behavior.
-- Verdict: accepted as a bounded generic materialization and unchanged-path
-  allocation cut. No performance claim; performance remains shelved because
-  this was not a measured benchmark pass.
+- New traversal: none. The existing root import and leading-comment loops are
+  unchanged.
+- New node/materialization: none. The fallback still allocates a detached
+  `OutputWriter`, but it now writes node syntax directly instead of calling
+  public `toString(...)`/`toTrimmedString(...)` as transport. That detached
+  writer remains a root-normalization boundary for indentation/trivia before
+  adding normalized text to the root writer. The added
+  `WholeBufferCountingWriter` construction and `Error` throws are test-only
+  guards proving the fallback does not call public string APIs; they are not
+  production materialization or routine control flow.
+- Render path: no render path was added. This pass only changes root source
+  serialization for hoisted imports and leading comments.
+- Helper/API surface: `printDetached(...)` was replaced with private
+  `writeSyntaxDetached(...)`. No public API was added; the helper removes the
+  public string-return callback path it replaces.
+- Metadata mutations: none added. Existing `context.topImports`,
+  `context.charsetEmitted`, and temporary import-prelude evaluation behavior are
+  unchanged.
+- Evidence: focused Rules tests prove no-trivia and trivia-backed root
+  import/comment output avoids public string methods and preserves expected
+  output. `rules-streaming.test.ts` still proves no capture/preview scaffolding
+  for the adjacent source streaming path.
+- Verdict: accepted as a bounded root serializer transport cut. No performance
+  claim; performance remains shelved because this was not a measured benchmark
+  pass.
