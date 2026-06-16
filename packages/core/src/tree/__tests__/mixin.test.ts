@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction, Interpolated } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { getRulesEntryTraversalState, MixinRegistry } from '../util/registry-utils.js';
@@ -4799,6 +4799,17 @@ describe('Mixin', () => {
     });
 
     it('keeps interpolated mixin registration prep wrappers self-owned instead of back-pointing to the canonical mixin', async () => {
+      const originalCopy = Interpolated.prototype.copy;
+      let nameCopies = 0;
+      Interpolated.prototype.copy = function copyForCounting(
+        this: Interpolated,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.value.source === '.inner-' + INTERPOLATION_PLACEHOLDER) {
+          nameCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
       const dynamicMixinName = interpolated({
         source: '.inner-' + INTERPOLATION_PLACEHOLDER,
         replacements: [any('foo')]
@@ -4813,14 +4824,19 @@ describe('Mixin', () => {
         rules: body
       });
 
-      const prepared = await node.prepareRegistration(context);
+      try {
+        const prepared = await node.prepareRegistration(context);
 
-      expect(prepared).not.toBe(node);
-      expect(prepared.sourceNode).toBe(prepared);
-      expect(prepared.value.name.valueOf()).toBe('.inner-foo');
-      expect(dynamicMixinName.parent).toBe(node);
-      expect(params.parent).toBe(node);
-      expect(body.parent).toBe(node);
+        expect(prepared).not.toBe(node);
+        expect(prepared.sourceNode).toBe(prepared);
+        expect(prepared.value.name.valueOf()).toBe('.inner-foo');
+        expect(nameCopies).toBe(0);
+        expect(dynamicMixinName.parent).toBe(node);
+        expect(params.parent).toBe(node);
+        expect(body.parent).toBe(node);
+      } finally {
+        Interpolated.prototype.copy = originalCopy;
+      }
     });
 
     it('keeps nested interpolated mixin names isolated across repeated mixin calls', async () => {

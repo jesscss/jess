@@ -437,7 +437,10 @@ shape current before commit.
    Current partial status: callable finalization now reuses an already-attached
    single-output mixin slot when it matches the same source rules, output rules,
    and ambient lookup policy instead of rebuilding child segments, maps, and
-   placement arrays. Guard/default/body ownership remains open.
+   placement arrays. Interpolated mixin registration now evaluates the dynamic
+   name before deriving the replacement mixin, so the prepared wrapper owns the
+   final `Any` name directly instead of copying the interpolated name subtree
+   and replacing it afterward. Guard/default/body ownership remains open.
 9. [ ] Finish `Interpolated` cold replacement capture, selector/generic
    materialization, and replacement arrays.
 
@@ -625,36 +628,29 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: AtRule spacing scans and Interpolated selector token scanner.
+Current pass: Mixin interpolated-name registration ownership.
 
-- New traversal: AtRule adds straight character scans that replace regex
-  whitespace probes and avoid temporary string concatenation for trailing-space
-  tests. Interpolated adds a straight selector-token scan that replaces
-  `String.match(...)` plus regex-token array materialization. No parent/source
-  walk, recursion, side-map lookup, or object graph scan was added.
-- New node/materialization: AtRule adds none. Interpolated still materializes
-  `BasicSelector` nodes and a `CompoundSelector` only for the existing semantic
-  compound-selector boundary; the new path delays the selector array until a
-  second token is found instead of pre-sizing an array from regex matches.
-- Render path: AtRule leaf/header spacing now checks whitespace with direct
-  scalar predicates and trims leading/trailing whitespace with small scans.
-  Body eval finishing uses class methods instead of per-call nested closures.
-  Interpolated selector creation scans the final selector text directly and
-  preserves the existing compound-token behavior without regex transport.
-- Helper/API surface: private helper surface grew locally for whitespace/token
-  predicates and body-eval finalizers. This is accepted because it deletes
-  regex/callback/token-array transport and per-call closure ladders on the
-  touched paths; no public API was added.
-- Metadata mutations: Interpolated still calls `inherit(this)` at the existing
-  selector materialization boundary. No new parent/source/frozen/location or
-  options/context mutation was added.
-- Evidence: focused AtRule and Interpolated tests, eslint on touched source and
-  test files, scoped `git diff --check`, `@jesscss/core` build, and
+- New traversal: none. The change adds no loop, recursion, side-map lookup,
+  parent/source walk, object scan, or array allocation.
+- New node/materialization: the existing derived `Mixin` wrapper remains the
+  semantic registration-prep boundary. It now receives the evaluated `Any` name
+  directly instead of first copying the interpolated name subtree and then
+  adopting/replacing the evaluated name.
+- Render path: none. This is registration/callable lookup preparation only; no
+  render path now materializes nodes just to stringify.
+- Helper/API surface: `_prepareMixinNameIdentity(...)` was deleted. The existing
+  `deriveMixin(...)` helper accepts an optional prepared name so one wrapper
+  construction owns final state directly.
+- Metadata mutations: no new runtime metadata mutation. The rejected child reuse
+  cut would have reparented canonical rules/params/guard because `Mixin`
+  construction adopts children; it was left untouched.
+- Evidence: focused Mixin tests, eslint on touched source and test files,
+  scoped `git diff --check`, `@jesscss/core` build, and
   `verify:aggressive-cutting-review` all pass in the parent worktree.
-- Review noise: `pnpm run verify:aggressive-cutting-review` may also report
-  danger tokens from unrelated pre-existing dirty worktree files. Those are
-  outside this scoped commit and must not be staged here.
-- Verdict: accepted as bounded partial cuts only. AtRule still returns header
-  strings for `serializeRulesContainer(...)`, and Interpolated replacement
-  arrays/selector ownership remain semantic boundaries. No performance claim;
-  performance remains shelved because this was not a measured benchmark pass.
+- Review noise: `verify:aggressive-cutting-review` may report unrelated dirty
+  worktree tokens. This slice's only notable test probe is
+  `Interpolated.prototype.copy` wrapping to prove the name subtree is not copied.
+- Verdict: accepted as a bounded partial cut if final gates pass. Broader
+  guard/default/body copy interactions and callable output remain open. No
+  performance claim; performance remains shelved because this was not a
+  measured benchmark pass.

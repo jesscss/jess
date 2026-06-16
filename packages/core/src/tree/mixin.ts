@@ -125,12 +125,13 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     throw new TypeError('Expected mixin guard copy');
   }
 
-  private deriveMixin(value: MixinValue): Mixin {
+  private deriveMixin(value: MixinValue, preparedName?: NonNullable<MixinValue['name']>): Mixin {
     const nextValue: MixinValue = {
       rules: this.ownRules(value.rules)
     };
-    if (value.name !== undefined) {
-      nextValue.name = this.ownName(value.name);
+    const name = preparedName ?? value.name;
+    if (name !== undefined) {
+      nextValue.name = this.ownName(name);
     }
     if (value.params !== undefined) {
       nextValue.params = this.ownParams(value.params);
@@ -207,13 +208,15 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     let node: Mixin = this;
     let { name, rules } = node.value;
     if (name && name instanceof Interpolated) {
-      node = this.deriveMixin(this.value);
-      name = node.value.name;
-      rules = node.value.rules;
+      const maybeKey = name.eval(context);
+      if (isThenable(maybeKey)) {
+        return maybeKey.then(key => this._finishInterpolatedNameRegistration(key, context));
+      }
+      return this._finishInterpolatedNameRegistration(maybeKey, context);
     }
     node.registrationPrepared = true;
     this._prepareMixinBodyVisibility(rules, context);
-    return this._prepareMixinNameIdentity(node, name, context);
+    return node;
   }
 
   private _prepareMixinBodyVisibility(rules: Rules, context: Context): void {
@@ -228,29 +231,13 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     }
   }
 
-  private _prepareMixinNameIdentity(
-    node: Mixin,
-    name: MixinValue['name'],
-    context: Context
-  ): MaybePromise<Mixin> {
-    if (name && name instanceof Interpolated) {
-      const maybeKey = name.eval(context);
-      if (isThenable(maybeKey)) {
-        return maybeKey.then((key) => {
-          if (!(key instanceof Any)) {
-            throw new TypeError('Expected evaluated mixin name');
-          }
-          node.adopt(key);
-          node.value.name = key;
-          return node;
-        });
-      }
-      if (!(maybeKey instanceof Any)) {
-        throw new TypeError('Expected evaluated mixin name');
-      }
-      node.adopt(maybeKey);
-      node.value.name = maybeKey;
+  private _finishInterpolatedNameRegistration(name: Node, context: Context): Mixin {
+    if (!(name instanceof Any)) {
+      throw new TypeError('Expected evaluated mixin name');
     }
+    const node = this.deriveMixin(this.value, name);
+    node.registrationPrepared = true;
+    this._prepareMixinBodyVisibility(node.value.rules, context);
     return node;
   }
 
