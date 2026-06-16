@@ -200,6 +200,32 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-16 Paren Resolved Any Wrapper Render Cut
+
+Hypothesis: a non-escaped `Paren` whose dynamic child resolves to a no-trivia
+`Any` scalar should write the known wrapper text directly instead of rendering
+the scalar child to intermediate text and then wrapping that string.
+
+Patch shape:
+
+- `Paren.renderEvaluatedNode(...)` reuses the existing direct `Any` wrapper
+  text path for resolved scalar values;
+- escaped, trivia-backed, guard/default, and non-scalar child render paths stay
+  on their existing boundaries;
+- a focused test proves the resolved scalar path does not call
+  `Any.render(...)`.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `15.11ms` unstable, `import-reference`
+  median `22.75ms` unstable, `mixins-guards` median `17.05ms` usable,
+  `extend-chaining` median `5.34ms` usable, and `media` median `5.44ms`
+  usable.
+
+Interpretation: scalar wrapper transport cut only. Do not claim a speed win;
+keep the scalar wrapper row open for non-scalar/trivia/escaped boundaries.
+
 ### 2026-06-16 Rules Source Leaf Direct Syntax Cut
 
 Hypothesis: source-mode `Rules` leaf serialization should not call a leaf

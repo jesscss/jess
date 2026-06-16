@@ -426,11 +426,13 @@ shape current before commit.
    URL normalization and non-scalar wrapper render still keep localized
    mark/readback boundaries. `Paren` dynamic wrapped render now keeps child
    intermediate render text out of explicit writers and writes only the final
-   wrapped string to the requested writer or buffer. `Quoted` escaped literal
-   render now writes final raw text to explicit writers and keeps buffer output
-   out of those writers. `Quoted.compare()` now uses value semantics instead
-   of public `toString()` transport. `AttributeSelector.valueOf()` now uses
-   node value semantics for node-valued names instead of public
+   wrapped string to the requested writer or buffer. Resolved no-trivia `Any`
+   paren values now write known wrapper text directly instead of rendering the
+   scalar child to intermediate text. `Quoted` escaped literal render now
+   writes final raw text to explicit writers and keeps buffer output out of
+   those writers. `Quoted.compare()` now uses value semantics instead of
+   public `toString()` transport. `AttributeSelector.valueOf()` now uses node
+   value semantics for node-valued names instead of public
    `toTrimmedString()` transport.
 13. [x] Finish `List`/`Sequence` public render string-return compatibility:
    either document it as the cold public boundary or split a direct buffer-only
@@ -525,28 +527,25 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Rules` source leaf direct syntax cut.
+Current pass: `Paren` resolved `Any` wrapper render cut.
 
-- New traversal: none. Existing rules-body loops are unchanged.
+- New traversal: none.
 - New node/materialization: none. No node, wrapper, copy, inherit, adopt,
   source/root metadata, side state, or array materialization was added.
-- Render path: render mode is unchanged. The cut is source serialization only:
-  non-container leaf nodes in `Rules._emitRulesBody(...)` now write direct
-  syntax instead of calling public `toTrimmedString(...)` and discarding the
-  returned string.
-- Helper/API surface: none added.
-- Metadata mutations: none added. Existing print-state save/restore and
-  leaf-mark semicolon/source-map boundaries remain.
+- Render path: non-escaped no-trivia `Paren.renderEvaluatedNode(...)` now
+  writes resolved `Any` wrapper text directly instead of calling the child
+  render path and wrapping the returned string.
+- Helper/API surface: none added. Existing direct `Any` wrapper helpers are
+  reused.
+- Metadata mutations: none added.
 - Error/control flow: no production error objects or throw/catch control flow
   added. New throw is test-only monkey-patch proof.
-- Rejected/deferred cut: render-mode leaf capture, child `Rules` capture,
-  container indentation capture, complex root imports, trivia-backed leading
-  comments, placement state, merge output, and duplicate declaration
-  materialization remain open.
+- Rejected/deferred cut: escaped paren output, guard/default conversion,
+  non-scalar child render, trivia-backed child output, and escaped semicolon
+  list normalization remain on their existing boundaries.
 - Evidence: focused red/green test
-  `writes source leaf rules through direct syntax instead of public string
-  transport` failed before the cut when a declaration's public
-  `toTrimmedString(...)` was monkey-patched to throw, and passed after direct
-  `writeSyntax(...)`. Full `rules.test.ts` passed.
-- Verdict: accepted as a bounded `Rules` source-body transport cut. Keep the
-  `Rules` row open for the remaining render/root/materialization boundaries.
+  `renders resolved Any paren values without child render transport` failed
+  before the cut when `Any.prototype.render(...)` was monkey-patched to throw,
+  and passed after direct wrapper text. Full `paren.test.ts` passed.
+- Verdict: accepted as a bounded scalar-wrapper render cut. Keep the scalar
+  wrapper row open for the remaining non-scalar/trivia/escaped boundaries.

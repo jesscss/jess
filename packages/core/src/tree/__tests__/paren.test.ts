@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
-import { any, Bool, call, list, nil, Node, num, Paren, paren, ref, rules, Rules, vardecl } from '../index.js';
+import { any, Any, Bool, call, list, nil, Node, num, Paren, paren, ref, rules, Rules, vardecl } from '../index.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
@@ -176,6 +176,26 @@ describe('Paren', () => {
     expect(writer.toString()).toBe('(foo)');
     expect(writer.marks).toBe(0);
     expect(writer.reads).toBe(0);
+  });
+
+  it('renders resolved Any paren values without child render transport', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    await evalRoot(node, context);
+    const originalRender = Any.prototype.render;
+    Any.prototype.render = function renderForCounting() {
+      throw new Error('Resolved Any paren output should use direct syntax');
+    };
+
+    try {
+      expect(paren(ref({ key: 'value' }, { type: 'variable' })).render(context)).toBe('(foo)');
+    } finally {
+      Any.prototype.render = originalRender;
+    }
   });
 
   it('keeps resolved wrapped paren buffer output out of explicit writers', async () => {

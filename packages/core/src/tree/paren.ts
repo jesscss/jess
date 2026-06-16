@@ -249,6 +249,17 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       }
       return this.renderOutput(context, value, bufferOrOptions, options);
     }
+    if (value instanceof Any) {
+      const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+      const scalar = this.directAnySourceText(value, buffer ? options : bufferOrOptions);
+      if (scalar !== undefined) {
+        if (buffer) {
+          return writeRenderText(buffer, scalar);
+        }
+        this.writeDirectAnySourceText(value, getPrintOptions(bufferOrOptions));
+        return scalar;
+      }
+    }
     while (value instanceof Paren && value.value) {
       value = value.value;
     }
@@ -273,7 +284,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       : `${open}${rendered}${close}`;
     if (!buffer) {
       if (isThenable(wrapped)) {
-        return wrapped.then(out => {
+        return wrapped.then((out) => {
           bufferOrOptions?.writer?.add(out, this);
           return out;
         });
