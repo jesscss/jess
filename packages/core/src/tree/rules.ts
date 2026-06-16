@@ -1756,7 +1756,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const mark = w.mark();
 
     const ctx = options.context;
-    const suppressedLeadingComments: Array<{ node: Node; visible: boolean }> = [];
+    let suppressedLeadingComments: Array<{ node: Node; visible: boolean }> | undefined;
     const saved = savePrintState(options, ['referenceMode', 'referenceRenderEnabled']);
     const ownReferenceMode = (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
     if (ownReferenceMode && options.referenceMode !== true) {
@@ -1804,7 +1804,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             w.add('\n');
           }
           const wasVisible = node.hasFlag(F_VISIBLE);
-          suppressedLeadingComments.push({ node, visible: wasVisible });
+          (suppressedLeadingComments ??= []).push({ node, visible: wasVisible });
           if (wasVisible) {
             node.removeFlag(F_VISIBLE);
           }
@@ -1853,9 +1853,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // At root level, ensure output ends with a single newline (standard for CSS files)
     // Don't propagate all the last child's post content (which may have extra whitespace)
     if (depth === 0) {
-      for (const suppressed of suppressedLeadingComments) {
-        if (suppressed.visible) {
-          suppressed.node.addFlag(F_VISIBLE);
+      if (suppressedLeadingComments) {
+        for (const suppressed of suppressedLeadingComments) {
+          if (suppressed.visible) {
+            suppressed.node.addFlag(F_VISIBLE);
+          }
         }
       }
       result = w.getSince(mark).trimEnd();

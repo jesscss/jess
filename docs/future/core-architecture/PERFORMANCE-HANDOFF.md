@@ -4244,23 +4244,24 @@ Date: 2026-06-16.
 
 Change: root `Rules.toString(...)` now writes plain no-trivia visible comments
 that precede hoisted imports through direct `Comment.writeSyntax(...)` instead
-of calling public `Comment.toTrimmedString(...)` on a detached writer.
-Trivia-backed leading comments remain on the existing detached stringification
-path.
+of calling public `Comment.toTrimmedString(...)` on a detached writer. It also
+allocates the leading-comment suppression list only when comments are actually
+suppressed. Trivia-backed leading comments remain on the existing detached
+stringification path.
 
 Hotpath status:
 
 - Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
-  reported: `functions` median `17.46ms` unstable, `import-reference` median
-  `25.02ms` usable, `mixins-guards` median `18.28ms` usable,
-  `extend-chaining` median `5.48ms` usable, and `media` median `5.65ms`
-  unstable.
+  reported: `functions` median `17.57ms` unstable, `import-reference` median
+  `28.62ms` noisy, `mixins-guards` median `18.75ms` usable,
+  `extend-chaining` median `6.51ms` unstable, and `media` median `6.12ms`
+  usable.
 
 Interpretation: root serializer transport cut only. Do not claim a speed win;
 keep the `Rules` row open for body eval/render, complex imports,
 trivia-backed leading comments, placement state, merge output, duplicate
 declaration materialization, and broader root serializer capture. Two fixtures
-were unstable.
+were unstable and one was noisy.
 
 ## Parked Lessons
 

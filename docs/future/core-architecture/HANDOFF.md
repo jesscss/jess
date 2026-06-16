@@ -346,9 +346,11 @@ shape current before commit.
    `AtRule` syntax instead of calling public `toString(...)` on a detached
    writer. Plain no-trivia leading comments before root imports now write
    direct `Comment` syntax instead of calling public
-   `Comment.toTrimmedString(...)` on a detached writer. Complex root import and
-   trivia-backed leading-comment stringification, body render, placement state,
-   merge output, and duplicate declaration materialization remain open.
+   `Comment.toTrimmedString(...)` on a detached writer, and the root serializer
+   only allocates the leading-comment suppression list when it actually
+   suppresses comments. Complex root import and trivia-backed leading-comment
+   stringification, body render, placement state, merge output, and duplicate
+   declaration materialization remain open.
 7. [ ] Finish `Reference` public value materialization, rules-like surfaces,
    merged assign normalization, key conversion, and remaining cold copy/inherit
    ownership.
@@ -519,14 +521,16 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Rules` root leading-comment direct syntax cut.
+Current pass: `Rules` root leading-comment direct syntax and suppression-array
+cut.
 
-- New traversal: none. `packages/core/src/tree/rules.ts` adds no loop,
-  recursion, parent/source walk, side-map lookup, object/array scan, generator,
-  or collection helper.
-- New node/materialization: none. Existing visible root `Comment` nodes are
-  written directly; no wrapper, copy, inherit, adopt, source/root metadata, or
-  array materialization was added.
+- New traversal: no new loop, recursion, parent/source walk, side-map lookup,
+  generator, or collection helper. The leading-comment restoration loop already
+  existed; it is now skipped entirely when no comments were suppressed.
+- New node/materialization: no node, wrapper, copy, inherit, adopt, or
+  source/root metadata was added. The existing leading-comment suppression
+  record array is now allocated lazily only when at least one comment is
+  suppressed, instead of on every `Rules.toString(...)` call.
 - Render path: plain no-trivia leading comments before root hoisted imports now
   emit `node.writeSyntax(options)` directly instead of
   `printDetached(...node.toTrimmedString...)`. Trivia-backed comments remain on
@@ -545,5 +549,6 @@ Current pass: `Rules` root leading-comment direct syntax cut.
 - Evidence: focused red/green test
   `streams root charset and imports without capture scaffolding` failed when
   leading `Comment.toTrimmedString(...)` threw before the cut and passed after.
+  Full `rules.test.ts` passed.
 - Verdict: accepted as a bounded `Rules` root serializer cut. Keep item 6 open
   for the remaining root/body serializer and materialization boundaries.
