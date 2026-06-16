@@ -2915,6 +2915,39 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: terminal mixin-only miss ignores ruleset-only candidates', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.ruleset-only-prefix') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          ruleset({
+            selector: compound([el('.ruleset-only-prefix'), el('.leaf')]),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          })
+        ]);
+        root.getScopeFrame();
+
+        expect(root.findMixin('.ruleset-only-prefix', 'Mixin', {
+          terminalMixinOnly: true
+        })).toBeUndefined();
+        expect(lookupScopeFrameCallable(root._scopeFrame, '.ruleset-only-prefix', {
+          includeRulesets: false,
+          searchParents: false
+        })).toEqual({ kind: 'miss' });
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('ScopeFrame callable buckets: terminal mixin-only child misses still climb to parent frames', () => {
       const parentMixin = mixin({
         name: any('.parent-terminal-mixin'),
@@ -3562,6 +3595,35 @@ describe('Mixin', () => {
           color: red;
         }
       `);
+    });
+
+    it('mixin-ruleset calls with args exclude only the namespaced terminal ruleset', () => {
+      const terminalMixin = mixin({
+        name: any('.button'),
+        params: list([any('color', { role: 'property' })]),
+        rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+      });
+      const terminalRuleset = ruleset({
+        selector: el('.button'),
+        rules: rules([decl({ name: 'color', value: any('ruleset') })])
+      });
+      const root = rules([
+        ruleset({
+          selector: el('#theme'),
+          rules: rules([
+            terminalRuleset,
+            terminalMixin
+          ])
+        })
+      ]);
+      root.getScopeFrame();
+
+      const allTerminals = root.findMixin(['#theme', '.button'], undefined);
+      expect(allTerminals).toContain(terminalRuleset);
+      expect(allTerminals).toContain(terminalMixin);
+      expect(root.findMixin(['#theme', '.button'], undefined, {
+        terminalMixinOnly: true
+      })).toEqual([terminalMixin]);
     });
 
     it('mixin-ruleset calls with args reject exact ruleset terminals after namespace resolution', () => {

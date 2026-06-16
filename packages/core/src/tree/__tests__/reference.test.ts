@@ -7,6 +7,20 @@ import { buildScopeFrame, lookupScopeFrameVariable, setScopeFrameLiveBinding } f
 let context: Context;
 let expectedAsyncRulesContext: RulesClass | undefined;
 
+function getDirectDeclarationOwnerLookupVersion(value: unknown): number | undefined {
+  if (
+    value
+    && typeof value === 'object'
+    && 'kind' in value
+    && value.kind === 'direct-declaration-occurrence'
+    && 'ownerLookupVersion' in value
+    && typeof value.ownerLookupVersion === 'number'
+  ) {
+    return value.ownerLookupVersion;
+  }
+  return undefined;
+}
+
 function setRulesContext(root: Node): RulesClass {
   expect(root).toBeInstanceOf(RulesClass);
   if (!(root instanceof RulesClass)) {
@@ -2895,6 +2909,44 @@ describe('reference', () => {
       }
     });
 
+    it('cached variable handles use frame and cell identity without re-reading the current binding map', async () => {
+      const colorRef = ref({ key: 'color' }, { type: 'variable' });
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        decl({
+          name: any('seen'),
+          value: colorRef
+        })
+      ]);
+      setRulesContext(node);
+
+      const first = await colorRef.eval(context);
+      expect(first.valueOf()).toBe('red');
+      expect(colorRef._rulesLookupHandle?.returnVal).toMatchObject({
+        kind: 'scope-frame-variable-binding-handle',
+        ownerFrameCurrentBindingsVersion: node.getScopeFrame().currentBindingsVersion
+      });
+
+      const frame = node.getScopeFrame();
+      const originalGet = frame.currentBindingsByName.get;
+      let currentBindingReads = 0;
+      frame.currentBindingsByName.get = function countCurrentBindingReads(
+        this: typeof frame.currentBindingsByName,
+        ...args: Parameters<typeof originalGet>
+      ): ReturnType<typeof originalGet> {
+        currentBindingReads++;
+        return originalGet.apply(this, args);
+      };
+
+      try {
+        const second = await colorRef.eval(context);
+        expect(second.valueOf()).toBe('red');
+        expect(currentBindingReads).toBe(1);
+      } finally {
+        frame.currentBindingsByName.get = originalGet;
+      }
+    });
+
     it('variable references prepare scope frames without callable miss coverage', async () => {
       const originalGetScopeFrame = RulesClass.prototype.getScopeFrame;
       const callableCoveragePrep: unknown[] = [];
@@ -4618,6 +4670,8 @@ describe('reference', () => {
         expect(lookupRef._rulesLookupHandle?.returnVal).toMatchObject({
           kind: 'direct-declaration-occurrence'
         });
+        const handle = lookupRef._rulesLookupHandle;
+        const handleVersion = handle?.targetLookupVersion;
         expect(propertyLookups).toBe(0);
 
         expect(lookupRef.eval(context).valueOf()).toBe('blue');
@@ -4625,6 +4679,8 @@ describe('reference', () => {
 
         node.push(decl({ name: 'unrelated', value: any('1') }));
         expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        expect(lookupRef._rulesLookupHandle).toBe(handle);
+        expect(lookupRef._rulesLookupHandle?.targetLookupVersion).toBe(handleVersion);
         expect(propertyLookups).toBe(0);
       } finally {
         RulesClass.prototype.findProperty = originalFindProperty;
@@ -4648,10 +4704,14 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle?.returnVal).toMatchObject({
         kind: 'direct-declaration-occurrence'
       });
+      const occurrence = lookupRef._rulesLookupHandle?.returnVal;
+      const ownerLookupVersion = getDirectDeclarationOwnerLookupVersion(occurrence);
 
       childRules.push(decl({ name: 'color', value: any('green') }));
 
       expect(lookupRef.eval(context).valueOf()).toBe('green');
+      const updatedOccurrence = lookupRef._rulesLookupHandle?.returnVal;
+      expect(getDirectDeclarationOwnerLookupVersion(updatedOccurrence)).not.toBe(ownerLookupVersion);
     });
 
     it('static declaration references use direct declaration lookup before binding handle reuse', async () => {
@@ -4673,6 +4733,8 @@ describe('reference', () => {
         const lookupRef = ref({ key: 'color' }, { type: 'declaration' });
 
         expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        const handle = lookupRef._rulesLookupHandle;
+        const handleVersion = handle?.targetLookupVersion;
         expect(declarationLookups).toBe(0);
 
         expect(lookupRef.eval(context).valueOf()).toBe('blue');
@@ -4680,6 +4742,8 @@ describe('reference', () => {
 
         node.push(decl({ name: 'unrelated', value: any('1') }));
         expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        expect(lookupRef._rulesLookupHandle).toBe(handle);
+        expect(lookupRef._rulesLookupHandle?.targetLookupVersion).toBe(handleVersion);
         expect(declarationLookups).toBe(0);
       } finally {
         RulesClass.prototype.findDeclaration = originalFindDeclaration;

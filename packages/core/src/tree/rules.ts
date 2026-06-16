@@ -772,6 +772,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }> | undefined;
 
   lookupVersion = 0;
+  declarationLookupVersion = 0;
+  declarationLookupVersionsByName: Map<string, number> | undefined;
   callableLookupVersion = 0;
   functionLookupVersion = 0;
   functionLookupVersionsByName: Map<string, number> | undefined;
@@ -855,6 +857,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
     this.lookupVersion = 0;
+    this.declarationLookupVersion = 0;
+    this.declarationLookupVersionsByName = undefined;
     this.callableLookupVersion = 0;
     this._hasExtends = false;
     this._hasReferenceImports = false;
@@ -2853,6 +2857,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   registerNode(node: Node, options?: Record<string, any>, context?: Context) {
     this.lookupVersion++;
+    if (isNode(node, N.Declaration | N.VarDeclaration)) {
+      if (this._hasStaticName(node)) {
+        this.bumpDeclarationLookupVersion(String(node.value.name.valueOf()));
+      } else {
+        this.bumpDeclarationLookupVersion();
+      }
+    }
     const directChildRules = childCallableRulesOf(node);
     const affectsCallableLookup = (
       isNode(node, N.Mixin | N.Ruleset | N.Rules)
@@ -2885,6 +2896,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this._hasExtends = true;
     }
     if (node.type === 'StyleImport') {
+      this.bumpDeclarationLookupVersion();
       const importOptions = 'importOptions' in node.options
         ? node.options.importOptions
         : undefined;
@@ -2900,6 +2912,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     }
     if (isNode(node, N.Rules)) {
+      this.bumpDeclarationLookupVersion();
       // Use options if provided, otherwise use node's settings, otherwise empty
       // Then merge with node's settings to preserve any values not in options
       let optionsVisibility = options?.rulesVisibility;
@@ -3109,6 +3122,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (rebuildCallableCache && this._scopeFrame) {
       this._scopeFrame.callableBucketsByName = this.callableLookupCache;
     }
+  }
+
+  getDeclarationLookupVersion(key: string): number {
+    return Math.max(
+      this.declarationLookupVersion,
+      this.declarationLookupVersionsByName?.get(key) ?? 0
+    );
+  }
+
+  private bumpDeclarationLookupVersion(key?: string): void {
+    if (key === undefined) {
+      this.declarationLookupVersion++;
+      return;
+    }
+    const versions = this.declarationLookupVersionsByName ??= new Map<string, number>();
+    versions.set(key, this.getDeclarationLookupVersion(key) + 1);
   }
 
   push(...nodes: Node[]) {

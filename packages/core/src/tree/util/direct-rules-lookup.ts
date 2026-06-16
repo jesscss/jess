@@ -230,11 +230,12 @@ function chooseTraversalMatch(
 
 function createDeclarationOccurrence(node: Declaration): DirectDeclarationOccurrence {
   const ownerRules = isNode(node.parent, N.Rules) ? node.parent : undefined;
+  const key = String(node.value.name.valueOf());
   return {
     kind: 'direct-declaration-occurrence',
     node,
     ownerRules,
-    ownerLookupVersion: ownerRules?.lookupVersion,
+    ownerLookupVersion: ownerRules?.getDeclarationLookupVersion(key),
     index: node.index
   };
 }
@@ -244,7 +245,7 @@ export function isDirectDeclarationOccurrenceCurrent(
 ): boolean {
   return (
     occurrence.node.parent === occurrence.ownerRules
-    && occurrence.ownerRules?.lookupVersion === occurrence.ownerLookupVersion
+    && occurrence.ownerRules?.getDeclarationLookupVersion(String(occurrence.node.value.name.valueOf())) === occurrence.ownerLookupVersion
     && occurrence.node.index === occurrence.index
   );
 }

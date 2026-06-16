@@ -95,6 +95,34 @@ describe('ScopeFrame variable facade', () => {
     expect(parent?.kind === 'declaration' && parent.cell.value?.valueOf()).toBe('blue');
   });
 
+  it('versions current binding pointer changes without changing cell value writes', async () => {
+    const root = rules([
+      vardecl({ name: 'x', value: any('red') })
+    ]);
+    await root.eval(new Context());
+    const frame = root.getScopeFrame();
+    const original = lookupScopeFrameVariable(frame, 'x');
+    expect(original.kind).toBe('declaration');
+    const originalCell = original.kind === 'declaration' ? original.cell : undefined;
+    expect(originalCell).toBeDefined();
+    const initialVersion = frame.currentBindingsVersion;
+    const originalIdentity = originalCell?.lookupIdentity;
+
+    if (originalCell) {
+      originalCell.value = any('green');
+    }
+
+    expect(frame.currentBindingsVersion).toBe(initialVersion);
+    expect(originalCell?.lookupIdentity).toBe(originalIdentity);
+
+    setScopeFrameLiveBinding(frame, 'x', { value: any('blue') });
+
+    const replacement = lookupScopeFrameVariable(frame, 'x');
+    expect(frame.currentBindingsVersion).toBeGreaterThan(initialVersion);
+    expect(replacement.kind).toBe('live');
+    expect(replacement.kind === 'live' && replacement.cell.lookupIdentity).not.toBe(originalIdentity);
+  });
+
   it('returns a covered miss when indexed frames have no matching binding', async () => {
     const root = rules([
       vardecl({ name: 'x', value: any('red') })

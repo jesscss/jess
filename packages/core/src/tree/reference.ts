@@ -24,6 +24,7 @@ import { List } from './list.js';
 import { Nil } from './nil.js';
 import {
   getBindingCellValue,
+  ensureBindingCellLookupIdentity,
   lookupScopeFrameVariable,
   setScopeFrameDeclarationBinding,
   type BindingCell,
@@ -306,7 +307,9 @@ const CACHED_RULES_LOOKUP_MISS = Symbol('cached-rules-lookup-miss');
 type ScopeFrameVariableBindingHandle = {
   kind: 'scope-frame-variable-binding-handle';
   cell: BindingCell;
+  cellLookupIdentity: number;
   ownerFrame: ScopeFrame;
+  ownerFrameCurrentBindingsVersion: number;
   sourceNode?: Node;
   rulesContext?: Rules;
 };
@@ -382,6 +385,16 @@ function getRulesLookupHandleVersion(
       ? targetRules.functionLookupVersionsByName?.get(valueKey) ?? 0
       : targetRules.functionLookupVersion;
   }
+  if (
+    typeof valueKey === 'string'
+    && (
+      lookupType === 'declaration'
+      || lookupType === 'property'
+      || lookupType === 'variable'
+    )
+  ) {
+    return targetRules.getDeclarationLookupVersion(valueKey);
+  }
   return targetRules.lookupVersion;
 }
 
@@ -425,7 +438,9 @@ function createScopeFrameVariableBindingHandle(
   return {
     kind: 'scope-frame-variable-binding-handle',
     cell,
+    cellLookupIdentity: ensureBindingCellLookupIdentity(cell),
     ownerFrame,
+    ownerFrameCurrentBindingsVersion: ownerFrame.currentBindingsVersion,
     sourceNode,
     rulesContext: isNode(cell.rulesContext, N.Rules) ? cell.rulesContext : undefined
   };
@@ -1114,11 +1129,11 @@ function readRulesLookupHandle(
     return undefined;
   }
   if (isScopeFrameVariableBindingHandle(handle.returnVal)) {
-    if (typeof valueKey === 'string') {
-      const currentCell = handle.returnVal.ownerFrame.currentBindingsByName.get(valueKey);
-      if (currentCell !== handle.returnVal.cell) {
-        return undefined;
-      }
+    if (
+      handle.returnVal.ownerFrame.currentBindingsVersion !== handle.returnVal.ownerFrameCurrentBindingsVersion
+      || handle.returnVal.cell.lookupIdentity !== handle.returnVal.cellLookupIdentity
+    ) {
+      return undefined;
     }
     return handle.returnVal;
   }
@@ -1126,7 +1141,7 @@ function readRulesLookupHandle(
     const node = handle.returnVal.node;
     if (
       node.parent !== handle.returnVal.ownerRules
-      || handle.returnVal.ownerRules?.lookupVersion !== handle.returnVal.ownerLookupVersion
+      || handle.returnVal.ownerRules?.getDeclarationLookupVersion(String(node.value.name.valueOf())) !== handle.returnVal.ownerLookupVersion
       || node.index !== handle.returnVal.index
     ) {
       return undefined;
@@ -1149,6 +1164,10 @@ function writeVariableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void 
       args.returnVal !== undefined
       && !isScopeFrameVariableBindingHandle(args.returnVal)
       && !isDirectDeclarationOccurrence(args.returnVal)
+    )
+    || (
+      isDirectDeclarationOccurrence(args.returnVal)
+      && args.returnVal.ownerRules !== targetRules
     )
   ) {
     args.referenceNode._rulesLookupHandle = undefined;

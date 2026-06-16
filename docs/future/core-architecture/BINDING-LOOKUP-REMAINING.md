@@ -39,11 +39,12 @@ materialization wrapper for that semantic case.
    merge metadata and assignment normalization. Delete the remaining filtered
    fallback for modeled property modes rather than shadowing it.
 
-3. **Declaration/property key versioning.**
-   Variable/property/declaration handles still depend on broad
-   `Rules.lookupVersion`. Split key/family versions only when the affected-key
-   semantics are clear enough to prove unrelated writes keep cached handles
-   fresh.
+3. **Declaration/property key versioning follow-through.**
+   Reference handles now use `Rules.getDeclarationLookupVersion(key)`, but the
+   new per-name version map must stay a freshness mechanism, not become a
+   second registry. Remaining work is proving dynamic-name/import/rules
+   promotions and replacing the temporary ancestor-variable occurrence cache
+   guard with modeled frame-shadow freshness.
 
 4. **Direct declaration strategy flattening.**
    After child-entry scans are under control, collapse
@@ -52,16 +53,17 @@ materialization wrapper for that semantic case.
 
 ### B. ScopeFrame, Current Cells, And Assignment
 
-1. **Frame-slot identity.**
-   Current variable handles are `ScopeFrameVariableBindingHandle` objects and
-   declaration hits are `DirectDeclarationOccurrence` objects. The end state is
-   closer to frame plus slot/cell identity, with cold object materialization
-   only where a public/cold API needs it.
+1. **Frame-slot identity follow-through.**
+   `BindingCell.lookupIdentity` and `ScopeFrame.currentBindingsVersion` now let
+   cached variable handles validate without re-reading the current binding map.
+   Remaining work is replacing parent direct-occurrence guards with positive
+   frame-shadow freshness and keeping cold object materialization out of simple
+   reads.
 
-2. **Cell/current-pointer versions.**
-   `BindingCell` has value state but not explicit value/current-pointer
-   versions. Evaluated-value caching stays out of scope until those versions
-   exist. Lookup identity caching can proceed first.
+2. **Evaluated-value cache prerequisites.**
+   Cell/current-pointer lookup identity exists. Evaluated-value caching remains
+   out of scope until live-current shadowing, dynamic promotion, and parent
+   occurrence freshness are fully modeled and tested.
 
 ### C. Callable, Namespace, And Reference Imports
 
@@ -70,10 +72,11 @@ materialization wrapper for that semantic case.
    Finish caller-specific handling for `candidate`, `child-surface`, and
    `reference-import` so ordinary covered misses stop before direct crawl.
 
-2. **Parameterized terminal namespace lookup.**
-   Mixin-ruleset calls with parameters should keep rulesets as namespace
-   containers but reject exact ruleset terminals at the terminal segment when
-   only mixins can satisfy the call.
+2. **Parameterized terminal namespace audit.**
+   Mixin-ruleset calls with parameters now reject ruleset-only terminal
+   candidates while keeping rulesets as namespace containers. Remaining work is
+   auditing recursive namespace/error cases and deleting any now-redundant
+   terminal fallback.
 
 3. **Namespace path/remainder allocation.**
    `collectKeyRemainder(...)`, `getCallableLookupKeyRemainder(...)`, and
@@ -84,9 +87,10 @@ materialization wrapper for that semantic case.
 
 1. **ReferencePlan shape.**
    `_lookupStrategy` caches the lookup family, but key normalization, shape
-   prep, filters, and handle access are still per-lookup work. Promote stable
-   static reference facts into a small plan shape only when it deletes repeated
-   hot-path preparation.
+   prep, filters, and handle access are still per-lookup work. A broad
+   `ReferencePlan` attempt was rejected because generated control surfaces can
+   change runtime facts. Retry only for source-static facts that prove they
+   delete repeated hot-path preparation.
 
 2. **Leaky/fallback bridges.**
    Shrink fallback cases one by one: variable live-only fallback, declaration

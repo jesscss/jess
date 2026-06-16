@@ -28,6 +28,8 @@ import type { CallableLookupEntry } from './util/callable-entry.js';
 export interface BindingCell {
   value?: Node;
   prepareValue?: (value: Node | undefined) => Node;
+  /** Stable identity for cached reference handles; value writes do not change it. */
+  lookupIdentity?: number;
   /** Back-pointer to the canonical AST node, used for recursion detection. */
   sourceNode?: Node;
   /** Runtime rules frame that owns this live binding. */
@@ -130,6 +132,13 @@ export interface ScopeFrame {
   currentBindingsByName: Map<string, BindingCell>;
 
   /**
+   * Bumped when a current binding pointer changes. In-place cell value writes
+   * keep cached handles valid because reference reads still dereference the
+   * live cell.
+   */
+  currentBindingsVersion: number;
+
+  /**
    * True when this frame owns live cells in liveSlotsByName. This keeps clone
    * and prep paths from probing the live-slot map as a read-path signal.
    */
@@ -207,6 +216,31 @@ export interface ScopeFrame {
   hasReferenceImports: boolean;
 }
 
+let nextBindingCellLookupIdentity = 1;
+
+export function ensureBindingCellLookupIdentity(cell: BindingCell): number {
+  if (cell.lookupIdentity !== undefined) {
+    return cell.lookupIdentity;
+  }
+  const identity = nextBindingCellLookupIdentity++;
+  cell.lookupIdentity = identity === 0
+    ? nextBindingCellLookupIdentity++
+    : identity;
+  return cell.lookupIdentity;
+}
+
+function setCurrentBindingCell(
+  frame: ScopeFrame,
+  name: string,
+  cell: BindingCell
+): void {
+  ensureBindingCellLookupIdentity(cell);
+  if (frame.currentBindingsByName.get(name) !== cell) {
+    frame.currentBindingsVersion++;
+  }
+  frame.currentBindingsByName.set(name, cell);
+}
+
 /**
  * Build a ScopeFrame from a Rules node.
  *
@@ -247,6 +281,7 @@ export function buildScopeFrame(
         entries[i] = {
           cell: {
             value: decl.value.value,
+            lookupIdentity: nextBindingCellLookupIdentity++,
             sourceNode: decl,
             readonly: decl.options?.readonly
           },
@@ -264,6 +299,7 @@ export function buildScopeFrame(
   const liveSlotsByName = liveSlots ?? new Map<string, BindingCell>();
   let hasLiveBindings = false;
   for (const [name, cell] of liveSlotsByName) {
+    ensureBindingCellLookupIdentity(cell);
     cell.live = true;
     currentBindingsByName.set(name, cell);
     hasLiveBindings = true;
@@ -274,6 +310,7 @@ export function buildScopeFrame(
     fallbackFrame: undefined,
     liveSlotsByName,
     currentBindingsByName,
+    currentBindingsVersion: 0,
     hasLiveBindings,
     declarationBucketsByName,
     callableBucketsByName: callableEntriesByName,
@@ -300,9 +337,10 @@ export function setScopeFrameLiveBinding(
   name: string,
   cell: BindingCell
 ): void {
+  ensureBindingCellLookupIdentity(cell);
   cell.live = true;
   frame.liveSlotsByName.set(name, cell);
-  frame.currentBindingsByName.set(name, cell);
+  setCurrentBindingCell(frame, name, cell);
   frame.hasLiveBindings = true;
 }
 
@@ -311,7 +349,7 @@ export function setScopeFrameDeclarationBinding(
   name: string,
   entry: BindingEntry
 ): void {
-  frame.currentBindingsByName.set(name, entry.cell);
+  setCurrentBindingCell(frame, name, entry.cell);
 }
 
 function pendingDeclarationMayAffectName(
@@ -485,9 +523,11 @@ export function lookupScopeFrameCallable(
     if (bucket?.length) {
       for (let i = bucket.length - 1; i >= 0; i--) {
         const entry = bucket[i]!;
+        if (options?.includeRulesets === false && entry.value.type === 'Ruleset') {
+          continue;
+        }
         if (
           entry.match.length === 0
-          && (options?.includeRulesets !== false || entry.value.type !== 'Ruleset')
         ) {
           return { kind: 'hit', bucket };
         }
