@@ -49,7 +49,7 @@ async function renderControlRules(
   buffer: RenderBuffer,
   options?: PrintOptions
 ): Promise<string> {
-  const out = await Promise.resolve(rules.render(context, buffer, options));
+  const out = await rules.render(context, buffer, options);
   if (!out.endsWith('\n')) {
     return out;
   }

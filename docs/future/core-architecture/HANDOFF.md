@@ -581,27 +581,25 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Block non-scalar buffer render nested string-helper cut.
+Current pass: Control render `Promise.resolve(...)` wrapper cut.
 
-- New traversal: none. The buffer path writes the already-selected block value
-  to the prepared writer and adds no loop, source walk, side-map lookup, or
+- New traversal: none. The change deletes a wrapper around the existing
+  `Rules.render(...)` result and adds no loop, source walk, side-map lookup, or
   object scan.
 - New node/materialization: none. No `Node`, copy, inherit, wrapper,
   materialized array, or ownership mutation was added.
-- Render path: non-scalar buffer renders now call `writeBlockSyntax(...)`
-  directly under the existing outer buffer mark and read that mark once for
-  `writePreparedRenderText(...)`. Public string-return render still uses
-  `renderBlockSyntax(...)`, so cold string API behavior is unchanged.
-- Helper/API surface: no helper or public API was added. Existing direct writer
-  and cold string helper boundaries were split by sink. The verifier's
-  `Reflect.set(...)` hit is test-only poisoning of the cold helper.
+- Render path: shared control body rendering now awaits the native
+  `Rules.render(context, buffer, options)` result directly. Async and sync
+  results still flow through the same trailing-newline trimming logic.
+- Helper/API surface: no helper or public API was added.
 - Metadata mutations: none. No parent/source/frozen/location/options/context
   mutation was added.
-- Evidence: focused Block tests pass, including a new buffer fixture that
-  poisons `renderBlockSyntax(...)` and proves buffer rendering writes syntax
-  directly. The verifier's `throw new Error(...)` hit is that test sentinel,
-  not runtime control flow.
-- Verdict: accepted as a bounded Block buffer string-transport deletion.
-  Non-scalar public string-return render remains on the cold helper. No
-  performance claim; performance remains shelved because this was not a
-  measured benchmark pass.
+- Evidence: focused control and render-buffer tests pass. The deleted
+  `Promise.resolve(...)` wrapped the value immediately before `await`, so it
+  was redundant async scaffolding rather than semantic error handling. The
+  verifier's `.map(...)` hit is pre-existing tracker prose in the changed `For`
+  row, not a new runtime array helper.
+- Verdict: accepted as a bounded shared control render scaffolding deletion.
+  Loop state/body surface and async branch audits remain open. No performance
+  claim; performance remains shelved because this was not a measured benchmark
+  pass.
