@@ -482,10 +482,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       options.collapseNesting === true
       && (isNode(node, N.Ruleset) || Boolean(getHoistedParent(node, options)))
     );
-    const declarationOutputCache = new Map<number, string>();
-    const declarationTriviaCache = new Map<number, Set<IToken[]>>();
-    const skippedDuplicateDeclarations = new Set<number>();
-    const seenDeclarationsByProp = new Map<string, Set<string>>();
+    let declarationOutputCache: Map<number, string> | undefined;
+    let declarationTriviaCache: Map<number, Set<IToken[]>> | undefined;
+    let skippedDuplicateDeclarations: Set<number> | undefined;
     const sourceChainHas = (start: any, predicate: (n: any) => boolean): boolean => {
       const seen = new Set<any>();
       const queue: any[] = [start];
@@ -540,46 +539,52 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
       (seenDeclarationProps ??= new Set()).add(prop);
     }
-    for (let i = rulesToRender.length - 1; i >= 0; i--) {
-      const node = rulesToRender[i]!.node;
-      if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
-        continue;
-      }
-      const declProp = node.value.name.valueOf();
-      if (!duplicateDeclarationProps?.has(declProp)) {
-        continue;
-      }
-      const declWriter = new OutputWriter();
-      const declSaved = savePrintState(options, ['writer', 'depth']);
-      const declEmittedTrivia = new Set<IToken[]>();
-      const previousEmittedTrivia = options.emittedTrivia;
-      options.writer = declWriter;
-      options.depth = options.depth + 1;
-      options.emittedTrivia = declEmittedTrivia;
-      if (serializeProfileCounters) {
-        incrementSerializeProfileCounter('duplicateDeclarationPrerenderedDeclarations');
-      }
-      const declOut = node.toTrimmedString(options);
-      options.emittedTrivia = previousEmittedTrivia;
-      restorePrintState(options, declSaved);
-      declarationOutputCache.set(i, declOut);
-      declarationTriviaCache.set(i, declEmittedTrivia);
-      const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
-      let seenValues = seenDeclarationsByProp.get(declProp);
-      if (!seenValues) {
-        seenValues = new Set<string>();
-        seenDeclarationsByProp.set(declProp, seenValues);
-      }
-      if (
-        seenValues.has(declKey)
-        && !originatesFromCall(node)
-        && !originatesFromMixin(node)
-        && !originatesFromControl(node)
-        && !keepsDuplicateGeneratedOutput(node)
-      ) {
-        skippedDuplicateDeclarations.add(i);
-      } else {
-        seenValues.add(declKey);
+    if (duplicateDeclarationProps) {
+      const seenDeclarationsByProp = new Map<string, Set<string>>();
+      declarationOutputCache = new Map();
+      declarationTriviaCache = new Map();
+      skippedDuplicateDeclarations = new Set();
+      for (let i = rulesToRender.length - 1; i >= 0; i--) {
+        const node = rulesToRender[i]!.node;
+        if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
+          continue;
+        }
+        const declProp = node.value.name.valueOf();
+        if (!duplicateDeclarationProps.has(declProp)) {
+          continue;
+        }
+        const declWriter = new OutputWriter();
+        const declSaved = savePrintState(options, ['writer', 'depth']);
+        const declEmittedTrivia = new Set<IToken[]>();
+        const previousEmittedTrivia = options.emittedTrivia;
+        options.writer = declWriter;
+        options.depth = options.depth + 1;
+        options.emittedTrivia = declEmittedTrivia;
+        if (serializeProfileCounters) {
+          incrementSerializeProfileCounter('duplicateDeclarationPrerenderedDeclarations');
+        }
+        const declOut = node.toTrimmedString(options);
+        options.emittedTrivia = previousEmittedTrivia;
+        restorePrintState(options, declSaved);
+        declarationOutputCache.set(i, declOut);
+        declarationTriviaCache.set(i, declEmittedTrivia);
+        const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
+        let seenValues = seenDeclarationsByProp.get(declProp);
+        if (!seenValues) {
+          seenValues = new Set<string>();
+          seenDeclarationsByProp.set(declProp, seenValues);
+        }
+        if (
+          seenValues.has(declKey)
+          && !originatesFromCall(node)
+          && !originatesFromMixin(node)
+          && !originatesFromControl(node)
+          && !keepsDuplicateGeneratedOutput(node)
+        ) {
+          skippedDuplicateDeclarations.add(i);
+        } else {
+          seenValues.add(declKey);
+        }
       }
     }
 
@@ -694,7 +699,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         if (inReferenceMode && !renderEnabled && !isContainer) {
           continue;
         }
-        if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations.has(idx)) {
+        if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations?.has(idx)) {
           continue;
         }
 
@@ -818,7 +823,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         const isHiddenStructuralNode = !nn.visible && !nn.fullRender;
         const leading = captureNodeTrivia(nn, 'before', options);
         const cachedDeclarationOutput = isNode(nn, N.Declaration)
-          ? declarationOutputCache.get(idx)
+          ? declarationOutputCache?.get(idx)
           : undefined;
         const out = isHiddenStructuralNode
           ? ''
@@ -832,7 +837,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             incrementSerializeProfileCounter('duplicateDeclarationCachedOutputReuses');
           }
           const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
-          const cachedTrivia = declarationTriviaCache.get(idx);
+          const cachedTrivia = declarationTriviaCache?.get(idx);
           if (cachedTrivia) {
             for (const tokens of cachedTrivia) {
               emittedTrivia.add(tokens);

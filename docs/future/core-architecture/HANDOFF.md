@@ -340,9 +340,10 @@ shape current before commit.
    `mark()/getSince()/restore()`. Header selector text now uses a detached
    `OutputWriter`, restores the caller writer/trivia/reference-filter state in
    `finally`, and the focused Ruleset test asserts the caller writer receives
-   no mark/readback/restore traffic. Same-property duplicate declaration
-   pre-rendering, deeper selector composition, body prep, wrappers, and render
-   branches remain open.
+   no mark/readback/restore traffic. Duplicate declaration caches and the
+   reverse same-property pre-render pass now allocate/run only after the first
+   scan proves at least one declaration property repeats. Deeper selector
+   composition, body prep, wrappers, and render branches remain open.
 5. [ ] Finish `Declaration` custom-property raw-source, merge-state, internal
    mark/replace, and materialization boundaries.
 
@@ -547,32 +548,30 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Ruleset header selector writer isolation.
+Current pass: Ruleset duplicate declaration cache laziness.
 
-- New traversal: none. `Ruleset.getHeaderString(...)` still renders the same
-  selected/composed selector once and does not add loops, recursive walks,
-  filters, parent/source walks, or side-map lookups.
-- New node/materialization: one detached `OutputWriter` replaces use of the
-  caller's active writer plus `mark()/getSince()/restore()` rollback. No AST
-  nodes, wrappers, copies, `.inherit`, `.adopt`, arrays, or semantic placement
-  records were added. Existing selector metadata copies for reference filtering
-  and visibility remain unchanged.
-- Render path: header rendering still stringifies because
-  `getHeaderString(...)` returns a string consumed by frame serialization, but
-  selector text no longer mutates the caller writer only to be discarded.
-  Same-property duplicate declaration pre-rendering remains open.
-- Helper/API surface: none added. The pass imports the existing
-  `OutputWriter` class from `util/print.js`; no public API was added.
-- Metadata mutations: caller `writer`, `trivia`, and `referenceFilterTargets`
-  state are restored in `finally`. Existing selector visibility/reference
-  metadata handling remains unchanged. The `Ruleset` eval/registration cleanup
-  `catch` blocks were explicitly rejected as cuts because they restore
-  `context.rulesetFrames`/`context.frames` on thrown or rejected body prep/eval.
-- Evidence: `ruleset.test.ts` covers comment-free headers, reference-filtered
-  headers, thrown/rejected eval-frame restoration, and the updated "streams
-  header selectors without capture scaffolding" assertion that the caller
-  writer receives no `mark`, `getSince`, `restore`, `capture`, or `preview`
-  traffic while `options.writer` is restored after the call.
-- Verdict: accepted as a caller-writer rollback cut. No performance claim;
-  performance remains shelved because this was a code-path deletion pass, not
-  a measured benchmark pass.
+- New traversal: none on the duplicate-property path. The existing first scan
+  over `rulesToRender` remains, and the existing reverse pre-render scan now
+  runs only when that first scan finds a repeated declaration property. The
+  no-duplicate path deletes the reverse scan entirely.
+- New node/materialization: none added. The existing duplicate-property path
+  still creates its comparison `OutputWriter`, emitted-trivia `Set`, output
+  cache `Map`, trivia cache `Map`, skip `Set`, and per-property value `Map`.
+  Those objects are now skipped when there are no duplicate declaration
+  properties.
+- Render path: non-duplicate declaration rendering now falls through to the
+  ordinary leaf render path without pre-render caches. Duplicate declarations
+  still use the same cached output/trivia path as before so Less duplicate
+  suppression semantics are unchanged.
+- Helper/API surface: none added.
+- Metadata mutations: none added. Existing duplicate declaration pre-render
+  still saves/restores `writer`, `depth`, and `emittedTrivia` while it computes
+  comparison text.
+- Evidence: focused serialization coverage passed for `ruleset.test.ts`,
+  `rules.test.ts`, and `declaration.test.ts` with render/serialize/duplicate
+  and merged-declaration test names. Full `ruleset.test.ts`,
+  `declaration.test.ts`, eslint, core build, and aggressive review are required
+  before commit.
+- Verdict: accepted as a no-duplicate render-path allocation/scan cut. No
+  performance claim; performance remains shelved because this was not a
+  measured benchmark pass.
