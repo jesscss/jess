@@ -283,9 +283,12 @@ shape current before commit.
    Current partial status: empty string-name calls skip writer readback;
    rendered args are side-effect writes instead of discarded strings; plain and
    evaluated CSS-call buffer render reuses the caller mark; scalar-contract args
-   (`Num`, `Dimension`, `Color`, `Bool`) skip per-arg trim/eval when no trivia
-   is active and base `Node.eval` is intact; the scalar check uses direct type
-   tags rather than the generic `isNode(...)` classifier.
+   (`Num`, `Dimension`, `Color`, `Bool`, `Any`, `Anonymous`, `Keyword`) skip
+   per-arg trim/eval when no trivia is active and base `Node.eval` is intact;
+   `writeEvaluatedSyntax(...)` also writes those same static scalar token
+   contracts directly instead of calling `evalImmediateSync(...)`; the scalar
+   check uses direct type tags rather than the generic `isNode(...)`
+   classifier.
 2. [ ] Finish `QueryCondition` dynamic render by removing the child mark probe
    only after child render contracts prove write-vs-return behavior directly.
 
@@ -454,35 +457,35 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Sequence.renderResolvedValue(...)` single-item buffer sink fix.
+Current pass: `Call` token CSS-argument scalar render cut.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   object/array scan, generator, or collection helper was added.
-- New node/materialization: no production node/materialization. Two
-  `new CountingWriter()` instances were added in focused tests only to prove
-  that single-child buffer rendering does not mutate an unrelated explicit
-  writer. No `new Node`, copy, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`,
-  frozen/source/parent metadata mutation, or materialized array was added.
-- Render path: `Sequence.renderResolvedValue(...)` buffer rendering still
-  returns the public compatibility string, but the single-child branches no
-  longer pass a caller-provided explicit writer into the child render. The
-  child result is written once to the requested render buffer via the existing
-  `writeRenderedSequenceNode(...)` boundary.
-- Helper/API surface: none added. The existing single-child branches were
-  tightened in place; no new helper, method, or public API was added.
+- New node/materialization: no production node/materialization. One
+  `new CountingWriter()` instance was added in a focused test only to prove
+  token CSS-call args no longer open per-arg trim marks. No `new Node`, copy,
+  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
+  metadata mutation, or materialized array was added.
+- Render path: `Call.serializeRenderedArgsFrom(...)` now sends owned static
+  scalar token args (`Any`, `Anonymous`, `Keyword`) through the existing direct
+  `writeSyntax(...)` path when no trivia is active, matching the existing
+  numeric/color/bool scalar contracts. `Call.writeEvaluatedSyntax(...)` also
+  writes those scalar token contracts directly instead of paying
+  `evalImmediateSync(...)` before writing syntax.
+- Helper/API surface: none added. The existing scalar contract branches were
+  widened in place; no new helper, method, or public API was added.
 - Metadata mutations: none added. No parent/source/frozen/context metadata
   mutation, lazy options/context creation, `Reflect.*`, generic own-property
   helper, source restoration, or source/root read was added.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected/deferred cut: broader `List`/`Sequence` public render string-return
-  compatibility remains. `List` was audited for the same explicit-writer leak
-  and rejected as a same-patch target because its buffer path already strips
-  explicit writers through `prepareBufferPrintState(...)`.
-- Evidence: focused `sequence` and `node-render-buffer` tests passed; core
-  build passed; `verify:aggressive-cutting-review` passed with the test-only
-  `CountingWriter` probes prosecuted above; bounded `measure:less:hotpath` ran
+- Rejected/deferred cut: non-scalar/custom/trivia-backed call args still keep
+  localized trim mark windows. Callable output selection, `evalArgNodes(...)`
+  copy pressure, and async helper ladders remain in queue item 1.
+- Evidence: focused `call` and `node-render-buffer` tests passed; core build
+  passed; `verify:aggressive-cutting-review` passed with the test-only
+  `CountingWriter` probe prosecuted above; bounded `measure:less:hotpath` ran
   and is recorded in `PERFORMANCE-HANDOFF.md` as leash status only.
-- Verdict: accept as a bounded sink-correctness and staging cut. Keep the
-  active queue at 15 open whole-task items because queue item 13 is materially
+- Verdict: accept as a bounded Call render/stringification cut. Keep the
+  active queue at 15 open whole-task items because queue item 1 is materially
   advanced but not complete.

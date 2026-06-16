@@ -268,8 +268,9 @@ Current hard leftovers after the broad hook sweep:
   helper, and plain/finalized call rendering no longer allocates per-call
   finish closures. Plain/evaluated CSS-call buffer render reuses the buffer
   writer mark for the whole-call readback instead of nesting a second
-  call-level mark. Scalar-contract args now skip per-argument trim marks and
-  immediate eval calls when no trivia is active and base `Node.eval` is intact.
+  call-level mark. Scalar-contract args (`Num`, `Dimension`, `Color`, `Bool`,
+  `Any`, `Anonymous`, `Keyword`) now skip per-argument trim marks and immediate
+  eval calls when no trivia is active and base `Node.eval` is intact.
   Remaining work is split callable output value selection,
   `evalArgNodes(...)` copy pressure, non-scalar/custom/trivia arg trim marks, async/helper
   ladders, and repeated eval.

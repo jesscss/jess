@@ -519,6 +519,9 @@ export class Call extends Node<CallValue, CallOptions> {
             || arg.type === 'Dimension'
             || arg.type === 'Color'
             || arg.type === 'Bool'
+            || arg.type === 'Any'
+            || arg.type === 'Anonymous'
+            || arg.type === 'Keyword'
           )
           && !activeTrivia
         ) {
@@ -567,6 +570,9 @@ export class Call extends Node<CallValue, CallOptions> {
         || node.type === 'Dimension'
         || node.type === 'Color'
         || node.type === 'Bool'
+        || node.type === 'Any'
+        || node.type === 'Anonymous'
+        || node.type === 'Keyword'
       )
     ) {
       node.writeSyntax(printOptions);

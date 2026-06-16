@@ -3893,6 +3893,28 @@ Hotpath status:
 Interpretation: leash status only, not a speed claim. This is a
 sink-correctness and staging cleanup; two fixtures were unstable.
 
+### Call Token Argument Scalar Render Cut
+
+Date: 2026-06-15.
+
+Change: `Call.serializeRenderedArgsFrom(...)` now sends owned static token
+arguments (`Any`, `Anonymous`, `Keyword`) through the existing scalar
+`writeSyntax(...)` fast path when no trivia is active, matching the already
+direct numeric/color/bool contracts. `Call.writeEvaluatedSyntax(...)` also
+writes those token scalar contracts directly instead of calling
+`evalImmediateSync(...)` first.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `15.78ms` usable, `import-reference` median
+  `22.02ms` usable, `mixins-guards` median `17.10ms` usable,
+  `extend-chaining` median `5.59ms` usable, and `media` median `5.24ms`
+  unstable.
+
+Interpretation: leash status only, not a speed claim. This is a Call
+render/stringification staging cut; one fixture was unstable.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

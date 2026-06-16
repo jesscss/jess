@@ -966,6 +966,19 @@ describe('Call', () => {
     expect(writer.readbacks).toBe(1);
   });
 
+  it('renders token CSS call arguments without per-arg trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'var',
+      args: list([any('--brand'), any('red')])
+    });
+
+    expect(rule.render(context, { writer })).toBe('var(--brand, red)');
+    expect(writer.toString()).toBe('var(--brand, red)');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(1);
+  });
+
   it('resolves CSS calls without touching render state', async () => {
     const rule = call({
       name: 'rgb',
