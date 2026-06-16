@@ -200,6 +200,35 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-16 Rules Source Leaf Direct Syntax Cut
+
+Hypothesis: source-mode `Rules` leaf serialization should not call a leaf
+node's public `toTrimmedString(...)` when the node writes into the same writer
+and the returned string is discarded.
+
+Patch shape:
+
+- non-container leaf source output in `Rules._emitRulesBody(...)` calls
+  `writeSyntax(...)` directly;
+- render-mode leaf output, child `Rules`, and container indentation capture
+  remain unchanged;
+- a focused test proves a declaration leaf can serialize under `Rules` even
+  when its public `toTrimmedString(...)` is monkey-patched to throw.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `13.49ms` unstable, `import-reference`
+  median `18.42ms` usable, `mixins-guards` median `14.79ms` usable,
+  `extend-chaining` median `5.01ms` usable, and `media` median `4.41ms`
+  usable.
+
+Interpretation: source-body transport cut only. Do not claim a speed win; keep
+the `Rules` row open for body render, child `Rules` capture, container
+indentation capture, complex imports, trivia-backed leading comments,
+placement state, merge output, duplicate declaration materialization, and
+broader root serializer capture.
+
 ### 2026-06-16 Interpolated Scalar Whole-Selector Cut
 
 Hypothesis: whole-selector interpolation with an owned scalar token replacement

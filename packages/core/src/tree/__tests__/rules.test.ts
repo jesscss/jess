@@ -560,6 +560,16 @@ describe('Rules', () => {
     expect(writer.wholeBufferReads).toBeLessThanOrEqual(declarations.length + 4);
   });
 
+  it('writes source leaf rules through direct syntax instead of public string transport', () => {
+    const declaration = decl({ name: 'color', value: any('red') });
+    declaration.toTrimmedString = () => {
+      throw new Error('Rules source leaf output should use direct syntax');
+    };
+    const node = rules([declaration]);
+
+    expect(node.toString({ context })).toBe('color: red;\n');
+  });
+
   it('streams root charset and imports without capture scaffolding', () => {
     const writer = new WholeBufferCountingWriter();
     const charset = any('@charset "utf-8";', { role: 'charset' });

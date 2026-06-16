@@ -350,7 +350,9 @@ shape current before commit.
    direct `Comment` syntax instead of calling public
    `Comment.toTrimmedString(...)` on a detached writer, and the root serializer
    only allocates the leading-comment suppression list when it actually
-   suppresses comments. Complex root import and trivia-backed leading-comment
+   suppresses comments. Source-mode non-container leaf rules now write direct
+   syntax instead of calling public `toTrimmedString(...)` and discarding its
+   returned string. Complex root import and trivia-backed leading-comment
    stringification, body render, placement state, merge output, and duplicate
    declaration materialization remain open.
 7. [ ] Finish `Reference` public value materialization, rules-like surfaces,
@@ -523,34 +525,28 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `CompoundSelector`/`ComplexSelector` direct surface construction
-cut.
+Current pass: `Rules` source leaf direct syntax cut.
 
-- New traversal: none. Existing selector loops are unchanged.
-- New node/materialization: no extra node, wrapper, copy, inherit, adopt,
-  source/root metadata, or array materialization was added. Changed eval/resolve
-  compound/complex selector surfaces still materialize selector nodes, but now
-  do so with direct `new CompoundSelector(...)` and `new ComplexSelector(...)`
-  instead of generic `Reflect.construct(...)`.
-- Render path: no render behavior changed. This is an eval/resolve surface
-  construction cut for changed selector surfaces.
-- Helper/API surface: none added. Generic constructor dispatch was removed.
-- Metadata mutations: none added. Existing `.inherit(this)` remains the
-  materialized result ownership boundary.
+- New traversal: none. Existing rules-body loops are unchanged.
+- New node/materialization: none. No node, wrapper, copy, inherit, adopt,
+  source/root metadata, side state, or array materialization was added.
+- Render path: render mode is unchanged. The cut is source serialization only:
+  non-container leaf nodes in `Rules._emitRulesBody(...)` now write direct
+  syntax instead of calling public `toTrimmedString(...)` and discarding the
+  returned string.
+- Helper/API surface: none added.
+- Metadata mutations: none added. Existing print-state save/restore and
+  leaf-mark semicolon/source-map boundaries remain.
 - Error/control flow: no production error objects or throw/catch control flow
-  added. New throws are test-only monkey-patch proof. The new compound
-  component `TypeError` guards the existing `CompoundSelector` component
-  invariant before direct construction.
-- Rejected/deferred cut: compound/complex eval/resolve materialization arrays,
-  value-key classification, malformed repair, and broader metadata audits
-  remain open.
+  added. New throw is test-only monkey-patch proof.
+- Rejected/deferred cut: render-mode leaf capture, child `Rules` capture,
+  container indentation capture, complex root imports, trivia-backed leading
+  comments, placement state, merge output, and duplicate declaration
+  materialization remain open.
 - Evidence: focused red/green test
-  `derives resolved compound selector surfaces without generic construction`
-  failed when `CompoundSelector.withComponents(...)` called
-  `Reflect.construct(...)` and passed after direct construction. Focused
-  complex selector red/green proved the same for
-  `ComplexSelector.withComponents(...)`. Full `selector-compound.test.ts` and
-  `selector-complex.test.ts` passed.
-- Verdict: accepted as a bounded selector construction-surface cut. Keep both
-  tracker rows open for materialization arrays, value-key work, malformed
-  repair, and metadata audits.
+  `writes source leaf rules through direct syntax instead of public string
+  transport` failed before the cut when a declaration's public
+  `toTrimmedString(...)` was monkey-patched to throw, and passed after direct
+  `writeSyntax(...)`. Full `rules.test.ts` passed.
+- Verdict: accepted as a bounded `Rules` source-body transport cut. Keep the
+  `Rules` row open for the remaining render/root/materialization boundaries.
