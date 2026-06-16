@@ -339,7 +339,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     if (!valueOf) {
       let { name, op, value, mod } = this.value;
       /** Attributes are case-insensitive */
-      let keyStr = (typeof name === 'string' ? name : name.toTrimmedString()).toLowerCase();
+      let keyStr = (typeof name === 'string' ? name : String(name.valueOf())).toLowerCase();
       if (!op) {
         return `[${keyStr}]`;
       }

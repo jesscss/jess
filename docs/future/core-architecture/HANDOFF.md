@@ -363,7 +363,9 @@ shape current before commit.
    intermediate render text out of explicit writers and writes only the final
    wrapped string to the requested writer or buffer. `Quoted` escaped literal
    render now writes final raw text to explicit writers and keeps buffer output
-   out of those writers.
+   out of those writers. `AttributeSelector.valueOf()` now uses node value
+   semantics for node-valued names instead of public `toTrimmedString()`
+   transport.
 13. [ ] Finish `List`/`Sequence` public render string-return compatibility:
    either document it as the cold public boundary or split a direct buffer-only
    path that avoids returning a string when callers do not need it.
@@ -442,34 +444,31 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Quoted` escaped literal render sink fix.
+Current pass: `AttributeSelector.valueOf()` name stringification cut.
 
 - New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
   object/array scan, generator, or collection helper was added.
 - New node/materialization: none. No `new Node`, copy, `.inherit(...)`,
   `.adopt(...)`, wrapper `Rules`, frozen/source/parent metadata mutation, or
-  materialized array was added. The review-script node-construction matches are
-  test-only counting writer instances used to prove explicit writer sinks; no
-  production node/object construction was added for render.
-- Render path: `Quoted.renderResolvedQuotedValue(...)` now writes escaped
-  literal render output to an explicit writer when no render buffer is passed.
-  With a render buffer plus writer option, it writes only to the buffer. This
-  removes a split sink where return value was `hello` but the explicit writer
-  received nothing.
-- Helper/API surface: none added. The existing escaped literal render branch
-  was tightened in place; no new method or public API was added.
+  materialized array was added.
+- Render path: no render branch changed. This pass removes public source
+  stringification from the `AttributeSelector.valueOf()` comparison-key path:
+  node-valued attribute names now use `String(name.valueOf())` rather than
+  `name.toTrimmedString()`.
+- Helper/API surface: none added. The existing `valueOf()` key path was
+  tightened in place; no new method or public API was added.
 - Metadata mutations: none added. No parent/source/frozen/context metadata
   mutation, lazy options/context creation, `Reflect.*`, generic own-property
   helper, source restoration, or source/root read was added.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected/deferred cut: `Quoted` non-escaped node/interpolated render still
-  has localized fallback boundaries where child output can be complex. Those
-  are remaining queue-item 12 boundaries, not completed work.
-- Evidence: focused tests passed for `quoted` and `node-render-buffer`; core
+- Rejected/deferred cut: `AttributeSelector` render still has a localized
+  mark/getSince fallback for non-scalar names/values. That is a remaining
+  queue-item 12 boundary, not completed work.
+- Evidence: focused tests passed for `selector-attr` and `node-render-buffer`; core
   build passed; `verify:aggressive-cutting-review` passed; bounded
   `measure:less:hotpath` ran and is recorded in `PERFORMANCE-HANDOFF.md` as
   leash status only.
-- Verdict: accept as a bounded escaped-literal serialization sink fix. Keep the
+- Verdict: accept as a bounded public-stringification transport cut. Keep the
   active queue at 15 open whole-task items because queue item 12 is materially
   advanced but not complete.

@@ -3831,6 +3831,26 @@ Hotpath status:
 Interpretation: leash status only, not a speed claim. This is a
 sink-correctness and staging cleanup; two fixtures were unstable.
 
+### AttributeSelector ValueOf Name Stringification Cut
+
+Date: 2026-06-15.
+
+Change: `AttributeSelector.valueOf()` now builds comparison keys for
+node-valued names from `String(name.valueOf())` instead of public
+`name.toTrimmedString()` source rendering. This removes public stringification
+transport from the attribute key path without changing render behavior.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `14.93ms` usable, `import-reference` median
+  `24.12ms` unstable, `mixins-guards` median `18.28ms` usable,
+  `extend-chaining` median `6.20ms` usable, and `media` median `6.40ms`
+  unstable.
+
+Interpretation: leash status only, not a speed claim. This is a public
+stringification transport cut; two fixtures were unstable.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

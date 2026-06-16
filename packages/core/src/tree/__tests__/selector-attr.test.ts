@@ -78,6 +78,20 @@ describe('Attribute Selector', () => {
       expect(rule1.valueOf()).toBe(rule2.valueOf());
     });
 
+    test('builds valueOf keys without public name stringification', () => {
+      const name = any('DATA');
+      name.toTrimmedString = () => {
+        return 'SHOULD-NOT-USE';
+      };
+      const rule = attr({
+        name,
+        op: '=',
+        value: any('bar')
+      });
+
+      expect(rule.valueOf()).toBe('[data="bar"]');
+    });
+
     test('writes scalar non-bare attribute selector syntax without writer readback', () => {
       const anyWriter = new CountingWriter();
       const quotedWriter = new CountingWriter();
