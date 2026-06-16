@@ -4263,6 +4263,27 @@ trivia-backed leading comments, placement state, merge output, duplicate
 declaration materialization, and broader root serializer capture. Two fixtures
 were unstable and one was noisy.
 
+### AtRule Layer Name Value Identity Cut
+
+Date: 2026-06-16.
+
+Change: nested `@layer` body registration now reads at-rule name identity with
+`valueOf()` while walking active parent layer records instead of calling public
+name `toTrimmedString(...)`/`toString(...)` fallbacks.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `15.92ms` unstable, `import-reference` median
+  `30.61ms` unstable, `mixins-guards` median `19.53ms` usable,
+  `extend-chaining` median `6.65ms` usable, and `media` median `6.94ms`
+  unstable.
+
+Interpretation: eval-side string-transport cut only. Do not claim a speed win;
+keep the `AtRule` row open for body-state staging, non-scalar header/leaf
+capture boundaries, and custom/import/render branch ladders. Three fixtures
+were unstable.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

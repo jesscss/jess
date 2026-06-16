@@ -469,6 +469,47 @@ describe('AtRule', () => {
     expect(nestedLayer.value.rules).toBe(nestedBody);
   });
 
+  it('registers nested layer names without public name stringification', async () => {
+    const nestedBody = rules([
+      ruleset({
+        selector: el('.inner'),
+        rules: rules([decl({ name: 'color', value: any('red') })])
+      })
+    ]);
+    const nestedName = any('@layer', { role: 'atkeyword' });
+    nestedName.toTrimmedString = () => {
+      throw new Error('nested layer name should use value identity');
+    };
+    const nestedLayer = atrule({
+      name: nestedName,
+      prelude: any('child'),
+      rules: nestedBody
+    });
+    const outerBody = rules([nestedLayer]);
+    const outerName = any('@layer', { role: 'atkeyword' });
+    outerName.toTrimmedString = () => {
+      throw new Error('parent layer name should use value identity');
+    };
+    const outerLayer = atrule({
+      name: outerName,
+      prelude: any('parent'),
+      rules: outerBody
+    });
+    const registeredLayers: Array<string | undefined> = [];
+    const originalRegisterRoot = context.extendRoots.registerRoot.bind(context.extendRoots);
+    context.extendRoots.registerRoot = function registerRootWithLayerCapture(
+      ...args: Parameters<typeof originalRegisterRoot>
+    ): ReturnType<typeof originalRegisterRoot> {
+      registeredLayers.push(args[2]?.layerName);
+      return originalRegisterRoot(...args);
+    };
+
+    await Promise.resolve(rules([outerLayer]).render(context));
+
+    expect(registeredLayers).toContain('parent');
+    expect(registeredLayers).toContain('parent.child');
+  });
+
   it('registers async nested layer names from invocation records without mutating source children', async () => {
     const nestedPrelude = any('child');
     nestedPrelude.addFlag(F_MAY_ASYNC);

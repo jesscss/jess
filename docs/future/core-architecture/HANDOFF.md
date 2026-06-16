@@ -325,7 +325,9 @@ shape current before commit.
    Current partial status: dynamic leaf rendering no longer calls child
    public `toString(...)` from `renderLeafNodeToString(...)`; it writes child
    syntax directly and keeps the existing localized mark only for the needed
-   string boundary.
+   string boundary. Nested `@layer` registration now reads at-rule name value
+   identity directly instead of calling public name stringification while
+   walking active parent layer records.
 4. [ ] Finish `Ruleset.getHeaderString(...)` capture removal for frame
    render/comparison paths and same-property duplicate declaration pre-render.
 5. [ ] Finish `Declaration` custom-property raw-source, merge-state, internal
@@ -521,34 +523,26 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Rules` root leading-comment direct syntax and suppression-array
-cut.
+Current pass: `AtRule` layer-name value identity cut.
 
-- New traversal: no new loop, recursion, parent/source walk, side-map lookup,
-  generator, or collection helper. The leading-comment restoration loop already
-  existed; it is now skipped entirely when no comments were suppressed.
-- New node/materialization: no node, wrapper, copy, inherit, adopt, or
-  source/root metadata was added. The existing leading-comment suppression
-  record array is now allocated lazily only when at least one comment is
-  suppressed, instead of on every `Rules.toString(...)` call.
-- Render path: plain no-trivia leading comments before root hoisted imports now
-  emit `node.writeSyntax(options)` directly instead of
-  `printDetached(...node.toTrimmedString...)`. Trivia-backed comments remain on
-  the detached stringification boundary.
-- Helper/API surface: one local predicate,
-  `canWriteRootLeadingCommentSyntaxDirectly(...)`, guards only the already
-  direct no-trivia comment case and keeps complex comments on the old path.
-- Metadata mutations: none added. The new source-root read only keeps
-  source-trivia-backed comments on the existing detached path; existing
-  visible-comment suppression/restoral around top imports is unchanged.
+- New traversal: none. The existing active at-rule record walk is unchanged.
+- New node/materialization: none. No node, wrapper, copy, inherit, adopt,
+  source/root metadata, or array/object materialization was added.
+- Render path: nested `@layer` body evaluation now reads at-rule names through
+  `valueOf()` identity instead of public `toTrimmedString(...)`/`toString(...)`
+  fallbacks. Prelude text remains on the existing `valueOf()`-first layer-name
+  path.
+- Helper/API surface: none added.
+- Metadata mutations: none added.
 - Error/control flow: no production error objects or throw/catch control flow
   added. The new throw is test-only monkey-patch proof.
-- Rejected/deferred cut: root body serialization, complex/trivia-backed leading
-  comments, complex imports, placement state, merge output, and duplicate
-  declaration materialization remain open.
+- Rejected/deferred cut: `AtRule` body-state staging, non-scalar header/leaf
+  capture boundaries, custom/import/render branch ladders, and prelude
+  stringification boundaries remain open.
 - Evidence: focused red/green test
-  `streams root charset and imports without capture scaffolding` failed when
-  leading `Comment.toTrimmedString(...)` threw before the cut and passed after.
-  Full `rules.test.ts` passed.
-- Verdict: accepted as a bounded `Rules` root serializer cut. Keep item 6 open
-  for the remaining root/body serializer and materialization boundaries.
+  `registers nested layer names without public name stringification` failed
+  when the active parent layer name called public `toTrimmedString(...)` and
+  passed after the value-identity cut. Full `at-rule.test.ts` passed.
+- Verdict: accepted as a bounded `AtRule` eval-side string-transport cut. Keep
+  item 3 open for the remaining body-state and non-scalar serializer
+  boundaries.

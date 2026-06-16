@@ -986,7 +986,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     context: Context,
     evaluatedPrelude?: Node
   ): string | undefined {
-    const atRuleName = node.value.name?.toTrimmedString?.() ?? node.value.name?.toString?.() ?? '';
+    const atRuleName = String(node.value.name.valueOf());
     const prelude = evaluatedPrelude ?? node.value.prelude;
     if (atRuleName === '@layer' && prelude) {
       const preludeStr = String(prelude.valueOf?.() ?? prelude.toTrimmedString?.() ?? prelude.toString?.() ?? '');
@@ -997,7 +997,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           for (let i = activeRecords.length - 1; i >= 0; i--) {
             const record = activeRecords[i]!;
             const frame = record.source;
-            if (frame === node || frame.value.name?.toTrimmedString?.() !== '@layer') {
+            if (frame === node || String(frame.value.name.valueOf()) !== '@layer') {
               continue;
             }
             const children = frame.value.rules?.value;
