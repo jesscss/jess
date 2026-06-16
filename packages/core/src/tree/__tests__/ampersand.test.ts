@@ -501,6 +501,76 @@ describe('Ampersand', () => {
     expect(sourceChildren.map(child => child.parent)).toEqual(sourceChildren.map(() => sourceSelector));
   });
 
+  it('merges selector-list templates without public selector string transport', async () => {
+    const sourceSelector = sellist([
+      sel([el('.one'), co('>'), el('.child')]),
+      sel([el('.two'), co(' '), el('.child')])
+    ]);
+    const sourceChildren = [...sourceSelector.value];
+    let sourceListStringCalls = 0;
+    let childStringCalls = 0;
+    const originalSourceToTrimmedString = sourceSelector.toTrimmedString;
+    sourceSelector.toTrimmedString = function countSourceListStringTransport(
+      ...args: Parameters<typeof originalSourceToTrimmedString>
+    ): ReturnType<typeof originalSourceToTrimmedString> {
+      sourceListStringCalls++;
+      return originalSourceToTrimmedString.apply(this, args);
+    };
+    const originalChildToTrimmedString = sourceChildren[0]!.toTrimmedString;
+    sourceChildren[0]!.toTrimmedString = function countChildStringTransport(
+      ...args: Parameters<typeof originalChildToTrimmedString>
+    ): ReturnType<typeof originalChildToTrimmedString> {
+      childStringCalls++;
+      return originalChildToTrimmedString.apply(this, args);
+    };
+    const frame = ruleset({
+      selector: sourceSelector,
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+
+    try {
+      const resolved = await amp(':where(&)').resolve(context);
+
+      expect(sourceListStringCalls).toBe(0);
+      expect(childStringCalls).toBe(0);
+      expect(resolved.toTrimmedString()).toBe(':where(.one > .child),\n:where(.two .child)');
+      expect(frame.value.selector).toBe(sourceSelector);
+      expect(sourceSelector.value).toEqual(sourceChildren);
+    } finally {
+      sourceSelector.toTrimmedString = originalSourceToTrimmedString;
+      sourceChildren[0]!.toTrimmedString = originalChildToTrimmedString;
+    }
+  });
+
+  it('merges compound suffix templates without public selector string transport', async () => {
+    const sourceSelector = compound([el('.button'), el('.primary')]);
+    let sourceStringCalls = 0;
+    const originalToTrimmedString = sourceSelector.toTrimmedString;
+    sourceSelector.toTrimmedString = function countCompoundStringTransport(
+      ...args: Parameters<typeof originalToTrimmedString>
+    ): ReturnType<typeof originalToTrimmedString> {
+      sourceStringCalls++;
+      return originalToTrimmedString.apply(this, args);
+    };
+    const frame = ruleset({
+      selector: sourceSelector,
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+
+    try {
+      const resolved = await amp('&-active').resolve(context);
+
+      expect(sourceStringCalls).toBe(0);
+      expect(resolved.toTrimmedString()).toBe('.button.primary-active');
+      expect(frame.value.selector).toBe(sourceSelector);
+      expect(sourceSelector.toTrimmedString()).toBe('.button.primary');
+    } finally {
+      sourceSelector.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
   it('should validate each item individually when distributing template', async () => {
     // .one starts with '.' and '-' before '&' is ident — invalid head join per item
     const node = rules([

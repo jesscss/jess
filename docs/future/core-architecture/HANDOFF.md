@@ -561,30 +561,35 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Rules root import/comment detached syntax fallback.
+Current pass: Ampersand selector-template replacement transport.
 
-- New traversal: none. The existing root import and leading-comment loops are
-  unchanged.
-- New node/materialization: none. The fallback still allocates a detached
-  `OutputWriter`, but it now writes node syntax directly instead of calling
-  public `toString(...)`/`toTrimmedString(...)` as transport. That detached
-  writer remains a root-normalization boundary for indentation/trivia before
-  adding normalized text to the root writer. The added
-  `WholeBufferCountingWriter` construction and `Error` throws are test-only
-  guards proving the fallback does not call public string APIs; they are not
-  production materialization or routine control flow.
-- Render path: no render path was added. This pass only changes root source
-  serialization for hoisted imports and leading comments.
-- Helper/API surface: `printDetached(...)` was replaced with private
-  `writeSyntaxDetached(...)`. No public API was added; the helper removes the
-  public string-return callback path it replaces.
-- Metadata mutations: none added. Existing `context.topImports`,
-  `context.charsetEmitted`, and temporary import-prelude evaluation behavior are
-  unchanged.
-- Evidence: focused Rules tests prove no-trivia and trivia-backed root
-  import/comment output avoids public string methods and preserves expected
-  output. `rules-streaming.test.ts` still proves no capture/preview scaffolding
-  for the adjacent source streaming path.
-- Verdict: accepted as a bounded root serializer transport cut. No performance
-  claim; performance remains shelved because this was not a measured benchmark
-  pass.
+- New traversal: none. Existing selector-list and complex/compound selector
+  loops remain the same; the pass moves non-BasicSelector template replacement
+  onto those structural paths instead of flattening them through public string
+  APIs.
+- New node/materialization: existing replacement `BasicSelector` and
+  `SelectorList` materialization remains the semantic output of ampersand
+  template merging. Test-only monkeypatch counters on `toTrimmedString(...)`
+  prove public string transport is not used for the new structural paths. The
+  test-only `rules([])` fixtures provide an empty frame for resolving
+  ampersands and are not production materialization.
+- Render path: no render path was added. This pass affects ampersand
+  resolve/template placement before selector output.
+- Helper/API surface: private `selectorTemplateReplacementText(...)` and
+  `mergeAmpersandTemplateText(...)` were added. They replace public selector
+  `toTrimmedString(...)` transport for non-BasicSelector replacements and make
+  the raw string fallback explicit. No public API was added.
+- Metadata mutations: no new parent/source restoration or option mutation was
+  added. Returned selectors still inherit from the existing semantic source
+  selector or template source as before. The test-only `try/finally` blocks
+  restore monkeypatched methods after instrumentation; they are not production
+  control flow. The tracker row repeats existing direct-source-writer status
+  and is documentation, not a new generic defensive read.
+- Evidence: focused Ampersand tests prove selector-list templates and compound
+  suffix templates avoid public selector string transport while preserving
+  output and source selector ownership. Existing template distribution and
+  validation tests were run as guards.
+- Verdict: accepted as a bounded structural template-placement cut. Raw
+  BasicSelector comma splitting and raw string assembly remain open. No
+  performance claim; performance remains shelved because this was not a
+  measured benchmark pass.

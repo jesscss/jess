@@ -175,6 +175,17 @@ function throwCannotAppendSelector(appendValue: string): never {
   throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
 }
 
+function selectorTemplateReplacementText(selector: Selector): string {
+  const options = getPrintOptions();
+  const mark = options.writer.mark();
+  selector.writeSyntax(options);
+  return options.writer.getSince(mark);
+}
+
+function mergeAmpersandTemplateText(template: string, replacement: string): string {
+  return template.replaceAll('&', replacement);
+}
+
 function mergeAmpersandTemplateItem(
   item: Selector,
   inheritSource: Selector,
@@ -182,26 +193,17 @@ function mergeAmpersandTemplateItem(
   templateMerge: boolean,
   singleLeadingSuffix: string | undefined
 ): Selector {
-  const value = item.toTrimmedString();
-  assertValidAmpersandTemplateJoin(appendValue, value);
   if (singleLeadingSuffix) {
     const result = appendSelector(item, singleLeadingSuffix);
     if (result.appended) {
       return result.selector;
     }
   }
+  const value = selectorTemplateReplacementText(item);
+  assertValidAmpersandTemplateJoin(appendValue, value);
   let mergedText = appendValue;
   if (templateMerge) {
-    let out = '';
-    let start = 0;
-    let next = appendValue.indexOf('&');
-    while (next !== -1) {
-      out += appendValue.slice(start, next);
-      out += value;
-      start = next + 1;
-      next = appendValue.indexOf('&', start);
-    }
-    mergedText = out + appendValue.slice(start);
+    mergedText = mergeAmpersandTemplateText(appendValue, value);
   }
   return new BasicSelector(mergedText).inherit(inheritSource);
 }
@@ -232,6 +234,16 @@ function mergeAmpersandTemplateSelector(
 
   if (isNode(baseSelector, N.SelectorList)) {
     return mergeAmpersandTemplateSelectorList(baseSelector, placement);
+  }
+
+  if (!(baseSelector instanceof BasicSelector)) {
+    return mergeAmpersandTemplateItem(
+      baseSelector,
+      baseSelector,
+      appendValue,
+      templateMerge,
+      singleLeadingSuffix
+    );
   }
 
   const selectorStr = baseSelector.toTrimmedString();
