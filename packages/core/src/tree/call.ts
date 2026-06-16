@@ -1086,9 +1086,22 @@ export class Call extends Node<CallValue, CallOptions> {
     const values = args.value;
     for (let i = 0; i < values.length; i++) {
       const arg = values[i]!;
+      if (arg.sourceRoot?._treeContext?.opts?.trivia) {
+        return false;
+      }
       if (
-        arg.sourceRoot?._treeContext?.opts?.trivia
-        || !(
+        arg.type === 'Any'
+        || arg.type === 'Anonymous'
+        || arg.type === 'Keyword'
+      ) {
+        const value = arg.value;
+        if (typeof value !== 'string' || value !== value.trim()) {
+          return false;
+        }
+        continue;
+      }
+      if (
+        !(
           arg.type === 'Num'
           || arg.type === 'Dimension'
           || arg.type === 'Color'

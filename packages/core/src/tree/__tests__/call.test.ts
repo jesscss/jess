@@ -165,6 +165,19 @@ describe('Call', () => {
     expect(writer.readbacks).toBe(1);
   });
 
+  it('serializes token CSS call arguments without source arg-list trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'var',
+      args: list([any('--brand'), any('red')])
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('var(--brand, red)');
+    expect(writer.toString()).toBe('var(--brand, red)');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(1);
+  });
+
   it('serializes empty CSS calls without writer readback scaffolding', () => {
     const writer = new CountingWriter();
     const rule = call({ name: 'button' });

@@ -312,10 +312,12 @@ shape current before commit.
    `List`; finalized empty string-name fallback calls write the known
    `name()`/important text directly without opening a call-level mark/readback;
    source syntax for no-trivia numeric/bool/color comma arg lists writes args
-   directly without the inner trim mark/readback; plain/finalized call render
-   now carries a string-only text state for known scalar/no-trivia args and
-   content, including async scalar resolutions, so those paths return known
-   text without whole-call writer readback.
+   directly without the inner trim mark/readback; trim-stable token args
+   (`Any`/`Anonymous`/`Keyword`) now use that same simple source-arg writer and
+   skip the inner arg-list trim mark when no trivia is active; plain/finalized
+   call render now carries a string-only text state for known scalar/no-trivia
+   args and content, including async scalar resolutions, so those paths return
+   known text without whole-call writer readback.
 2. [ ] Finish `QueryCondition` dynamic render by removing the child mark probe
    only after child render contracts prove write-vs-return behavior directly.
 
@@ -611,29 +613,29 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: base Node source render direct path.
+Current pass: Call token source-arg trim mark cut.
 
-- New traversal: none. The change adds no loop, recursion, side-map lookup,
-  parent/source walk, object scan, or array allocation.
+- New traversal: none. The existing source-arg eligibility loop now accepts
+  trim-stable token args; no new loop, recursion, side-map lookup, parent/source
+  walk, object scan, or array allocation was added.
 - New node/materialization: none. No `Node`, copy, inherit, wrapper,
-  materialized array, or ownership mutation was added. The focused test defines
-  local test-only subclasses to prove inherited and custom boundaries.
-- Render path: inherited no-trivia `Node.renderSource(...)` now writes source
-  syntax directly with `writeSyntax(...)` and reads back the same writer slice
-  that the public string-return API requires. It does not call public
-  `toTrimmedString(...)` on the hot inherited source path. Custom
-  `toTrimmedString(...)` overrides and active source-trivia rendering stay on
-  the compatibility/source-preservation boundary.
-- Helper/API surface: no helper or public API was added.
+  materialized array, or ownership mutation was added. The focused test
+  constructs a `CountingWriter` only to prove the inner arg-list mark/readback
+  is gone.
+- Render path: source stringification for CSS calls with comma-separated
+  trim-stable token args now uses `writeSimpleSourceArgs(...)` instead of
+  opening the inner arg-list mark/readback boundary. Whitespace-bearing,
+  non-token, and trivia-backed args stay on the existing conservative path.
+- Helper/API surface: no helper or public API was added. The existing helper's
+  scalar contract was widened to cover token args that preserve the same text.
 - Metadata mutations: none. No parent/source/frozen/location/options/context
-  mutation was added. The `sourceRoot` read preserves the existing source-trivia
-  boundary; inherited direct render is used only when no explicit or source-root
-  trivia is active.
-- Evidence: focused base Node render and render-buffer tests pass. The new
-  focused test monkey-patches base `Node.prototype.toTrimmedString(...)` to
-  throw and proves inherited render still writes string and buffer output
-  directly, while a custom override still routes through the compatibility
-  boundary.
-- Verdict: accepted as the base `Node` render fallback completion. No
-  performance claim; performance remains shelved because this was not a measured
-  benchmark pass.
+  mutation was added. Existing source-root trivia checks remain in place so the
+  simple source-arg writer is still disabled for trivia-backed args.
+- Evidence: focused Call tests pass, including a new `var(--brand, red)` source
+  serialization fixture proving only the outer public string-return mark remains
+  for trim-stable token args. Core build and lint pass for the touched files.
+- Verdict: accepted as a bounded source stringification trim-mark deletion.
+  Broader Call callable output, evalArg copy pressure, custom/trivia arg
+  boundaries, async ladders, and repeated eval remain open. No performance
+  claim; performance remains shelved because this was not a measured benchmark
+  pass.
