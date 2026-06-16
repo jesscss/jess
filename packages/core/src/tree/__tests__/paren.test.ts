@@ -216,6 +216,21 @@ describe('Paren', () => {
     expect(writer.reads).toBe(0);
   });
 
+  it('streams resolved wrapped child output into render buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: list([num(1), num(2)])
+      })
+    ]);
+    await evalRoot(node, context);
+    const buffer = createRenderBuffer('flat');
+
+    expect(paren(ref({ key: 'value' }, { type: 'variable' })).render(context, buffer))
+      .toBe('(1, 2)');
+    expect(buffer.parts).toEqual(['(', '1, 2', ')']);
+  });
+
   it('renders empty paren syntax without writer readback', () => {
     const writer = new CountingWriter();
     const buffer = createRenderBuffer('flat');

@@ -518,7 +518,10 @@ shape current before commit.
    intermediate render text out of explicit writers and writes only the final
    wrapped string to the requested writer or buffer. Resolved no-trivia `Any`
    paren values now write known wrapper text directly instead of rendering the
-   scalar child to intermediate text. `Quoted` escaped literal render now
+   scalar child to intermediate text. Resolved synchronous non-scalar paren
+   children now stream flat-buffer output as open delimiter, child output, and
+   close delimiter instead of rendering the child to a standalone string and
+   writing the wrapped result back. `Quoted` escaped literal render now
    writes final raw text to explicit writers and keeps buffer output out of
    those writers. `Quoted.compare()` now uses value semantics instead of
    public `toString()` transport. `AttributeSelector.valueOf()` now uses node
@@ -628,29 +631,25 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Mixin interpolated-name registration ownership.
+Current pass: Paren resolved flat-buffer child streaming.
 
 - New traversal: none. The change adds no loop, recursion, side-map lookup,
   parent/source walk, object scan, or array allocation.
-- New node/materialization: the existing derived `Mixin` wrapper remains the
-  semantic registration-prep boundary. It now receives the evaluated `Any` name
-  directly instead of first copying the interpolated name subtree and then
-  adopting/replacing the evaluated name.
-- Render path: none. This is registration/callable lookup preparation only; no
-  render path now materializes nodes just to stringify.
-- Helper/API surface: `_prepareMixinNameIdentity(...)` was deleted. The existing
-  `deriveMixin(...)` helper accepts an optional prepared name so one wrapper
-  construction owns final state directly.
-- Metadata mutations: no new runtime metadata mutation. The rejected child reuse
-  cut would have reparented canonical rules/params/guard because `Mixin`
-  construction adopts children; it was left untouched.
-- Evidence: focused Mixin tests, eslint on touched source and test files,
-  scoped `git diff --check`, `@jesscss/core` build, and
+- New node/materialization: none. No `Node`, copy, inherit, wrapper,
+  materialized array, or ownership mutation was added.
+- Render path: resolved synchronous non-scalar `Paren` children now stream to
+  flat buffers as delimiter, child render output, delimiter. Async-capable and
+  segmented-buffer cases stay on the existing wrapped-string boundary.
+- Helper/API surface: no helper or public API was added.
+- Metadata mutations: none. No parent/source/frozen/location/options/context
+  mutation was added.
+- Evidence: focused Paren and render-buffer tests, eslint on touched source and
+  test files, scoped `git diff --check`, `@jesscss/core` build, and
   `verify:aggressive-cutting-review` all pass in the parent worktree.
 - Review noise: `verify:aggressive-cutting-review` may report unrelated dirty
-  worktree tokens. This slice's only notable test probe is
-  `Interpolated.prototype.copy` wrapping to prove the name subtree is not copied.
-- Verdict: accepted as a bounded partial cut if final gates pass. Broader
-  guard/default/body copy interactions and callable output remain open. No
-  performance claim; performance remains shelved because this was not a
-  measured benchmark pass.
+  worktree tokens. This slice should add no new danger-token categories beyond
+  render-buffer writes.
+- Verdict: accepted as a bounded scalar-wrapper cut if final gates pass. Paren
+  escaped semicolon-list rendering and public string wrappers remain documented
+  boundaries. No performance claim; performance remains shelved because this
+  was not a measured benchmark pass.

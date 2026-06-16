@@ -273,12 +273,24 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       return this.renderOutput(context, this, bufferOrOptions, options);
     }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const open = this._options?.delimiter === 'square' ? '[' : '(';
+    const close = this._options?.delimiter === 'square' ? ']' : ')';
+    if (buffer?.kind === 'flat' && !value.hasFlag(F_MAY_ASYNC)) {
+      writeRenderText(buffer, open);
+      const rendered = value.render(context, buffer, options);
+      if (isThenable(rendered)) {
+        return rendered.then((out) => {
+          writeRenderText(buffer, close);
+          return open + out + close;
+        });
+      }
+      writeRenderText(buffer, close);
+      return open + rendered + close;
+    }
     const renderOptions = buffer
       ? options?.writer ? undefined : options
       : bufferOrOptions?.writer ? undefined : bufferOrOptions;
     const rendered = value.render(context, renderOptions);
-    const open = this._options?.delimiter === 'square' ? '[' : '(';
-    const close = this._options?.delimiter === 'square' ? ']' : ')';
     const wrapped = isThenable(rendered)
       ? rendered.then(out => `${open}${out}${close}`)
       : `${open}${rendered}${close}`;
