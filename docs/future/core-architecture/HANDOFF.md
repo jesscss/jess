@@ -365,8 +365,10 @@ shape current before commit.
    `finally`, and the focused Ruleset test asserts the caller writer receives
    no mark/readback/restore traffic. Duplicate declaration caches and the
    reverse same-property pre-render pass now allocate/run only after the first
-   scan proves at least one declaration property repeats. Deeper selector
-   composition, body prep, wrappers, and render branches remain open.
+   scan proves at least one declaration property repeats. Registration now
+   calls `selector.eval(context)` directly instead of routing through a
+   private one-line selector identity helper. Deeper selector composition, body
+   prep, wrappers, and render branches remain open.
 5. [ ] Finish `Declaration` custom-property raw-source, merge-state, internal
    mark/replace, and materialization boundaries.
 
@@ -387,7 +389,9 @@ shape current before commit.
    `declValueTrimmedString(...)` mark/readback helper. Render-assignment and
    custom-interpolated replacement chains now call `.then(...)` directly after
    `isThenable(...)` narrowing instead of wrapping already-thenable values with
-   `Promise.resolve(...)`.
+   `Promise.resolve(...)`. Render-assignment merge adapter state no longer
+   carries the unused stale `value` field; the selected render value remains on
+   the outer declaration render state.
 6. [ ] Finish `Rules` root/body render, imports, placement state, merge output,
    and duplicate declaration materialization.
 
@@ -615,26 +619,34 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Url quoted scalar flat-buffer direct text.
+Current pass: Declaration merge-state and Ruleset selector identity cleanup.
 
 - New traversal: none. The change adds no loop, recursion, side-map lookup,
   parent/source walk, object scan, or array allocation.
-- New node/materialization: none. No `Node`, copy, inherit, wrapper,
-  materialized array, or ownership mutation was added.
-- Render path: simple non-escaped `Quoted` URL values now use the direct
-  flat-buffer text path, so `url(quoted(...)).render(context, flatBuffer)` skips
-  prepared writer setup, writer mark/readback, and `writePreparedRenderText(...)`
-  for that case. Non-buffer quoted rendering, escaped/interpolated/trivia cases,
-  and non-scalar normalization stay on existing boundaries.
-- Helper/API surface: no helper or public API was added. The existing
-  `directUrlText(...)` private helper is narrowed by an explicit buffer-only
-  `includeQuoted` gate.
-- Metadata mutations: none. No parent/source/frozen/location/options/context
-  mutation was added.
-- Evidence: focused Url and render-buffer tests pass. The new URL fixture proves
-  a quoted scalar URL writes one flat-buffer part and leaves
-  `context.printState.writer` unset.
-- Verdict: accepted as a bounded scalar-wrapper flat-buffer cut. Broader scalar
-  wrapper leftovers and URL normalization boundaries remain open. No performance
-  claim; performance remains shelved because this was not a measured benchmark
-  pass.
+- New node/materialization: no runtime node/materialization changes. The
+  focused Declaration test has one failure branch that throws `TypeError` if the
+  private method probe is not callable; that is test assertion failure, not
+  routine eval/render control flow.
+- Render path: Declaration render-assignment state now omits an unused
+  `mergeAdapter.value` field. The actual selected render value remains on the
+  outer render state and focused tests prove merged output is unchanged.
+  Ruleset registration calls `selector.eval(context)` directly instead of
+  passing through a private forwarding helper.
+- Helper/API surface: `_prepareRulesetSelectorIdentity(...)` was deleted and
+  no helper or public API was added. Declaration state shape was narrowed by
+  deleting an unused field.
+- Metadata mutations: no runtime metadata mutations. The focused Declaration
+  test uses `Reflect.get/set` to wrap a private method and observe the render
+  state shape without weakening TypeScript invariants; it is test-only and not
+  on any eval/render path.
+- Evidence: focused Declaration/Ruleset/nesting tests, eslint on touched source
+  and test files, scoped `git diff --check`, `@jesscss/core` build, and
+  `verify:aggressive-cutting-review` all pass in the parent worktree.
+- Review noise: `pnpm run verify:aggressive-cutting-review` also reports
+  danger tokens from unrelated pre-existing dirty worktree files (JS module
+  scripts/docs, AtRule/Interpolated worker edits, and other uncommitted areas).
+  Those are outside this scoped commit and were not staged here.
+- Verdict: accepted as a bounded partial cut only. `Declaration` merge/raw-source
+  boundaries and deeper `Ruleset` render/composition work remain open. No
+  performance claim; performance remains shelved because this was not a
+  measured benchmark pass.

@@ -978,6 +978,51 @@ describe('Declaration', () => {
     expect(node.value.value.parent).toBe(node);
   });
 
+  it('renders assignment merge adapter state without stale value transport', async () => {
+    const root = rules([
+      decl({
+        name: any('background-color'),
+        value: any('red')
+      }, { assign: '+:' })
+    ]);
+    await root.prepareRegistration(context);
+    context.root = root;
+    context.rulesContext = root;
+    const node = decl({
+      name: any('background-color'),
+      value: any('blue')
+    }, { assign: '+:' });
+    type WriteDeclarationValueSyntax = (
+      valueParts: unknown,
+      options: unknown,
+      renderState?: { mergeAdapter?: Record<string, unknown> }
+    ) => unknown;
+    const originalWriteDeclarationValueSyntax: unknown = Reflect.get(node, 'writeDeclarationValueSyntax');
+    const isWriteDeclarationValueSyntax = (value: unknown): value is WriteDeclarationValueSyntax => (
+      typeof value === 'function'
+    );
+    expect(isWriteDeclarationValueSyntax(originalWriteDeclarationValueSyntax)).toBe(true);
+    if (!isWriteDeclarationValueSyntax(originalWriteDeclarationValueSyntax)) {
+      throw new TypeError('Expected writeDeclarationValueSyntax to be callable');
+    }
+    let sawMergeAdapter = false;
+    Reflect.set(node, 'writeDeclarationValueSyntax', function countMergeAdapterState(
+      this: unknown,
+      valueParts: unknown,
+      options: unknown,
+      renderState?: { mergeAdapter?: Record<string, unknown> }
+    ) {
+      if (renderState?.mergeAdapter) {
+        sawMergeAdapter = true;
+        expect(renderState.mergeAdapter).not.toHaveProperty('value');
+      }
+      return originalWriteDeclarationValueSyntax.call(this, valueParts, options, renderState);
+    });
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('background-color: red, blue');
+    expect(sawMergeAdapter).toBe(true);
+  });
+
   it('keeps custom property assignment render state raw through buffers', async () => {
     const root = rules([
       decl({

@@ -889,7 +889,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           value,
           mergeAdapter: {
             kind: isList ? 'list' : 'space',
-            value,
             items: newValue
           },
           important: state.important,

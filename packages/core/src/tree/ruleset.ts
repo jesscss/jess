@@ -1353,14 +1353,10 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
      */
     // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins
     // Just evaluate the selector
-    const sel = this._prepareRulesetSelectorIdentity(selector, context);
+    const sel = selector.eval(context);
     return isThenable(sel)
       ? sel.then(resolved => this._finishRulesetSelectorPrep(node, resolved, context))
       : this._finishRulesetSelectorPrep(node, sel, context);
-  }
-
-  private _prepareRulesetSelectorIdentity(selector: Selector | Nil, context: Context): MaybePromise<Selector | Nil> {
-    return selector.eval(context);
   }
 
   private _setGuard(value: Condition | Nil | undefined): void {
