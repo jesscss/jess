@@ -307,7 +307,9 @@ shape current before commit.
    `writeEvaluatedSyntax(...)` also writes those same static scalar token
    contracts directly instead of calling `evalImmediateSync(...)`; the scalar
    check uses direct type tags rather than the generic `isNode(...)`
-   classifier.
+   classifier; stylesheet `Func` calls now pass the source arg list to the
+   callable binding surface instead of pre-evaluating a copied replacement
+   `List`.
 2. [ ] Finish `QueryCondition` dynamic render by removing the child mark probe
    only after child render contracts prove write-vs-return behavior directly.
 
@@ -476,35 +478,38 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Call` token CSS-argument scalar render cut.
+Current pass: `Call` stylesheet `Func` arg-surface cut.
 
-- New traversal: none. No loop, recursion, parent/source walk, side-map lookup,
-  object/array scan, generator, or collection helper was added.
-- New node/materialization: no production node/materialization. One
-  `new CountingWriter()` instance was added in a focused test only to prove
-  token CSS-call args no longer open per-arg trim marks. No `new Node`, copy,
-  `.inherit(...)`, `.adopt(...)`, wrapper `Rules`, frozen/source/parent
-  metadata mutation, or materialized array was added.
-- Render path: `Call.serializeRenderedArgsFrom(...)` now sends owned static
-  scalar token args (`Any`, `Anonymous`, `Keyword`) through the existing direct
-  `writeSyntax(...)` path when no trivia is active, matching the existing
-  numeric/color/bool scalar contracts. `Call.writeEvaluatedSyntax(...)` also
-  writes those scalar token contracts directly instead of paying
-  `evalImmediateSync(...)` before writing syntax.
-- Helper/API surface: none added. The existing scalar contract branches were
-  widened in place; no new helper, method, or public API was added.
+- New traversal: none. `packages/core/src/tree/call.ts` and
+  `packages/core/src/tree/function.ts` add no loop, recursion, parent/source
+  walk, side-map lookup, object/array scan, generator, or collection helper.
+- New node/materialization: production removes one `Call.evalArgNodes(...)`
+  replacement `List` path before stylesheet `Func.evalCall(...)`. It adds no
+  `new Node`, copy, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`,
+  frozen/source/parent metadata mutation, or materialized array. The test adds
+  `CountingSequence` only to prove the source arg surface reaches the callable
+  binding layer with one owned binding copy instead of two constructions.
+- Render path: dynamic render and eval/resolve paths for stylesheet
+  `Func` names now call `Func.evalCall(context, state.args)` /
+  `Func.evalCall(context, args)` directly. `Func.evalCall(...)` forwards
+  `args?.value` to `evaluateCallableCollection(...)`, preserving the existing
+  callable binding evaluator as the single eval/copy boundary.
+- Helper/API surface: no helper added. `Func.evalCall(...)` now accepts an
+  optional arg list and reuses one shared empty readonly arg array, replacing
+  the default `list([])` allocation.
 - Metadata mutations: none added. No parent/source/frozen/context metadata
   mutation, lazy options/context creation, `Reflect.*`, generic own-property
   helper, source restoration, or source/root read was added.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected/deferred cut: non-scalar/custom/trivia-backed call args still keep
-  localized trim mark windows. Callable output selection, `evalArgNodes(...)`
-  copy pressure, and async helper ladders remain in queue item 1.
-- Evidence: focused `call` and `node-render-buffer` tests passed; core build
-  passed; `verify:aggressive-cutting-review` passed with the test-only
-  `CountingWriter` probe prosecuted above; bounded `measure:less:hotpath` ran
-  and is recorded in `PERFORMANCE-HANDOFF.md` as leash status only.
-- Verdict: accept as a bounded Call render/stringification cut. Keep the
-  active queue at 15 open whole-task items because queue item 1 is materially
-  advanced but not complete.
+- Rejected/deferred cut: `Call.evalArgNodes(...)` remains for calc/finalized
+  CSS-call fallback materialization. Callable output selection,
+  non-scalar/custom/trivia arg trim marks, async helper ladders, and repeated
+  eval remain in queue item 1.
+- Evidence: focused red/green test
+  `passes stylesheet function args through the callable binding surface once`
+  failed at `2` constructed copies before the production cut and passed after.
+  Full `call` + `func` focused suites passed.
+- Verdict: accepted as a bounded Call/Func arg-surface machinery deletion.
+  Keep queue item 1 open because the remaining callable output, async, and
+  non-scalar arg boundaries are still real work.

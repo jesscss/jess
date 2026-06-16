@@ -462,6 +462,56 @@ describe('Call', () => {
     expect(rule.registrationPrepared).toBe(false);
   });
 
+  it('passes stylesheet function args through the callable binding surface once', async () => {
+    class CountingSequence extends Sequence {
+      static countConstructions = false;
+      static constructedCopies = 0;
+
+      constructor(...args: ConstructorParameters<typeof Sequence>) {
+        super(...args);
+        if (CountingSequence.countConstructions) {
+          CountingSequence.constructedCopies++;
+        }
+      }
+    }
+
+    const fnNode = fn({
+      name: any('inspect'),
+      params: list([
+        vardecl({ name: 'value', value: any('') })
+      ]),
+      body: rules([
+        decl({ name: 'return', value: ref('value', { type: 'variable' }) })
+      ])
+    });
+    const root = rules([fnNode]);
+    context.root = root;
+    context.rulesContext = root;
+    const name = any('source-name');
+    name.eval = function evalForFunctionName() {
+      return fnNode;
+    };
+    const originalArg = new CountingSequence([any('red'), dimension([10, 'px'])]);
+    const originalArgs = list([originalArg]);
+    const rule = call({
+      name,
+      args: originalArgs
+    });
+
+    CountingSequence.countConstructions = true;
+    try {
+      const result = await rule.eval(context);
+
+      expect(result.toTrimmedString()).toBe('red 10px');
+      expect(CountingSequence.constructedCopies).toBe(1);
+      expect(originalArg.parent).toBe(originalArgs);
+      expect(originalArgs.parent).toBe(rule);
+    } finally {
+      CountingSequence.countConstructions = false;
+      CountingSequence.constructedCopies = 0;
+    }
+  });
+
   it('renders dynamic mixin names without calling public eval state', async () => {
     const mixinDef = mixin({
       name: any('.theme'),

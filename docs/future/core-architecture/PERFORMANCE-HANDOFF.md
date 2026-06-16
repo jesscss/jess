@@ -200,6 +200,40 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-16 Call Stylesheet Func Arg Surface Cut
+
+Hypothesis: stylesheet `Func` calls should not pre-evaluate call args into a
+replacement `List` before handing them to the callable binding evaluator, which
+already owns arg evaluation and binding copies.
+
+Patch shape:
+
+- `Call.renderDynamicFunctionOutput(...)` and `Call.evalFromStateInFrame(...)`
+  pass source args directly to `Func.evalCall(...)`;
+- `Func.evalCall(...)` accepts an optional arg list and forwards
+  `args?.value` or a shared readonly empty arg array to
+  `evaluateCallableCollection(...)`;
+- a focused test proves a stylesheet function arg container is constructed once
+  for the callable binding surface instead of twice.
+
+Evidence:
+
+- focused red/green proof: `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/call.test.ts --run -t "passes stylesheet function args
+  through the callable binding surface once"` failed at `2` constructed copies
+  before the cut and passed after;
+- focused suites: `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/call.test.ts src/tree/__tests__/func.test.ts --run`
+  passed;
+- core build: `pnpm --filter @jesscss/core build` passed with the known
+  `src/tree/js-expr.ts` direct-eval warning;
+- hotpath leash: `pnpm run measure:less:hotpath -- --iterations 15 --warmup
+  5` passed. Results are tripwire-only, not a speed claim:
+  `functions.less` median 18.96ms noisy, `import-reference.less` median
+  24.49ms usable, `mixins-guards.less` median 18.61ms usable,
+  `extend-chaining.less` median 6.11ms usable, `media.less` median 6.35ms
+  unstable.
+
 ### 2026-06-15 QueryCondition Static Contract Probe Cut
 
 Hypothesis: `QueryCondition` static child render should not rediscover the

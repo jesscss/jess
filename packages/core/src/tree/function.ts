@@ -3,11 +3,13 @@ import { defineType, F_VISIBLE, Node, type LocationInfo } from './node.js';
 import type { Any, AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
 import { Rules } from './rules.js';
-import { type List, list } from './list.js';
+import type { List } from './list.js';
 import type { Declaration } from './declaration.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { callableRulesEntry } from './util/callable-entry.js';
 import { evaluateCallableCollection } from './util/callable-eval.js';
+
+const noFuncArgs: readonly Node[] = [];
 
 /**
  * Stylesheet-defined function with a return value.
@@ -87,7 +89,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
    * We intentionally reuse the mixin-call machinery for argument binding & scoped evaluation
    * to avoid duplicating complex param matching logic.
    */
-  async evalCall(context: Context, args: List<Node> = list([])): Promise<Node> {
+  async evalCall(context: Context, args?: List<Node>): Promise<Node> {
     const returnName = this._options?.returnName ?? 'return';
 
     const bodyRules = this.value.body;
@@ -101,7 +103,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
           this.index
         )
       ],
-      args: args.value
+      args: args?.value ?? noFuncArgs
     });
 
     if (!(evaluated instanceof Rules)) {

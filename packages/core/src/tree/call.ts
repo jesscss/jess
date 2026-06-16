@@ -822,8 +822,7 @@ export class Call extends Node<CallValue, CallOptions> {
           }
           return this.renderOutput(context, output, bufferOrOptions, options);
         } else if (isNode(evaluatedName, N.Func)) {
-          const argNodes = await this.evalArgNodes(context, state.args) ?? list([]);
-          const output = await evaluatedName.evalCall(context, argNodes);
+          const output = await evaluatedName.evalCall(context, state.args);
           return this.renderOutput(context, output, bufferOrOptions, options);
         } else if (isNode(evaluatedName, N.Rules | N.Collection)) {
           if (state.preservesRulesLikeVariableTarget) {
@@ -1132,8 +1131,7 @@ export class Call extends Node<CallValue, CallOptions> {
       // already a MixinCollection from Reference, use as-is
     } else if (isNode(n, N.Func)) {
       // Execute stylesheet-defined functions via their evalCall behavior.
-      const argNodes = await this.evalArgNodes(context, args) ?? list([]);
-      const result = await n.evalCall(context, argNodes);
+      const result = await n.evalCall(context, args);
       return result;
     } else if (isNode(n, N.Rules) || isNode(n, N.Collection)) {
       // PreserveRulesLike variable calls intentionally evaluate from the
