@@ -331,7 +331,11 @@ shape current before commit.
    identity directly instead of calling public name stringification while
    walking active parent layer records. `evalNode(...)` no longer wraps
    `evalBodyNode(...)` in a catch/rethrow or async rejection handler that only
-   rethrows.
+   rethrows. `getHeaderString(...)` now writes non-scalar header name/prelude
+   text into detached `OutputWriter` instances instead of using the caller
+   writer with `mark()/getSince()/restore()` rollback; trailing prelude
+   comment trivia still uses the caller writer because it intentionally
+   consumes caller trivia state.
 4. [ ] Finish `Ruleset.getHeaderString(...)` capture removal for frame
    render/comparison paths and same-property duplicate declaration pre-render.
 
@@ -548,30 +552,29 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Ruleset duplicate declaration cache laziness.
+Current pass: AtRule header writer isolation.
 
-- New traversal: none on the duplicate-property path. The existing first scan
-  over `rulesToRender` remains, and the existing reverse pre-render scan now
-  runs only when that first scan finds a repeated declaration property. The
-  no-duplicate path deletes the reverse scan entirely.
-- New node/materialization: none added. The existing duplicate-property path
-  still creates its comparison `OutputWriter`, emitted-trivia `Set`, output
-  cache `Map`, trivia cache `Map`, skip `Set`, and per-property value `Map`.
-  Those objects are now skipped when there are no duplicate declaration
-  properties.
-- Render path: non-duplicate declaration rendering now falls through to the
-  ordinary leaf render path without pre-render caches. Duplicate declarations
-  still use the same cached output/trivia path as before so Less duplicate
-  suppression semantics are unchanged.
-- Helper/API surface: none added.
-- Metadata mutations: none added. Existing duplicate declaration pre-render
-  still saves/restores `writer`, `depth`, and `emittedTrivia` while it computes
-  comparison text.
-- Evidence: focused serialization coverage passed for `ruleset.test.ts`,
-  `rules.test.ts`, and `declaration.test.ts` with render/serialize/duplicate
-  and merged-declaration test names. Full `ruleset.test.ts`,
-  `declaration.test.ts`, eslint, core build, and aggressive review are required
-  before commit.
-- Verdict: accepted as a no-duplicate render-path allocation/scan cut. No
-  performance claim; performance remains shelved because this was not a
+- New traversal: none. `AtRule.getHeaderString(...)` still writes at most the
+  name, leading prelude trivia, prelude, and optional post-prelude comment
+  trivia once.
+- New node/materialization: two detached `OutputWriter` instances replace
+  caller-writer `mark()/getSince()/restore()` rollback for non-scalar header
+  name/prelude string boundaries. No AST nodes, wrappers, copies, arrays,
+  `.inherit`, `.adopt`, or semantic placement records were added.
+- Render path: header rendering still returns a string for frame serialization,
+  but name/prelude text no longer mutates the caller writer only to be
+  discarded. The post-prelude comment trivia branch still uses the caller
+  writer because it consumes active trivia state and remains a documented
+  boundary.
+- Helper/API surface: none added. The pass imports the existing
+  `OutputWriter` class from `util/print.js`; no public API was added.
+- Metadata mutations: caller `writer` and `trivia` are restored in `finally`.
+  Existing prelude detached print-state behavior for context/trivia remains.
+- Evidence: focused `at-rule.test.ts` header/render/restoration coverage
+  passed, including the updated "streams at-rule headers without capture
+  scaffolding" assertion that the caller writer receives no `mark`, `getSince`,
+  `restore`, `capture`, or `preview` traffic for non-scalar preludes while
+  `options.writer` is restored after the call.
+- Verdict: accepted as a caller-writer rollback cut. No performance claim;
+  performance remains shelved because this was a code-path deletion pass, not a
   measured benchmark pass.

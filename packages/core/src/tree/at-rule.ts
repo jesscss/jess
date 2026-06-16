@@ -3,7 +3,7 @@ import { Ruleset } from './ruleset.js';
 import { Any } from './any.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
-import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions, OutputWriter, prepareRenderPrintState } from './util/print.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -1117,12 +1117,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       nameOut = name.value;
       options.trivia = savedTrivia;
     } else {
-      const mark = options.writer.mark();
+      const writer = new OutputWriter(options.sourceMap === true);
+      const savedWriter = options.writer;
       try {
+        options.writer = writer;
         name.writeSyntax(options);
-        nameOut = options.writer.getSince(mark);
+        nameOut = writer.toString();
       } finally {
-        options.writer.restore(mark);
+        options.writer = savedWriter;
         options.trivia = savedTrivia;
       }
     }
@@ -1148,16 +1150,18 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         preludeOut = prelude.value;
         preludePrintOptions.trivia = savedTrivia;
       } else {
-        const mark = preludePrintOptions.writer.mark();
+        const writer = new OutputWriter(preludePrintOptions.sourceMap === true);
+        const savedWriter = preludePrintOptions.writer;
         try {
+          preludePrintOptions.writer = writer;
           emitTriviaTokens(
             consumeTrivia(preludeTrivia, prelude.location[0], 'before', preludePrintOptions),
             preludePrintOptions
           );
           prelude.writeSyntax(preludePrintOptions);
-          preludeOut = preludePrintOptions.writer.getSince(mark);
+          preludeOut = writer.toString();
         } finally {
-          preludePrintOptions.writer.restore(mark);
+          preludePrintOptions.writer = savedWriter;
           preludePrintOptions.trivia = savedTrivia;
         }
       }

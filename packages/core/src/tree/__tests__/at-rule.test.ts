@@ -1676,6 +1676,7 @@ describe('AtRule', () => {
     const originalPreludeWriteSyntax = prelude.writeSyntax;
     let nameUsedActiveWriter = false;
     let preludeUsedActiveWriter = false;
+    let preludeUsedDetachedWriter = false;
     name.writeSyntax = function writeSyntaxWithWriterCheck(
       this: typeof name,
       nextOptions: Parameters<typeof originalNameWriteSyntax>[0]
@@ -1688,6 +1689,7 @@ describe('AtRule', () => {
       nextOptions: Parameters<typeof originalPreludeWriteSyntax>[0]
     ): void {
       preludeUsedActiveWriter = nextOptions.writer === writer;
+      preludeUsedDetachedWriter = nextOptions.writer instanceof OutputWriter && nextOptions.writer !== writer;
       return originalPreludeWriteSyntax.call(this, nextOptions);
     };
 
@@ -1696,11 +1698,13 @@ describe('AtRule', () => {
       expect(writer.toString()).toBe('');
       expect(writer.captures).toBe(0);
       expect(writer.previews).toBe(0);
-      expect(writer.marks).toBe(1);
-      expect(writer.reads).toBe(1);
-      expect(writer.restores).toBe(1);
+      expect(writer.marks).toBe(0);
+      expect(writer.reads).toBe(0);
+      expect(writer.restores).toBe(0);
       expect(nameUsedActiveWriter).toBe(false);
-      expect(preludeUsedActiveWriter).toBe(true);
+      expect(preludeUsedActiveWriter).toBe(false);
+      expect(preludeUsedDetachedWriter).toBe(true);
+      expect(options.writer).toBe(writer);
     } finally {
       name.writeSyntax = originalNameWriteSyntax;
       prelude.writeSyntax = originalPreludeWriteSyntax;
