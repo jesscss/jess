@@ -139,6 +139,26 @@ describe('quoted', () => {
     expect(writer.reads).toBe(0);
   });
 
+  it('writes escaped literal render output to explicit writers', () => {
+    const writer = new CountingWriter();
+
+    expect(quoted('hello', { escaped: true }).render(context, { writer })).toBe('hello');
+    expect(writer.toString()).toBe('hello');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
+  it('keeps escaped literal buffer output out of explicit writers', () => {
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+
+    expect(quoted('hello', { escaped: true }).render(context, buffer, { writer })).toBe('hello');
+    expect(buffer.parts).toEqual(['hello']);
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
   it('renders resolved quoted values without materializing a replacement quote', async () => {
     const node = rules([
       vardecl({

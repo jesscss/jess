@@ -3811,6 +3811,26 @@ Hotpath status:
 Interpretation: leash status only, not a speed claim. This is a
 sink-correctness and staging cleanup; two fixtures were unstable.
 
+### Quoted Escaped Literal Render Sink Fix
+
+Date: 2026-06-15.
+
+Change: `Quoted.renderResolvedQuotedValue(...)` now writes escaped literal
+render output to explicit writers when no render buffer is passed, and keeps
+buffer render output out of those writers. This aligns the returned render
+string and requested sink for the escaped literal scalar path.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `15.16ms` unstable, `import-reference` median
+  `21.61ms` usable, `mixins-guards` median `19.32ms` usable,
+  `extend-chaining` median `5.91ms` usable, and `media` median `5.93ms`
+  unstable.
+
+Interpretation: leash status only, not a speed claim. This is a
+sink-correctness and staging cleanup; two fixtures were unstable.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

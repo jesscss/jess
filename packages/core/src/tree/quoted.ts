@@ -131,9 +131,11 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
         return this.renderOutput(context, value, bufferOrOptions, options);
       }
       const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-      return buffer
-        ? writeRenderText(buffer, value)
-        : value;
+      if (buffer) {
+        return writeRenderText(buffer, value);
+      }
+      bufferOrOptions?.writer?.add(value, this);
+      return value;
     }
     if (value instanceof Node && !(value instanceof Any) && !(value instanceof Interpolated)) {
       return this.renderOutput(context, value, bufferOrOptions, options);
