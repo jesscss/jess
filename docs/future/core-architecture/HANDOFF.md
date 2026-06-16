@@ -568,29 +568,24 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: QueryCondition top-level render readback cut.
+Current pass: Ampersand raw BasicSelector comma source cut.
 
-- New traversal: `renderStaticQueryConditionValue(...)` has one straight child
-  loop over the existing `Node[]` value, matching the existing query-condition
-  child iteration. It replaces a whole-query writer mark/readback and keeps
-  fallback behavior for non-direct children.
-- New node/materialization: none in production; the `Node[]` signature is the
-  existing child array input, not a new allocation. Test-only `ReturnOnlyNode`
-  and `WritingNode` classes plus `CountingWriter` counters prove the kept
-  custom child probe behavior.
-- Render path: static scalar children write and return known text directly.
-  Dynamic render carries returned text locally and only opens a per-child probe
-  when the child may write different text than it returns. Flat-buffer output
-  skips copying when the prepared writer already targets the buffer parts.
-- Helper/API surface: private direct-child and render-text helpers were added
-  inside `QueryCondition`; no public API was added.
-- Metadata mutations: `suppressBoundaryTrivia` save/restore remains the
-  existing child-boundary behavior; the added static loop uses `try/finally` for
-  that restoration only. Node-backed `Color`, invisible static children, custom
-  children, and trivia-sensitive branches stay on fallbacks.
-- Evidence: focused QueryCondition and node render-buffer tests prove static,
-  dynamic, async, flat-buffer, and custom write-vs-return behavior.
-- Verdict: accepted as a bounded top-level readback cut. The custom dynamic
-  child mark fallback remains intentionally open until child render contracts
-  prove write-vs-return behavior directly. No performance claim; performance
-  remains shelved because this was not a measured benchmark pass.
+- New traversal: none. Existing raw comma splitting remains; its input now comes
+  from owned `BasicSelector.value` instead of public `toTrimmedString(...)`.
+- New node/materialization: none in production. Existing `BasicSelector`
+  materialization for split comma items remains the semantic output of raw
+  comma distribution.
+- Render path: no render path was added. This pass affects ampersand
+  resolve/template placement before selector output.
+- Helper/API surface: none added.
+- Metadata mutations: none added. The test-only `try/finally` restores a
+  monkeypatched source selector method after instrumentation; it is not
+  production control flow.
+- Evidence: focused Ampersand tests prove raw comma template distribution still
+  prefixes every item and does not call the source `BasicSelector` public
+  string method. Adjacent selector-list, compound suffix, and validation tests
+  still pass.
+- Verdict: accepted as a bounded raw scalar source cut. Broader raw string
+  assembly and non-basic generic construction remain open. No performance
+  claim; performance remains shelved because this was not a measured benchmark
+  pass.

@@ -246,7 +246,7 @@ function mergeAmpersandTemplateSelector(
     );
   }
 
-  const selectorStr = baseSelector.toTrimmedString();
+  const selectorStr = baseSelector.value;
   const splitItems = splitTopLevelCommas(selectorStr);
   if (splitItems) {
     const merged = new Array<Selector>(splitItems.length);

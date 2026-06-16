@@ -447,9 +447,18 @@ describe('Ampersand', () => {
 
   it('should distribute merge template across comma-separated items', async () => {
     // Simulates ~'apple, satsuma, banana, pear' as parent selector
+    const sourceSelector = el('apple, satsuma, banana, pear');
+    let sourceStringCalls = 0;
+    const originalToTrimmedString = sourceSelector.toTrimmedString;
+    sourceSelector.toTrimmedString = function countRawCommaStringTransport(
+      ...args: Parameters<typeof originalToTrimmedString>
+    ): ReturnType<typeof originalToTrimmedString> {
+      sourceStringCalls++;
+      return originalToTrimmedString.apply(this, args);
+    };
     const node = rules([
       ruleset({
-        selector: el('apple, satsuma, banana, pear'),
+        selector: sourceSelector,
         rules: rules([
           ruleset({
             selector: sel([amp('.fruit-quoted-&')]),
@@ -459,13 +468,18 @@ describe('Ampersand', () => {
       })
     ]);
     context = new Context({ collapseNesting: true });
-    const css = await renderNodeToString(node, context, { collapseNesting: true });
-    expect(css).toContain('.fruit-quoted-apple');
-    expect(css).toContain('.fruit-quoted-satsuma');
-    expect(css).toContain('.fruit-quoted-banana');
-    expect(css).toContain('.fruit-quoted-pear');
-    // Each item should get the prefix — verify no bare (unprefixed) items
-    expect(css).not.toMatch(/[,\n]\s*satsuma[,\s{]/m);
+    try {
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
+      expect(css).toContain('.fruit-quoted-apple');
+      expect(css).toContain('.fruit-quoted-satsuma');
+      expect(css).toContain('.fruit-quoted-banana');
+      expect(css).toContain('.fruit-quoted-pear');
+      // Each item should get the prefix — verify no bare (unprefixed) items
+      expect(css).not.toMatch(/[,\n]\s*satsuma[,\s{]/m);
+      expect(sourceStringCalls).toBe(0);
+    } finally {
+      sourceSelector.toTrimmedString = originalToTrimmedString;
+    }
   });
 
   it('derives complex selector-list merge templates with hoist and selector metadata', async () => {
