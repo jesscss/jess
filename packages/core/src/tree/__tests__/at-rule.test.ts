@@ -1667,6 +1667,16 @@ describe('AtRule', () => {
     });
 
     expect(node.toString({ trivia })).toContain('@-webkit-keyframes /* Safari */ hover /* and Chrome */ {');
+
+    const writer = new CountingWriter();
+    const options = getPrintOptions({ writer, trivia });
+    expect(node.getHeaderString(options)).toBe('@-webkit-keyframes /* Safari */ hover /* and Chrome */ {\n');
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(writer.restores).toBe(0);
+    expect(writer.captures).toBe(0);
+    expect(writer.previews).toBe(0);
   });
 
   it('streams at-rule headers without capture scaffolding', () => {

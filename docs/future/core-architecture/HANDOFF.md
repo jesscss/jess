@@ -334,9 +334,9 @@ shape current before commit.
    rethrows. `getHeaderString(...)` now writes non-scalar header name/prelude
    text into detached `OutputWriter` instances instead of using the caller
    writer with `mark()/getSince()/restore()` rollback; trailing prelude
-   comment trivia still uses the caller writer because it intentionally
-   consumes caller trivia state. Dynamic leaf at-rule name/prelude assembly now
-   uses the same detached writer boundary for non-scalar pieces instead of
+   comment trivia also writes to a detached writer while preserving active
+   emitted-trivia state. Dynamic leaf at-rule name/prelude assembly now uses
+   the same detached writer boundary for non-scalar pieces instead of
    caller-writer mark/readback.
 4. [ ] Finish `Ruleset.getHeaderString(...)` capture removal for frame
    render/comparison paths and same-property duplicate declaration pre-render.
@@ -554,7 +554,7 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: AtRule header and leaf writer isolation.
+Current pass: AtRule header/trivia/leaf writer isolation.
 
 - New traversal: none. `AtRule.getHeaderString(...)` still writes at most the
   name, leading prelude trivia, prelude, and optional post-prelude comment
@@ -563,29 +563,34 @@ Current pass: AtRule header and leaf writer isolation.
 - New node/materialization: two detached `OutputWriter` instances replace
   caller-writer `mark()/getSince()/restore()` rollback for non-scalar header
   name/prelude string boundaries; a third detached writer replaces the same
-  rollback pattern for dynamic leaf name/prelude temporary strings. No AST
-  nodes, wrappers, copies, arrays, `.inherit`, `.adopt`, or semantic placement
-  records were added. The extra `CountingWriter` construction is test-only
-  instrumentation for the caller-writer counter assertion.
+  rollback pattern for post-prelude comment trivia; a fourth detached writer
+  replaces the same rollback pattern for dynamic leaf name/prelude temporary
+  strings. No AST nodes, wrappers, copies, arrays, `.inherit`, `.adopt`, or
+  semantic placement records were added. The extra `CountingWriter`
+  construction is test-only instrumentation for the caller-writer counter
+  assertion.
 - Render path: header rendering still returns a string for frame serialization,
   but name/prelude text no longer mutates the caller writer only to be
+  discarded. Post-prelude comment trivia still consumes active emitted-trivia
+  state, but its temporary text no longer mutates the caller writer only to be
   discarded. Dynamic leaf rendering still returns or buffers one final string,
   but its name/prelude temporary text no longer mutates the caller writer only
-  to be discarded. The post-prelude comment trivia branch still uses the caller
-  writer because it consumes active trivia state and remains a documented
-  boundary.
+  to be discarded.
 - Helper/API surface: none added. The pass imports the existing
   `OutputWriter` class from `util/print.js`; no public API was added.
 - Metadata mutations: caller `writer` and `trivia` are restored in `finally`
   for header rendering; dynamic leaf temporary rendering restores caller
   `writer` in `finally`. Existing prelude detached print-state behavior for
-  context/trivia remains.
+  context/trivia remains. Post-prelude comment trivia shares the active
+  `emittedTrivia` set intentionally so repeated serialization still consumes
+  each trivia token run once.
 - Evidence: focused `at-rule.test.ts` header/render/restoration coverage
   passed, including the updated "streams at-rule headers without capture
   scaffolding" assertion that the caller writer receives no `mark`, `getSince`,
   `restore`, `capture`, or `preview` traffic for non-scalar preludes while
   `options.writer` is restored after the call. Dynamic leaf prelude rendering
-  now has the same caller-writer counter assertion.
+  and post-prelude comment trivia now have the same caller-writer counter
+  assertions.
 - Verdict: accepted as a caller-writer rollback cut. No performance claim;
   performance remains shelved because this was a code-path deletion pass, not a
   measured benchmark pass.

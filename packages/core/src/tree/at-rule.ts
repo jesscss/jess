@@ -1189,12 +1189,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       out += finalPreludeOut;
       let preludePost = '';
       if (!withoutComments && preludeTrivia) {
-        const mark = options.writer.mark();
+        const writer = new OutputWriter(options.sourceMap === true);
+        const savedWriter = options.writer;
         try {
+          options.writer = writer;
           emitCommentTriviaAfterNode(prelude, options);
-          preludePost = options.writer.getSince(mark);
+          preludePost = writer.toString();
         } finally {
-          options.writer.restore(mark);
+          options.writer = savedWriter;
         }
       }
       out += preludePost;
