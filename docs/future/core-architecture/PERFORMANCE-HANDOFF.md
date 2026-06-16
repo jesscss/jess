@@ -149,6 +149,16 @@ child-entry pruning attempt needs stronger per-family carried facts. Treat this
 as diagnostic counter evidence only; profiler elapsed is not a benchmark speed
 claim.
 
+2026-06-15 key-aware dynamic-name bailout follow-up: after making
+`lookupScopeFrameVariable(...)` check whether static entries in
+`pendingDeclarationNames` can affect the requested key, the stress fixture
+reported unchanged direct lookup counters: `declaration.cacheMiss` `16560`,
+`declaration.scope.v` `16560`, `declaration.childEntryEntered` `11520`,
+`declaration.childEntriesScanned` `10530`, and `declaration.framePrep` `139`.
+`Reference.evalNode` was `6528` calls / `62.74ms`. This keeps the same next
+performance target: child-entry scans and entry allocation, not old registry
+paths.
+
 ## Reactivation Threshold
 
 Full performance rounds are currently active. If future work parks performance

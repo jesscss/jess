@@ -1,4 +1,4 @@
-import { any, vardecl, rules } from '../index.js';
+import { any, interpolated, ref, vardecl, rules } from '../index.js';
 import { Context } from '../../context.js';
 import {
   assignScopeFrameVariable,
@@ -107,11 +107,43 @@ describe('ScopeFrame variable facade', () => {
     expect(hit.kind).toBe('miss');
   });
 
+  it('returns a covered miss when pending static declarations cannot affect the key', async () => {
+    const root = rules([]);
+    await root.eval(new Context());
+    const frame = root.getScopeFrame();
+    frame.pendingDeclarationNames.push(vardecl({ name: 'other', value: any('red') }));
+
+    const hit = lookupScopeFrameVariable(frame, 'missing', {
+      bailOnPendingDeclarations: true
+    });
+
+    expect(hit.kind).toBe('miss');
+  });
+
+  it('returns uncovered when pending static declarations can still affect the key', async () => {
+    const root = rules([]);
+    await root.eval(new Context());
+    const frame = root.getScopeFrame();
+    frame.pendingDeclarationNames.push(vardecl({ name: 'missing', value: any('red') }));
+
+    const hit = lookupScopeFrameVariable(frame, 'missing', {
+      bailOnPendingDeclarations: true
+    });
+
+    expect(hit.kind).toBe('uncovered');
+  });
+
   it('returns uncovered when pending dynamic declarations still need old lookup handling', async () => {
     const root = rules([]);
     await root.eval(new Context());
     const frame = root.getScopeFrame();
-    frame.pendingDeclarationNames.push(vardecl({ name: 'dynamic', value: any('red') }));
+    frame.pendingDeclarationNames.push(vardecl({
+      name: interpolated({
+        source: '%%',
+        replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+      }),
+      value: any('red')
+    }));
 
     const hit = lookupScopeFrameVariable(frame, 'missing', {
       bailOnPendingDeclarations: true

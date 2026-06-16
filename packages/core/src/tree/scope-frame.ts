@@ -17,7 +17,7 @@
  * @see docs/future/core-architecture/PERFORMANCE-HANDOFF.md
  */
 
-import type { Node } from './node.js';
+import { F_STATIC, Node } from './node.js';
 import type { VarDeclaration } from './declaration-var.js';
 import type { CallableLookupEntry } from './util/callable-entry.js';
 
@@ -314,6 +314,22 @@ export function setScopeFrameDeclarationBinding(
   frame.currentBindingsByName.set(name, entry.cell);
 }
 
+function pendingDeclarationMayAffectName(
+  pendingDeclarationNames: VarDeclaration[],
+  name: string
+): boolean {
+  for (let i = 0; i < pendingDeclarationNames.length; i++) {
+    const declName = pendingDeclarationNames[i]!.value.name;
+    if (declName instanceof Node && !declName.hasFlag(F_STATIC)) {
+      return true;
+    }
+    if (`${declName.valueOf()}` === name) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Look up a variable name in a frame chain.
  * Mirrors the resolveCell algorithm from the design proposal.
@@ -394,6 +410,7 @@ export function lookupScopeFrameVariable(
       if (
         options?.bailOnPendingDeclarations
         && f.pendingDeclarationNames.length > 0
+        && pendingDeclarationMayAffectName(f.pendingDeclarationNames, name)
       ) {
         return { kind: 'uncovered' };
       }
