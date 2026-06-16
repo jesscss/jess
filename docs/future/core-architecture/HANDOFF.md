@@ -468,8 +468,10 @@ shape current before commit.
    `Url` scalar `Any` render now writes/buffers normalized `url(...)` text
    directly after value selection, without prepared writer setup,
    mark/getSince, replaceSince, or a second writer-to-buffer copy. Non-scalar
-   URL normalization and non-scalar wrapper render still keep localized
-   mark/readback boundaries. `Paren` dynamic wrapped render now keeps child
+   URL buffer render now writes syntax directly under the existing outer buffer
+   mark instead of nesting the cold `renderUrlSyntax(...)` mark/readback helper;
+   non-scalar URL normalization still keeps its localized replacement boundary.
+   `Paren` dynamic wrapped render now keeps child
    intermediate render text out of explicit writers and writes only the final
    wrapped string to the requested writer or buffer. Resolved no-trivia `Any`
    paren values now write known wrapper text directly instead of rendering the
@@ -574,27 +576,28 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Declaration buffer render nested string-helper cut.
+Current pass: Url non-scalar buffer render nested string-helper cut.
 
-- New traversal: none. The buffer path writes the already-selected declaration
-  parts to the prepared writer and does not add a loop, source walk, side-map
-  lookup, or object scan.
+- New traversal: none. The buffer path writes the already-selected URL value to
+  the prepared writer and does not add a loop, source walk, side-map lookup, or
+  object scan.
 - New node/materialization: none. No `Node`, copy, inherit, wrapper,
   materialized array, or ownership mutation was added.
-- Render path: buffer renders now use `writeDeclarationValueSyntax(...)`
-  directly under the existing outer buffer mark and read that mark once for
+- Render path: non-scalar buffer renders now call `writeUrlSyntax(...)` directly
+  under the existing outer buffer mark and read that mark once for
   `writePreparedRenderText(...)`. Public string-return render still uses
-  `declValueTrimmedString(...)`, so cold string API behavior is unchanged.
+  `renderUrlSyntax(...)`, so cold string API behavior is unchanged. The
+  non-scalar URL normalization `replaceSince(...)` boundary remains.
 - Helper/API surface: no helper or public API was added. Existing direct writer
   and cold string helper boundaries were split by sink. The verifier's
-  `Reflect.set(...)` hits are test-only poisoning of the cold helper.
-- Metadata mutations: none. The new value/render-state locals carry existing
-  render facts and do not mutate parent/source/frozen/location/options/context.
-- Evidence: focused Declaration tests pass, including new ordinary and custom
-  declaration buffer fixtures that poison `declValueTrimmedString(...)` and
-  prove buffer rendering writes syntax directly. The verifier's `throw new
-  Error(...)` hits are those test sentinels, not runtime control flow.
-- Verdict: accepted as a bounded Declaration buffer string-transport deletion.
-  Raw-source custom property semantics, merge state, internal mark/replace
-  boundaries, and materialization remain open. No performance claim; performance
-  remains shelved because this was not a measured benchmark pass.
+  `Reflect.set(...)` hit is test-only poisoning of the cold helper.
+- Metadata mutations: none. No parent/source/frozen/location/options/context
+  mutation was added.
+- Evidence: focused URL tests pass, including a new buffer fixture that poisons
+  `renderUrlSyntax(...)` and proves buffer rendering writes syntax directly.
+  The verifier's `throw new Error(...)` hit is that test sentinel, not runtime
+  control flow.
+- Verdict: accepted as a bounded URL buffer string-transport deletion. Non-scalar
+  URL normalization remains on its localized replacement boundary. No
+  performance claim; performance remains shelved because this was not a
+  measured benchmark pass.

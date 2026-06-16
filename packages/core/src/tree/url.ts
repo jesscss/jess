@@ -127,11 +127,14 @@ export class Url extends Node<Node> {
     const prepared = buffer
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const mark = buffer ? prepared.writer.mark() : 0;
+    if (buffer) {
+      const mark = prepared.writer.mark();
+      this.writeUrlSyntax(value, prepared);
+      const out = prepared.writer.getSince(mark);
+      return writePreparedRenderText(buffer, prepared, mark, out);
+    }
     const out = this.renderUrlSyntax(value, prepared);
-    return buffer
-      ? writePreparedRenderText(buffer, prepared, mark, out)
-      : out;
+    return out;
   }
 
   override evalNode(context: Context): MaybePromise<Node> {

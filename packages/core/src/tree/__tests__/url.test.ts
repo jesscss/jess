@@ -117,6 +117,24 @@ describe('url', () => {
     expect(urlNode.registrationPrepared).toBe(false);
   });
 
+  it('writes resolved url buffers without cold string helper transport', async () => {
+    const node = rules([
+      vardecl({
+        name: any('asset'),
+        value: any('image.png')
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+    const buffer = createRenderBuffer('flat');
+    const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
+    Reflect.set(urlNode, 'renderUrlSyntax', () => {
+      throw new Error('Buffer url render should write syntax directly');
+    });
+
+    expect(await urlNode.render(context, buffer)).toBe('url("image.png")');
+    expect(buffer.parts).toEqual(['url("image.png")']);
+  });
+
   it('renders resolved url values without materializing a replacement url', async () => {
     const node = rules([
       vardecl({
