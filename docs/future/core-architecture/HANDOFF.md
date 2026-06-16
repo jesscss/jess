@@ -367,9 +367,12 @@ shape current before commit.
    `toTrimmedString(...)`. Public `replace(...)` also reads owned scalar token
    text directly for those replacements. Generic `Any` materialization now
    writes evaluated replacements directly instead of calling public
-   `Interpolated.toTrimmedString(...)` on itself. Non-scalar embedded selector
-   assembly, remaining generic materialization boundaries, non-scalar cold
-   replacement capture, and replacement arrays remain.
+   `Interpolated.toTrimmedString(...)` on itself. Embedded selector-list
+   replacements still use the generated `PseudoSelector` semantic wrapper for
+   `:is(...)`, but now write that wrapper through `writeSyntax(...)` instead of
+   public `PseudoSelector.toTrimmedString(...)`. Remaining generic
+   materialization boundaries, non-scalar cold replacement capture, and
+   replacement arrays remain.
 10. [x] Finish `StyleImport` first-use placement copies by replacing them with
    canonical source placement state, or document the exact semantic blocker.
 
@@ -509,31 +512,38 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Rules` root charset public-string transport cut.
+Current pass: `Interpolated` generated selector-list wrapper string-transport
+cut.
 
-- New traversal: none. `packages/core/src/tree/rules.ts` adds no loop,
+- New traversal: none. `packages/core/src/tree/interpolated.ts` adds no loop,
   recursion, parent/source walk, side-map lookup, object/array scan, generator,
   or collection helper.
-- New node/materialization: none. The existing context-owned `Any` charset node
-  is written directly; no wrapper, copy, inherit, adopt, source/root metadata,
-  or array materialization was added.
-- Render path: root-aware `Rules.toString(...)` now emits
-  `context.currentCharset.writeSyntax(...)` directly to the active writer
-  instead of using detached public `toTrimmedString(...)` transport.
+- New node/materialization: no new node, copy, inherit, adopt, source/root
+  metadata, or array materialization was added. The existing generated
+  `PseudoSelector` wrapper remains because it owns `:is(...)` selector-list
+  flattening semantics; the patch only replaces its public string wrapper with
+  direct `writeSyntax(...)` on the existing detached string boundary.
+  `new OutputWriter()` is the explicit version of the detached writer
+  previously hidden behind `PseudoSelector.toTrimmedString(...)`, not an added
+  render-path writer or node materialization.
+- Render path: embedded selector-list interpolation still materializes selector
+  text for `BasicSelector` assembly, but the generated wrapper text now comes
+  from `PseudoSelector.writeSyntax(...)` rather than public
+  `PseudoSelector.toTrimmedString(...)`.
 - Helper/API surface: none added.
-- Metadata mutations: none added. No parent/source/frozen/context metadata
-  mutation, lazy options/context creation, `Reflect.*`, generic own-property
-  helper, source restoration, or source/root read was added.
+- Metadata mutations: no new mutation. Existing `pseudo.generated = true`
+  remains the semantic flag used by `PseudoSelector.writeSyntax(...)`.
 - Error/control flow: no production error objects or throw/catch control flow
-  added.
-- Rejected/deferred cut: root imports still use their existing detached
-  stringification path because import prelude evaluation, indentation, and
-  ordering semantics need a separate pass. Rules body render and duplicate
-  declaration materialization remain open.
+  added. The new `throw` and `try/finally` sites are test-only monkey-patch
+  restoration scaffolding.
+- Rejected/deferred cut: do not hand-roll selector-list `:is(...)` serialization
+  in `Interpolated`; `PseudoSelector.writeSyntax(...)` already owns inline
+  selector-list flattening. Whole non-scalar selector materialization,
+  non-scalar cold replacement capture, and replacement arrays remain open.
 - Evidence: focused red/green test
-  `streams root charset and imports without capture scaffolding` failed when
-  `currentCharset.toTrimmedString(...)` threw before the cut and passed after.
-  Full `rules.test.ts` passed.
-- Verdict: accepted as a bounded `Rules` root serializer cut. Keep item 6 open
-  because root imports, body render, placement state, merge output, and
-  duplicate declaration materialization remain.
+  `creates generated selector-list wrappers without public pseudo string
+  transport` failed when `PseudoSelector.toTrimmedString(...)` threw before the
+  cut and passed after. Full `interpolated.test.ts` passed.
+- Verdict: accepted as a bounded `Interpolated` selector-materialization cut.
+  Keep item 9 open for the remaining generic/cold replacement and replacement
+  array boundaries.

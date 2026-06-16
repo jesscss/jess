@@ -2,14 +2,17 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import {
   any,
+  el,
   Interpolated,
   interpolated,
   list,
   List,
+  PseudoSelector,
   quoted,
   ref,
   rules,
   Rules as RulesClass,
+  sellist,
   vardecl
 } from '../index.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
@@ -281,6 +284,29 @@ describe('Interpolated', () => {
     const selector = interpolatedNode.createSelector('resolve');
 
     expect(selector.toTrimmedString()).toBe('.prefix-theme');
+  });
+
+  it('creates generated selector-list wrappers without public pseudo string transport', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(PseudoSelector.prototype, 'toTrimmedString');
+    if (!descriptor) {
+      throw new Error('Expected PseudoSelector.toTrimmedString for generated wrapper proof');
+    }
+    Object.defineProperty(PseudoSelector.prototype, 'toTrimmedString', {
+      ...descriptor,
+      value: () => {
+        throw new Error('generated selector-list wrappers should write pseudo syntax directly');
+      }
+    });
+    try {
+      const node = interpolated({
+        source: `${INTERPOLATION_PLACEHOLDER} .child`,
+        replacements: [sellist([el('.one'), el('.two')])]
+      });
+
+      expect(node.createSelector('resolve').toTrimmedString()).toBe(':is(.one, .two) .child');
+    } finally {
+      Object.defineProperty(PseudoSelector.prototype, 'toTrimmedString', descriptor);
+    }
   });
 
   it('replaces scalar tokens without public string transport', () => {

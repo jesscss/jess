@@ -4153,6 +4153,28 @@ remaining generic materialization boundaries, non-scalar cold replacement
 capture, and replacement arrays. Do not claim a speed win; two fixtures were
 unstable and one was noisy.
 
+### Interpolated Generated Selector-List Wrapper Cut
+
+Date: 2026-06-16.
+
+Change: embedded selector-list interpolation still uses the generated
+`PseudoSelector` wrapper for `:is(...)` semantics, but now writes the wrapper
+through `PseudoSelector.writeSyntax(...)` on the detached selector assembly
+boundary instead of calling public `PseudoSelector.toTrimmedString(...)`.
+
+Hotpath status:
+
+- Final bounded `pnpm run measure:less:hotpath -- --iterations 15 --warmup 5`
+  reported: `functions` median `16.78ms` unstable, `import-reference` median
+  `23.37ms` usable, `mixins-guards` median `17.77ms` usable,
+  `extend-chaining` median `6.57ms` usable, and `media` median `6.57ms`
+  unstable.
+
+Interpretation: selector-materialization string transport cut only. Do not
+claim a speed win; keep the `Interpolated` row open for remaining generic
+materialization boundaries, non-scalar cold replacement capture, and
+replacement arrays. Two fixtures were unstable.
+
 ### Rules Root Import Direct Syntax Cut
 
 Date: 2026-06-16.

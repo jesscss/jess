@@ -50,7 +50,9 @@ function serializeGeneratedIsWrapper(replacement: Node): string {
   const arg = getIsWrapperArg(replacement);
   const pseudo = PseudoSelector.create({ name: ':is', arg });
   pseudo.generated = true;
-  return pseudo.toTrimmedString().replace(/\n\s*/g, ' ');
+  const writer = new OutputWriter();
+  pseudo.writeSyntax(getPrintOptions({ writer }));
+  return writer.toString().replace(/\n\s*/g, ' ');
 }
 
 function stringifyReplacement(replacement: Node, options: PrintOptions, preserveQuotedSyntax?: boolean): string {
