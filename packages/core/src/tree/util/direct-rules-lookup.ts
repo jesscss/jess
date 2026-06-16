@@ -772,7 +772,7 @@ function findDeclarationOccurrenceWithStrategy(
   return findDeclarationLookupWithStrategy(startRules, key, strategy, options);
 }
 
-export function findVariableDeclarationLookup(
+export function findVariableDeclarationAssignmentLookup(
   startRules: Rules,
   key: string,
   options?: DirectDeclarationFindOptions
@@ -783,7 +783,7 @@ export function findVariableDeclarationLookup(
     : { occurrence: undefined, readonly: found.readonly };
 }
 
-export function findPropertyDeclarationLookup(
+export function findPropertyDeclarationAssignmentLookup(
   startRules: Rules,
   key: string,
   options?: DirectDeclarationFindOptions
@@ -799,7 +799,7 @@ export function findVariableDeclarationOccurrence(
   key: string,
   options?: DirectDeclarationFindOptions
 ): DirectDeclarationOccurrence | undefined {
-  return findVariableDeclarationLookup(startRules, key, options).occurrence;
+  return findVariableDeclarationAssignmentLookup(startRules, key, options).occurrence;
 }
 
 export function findPropertyDeclarationOccurrence(
@@ -807,7 +807,7 @@ export function findPropertyDeclarationOccurrence(
   key: string,
   options?: DirectDeclarationFindOptions
 ): DirectDeclarationOccurrence | undefined {
-  return findPropertyDeclarationLookup(startRules, key, options).occurrence;
+  return findPropertyDeclarationAssignmentLookup(startRules, key, options).occurrence;
 }
 
 export function findAnyDeclarationOccurrence(

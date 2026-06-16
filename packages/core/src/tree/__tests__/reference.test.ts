@@ -5033,6 +5033,92 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle).not.toBe(handle);
     });
 
+    it('static variable handles stay cold while searchScope disqualifies lookup', async () => {
+      const declaration = vardecl({ name: 'color', value: any('blue') });
+      const node = rules([declaration]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'variable',
+        fallbackValue: any('fallback')
+      });
+
+      context.searchScope.add(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('fallback');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      context.searchScope.delete(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'scope-frame-variable-binding-handle'
+      });
+
+      context.searchScope.add(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('fallback');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+      context.searchScope.delete(declaration);
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static declaration handles stay cold while searchScope disqualifies lookup', async () => {
+      const declaration = decl({ name: 'color', value: any('blue') });
+      const node = rules([declaration]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'declaration',
+        fallbackValue: any('fallback')
+      });
+
+      context.searchScope.add(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('fallback');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      context.searchScope.delete(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+
+      context.searchScope.add(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('fallback');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+      context.searchScope.delete(declaration);
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static declaration handles stay cold while leakyRules disqualifies lookup', async () => {
+      const declaration = decl({ name: 'color', value: any('blue') });
+      const node = rules([declaration]);
+      const root = setRulesContext(await node.eval(context));
+      const leakyContext = new Context({ leakyRules: true });
+      leakyContext.root = root;
+      leakyContext.rulesContext = root;
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'declaration',
+        fallbackValue: any('fallback')
+      });
+
+      expect(lookupRef.eval(leakyContext).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+
+      expect(lookupRef.eval(leakyContext).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
     it('static property handles reuse source-static normalized assignment constraints', async () => {
       const node = rules([
         decl({ name: 'background-color', value: any('red') }),

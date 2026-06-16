@@ -80,10 +80,11 @@ materialization wrapper for that semantic case.
    caller-specific decisions before generic direct crawl. Prepared child-rule
    entries carry exact callable/mixin/ruleset surface facts, but guarded import
    tests proved prepared arrays cannot be trusted as a blanket aggregate miss.
-   Prepared-null entries can skip child reads. Remaining work is deleting the
-   direct-crawl bridges where facts are complete, especially no-frame
-   reference-import callable misses, without breaking guarded/configured child
-   surfaces.
+   Prepared-null entries can skip child reads, and covered child frames can now
+   prove simple exact callable misses without entering the broad child crawl.
+   Remaining work is deleting the direct-crawl bridges where facts are
+   complete, especially frame-less reference-import callable misses, without
+   breaking guarded/configured child surfaces.
 
 2. **Parameterized terminal namespace audit.**
    Mixin-ruleset calls with parameters now reject ruleset-only terminal
@@ -120,12 +121,14 @@ materialization wrapper for that semantic case.
    rules, and `searchScope` disqualification. Variable lookup now has one
    modeled `live-current` lane instead of a duplicate live-only retry. Active
    `searchScope` disqualification now has proof that stale handles are cleared
-   and ordinary lookup rebuilds later. Synthetic import/reference covered-hit
-   and covered-miss tests plus a real reference-import declaration fixture now
-   prove public declaration bridges stay unused. A real reference-import
-   callable miss fixture documents that no-frame callable misses still enter the
-   direct-crawl bridge. Each remaining bridge needs a deletion condition and,
-   where possible, a real Less fixture proof.
+   and ordinary lookup rebuilds later for property, variable, and declaration
+   reads; `leakyRules` has declaration cold-handle proof. Synthetic
+   import/reference covered-hit and covered-miss tests plus a real
+   reference-import declaration fixture now prove public declaration bridges
+   stay unused. A real reference-import callable miss fixture documents that
+   frame-less callable misses still enter the direct-crawl bridge. Each
+   remaining bridge needs a deletion condition and, where possible, a real Less
+   fixture proof.
 
 3. **Final simple-read proof.**
    The lane is not done until ordinary static variable, property, declaration,

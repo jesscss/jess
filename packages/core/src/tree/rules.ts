@@ -75,9 +75,9 @@ import { isIndexedRuleChild } from './util/callable-surface.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
   findAnyDeclarationOccurrence,
-  findPropertyDeclarationLookup,
+  findPropertyDeclarationAssignmentLookup,
   findPropertyDeclarationOccurrence,
-  findVariableDeclarationLookup,
+  findVariableDeclarationAssignmentLookup,
   findVariableDeclarationOccurrence
 } from './util/direct-rules-lookup.js';
 const { isArray } = Array;
@@ -1139,6 +1139,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return undefined;
     }
     let canSearchChildSurface = false;
+    let hasUncoveredChildFrame = false;
+    let frameResults: MixinEntry[] | undefined;
     for (let i = childEntries.length - 1; i >= 0; i--) {
       const entry = childEntries[i]!;
       if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options.hasTarget })) {
@@ -1158,9 +1160,25 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         continue;
       }
       canSearchChildSurface = true;
-      break;
+      const childFrame = entry.node.getScopeFrame();
+      entry.node.prepareCallableLookupFrame(childFrame, key, includeRulesets);
+      const frameHit = lookupScopeFrameCallable(childFrame, key, {
+        includeRulesets,
+        searchParents: false
+      });
+      if (frameHit.kind === 'hit') {
+        const results = collectCallableBucketResults(frameHit.bucket, includeRulesets);
+        if (results) {
+          (frameResults ??= []).push(...results);
+        }
+      } else if (frameHit.kind === 'uncovered') {
+        hasUncoveredChildFrame = true;
+      }
     }
-    if (!canSearchChildSurface) {
+    if (frameResults) {
+      return frameResults;
+    }
+    if (!canSearchChildSurface || !hasUncoveredChildFrame) {
       return undefined;
     }
     const direct = this.findMixinsFast(key, {
@@ -3075,8 +3093,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         const lookupOptions: DeclarationFindOptions = { searchParents: true };
         const lookup = isNode(node, N.VarDeclaration)
-          ? findVariableDeclarationLookup(this, key, { ...lookupOptions, includeLiveBindings: false })
-          : findPropertyDeclarationLookup(this, key, lookupOptions);
+          ? findVariableDeclarationAssignmentLookup(this, key, { ...lookupOptions, includeLiveBindings: false })
+          : findPropertyDeclarationAssignmentLookup(this, key, lookupOptions);
         const resultOccurrence = lookup.occurrence;
         const result = resultOccurrence?.node;
         if (result) {

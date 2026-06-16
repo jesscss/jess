@@ -2826,15 +2826,13 @@ describe('Mixin', () => {
       }
     });
 
-    it('ScopeFrame callable buckets: static miss keeps Rules.findMixinsFast bridge when child surfaces exist', () => {
+    it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when child frames cover exact misses', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];
-      let skippedCurrentSurface = false;
       RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
-        const [key, options] = args;
+        const [key] = args;
         if (key === '.frame-child-missing') {
           fastPathHits.push(key);
-          skippedCurrentSurface ||= options?.skipCurrentSurface === true;
         }
         return originalFindMixinsFast.apply(this, args);
       };
@@ -2851,8 +2849,7 @@ describe('Mixin', () => {
         root.getScopeFrame();
 
         expect(root.findMixin('.frame-child-missing', 'Mixin')).toBeUndefined();
-        expect(fastPathHits.length).toBeGreaterThan(0);
-        expect(skippedCurrentSurface).toBe(true);
+        expect(fastPathHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }
