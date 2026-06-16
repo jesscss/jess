@@ -348,13 +348,16 @@ shape current before commit.
    candidate output.
 9. [ ] Finish `Interpolated` cold replacement capture, selector/generic
    materialization, and replacement arrays.
-10. [ ] Finish `StyleImport` first-use placement copies by replacing them with
+10. [x] Finish `StyleImport` first-use placement copies by replacing them with
    canonical source placement state, or document the exact semantic blocker.
 
-   Current partial status: configured import variable-key matching and binding
+   Completion status: configured import variable-key matching and binding
    attachment no longer call declaration-name public `toString(...)`; normal
    `Any` names use direct `.value`, with non-Any names falling back to
-   `valueOf()`.
+   `valueOf()`. The remaining first-use child copies are documented in
+   `NODE-REWRITE-TRACKER.md` as semantic placement state: focused tests require
+   owned placement children and source-child mapping. Do not remove them as a
+   convenience-copy cut without a replacement placement-state model.
 11. [ ] Finish `Node` base/source render fallback so inherited source render no
    longer routes hot render through public `toTrimmedString(...)`.
 
@@ -391,11 +394,11 @@ shape current before commit.
    of public `toString()` transport. `AttributeSelector.valueOf()` now uses
    node value semantics for node-valued names instead of public
    `toTrimmedString()` transport.
-13. [ ] Finish `List`/`Sequence` public render string-return compatibility:
+13. [x] Finish `List`/`Sequence` public render string-return compatibility:
    either document it as the cold public boundary or split a direct buffer-only
    path that avoids returning a string when callers do not need it.
 
-   Current partial status: `Sequence.renderResolvedValue(...)` no longer passes
+   Completion status: `Sequence.renderResolvedValue(...)` no longer passes
    an explicit caller writer into the single-node child render when a render
    buffer is the requested sink. The child result is rendered to a string and
    written once to the render buffer, so buffer-only sequence rendering no
@@ -403,6 +406,10 @@ shape current before commit.
    resolved `value instanceof Node` branch and the single non-`Nil` child
    branch. `List` does not share this exact leak because its buffer path already
    goes through `prepareBufferPrintState(...)`, which strips explicit writers.
+   Both `render(context)` overloads and `RenderBufferNode.render(...)` still
+   return `MaybePromise<string>` by public API contract, and the buffer helpers
+   return the text they write. Treat that returned string as the documented
+   public compatibility boundary, not as an open render-only capture bug.
 14. [ ] Finish `List`/`Sequence` addition/materialization copy ownership,
    including `deriveAdditionSequence(...)`, `copyWithReusableLeaves(...)`, and
    output ownership after arithmetic/list operations.
@@ -478,38 +485,35 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: `Call` stylesheet `Func` arg-surface cut.
+Current pass: `StyleImport` and `List`/`Sequence` boundary closeout.
 
-- New traversal: none. `packages/core/src/tree/call.ts` and
-  `packages/core/src/tree/function.ts` add no loop, recursion, parent/source
-  walk, side-map lookup, object/array scan, generator, or collection helper.
-- New node/materialization: production removes one `Call.evalArgNodes(...)`
-  replacement `List` path before stylesheet `Func.evalCall(...)`. It adds no
-  `new Node`, copy, `.inherit(...)`, `.adopt(...)`, wrapper `Rules`,
-  frozen/source/parent metadata mutation, or materialized array. The test adds
-  `CountingSequence` only to prove the source arg surface reaches the callable
-  binding layer with one owned binding copy instead of two constructions.
-- Render path: dynamic render and eval/resolve paths for stylesheet
-  `Func` names now call `Func.evalCall(context, state.args)` /
-  `Func.evalCall(context, args)` directly. `Func.evalCall(...)` forwards
-  `args?.value` to `evaluateCallableCollection(...)`, preserving the existing
-  callable binding evaluator as the single eval/copy boundary.
-- Helper/API surface: no helper added. `Func.evalCall(...)` now accepts an
-  optional arg list and reuses one shared empty readonly arg array, replacing
-  the default `list([])` allocation.
+- New traversal: none. This pass changes only
+  `docs/future/core-architecture/HANDOFF.md` and
+  `docs/future/core-architecture/NODE-REWRITE-TRACKER.md`.
+- New node/materialization: none. No production node, copy, `.inherit(...)`,
+  `.adopt(...)`, wrapper `Rules`, materialized array, frozen/source/parent
+  metadata mutation, or ownership behavior changed.
+- Render path: no render code changed. Queue item 13 is closed because
+  `List.render(...)`, `Sequence.render(...)`, and the shared
+  `RenderBufferNode.render(...)` contract all return
+  `MaybePromise<string>`, while current buffer paths strip unrelated explicit
+  writers and write the same returned text to the requested buffer. That string
+  return is now the documented public compatibility boundary.
+- Helper/API surface: none added.
 - Metadata mutations: none added. No parent/source/frozen/context metadata
   mutation, lazy options/context creation, `Reflect.*`, generic own-property
   helper, source restoration, or source/root read was added.
 - Error/control flow: no production error objects or throw/catch control flow
   added.
-- Rejected/deferred cut: `Call.evalArgNodes(...)` remains for calc/finalized
-  CSS-call fallback materialization. Callable output selection,
-  non-scalar/custom/trivia arg trim marks, async helper ladders, and repeated
-  eval remain in queue item 1.
-- Evidence: focused red/green test
-  `passes stylesheet function args through the callable binding surface once`
-  failed at `2` constructed copies before the production cut and passed after.
-  Full `call` + `func` focused suites passed.
-- Verdict: accepted as a bounded Call/Func arg-surface machinery deletion.
-  Keep queue item 1 open because the remaining callable output, async, and
-  non-scalar arg boundaries are still real work.
+- Rejected/deferred cut: `StyleImport` first-use child copies are not deleted;
+  `NODE-REWRITE-TRACKER.md` documents them as semantic placement state because
+  focused tests require owned placement children and source-child mapping.
+  `List`/`Sequence` addition and copy ownership remain separate queue item 14.
+- Evidence: code inspection of `packages/core/src/tree/list.ts`,
+  `packages/core/src/tree/sequence.ts`,
+  `packages/core/src/tree/util/render-buffer.ts`, and the existing
+  `StyleImport` tracker entry. No production behavior changed, so no focused
+  runtime test was needed for this docs-only queue closeout.
+- Verdict: accepted. Close the two whole queue items whose completion criteria
+  were satisfied by documented public/semantic boundaries; keep all remaining
+  implementation rows open.
