@@ -103,55 +103,43 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Ruleset duplicate declaration pre-render narrowing in
-  `packages/core/src/tree/util/serialize-helper.ts`.
-- Verdict: accepted as a hot serializer transport cut. No speed claim.
-- New traversal: one forward loop counts visible non-variable declaration
-  properties before the existing reverse duplicate pass. The count is needed
-  only inside the flattened render list, and carrying it earlier would add
-  stale declaration state to container flattening.
-- New node/materialization: no nodes. Adds one `Map<string, number>` for
-  declaration property counts so unique declarations skip detached pre-render
-  entirely; repeated properties keep the existing exact-output comparison
-  cache.
-- Render path: unique declarations now fall through to normal emission instead
-  of rendering into the duplicate declaration cache first. Repeated-property
-  duplicate behavior, trivia cache reuse, mixin/call/control exemptions, and
-  generated-output keep rules remain unchanged.
-- Helper/API surface: none.
-- Metadata mutations: none.
-- Allocation changes: adds a property-count `Map` and removes detached
-  declaration writer/string/trivia cache allocation for unique properties.
-- Rejected/observed in this pass: `getHeaderString(...)` capture/readback,
-  serialize-helper frame comparison, and hoisted-parent detached header
-  rendering still need a broader frame-header contract change.
-- Merge-carried binding review: merging `origin/dev` also brought the
-  namespaced reference-import crawl deletion in `rules.ts` plus focused
-  import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
-  and direct-child-entry state to prove covered namespace uncertainty; the
-  `Parser` construction, `try/finally`, and small spy arrays are test-only
-  proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
-  production render/string transport.
-- Evidence: focused `ruleset.test.ts` duplicate/header/serialize selection
-  passed, including a unique-declaration test that proves normal emission uses
-  the caller writer instead of duplicate-cache pre-render. The flagged
-  `CountingWriter` construction and `try/finally` are test-only restoration
-  scaffolding. Targeted ESLint passed. Full gates are required before commit.
-- Merge-carried binding review: `findRulesetNamespacePathFast(...)` now
-  prepares the visible
-  callable frame chain for the namespace segment and checks visible child
-  entries to prove uncovered child/reference-import uncertainty is limited to
-  the ruleset-prefix body already being descended into. This replaces broad
-  `findMixinsFast(...)` scans for the targeted `#Namespace` / `.mixin`
-  reference-import array-path cases, including selector-list imported
-  namespaces.
-  No exported helper/API was added; helper logic lives in private `Rules`
-  methods. It does not change render/stringification, and its focused
-  import-style/mixin evidence passed before the merge. No speed claim.
-- Merge-carried binding review: callable namespace child-surface bridge
-  narrowing reuses existing scope-frame lookup and
-  `findMixinsFastForUncoveredCallable(...)` child-entry narrowing. It does not
-  change render/stringification or add public API; focused import-style/mixin
-  evidence passed on the incoming branch. The flagged `try` blocks,
-  `directCrawlHits` spy array, and optional `MixinEntry[]` collection are
-  binding proof/bridge state, not serialization transport. No speed claim.
+- Latest pass: setDefined readonly result-object deletion.
+- Verdict: accepted as a cold fallback API-shape cut with behavior proof. No
+  speed claim.
+- New traversal: none. The setDefined fallback still uses the existing direct
+  declaration lookup traversal; it now applies the matched occurrence through a
+  setDefined-only callback instead of returning a general
+  `{ occurrence, readonly }` result object. Ordinary occurrence helpers remain
+  branch-free and return `DirectDeclarationOccurrence | undefined`.
+- New node/materialization: none. The diff re-indents the existing
+  non-variable setDefined fallback that derives/adopts a declaration after a
+  found property declaration; that cold fallback behavior is unchanged and is
+  not used by ordinary reference reads.
+- Render path: no committed render/stringification path change.
+- Helper/API surface: replaced `findSetDefinedDeclarationReadonlyOccurrence`
+  with `applySetDefinedDeclarationReadonlyOccurrence(...)` and removed the
+  internal readonly-result overload/type. No exported/public `Rules.find*`
+  surface was preserved for hot-path compatibility; production callers still
+  use occurrence helpers directly.
+- Metadata mutations: no new metadata mutation. The existing
+  `foundRules.adopt(newDeclaration)` fallback remains only in the non-variable
+  setDefined insertion path.
+- Allocation changes: setDefined fallback no longer allocates or returns the
+  `{ occurrence, readonly }` wrapper. It still allocates a cold callback closure
+  at the assignment call site; the tracker records that as a follow-up only if
+  the helper can own the full mutation without moving assignment semantics into
+  ordinary lookup.
+- Rejected/observed in this pass: public `Rules.findVariable` /
+  `findProperty` / `findDeclaration` / `findAnyDeclaration` wrappers are now
+  test/cold-only by repo search, but not deleted in this batch because parser
+  and test helper call sites still need conversion or an explicit cold-facade
+  decision.
+- Evidence: focused setDefined tests in `reference.test.ts`, `rules.test.ts`,
+  `mixin.test.ts`, and `control.test.ts` passed. `verify:binding-lookup-hot-paths`
+  now requires the apply helper, forbids the old readonly occurrence helper and
+  `DirectDeclarationLookupResult`, and still guards production runtime against
+  public `Rules.find*` declaration wrappers. Final gates are required before
+  commit. No speed claim.
+- Merge note: the branch also incorporates the latest serialization transport
+  work from `origin/dev`; keep that progress tracked in
+  `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.
