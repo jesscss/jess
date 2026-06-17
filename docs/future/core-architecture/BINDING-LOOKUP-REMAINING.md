@@ -75,7 +75,11 @@ misses.
 `_lookupStrategy`, key node identity, read mode, target presence, `inCall`, and
 static parent/start shape. Goal: cache repeated preparation only when generated
 control/mixin surfaces cannot change the facts. Acceptance: control loop matrix
-plus variable/property/function/callable handle tests.
+plus variable/property/function/callable handle tests. Current evidence:
+source-static variable/property/function/mixin reads now read an already-written
+trivial `RulesLookupHandle` before rebuilding `_lookupStrategy`; contextual
+start, read mode, target/filter, leaky/search-scope, interpolated, and
+nontrivial handle shapes still fall through to normal preparation.
 
 5. [ ] Finish reference-import namespace offset coverage. Scope:
 namespaced reference-import rulesets, reference-import child surfaces reached
@@ -124,15 +128,14 @@ whether setDefined can write through a tighter helper without putting family
 branching back into ordinary reads. Acceptance: setDefined/live binding tests,
 build, and hot-path guard stay green.
 
-11. [ ] Clean up stale declaration-wrapper design references after deletion.
-Scope: `BINDING-INDEX-PROPOSAL.md`, package barrel assumptions, parser/test
-fixtures, and verifier coverage for deleted `Rules.findVariable` /
-`findProperty` / `findDeclaration` / `findAnyDeclaration`. Goal: make the
-remaining design docs and package-facing expectations describe occurrence
-helpers/direct crawl instead of a cold `Rules.find*` declaration facade.
-Acceptance: stale-wrapper grep has no actionable hot-path/design hits, package
-build/tests prove no exported consumer needs the deleted methods, and
-`verify:binding-lookup-hot-paths` keeps guarding against reintroduction.
+11. [ ] Collapse remaining `Reference.lookupVariableReference(...)` facade miss
+lane where covered source-static variable reads already have frame/handle
+coverage. Scope: explicit-target fallback, selector-attribute interpolation,
+`findVarDeclarationFast(...)`, and any public-looking variable lookup helper
+that remains only to route covered misses. Goal: ordinary covered variable hits
+and misses stay on the source-static handle/frame path and never call the
+facade miss helper. Acceptance: focused spies for covered explicit/static
+variable miss and hit paths, plus existing interpolation positives.
 
 12. [ ] Run changed-baseline and fix any lookup-owned fallout now that the
 ruleset header streaming blocker is repaired. Scope: changed Less/Jess
@@ -238,6 +241,15 @@ visited-set allocation.
   legacy nested array-path fallback. `undefined` remains the unsupported/cold
   fallback signal. Focused mixin tests prove positive namespace paths and
   definite miss paths avoid nested array materialization.
+- Source-static variable/property/function/mixin references now try the stored
+  rules lookup handle after reference env prep and before `_lookupStrategy`
+  rebuild. The early path accepts only trivial source-static handle shapes and
+  still uses the normal handle reader for version, live-binding, and occurrence
+  freshness.
+- Stale design/test references to deleted declaration wrapper facades were
+  cleaned up in `BINDING-INDEX-PROPOSAL.md`; remaining grep hits are either the
+  direct occurrence helper names or explicit notes that the public-looking
+  declaration facades are deleted.
 - Guarded namespace positives in the real parser/render fixture now have
   bridge-spy proof: `#guarded > #deeper > .mixin` resolves the plain ruleset,
   silent callable namespace mixin, and defaulted guarded callable namespace

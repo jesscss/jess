@@ -103,48 +103,46 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: declaration wrapper deletion plus callable namespace
-  reference-import modeled-miss bridge cut.
-- Verdict: accepted as binding/lookup machinery deletion with behavior proof.
-  No speed claim.
-- New traversal: no new runtime traversal. `findMixinsFastForUncoveredCallable`
-  now optionally reports whether its existing child-entry loop inspected a
-  modeled uncovered surface. The new `for (const token of ...)` loop is in the
-  verifier script only. `findCallableDescendantsWithinMixinNamespaces` returns
-  `[]` for covered descendant misses so the caller does not reopen the older
-  namespace fallback after the direct frame/child-surface proof.
-- New node/materialization: no runtime node materialization. Core tests now
-  import occurrence helpers directly, and the SCSS parser baseline asserts the
-  parsed `VarDeclaration` in the function body instead of materializing through
-  runtime lookup. The new `[]` value is a private covered-miss sentinel in the
-  callable namespace path, not an output array to stringify; test-only arrays
-  record spy hits.
-- Render path: no render/stringification path change. Function return and
-  selector-attribute tests keep output assertions while deleting obsolete
-  monkey-patches of removed declaration wrappers.
-- Helper/API surface: deleted `Rules.findVariable`, `findProperty`,
-  `findDeclaration`, and `findAnyDeclaration` declaration wrappers. Added no
-  replacement public facade. Added one private `UncoveredCallableCoverage`
-  shape to carry a fact out of an existing helper; it prevents a broader
-  fallback call and is not exported.
-- Metadata mutations: none. The `try` flagged by aggressive review is in a
-  test-only spy restoration block.
-- Allocation changes: removed cold wrapper method calls and deleted test
-  monkey-patch closures around those wrappers. Added one small coverage object
-  only inside the namespace descendant uncovered branch; the object is used to
-  avoid nested `findMixin(...)` and namespace `findMixinsFast(...)` fallback
-  after a modeled miss. No speed claim is made from that shape.
-- Rejected/observed in this pass: the broad `tsc --noEmit` signal remains
-  unusable because unrelated repo-wide type debt dominates it. Focused tests,
-  eslint, and the binding hot-path verifier are the decision evidence for this
-  pass. Reference-import descendant positives inside namespace mixin bodies
-  remain open; only modeled misses were cut.
-- Evidence: `verify:binding-lookup-hot-paths` passed. Focused core tests for
-  reference/rules/import-style/detached-rulesets/function/selector-attr wrapper
-  deletion passed, the SCSS parser `@function` baseline passed, callable
-  namespace reference-import modeled-miss and existing ScopeFrame callable
-  bucket tests passed, and import-style namespace positives stayed green. Final
-  gates are required before commit. No speed claim.
+- Latest pass: source-static reference handle early read plus stale
+  declaration-wrapper design cleanup.
+- Verdict: accepted as a narrow binding/lookup hot-path preparation cut with
+  behavior proof. No speed claim.
+- New traversal: no new runtime traversal, recursion, sort, map/filter, parent
+  walk, or child scan. The review-flagged `for (const read of reads)` loop is
+  test-only coverage over four source-static reference families. The new helper
+  reads the already-stored `_rulesLookupHandle` and delegates freshness to the
+  existing handle reader.
+- New node/materialization: no runtime node materialization. The review-flagged
+  function constructor call is a test fixture for the function reference family;
+  the focused test also builds ordinary variable/property/mixin fixtures only
+  to prove the stored handle path. No render-only or eval-to-string nodes were
+  added.
+- Render path: no render/stringification path change. The new path returns the
+  same handle values as the existing reader and falls through to normal lookup
+  whenever the source-static shape is not trivial.
+- Helper/API surface: added one private
+  `tryReadSourceStaticRulesLookupHandle(...)` helper. It is deliberately
+  narrower than a public plan/cache API: it accepts only existing handle state
+  with `start === undefined`, `local === false`, no parent-start ignore, stable
+  terminal-mixin bit, no target/filter/read mode/interpolation/leaky/search
+  scope, and a string key equal to the normalized lookup key. It lets repeated
+  source-static references skip `_lookupStrategy` rebuild and rules lookup
+  shape preparation; it does not introduce a registry or exported facade.
+- Metadata mutations: none beyond the existing `_lookupStrategy` test reset
+  used to prove the helper does not rewrite it. No source/parent/frozen
+  metadata changed.
+- Allocation changes: the review-flagged `RulesLookupHandleShape` object is
+  created only after an existing handle passes the source-static guards, so the
+  normal first lookup path is unchanged. Declaration constraints are read only
+  for declaration/property/variable handle families, then validated by the
+  existing reader.
+- Rejected/observed in this pass: moving the read before reference env prep was
+  rejected because `inCall`, target/filter/read-mode/interpolation, leaky, and
+  search-scope facts are part of the handle safety boundary. Stale design
+  references to the deleted declaration facades were updated; remaining grep
+  hits are occurrence helper names or explicit deletion notes.
+- Evidence: focused `reference.test.ts` source-static handle test passed.
+  Final gates are required before commit. No speed claim.
 - Merge note: the branch also incorporates the latest serialization transport
   work from `origin/dev`; keep that progress tracked in
   `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.
