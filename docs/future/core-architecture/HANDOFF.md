@@ -103,30 +103,16 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `Mixin` source syntax and interpolated-name registration helper
-  cut in `packages/core/src/tree/mixin.ts`.
+- Latest pass: `AtRule.getHeaderString(...)` header fragment public string
+  transport cut in `packages/core/src/tree/at-rule.ts`.
 - Verdict: accepted as a focused serialization transport cut. No speed claim.
 - New traversal: none.
-- New node/materialization: no new render-path node materialization.
-  Interpolated-name registration still materializes the existing replacement
-  `Mixin` wrapper once the dynamic name is evaluated; the pass removes
-  conditional object-spread fragments and a per-call `withName` closure around
-  that existing semantic boundary. The `CountingWriter` and `throw new Error`
-  tokens in `mixin.test.ts` are test-only proof that public string methods are
-  not used.
-- Render path: `Mixin.writeSyntax(...)` now writes name, params, guard, and
-  rules directly. Public `toTrimmedString(...)` is a cold wrapper that only
-  marks/reads the already-directed writer output.
-- Helper/API surface: one private `createPreparedNameMixin(...)` method
-  replaces the local `withName` closure in `_prepareMixinNameIdentity(...)`; no
-  public APIs added.
-- Metadata mutations: no new metadata mutation. The `sourceRoot?._treeContext`
-  read is the existing prepared-name wrapper constructor metadata carry-through.
-- Allocation changes: removed conditional object-spread fragments from
-  `deriveMixin(...)` / prepared-name wrapper construction and removed the
-  per-call prepared-name closure. The remaining `MixinValue` objects are the
-  required constructor payloads for existing public materialization boundaries.
-  Kept the cold public wrapper mark/readback for `toTrimmedString(...)`.
-- Evidence: focused `mixin.test.ts` source-writer and interpolated-name
-  registration tests passed before doc closeout. Full gates are recorded in the
-  final response.
+- New node/materialization: none.
+- Render path: at-rule header name/prelude fragments now call
+  `writeSyntax(...)` while preserving the existing local
+  mark/getSince/restore capture boundary needed for header spacing and trivia.
+- Helper/API surface: no helpers or public APIs added.
+- Metadata mutations: none.
+- Allocation changes: none.
+- Evidence: focused `at-rule.test.ts` header tests passed before doc closeout.
+  Full gates are recorded in the final response.

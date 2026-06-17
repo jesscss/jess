@@ -1616,21 +1616,19 @@ describe('AtRule', () => {
     const prelude = node.prelude!;
     const originalNameToString = name.toString;
     const originalPreludeToString = prelude.toString;
-    let nameUsedActiveWriter = false;
-    let preludeUsedActiveWriter = false;
+    let nameToStringCalls = 0;
+    let preludeToStringCalls = 0;
     name.toString = function toStringWithWriterCheck(
-      this: typeof name,
-      nextOptions?: Parameters<typeof originalNameToString>[0]
+      this: typeof name
     ): string {
-      nameUsedActiveWriter = nextOptions?.writer === writer;
-      return originalNameToString.call(this, nextOptions);
+      nameToStringCalls++;
+      return originalNameToString.call(this);
     };
     prelude.toString = function toStringWithWriterCheck(
-      this: typeof prelude,
-      nextOptions?: Parameters<typeof originalPreludeToString>[0]
+      this: typeof prelude
     ): string {
-      preludeUsedActiveWriter = nextOptions?.writer === writer;
-      return originalPreludeToString.call(this, nextOptions);
+      preludeToStringCalls++;
+      return originalPreludeToString.call(this);
     };
 
     try {
@@ -1638,8 +1636,8 @@ describe('AtRule', () => {
       expect(writer.toString()).toBe('');
       expect(writer.captures).toBe(0);
       expect(writer.previews).toBe(0);
-      expect(nameUsedActiveWriter).toBe(true);
-      expect(preludeUsedActiveWriter).toBe(true);
+      expect(nameToStringCalls).toBe(0);
+      expect(preludeToStringCalls).toBe(0);
     } finally {
       name.toString = originalNameToString;
       prelude.toString = originalPreludeToString;
