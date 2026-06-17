@@ -103,23 +103,21 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Rules root charset active-writer emission in
-  `packages/core/src/tree/rules.ts`.
-- Verdict: accepted as a localized detached-writer shuttle cut. No speed claim.
+- Latest pass: Ampersand append-placement dead string snapshot deletion in
+  `packages/core/src/tree/ampersand.ts`.
+- Verdict: accepted as a localized unused public-string transport deletion. No
+  speed claim.
 - New traversal: none.
 - New node/materialization: none.
-- Render path: root `@charset` serialization now calls
-  `ctx.currentCharset.writeSyntax(options)` on the active root writer instead
-  of writing charset syntax into a detached writer and adding that string back
-  to the root writer.
+- Render path: append placement no longer calls public selector
+  `toTrimmedString(...)` to populate unused input/result text snapshots.
+  Actual append/template selector replacement behavior is unchanged.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: removes one detached writer allocation/string shuttle
-  from root charset emission. The remaining root import/comment serializer
-  boundaries stay on their existing detached writer paths.
-- Rejected/observed in this pass: duplicate declaration materialization and
-  broader root import/comment serializer capture remain open in the `Rules`
-  row.
+- Allocation changes: deletes the unused append-placement string arrays/counts
+  and result text fields plus the helper that filled them.
+- Rejected/observed in this pass: broader Ampersand raw string assembly and
+  structural selector replacement remain open in the row.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -127,10 +125,13 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: focused `rules.test.ts` root charset/import slice passed, proving
-  charset sees the active writer while public `toTrimmedString(...)` and
-  import public `toString(...)` stay unused. Targeted ESLint for `rules.ts`
-  and `rules.test.ts` passed. Full gates are required before commit.
+- Evidence: full `ampersand.test.ts` passed, including a framed append test
+  that throws if placement snapshots the frame selector through public
+  `toTrimmedString(...)`. Targeted ESLint for `ampersand.ts` and
+  `ampersand.test.ts` passed. The review-flagged test exception and empty
+  rules fixture are proof scaffolding; the generic-construction text is an
+  existing tracker note touched by the row update, not new runtime code. Full
+  gates are required before commit.
 - Merge-carried binding review: merging `origin/dev` also brought the
   source-static reference handle early-read pass and binding tracker updates.
   It is lookup-only: no render/stringification path changed, no runtime node
