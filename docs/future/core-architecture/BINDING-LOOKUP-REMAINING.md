@@ -1,8 +1,22 @@
 # Binding And Lookup Remaining Work
 
 This is the burn-down inventory for the registryless binding/lookup lane. Keep
-`HANDOFF.md` focused on the active queue; update this file only when the total
-remaining scope changes.
+this file focused on the active binding queue, remaining scope, completion
+gates, and short progress notes that change the next worker's decisions.
+`HANDOFF.md` is only the cross-workstream router.
+
+## Workstream Contract
+
+This file owns binding/lookup progress. When a chat/session chooses the
+binding/lookup workstream, start here after reading `HANDOFF.md`. Do not move
+this queue back into `HANDOFF.md`, and do not rewrite `HANDOFF.md` merely to
+switch focus between binding and serialization branches.
+
+A full queue pass means burn through every currently safe active item below,
+not one micro-edit. If the pass must stop before the queue is drained, record
+which item remains, what blocked immediate continuation, and why stopping was
+necessary. Before committing a pass, leave 15 sizable unchecked binding tasks
+unless this lane is genuinely within 15 tasks of completion.
 
 ## Scope Correction
 
@@ -22,6 +36,135 @@ Do not count a task as complete because the old registry class is gone. Count it
 complete only when the covered simple path proves it does not enter the
 fallback bridge, direct child scan, broad invalidation lane, or public
 materialization wrapper for that semantic case.
+
+## Active Binding Queue
+
+Complete every item in this queue before committing the next binding/lookup
+pass unless a semantic blocker, rejected approach, or unsafe test failure
+forces a focused stop.
+
+1. [ ] Split guarded/configured child-surface uncertainty from simple exact
+child-frame misses. Scope: `findMixinsFastForUncoveredCallable`, imported
+guarded mixins, configured import child surfaces, `options.context`, and
+replacement/additive import config. Goal: only genuinely dynamic
+guarded/configured surfaces can reach the broad crawl. Acceptance: child-frame
+exact misses stay zero-bridge; guarded/config matrices stay green.
+
+2. [ ] Finish callable retry-frame bridge deletion where retry frames are
+covered. Scope: parent/fallback frame loops in `Rules.findMixin`, fallback
+frame `prepareCallableLookupFrame`, recursive namespace starts, and
+reference-import fallback frames. Goal: covered retry-frame misses do not keep
+walking into broad direct crawls. Acceptance: parent/fallback callable miss spy
+tests plus existing fallback hit tests.
+
+3. [ ] Add retry-frame bridge proof before deleting more fallback bridges.
+Scope: parent scope frames, fallback frames, covered misses, recursive namespace
+starts, and `findMixinsFastForUncoveredCallable`. Goal: prove which retry
+frames are already covered and which still need dynamic child-surface fallback.
+Acceptance: spy tests separate parent/fallback zero-bridge misses from real
+guarded/configured positives.
+
+4. [ ] Delete any remaining simple exact callable child scans that are
+provably covered by frame facts. Scope: current-frame miss, child-entry family
+skip, child-frame covered miss, and terminal mixin-only mode. Goal: avoid
+child-surface crawl when the frame already says the family/key cannot hit.
+Acceptance: `findMixinsFast` spy tests for simple mixin and mixin-ruleset
+misses.
+
+5. [ ] Retry `ReferencePlan` only for source-static facts. Scope:
+`_lookupStrategy`, key node identity, read mode, target presence, `inCall`, and
+static parent/start shape. Goal: cache repeated preparation only when generated
+control/mixin surfaces cannot change the facts. Acceptance: control loop matrix
+plus variable/property/function/callable handle tests.
+
+6. [ ] Eliminate remaining positive-path `collectKeyRemainder(...)` arrays.
+Scope: ruleset namespace, compound-prefix namespace, recursive namespace
+fallback paths, and guarded/imported namespace positives. Goal: arrays exist
+only on cold miss/legacy fallback paths. Acceptance: nested array-path spies for
+positive namespace cases stay zero.
+
+7. [ ] Extend stable namespace no-fallback proof to guarded/imported namespace
+surfaces. Scope: namespace path offsets, guarded mixins, reference imports,
+terminal mixin-only mode, and parameterized terminals. Goal: stable positives
+stay on offset paths without breaking Less semantics. Acceptance: Less fixture,
+guarded namespace tests, and reference-import namespace tests.
+
+8. [ ] Confirm scalar excluded-node handle invalidation after output binding.
+Scope: merge normalization scalar getters, handle shape before/after
+`bindOutput`, and stale occurrence invalidation. Goal: prove scalar exclusion
+identity changes exactly when the output declaration is bound. Acceptance:
+lower-level/materialization-aware handle test; do not use the rejected
+render-level `Reference.eval` spy shape.
+
+9. [ ] Add final public-bridge grep/test for ordinary static declaration
+reads. Scope: variable, property, declaration, index, and merge-chain refs.
+Goal: no hot read imports or calls wrapper-returning helpers or public
+`Rules.find*` materialization wrappers. Acceptance: reference spy matrix plus
+grep.
+
+10. [ ] Prove reference-import declaration/callable misses stay on modeled
+frames after retry-frame cleanup. Scope: reference import roots, rendered
+reference imports, parent/fallback frames, and optional callable misses. Goal:
+no regression to frame-less broad crawl. Acceptance: real reference-import
+fixtures plus broad-bridge spies.
+
+11. [ ] Hide scalar declaration exclusion fields from exported option shapes
+or document why the constructor still needs an internal overlap. Scope:
+`ReferenceOptions`, `DeclarationFindOptions`, generated declarations, and
+merge normalization. Goal: avoid treating scalar handle keys as user-facing
+API. Acceptance: type/build proof and grep showing only internal use.
+
+12. [ ] Prove assignment-wrapper coldness in CI-friendly form. Scope:
+`find*DeclarationAssignmentLookup`, `find*DeclarationOccurrence`, `setDefined`,
+and ordinary reference reads. Goal: convert the grep proof into a stable test or
+script assertion so future changes cannot route reads through wrappers.
+Acceptance: focused grep/test command committed or documented as gate.
+
+13. [ ] Re-audit public `Rules.find*` materialization wrappers after the
+remaining direct declaration bridge proof. Scope: `findVariable`,
+`findProperty`, `findDeclaration`, `findAnyDeclaration`, and reference import
+reads. Goal: keep hot paths on occurrence helpers while preserving cold API
+surfaces until they are explicitly deleted. Acceptance: no hot reference caller
+uses materialization wrappers.
+
+14. [ ] Run changed-baseline and fix any lookup-owned fallout now that the
+ruleset header streaming blocker is repaired. Scope: changed Less/Jess
+fixtures, ruleset render interaction with lookup work, and branch-local
+failures. Goal: use baseline evidence as a gate again. Acceptance:
+`pnpm run verify:baseline -- --changed` either passes or has a lookup-owned
+failure recorded with a fix.
+
+15. [ ] Refresh lookup profile and one-iteration hotpath smoke after the next
+bridge deletion batch. Scope: `scope-lookup-stress.less`, direct lookup
+counters, old registry counters, and smoke timings. Goal: keep counter
+evidence current without claiming speed. Acceptance: profile recorded with old
+`Rules.find`/registry counters empty and smoke values labeled smoke-only.
+
+## Latest Binding Baseline
+
+- `scope-lookup-stress.less` counter evidence improved from
+  `declaration.cacheMiss: 16560`, `declaration.childEntryEntered: 11520`,
+  `declaration.childEntriesScanned: 10530`, and `declaration.framePrep: 139`
+  to `declaration.cacheMiss: 7560`, `declaration.scope.v: 7560`,
+  `declaration.childEntriesScanned: 1575`,
+  `declaration.childEntryEntered: 1575`,
+  `declaration.childEntriesFamilySkip: 5400`,
+  `declaration.childEntryFamilySkip: 1575`, and `declaration.framePrep: 1`.
+  This is counter evidence only, not a wall-clock speed claim.
+- Function handles are per-key; callable handles use
+  `Rules.callableLookupVersion`; variable/property/declaration handles use
+  per-key declaration versions.
+- Reference variable lookup uses one modeled `live-current` lane. Ancestor
+  variable handles track target-frame current binding freshness.
+- Callable namespace lookup routes candidate, child-surface, and
+  reference-import uncertainty through caller-specific decisions before using
+  the old direct-crawl bridge.
+- Simple exact callable misses with covered child frames skip the broad
+  `findMixinsFast` child crawl; frame-less reference-import placements still
+  document the remaining bridge.
+- Late child additions update prepared callable child-entry facts for exact
+  callable and reference-import child surfaces while invalidating stale
+  covered-miss frame state.
 
 ## Remaining Work Clusters
 
@@ -183,7 +326,7 @@ handoff, commits, and pushes.
 Binding/lookup work is complete only when:
 
 - this inventory has no remaining active cluster;
-- `HANDOFF.md` active queue is empty and not reseeded from this file;
+- the active binding queue above is empty and not reseeded from this inventory;
 - the stale registry/lookup wording grep has no hot-path hits;
 - focused lookup tests plus changed baseline gates pass;
 - `scope-lookup-stress.less` profile shows old `Rules.find`/registry counters
