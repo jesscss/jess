@@ -155,3 +155,11 @@ with `--no-verify` after the explicit gates pass.
   isolated header-fragment writers for source syntax capture, and the `try` is
   paired with trivia restoration around that cold header capture. No speed
   claim.
+- Merge-carried serialization review: `origin/dev` also includes the
+  QueryCondition nested static direct-child cut in
+  `packages/core/src/tree/query-condition.ts` plus serialization tracker
+  updates. Exact nested query-condition children now write directly instead of
+  entering the unknown-child fallback mark/readback path; custom/subclassed
+  children keep the fallback. The review-flagged `CountingWriter` construction
+  is test-only instrumentation for mark/readback assertions. This is tracked in
+  `NODE-REWRITE-TRACKER.md` and is not new binding logic. No speed claim.

@@ -48,6 +48,7 @@ export class QueryCondition extends Sequence {
       || node.type === 'Num'
       || node.type === 'Bool'
       || node.type === 'Color'
+      || node.constructor === QueryCondition
       || node.constructor === Paren
     );
   }

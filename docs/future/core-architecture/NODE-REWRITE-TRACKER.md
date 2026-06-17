@@ -189,9 +189,10 @@ when choosing among unfinished serialization rows. Hot unfinished rows include
 - [ ] `QueryCondition`: direct condition syntax writer exists, source/static
   children use `writeSyntax(...)` instead of public `toString(...)`, static
   flat-buffer render writes syntax directly with one writer mark, static child
-  probe traffic is cut for scalar children and exact base `Paren` children, and
-  dynamic render now uses a straight sync loop with an async rest method only
-  after a thenable is observed. Async-capable dynamic render now keeps
+  probe traffic is cut for scalar children, exact base `Paren` children, and
+  exact nested `QueryCondition` children, and dynamic render now uses a
+  straight sync loop with an async rest method only after a thenable is
+  observed. Async-capable dynamic render now keeps
   class-contract static siblings on direct syntax emission even when another
   child is async, and the remaining dynamic fallback checks
   `hasContentSince(mark)` instead of opening a second `mark()` just to test
