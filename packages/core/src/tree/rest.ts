@@ -2,7 +2,7 @@ import { Any } from './any.js';
 import { defineType, Node } from './node.js';
 import type { Context } from '../context.js';
 import { isNode } from './util/is-node.js';
-import { isRenderBuffer, prepareBufferPrintState, type RenderBuffer, writePreparedRenderText } from './util/render-buffer.js';
+import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 
 /**
@@ -68,25 +68,25 @@ export class Rest extends Node<Node | string | undefined> {
       return this.renderSource(context, bufferOrOptions, options);
     }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const prepared = buffer
-      ? prepareBufferPrintState(context, options, buffer)
-      : prepareRenderPrintState(context, bufferOrOptions);
-    const mark = buffer ? prepared.writer.mark() : 0;
     let out: string;
     if (!value) {
       out = '...$';
-      prepared.writer.add(out, this);
     } else if (value instanceof Any) {
       out = `...$${value.value}`;
+    } else {
+      out = `...$$${value}`;
+    }
+    if (buffer) {
+      return writeRenderText(buffer, out);
+    }
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    if (value instanceof Any) {
       prepared.writer.add('...$');
       prepared.writer.add(value.value, value);
     } else {
-      out = `...$$${value}`;
       prepared.writer.add(out, this);
     }
-    return buffer
-      ? writePreparedRenderText(buffer, prepared, mark, out)
-      : out;
+    return out;
   }
 
   override resolve(_context: Context): this {

@@ -5,7 +5,13 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 import { OutputWriter } from '../util/print.js';
 
 class CountingWriter extends OutputWriter {
+  marks = 0;
   reads = 0;
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
 
   override getSince(mark: number): string {
     this.reads++;
@@ -76,6 +82,8 @@ describe('Rest', () => {
 
   it('writes rest render output into flat buffers', async () => {
     const buffer = createRenderBuffer('flat');
+    const writer = new CountingWriter();
+    context.printState.writer = writer;
     const node = rest('items');
     let resolveCalls = 0;
     node.resolve = () => {
@@ -85,6 +93,8 @@ describe('Rest', () => {
 
     expect(await node.render(context, buffer)).toBe('...$$items');
     expect(buffer.parts).toEqual(['...$$items']);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
     expect(resolveCalls).toBe(0);
   });
 

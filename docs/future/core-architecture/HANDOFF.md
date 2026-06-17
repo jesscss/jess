@@ -683,32 +683,30 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Ruleset segmented-buffer evaluated render mark.
+Current pass: Rest scalar render-buffer direct write.
 
-- New traversal: none. The existing evaluated Ruleset render path and
-  `serializeRulesContainer(...)` call are unchanged.
-- New node/materialization: none. The focused test adds a `CountingWriter`
-  fixture only.
-- Render path: `renderEvaluatedRuleset(...)` now opens the prepared-writer mark
-  only when rendering to a flat buffer whose writer writes directly to the
-  buffer parts. Segmented buffers and non-shared writers pass through
-  `writePreparedRenderText(...)` by returned text, so the previous unconditional
-  buffer mark was dead bookkeeping.
+- New traversal: none.
+- New node/materialization: none. Scalar rest render already knows the exact
+  output token before writing.
+- Render path: `Rest.render(..., buffer)` now writes known string/empty/`Any`
+  rest output directly to the requested render buffer instead of preparing a
+  writer, opening a mark, writing the same known token, and reading it back.
+  Non-buffer render still writes the same token to the caller writer, and
+  arbitrary node-valued rest still uses the existing child source-render
+  fallback boundary.
 - Helper/API surface: no public API or helper surface changed.
 - Metadata mutations: none.
-- Rejected cut: the broader Ruleset/container writer split remains a separate
-  design slice. Header equality still needs comparable strings, and
-  `serializeRulesContainer(...)` still owns frame matching, indentation,
-  duplicate declaration suppression, and child write-vs-return boundaries.
-- Evidence: focused Ruleset test passed with
-  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/ruleset.test.ts --testNamePattern "writes finalized ruleset output into segmented buffers"`;
-  full `ruleset.test.ts` passed; changed-file eslint passed with
-  `pnpm exec eslint packages/core/src/tree/ruleset.ts packages/core/src/tree/__tests__/ruleset.test.ts`;
+- Rejected cut: broader scalar wrapper unknown-child buffer capture remains a
+  separate design slice. `Block`, `Paren`, `Url`, and `Quoted` still have
+  non-scalar or trivia-sensitive paths that need a string boundary unless their
+  child emission is split to a detached direct writer contract.
+- Evidence: focused Rest test passed with
+  `pnpm vitest run packages/core/src/tree/__tests__/rest.test.ts`;
+  changed-file eslint passed with
+  `pnpm exec eslint packages/core/src/tree/rest.ts packages/core/src/tree/__tests__/rest.test.ts`;
   `pnpm --filter @jesscss/core build` passed; and
-  `pnpm run verify:aggressive-cutting-review` exited 0 while flagging the
-  expected test-only `try/finally` prototype restoration plus unrelated
-  dirty-tree danger tokens outside this slice.
-- Verdict: accepted as a bounded partial Ruleset render-buffer cut if final
-  gates pass. Direct container writer splitting, frame/header equality, body
-  prep, wrappers, and broader render branches remain open. No performance
-  claim; this was not a measured benchmark pass.
+  `pnpm run verify:aggressive-cutting-review` exited 0 while flagging one
+  expected test-only `new CountingWriter()` plus unrelated dirty-tree danger
+  tokens outside this slice.
+- Verdict: accepted as a bounded scalar-wrapper correction if final gates pass.
+  No performance claim; this was not a measured benchmark pass.
