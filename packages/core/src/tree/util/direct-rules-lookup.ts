@@ -16,9 +16,6 @@ import type { DeclarationFindOptions } from './lookup-utils.js';
 type DirectDeclarationFindOptions = DeclarationFindOptions & {
   context?: Context;
 };
-type DirectDeclarationReadonlyFindOptions = DirectDeclarationFindOptions & {
-  includeReadonly: true;
-};
 
 type DeclarationLookupStrategy = {
   cacheTag: string;
@@ -117,7 +114,7 @@ type DeclarationMatchState = {
 };
 
 type CachedDeclarationMatchState = Readonly<DeclarationMatchState>;
-export type DirectDeclarationLookupResult = {
+type DirectDeclarationLookupResult = {
   occurrence: DirectDeclarationOccurrence | undefined;
   readonly: boolean;
 };
@@ -677,21 +674,21 @@ function findDeclarationLookupWithStrategy(
   key: string,
   strategy: DeclarationLookupStrategy,
   options: DirectDeclarationFindOptions | undefined,
-  includeReadonly: true
+  withReadonly: true
 ): DirectDeclarationLookupResult;
 function findDeclarationLookupWithStrategy(
   startRules: Rules,
   key: string,
   strategy: DeclarationLookupStrategy,
   options?: DirectDeclarationFindOptions,
-  includeReadonly?: false
+  withReadonly?: false
 ): DirectDeclarationOccurrence | undefined;
 function findDeclarationLookupWithStrategy(
   startRules: Rules,
   key: string,
   strategy: DeclarationLookupStrategy,
   options?: DirectDeclarationFindOptions,
-  includeReadonly = false
+  withReadonly = false
 ): DirectDeclarationLookupResult | DirectDeclarationOccurrence | undefined {
   const lookupOptions = options ?? EMPTY_DIRECT_DECLARATION_FIND_OPTIONS;
   const searchParents = lookupOptions.searchParents ?? true;
@@ -738,7 +735,7 @@ function findDeclarationLookupWithStrategy(
     readonly ||= state.readonly;
     publicMatch = chooseTraversalMatch(publicMatch, state.publicMatch);
     if (publicMatch) {
-      return includeReadonly ? { occurrence: publicMatch, readonly } : publicMatch;
+      return withReadonly ? { occurrence: publicMatch, readonly } : publicMatch;
     }
     optionalMatch = chooseTraversalMatch(optionalMatch, state.optionalMatch);
     if (searchingFallback) {
@@ -746,7 +743,7 @@ function findDeclarationLookupWithStrategy(
       continue;
     }
     if (!searchParents) {
-      return includeReadonly ? { occurrence: undefined, readonly } : undefined;
+      return withReadonly ? { occurrence: undefined, readonly } : undefined;
     }
 
     const parentStep = getDeclarationParentSearchStep(
@@ -763,14 +760,9 @@ function findDeclarationLookupWithStrategy(
     }
   }
 
-  return includeReadonly ? { occurrence: optionalMatch, readonly } : optionalMatch;
+  return withReadonly ? { occurrence: optionalMatch, readonly } : optionalMatch;
 }
 
-export function findVariableDeclarationOccurrence(
-  startRules: Rules,
-  key: string,
-  options: DirectDeclarationReadonlyFindOptions
-): DirectDeclarationLookupResult;
 export function findVariableDeclarationOccurrence(
   startRules: Rules,
   key: string,
@@ -779,33 +771,38 @@ export function findVariableDeclarationOccurrence(
 export function findVariableDeclarationOccurrence(
   startRules: Rules,
   key: string,
-  options?: DirectDeclarationFindOptions | DirectDeclarationReadonlyFindOptions
-): DirectDeclarationLookupResult | DirectDeclarationOccurrence | undefined {
-  if (options?.includeReadonly === true) {
-    return findDeclarationLookupWithStrategy(startRules, key, VARIABLE_LOOKUP, options, true);
-  }
+  options?: DirectDeclarationFindOptions
+): DirectDeclarationOccurrence | undefined {
   return findDeclarationLookupWithStrategy(startRules, key, VARIABLE_LOOKUP, options);
 }
 
 export function findPropertyDeclarationOccurrence(
   startRules: Rules,
   key: string,
-  options: DirectDeclarationReadonlyFindOptions
-): DirectDeclarationLookupResult;
-export function findPropertyDeclarationOccurrence(
-  startRules: Rules,
-  key: string,
   options?: DirectDeclarationFindOptions
 ): DirectDeclarationOccurrence | undefined;
 export function findPropertyDeclarationOccurrence(
   startRules: Rules,
   key: string,
-  options?: DirectDeclarationFindOptions | DirectDeclarationReadonlyFindOptions
-): DirectDeclarationLookupResult | DirectDeclarationOccurrence | undefined {
-  if (options?.includeReadonly === true) {
-    return findDeclarationLookupWithStrategy(startRules, key, PROPERTY_LOOKUP, options, true);
-  }
+  options?: DirectDeclarationFindOptions
+): DirectDeclarationOccurrence | undefined {
   return findDeclarationLookupWithStrategy(startRules, key, PROPERTY_LOOKUP, options);
+}
+
+export function findVariableDeclarationReadonlyOccurrence(
+  startRules: Rules,
+  key: string,
+  options?: DirectDeclarationFindOptions
+): DirectDeclarationLookupResult {
+  return findDeclarationLookupWithStrategy(startRules, key, VARIABLE_LOOKUP, options, true);
+}
+
+export function findPropertyDeclarationReadonlyOccurrence(
+  startRules: Rules,
+  key: string,
+  options?: DirectDeclarationFindOptions
+): DirectDeclarationLookupResult {
+  return findDeclarationLookupWithStrategy(startRules, key, PROPERTY_LOOKUP, options, true);
 }
 
 export function findAnyDeclarationOccurrence(

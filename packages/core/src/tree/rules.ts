@@ -79,6 +79,8 @@ import {
   findAnyDeclarationOccurrence,
   type DirectDeclarationOccurrence,
   findPropertyDeclarationOccurrence,
+  findPropertyDeclarationReadonlyOccurrence,
+  findVariableDeclarationReadonlyOccurrence,
   findVariableDeclarationOccurrence
 } from './util/direct-rules-lookup.js';
 const { isArray } = Array;
@@ -3153,14 +3155,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         const lookupOptions: DeclarationFindOptions = { searchParents: true };
         const lookup = isNode(node, N.VarDeclaration)
-          ? findVariableDeclarationOccurrence(this, key, {
+          ? findVariableDeclarationReadonlyOccurrence(this, key, {
               ...lookupOptions,
-              includeLiveBindings: false,
-              includeReadonly: true
+              includeLiveBindings: false
             })
-          : findPropertyDeclarationOccurrence(this, key, {
-              ...lookupOptions,
-              includeReadonly: true
+          : findPropertyDeclarationReadonlyOccurrence(this, key, {
+              ...lookupOptions
             });
         const resultOccurrence = lookup.occurrence;
         const result = resultOccurrence?.node;
