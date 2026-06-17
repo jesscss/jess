@@ -453,9 +453,13 @@ describe('CSS Nesting Collapse', () => {
 
   it('streams hoisted parent selector headers without capture scaffolding', async () => {
     const writer = new CountingWriter();
+    const parentSelector = sel([el('.parent')]);
+    parentSelector.toString = () => {
+      throw new Error('hoisted parent header should write selector syntax directly');
+    };
     const node = rules([
       ruleset({
-        selector: sel([el('.parent')]),
+        selector: parentSelector,
         rules: rules([
           atrule({
             name: any('@media'),

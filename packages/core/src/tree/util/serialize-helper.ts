@@ -404,12 +404,12 @@ function renderHoistedParentHeader(
   depth: number
 ): string {
   const writer = new OutputWriter();
-  parent.selector.toString({
+  parent.selector.writeSyntax(getPrintOptions({
     ...options,
     writer,
     collapseNesting: false,
     composedSelectorStack: []
-  });
+  }));
   const selectorOut = writer.toString();
   return normalizeIndent(selectorOut.replace(/\s+$/, '') + ' {', indent(depth)) + '\n';
 }

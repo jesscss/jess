@@ -425,7 +425,9 @@ shape current before commit.
    nodes with `Promise.resolve(...)`. Render-mode unprepared dynamic child
    `Rules` wrappers now set up the child rules context and stream the child body
    directly instead of entering `writer.preview(...)` around public
-   `render(...)` transport.
+   `render(...)` transport. Hoisted parent selector headers now write selector
+   syntax directly instead of calling the parent selector public `toString(...)`
+   into the detached header writer.
    Broader body render, placement state, merge output, and duplicate declaration
    materialization remain open.
 7. [ ] Finish `Reference` public value materialization, rules-like surfaces,
@@ -642,30 +644,28 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: QueryCondition exact `Paren` static child direct render.
+Current pass: Rules hoisted parent selector header string transport.
 
-- New traversal: none. The change extends the existing direct-child predicate
-  by one exact constructor/prototype check; no loop, recursion, parent/source
-  walk, side-map lookup, or object/array scan was added.
+- New traversal: none. The change reuses the existing hoisted parent selector
+  header path and calls selector `writeSyntax(...)` directly into the detached
+  header writer instead of public `toString(...)`.
 - New node/materialization: no production node/materialization changes. The
-  focused tests add a local `CustomParen` and `CountingWriter` instances to
-  prove exact base `Paren` uses the direct path while subclass/custom syntax
-  stays on fallback readback.
-- Render path: static `QueryCondition` render now lets exact base `Paren`
-  children use their direct render contract instead of opening the parent
-  `mark()/getSince()` fallback around `writeSyntax(...)`. Custom `Paren`
-  subclasses still use the fallback path, and dynamic/custom child probes remain
-  in place.
+  focused test only overrides the parent selector public `toString(...)` to
+  prove the direct writer path is used.
+- Render path: hoisted parent headers still own the existing detached writer
+  string boundary for frame/header assembly, but selector syntax inside that
+  boundary no longer routes through the selector public string API.
 - Helper/API surface: no helper or public API was added.
 - Metadata mutations: no parent/source/frozen/location/options/context mutation
   was added.
-- Evidence: focused QueryCondition tests and full `node-render-buffer` tests
-  passed; `verify:render-buffer-frontier` reported no helper regressions; eslint
-  on touched QueryCondition source/test files passed.
+- Evidence: focused nesting-collapse, Rules, and node-render-buffer tests
+  passed; eslint on touched serializer/test files passed. The focused test
+  throws only if the hoisted parent header path calls parent selector public
+  `toString(...)`.
 - Review noise: `verify:aggressive-cutting-review` may report unrelated dirty
   worktree tokens from JS/runtime/docs work outside this slice.
-- Verdict: accepted as a bounded partial cut if final gates pass. The dynamic
-  child mark/probe/readback remains intentionally open because tests prove
-  custom children may return without writing or write different text than they
-  return. No performance claim; performance remains shelved because this was
-  not a measured benchmark pass.
+- Verdict: accepted as a bounded partial cut if final gates pass. Broader Rules
+  root/body render, public string return compatibility, duplicate declaration
+  comparison, and frame/header string identity remain open. No performance
+  claim; performance remains shelved because this was not a measured benchmark
+  pass.
