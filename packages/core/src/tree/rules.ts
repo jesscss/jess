@@ -78,9 +78,7 @@ import { queueTopImport } from './util/import-queue.js';
 import {
   findAnyDeclarationOccurrence,
   type DirectDeclarationOccurrence,
-  findPropertyDeclarationAssignmentLookup,
   findPropertyDeclarationOccurrence,
-  findVariableDeclarationAssignmentLookup,
   findVariableDeclarationOccurrence
 } from './util/direct-rules-lookup.js';
 const { isArray } = Array;
@@ -1159,8 +1157,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (!childEntries?.length) {
       return undefined;
     }
-    let canSearchChildSurface = false;
-    let hasUncoveredChildFrame = false;
+    let firstUncoveredChild: Rules | undefined;
+    let uncoveredChildren: Rules[] | undefined;
     let frameResults: MixinEntry[] | undefined;
     for (let i = childEntries.length - 1; i >= 0; i--) {
       const entry = childEntries[i]!;
@@ -1186,7 +1184,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (options.local && entry.node.options?.local) {
         continue;
       }
-      canSearchChildSurface = true;
       const childFrame = entry.node.getScopeFrame();
       entry.node.prepareCallableLookupFrame(childFrame, key, includeRulesets);
       const frameHit = lookupScopeFrameCallable(childFrame, key, {
@@ -1199,23 +1196,43 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           (frameResults ??= []).push(...results);
         }
       } else if (frameHit.kind === 'uncovered') {
-        hasUncoveredChildFrame = true;
+        if (firstUncoveredChild === undefined) {
+          firstUncoveredChild = entry.node;
+        } else {
+          (uncoveredChildren ??= [firstUncoveredChild]).push(entry.node);
+        }
       }
     }
     if (frameResults) {
       return frameResults;
     }
-    if (!canSearchChildSurface || !hasUncoveredChildFrame) {
+    if (!firstUncoveredChild) {
       return undefined;
     }
-    const direct = this.findMixinsFast(key, {
-      hasTarget: options.hasTarget,
-      local: options.local,
-      includeRulesets,
-      searchParents: false,
-      skipCurrentSurface: true
-    });
-    return direct.length > 0 ? direct : undefined;
+    if (uncoveredChildren) {
+      for (let i = 0; i < uncoveredChildren.length; i++) {
+        const direct = uncoveredChildren[i]!.findMixinsFast(key, {
+          hasTarget: options.hasTarget,
+          local: options.local,
+          includeRulesets,
+          searchParents: false
+        });
+        if (direct.length > 0) {
+          (frameResults ??= []).push(...direct);
+        }
+      }
+    } else {
+      const direct = firstUncoveredChild.findMixinsFast(key, {
+        hasTarget: options.hasTarget,
+        local: options.local,
+        includeRulesets,
+        searchParents: false
+      });
+      if (direct.length > 0) {
+        frameResults = direct;
+      }
+    }
+    return frameResults;
   }
 
   private addCallableEntry(
@@ -1965,7 +1982,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             nestedOptions,
             remainderStart
           );
-          if (!resolved?.length) {
+          if (resolved === undefined) {
             resolved = ruleset.rules.findMixin(
               collectKeyRemainder(path, remainderStart),
               undefined,
@@ -2029,7 +2046,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           nestedOptions,
           consumed.length
         );
-        if (!resolved?.length) {
+        if (resolved === undefined) {
           resolved = ruleset.rules.findMixin(
             collectKeyRemainder(keys, consumed.length),
             undefined,
@@ -2091,7 +2108,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         nested = entryRules.findMixin(remainder, undefined, nestedOptions);
       } else {
         nested = entryRules.findMixinNamespacePathFast(keys, undefined, nestedOptions, 1);
-        if (!nested?.length) {
+        if (nested === undefined) {
           remainder ??= collectKeyRemainder(keys, 1);
           nested = entryRules.findMixin(
             remainder,
@@ -2163,6 +2180,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         if (frameHit.kind === 'uncovered' && frameHit.reason === 'candidate') {
           frameMissCovered = true;
+        }
+        if (frameMissCovered && options.searchParents === false) {
+          const pathKeys = splitStaticCallablePathKey(keys);
+          if (pathKeys) {
+            return this.findMixin(pathKeys, filterType, options);
+          }
+          return undefined;
         }
         if (frameHit.kind === 'miss' || frameHit.kind === 'uncovered') {
           let retryFrame = callableFrame.parent;
@@ -2331,22 +2355,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   findDeclaration(
     keys: string,
-    filterType: 'VarDeclaration',
     options?: DeclarationFindOptions
-  ): VarDeclaration | undefined;
-  findDeclaration(
-    keys: string,
-    filterType: 'Declaration',
-    options?: DeclarationFindOptions
-  ): Declaration | undefined;
-  findDeclaration(
-    keys: string,
-    filterType: 'VarDeclaration' | 'Declaration',
-    options?: DeclarationFindOptions
-  ): Declaration | VarDeclaration | undefined {
-    return filterType === 'VarDeclaration'
-      ? findVariableDeclarationOccurrence(this, keys, options)?.node
-      : findPropertyDeclarationOccurrence(this, keys, options)?.node;
+  ): Declaration | undefined {
+    return findPropertyDeclarationOccurrence(this, keys, options)?.node;
   }
 
   findAnyDeclaration(
@@ -3142,8 +3153,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         const lookupOptions: DeclarationFindOptions = { searchParents: true };
         const lookup = isNode(node, N.VarDeclaration)
-          ? findVariableDeclarationAssignmentLookup(this, key, { ...lookupOptions, includeLiveBindings: false })
-          : findPropertyDeclarationAssignmentLookup(this, key, lookupOptions);
+          ? findVariableDeclarationOccurrence(this, key, {
+              ...lookupOptions,
+              includeLiveBindings: false,
+              includeReadonly: true
+            })
+          : findPropertyDeclarationOccurrence(this, key, {
+              ...lookupOptions,
+              includeReadonly: true
+            });
         const resultOccurrence = lookup.occurrence;
         const result = resultOccurrence?.node;
         if (result) {

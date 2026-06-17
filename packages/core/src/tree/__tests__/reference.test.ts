@@ -3170,7 +3170,7 @@ describe('reference', () => {
       };
 
       try {
-        const found = node.findDeclaration('color', 'VarDeclaration');
+        const found = node.findVariable('color');
 
         expect(found).toBe(liveSource);
       } finally {
@@ -3178,7 +3178,7 @@ describe('reference', () => {
       }
     });
 
-    it('findDeclaration reads live cells through current bindings', async () => {
+    it('findVariable reads live cells through current bindings', async () => {
       const liveSource = vardecl({ name: 'color', value: any('blue') });
       const node = rules([
         vardecl({ name: 'color', value: any('red') })
@@ -3195,7 +3195,7 @@ describe('reference', () => {
       };
 
       try {
-        const found = node.findDeclaration('color', 'VarDeclaration');
+        const found = node.findVariable('color');
 
         expect(found).toBe(liveSource);
       } finally {

@@ -114,15 +114,23 @@ export type ReferenceOptions = {
   fallbackValue?: Node | true;
   filter?: (node: Node) => boolean;
   excludedNodes?: readonly Node[];
-  excludedNode0?: Node;
-  excludedNode1?: Node;
-  excludedNodesLength?: number;
   requiredNormalizedFromAssign?: string | readonly string[];
   role?: AnyRole;
   preserveRulesLike?: boolean;
   /** Internal call-site hint: terminal mixin-ruleset lookup cannot use rulesets when args are present. */
   mixinRulesetCallHasArgs?: boolean;
 };
+
+type ReferenceDeclarationConstraintOptions = Pick<
+  DeclarationFindOptions,
+  'excludedNode0' | 'excludedNode1' | 'excludedNodesLength'
+>;
+
+function getReferenceDeclarationConstraintOptions(
+  referenceNode: Reference
+): ReferenceDeclarationConstraintOptions {
+  return referenceNode.options as ReferenceOptions & ReferenceDeclarationConstraintOptions;
+}
 
 // `sourceNode` stays on the public shallow-owned surface for compatibility and
 // now carries the canonical source directly.
@@ -855,12 +863,13 @@ function buildReferenceDeclarationFindOptions(
   lookupContext: RulesReferenceLookupContext,
   shape: RulesLookupHandleShape
 ): ReferenceDeclarationFindOptions {
+  const declarationConstraints = getReferenceDeclarationConstraintOptions(lookupContext.referenceNode);
   return {
     filter: lookupContext.filter,
     excludedNodes: lookupContext.referenceNode.options.excludedNodes,
-    excludedNode0: lookupContext.referenceNode.options.excludedNode0,
-    excludedNode1: lookupContext.referenceNode.options.excludedNode1,
-    excludedNodesLength: lookupContext.referenceNode.options.excludedNodesLength,
+    excludedNode0: declarationConstraints.excludedNode0,
+    excludedNode1: declarationConstraints.excludedNode1,
+    excludedNodesLength: declarationConstraints.excludedNodesLength,
     requiredNormalizedFromAssign: lookupContext.referenceNode.options.requiredNormalizedFromAssign,
     semanticFilter: lookupContext.semanticFilter,
     context: lookupContext.context,
@@ -1155,20 +1164,22 @@ function getRulesLookupHandleDeclarationConstraintShape(referenceNode: Reference
   'requiredNormalizedFromAssignKey' | 'excludedNode0' | 'excludedNode1' | 'excludedNodesLength'
 > {
   const excludedNodes = referenceNode.options.excludedNodes;
-  const excludedNodesLength = referenceNode.options.excludedNodesLength ?? excludedNodes?.length ?? 0;
+  const declarationConstraints = getReferenceDeclarationConstraintOptions(referenceNode);
+  const excludedNodesLength = declarationConstraints.excludedNodesLength ?? excludedNodes?.length ?? 0;
   return {
     requiredNormalizedFromAssignKey: getRequiredNormalizedFromAssignHandleKey(
       referenceNode.options.requiredNormalizedFromAssign
     ),
-    excludedNode0: referenceNode.options.excludedNode0 ?? excludedNodes?.[0],
-    excludedNode1: referenceNode.options.excludedNode1 ?? excludedNodes?.[1],
+    excludedNode0: declarationConstraints.excludedNode0 ?? excludedNodes?.[0],
+    excludedNode1: declarationConstraints.excludedNode1 ?? excludedNodes?.[1],
     excludedNodesLength
   };
 }
 
 function hasHandleableDeclarationConstraints(referenceNode: Reference): boolean {
   const excludedNodes = referenceNode.options.excludedNodes;
-  const excludedNodesLength = referenceNode.options.excludedNodesLength ?? excludedNodes?.length ?? 0;
+  const declarationConstraints = getReferenceDeclarationConstraintOptions(referenceNode);
+  const excludedNodesLength = declarationConstraints.excludedNodesLength ?? excludedNodes?.length ?? 0;
   const requiredNormalizedFromAssign = referenceNode.options.requiredNormalizedFromAssign;
   return (
     excludedNodesLength <= 2

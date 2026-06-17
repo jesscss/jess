@@ -103,26 +103,30 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: documentation-only focus reconciliation after pulling
-  `origin/dev`. `FOCII.md` now owns goal-settable core architecture focus
-  prompts, `HANDOFF.md` stays a short router, and
-  `BINDING-LOOKUP-REMAINING.md` / `NODE-REWRITE-TRACKER.md` remain focused
-  queue trackers rather than separate handoffs.
-- Verdict: accepted as guidance cleanup only. No runtime change and no speed
-  claim.
-- New traversal: no runtime traversal was added. The scoped diff contains
-  restored serialization-tracker history that mentions prior `.map(...)`,
-  `.some(...)`, and indexed-loop cuts; those are documentation of already-landed
-  work, not new loops, parent walks, child scans, lookup scans, or registry
-  paths.
-- New node/materialization: no runtime node construction or materialization was
-  added. The restored tracker history mentions prior `Rules.clone` and scalar
-  leaf copy boundaries as historical status, not new copy helpers.
-- Render path: no runtime/render path changed.
-- Helper/API surface: no code helpers or APIs added.
-- Metadata mutations: none. The restored tracker history mentions old
-  `Reflect.construct` removal/status notes only as documentation.
-- Allocation changes: none. The restored tracker history mentions old `Map` and
-  `Set` cleanup/status notes only as documentation.
-- Evidence: `git diff --check` passed. `pnpm run
-  verify:aggressive-cutting-review` passed with no scoped danger tokens.
+- Latest pass: merge reconciliation after `origin/dev` advanced with
+  binding/lookup hot-path guard hardening. The focii router shape is preserved:
+  `FOCII.md` owns goal-settable focus prompts, `HANDOFF.md` stays a short
+  router, and focused trackers keep queue detail.
+- Verdict: accepted as guidance/merge cleanup only. No speed claim.
+- New traversal: incoming `packages/core/src/tree/rules.ts` has a straight
+  indexed loop over `uncoveredChildren` for the binding retry-frame bridge.
+  This preserves a modeled dynamic-child-surface fallback after exact covered
+  misses and avoids reopening the broad direct crawl for covered misses. The
+  other new loops are in `scripts/verify-binding-lookup-hot-paths.mjs`, a cold
+  verifier that scans token rules outside runtime.
+- New node/materialization: no runtime node construction was added. Incoming
+  test spy arrays in `import-style.test.ts` / `mixin.test.ts` and verifier
+  arrays in `scripts/verify-binding-lookup-hot-paths.mjs` are proof-only.
+- Render path: no render/stringification path changed by this reconciliation.
+- Helper/API surface: incoming `verify:binding-lookup-hot-paths` is a cold
+  package script guard, not runtime API. It rejects public `Rules.find*`
+  materialization-wrapper calls from hot lookup sites and proves scalar
+  exclusion fields stay internal.
+- Metadata mutations: none.
+- Allocation changes: incoming runtime allocation is limited to the
+  `uncoveredChildren` fallback list in `Rules.findMixin(...)`, used only when
+  dynamic child-surface uncertainty remains; covered simple misses keep avoiding
+  the broad bridge. Test and script arrays are cold proof machinery.
+- Evidence: `git diff --check`, `pnpm run verify:binding-lookup-hot-paths`, and
+  `pnpm run verify:aggressive-cutting-review` passed during merge
+  reconciliation. No speed claim.
