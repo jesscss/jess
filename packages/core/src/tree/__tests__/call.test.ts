@@ -1,6 +1,6 @@
 import type { IToken } from 'chevrotain';
 import * as treeIndex from '../index.js';
-import { Any, Call, F_NON_STATIC, JsFunction, List, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, fn, list, mixin, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Any, Call, Color, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, fn, list, mixin, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import {
   getCallRawArgDiagnosticMessageSource,
   getCallRawArgDiagnosticSource,
@@ -20,10 +20,22 @@ import { MixinCollection } from '../util/callable-collection.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  marks = 0;
+  readbacks = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.readbacks++;
+    return super.getSince(mark);
   }
 }
 
@@ -39,6 +51,11 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
 });
 
 class AsyncAny extends Any<string> {
+  constructor(value: string) {
+    super(value);
+    this.addFlag(F_MAY_ASYNC);
+  }
+
   override eval() {
     return Promise.resolve(any(this.value));
   }
@@ -47,6 +64,7 @@ class AsyncAny extends Any<string> {
 class AsyncRenderedAny extends Any<string> {
   constructor(value: string, private readonly renderedValue: string) {
     super(value);
+    this.addFlag(F_MAY_ASYNC);
   }
 
   override eval() {
@@ -55,8 +73,28 @@ class AsyncRenderedAny extends Any<string> {
 }
 
 class RejectingAny extends Any<string> {
+  constructor(value: string) {
+    super(value);
+    this.addFlag(F_MAY_ASYNC);
+  }
+
   override eval() {
     return Promise.reject(new Error(this.value));
+  }
+}
+
+class ThrowingAny extends Any<string> {
+  override eval() {
+    throw new Error(this.value);
+  }
+}
+
+class SyncOverrideAny extends Any<string> {
+  evalCalls = 0;
+
+  override eval() {
+    this.evalCalls++;
+    return any(this.value);
   }
 }
 
@@ -138,6 +176,41 @@ describe('Call', () => {
 
     expect(rule.toTrimmedString({ writer })).toBe('rgb(100, 100, 100)');
     expect(writer.captures).toBe(0);
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(1);
+  });
+
+  it('serializes token CSS call arguments without source arg-list trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'var',
+      args: list([any('--brand'), any('red')])
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('var(--brand, red)');
+    expect(writer.toString()).toBe('var(--brand, red)');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(1);
+  });
+
+  it('serializes empty CSS calls without writer readback scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = call({ name: 'button' });
+
+    expect(rule.toTrimmedString({ writer })).toBe('button()');
+    expect(writer.toString()).toBe('button()');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes empty optional-important CSS calls without writer readback scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = call({ name: 'missing' }, { silentFail: true, markImportant: true });
+
+    expect(rule.toTrimmedString({ writer })).toBe('missing?() !important');
+    expect(writer.toString()).toBe('missing?() !important');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('serializes comment trivia owned by function argument separators', () => {
@@ -179,6 +252,16 @@ describe('Call', () => {
     expect(rule.registrationPrepared).toBe(false);
   });
 
+  it('renders empty CSS calls without writer readback scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = call({ name: 'button' }, { silentFail: true, markImportant: true });
+
+    expect(rule.render(context, { writer })).toBe('button?() !important');
+    expect(writer.toString()).toBe('button?() !important');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
   it('writes call render output into flat buffers', async () => {
     const buffer = createRenderBuffer('flat');
     const rule = call({
@@ -190,6 +273,22 @@ describe('Call', () => {
     expect(buffer.parts).toEqual(['rgb(100, 100, 100)']);
     expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('writes CSS call render output into shared flat buffers without nested call marks', async () => {
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
+    expect(buffer.parts).toEqual(['rgb', '(', '100', ', ', '100', ', ', '100', ')']);
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('writes call render output into buffers without mutating a provided writer', async () => {
@@ -204,6 +303,18 @@ describe('Call', () => {
     expect(buffer.parts).toEqual(['rgb(100, 100, 100)']);
     expect(writer.toString()).toBe('');
     expect(writer.captures).toBe(0);
+  });
+
+  it('writes empty CSS call render output into buffers without writer readback scaffolding', () => {
+    const buffer = createRenderBuffer('flat');
+    const writer = new CountingWriter();
+    const rule = call({ name: 'button' });
+
+    expect(rule.render(context, buffer, { writer })).toBe('button()');
+    expect(buffer.parts).toEqual(['button()']);
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('writes CSS call arguments without resolving child wrappers', async () => {
@@ -244,10 +355,16 @@ describe('Call', () => {
 
   it('renders dynamic CSS call names without evaluating the name twice', async () => {
     const name = any('source-name');
+    const renderedName = any('rgb');
+    let renderedNamePublicStringCalls = 0;
+    renderedName.toTrimmedString = () => {
+      renderedNamePublicStringCalls++;
+      return 'wrong-name';
+    };
     let nameEvaluations = 0;
     name.eval = function evalForCounting() {
       nameEvaluations++;
-      return any('rgb');
+      return renderedName;
     };
     const rule = call({
       name,
@@ -256,6 +373,73 @@ describe('Call', () => {
 
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('rgb(100, 100, 100)');
     expect(nameEvaluations).toBe(1);
+    expect(renderedNamePublicStringCalls).toBe(0);
+    expect(rule.evaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders evaluated CSS call arguments without public string transport', async () => {
+    const arg = any('source');
+    const renderedArg = any('20');
+    let renderedArgPublicStringCalls = 0;
+    renderedArg.toTrimmedString = () => {
+      renderedArgPublicStringCalls++;
+      return 'wrong-arg';
+    };
+    arg.eval = function evalForArgTransport() {
+      return renderedArg;
+    };
+    const rule = call({
+      name: 'rgb',
+      args: list([num(10), arg, num(30)])
+    });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('rgb(10, 20, 30)');
+    expect(renderedArgPublicStringCalls).toBe(0);
+    expect(rule.evaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders evaluated escaped call arguments without public string transport', async () => {
+    const inner = any('source');
+    const renderedInner = any('a, b');
+    let renderedInnerPublicStringCalls = 0;
+    renderedInner.toTrimmedString = () => {
+      renderedInnerPublicStringCalls++;
+      return 'wrong-inner';
+    };
+    inner.eval = function evalForEscapedArgTransport() {
+      return renderedInner;
+    };
+    const rule = call({
+      name: 'func',
+      args: list([paren(inner, { escaped: true })])
+    });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('func((a, b))');
+    expect(renderedInnerPublicStringCalls).toBe(0);
+    expect(rule.evaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders evaluated CSS call content without public string transport', async () => {
+    const content = any('source-content');
+    const renderedContent = any('body-output');
+    let renderedContentPublicStringCalls = 0;
+    renderedContent.toTrimmedString = () => {
+      renderedContentPublicStringCalls++;
+      return 'wrong-content';
+    };
+    content.eval = function evalForContentTransport() {
+      return renderedContent;
+    };
+    const rule = call({
+      name: 'wrap',
+      contentNode: content
+    });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('wrap(): body-output');
+    expect(renderedContentPublicStringCalls).toBe(0);
     expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
@@ -306,6 +490,56 @@ describe('Call', () => {
     expect(nameEvaluations).toBe(1);
     expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('passes stylesheet function args through the callable binding surface once', async () => {
+    class CountingSequence extends Sequence {
+      static countConstructions = false;
+      static constructedCopies = 0;
+
+      constructor(...args: ConstructorParameters<typeof Sequence>) {
+        super(...args);
+        if (CountingSequence.countConstructions) {
+          CountingSequence.constructedCopies++;
+        }
+      }
+    }
+
+    const fnNode = fn({
+      name: any('inspect'),
+      params: list([
+        vardecl({ name: 'value', value: any('') })
+      ]),
+      body: rules([
+        decl({ name: 'return', value: ref('value', { type: 'variable' }) })
+      ])
+    });
+    const root = rules([fnNode]);
+    context.root = root;
+    context.rulesContext = root;
+    const name = any('source-name');
+    name.eval = function evalForFunctionName() {
+      return fnNode;
+    };
+    const originalArg = new CountingSequence([any('red'), dimension([10, 'px'])]);
+    const originalArgs = list([originalArg]);
+    const rule = call({
+      name,
+      args: originalArgs
+    });
+
+    CountingSequence.countConstructions = true;
+    try {
+      const result = await rule.eval(context);
+
+      expect(result.toTrimmedString()).toBe('red 10px');
+      expect(CountingSequence.constructedCopies).toBe(1);
+      expect(originalArg.parent).toBe(originalArgs);
+      expect(originalArgs.parent).toBe(rule);
+    } finally {
+      CountingSequence.countConstructions = false;
+      CountingSequence.constructedCopies = 0;
+    }
   });
 
   it('renders dynamic mixin names without calling public eval state', async () => {
@@ -870,6 +1104,61 @@ describe('Call', () => {
     expect(rule.render(context, { writer })).toBe('rgb(100, 100, 100)');
     expect(writer.toString()).toBe('rgb(100, 100, 100)');
     expect(writer.captures).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders token CSS call arguments without per-arg trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'var',
+      args: list([any('--brand'), any('red')])
+    });
+
+    expect(rule.render(context, { writer })).toBe('var(--brand, red)');
+    expect(writer.toString()).toBe('var(--brand, red)');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders color CSS call arguments without per-arg trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'mix',
+      args: list([new Color('#ff0000'), new Color('#0000ff')])
+    });
+
+    expect(rule.render(context, { writer })).toBe('mix(#ff0000, #0000ff)');
+    expect(writer.toString()).toBe('mix(#ff0000, #0000ff)');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders async scalar CSS call arguments without per-arg trim readback', async () => {
+    const writer = new CountingWriter();
+    const arg = new AsyncRenderedAny('source', '20');
+    const rule = call({
+      name: 'rgb',
+      args: list([num(10), arg, num(30)])
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('rgb(10, 20, 30)');
+    expect(writer.toString()).toBe('rgb(10, 20, 30)');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders async scalar CSS call content without whole-call readback', async () => {
+    const writer = new CountingWriter();
+    const content = new AsyncRenderedAny('source-content', 'body-output');
+    const rule = call({
+      name: 'wrap',
+      contentNode: content
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('wrap(): body-output');
+    expect(writer.toString()).toBe('wrap(): body-output');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('resolves CSS calls without touching render state', async () => {
@@ -1007,6 +1296,57 @@ describe('Call', () => {
     const buffer = createRenderBuffer('flat');
     await expect(nested.render(context, buffer)).resolves.toBe('calc(15vh)');
     expect(buffer.parts).toEqual(['calc(15vh)']);
+  });
+
+  it('restores calc eval frames when synchronous CSS call argument evaluation throws', async () => {
+    const rule = call({
+      name: 'calc',
+      args: list([new ThrowingAny('bad arg')])
+    });
+
+    await expect(rule.eval(context)).rejects.toThrow('bad arg');
+    expect(context.calcFrames).toBe(0);
+  });
+
+  it('evaluates non-async CSS call args through the immediate sync boundary', async () => {
+    const originalEval = Node.prototype.eval;
+    let publicEvalCalls = 0;
+    Node.prototype.eval = function countPublicEval(
+      this: Node,
+      ...args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      publicEvalCalls++;
+      return originalEval.apply(this, args);
+    };
+
+    try {
+      const rule = call({
+        name: 'calc',
+        args: list([any('20px')])
+      });
+
+      const result = await rule.evalNode(context);
+
+      expect(result.toTrimmedString()).toBe('calc(20px)');
+      expect(publicEvalCalls).toBe(0);
+      expect(context.calcFrames).toBe(0);
+    } finally {
+      Node.prototype.eval = originalEval;
+    }
+  });
+
+  it('keeps custom sync CSS call argument eval overrides on the immediate boundary', async () => {
+    const arg = new SyncOverrideAny('20px');
+    const rule = call({
+      name: 'calc',
+      args: list([arg])
+    });
+
+    const result = await rule.evalNode(context);
+
+    expect(result.toTrimmedString()).toBe('calc(20px)');
+    expect(arg.evalCalls).toBe(1);
+    expect(context.calcFrames).toBe(0);
   });
 
   it('keeps canonical function syntax separate from evaluated CSS-call normalization', () => {
@@ -2202,6 +2542,30 @@ describe('Call', () => {
     } finally {
       derivedCalls.restore();
     }
+  });
+
+  it('renders empty optional JS failure fallback syntax without call-level readback', async () => {
+    const writer = new CountingWriter();
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'bad',
+      fn: () => {
+        throw new Error('bad function');
+      },
+      allowOptional: true
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const rule = call({
+      name: ref({ key: 'bad' }, { type: 'function', fallbackValue: true }),
+      args: list([])
+    }, { silentFail: true });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('bad()');
+
+    expect(writer.toString()).toBe('bad()');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('does not clone childless source-free scalar leaves before resolving callback arg lists', async () => {

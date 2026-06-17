@@ -1,7 +1,7 @@
 import { type Context } from '../context.js';
 import { Node, defineType } from './node.js';
 import { cast } from './util/cast.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -20,14 +20,18 @@ export interface JsExpression extends Node<string> {
 }
 
 export class JsExpression extends Node<string> {
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     w.add('`', this);
     w.add(this.value);
     w.add('`');
-    return w.getSince(mark);
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    const out = `\`${this.value}\``;
+    getPrintOptions(options).writer.add(out, this);
+    return out;
   }
 
   /**

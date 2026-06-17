@@ -1,4 +1,4 @@
-import { Node, Sequence, any, list, num, op, ref, rules, seq, F_MAY_ASYNC, F_STATIC, type Rules as RulesClass, vardecl } from '../index.js';
+import { Node, Sequence, any, list, nil, num, op, ref, rules, seq, F_MAY_ASYNC, F_STATIC, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createToken, type IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
@@ -10,11 +10,17 @@ import { N } from '../node-type.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  marks = 0;
   reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
   }
 
   override getSince(mark: number): string {
@@ -60,6 +66,36 @@ describe('Sequence', () => {
     const rule = seq([num(10), num(20), num(30)]);
 
     expect(rule.toTrimmedString()).toBe('10 20 30');
+  });
+
+  it('serializes empty sequence syntax without writer readback scaffolding', () => {
+    const writer = new CountingWriter();
+
+    expect(seq([]).toTrimmedString({ writer })).toBe('');
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
+  it('compares against Any without public string transport for the Any operand', () => {
+    const other = any('10 20 30');
+    let stringCalls = 0;
+    other.toString = () => {
+      stringCalls++;
+      return 'not-10-20-30';
+    };
+
+    expect(seq([num(10), num(20), num(30)]).compare(other)).toBe(0);
+    expect(stringCalls).toBe(0);
+  });
+
+  it('compares against Any without public string transport for the Sequence operand', () => {
+    const node = seq([num(10), num(20), num(30)]);
+    node.toString = () => {
+      throw new Error('Sequence compare should use direct syntax instead of public toString transport');
+    };
+
+    expect(node.compare(any('10 20 30'))).toBe(0);
   });
 
   it('does not allocate options when resolving a default single-item sequence', async () => {
@@ -212,6 +248,36 @@ describe('Sequence', () => {
     expect(buffer.parts).toEqual(['3 solid']);
   });
 
+  it('writes dynamic sync direct sequence render output into shared flat buffers with one mark', () => {
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const sequenceNode = seq([
+      op([num(1), '+', num(2)]),
+      any('solid')
+    ]);
+
+    expect(sequenceNode.render(context, buffer)).toBe('3 solid');
+    expect(buffer.parts.join('')).toBe('3 solid');
+    expect(writer.marks).toBe(1);
+    expect(writer.reads).toBe(1);
+  });
+
+  it('renders empty sequences without writer readback scaffolding', () => {
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+    const sequenceNode = seq([]);
+
+    expect(sequenceNode.render(context, { writer })).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(sequenceNode.render(context, buffer, { writer })).toBe('');
+    expect(buffer.parts).toEqual([]);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
   it('writes resolved sequence render output into flat buffers', async () => {
     const node = rules([
       vardecl({
@@ -329,6 +395,95 @@ describe('Sequence', () => {
     expect(rendered).toBe('left right');
   });
 
+  it('renders static sequence values with nil children without replacement arrays', () => {
+    const sequenceNode = seq([
+      nil(),
+      any('left'),
+      nil(),
+      any('right')
+    ]);
+    const originalFilter = sequenceNode.value.filter;
+    let rendered = '';
+    Object.defineProperty(sequenceNode.value, 'filter', {
+      configurable: true,
+      value: () => {
+        throw new Error('sequence render should not filter nil children into a replacement array');
+      }
+    });
+
+    try {
+      rendered = sequenceNode.render(context);
+    } finally {
+      Object.defineProperty(sequenceNode.value, 'filter', {
+        configurable: true,
+        writable: true,
+        value: originalFilter
+      });
+    }
+
+    expect(rendered).toBe('left right');
+    expect(sequenceNode.toTrimmedString()).toBe('left right');
+  });
+
+  it('writes static sequence values with nil children into flat buffers directly', () => {
+    const buffer = createRenderBuffer('flat');
+    const sequenceNode = seq([
+      nil(),
+      any('left'),
+      nil(),
+      any('right')
+    ]);
+
+    expect(sequenceNode.render(context, buffer)).toBe('left right');
+    expect(buffer.parts).toEqual(['left right']);
+  });
+
+  it('writes static sequence render output into shared flat buffers with one mark', () => {
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const sequenceNode = seq([
+      any('left'),
+      any('right')
+    ]);
+
+    expect(sequenceNode.render(context, buffer)).toBe('left right');
+    expect(buffer.parts).toEqual(['left', ' ', 'right']);
+    expect(writer.marks).toBe(1);
+  });
+
+  it('keeps single-item sequence buffer output out of explicit writers', () => {
+    const buffer = createRenderBuffer('flat');
+    const writer = new CountingWriter();
+    const sequenceNode = seq([any('left')]);
+
+    expect(sequenceNode.render(context, buffer, { writer })).toBe('left');
+    expect(buffer.parts).toEqual(['left']);
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
+  it('keeps resolved single-item sequence buffer output out of explicit writers', async () => {
+    const root = rules([
+      vardecl({
+        name: any('item'),
+        value: any('resolved')
+      })
+    ]);
+    await setEvaluatedRoot(context, root);
+    const buffer = createRenderBuffer('flat');
+    const writer = new CountingWriter();
+    const sequenceNode = seq([ref({ key: 'item' }, { type: 'variable' })]);
+
+    expect(await Promise.resolve(sequenceNode.render(context, buffer, { writer }))).toBe('resolved');
+    expect(buffer.parts).toEqual(['resolved']);
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
   it('keeps source sequence child containers canonical after resolve(context)', async () => {
     const root = rules([
       vardecl({
@@ -366,6 +521,24 @@ describe('Sequence', () => {
     expect(result.toTrimmedString()).toBe('left right');
     expect(leftChild.parent).toBe(left);
     expect(rightChild.parent).toBe(right);
+  });
+
+  it('assembles sequence addition output without result-array push staging', () => {
+    const originalPush = Array.prototype.push;
+    let pushCalls = 0;
+    Array.prototype.push = function countPush<T>(this: T[], ...items: T[]): number {
+      pushCalls++;
+      return originalPush.apply(this, items);
+    };
+
+    try {
+      const result = seq([any('left')]).operate(seq([any('right')]), '+', context);
+
+      expect(pushCalls).toBe(0);
+      expect(result.toTrimmedString()).toBe('left right');
+    } finally {
+      Array.prototype.push = originalPush;
+    }
   });
 
   it('adds sequence values without mapped copy-array scaffolding', () => {
@@ -518,6 +691,46 @@ describe('Sequence', () => {
 
     expect(rule.toTrimmedString({ writer })).toBe('10 20 30');
     expect(writer.captures).toBe(0);
+  });
+
+  it('writes sequence items without public toString transport when trivia is inactive', () => {
+    const first = any('10');
+    const second = any('20');
+    const third = any('30');
+    let stringCalls = 0;
+    first.toString = second.toString = third.toString = () => {
+      stringCalls++;
+      return '';
+    };
+
+    expect(seq([first, second, third]).toTrimmedString()).toBe('10 20 30');
+    expect(stringCalls).toBe(0);
+  });
+
+  it('writes sequence items without public toString transport when trivia is active', () => {
+    const WS = createToken({ name: 'WS', pattern: / +/ });
+    const whitespace = [{
+      image: '  ',
+      startOffset: 2,
+      endOffset: 2,
+      tokenTypeIdx: WS.tokenTypeIdx,
+      tokenType: WS
+    }] satisfies IToken[];
+    const trivia = createTriviaMap({
+      before: new Map([[3, whitespace]]),
+      after: new Map([[1, whitespace]])
+    }) satisfies TriviaMap;
+    const treeContext = new TreeContext({ trivia });
+    const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
+    const second = num(20, undefined, [3, 1, 4, 4, 1, 5], treeContext);
+    let stringCalls = 0;
+    first.toString = second.toString = () => {
+      stringCalls++;
+      return '';
+    };
+
+    expect(seq([first, second]).toTrimmedString({ trivia })).toBe('10  20');
+    expect(stringCalls).toBe(0);
   });
 
   it('does not inspect the emitted sequence text for each child boundary', () => {

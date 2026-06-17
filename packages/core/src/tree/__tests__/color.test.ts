@@ -3,6 +3,22 @@ import { Color, ColorFormat, Dimension, Num } from '../index.js';
 import { Call, List } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  marks = 0;
+  reads = 0;
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 describe('Color Node', () => {
   describe('Constructor and Basic Properties', () => {
@@ -233,6 +249,40 @@ describe('Color Node', () => {
       expect(color.toTrimmedString()).toBe('rgb(255, 0, 0)');
     });
 
+    it('returns scalar color syntax without writer readback', () => {
+      const writer = new CountingWriter();
+      const color = new Color({
+        format: ColorFormat.RGB,
+        rgb: [255, 0, 0],
+        alpha: 1
+      });
+
+      expect(color.toTrimmedString({ writer })).toBe('rgb(255, 0, 0)');
+      expect(writer.toString()).toBe('rgb(255, 0, 0)');
+      expect(writer.reads).toBe(0);
+    });
+
+    it('renders scalar colors without writer mark/readback', () => {
+      const writer = new CountingWriter();
+      const buffer = createRenderBuffer('flat');
+      const first = new Color({
+        format: ColorFormat.RGB,
+        rgb: [255, 0, 0],
+        alpha: 1
+      });
+      const second = new Color('#00ff00');
+      const context = new Context();
+
+      expect(first.render(context, { writer })).toBe('rgb(255, 0, 0)');
+      expect(writer.toString()).toBe('rgb(255, 0, 0)');
+      expect(writer.marks).toBe(0);
+      expect(writer.reads).toBe(0);
+      expect(second.render(context, buffer, { writer })).toBe('#00ff00');
+      expect(buffer.parts).toEqual(['#00ff00']);
+      expect(writer.marks).toBe(0);
+      expect(writer.reads).toBe(0);
+    });
+
     it('should serialize RGB colors with default alpha correctly', () => {
       const color = new Color({
         format: ColorFormat.RGB,
@@ -346,6 +396,32 @@ describe('Color Node', () => {
       });
 
       expect(color.toTrimmedString()).toBe('rgba(0, 0, 0, 0.1)');
+    });
+
+    it('writes preserved node colors without public toTrimmedString transport', () => {
+      const callNode = new Call({
+        name: 'rgba',
+        args: new List([
+          new Dimension({ number: 0, unit: '' }),
+          new Dimension({ number: 0, unit: '' }),
+          new Dimension({ number: 0, unit: '' }),
+          new Dimension({ number: 0.1, unit: '' })
+        ])
+      });
+      let stringCalls = 0;
+      callNode.toTrimmedString = () => {
+        stringCalls++;
+        return '';
+      };
+      const color = new Color({
+        format: ColorFormat.RGB,
+        node: callNode,
+        rgb: [0, 0, 0],
+        alpha: 0.1
+      });
+
+      expect(color.toTrimmedString()).toBe('rgba(0, 0, 0, 0.1)');
+      expect(stringCalls).toBe(0);
     });
 
     it('should preserve string nodes (like hex strings)', () => {

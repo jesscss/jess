@@ -1,8 +1,9 @@
 import { Node, defineType, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type LocationInfo, type NodeOptions } from './node.js';
 import type { Context } from '../context.js';
+import { Any } from './any.js';
 import { Dimension } from './dimension.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { getPrintOptions, type PrintOptions } from './util/print.js';
+import { type FinalPrintOptions, getPrintOptions, type PrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
   writeRenderText,
@@ -13,13 +14,11 @@ import round from 'lodash-es/round.js';
 const NEGATIVE_ONE = new Dimension({ number: -1 });
 
 export class Negative extends Node<Node> {
-  private renderNegativeSyntax(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    w.add('-');
-    this.value.toString(options);
-    return w.getSince(mark);
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
+    w.add('-', this);
+    this.value.writeSyntax(options);
   }
 
   constructor(value: Node, options?: NodeOptions, location?: LocationInfo) {
@@ -29,17 +28,41 @@ export class Negative extends Node<Node> {
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    return this.renderNegativeSyntax(options);
+    options = getPrintOptions(options);
+    if (this.value instanceof Dimension && !this.isCompoundDimension(this.value)) {
+      const unit = this.value.value.unit ?? '';
+      const out = `-${`${round(this.value.value.number, 8)}`.toLowerCase()}${unit}`;
+      options.writer.add(out, this);
+      return out;
+    }
+    if (this.value instanceof Any) {
+      const out = `-${this.value.value}`;
+      options.writer.add('-', this);
+      options.writer.add(this.value.value, this.value);
+      return out;
+    }
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
+    return w.getSince(mark);
+  }
+
+  private renderNegativeAnyText(value: Any, bufferOrOptions?: RenderBuffer | PrintOptions): string {
+    const out = `-${value.value}`;
+    if (isRenderBuffer(bufferOrOptions)) {
+      return writeRenderText(bufferOrOptions, out);
+    }
+    const writer = getPrintOptions(bufferOrOptions).writer;
+    writer.add('-', this);
+    writer.add(value.value, value);
+    return out;
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (!this.value.hasFlag(F_MAY_ASYNC)) {
-      const evaluated = this.value.eval(context);
-      if (!(evaluated instanceof Node)) {
-        throw new TypeError('Expected negative value to evaluate to a node');
-      }
+      const evaluated = this.value.evalImmediateSync(context);
       return this.renderEvaluatedValue(context, evaluated, bufferOrOptions, options);
     }
     const value = this.value.eval(context);
@@ -55,10 +78,15 @@ export class Negative extends Node<Node> {
     options?: PrintOptions
   ): MaybePromise<string> {
     if (value instanceof Dimension && !this.isCompoundDimension(value)) {
-      const rendered = this.renderNegatedDimension(value, isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions);
-      return isRenderBuffer(bufferOrOptions)
-        ? writeRenderText(bufferOrOptions, rendered)
-        : rendered;
+      const rendered = this.negatedDimensionText(value);
+      if (!isRenderBuffer(bufferOrOptions)) {
+        getPrintOptions(bufferOrOptions).writer.add(rendered, value);
+        return rendered;
+      }
+      return writeRenderText(bufferOrOptions, rendered);
+    }
+    if (value instanceof Any) {
+      return this.renderNegativeAnyText(value, bufferOrOptions);
     }
     const operated = this.operateNegativeValue(value, context);
     return isThenable(operated)
@@ -75,24 +103,14 @@ export class Negative extends Node<Node> {
     return Boolean(unit && (unit.includes('/') || unit.includes('*') || unit.includes('±')));
   }
 
-  private renderNegatedDimension(value: Dimension, options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+  private negatedDimensionText(value: Dimension): string {
     const unit = value.value.unit ?? '';
-    w.add(`${round(value.value.number * -1, 8)}`.toLowerCase(), value);
-    if (unit) {
-      w.add(unit);
-    }
-    return w.getSince(mark);
+    return `${round(value.value.number * -1, 8)}`.toLowerCase() + unit;
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
     if (!this.value.hasFlag(F_MAY_ASYNC)) {
-      const evaluated = this.value.eval(context);
-      if (!(evaluated instanceof Node)) {
-        throw new TypeError('Expected negative value to evaluate to a node');
-      }
+      const evaluated = this.value.evalImmediateSync(context);
       return this.operateNegativeValue(evaluated, context);
     }
     const value = this.value.eval(context);
@@ -102,6 +120,9 @@ export class Negative extends Node<Node> {
   }
 
   private operateNegativeValue(value: Node, context: Context): MaybePromise<Node> {
+    if (value instanceof Any) {
+      return new Any(`-${value.value}`).inherit(value);
+    }
     if (!value.operate) {
       throw new TypeError(`Cannot operate on ${value.type}`);
     }

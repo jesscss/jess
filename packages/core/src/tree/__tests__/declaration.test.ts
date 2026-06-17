@@ -4,17 +4,29 @@ import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
-import { OutputWriter } from '../util/print.js';
+import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { Nil } from '../nil.js';
 import { collectDeclarationMergeAdapterItems, createDeclarationMergeAdapterState, finalizeContextualImportantPublicState, finalizeContextualImportantState } from '../declaration.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  marks = 0;
+  readbacks = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.readbacks++;
+    return super.getSince(mark);
   }
 }
 
@@ -60,6 +72,45 @@ describe('Declaration', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('writes non-custom declaration children without public string transport', () => {
+    const name = any('color');
+    const value = any('red');
+    const important = any('!important', { role: 'flag' });
+    const rule = decl({ name, value, important });
+    let publicStringCalls = 0;
+    name.toTrimmedString = () => {
+      publicStringCalls++;
+      return 'wrong-name';
+    };
+    value.toTrimmedString = () => {
+      publicStringCalls++;
+      return 'wrong-value';
+    };
+    important.toString = () => {
+      publicStringCalls++;
+      return 'wrong-important';
+    };
+
+    expect(rule.toTrimmedString()).toBe('color: red !important');
+    expect(publicStringCalls).toBe(0);
+  });
+
+  it('writes non-custom declaration syntax without outer string readback', () => {
+    const writer = new CountingWriter();
+    const rule = decl({
+      name: any('color'),
+      value: any('red'),
+      important: any('!important', { role: 'flag' })
+    });
+
+    rule.writeSyntax(getPrintOptions({ writer }));
+
+    expect(writer.toString()).toBe('color: red !important');
+    expect(writer.captures).toBe(0);
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(1);
+  });
+
   it('renders resolved declarations through render(context)', async () => {
     const root = rules([
       vardecl({ name: any('tone'), value: any('red') })
@@ -84,6 +135,8 @@ describe('Declaration', () => {
     context.root = evald;
     context.rulesContext = evald;
     const buffer = createRenderBuffer('segmented');
+    const writer = new CountingWriter();
+    context.printState.writer = writer;
     const node = decl({
       name: any('color'),
       value: ref({ key: 'tone' }, { type: 'variable' })
@@ -100,7 +153,29 @@ describe('Declaration', () => {
 
     expect(node.render(context, buffer)).toBe('color: red');
     expect(buffer.segments).toEqual(['color: red']);
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
     expect(resolveCalls).toBe(0);
+  });
+
+  it('writes resolved declaration buffers without cold string helper transport', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+    const buffer = createRenderBuffer('segmented');
+    const node = decl({
+      name: any('color'),
+      value: ref({ key: 'tone' }, { type: 'variable' })
+    });
+    Reflect.set(node, 'declValueTrimmedString', () => {
+      throw new Error('Buffer declaration render should write syntax directly');
+    });
+
+    expect(node.render(context, buffer)).toBe('color: red');
+    expect(buffer.segments).toEqual(['color: red']);
   });
 
   it('renders resolved declaration output directly without public resolve', async () => {
@@ -472,6 +547,26 @@ describe('Declaration', () => {
     expect(resolveCalls).toBe(0);
   });
 
+  it('writes resolved custom declaration buffers without cold string helper transport', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+    const buffer = createRenderBuffer('segmented');
+    const node = customdecl({
+      name: any('--color'),
+      value: ref({ key: 'tone' }, { type: 'variable' })
+    });
+    Reflect.set(node, 'declValueTrimmedString', () => {
+      throw new Error('Buffer custom declaration render should write syntax directly');
+    });
+
+    expect(node.render(context, buffer)).toBe('--color:red');
+    expect(buffer.segments).toEqual(['--color:red']);
+  });
+
   it('renders indexed references inside custom property values through render(context)', async () => {
     const root = rules([
       vardecl({
@@ -593,6 +688,45 @@ describe('Declaration', () => {
     expect(node.render(context)).toBe('--custom:rgba(0, 30, 0, 238)');
   });
 
+  it('renders scalar custom fallback call args without detached arg stringification', () => {
+    const firstArg = any('0');
+    const secondArg = any('30');
+    const thirdArg = any('238');
+    let argSyntaxWrites = 0;
+    const countArgSyntax = <T extends Any>(arg: T): T['writeSyntax'] => {
+      const originalWriteSyntax = arg.writeSyntax;
+      return function writeSyntaxForCounting(
+        this: typeof arg,
+        ...writeArgs: Parameters<typeof originalWriteSyntax>
+      ): ReturnType<typeof originalWriteSyntax> {
+        argSyntaxWrites++;
+        return originalWriteSyntax.apply(this, writeArgs);
+      };
+    };
+    const originalFirstArgWriteSyntax = firstArg.writeSyntax;
+    const originalSecondArgWriteSyntax = secondArg.writeSyntax;
+    const originalThirdArgWriteSyntax = thirdArg.writeSyntax;
+    firstArg.writeSyntax = countArgSyntax(firstArg);
+    secondArg.writeSyntax = countArgSyntax(secondArg);
+    thirdArg.writeSyntax = countArgSyntax(thirdArg);
+    const node = decl({
+      name: any('--custom'),
+      value: call({
+        name: ref('rgba', { type: 'function', fallbackValue: true }),
+        args: new List([firstArg, secondArg, thirdArg])
+      }, { silentFail: true })
+    });
+
+    try {
+      expect(node.render(context)).toBe('--custom:rgba(0, 30, 238)');
+      expect(argSyntaxWrites).toBe(3);
+    } finally {
+      firstArg.writeSyntax = originalFirstArgWriteSyntax;
+      secondArg.writeSyntax = originalSecondArgWriteSyntax;
+      thirdArg.writeSyntax = originalThirdArgWriteSyntax;
+    }
+  });
+
   it('streams custom declaration values without capture scaffolding', () => {
     const writer = new CountingWriter();
     const node = decl({
@@ -609,6 +743,46 @@ describe('Declaration', () => {
     expect(node.toTrimmedString({ writer })).toBe('--custom:if(not(true), 5)');
     expect(writer.toString()).toBe('--custom:if(not(true), 5)');
     expect(writer.captures).toBe(0);
+  });
+
+  it('writes raw custom property scalar values without value mark/readback normalization', () => {
+    const writer = new CountingWriter();
+    const node = decl({
+      name: any('--custom'),
+      value: any(' red /* kept raw */')
+    });
+
+    expect(node.toTrimmedString({ writer })).toBe('--custom: red /* kept raw */');
+    expect(writer.toString()).toBe('--custom: red /* kept raw */');
+    expect(writer.captures).toBe(0);
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(1);
+  });
+
+  it('keeps trailing-line-break custom property values on the normalization boundary', () => {
+    const writer = new CountingWriter();
+    const node = decl({
+      name: any('--custom'),
+      value: any('red\n  ')
+    });
+
+    expect(node.toTrimmedString({ writer })).toBe('--custom:red');
+    expect(writer.toString()).toBe('--custom:red');
+    expect(writer.marks).toBeGreaterThan(1);
+    expect(writer.readbacks).toBeGreaterThan(1);
+  });
+
+  it('normalizes custom property trailing declaration newlines with horizontal whitespace by scan', () => {
+    const writer = new CountingWriter();
+    const node = decl({
+      name: any('--custom'),
+      value: any('red \t\r\f\n\t \r\f')
+    });
+
+    expect(node.toTrimmedString({ writer })).toBe('--custom:red');
+    expect(writer.toString()).toBe('--custom:red');
+    expect(writer.marks).toBeGreaterThan(1);
+    expect(writer.readbacks).toBeGreaterThan(1);
   });
 
   it('serializes important declarations with one space before !important', async () => {
@@ -845,6 +1019,51 @@ describe('Declaration', () => {
     expect(buffer.segments).toEqual(['background-color: red, blue !important']);
     expect(context.hasImportantSource).toBe(false);
     expect(node.value.value.parent).toBe(node);
+  });
+
+  it('renders assignment merge adapter state without stale value transport', async () => {
+    const root = rules([
+      decl({
+        name: any('background-color'),
+        value: any('red')
+      }, { assign: '+:' })
+    ]);
+    await root.prepareRegistration(context);
+    context.root = root;
+    context.rulesContext = root;
+    const node = decl({
+      name: any('background-color'),
+      value: any('blue')
+    }, { assign: '+:' });
+    type WriteDeclarationValueSyntax = (
+      valueParts: unknown,
+      options: unknown,
+      renderState?: { mergeAdapter?: Record<string, unknown> }
+    ) => unknown;
+    const originalWriteDeclarationValueSyntax: unknown = Reflect.get(node, 'writeDeclarationValueSyntax');
+    const isWriteDeclarationValueSyntax = (value: unknown): value is WriteDeclarationValueSyntax => (
+      typeof value === 'function'
+    );
+    expect(isWriteDeclarationValueSyntax(originalWriteDeclarationValueSyntax)).toBe(true);
+    if (!isWriteDeclarationValueSyntax(originalWriteDeclarationValueSyntax)) {
+      throw new TypeError('Expected writeDeclarationValueSyntax to be callable');
+    }
+    let sawMergeAdapter = false;
+    Reflect.set(node, 'writeDeclarationValueSyntax', function countMergeAdapterState(
+      this: unknown,
+      valueParts: unknown,
+      options: unknown,
+      renderState?: { mergeAdapter?: Record<string, unknown> }
+    ) {
+      if (renderState?.mergeAdapter) {
+        sawMergeAdapter = true;
+        expect(renderState.mergeAdapter).not.toHaveProperty('value');
+      }
+      return originalWriteDeclarationValueSyntax.call(this, valueParts, options, renderState);
+    });
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('background-color: red, blue');
+    expect(sawMergeAdapter).toBe(true);
   });
 
   it('keeps custom property assignment render state raw through buffers', async () => {

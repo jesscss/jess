@@ -3,6 +3,22 @@ import { Bool, bool } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { cast } from '../util/cast.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  marks = 0;
+  reads = 0;
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 describe('Bool', () => {
   let context: Context;
@@ -14,6 +30,14 @@ describe('Bool', () => {
   it('renders bool syntax through toTrimmedString()', () => {
     expect(bool(true).toTrimmedString()).toBe('true');
     expect(bool(false).toTrimmedString()).toBe('false');
+  });
+
+  it('returns scalar bool syntax without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(bool(true).toTrimmedString({ writer })).toBe('true');
+    expect(writer.toString()).toBe('true');
+    expect(writer.reads).toBe(0);
   });
 
   it('renders bool values through render(context)', () => {
@@ -40,6 +64,20 @@ describe('Bool', () => {
     expect(await node.render(context, buffer)).toBe('true');
     expect(buffer.parts).toEqual(['true']);
     expect(resolveCalls).toBe(0);
+  });
+
+  it('renders bool values without writer mark/readback', () => {
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+
+    expect(bool(true).render(context, { writer })).toBe('true');
+    expect(writer.toString()).toBe('true');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(bool(false).render(context, buffer, { writer })).toBe('false');
+    expect(buffer.parts).toEqual(['false']);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('resolves bool values without touching render state', async () => {

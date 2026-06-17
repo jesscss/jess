@@ -18,7 +18,7 @@ import { ComplexSelector, type ComplexSelectorComponent } from './selector-compl
 import { Combinator } from './combinator.js';
 import { createGeneratedIsPseudo } from './selector-pseudo.js';
 import { SelectorList } from './selector-list.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -72,42 +72,46 @@ export class Extend extends Node<ExtendValue> {
     return `$extend ${this.value.target.valueOf()}`;
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     let { target, selector, flag, namespace } = this.value;
-    const mark = w.mark();
-    const emitTrimmed = (node: Selector) => {
-      const saved = options.suppressBoundaryTrivia;
-      options.suppressBoundaryTrivia = 'pre';
-      try {
-        node.toString(options);
-      } finally {
-        options.suppressBoundaryTrivia = saved;
-      }
-    };
     w.add('$extend');
     if (selector) {
       w.add(' ');
-      emitTrimmed(selector);
+      const saved = options.suppressBoundaryTrivia;
+      options.suppressBoundaryTrivia = 'pre';
+      selector.writeSyntax(options);
+      options.suppressBoundaryTrivia = saved;
       w.add(' ->');
     }
     w.add(' ');
     if (namespace) {
       w.add(`${namespace}|`);
     }
-    emitTrimmed(target);
+    const saved = options.suppressBoundaryTrivia;
+    options.suppressBoundaryTrivia = 'pre';
+    target.writeSyntax(options);
+    options.suppressBoundaryTrivia = saved;
     if (flag === ExtendFlag.Exact) {
       w.add(' !exact');
     }
     w.add(';');
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 
   // Don't prepare Extend early; evaluate it when the ruleset is in the frame.
   // This ensures the ampersand resolves to the correct ruleset selector, not the parent frame
 
-  private runExtendEffect(context: Context): MaybePromise<void> {
+  /** @internal Run the invisible extend registration effect without public render/eval materialization. */
+  runEffect(context: Context): MaybePromise<void> {
     let { selector, target, flag } = this.value;
     const { selectorBits } = context;
     attachSelectorBitLibrary(target, selectorBits);
@@ -151,14 +155,14 @@ export class Extend extends Node<ExtendValue> {
       });
     };
     return isThenable(maybeSel)
-      ? (maybeSel as Promise<Selector | Nil>).then(register)
-      : register(maybeSel as Selector | Nil);
+      ? maybeSel.then(register)
+      : register(maybeSel);
   }
 
   override evalNode(context: Context): MaybePromise<Nil> {
-    const effect = this.runExtendEffect(context);
+    const effect = this.runEffect(context);
     return isThenable(effect)
-      ? (effect as Promise<void>).then(createPublicNil)
+      ? effect.then(createPublicNil)
       : createPublicNil();
   }
 
@@ -169,7 +173,7 @@ export class Extend extends Node<ExtendValue> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
-    return renderInvisibleEffect(this.runExtendEffect(context), bufferOrOptions);
+    return renderInvisibleEffect(this.runEffect(context), bufferOrOptions);
   }
 }
 

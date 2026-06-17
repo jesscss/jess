@@ -7,10 +7,16 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
   }
 }
 
@@ -50,6 +56,15 @@ describe('Complex selector', () => {
       ]);
 
       expect(node.toTrimmedString()).toBe('a > .foo');
+    });
+
+    test('writes empty complex selector syntax without writer readback', () => {
+      const writer = new CountingWriter();
+
+      expect(sel([]).toTrimmedString({ writer })).toBe('');
+      expect(writer.toString()).toBe('');
+      expect(writer.reads).toBe(0);
+      expect(writer.captures).toBe(0);
     });
 
     test('streams selector components without capture scaffolding', () => {
@@ -174,6 +189,30 @@ describe('Complex selector', () => {
       expect(selector.evaluated).toBe(false);
       expect(selector.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
+    });
+
+    test('derives resolved complex selector surfaces without generic construction', async () => {
+      const first = el('.source');
+      const resolvedFirst = el('.resolved');
+      first.resolve = () => resolvedFirst;
+      const selector = sel([
+        first,
+        co('>'),
+        el('.other')
+      ]);
+      const originalConstruct = Reflect.construct;
+      Reflect.construct = () => {
+        throw new Error('complex selector resolve should not use generic construction');
+      };
+
+      try {
+        const resolved = await selector.resolve(context);
+
+        expect(resolved.toTrimmedString()).toBe('.resolved > .other');
+        expect(first.parent).toBe(selector);
+      } finally {
+        Reflect.construct = originalConstruct;
+      }
     });
 
     test('keeps source complex selector values canonical after resolve(context)', async () => {

@@ -28,13 +28,22 @@ export function determineExtensionType(
   basePath: Array<string | number>
 ): 'replace' | 'append' | 'wrap' {
   // If we're inside a pseudo-selector argument (like :where() or :is())
-  if (basePath.some(segment => segment === 'arg')) {
+  let hasArgSegment = false;
+  let numericSegmentCount = 0;
+  for (let i = 0; i < basePath.length; i++) {
+    const segment = basePath[i]!;
+    if (segment === 'arg') {
+      hasArgSegment = true;
+    } else if (typeof segment === 'number') {
+      numericSegmentCount++;
+    }
+  }
+  if (hasArgSegment) {
     // Check if we're matching a component within a compound selector inside the argument
     // Path format: ['arg', selectorListIndex, compoundIndex, ...]
     // If we have at least 3 segments and the last numeric segment is a compound index,
     // we should wrap to preserve compound selector structure
-    const numericSegments = basePath.filter((s): s is number => typeof s === 'number');
-    if (numericSegments.length >= 2) {
+    if (numericSegmentCount >= 2) {
       // We're inside a compound selector - use 'wrap' to create :is() wrapper
       return 'wrap';
     }
@@ -103,12 +112,24 @@ export function componentsMatch(a: Selector, b: Selector): boolean {
 
   // Handle compound vs simple: compound contains simple (improved structural matching)
   if (isNode(a, N.CompoundSelector) && isNode(b, N.SimpleSelector)) {
-    return a.value.some(comp => comp.valueOf() === b.valueOf());
+    const bValue = b.valueOf();
+    for (let i = 0; i < a.value.length; i++) {
+      if (a.value[i]!.valueOf() === bValue) {
+        return true;
+      }
+    }
+    return false;
   }
 
   // Handle simple vs compound: compound contains simple (improved structural matching)
   if (isNode(a, N.SimpleSelector) && isNode(b, N.CompoundSelector)) {
-    return b.value.some(comp => comp.valueOf() === a.valueOf());
+    const aValue = a.valueOf();
+    for (let i = 0; i < b.value.length; i++) {
+      if (b.value[i]!.valueOf() === aValue) {
+        return true;
+      }
+    }
+    return false;
   }
 
   // Handle pseudo-selector equivalence
@@ -207,9 +228,20 @@ export function areSelectorArgumentsEquivalent(a: Selector, b: Selector): boolea
       return false;
     }
 
-    return a.value.every(aItem =>
-      b.value.some(bItem => componentsMatch(aItem, bItem))
-    );
+    for (let i = 0; i < a.value.length; i++) {
+      const aItem = a.value[i]!;
+      let found = false;
+      for (let j = 0; j < b.value.length; j++) {
+        if (componentsMatch(aItem, b.value[j]!)) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        return false;
+      }
+    }
+    return true;
   }
 
   // Handle compound selectors
@@ -259,9 +291,20 @@ export function areCompoundSelectorsEquivalent(a: CompoundSelector, b: CompoundS
   // Order-independent component matching: two compounds are equivalent if they have the same
   // multiset of components. Components are small (typically 2-5), so O(N²) is fine.
   // Uses compoundComponentMatches for :is()-aware pointer walk — no object creation.
-  return a.value.every(aComp =>
-    b.value.some(bComp => compoundComponentMatches(aComp as Selector, bComp as Selector))
-  );
+  for (let i = 0; i < a.value.length; i++) {
+    const aComp = a.value[i] as Selector;
+    let found = false;
+    for (let j = 0; j < b.value.length; j++) {
+      if (compoundComponentMatches(aComp, b.value[j] as Selector)) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -1208,9 +1251,11 @@ function searchWithinSelectorList(
   currentPath: Array<string | number>,
   locations: ExtendLocation[]
 ): void {
-  selectorList.value.forEach((selector, index) => {
-    searchWithinSelector(selector, target, [...currentPath, index], locations);
-  });
+  for (let index = 0; index < selectorList.value.length; index++) {
+    currentPath.push(index);
+    searchWithinSelector(selectorList.value[index]!, target, currentPath, locations);
+    currentPath.pop();
+  }
 }
 
 /**
@@ -1225,21 +1270,26 @@ function searchWithinCompoundSelector(
   // Handle when target is a PseudoSelector - check for equivalent matches
   if (isNode(target, N.PseudoSelector) && target.value.arg && isSelector(target.value.arg)) {
     // Look for matching pseudo-selectors within the compound
-    compound.value.forEach((component, index) => {
+    for (let index = 0; index < compound.value.length; index++) {
+      const component = compound.value[index]!;
       if (isNode(component, N.PseudoSelector) && arePseudoSelectorsEquivalent(component, target)) {
+        currentPath.push(index);
         locations.push(withMatchScope({
-          path: [...currentPath, index],
+          path: [...currentPath],
           matchedNode: component,
           extensionType: 'replace'
         }));
+        currentPath.pop();
       }
-    });
+    }
   }
 
   // Standard recursive search through each component
-  compound.value.forEach((component, index) => {
-    searchWithinSelector(component, target, [...currentPath, index], locations);
-  });
+  for (let index = 0; index < compound.value.length; index++) {
+    currentPath.push(index);
+    searchWithinSelector(compound.value[index]!, target, currentPath, locations);
+    currentPath.pop();
+  }
 
   // OPTIMIZATION 5: Check for partial matches within compound selectors
   // This enables extending when target is a subset of the compound
@@ -1257,13 +1307,15 @@ function searchWithinCompoundSelector(
             ? [remainderComponents[0]!]
             : [new CompoundSelector(remainderComponents).inherit(compound)];
 
+        currentPath.push(i);
         locations.push(withMatchScope({
-          path: [...currentPath, i],
+          path: [...currentPath],
           matchedNode: compound.value[i]!,
           extensionType: 'replace',
           isPartialMatch: remainders.length > 0,
           remainders
         }));
+        currentPath.pop();
       }
     }
   }
@@ -1328,12 +1380,15 @@ function searchWithinComplexSelector(
     }
   }
 
-  complex.value.forEach((component, index) => {
+  for (let index = 0; index < complex.value.length; index++) {
+    const component = complex.value[index]!;
     // Skip combinators, only search selector components
     if (!isNode(component, N.Combinator)) {
-      searchWithinSelector(component as Selector, target, [...currentPath, index], locations);
+      currentPath.push(index);
+      searchWithinSelector(component as Selector, target, currentPath, locations);
+      currentPath.pop();
     }
-  });
+  }
 
   // Post-process: when find matches one component of a multi-component complex selector,
   // that is always a partial match (full mode should reject it). Mark ALL such component
@@ -1723,51 +1778,63 @@ function searchWithinPseudoSelector(
   if (pseudo.value.name === ':is') {
     if (isNode(argSelector, N.SelectorList)) {
       // Check if target matches any alternative in the :is() selector list
-      argSelector.value.forEach((alternative, altIndex) => {
-        const itemPath = [...currentPath, 'arg', altIndex];
+      currentPath.push('arg');
+      for (let altIndex = 0; altIndex < argSelector.value.length; altIndex++) {
+        const alternative = argSelector.value[altIndex]!;
+        currentPath.push(altIndex);
         // Direct structural match: use determineExtensionType so we get 'wrap' when inside a compound (not just 'append')
         if (isStructurallyEqual(alternative, target)) {
           locations.push(withMatchScope({
-            path: itemPath,
+            path: [...currentPath],
             matchedNode: alternative,
-            extensionType: determineExtensionType(alternative, itemPath)
+            extensionType: determineExtensionType(alternative, currentPath)
           }));
         }
 
         // Recursive search within each alternative
-        searchWithinSelector(alternative, target, itemPath, locations);
-      });
+        searchWithinSelector(alternative, target, currentPath, locations);
+        currentPath.pop();
+      }
+      currentPath.pop();
 
       // Additional optimization: Check if target could be added as new alternative
       // This enables extending :is(.a, .b) with .c to become :is(.a, .b, .c)
       const canExtendAsList = !argSelector.value.some(alt => isStructurallyEqual(alt, target));
       if (canExtendAsList) {
+        currentPath.push('arg');
         locations.push(withMatchScope({
-          path: [...currentPath, 'arg'],
+          path: [...currentPath],
           matchedNode: argSelector,
           extensionType: 'append', // Append new alternative to :is() list
           isPartialMatch: false
         }));
+        currentPath.pop();
       }
     } else {
       // Single argument in :is() - check for direct match
       if (isStructurallyEqual(argSelector, target)) {
+        currentPath.push('arg');
         locations.push(withMatchScope({
-          path: [...currentPath, 'arg'],
+          path: [...currentPath],
           matchedNode: argSelector,
           extensionType: 'append', // Will convert single arg to SelectorList and append
           isPartialMatch: false
         }));
+        currentPath.pop();
         // Don't do recursive search since we found the direct match
         return;
       }
 
       // Only do recursive search if no direct match found
-      searchWithinSelector(argSelector, target, [...currentPath, 'arg'], locations);
+      currentPath.push('arg');
+      searchWithinSelector(argSelector, target, currentPath, locations);
+      currentPath.pop();
     }
   } else {
     // Standard recursive search for other pseudo-selectors
-    searchWithinSelector(argSelector, target, [...currentPath, 'arg'], locations);
+    currentPath.push('arg');
+    searchWithinSelector(argSelector, target, currentPath, locations);
+    currentPath.pop();
   }
 }
 

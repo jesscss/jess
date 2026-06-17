@@ -1,6 +1,17 @@
 import { any, attr, co, compound, el, pseudo, ref, rules, Rules as RulesClass, sel, sellist, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { OutputWriter } from '../util/print.js';
+import { F_EXTENDED, F_EXTEND_TARGET } from '../node.js';
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 /**
  * @todo - add tests for list bubbling
@@ -28,6 +39,47 @@ describe('Selector list', () => {
       ]);
 
       expect(node.toTrimmedString()).toBe('.foo,\n.bar');
+    });
+
+    test('writes empty selector-list syntax without writer readback', () => {
+      const writer = new CountingWriter();
+
+      expect(sellist([]).toTrimmedString({ writer })).toBe('');
+      expect(writer.toString()).toBe('');
+      expect(writer.reads).toBe(0);
+    });
+
+    test('writes top-level :is selector-list items directly', () => {
+      const node = sellist([
+        pseudo({
+          name: ':is',
+          arg: sellist([el('.a'), el('.b')])
+        }),
+        el('.c')
+      ]);
+
+      expect(node.toTrimmedString()).toBe('.a,\n.b,\n.c');
+    });
+
+    test('filters flattened reference-mode selector-list items directly', () => {
+      const target = el('.target');
+      target.addFlag(F_EXTENDED);
+      target.addFlag(F_EXTEND_TARGET);
+      const added = el('.added');
+      added.addFlag(F_EXTENDED);
+      const node = sellist([
+        pseudo({
+          name: ':is',
+          arg: sellist([target, added])
+        }),
+        el('.plain')
+      ]);
+
+      expect(node.toTrimmedString({
+        referenceMode: true,
+        referenceRenderEnabled: true,
+        referenceFilterTargets: true
+      })).toBe('.added');
     });
 
     /** @todo - add test for non-equality */
@@ -156,6 +208,64 @@ describe('Selector list', () => {
     expect(selector.evaluated).toBe(false);
     expect(selector.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  test('keeps unchanged multi-selector evaluation on the source list', async () => {
+    const selector = sellist([
+      el('.foo'),
+      el('.bar')
+    ]);
+
+    const evaluated = await selector.eval(context);
+    const resolved = await selector.resolve(context);
+
+    expect(evaluated).toBe(selector);
+    expect(resolved).toBe(selector);
+  });
+
+  test('still collapses unchanged single-selector evaluation', async () => {
+    const selector = sellist([el('.solo')]);
+    const evaluated = await selector.eval(context);
+
+    expect(evaluated).not.toBe(selector);
+    expect(evaluated.toTrimmedString()).toBe('.solo');
+  });
+
+  test('still materializes unchanged top-level selector-list flattening', async () => {
+    const selector = sellist([
+      pseudo({
+        name: ':is',
+        arg: sellist([el('.a'), el('.b')])
+      }),
+      el('.c')
+    ]);
+    const evaluated = await selector.eval(context);
+
+    expect(evaluated).not.toBe(selector);
+    expect(evaluated.toTrimmedString()).toBe('.a,\n.b,\n.c');
+  });
+
+  test('derives resolved selector-list surfaces without generic construction', async () => {
+    const first = el('.source');
+    const resolvedFirst = el('.resolved');
+    first.resolve = () => resolvedFirst;
+    const selector = sellist([
+      first,
+      el('.other')
+    ]);
+    const originalConstruct = Reflect.construct;
+    Reflect.construct = () => {
+      throw new Error('selector-list resolve should not use generic construction');
+    };
+
+    try {
+      const resolved = await selector.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('.resolved,\n.other');
+      expect(first.parent).toBe(selector);
+    } finally {
+      Reflect.construct = originalConstruct;
+    }
   });
 
   test('keeps source selector-list values canonical after resolve(context)', async () => {

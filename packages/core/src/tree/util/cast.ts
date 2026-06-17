@@ -49,7 +49,11 @@ function getNodeType(value: any): Node {
     return new JsObject(value);
   }
   if (isArray(value)) {
-    return new List(value.map(val => cast(val)));
+    const items = new Array<Node>(value.length);
+    for (let i = 0; i < value.length; i++) {
+      items[i] = cast(value[i]);
+    }
+    return new List(items);
   }
   if (typeof value === 'number') {
     const Num = getNum();

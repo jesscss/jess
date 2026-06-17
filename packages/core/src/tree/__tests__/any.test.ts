@@ -1,6 +1,22 @@
-import { any, keyword } from '../index.js';
+import { any, keyword, seq } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  marks = 0;
+  reads = 0;
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 describe('Any and Keyword', () => {
   it('renders Any syntax through toTrimmedString()', () => {
@@ -38,6 +54,21 @@ describe('Any and Keyword', () => {
     expect(resolveCalls).toBe(0);
   });
 
+  it('renders Any and Keyword values without writer mark/readback', () => {
+    const context = new Context();
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+
+    expect(any('foo').render(context, { writer })).toBe('foo');
+    expect(writer.toString()).toBe('foo');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(keyword('inherit').render(context, buffer, { writer })).toBe('inherit');
+    expect(buffer.parts).toEqual(['inherit']);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
   it('renders custom-property Any values from source without result inheritance', async () => {
     const context = new Context();
     const node = any('var(--tone)', { role: 'customprop' });
@@ -70,5 +101,17 @@ describe('Any and Keyword', () => {
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(resolveContext.printState.writer).toBeUndefined();
+  });
+
+  it('compares fallback text without public string transport for the left Any node', () => {
+    const node = any('foo');
+    let stringCalls = 0;
+    node.toString = () => {
+      stringCalls++;
+      return 'not-foo';
+    };
+
+    expect(node.compare(seq([any('foo')]))).toBe(0);
+    expect(stringCalls).toBe(0);
   });
 });

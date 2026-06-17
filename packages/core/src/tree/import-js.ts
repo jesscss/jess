@@ -1,19 +1,22 @@
 import type { Context } from '../context.js';
 import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType, type NodeLocation } from './node.js';
 import { type Quoted } from './quoted.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 
 /**
  * Imports of TS/JS ESM modules.
  *
  * `@-use 'foo.js' as foo;`
+ * `@-from 'foo.js' import (bar as baz);`
  */
 
 type JsImportSpecifier = string | [string, string] | { name: string; alias?: string };
 
 export type JsImportOptions = {
-  /** e.g. `@-use 'foo.js' as foo` sets namespace to `foo` */
+  /** e.g. `@-use 'foo.js' as foo` or `@-from 'foo.js' import * as foo` sets namespace to `foo` */
   namespace?: string;
+  /** Authored source form. Defaults to `use` so `@use` / `@-use` round-trip as `@-use`. */
+  source?: 'use' | 'from';
   /**
    * - In array,
    *   - string is a plain import identifier
@@ -34,37 +37,56 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 
-  override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     const { path } = this.value;
-    const { namespace } = this.options;
-    const imports = this.value.imports ?? (Array.isArray(this.options.imports) ? this.options.imports : undefined);
+    const namespace = this._options?.namespace;
+    const imports = this.value.imports ?? (Array.isArray(this._options?.imports) ? this._options.imports : undefined);
+
+    if (this._options?.source === 'from' && imports?.length) {
+      w.add('@-from ');
+      path.writeSyntax(options);
+      w.add(' import ');
+      const first = imports[0];
+      const firstName = typeof first === 'string' ? first : (Array.isArray(first) ? first[0] : first.name);
+      const firstAlias = typeof first === 'string' ? undefined : (Array.isArray(first) ? first[1] : first.alias);
+      if (imports.length === 1 && firstName === '*' && firstAlias) {
+        w.add(`* as ${firstAlias}`);
+      } else {
+        w.add('(');
+        for (let i = 0; i < imports.length; i++) {
+          if (i > 0) {
+            w.add(', ');
+          }
+          const specifier = imports[i];
+          if (typeof specifier === 'string') {
+            w.add(specifier);
+            continue;
+          }
+          const name = Array.isArray(specifier) ? specifier[0] : specifier.name;
+          const alias = Array.isArray(specifier) ? specifier[1] : specifier.alias;
+          w.add(alias ? `${name} as ${alias}` : name);
+        }
+        w.add(')');
+      }
+      w.add(';');
+      return;
+    }
 
     w.add('@-use ');
-    path.toString(options);
-    let explicitNamespace = namespace;
-    if (!explicitNamespace && imports?.length) {
-      const nsSpec = imports.find((specifier) => {
-        if (typeof specifier === 'string') {
-          return false;
-        }
-        if (Array.isArray(specifier)) {
-          return specifier[0] === '*';
-        }
-        return specifier.name === '*';
-      });
-      if (nsSpec) {
-        explicitNamespace = Array.isArray(nsSpec)
-          ? nsSpec[1]
-          : (typeof nsSpec === 'string' ? undefined : nsSpec.alias);
-      }
-    }
-    if (explicitNamespace) {
-      w.add(` as ${explicitNamespace}`);
+    path.writeSyntax(options);
+    if (namespace) {
+      w.add(` as ${namespace}`);
     }
     w.add(';');
+  }
+
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 

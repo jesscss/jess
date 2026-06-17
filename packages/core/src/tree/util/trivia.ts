@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import type { PrintOptions } from './print.js';
+import type { FinalPrintOptions, PrintOptions } from './print.js';
 import type { TriviaLookup, TriviaMap } from '../../types/index.js';
 import type { Node } from '../node.js';
 
@@ -108,6 +108,29 @@ export function emitTriviaTokens(
   for (const token of printable) {
     writer.add(token.image);
   }
+}
+
+/**
+ * Emits a child node in authored syntax while preserving its leading trivia.
+ *
+ * This is the direct-writer form of the child-boundary behavior that
+ * `Node.toString(...)` historically provided: consume leading trivia for the
+ * active print state, then let the node write its syntax into the same writer.
+ */
+export function emitNodeSourceSyntaxWithTrivia(
+  node: Node,
+  options: FinalPrintOptions
+): void {
+  const trivia = options.trivia ?? treeTrivia(node);
+  if (trivia && options.trivia !== trivia) {
+    options.trivia = trivia;
+  }
+  const suppressPre = options.suppressBoundaryTrivia === 'pre'
+    || options.suppressBoundaryTrivia === 'both';
+  if (!suppressPre && trivia) {
+    emitTriviaTokens(consumeTrivia(trivia, node.location[0], 'before', options), options);
+  }
+  node.writeSyntax(options);
 }
 
 export function emitCommentTriviaBetweenNodes(

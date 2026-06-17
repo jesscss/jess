@@ -4,6 +4,7 @@ import { Context } from '../../context.js';
 import { any, comment, decl, el, rules, ruleset, sel, vardecl } from '../index.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { createTriviaMap } from '../util/trivia.js';
+import { OutputWriter } from '../util/print.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -16,6 +17,21 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   endColumn: image.length
 });
 
+class CountingWriter extends OutputWriter {
+  marks = 0;
+  reads = 0;
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
+
 describe('Comment', () => {
   let context: Context;
 
@@ -27,12 +43,30 @@ describe('Comment', () => {
     expect(comment('/* keep me */').toTrimmedString()).toBe('/* keep me */');
   });
 
+  it('returns block comment syntax without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(comment('/* keep me */').toTrimmedString({ writer })).toBe('/* keep me */');
+    expect(writer.toString()).toBe('/* keep me */');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
   it('renders visible block comments through render(context)', () => {
     const node = comment('/* keep me */');
 
     expect(node.render(context)).toBe('/* keep me */');
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('renders visible block comments without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(comment('/* keep me */').render(context, { writer })).toBe('/* keep me */');
+    expect(writer.toString()).toBe('/* keep me */');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('writes visible comment render output into flat buffers', async () => {

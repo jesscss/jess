@@ -6,6 +6,16 @@ import { ExtendList, extendList } from '../extend-list.js';
 import { N } from '../node-type.js';
 import { isNode } from '../util/is-node.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 describe('Extend render', () => {
   it('renders extend side effects without calling public evalNode()', () => {
@@ -32,7 +42,11 @@ describe('Extend render', () => {
 
   it('renders extend lists by running child side effects directly', () => {
     const context = new Context();
-    const node = extendList([extend({ target: el('.base') })]);
+    const child = extend({ target: el('.base') });
+    child.render = () => {
+      throw new Error('ExtendList.render should not call child render');
+    };
+    const node = extendList([child]);
     node.evalNode = () => {
       throw new Error('ExtendList.render should not materialize public eval output');
     };
@@ -63,6 +77,32 @@ describe('Extend render', () => {
       .resolves.toHaveProperty('type', 'Nil');
     expect(extendList([]).evalNode(context)).toBeInstanceOf(ExtendList);
     expect(extend({ target: el('.base') })).toBeInstanceOf(Extend);
+  });
+
+  it('writes empty extend lists without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(extendList([]).toTrimmedString({ writer })).toBe(';');
+    expect(writer.toString()).toBe(';');
+    expect(writer.reads).toBe(0);
+  });
+
+  it('writes extend selectors without public toString transport', () => {
+    const selector = el('.source');
+    const target = el('.base');
+    let stringCalls = 0;
+    selector.toString = target.toString = () => {
+      stringCalls++;
+      return '';
+    };
+
+    expect(extend({
+      selector,
+      target,
+      namespace: 'ns',
+      flag: ExtendFlag.Exact
+    }).toTrimmedString()).toBe('$extend .source -> ns|.base !exact;');
+    expect(stringCalls).toBe(0);
   });
 
   it.each([

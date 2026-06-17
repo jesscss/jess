@@ -1218,8 +1218,15 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     const writer = options.writer;
     const mark = writer.mark();
     try {
-      renderSelector.writeSyntax(options);
-      selOut = writer.getSince(mark);
+      const writableSelector = renderSelector as Selector & {
+        writeSyntax?: Selector['writeSyntax'];
+      };
+      if (typeof writableSelector.writeSyntax === 'function') {
+        writableSelector.writeSyntax(options);
+        selOut = writer.getSince(mark);
+      } else {
+        selOut = renderSelector.toTrimmedString(options);
+      }
     } finally {
       writer.restore(mark);
       options.trivia = savedTrivia;

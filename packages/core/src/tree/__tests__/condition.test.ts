@@ -1,8 +1,18 @@
 import { any, Bool, bool, call, condition, dimension, list, num, ref, rules, Rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { OutputWriter } from '../util/print.js';
 
 let context: Context;
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 describe('Condition', () => {
   beforeEach(() => {
@@ -43,6 +53,38 @@ describe('Condition', () => {
         bool(true)
       ], { negate: true });
       expect(node.toTrimmedString()).toBe('not (true = true)');
+    });
+
+    it('writes boolean-only condition syntax without writer readback', () => {
+      const writer = new CountingWriter();
+
+      expect(condition([bool(true)]).toTrimmedString({ writer })).toBe('true');
+      expect(writer.toString()).toBe('true');
+      expect(writer.reads).toBe(0);
+    });
+
+    it('writes negated boolean-only condition syntax without writer readback', () => {
+      const writer = new CountingWriter();
+
+      expect(condition([bool(false)], { negate: true }).toTrimmedString({ writer })).toBe('not (false)');
+      expect(writer.toString()).toBe('not (false)');
+      expect(writer.reads).toBe(0);
+    });
+
+    it('writes boolean comparison condition syntax without writer readback', () => {
+      const writer = new CountingWriter();
+
+      expect(condition([bool(true), '=', bool(false)]).toTrimmedString({ writer })).toBe('(true = false)');
+      expect(writer.toString()).toBe('(true = false)');
+      expect(writer.reads).toBe(0);
+    });
+
+    it('writes negated boolean comparison condition syntax without writer readback', () => {
+      const writer = new CountingWriter();
+
+      expect(condition([bool(true), 'and', bool(false)], { negate: true }).toTrimmedString({ writer })).toBe('not (true and false)');
+      expect(writer.toString()).toBe('not (true and false)');
+      expect(writer.reads).toBe(0);
     });
 
     it('does not allocate options when rendering a default condition', () => {

@@ -1,11 +1,12 @@
-import { Node, F_STATIC, defineType, type NodeOptions } from './node.js';
+import { Node, F_STATIC, F_VISIBLE, defineType, type NodeOptions } from './node.js';
 import { calculate, type Operator } from './util/calculate.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import round from 'lodash-es/round.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { finalizePublicOperationResult } from './util/operation-result.js';
+import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
 type ColorValues = [number, number, number, number] | number[];
 type ChannelTuple = [number, string];
 type ChannelValue = number | ChannelTuple;
@@ -468,28 +469,67 @@ export class Color extends Node<ColorData, ColorOptions> {
     if (alpha < 1) {
       values.push(round(alpha * 255));
     }
-    let hex = '#' + values.map(function(c) {
-      let hex = c.toString(16);
-      return hex.length === 1 ? '0' + hex : hex;
-    }).join('');
-    return hex;
+    let out = '#';
+    for (let i = 0; i < values.length; i++) {
+      const hex = values[i]!.toString(16);
+      out += hex.length === 1 ? `0${hex}` : hex;
+    }
+    return out;
   }
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
+    const scalar = this.serializeScalarSyntax(Boolean(options.compress));
+    if (scalar !== undefined) {
+      options.writer.add(scalar, this);
+      return scalar;
+    }
     const w = options.writer!;
     const mark = w.mark();
-    const compress = Boolean(options.compress);
+    const node = this.value.node;
+    if (isNode(node)) {
+      node.writeSyntax(options);
+    }
+    return w.getSince(mark);
+  }
+
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
 
     // If value has a node that's a Node, serialize it directly
     if (this.value.node && isNode(this.value.node)) {
-      return this.value.node.toTrimmedString(options);
+      this.value.node.writeSyntax(options);
+      return;
     }
 
-    // If value has a node that's a string, output it as-is
-    if (this.value.node && typeof this.value.node === 'string') {
-      w.add(this.value.node, this);
-      return w.getSince(mark);
+    w.add(this.serializeScalarSyntax(Boolean(options.compress))!, this);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
+    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+      return '';
+    }
+    const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
+    const scalar = this.serializeScalarSyntax(Boolean(printOptions?.compress));
+    if (scalar === undefined) {
+      return isRenderBuffer(bufferOrOptions)
+        ? this.renderSource(context, bufferOrOptions, options)
+        : this.renderSource(context, bufferOrOptions);
+    }
+    if (isRenderBuffer(bufferOrOptions)) {
+      return writeRenderText(bufferOrOptions, scalar);
+    }
+    getPrintOptions(bufferOrOptions).writer.add(scalar, this);
+    return scalar;
+  }
+
+  private serializeScalarSyntax(compress: boolean): string | undefined {
+    const node = this.value.node;
+    if (node) {
+      return typeof node === 'string' ? node : undefined;
     }
 
     // Handle format-based serialization
@@ -500,26 +540,14 @@ export class Color extends Node<ColorData, ColorOptions> {
       const alphaText = this.getSerializedAlphaText(compress);
       if (useModernSyntax) {
         if (this.alpha < 1) {
-          w.add('rgb(', this);
-          w.add(`${rgbText[0]} ${rgbText[1]} ${rgbText[2]} / ${alphaText}`);
-          w.add(')');
-        } else {
-          w.add('rgb(', this);
-          w.add(`${rgbText[0]} ${rgbText[1]} ${rgbText[2]}`);
-          w.add(')');
+          return `rgb(${rgbText[0]} ${rgbText[1]} ${rgbText[2]} / ${alphaText})`;
         }
-      } else {
-        if (this.alpha < 1) {
-          w.add('rgba(', this);
-          w.add(`${rgbText[0]}, ${rgbText[1]}, ${rgbText[2]}, ${alphaText}`);
-          w.add(')');
-        } else {
-          w.add('rgb(', this);
-          w.add(`${rgbText[0]}, ${rgbText[1]}, ${rgbText[2]}`);
-          w.add(')');
-        }
+        return `rgb(${rgbText[0]} ${rgbText[1]} ${rgbText[2]})`;
       }
-      return w.getSince(mark);
+      if (this.alpha < 1) {
+        return `rgba(${rgbText[0]}, ${rgbText[1]}, ${rgbText[2]}, ${alphaText})`;
+      }
+      return `rgb(${rgbText[0]}, ${rgbText[1]}, ${rgbText[2]})`;
     } else if (format === ColorFormat.HSL) {
       const [h, s, l] = this.hsl;
       const hueSource = this.value.hsl?.[0];
@@ -534,31 +562,18 @@ export class Color extends Node<ColorData, ColorOptions> {
       const useModernSyntax = Boolean(this.options.modernSyntax || compress);
       if (useModernSyntax) {
         if (this.alpha < 1) {
-          w.add('hsl(', this);
-          w.add(`${roundedHue}${modernHueUnit} ${round(s * 100, 8)}% ${round(l * 100, 8)}% / ${alphaText}`);
-          w.add(')');
-        } else {
-          w.add('hsl(', this);
-          w.add(`${roundedHue}${modernHueUnit} ${round(s * 100, 8)}% ${round(l * 100, 8)}%`);
-          w.add(')');
+          return `hsl(${roundedHue}${modernHueUnit} ${round(s * 100, 8)}% ${round(l * 100, 8)}% / ${alphaText})`;
         }
-      } else {
-        if (this.alpha < 1) {
-          w.add('hsla(', this);
-          w.add(`${roundedHue}${preservedHueUnit}, ${round(s * 100, 8)}%, ${round(l * 100, 8)}%, ${alphaText}`);
-          w.add(')');
-        } else {
-          w.add('hsl(', this);
-          w.add(`${roundedHue}${preservedHueUnit}, ${round(s * 100, 8)}%, ${round(l * 100, 8)}%`);
-          w.add(')');
-        }
+        return `hsl(${roundedHue}${modernHueUnit} ${round(s * 100, 8)}% ${round(l * 100, 8)}%)`;
       }
-      return w.getSince(mark);
+      if (this.alpha < 1) {
+        return `hsla(${roundedHue}${preservedHueUnit}, ${round(s * 100, 8)}%, ${round(l * 100, 8)}%, ${alphaText})`;
+      }
+      return `hsl(${roundedHue}${preservedHueUnit}, ${round(s * 100, 8)}%, ${round(l * 100, 8)}%)`;
     }
 
     // Default to hex
-    w.add(this.toHex(), this);
-    return w.getSince(mark);
+    return this.toHex();
   }
 
   override resolve(_context: Context): this {
@@ -572,7 +587,7 @@ export class Color extends Node<ColorData, ColorOptions> {
 
     if (isNode(b, N.Dimension)) {
       const { number: bVal, unit: bUnit } = b.value;
-      const unitMode = context?.opts?.unitMode ?? 'loose';
+      const unitMode = context?.opts?.unitMode ?? 'preserve';
       const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
       if (bUnit && isStrictLikeMode) {
         throw new TypeError(`Cannot convert "${b}" to a color`);

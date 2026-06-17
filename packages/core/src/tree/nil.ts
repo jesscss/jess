@@ -11,6 +11,7 @@ import {
   type NodeOptions
 } from './node-base.js';
 import type { Context } from '../context.js';
+import type { FinalPrintOptions } from './util/print.js';
 
 export interface Nil extends Node<''> {
   valueOf(): '';
@@ -47,6 +48,9 @@ export class Nil extends Node<''> {
   override toString() {
     return '';
   }
+
+  /** @internal */
+  override writeSyntax(_options: FinalPrintOptions): void {}
 
   override resolve(_context: Context): this {
     return this;

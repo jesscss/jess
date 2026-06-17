@@ -19,10 +19,16 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
   }
 }
 
@@ -57,6 +63,15 @@ describe('Compound Selector', () => {
       ]);
 
       expect(node.toTrimmedString()).toBe('a[data=bar]');
+    });
+
+    test('writes empty compound selector syntax without writer readback', () => {
+      const writer = new CountingWriter();
+
+      expect(compound([]).toTrimmedString({ writer })).toBe('');
+      expect(writer.toString()).toBe('');
+      expect(writer.reads).toBe(0);
+      expect(writer.captures).toBe(0);
     });
 
     test('same value', () => {
@@ -169,6 +184,29 @@ describe('Compound Selector', () => {
     expect(selector.evaluated).toBe(false);
     expect(selector.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  test('derives resolved compound selector surfaces without generic construction', async () => {
+    const first = el('.source');
+    const resolvedFirst = el('.resolved');
+    first.resolve = () => resolvedFirst;
+    const selector = compound([
+      first,
+      el('.other')
+    ]);
+    const originalConstruct = Reflect.construct;
+    Reflect.construct = () => {
+      throw new Error('compound selector resolve should not use generic construction');
+    };
+
+    try {
+      const resolved = await selector.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('.resolved.other');
+      expect(first.parent).toBe(selector);
+    } finally {
+      Reflect.construct = originalConstruct;
+    }
   });
 
   test('keeps source compound selector values canonical after resolve(context)', async () => {

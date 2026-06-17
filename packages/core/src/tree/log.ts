@@ -3,7 +3,7 @@ import { Node, F_VISIBLE, defineType, type LocationInfo, type NodeOptions } from
 import { createPublicNil, Nil } from './nil.js';
 import { logger } from '../logger.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import type { PrintOptions } from './util/print.js';
+import type { FinalPrintOptions, PrintOptions } from './util/print.js';
 import {
   type RenderBuffer,
   renderInvisibleEffect
@@ -43,24 +43,23 @@ export class Log extends Node<LogValue, NodeOptions> {
     return '';
   }
 
-  override toString() {
-    return '';
-  }
+  /** @internal */
+  override writeSyntax(_options: FinalPrintOptions): void {}
 
   private runLogEffect(context: Context): MaybePromise<void> {
     const messageResult = this.value.message.eval(context);
     if (isThenable(messageResult)) {
-      return (messageResult as Promise<Node>).then((evaluatedMessage) => {
+      return messageResult.then((evaluatedMessage) => {
         this._logMessage(evaluatedMessage);
       });
     }
-    this._logMessage(messageResult as Node);
+    this._logMessage(messageResult);
   }
 
   override evalNode(context: Context): MaybePromise<Nil> {
     const effect = this.runLogEffect(context);
     return isThenable(effect)
-      ? (effect as Promise<void>).then(createPublicNil)
+      ? effect.then(createPublicNil)
       : createPublicNil();
   }
 
