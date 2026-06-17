@@ -365,6 +365,7 @@ describe('AtRule', () => {
     context.rulesContext = evaldRoot;
 
     const buffer = createRenderBuffer('segmented');
+    const writer = new CountingWriter();
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
@@ -382,7 +383,7 @@ describe('AtRule', () => {
       return originalResolve.apply(this, args);
     };
 
-    const rendered = await Promise.resolve(node.render(context, buffer));
+    const rendered = await Promise.resolve(node.render(context, buffer, { writer }));
 
     expect(rendered).toBeString(`
       @media print {
@@ -396,6 +397,7 @@ describe('AtRule', () => {
       }
     `);
     expect(resolveCalls).toBe(0);
+    expect(writer.marks).toBe(0);
   });
 
   it('renders resolved at-rule output directly without public resolve', async () => {

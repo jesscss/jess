@@ -782,7 +782,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     const printState = buffer
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const mark = buffer ? printState.writer.mark() : 0;
+    const mark = buffer?.kind === 'flat' && printState.writer.writesTo(buffer.parts)
+      ? printState.writer.mark()
+      : 0;
     const priorHeaderNode = printState.atRuleHeaderNode;
     const priorHeaderPrelude = printState.atRuleHeaderPrelude;
     const priorBodyNode = printState.atRuleBodyNode;
