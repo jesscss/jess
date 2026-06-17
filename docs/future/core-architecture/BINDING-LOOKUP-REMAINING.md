@@ -3,14 +3,15 @@
 This is the burn-down inventory for the registryless binding/lookup lane. Keep
 this file focused on the active binding queue, remaining scope, completion
 gates, and short progress notes that change the next worker's decisions.
-`HANDOFF.md` is only the cross-workstream router.
+`HANDOFF.md` is only the cross-focus router.
+`FOCII.md` owns the goal-settable focus prompt.
 
-## Workstream Contract
+## Focus Contract
 
 This file owns binding/lookup progress. When a chat/session chooses the
-binding/lookup workstream, start here after reading `HANDOFF.md`. Do not move
-this queue back into `HANDOFF.md`, and do not rewrite `HANDOFF.md` merely to
-switch focus between binding and serialization branches.
+binding/lookup focus, start here after reading `HANDOFF.md` and `FOCII.md`. Do
+not move this queue back into `HANDOFF.md`, and do not rewrite `HANDOFF.md`
+merely to switch focus between binding and serialization branches.
 
 A full queue pass means burn through every currently safe active item below,
 not one micro-edit. If the pass must stop before the queue is drained, record

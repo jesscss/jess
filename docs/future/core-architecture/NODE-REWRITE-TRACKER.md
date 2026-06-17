@@ -1,7 +1,7 @@
 # Node Rewrite Tracker
 
 This tracker owns the node-by-node cleanup program. The rule is simple: when
-the chat/session chooses the serialization or `writeSyntax` workstream and the
+the chat/session chooses the serialization or `writeSyntax` focus and the
 user asks to continue or run the full queue, keep working autonomously across
 the open rows. Finish a bounded cut, prove output with focused unit tests,
 update docs, commit/push, then immediately continue to the next highest-value
@@ -31,12 +31,12 @@ its public render/eval/resolve/value methods have been reviewed for:
 - branches that should be parser/adoption/eval flags or direct structural
   checks.
 
-## Workstream Contract
+## Focus Contract
 
 This file owns serialization rewrite progress. Do not move this queue into
 `HANDOFF.md`, and do not rewrite `HANDOFF.md` merely to switch focus between
-serialization and binding branches. `HANDOFF.md` is the cross-workstream
-router; this file is the serialization agent's source of truth for row status,
+serialization and binding branches. `FOCII.md` owns the goal-settable focus
+prompt; this file is the serialization source of truth for row status,
 contracts, completion gates, and historical partial statuses.
 
 ## `writeSyntax` / Render / String Queue
@@ -46,7 +46,7 @@ Only selector-family syntax transport has been cut so far. A checkbox means the
 node has been reviewed specifically for this contract, not merely that one
 helper changed.
 
-When this workstream is selected, finish unfinished node/family serialization
+When this focus is selected, finish unfinished node/family serialization
 rows across the repo before selecting any other serialization cleanup. A full
 autonomous run should close one or more whole rows whenever possible: direct
 `writeSyntax(...)`, direct `render(...)` emission after value selection, cold
@@ -238,7 +238,7 @@ Current hard leftovers after the broad hook sweep:
 - `Sequence` and `List` are complete for the render/string boundary. Their
   addition assembly no longer uses derived-container plus result-array
   `push(...)` staging, but copied output ownership remains part of the separate
-  addition/copy row in the active handoff; do not reopen public render
+  addition/copy row in this tracker; do not reopen public render
   string-return compatibility unless the `RenderBufferNode.render(...)` API
   changes.
 - `PseudoSelector` has a writer hook and child writer, its cold private

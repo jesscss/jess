@@ -3,14 +3,13 @@
 This file is the benchmark/profile doctrine and evidence log for Jess core
 architecture work.
 
-Use `HANDOFF.md` for active integration: current mode, next pass, and the
-specific benchmark leash applied to the queue. Use
+Use `HANDOFF.md` for routing and `FOCII.md` for the active goal/focus. Use
 `AGGRESSIVE-CUTTING-REVIEW.md` for the hardline cutting doctrine. Use this file
 for benchmark protocol, measured targets, rejected experiments, historical
 evidence, active performance queues, and reactivation thresholds.
 
 Current mode: **benchmark-leashed aggressive cutting**. Performance is no
-longer merely parked. The active handoff decides the next target, but the
+longer merely parked. The active focus decides the next target, but the
 target must be tied back to this file's benchmark/profile evidence rules.
 
 ## Preserved Lesson
