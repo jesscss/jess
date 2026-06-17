@@ -5,9 +5,10 @@ or not yet part of the stable architecture notes.
 
 Current topics:
 
-- [Core architecture handoff](./core-architecture/HANDOFF.md) — start here
-  for current eval/render architecture lanes, completion gates, and the
-  immediate next queue
+- [Core architecture router](./core-architecture/HANDOFF.md) — start here for
+  current eval/render architecture routing and pass rules
+- [Core architecture focii](./core-architecture/FOCII.md) — goal-settable focus
+  prompts, boundaries, stop rules, and queue ownership
 - [Eliminating `preEval`](./pre-eval-elimination.md)
 - [Static eval optimizations](./static-eval-optimizations.md)
 - [Whitespace token proposal](./whitespace-token-proposal.md)

@@ -1,16 +1,17 @@
 # Core Architecture Handoff
 
-This is the router for Jess core architecture work. Keep it short and stable:
-it tells the next agent how to choose a workstream, how to complete a pass, and
-where progress is tracked. Do not rewrite this file just to switch branch
-focus; the chat/session should name the workstream.
+This is the stable router for Jess core architecture work. Keep it short: it
+tells the next agent where to choose a focus, how to complete a pass, and where
+progress is tracked. Do not rewrite this file just to switch focus; set the
+chat/Guildhall goal from `FOCII.md` instead.
 
-## Workstream Router
+## Focus Router
 
-Choose exactly one active workstream before editing. If the user names a
-workstream, follow that. If the request is ambiguous, infer from the branch and
-latest user instruction, then record the chosen workstream in the final
-response instead of changing this router.
+Choose exactly one active focus before editing. If the user names a focus,
+follow that. If the request is ambiguous, infer from the branch and latest user
+instruction, then record the chosen focus in the final response instead of
+changing this router. Use `FOCII.md` for the goal prompt, boundaries, stop rule,
+and required docs.
 
 - **Binding / lookup:** use `BINDING-LOOKUP-REMAINING.md` for the active queue,
   remaining scope, progress notes, and completion gates. Use
@@ -49,10 +50,10 @@ approved it as API, delete or reshape it.
 ## Completion Rules
 
 When the user says `continue`, `do all queue items`, `complete the queue`, or
-`full queue pass`, run an autonomous workstream pass:
+`full queue pass`, run an autonomous focus pass:
 
 1. Snapshot `git status --short --branch`.
-2. Read this router and the chosen workstream doc.
+2. Read this router, `FOCII.md`, and the chosen focus tracker.
 3. State one hypothesis before editing.
 4. Work through the active queue as a swath, not one micro-edit.
 5. Keep moving until the queue is drained, the next item has materially
@@ -61,7 +62,7 @@ When the user says `continue`, `do all queue items`, `complete the queue`, or
    investigation.
 6. Use focused tests while iterating; run full gates at the coherent batch
    boundary.
-7. Update the chosen workstream doc with only facts that change the next
+7. Update the chosen focus tracker with only facts that change the next
    worker's decisions.
 8. Update `Aggressive Cutting Self-Prosecution` below for the latest pass.
 9. Commit and push the batch with `--no-verify` when the pass is complete.
@@ -69,11 +70,11 @@ When the user says `continue`, `do all queue items`, `complete the queue`, or
 A queue item must be a whole task with its own proof surface. It may contain
 several sub-tasks, helper deletions, rejected cuts, and tests. Do not create or
 mark complete one-line queue items. If an active queue item remains unfinished
-at wrap-up, record in the workstream doc and final response which item remains,
+at wrap-up, record in the focus tracker and final response which item remains,
 what blocked immediate continuation, and why stopping was necessary.
 
-Each active workstream doc should keep at least 15 unchecked sizable tasks
-available unless that workstream is genuinely within 15 tasks of completion.
+Each active focus tracker should keep at least 15 unchecked sizable tasks
+available unless that focus is genuinely within 15 tasks of completion.
 Reseeding the next queue is closeout work, not a queue item. Completed history
 belongs in git, focused tracker rows, or `PERFORMANCE-HANDOFF.md`, not in this
 router.
@@ -82,7 +83,7 @@ Use sub-agents when available for disjoint evidence or implementation slices.
 Good assignments include one node-family row, one lookup family, focused test
 surface discovery, profile/call-stack audits, or review against the aggressive
 cutting rules. Workers must not make overlapping edits, revert unrelated work,
-commit independently, or change the selected workstream. The main agent owns
+commit independently, or change the selected focus. The main agent owns
 integration, verification, docs, commit, push, and continuation.
 
 ## Gate Rules
@@ -94,7 +95,7 @@ git diff --check
 pnpm run verify:aggressive-cutting-review
 ```
 
-Then run the chosen workstream's gates from its tracker. Use
+Then run the chosen focus gates from its tracker. Use
 `PERFORMANCE-HANDOFF.md` before making any speed claim. Use
 `pnpm run verify:baseline -- --changed` when the touched area needs a broader
 fixture gate. The current hook path has previously looped, so commit and push
@@ -102,10 +103,11 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: documentation-only router split. `HANDOFF.md` now routes to
-  workstream-owned progress docs, `BINDING-LOOKUP-REMAINING.md` owns the
-  binding queue, and `NODE-REWRITE-TRACKER.md` keeps the serialization rewrite
-  agent's row history from `origin/dev`.
+- Latest pass: documentation-only focus reconciliation after pulling
+  `origin/dev`. `FOCII.md` now owns goal-settable core architecture focus
+  prompts, `HANDOFF.md` stays a short router, and
+  `BINDING-LOOKUP-REMAINING.md` / `NODE-REWRITE-TRACKER.md` remain focused
+  queue trackers rather than separate handoffs.
 - Verdict: accepted as guidance cleanup only. No runtime change and no speed
   claim.
 - New traversal: no runtime traversal was added. The scoped diff contains
@@ -123,5 +125,4 @@ with `--no-verify` after the explicit gates pass.
 - Allocation changes: none. The restored tracker history mentions old `Map` and
   `Set` cleanup/status notes only as documentation.
 - Evidence: `git diff --check` passed. `pnpm run
-  verify:aggressive-cutting-review` passed and reported only the restored
-  tracker danger words prosecuted above.
+  verify:aggressive-cutting-review` passed with no scoped danger tokens.

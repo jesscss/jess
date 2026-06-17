@@ -4,12 +4,14 @@ This is the repo-local guardrail for Jess core architecture queue passes. It is
 not a performance benchmark. It is a refusal checklist for accidental machinery.
 
 Use it before committing changes that touch AST nodes, eval/render, lookup,
-copying, inheritance, traversal, source/root metadata, output writing, or the
-core architecture handoff.
+copying, inheritance, traversal, source/root metadata, output writing, the
+core architecture router, or the focus document.
 
-This is one of three core-architecture docs:
+This is one of the core-architecture coordination docs:
 
-- `HANDOFF.md` integrates the active mode, current queue, and next pass.
+- `HANDOFF.md` is the short router.
+- `FOCII.md` owns goal-settable focus prompts, boundaries, and stop rules.
+- Focus trackers own active queues and completion gates.
 - `PERFORMANCE-HANDOFF.md` owns benchmark/profile protocol and performance
   evidence.
 - This file owns patch-shape review: whether a proposed edit adds machinery,
