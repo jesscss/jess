@@ -389,7 +389,7 @@ function renderHoistedParentHeader(
   depth: number
 ): string {
   const writer = new OutputWriter();
-  parent.selector.toString({
+  parent.selector.writeSyntax({
     ...options,
     writer,
     collapseNesting: false,

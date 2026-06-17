@@ -103,27 +103,21 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Ruleset serializer frame/child filter array cuts in
+- Latest pass: Ruleset hoisted-parent header selector writer cut in
   `packages/core/src/tree/util/serialize-helper.ts`.
-- Verdict: accepted as hot serializer callback/temp-array removal. No speed
-  claim.
-- New traversal: three straight loops replace `filter(...)`/`some(...)`/spread
-  staging in transparent visible-child flattening, hoisted parent ruleset-frame
-  discovery, and hoisted `treeFrames` reset. The facts are needed only inside
-  the active flattened/frame arrays; carrying them earlier would add stale
-  frame/visibility state to container setup.
-- New node/materialization: none. No new arrays; hoisted tree-frame reset now
-  compacts the existing frame array in place before pushing the active node.
-- Render path: output behavior is unchanged. The serializer now walks existing
-  arrays directly instead of materializing `visibleChildren`, `rulesetFrames`,
-  or `atRulesOnly` arrays on the render path.
+- Verdict: accepted as a focused public string-transport cut. No speed claim.
+- New traversal: none.
+- New node/materialization: none. The existing detached `OutputWriter` remains
+  because `renderHoistedParentHeader(...)` returns a header string for the
+  current frame contract.
+- Render path: hoisted parent headers now call `selector.writeSyntax(...)`
+  instead of public `selector.toString(...)` while preserving the existing
+  detached header string boundary.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: removes temporary filtered arrays and spread argument
-  materialization in the touched serializer paths.
-- Rejected/observed in this pass: `getHeaderString(...)` capture/readback and
-  hoisted-parent detached header rendering still need a broader frame-header
-  contract change.
+- Allocation changes: none.
+- Rejected/observed in this pass: hoisted-parent detached header string
+  rendering still needs a broader frame-header contract change.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -131,9 +125,11 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: focused `nesting-collapse.test.ts` hoist/collapse selection passed;
-  focused `ruleset.test.ts` serialize/header/hoist/source-direct selection
-  passed; targeted ESLint passed. Full gates are required before commit.
+- Evidence: focused `nesting-collapse.test.ts` hoisted-parent selection passed,
+  including a prototype guard that throws on public selector string transport;
+  the flagged `throw new Error(...)` and `try/finally` are test-only guard and
+  restoration scaffolding. Targeted ESLint passed. Full gates are required
+  before commit.
 - Merge-carried binding review: `findRulesetNamespacePathFast(...)` now
   prepares the visible
   callable frame chain for the namespace segment and checks visible child

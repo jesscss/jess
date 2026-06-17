@@ -454,8 +454,9 @@ describe('CSS Nesting Collapse', () => {
   it('streams hoisted parent selector headers without capture scaffolding', async () => {
     const writer = new CountingWriter();
     const parentSelector = sel([el('.parent')]);
-    parentSelector.toString = () => {
-      throw new Error('hoisted parent header should write selector syntax directly');
+    const selectorToString = parentSelector.constructor.prototype.toString;
+    parentSelector.constructor.prototype.toString = () => {
+      throw new Error('hoisted parent header should not use public selector string transport');
     };
     const node = rules([
       ruleset({
@@ -472,16 +473,20 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const css = await renderNodeToString(node, context, { context, writer, collapseNesting: true });
+    try {
+      const css = await renderNodeToString(node, context, { context, writer, collapseNesting: true });
 
-    expect(css).toBeString(`
-      @media (max-width: 768px) {
-        .parent {
-          color: red;
-        }
-      }`
-    );
-    expect(writer.captures).toBe(0);
+      expect(css).toBeString(`
+        @media (max-width: 768px) {
+          .parent {
+            color: red;
+          }
+        }`
+      );
+      expect(writer.captures).toBe(0);
+    } finally {
+      parentSelector.constructor.prototype.toString = selectorToString;
+    }
   });
 
   it('streams leaf at-rules in collapsed containers without capture scaffolding', async () => {
