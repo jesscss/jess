@@ -465,7 +465,7 @@ export class If extends Node<IfValue> {
     w.add(' (');
     first?.condition?.toString(options);
     w.add(') ');
-    first?.rules.toBraced(options);
+    first?.rules.writeBraced(options);
 
     for (const br of rest) {
       if (br.condition) {
@@ -475,7 +475,7 @@ export class If extends Node<IfValue> {
       } else {
         w.add(' $else ');
       }
-      br.rules.toBraced(options);
+      br.rules.writeBraced(options);
     }
 
     return w.getSince(mark);
@@ -676,7 +676,7 @@ export class For extends Node<StructuredLoopValue> {
     }
     w.add(')');
     w.add(' ');
-    this.rules.toBraced(options);
+    this.rules.writeBraced(options);
     return w.getSince(mark);
   }
 
@@ -751,7 +751,7 @@ export class While extends Node<WhileValue> {
     w.add('$while (', this);
     this.condition.toString(options);
     w.add(') ');
-    this.rules.toBraced(options);
+    this.rules.writeBraced(options);
     return w.getSince(mark);
   }
 

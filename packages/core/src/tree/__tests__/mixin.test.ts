@@ -162,6 +162,19 @@ describe('Mixin', () => {
     `);
   });
 
+  it('writes mixin bodies through direct braced rules syntax', () => {
+    const body = rules([]);
+    body.toBraced = () => {
+      throw new Error('Mixin.writeSyntax should write braced rules directly');
+    };
+    const node = mixin({
+      name: any('.button'),
+      rules: body
+    });
+
+    expect(node.toTrimmedString()).toBe('.button() {\n\n}');
+  });
+
   it('prepares mixin identity without pre-evaluating the body', async () => {
     const bodyDecl = decl({ name: 'color', value: any('red') });
     const body = rules([bodyDecl]);

@@ -78,7 +78,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
     }
     w.add(') ');
 
-    body.toBraced(options);
+    body.writeBraced(options);
 
     return w.getSince(mark);
   }
