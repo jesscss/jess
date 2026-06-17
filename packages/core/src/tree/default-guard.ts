@@ -1,7 +1,7 @@
 import { type Context } from '../context.js';
 import { Node, defineType } from './node.js';
 import { Bool, createPublicBool } from './bool.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
   writeRenderText,
@@ -15,11 +15,13 @@ export interface DefaultGuard extends Node<string> {
 
 export class DefaultGuard extends Node<string> {
   override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    w.add('default', this);
-    return w.getSince(mark);
+    getPrintOptions(options).writer.add('default', this);
+    return 'default';
+  }
+
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    options.writer.add('default', this);
   }
 
   override evalNode(context: Context): Bool {
@@ -34,9 +36,11 @@ export class DefaultGuard extends Node<string> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
     const out = String(Boolean(context.isDefault));
-    return isRenderBuffer(bufferOrOptions)
-      ? writeRenderText(bufferOrOptions, out)
-      : out;
+    if (isRenderBuffer(bufferOrOptions)) {
+      return writeRenderText(bufferOrOptions, out);
+    }
+    getPrintOptions(bufferOrOptions).writer.add(out, this);
+    return out;
   }
 }
 export const defaultguard = defineType(DefaultGuard, 'DefaultGuard');

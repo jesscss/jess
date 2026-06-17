@@ -1,7 +1,7 @@
 import { type Context } from '../context.js';
 import { F_NON_STATIC, F_VISIBLE, Node, defineType, type NodeLocation } from './node.js';
 import { Bool, createPublicBool } from './bool.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -27,6 +27,10 @@ export type ConditionOptions = {
 
 type ConditionResultValue = Node | boolean;
 
+function conditionOperandSyntax(node: Node): string {
+  return node.toTrimmedString();
+}
+
 export interface Condition extends Node<ConditionValue, ConditionOptions> {
   eval(context: Context): MaybePromise<Bool>;
 }
@@ -38,10 +42,9 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
-  override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     let [left, op, right] = this.value;
     const negate = this._options?.negate === true;
     const needsParens = Boolean(right || negate);
@@ -51,17 +54,39 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     if (needsParens) {
       w.add('(');
     }
-    left.toString(options);
+    left.writeSyntax(options);
     if (op && right) {
       w.add(' ');
       w.add(String(op));
       w.add(' ');
-      right.toString(options);
+      right.writeSyntax(options);
     }
     if (needsParens) {
       w.add(')');
     }
-    return w.getSince(mark);
+  }
+
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    this.writeSyntax(options);
+    const [left, op, right] = this.value;
+    const negate = this._options?.negate === true;
+    const needsParens = Boolean(right || negate);
+    let out = '';
+    if (negate) {
+      out += 'not ';
+    }
+    if (needsParens) {
+      out += '(';
+    }
+    out += conditionOperandSyntax(left);
+    if (op && right) {
+      out += ` ${op} ${conditionOperandSyntax(right)}`;
+    }
+    if (needsParens) {
+      out += ')';
+    }
+    return out;
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;

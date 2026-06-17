@@ -6,7 +6,7 @@ import { Node, defineType, F_MAY_ASYNC, F_NON_STATIC, type NodeLocation } from '
 import { Dimension } from './dimension.js';
 import { List, renderListValueSyntax } from './list.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import {
   isRenderBuffer,
@@ -53,6 +53,23 @@ function emitParenValue(value: Node, options: ReturnType<typeof getPrintOptions>
   }
 }
 
+function writeParenValue(value: Node, options: FinalPrintOptions): void {
+  if (options.trivia) {
+    emitTriviaTokens(
+      consumeTrivia(options.trivia, value.location[0], 'before', options),
+      options,
+      { skipLeadingWhitespace: true }
+    );
+  }
+  const saved = options.suppressBoundaryTrivia;
+  options.suppressBoundaryTrivia = 'pre';
+  try {
+    value.writeSyntax(options);
+  } finally {
+    options.suppressBoundaryTrivia = saved;
+  }
+}
+
 /**
  * An expression in parenthesis
  */
@@ -76,6 +93,13 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer;
     const mark = w.mark();
+    this.writeSyntax(printOptions);
+    return w.getSince(mark);
+  }
+
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     const escapeChar = this._options?.escaped ? '~' : '';
     if (escapeChar) {
       w.add(escapeChar, this);
@@ -86,13 +110,12 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     let value = this.value;
     if (value) {
       if (value instanceof Node) {
-        emitParenValue(value, printOptions);
+        writeParenValue(value, options);
       } else {
         w.add(String(value), this);
       }
     }
     w.add(close);
-    return w.getSince(mark);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;

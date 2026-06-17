@@ -1324,6 +1324,11 @@ export abstract class Node<
     return w.getSince(mark);
   }
 
+  /** @internal */
+  writeSyntax(options: ReturnType<typeof getPrintOptions>): void {
+    this.toTrimmedString(options);
+  }
+
   /**
    * Individual node types will override this.
    *

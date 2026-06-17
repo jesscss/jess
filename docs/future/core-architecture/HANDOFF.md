@@ -336,49 +336,36 @@ At the end of a pass:
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: proved late child additions update prepared callable
-  child-entry facts and fixed `addDirectChildRuleEntry` to carry
-  `hasReferenceImportSurface` like the collection path.
-- Verdict: accepted as source-tree fact carrying plus stale covered-miss
-  invalidation proof; not a wall-clock speed claim.
-- New traversal: `addDirectChildRuleEntry` now checks
-  `rulesMayContainReferenceImports(child)` while already computing exact
-  callable/mixin/ruleset child facts for a late child. No new parent walk or
-  broad recursive lookup is introduced beyond that existing late-addition fact
-  preparation.
-- New node/materialization: production code adds no nodes. Tests create two
-  empty root `Rules` fixtures to exercise late addition, one late child `Rules`
-  with a `Mixin`, and one late child `Rules` with a reference `StyleImport`
-  fixture.
-- Render path: no render code changed and no render materialization was added.
-- Helper/API surface: no helper or public API was added.
-- Metadata mutations: late `addDirectChildRuleEntry` now sets the existing
-  `hasReferenceImportChildSurface` aggregate when appropriate. Existing
-  register-node logic already clears callable bucket/miss coverage; tests now
-  prove exact callable and reference-import late additions leave no stale
-  covered miss.
-- Allocation changes: direct child-entry records from late additions may now
-  include a boolean `hasReferenceImportSurface`; no new production arrays or
-  maps were added.
-- Rejected/deferred proof: scalar exclusion fields are still present on
-  exported option types, so the internal-only option cleanup remains queued.
-  Retry-frame bridge deletion, scalar output-binding invalidation,
-  `ReferencePlan`, namespace fallback array deletion, and changed-baseline
-  verification also remain queued.
-- Evidence: focused callable-bucket matrix passed (`25` passed, `143`
-  skipped). Broad lookup matrix passed (`380` passed, `276` skipped). Grep
-  evidence shows hot read callers use `findVariableDeclarationOccurrence`,
-  `findPropertyDeclarationOccurrence`, or `findAnyDeclarationOccurrence`, while
-  `find*DeclarationAssignmentLookup` calls remain in `Rules.registerNode`
-  `setDefined` assignment. Stress profile on `scope-lookup-stress.less`
-  reports no old
-  `Rules.find`, registry, or searchChildren counters and direct counters:
-  `declaration.cacheMiss: 7560`, `declaration.scope.v: 7560`,
-  `declaration.childEntriesFamilySkip: 5400`,
-  `declaration.localMatch: 2385`, `declaration.childEntriesScanned: 1575`,
-  `declaration.childEntryFamilySkip: 1575`,
-  `declaration.childEntryEntered: 1575`, `declaration.scopeBindingHit: 1575`,
-  and `declaration.framePrep: 1`. Current profile elapsed value (`214.09ms`) is
-  profiler smoke only, not a speed claim. One-iteration hotpath smoke values
-  were `mixins-guards.less` `20.58ms` and `scope-lookup-stress.less`
-  `77.52ms`; smoke only, not speed claims.
+- Latest pass: user-directed merge follow-up for serialization separation in
+  `Condition`, `DefaultGuard`, `Expression`, `Paren`, and `QueryCondition`
+  after the `origin/dev` merge rejected incompatible guard/query-condition
+  files. This was not a binding queue pass; the active binding queue above is
+  unchanged and still must be completed next.
+- Verdict: accepted as source/render separation work needed to keep the merged
+  serialization direction without losing `$($a)` guard references. No speed
+  claim.
+- New traversal: `QueryCondition.writeQueryConditionSyntax` loops over its
+  existing value array once to write source syntax. This replaces prior
+  string/readback transport for the same children and does not add parent
+  walks, child-rule crawls, lookup scans, or registry paths.
+- New node/materialization: production code adds no AST nodes. A new
+  `OutputWriter(false, buffer.parts)` is created only when a flat render buffer
+  requests shared-writer output and no matching active writer exists.
+- Render path: static query conditions now write direct child syntax into the
+  active writer/buffer. Dynamic query children render directly and probe only
+  custom/dynamic children that may return without writing. Guard condition
+  syntax uses child `writeSyntax`, with `Expression.writeSyntax` preserving
+  `$(`...`)` around references.
+- Helper/API surface: added `Node.writeSyntax` as the default trimmed-syntax
+  writer, `OutputWriter.position()` for uncounted internal chunk position, and
+  `OutputWriter.writesTo(...)`/chunk-backed construction for shared flat-buffer
+  writers. These support existing direct writer tests and avoid public lookup
+  surface.
+- Metadata mutations: none. No parent/source/frozen/location state is changed.
+- Allocation changes: no new arrays/maps/side tables. Query rendering avoids
+  static sibling probes; fallback probing remains only for custom/dynamic
+  children and async children that may return without writing.
+- Evidence: `pnpm --filter @jesscss/core build` passed. Focused touched matrix
+  passed (`221` tests). Broader merge matrix passed (`634` passed, `9`
+  skipped). `pnpm run verify:aggressive-cutting-review` exited `0` and flagged
+  only the loop/probe/writer items prosecuted here.

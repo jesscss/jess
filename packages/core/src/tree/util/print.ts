@@ -119,6 +119,8 @@ export interface OutputWriter {
   addSpacer(text: string): void;
   queueSpacer(text: string, shouldAdd?: (nextText: string) => boolean): void;
   mark(): number;
+  position(): number;
+  writesTo(chunks: string[]): boolean;
   getSince(mark: number): string;
   hasContentSince(mark: number): boolean;
   preview(fn: () => string | void, preserveSegments?: boolean): string;
@@ -364,7 +366,14 @@ export class OutputWriter implements OutputWriter {
   private _queuedSpacerText = '';
   private _queuedSpacerShouldAdd: ((nextText: string) => boolean) | undefined;
 
-  constructor(private readonly tracksSources = true) {}
+  constructor(private readonly tracksSources = true, chunks?: string[]) {
+    if (chunks) {
+      this.chunks = chunks;
+      if (chunks.length > 0) {
+        this.refreshPositions();
+      }
+    }
+  }
 
   get line() {
     return this._line;
@@ -486,6 +495,14 @@ export class OutputWriter implements OutputWriter {
 
   mark(): number {
     return this.chunks.length;
+  }
+
+  position(): number {
+    return this.chunks.length;
+  }
+
+  writesTo(chunks: string[]): boolean {
+    return this.chunks === chunks;
   }
 
   getSince(mark: number): string {
