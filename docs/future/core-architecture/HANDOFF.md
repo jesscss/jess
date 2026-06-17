@@ -103,26 +103,22 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: QueryCondition exact `Condition` source/static child in
-  `packages/core/src/tree/query-condition.ts`.
-- Verdict: accepted as a localized fallback-readback cut. No speed claim.
+- Latest pass: Declaration narrowed-thenable continuation cleanup in
+  `packages/core/src/tree/declaration.ts`.
+- Verdict: accepted as a localized promise-wrapper cut. No speed claim.
 - New traversal: none.
 - New node/materialization: none.
-- Render path: exact `Condition` children now use direct `writeSyntax(...)`
-  in query source/static syntax emission instead of entering the unknown-child
-  fallback mark/readback path. The prior exact nested `QueryCondition` and
-  exact base `Paren` contracts remain covered.
+- Render path: declaration render-assignment and custom-interpolated
+  replacement eval now call already-narrowed thenables directly with
+  `.then(...)` instead of wrapping them with `Promise.resolve(...)`.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: removes the fallback writer mark/getSince probe for
-  exact condition children on the source/static query path. The fallback
-  remains for custom/subclassed children whose syntax contract is not proven
-  direct.
-- Rejected/observed in this pass: exact `Operation` was not added because it
-  still inherits generic source syntax rather than owning an `Operation`
-  `writeSyntax(...)` override. The inspected `AtRule` catch/rethrow branches
-  restore frame/body context before rethrowing, so they are not no-op wrappers.
-  Broader dynamic child fallback remains open in the QueryCondition row.
+- Allocation changes: removes five `Promise.resolve(...)` wrapper allocations
+  from declaration render-state async continuations while preserving the
+  custom-property `context.inCustom` restoration branch.
+- Rejected/observed in this pass: the surrounding declaration merge-state and
+  custom-property mark/replace boundaries remain semantic/output-normalization
+  work and were not loosened.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -130,14 +126,8 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: focused `query-condition.test.ts` selection passed for exact
-  `Condition` direct source children, custom condition fallback preservation,
-  nested static query conditions, scalar static conditions, exact base `Paren`
-  direct children, and custom paren fallback preservation. The flagged
-  `CountingWriter` constructions are test-only proof instrumentation for the
-  source/static mark/readback assertions, and the flagged `CustomCondition`
-  construction is test-only proof that subclassed condition syntax still stays
-  on the fallback compatibility path. Full gates are required before commit.
+- Evidence: full `declaration.test.ts` passed and targeted ESLint for
+  `declaration.ts` passed. Full gates are required before commit.
 - Merge-carried binding review: merging `origin/dev` also brought declaration
   lookup wrapper deletion plus a callable namespace reference-import
   modeled-miss bridge cut. It deletes `Rules.findVariable`, `findProperty`,
