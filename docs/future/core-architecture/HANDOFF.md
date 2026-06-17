@@ -103,24 +103,21 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: AtRule leaf render syntax helper in
-  `packages/core/src/tree/at-rule.ts`.
-- Verdict: accepted as a mechanical per-call closure cut. No speed claim.
+- Latest pass: Call evaluated CSS syntax direct writer in
+  `packages/core/src/tree/call.ts`.
+- Verdict: accepted as a red-to-green public string transport cut. No speed
+  claim.
 - New traversal: none.
 - New node/materialization: none.
-- Render path: dynamic leaf at-rule rendering still captures just the name and
-  prelude syntax text under the existing writer mark/restore boundary, but now
-  calls a module helper instead of allocating a local `renderNode` closure.
-- Helper/API surface: one private module helper replaces the local closure and
-  adds no exported surface.
-- Metadata mutations: the flagged `try/finally` is the existing writer
-  mark/restore guard moved from the local closure into the module helper; it
-  is not routine error control flow.
-- Allocation changes: removes the per-call local render-node closure from
-  `renderLeafValue(...)`.
-- Rejected/observed in this pass: AtRule header capture still uses detached
-  writers for comment/trivia isolation; broader eval/render branch ladders
-  remain open in the AtRule row.
+- Render path: evaluated CSS call names, args, escaped args, and content now
+  write the evaluated node syntax directly through the active print writer
+  instead of calling public `toTrimmedString(...)`.
+- Helper/API surface: none.
+- Metadata mutations: none.
+- Allocation changes: none beyond deleting public string wrapper transport.
+- Rejected/observed in this pass: broader Call callable output selection,
+  calc/finalized fallback copy pressure, and remaining branch ladders stay open
+  in the Call row.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -128,12 +125,13 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: focused `at-rule.test.ts` dynamic leaf render selection passed;
-  existing guards prove name/prelude public `toString(...)` is not used, and
-  added counters prove string and flat-buffer leaf render call direct
-  `writeSyntax(...)` for name and the evaluated prelude value. Targeted ESLint
-  passed with the existing unrelated no-floating-promises warning in
-  `at-rule.test.ts`. Full gates are required before commit.
+- Evidence: focused `call.test.ts` selection was red before the patch and now
+  passes for dynamic CSS call names, evaluated args, escaped evaluated args,
+  and evaluated content without public `toTrimmedString(...)` transport.
+  Targeted ESLint passed. Full `call.test.ts` remains red in the same ten
+  cases on clean `origin/dev` (`/tmp/jess-origin-dev-call-check` comparison),
+  so the focused slice is the proof for this batch. Full gates are required
+  before commit.
 - Merge-carried binding review: `findRulesetNamespacePathFast(...)` now
   prepares the visible
   callable frame chain for the namespace segment and checks visible child

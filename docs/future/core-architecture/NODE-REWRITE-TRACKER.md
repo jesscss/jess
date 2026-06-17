@@ -330,9 +330,9 @@ Current hard leftovers after the broad hook sweep:
 - [ ] `Call`: direct source syntax writer exists, empty string-name source calls
   return their known source token without writer readback, explicit empty arg
   lists skip render/source argument mark windows, node-valued call names in
-  public source syntax and finalized/plain call syntax write directly instead
-  of using public `toString(...)` / `toTrimmedString(...)`, and evaluated call
-  args/content now use
+  public source syntax and finalized/plain call syntax, including evaluated
+  CSS-call names, write directly instead of using public `toString(...)` /
+  `toTrimmedString(...)`, and evaluated call args/content now use
   `writeSyntax(...)` instead of public string transport. Direct
   `Rules`/`Collection` callable render/eval paths now call
   `evaluateCallableCollection(...)` without constructing a one-entry
