@@ -103,34 +103,42 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: callable namespace child-surface bridge narrowing.
-- Verdict: accepted as a frame/direct-crawl cut with behavior proof. No speed
-  claim.
-- New traversal: no new recursive surface. The changed paths reuse existing
-  scope-frame lookup and the existing `findMixinsFastForUncoveredCallable(...)`
-  child-entry narrowing. Array-path namespace starts now ask the narrow helper
-  before using broad `findMixinsFast(...)`; two-segment callable namespace
-  descendants use direct child-frame hit/miss results before nested
-  `findMixin(...)`.
-- New node/materialization: none.
+- Latest pass: setDefined readonly result-object deletion.
+- Verdict: accepted as a cold fallback API-shape cut with behavior proof. No
+  speed claim.
+- New traversal: none. The setDefined fallback still uses the existing direct
+  declaration lookup traversal; it now applies the matched occurrence through a
+  setDefined-only callback instead of returning a general
+  `{ occurrence, readonly }` result object. Ordinary occurrence helpers remain
+  branch-free and return `DirectDeclarationOccurrence | undefined`.
+- New node/materialization: none. The diff re-indents the existing
+  non-variable setDefined fallback that derives/adopts a declaration after a
+  found property declaration; that cold fallback behavior is unchanged and is
+  not used by ordinary reference reads.
 - Render path: no committed render/stringification path change.
-- Helper/API surface: no helper or public API added.
-- Metadata mutations: none.
-- Allocation changes: targeted child-surface namespace misses avoid broad start
-  crawl and targeted two-segment namespace descendant misses avoid nested
-  `findMixin(...)`. Existing result arrays from callable bucket collection are
-  unchanged. Tests allocate small spy arrays/counters only for proof.
-- Rejected/observed in this pass: reference-import namespace starts and
-  reference-import descendant positives inside namespace mixin bodies are not
-  fully modeled yet. The cut preserves fallback for unresolved reference-import
-  starts unless the narrow helper returns candidates.
-- Evidence: focused import-style tests for callable child-surface namespace
-  misses, reference-import namespace array paths, selector-list namespace array
-  paths, and guarded/reference-import callable fixtures passed. Focused mixin
-  tests prove callable namespace child-surface covered misses skip nested
-  `findMixin(...)`, fallback-frame hits still resolve, covered misses still
-  avoid direct bridge, stable namespaces avoid fallback, and ruleset/callable
-  namespace unions still return all candidates. Final gates are required before
+- Helper/API surface: replaced `findSetDefinedDeclarationReadonlyOccurrence`
+  with `applySetDefinedDeclarationReadonlyOccurrence(...)` and removed the
+  internal readonly-result overload/type. No exported/public `Rules.find*`
+  surface was preserved for hot-path compatibility; production callers still
+  use occurrence helpers directly.
+- Metadata mutations: no new metadata mutation. The existing
+  `foundRules.adopt(newDeclaration)` fallback remains only in the non-variable
+  setDefined insertion path.
+- Allocation changes: setDefined fallback no longer allocates or returns the
+  `{ occurrence, readonly }` wrapper. It still allocates a cold callback closure
+  at the assignment call site; the tracker records that as a follow-up only if
+  the helper can own the full mutation without moving assignment semantics into
+  ordinary lookup.
+- Rejected/observed in this pass: public `Rules.findVariable` /
+  `findProperty` / `findDeclaration` / `findAnyDeclaration` wrappers are now
+  test/cold-only by repo search, but not deleted in this batch because parser
+  and test helper call sites still need conversion or an explicit cold-facade
+  decision.
+- Evidence: focused setDefined tests in `reference.test.ts`, `rules.test.ts`,
+  `mixin.test.ts`, and `control.test.ts` passed. `verify:binding-lookup-hot-paths`
+  now requires the apply helper, forbids the old readonly occurrence helper and
+  `DirectDeclarationLookupResult`, and still guards production runtime against
+  public `Rules.find*` declaration wrappers. Final gates are required before
   commit. No speed claim.
 - Merge note: the branch also incorporates the latest serialization transport
   work from `origin/dev`; keep that progress tracked in

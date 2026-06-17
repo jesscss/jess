@@ -23,12 +23,13 @@ const checks = [
     ]
   },
   {
-    label: 'setDefined assignment lookup stays on setDefined-only readonly occurrence helper',
+    label: 'setDefined assignment lookup stays on setDefined-only apply helper',
     file: 'packages/core/src/tree/rules.ts',
     required: [
-      'findSetDefinedDeclarationReadonlyOccurrence('
+      'applySetDefinedDeclarationReadonlyOccurrence('
     ],
     forbidden: [
+      'findSetDefinedDeclarationReadonlyOccurrence(',
       'findVariableDeclarationReadonlyOccurrence',
       'findPropertyDeclarationReadonlyOccurrence',
       'includeReadonly: true'
@@ -89,7 +90,7 @@ const expectedDirectLookupExports = [
   'findVariableDeclarationOccurrence',
   'findPropertyDeclarationOccurrence',
   'findPropertyDeclarationOccurrence',
-  'findSetDefinedDeclarationReadonlyOccurrence',
+  'applySetDefinedDeclarationReadonlyOccurrence',
   'findAnyDeclarationOccurrence'
 ];
 if (directLookupExports.join('\n') !== expectedDirectLookupExports.join('\n')) {
@@ -117,7 +118,9 @@ if (directLookup.includes('includeReadonly')) {
 }
 for (const token of [
   'findVariableDeclarationReadonlyOccurrence',
-  'findPropertyDeclarationReadonlyOccurrence'
+  'findPropertyDeclarationReadonlyOccurrence',
+  'findSetDefinedDeclarationReadonlyOccurrence',
+  'DirectDeclarationLookupResult'
 ]) {
   if (directLookup.includes(token)) {
     console.error(`direct lookup should expose one setDefined readonly helper, found stale ${token}`);
