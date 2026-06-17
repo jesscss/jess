@@ -26,8 +26,10 @@ const checks = [
     label: 'setDefined assignment lookup stays on readonly occurrence helpers',
     file: 'packages/core/src/tree/rules.ts',
     required: [
-      'findVariableDeclarationOccurrence(this, key, {',
-      'findPropertyDeclarationOccurrence(this, key, {',
+      'findVariableDeclarationReadonlyOccurrence(this, key, {',
+      'findPropertyDeclarationReadonlyOccurrence(this, key, {'
+    ],
+    forbidden: [
       'includeReadonly: true'
     ]
   },
@@ -88,8 +90,12 @@ if (assignmentWrapperCount !== 0) {
 const readonlyOccurrenceCount = (
   directLookup.match(/options: DirectDeclarationReadonlyFindOptions/g) ?? []
 ).length;
-if (readonlyOccurrenceCount !== 2) {
-  console.error(`expected readonly occurrence overloads for variable and property lookup, found ${readonlyOccurrenceCount}`);
+if (readonlyOccurrenceCount !== 0) {
+  console.error(`expected no readonly occurrence overloads on hot helpers, found ${readonlyOccurrenceCount}`);
+  failed = true;
+}
+if (directLookup.includes('includeReadonly')) {
+  console.error('direct lookup should not expose includeReadonly option branching');
   failed = true;
 }
 

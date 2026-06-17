@@ -110,7 +110,9 @@ with `--no-verify` after the explicit gates pass.
 - New traversal: none.
 - New node/materialization: none in runtime. The only node-construction pattern
   flagged by the review script is a test-only CountingWriter proof instance in
-  `any.test.ts`.
+  `any.test.ts`. The incoming merge diff also contains
+  `DirectDeclarationLookupResult`, a type-only binding alias from `origin/dev`,
+  not runtime materialization.
 - Render path: dynamic leaf at-rule render still evaluates the name/prelude and
   uses the existing local mark/getSince string boundary for spacing and final
   `;` assembly, but the captured fragments now call `node.writeSyntax(...)`
