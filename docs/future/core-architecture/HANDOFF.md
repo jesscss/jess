@@ -103,22 +103,22 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: AtRule no-op eval rethrow deletion in
-  `packages/core/src/tree/at-rule.ts`.
-- Verdict: accepted as routine error-control deletion. No speed claim.
+- Latest pass: QueryCondition nested static direct child in
+  `packages/core/src/tree/query-condition.ts`.
+- Verdict: accepted as a localized fallback-readback cut. No speed claim.
 - New traversal: none.
 - New node/materialization: none.
-- Render path: no render output behavior changed; `evalBodyResult(...)` and
-  `evalNode(...)` now let direct body-eval throws and async rejections
-  propagate natively instead of wrapping them with no-op catch/rethrow
-  scaffolding.
+- Render path: exact nested `QueryCondition` children now use direct
+  `writeSyntax(...)` in static query rendering instead of entering the
+  unknown-child fallback mark/readback path.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: removes two no-op `try/catch { throw error }` wrappers
-  and one async rejection callback that only rethrew.
-- Rejected/observed in this pass: broader AtRule comment-trivia serialization
-  has an existing red case; branch ladders and detached header string capture
-  remain open in the AtRule row.
+- Allocation changes: removes the fallback writer mark/getSince probe for exact
+  nested query-condition children. The fallback remains for custom/subclassed
+  children whose syntax contract is not proven direct.
+- Rejected/observed in this pass: custom/subclassed query-condition children
+  still stay on the fallback readback path; broader dynamic child fallback
+  remains open in the QueryCondition row.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -126,12 +126,12 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: focused `at-rule.test.ts` throw/restoration selection passed for
-  body eval throw, canonical source hoist fields after throw, cleared ruleset
-  frames after hoisted body throw, prelude eval throw, and post-eval visibility
-  throw cases. Targeted ESLint passed with the existing unrelated
-  no-floating-promises warning in `at-rule.test.ts`. Full gates are required
-  before commit.
+- Evidence: focused `query-condition.test.ts` selection passed for nested
+  static query conditions through the direct child contract, scalar static
+  conditions, exact base `Paren` direct children, and custom paren fallback
+  preservation. The flagged `CountingWriter` construction is test-only proof
+  instrumentation for the shared flat-buffer mark/readback assertions.
+  Targeted ESLint passed. Full gates are required before commit.
 - Merge-carried binding review: merging `origin/dev` also brought declaration
   lookup wrapper deletion plus a callable namespace reference-import
   modeled-miss bridge cut. It deletes `Rules.findVariable`, `findProperty`,

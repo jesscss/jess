@@ -379,6 +379,34 @@ describe('QueryCondition', () => {
     expect(writer.hasContentReads).toBe(0);
   });
 
+  it('renders nested static query conditions through the direct child contract', () => {
+    const buffer: FlatRenderBuffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const node = query([
+      query([any('screen'), any('and'), any('(color)')]),
+      any('or'),
+      any('(grid)')
+    ]);
+
+    expect(node.render(context, buffer)).toBe('screen and (color) or (grid)');
+    expect(buffer.parts).toEqual([
+      'screen',
+      ' ',
+      'and',
+      ' ',
+      '(color)',
+      ' ',
+      'or',
+      ' ',
+      '(grid)'
+    ]);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(writer.hasContentReads).toBe(0);
+  });
+
   it('keeps custom paren syntax overrides on the static fallback path', () => {
     class CustomParen extends Paren {
       override writeSyntax(options: Parameters<Paren['writeSyntax']>[0]): void {
