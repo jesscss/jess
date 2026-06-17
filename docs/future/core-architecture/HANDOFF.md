@@ -103,22 +103,23 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Declaration narrowed-thenable continuation cleanup in
-  `packages/core/src/tree/declaration.ts`.
-- Verdict: accepted as a localized promise-wrapper cut. No speed claim.
+- Latest pass: Rules root charset active-writer emission in
+  `packages/core/src/tree/rules.ts`.
+- Verdict: accepted as a localized detached-writer shuttle cut. No speed claim.
 - New traversal: none.
 - New node/materialization: none.
-- Render path: declaration render-assignment and custom-interpolated
-  replacement eval now call already-narrowed thenables directly with
-  `.then(...)` instead of wrapping them with `Promise.resolve(...)`.
+- Render path: root `@charset` serialization now calls
+  `ctx.currentCharset.writeSyntax(options)` on the active root writer instead
+  of writing charset syntax into a detached writer and adding that string back
+  to the root writer.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: removes five `Promise.resolve(...)` wrapper allocations
-  from declaration render-state async continuations while preserving the
-  custom-property `context.inCustom` restoration branch.
-- Rejected/observed in this pass: the surrounding declaration merge-state and
-  custom-property mark/replace boundaries remain semantic/output-normalization
-  work and were not loosened.
+- Allocation changes: removes one detached writer allocation/string shuttle
+  from root charset emission. The remaining root import/comment serializer
+  boundaries stay on their existing detached writer paths.
+- Rejected/observed in this pass: duplicate declaration materialization and
+  broader root import/comment serializer capture remain open in the `Rules`
+  row.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -126,8 +127,10 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: full `declaration.test.ts` passed and targeted ESLint for
-  `declaration.ts` passed. Full gates are required before commit.
+- Evidence: focused `rules.test.ts` root charset/import slice passed, proving
+  charset sees the active writer while public `toTrimmedString(...)` and
+  import public `toString(...)` stay unused. Targeted ESLint for `rules.ts`
+  and `rules.test.ts` passed. Full gates are required before commit.
 - Merge-carried binding review: merging `origin/dev` also brought declaration
   lookup wrapper deletion plus a callable namespace reference-import
   modeled-miss bridge cut. It deletes `Rules.findVariable`, `findProperty`,

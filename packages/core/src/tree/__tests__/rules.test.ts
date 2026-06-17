@@ -578,12 +578,18 @@ describe('Rules', () => {
   it('streams root charset and imports without capture scaffolding', () => {
     const writer = new WholeBufferCountingWriter();
     const charset = any('@charset "utf-8";', { role: 'charset' });
+    let charsetSawActiveWriter = false;
     const importRule = atrule({
       name: any('@import', { role: 'atkeyword' }),
       prelude: quoted(any('theme.css'))
     });
     charset.toTrimmedString = () => {
       throw new Error('Rules root serializer should write charset syntax directly');
+    };
+    const writeCharsetSyntax = charset.writeSyntax.bind(charset);
+    charset.writeSyntax = (options: Parameters<typeof charset.writeSyntax>[0]) => {
+      charsetSawActiveWriter = options.writer === writer;
+      writeCharsetSyntax(options);
     };
     importRule.toString = () => {
       throw new Error('Rules root serializer should write imports directly');
@@ -596,6 +602,7 @@ describe('Rules', () => {
 
     expect(node.toString({ context, writer })).toBe('@charset "utf-8";\n@import "theme.css";\n');
     expect(writer.captures).toBe(0);
+    expect(charsetSawActiveWriter).toBe(true);
   });
 
   it('keeps sibling ruleset braces intact when declarations render values through active context output', async () => {
