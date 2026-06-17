@@ -134,3 +134,8 @@ with `--no-verify` after the explicit gates pass.
 - Evidence: focused `interpolated.test.ts` and `selector-interpolated.test.ts`
   transport tests passed before doc closeout. Full gates are recorded in the
   final response.
+- Merge note: the incoming `origin/dev` binding diff also includes
+  script/test-only grep loops, array filters/maps, `try` / `catch` negative
+  checks, and proof arrays in `scripts/verify-binding-lookup-hot-paths.mjs` and
+  `import-style.test.ts`. Those are verifier/test scaffolding from the merged
+  binding batch, not serialization runtime paths.
