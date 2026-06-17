@@ -123,6 +123,22 @@ describe('Ampersand', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('resolves appended framed ampersands without dead selector string snapshots', async () => {
+    const frame = ruleset({
+      selector: sel([el('.foo')]),
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+    frame.selector.toTrimmedString = () => {
+      throw new Error('Ampersand append placement should not snapshot selector text');
+    };
+
+    const resolved = await amp('-bar').resolve(context);
+
+    expect(resolved.valueOf()).toBe('.foo-bar');
+    expect(resolved.hoistToRoot).toBe(true);
+  });
+
   it('derives appended framed ampersand selectors without cloning the frame selector', async () => {
     const frame = ruleset({
       selector: sel([el('.foo')]),

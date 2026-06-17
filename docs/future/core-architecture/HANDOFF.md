@@ -170,3 +170,16 @@ with `--no-verify` after the explicit gates pass.
   directly instead of adding promise wrapper allocations, while preserving the
   custom-property restoration branch. This is tracked in
   `NODE-REWRITE-TRACKER.md` and is not new binding logic. No speed claim.
+- Merge-carried serialization review: `origin/dev` also includes Ampersand
+  append-placement dead string snapshot deletion in
+  `packages/core/src/tree/ampersand.ts`. Append placement no longer fills
+  unused selector text snapshots through public `toTrimmedString(...)`; broader
+  Ampersand raw string assembly remains tracked in `NODE-REWRITE-TRACKER.md`.
+  The review-flagged test exception assertion and empty rules fixture are
+  proof scaffolding for the no-snapshot assertion, and the flagged generic
+  construction / null-child-key text is an existing tracker row note carried by
+  the serialization update. This is not new binding logic. No speed claim.
+- Merge-carried binding review: the scoped diff still includes the prior
+  `RulesLookupHandleShape` object from the source-static handle pass as remote
+  baseline context; this pass removes the temporary source-static shape
+  allocation by comparing stored handle fields directly.

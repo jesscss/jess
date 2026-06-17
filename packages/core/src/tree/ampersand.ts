@@ -130,29 +130,9 @@ type AmpersandAppendPlacementState = {
   templateMerge: boolean;
   templateParts?: string[];
   hoistToRoot: boolean;
-  inputItemTexts: string[];
-  inputItemCount: number;
   result?: Selector | Nil;
-  resultItemTexts?: string[];
-  resultItemCount?: number;
-  resultText?: string;
   selectorBits: Context['selectorBits'];
 };
-
-function getSelectorItemTexts(selector: Selector | Nil): string[] {
-  if (isNode(selector, N.SelectorList)) {
-    const items = selector.value;
-    const texts = new Array<string>(items.length);
-    for (let i = 0; i < items.length; i++) {
-      texts[i] = items[i]!.toTrimmedString();
-    }
-    return texts;
-  }
-  if (isNode(selector, N.Nil)) {
-    return [];
-  }
-  return [selector.toTrimmedString()];
-}
 
 function createAmpersandAppendPlacementState(
   source: Ampersand,
@@ -160,7 +140,6 @@ function createAmpersandAppendPlacementState(
   context: Context,
   appendValue?: string
 ): AmpersandAppendPlacementState {
-  const inputItemTexts = getSelectorItemTexts(selector);
   return {
     source,
     selector,
@@ -168,8 +147,6 @@ function createAmpersandAppendPlacementState(
     templateMerge: appendValue?.includes('&') === true,
     templateParts: appendValue?.includes('&') === true ? appendValue.split('&') : undefined,
     hoistToRoot: appendValue !== undefined || source.hoistToRoot === true,
-    inputItemTexts,
-    inputItemCount: inputItemTexts.length,
     selectorBits: context.selectorBits
   };
 }
@@ -424,11 +401,6 @@ function finishAmpersandAppendPlacement(
 ): Selector | Nil {
   placement.selector = selector;
   placement.result = selector;
-  placement.resultItemTexts = getSelectorItemTexts(selector);
-  placement.resultItemCount = placement.resultItemTexts.length;
-  placement.resultText = placement.resultItemTexts.length === 1
-    ? placement.resultItemTexts[0]
-    : selector.toTrimmedString();
   if (placement.hoistToRoot) {
     placement.result.hoistToRoot = true;
   }
