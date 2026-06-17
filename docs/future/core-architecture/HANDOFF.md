@@ -152,3 +152,13 @@ with `--no-verify` after the explicit gates pass.
   evidence passed on the incoming branch. The flagged `try` blocks,
   `directCrawlHits` spy array, and optional `MixinEntry[]` collection are
   binding proof/bridge state, not serialization transport. No speed claim.
+- Merge-carried binding review: setDefined readonly result-object deletion
+  replaces the old internal readonly occurrence result wrapper with
+  `applySetDefinedDeclarationReadonlyOccurrence(...)`. It does not change
+  render/stringification; existing cold adoption fallback remains limited to
+  non-variable setDefined insertion. The flagged `ReferenceError`, parent
+  `Error`, and `foundRules.adopt(...)` are existing cold setDefined failure /
+  insertion semantics carried by the incoming merge, not routine render or
+  lookup miss control flow. Focused setDefined tests and
+  `verify:binding-lookup-hot-paths` passed on the incoming branch. No speed
+  claim.

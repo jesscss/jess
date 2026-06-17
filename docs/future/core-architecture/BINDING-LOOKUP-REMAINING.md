@@ -116,20 +116,21 @@ Acceptance: existing semantic tests for mutable `excludedNodes` and
 `requiredNormalizedFromAssign` stay green, and any renamed/internalized fields
 are guarded by `verify:binding-lookup-hot-paths`.
 
-10. [ ] Reduce or justify the remaining setDefined readonly result object.
-Scope: `findSetDefinedDeclarationReadonlyOccurrence`, readonly propagation,
-`setDefined`, and the `{ occurrence, readonly }` allocation. Goal: avoid a
-general wrapper-looking result shape if setDefined can write through a tighter
-cold helper without reintroducing ordinary-read branching. Acceptance:
-setDefined/live binding tests, build, and hot-path guard stay green.
+10. [ ] Delete or isolate the remaining setDefined callback closure.
+Scope: `applySetDefinedDeclarationReadonlyOccurrence`, readonly propagation,
+`setDefined`, and callback allocation in the cold fallback path. Goal: keep the
+deleted `{ occurrence, readonly }` result object from coming back, and decide
+whether setDefined can write through a tighter helper without putting family
+branching back into ordinary reads. Acceptance: setDefined/live binding tests,
+build, and hot-path guard stay green.
 
 11. [ ] Delete or further isolate cold `Rules.find*` declaration wrappers that
 only tests use. Scope: `findVariable`, `findProperty`, `findDeclaration`,
-`findAnyDeclaration`, and remaining test helper call sites. Goal: keep public
-materialization wrappers out of hot runtime and avoid preserving unreleased
-surfaces solely because tests call them. Acceptance: either wrappers are
-deleted with tests moved to occurrence helpers, or the tracker records the
-specific cold utility reason they remain.
+`findAnyDeclaration`, the SCSS parser baseline call, and remaining test helper
+call sites. Goal: keep public materialization wrappers out of hot runtime and
+avoid preserving unreleased surfaces solely because tests call them.
+Acceptance: either wrappers are deleted with tests moved to occurrence helpers,
+or the tracker records the specific cold utility reason they remain.
 
 12. [ ] Run changed-baseline and fix any lookup-owned fallout now that the
 ruleset header streaming blocker is repaired. Scope: changed Less/Jess
@@ -265,8 +266,8 @@ visited-set allocation.
   `findVariableDeclarationAssignmentLookup` /
   `findPropertyDeclarationAssignmentLookup` wrappers. The old
   `includeReadonly: true` overload on ordinary occurrence helpers is gone too:
-  `setDefined` now calls one setDefined-only readonly occurrence helper, and
-  ordinary `findVariableDeclarationOccurrence(...)` /
+  `setDefined` now calls one setDefined-only apply helper, and ordinary
+  `findVariableDeclarationOccurrence(...)` /
   `findPropertyDeclarationOccurrence(...)` stay branch-free occurrence-only
   APIs.
 - A read-only audit found hot declaration reference callers already use
@@ -275,10 +276,9 @@ visited-set allocation.
   `Rules.find*` declaration wrappers, that stale string-family
   `findDeclaration(...)` calls stay out of parser tests too, and that the
   direct declaration lookup export surface remains occurrence helpers plus the
-  one setDefined-only readonly helper. The remaining assignment wrapper shape
-  is limited to the `setDefined` readonly fallback: the
-  `{ occurrence, readonly }` result is returned only from that helper and
-  should be reduced further only if doing so removes surface without putting
+  one setDefined-only apply helper. The old setDefined-only
+  `{ occurrence, readonly }` result object is gone; the remaining shape is a
+  cold callback closure used to apply the fallback assignment without putting
   family branching back into ordinary reads.
 - `pnpm run verify:baseline -- --changed` is usable again but not green on this
   branch: the latest run reached broad render/call/cloning failures in
@@ -320,11 +320,12 @@ visited-set allocation.
 
 4. **Direct declaration result flattening.**
    `DeclarationLookupStrategy` now carries preselected family predicates.
-   Hot occurrence callers now return `DirectDeclarationOccurrence | undefined`
-   without allocating the `{ occurrence, readonly }` wrapper, and the old
-   readonly overload option is gone. Remaining work is deciding whether the
-   two explicit setDefined readonly helpers should collapse further without
-   adding family branching back to ordinary reads.
+   Hot occurrence callers return `DirectDeclarationOccurrence | undefined`,
+   the old readonly overload option is gone, and the setDefined-only
+   `{ occurrence, readonly }` result object has been replaced by an apply-style
+   fallback helper. Remaining work is deciding whether the setDefined callback
+   closure should collapse further without adding family branching back to
+   ordinary reads.
 
 ### B. ScopeFrame, Current Cells, And Assignment
 
