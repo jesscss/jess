@@ -12,6 +12,7 @@ let context: Context;
 class CountingWriter extends OutputWriter {
   captures = 0;
   previews = 0;
+  trimEnds = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
@@ -23,6 +24,11 @@ class CountingWriter extends OutputWriter {
   override preview(fn: () => MaybePromise<string | void>, preserveSegments?: boolean): MaybePromise<string> {
     this.previews++;
     return super.preview(fn, preserveSegments);
+  }
+
+  override trimEndSince(mark: number): void {
+    this.trimEnds++;
+    return super.trimEndSince(mark);
   }
 }
 
@@ -1102,7 +1108,8 @@ describe('Rule', () => {
       nextOptions: Parameters<typeof originalWriteSyntax>[0]
     ): void {
       selectorUsedActiveWriter = nextOptions.writer === writer;
-      return originalWriteSyntax.call(this, nextOptions);
+      originalWriteSyntax.call(this, nextOptions);
+      nextOptions.writer.add('   ');
     };
 
     try {
@@ -1110,6 +1117,7 @@ describe('Rule', () => {
       expect(writer.toString()).toBe('');
       expect(writer.captures).toBe(0);
       expect(writer.previews).toBe(0);
+      expect(writer.trimEnds).toBe(1);
       expect(selectorToStringCalls).toBe(0);
       expect(selectorUsedActiveWriter).toBe(true);
     } finally {

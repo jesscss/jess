@@ -103,21 +103,22 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Ampersand append-placement dead string snapshot deletion in
-  `packages/core/src/tree/ampersand.ts`.
-- Verdict: accepted as a localized unused public-string transport deletion. No
-  speed claim.
+- Latest pass: Ruleset header selector writer trim in
+  `packages/core/src/tree/ruleset.ts`.
+- Verdict: accepted as a localized string post-processing cut. No speed claim.
 - New traversal: none.
 - New node/materialization: none.
-- Render path: append placement no longer calls public selector
-  `toTrimmedString(...)` to populate unused input/result text snapshots.
-  Actual append/template selector replacement behavior is unchanged.
+- Render path: `getHeaderString(...)` still returns a public header string, but
+  selector trailing whitespace is now trimmed inside the existing writer window
+  before readback instead of applying a regex replacement to the captured
+  selector string.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: deletes the unused append-placement string arrays/counts
-  and result text fields plus the helper that filled them.
-- Rejected/observed in this pass: broader Ampersand raw string assembly and
-  structural selector replacement remain open in the row.
+- Allocation changes: removes the header regex post-processing allocation from
+  the Ruleset header string path. The existing header string boundary remains.
+- Rejected/observed in this pass: `getHeaderString(...)` still has a
+  mark/getSince/restore boundary for the public header string; broader hot
+  frame render/comparison capture remains open in the Ruleset row.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -125,13 +126,10 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: full `ampersand.test.ts` passed, including a framed append test
-  that throws if placement snapshots the frame selector through public
-  `toTrimmedString(...)`. Targeted ESLint for `ampersand.ts` and
-  `ampersand.test.ts` passed. The review-flagged test exception and empty
-  rules fixture are proof scaffolding; the generic-construction text is an
-  existing tracker note touched by the row update, not new runtime code. Full
-  gates are required before commit.
+- Evidence: focused `ruleset.test.ts` header selector slice passed, proving
+  direct selector writer use, active writer restoration, no capture/preview,
+  and writer-owned trailing whitespace trim. Targeted ESLint for `ruleset.ts`
+  and `ruleset.test.ts` passed. Full gates are required before commit.
 - Merge-carried binding review: merging `origin/dev` also brought the
   source-static reference handle early-read pass and binding tracker updates.
   It is lookup-only: no render/stringification path changed, no runtime node
