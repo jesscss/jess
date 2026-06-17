@@ -648,38 +648,30 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Rules shared flat-buffer render writeback.
+Current pass: Ampersand BasicSelector template replacement string transport.
 
-- New traversal: none. The production path adds one already-bounded
-  `getSince(mark)` read only when a flat render buffer shares the active writer
-  and the writer has emitted content since the mark; it does not add a node or
-  child walk.
-- New node/materialization: no production node/materialization. The test
-  creates only a flat render buffer, an `OutputWriter` pointed at that buffer's
-  existing parts array, and an empty root `Rules` fixture to exercise the
-  non-root buffer path.
-- Render path: `Rules.render(..., buffer)` now passes the requested buffer into
-  `prepareBufferPrintState(...)` and delegates writeback to
-  `writePreparedRenderTextResult(...)` instead of rendering to a detached
-  string and pushing that whole string into the buffer. When the shared writer
-  emitted only a prefix of the returned render text, `writePreparedRenderText`
-  appends just the missing suffix with `writer.add(text.slice(...))`; this is a
-  string suffix correction on the active writer, not child-array or syntax-node
-  assembly, and it preserves Rules' buffer-owned trailing separator without
-  duplicating the whole body.
-- Helper/API surface: no public API was added. The existing shared render
-  helper gained a suffix writeback branch so native buffer renders can reuse one
-  prepared-writer contract.
+- New traversal: none. The production change adds one direct scalar branch for
+  string-backed `BasicSelector` values and avoids the existing writer
+  mark/write/readback path for that common case.
+- New node/materialization: no production node/materialization. The focused
+  test builds a normal ruleset frame and temporarily overrides
+  `sourceSelector.writeSyntax` to prove the merge-template path does not use
+  writer transport for the scalar selector.
+- Render path: append/template resolution still returns the existing selector
+  placement result; the scalar BasicSelector replacement now reads
+  `selector.value` directly instead of writing selector syntax to a detached
+  writer only to read it back with `getSince(mark)`.
+- Helper/API surface: no helper or public API was added.
 - Metadata mutations: no parent/source/frozen/location/options/context mutation
-  was added.
-- Evidence: `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/rules.test.ts`
-  passed. A wider `node-render-buffer` focused run still shows unrelated
-  dirty-tree alignment failures in existing Rules/ForRange cases from the
-  current JS-expression-removal work; this pass did not stage those files.
+  was added. The test restores its temporary method override in `finally`;
+  this is test-only cleanup, not production routine error control.
+- Evidence: the focused Ampersand test for scalar template replacement passed,
+  eslint on `ampersand.ts` and `ampersand.test.ts` passed, and diff whitespace
+  passed. The full `ampersand.test.ts` file still has the two known unrelated
+  collapse-nesting failures (`amp('')` / `amp('-1')`) that predate this slice.
 - Review noise: `verify:aggressive-cutting-review` may report unrelated dirty
   worktree tokens from JS/runtime/docs work outside this slice.
-- Verdict: accepted as a bounded partial cut if final gates pass. Broader Rules
-  root/body render, placement state, merge output, duplicate declaration
-  materialization, and root serializer capture remain open. No performance
-  claim; performance remains shelved because this was not a measured benchmark
-  pass.
+- Verdict: accepted as a bounded partial cut if final gates pass. Broader
+  Ampersand raw fallback string assembly and structural selector replacement
+  remain open. No performance claim; performance remains shelved because this
+  was not a measured benchmark pass.

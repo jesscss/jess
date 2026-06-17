@@ -184,6 +184,9 @@ function throwCannotAppendSelector(appendValue: string): never {
 }
 
 function selectorTemplateReplacementText(selector: Selector): string {
+  if (selector instanceof BasicSelector && typeof selector.value === 'string') {
+    return selector.value;
+  }
   const options = getPrintOptions();
   const mark = options.writer.mark();
   selector.writeSyntax(options);

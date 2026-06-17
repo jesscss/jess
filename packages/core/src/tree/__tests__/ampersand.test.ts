@@ -566,6 +566,33 @@ describe('Ampersand', () => {
     }
   });
 
+  it('merges basic selector templates from owned scalar text without writer transport', async () => {
+    const sourceSelector = el('.button');
+    let sourceWrites = 0;
+    const originalWriteSyntax = sourceSelector.writeSyntax;
+    sourceSelector.writeSyntax = function countSourceWriterTransport(
+      ...args: Parameters<typeof originalWriteSyntax>
+    ): ReturnType<typeof originalWriteSyntax> {
+      sourceWrites++;
+      return originalWriteSyntax.apply(this, args);
+    };
+    const frame = ruleset({
+      selector: sourceSelector,
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+
+    try {
+      const resolved = await amp(':where(&)').resolve(context);
+
+      expect(sourceWrites).toBe(0);
+      expect(resolved.toTrimmedString()).toBe(':where(.button)');
+      expect(frame.value.selector).toBe(sourceSelector);
+    } finally {
+      sourceSelector.writeSyntax = originalWriteSyntax;
+    }
+  });
+
   it('merges compound suffix templates without public selector string transport', async () => {
     const sourceSelector = compound([el('.button'), el('.primary')]);
     let sourceStringCalls = 0;
