@@ -124,13 +124,15 @@ whether setDefined can write through a tighter helper without putting family
 branching back into ordinary reads. Acceptance: setDefined/live binding tests,
 build, and hot-path guard stay green.
 
-11. [ ] Delete or further isolate cold `Rules.find*` declaration wrappers that
-only tests use. Scope: `findVariable`, `findProperty`, `findDeclaration`,
-`findAnyDeclaration`, the SCSS parser baseline call, and remaining test helper
-call sites. Goal: keep public materialization wrappers out of hot runtime and
-avoid preserving unreleased surfaces solely because tests call them.
-Acceptance: either wrappers are deleted with tests moved to occurrence helpers,
-or the tracker records the specific cold utility reason they remain.
+11. [ ] Clean up stale declaration-wrapper design references after deletion.
+Scope: `BINDING-INDEX-PROPOSAL.md`, package barrel assumptions, parser/test
+fixtures, and verifier coverage for deleted `Rules.findVariable` /
+`findProperty` / `findDeclaration` / `findAnyDeclaration`. Goal: make the
+remaining design docs and package-facing expectations describe occurrence
+helpers/direct crawl instead of a cold `Rules.find*` declaration facade.
+Acceptance: stale-wrapper grep has no actionable hot-path/design hits, package
+build/tests prove no exported consumer needs the deleted methods, and
+`verify:binding-lookup-hot-paths` keeps guarding against reintroduction.
 
 12. [ ] Run changed-baseline and fix any lookup-owned fallout now that the
 ruleset header streaming blocker is repaired. Scope: changed Less/Jess
@@ -154,8 +156,11 @@ facts can prove hit/miss. Acceptance: focused mixin/import tests with
 `findMixinsFast(...)` spies and union-preserving namespace positives. Current
 evidence: two-segment callable namespace descendants now return direct
 child-frame hits and stop on child-surface covered misses before nested
-`findMixin(...)`; reference-import descendant positives inside namespace mixin
-bodies are still open and must not be claimed covered.
+`findMixin(...)`. Reference-import descendant modeled misses now return a
+definitive empty descendant result and skip both nested `findMixin(...)` and
+the older namespace `findMixinsFast(...)` fallback. Reference-import descendant
+positives inside namespace mixin bodies are still open and must not be claimed
+covered.
 
 15. [ ] Revisit `findVisibleCallableRulesetPrefixMatches(...)` recursive child
 walk after selector-list coverage. Scope: direct child-entry flags,
@@ -198,10 +203,12 @@ visited-set allocation.
   sibling no longer reopens the parent rules' whole child surface. The direct
   fallback now runs only on child `Rules` entries whose frame actually reported
   `uncovered`; a focused mixin test guards covered sibling surfaces.
-- `Rules.findDeclaration(...)` no longer takes a string declaration-family
-  branch. Variable callers use `findVariable(...)`, properties use
-  `findDeclaration(...)`/`findProperty(...)`, and `findAnyDeclaration(...)`
-  remains the explicit combined cold wrapper.
+- `Rules.findVariable(...)`, `findProperty(...)`, `findDeclaration(...)`, and
+  `findAnyDeclaration(...)` declaration wrappers are deleted from `Rules`.
+  Core tests now import occurrence helpers directly, and the SCSS parser
+  baseline asserts AST structure instead of invoking runtime lookup. This
+  removes the unreleased public-looking materialization facade rather than
+  preserving it for test convenience.
 - `ReferenceOptions` no longer exports scalar declaration-exclusion handle
   fields (`excludedNode0`, `excludedNode1`, `excludedNodesLength`). Internal
   lookup still reads them through a declaration-constraint view when present.
@@ -209,8 +216,9 @@ visited-set allocation.
   selector attribute interpolation, and stylesheet function return lookup use
   occurrence helpers instead of public `Rules.find*` materialization wrappers;
   readonly assignment lookup stays isolated to explicit setDefined helper
-  calls, old string-filter `Rules.findDeclaration(...)` calls stay gone, and
-  scalar exclusion fields stay out of exported `ReferenceOptions`.
+  calls, old string-filter `Rules.findDeclaration(...)` calls stay gone, the
+  deleted declaration wrapper methods stay off `Rules`, and scalar exclusion
+  fields stay out of exported `ReferenceOptions`.
 - Configured guarded import positives for replacement `set`, additive `with`,
   and child-surface `set`/`with` now have bridge-spy proof: they resolve
   without calling `findMixinsFast(..., searchParents: false)` for their guarded

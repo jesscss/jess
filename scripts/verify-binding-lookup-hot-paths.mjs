@@ -82,6 +82,18 @@ for (const check of checks) {
 }
 
 const directLookup = readFileSync(resolve(root, 'packages/core/src/tree/util/direct-rules-lookup.ts'), 'utf8');
+const rulesSource = readFileSync(resolve(root, 'packages/core/src/tree/rules.ts'), 'utf8');
+for (const token of [
+  'findDeclaration(',
+  'findAnyDeclaration(',
+  'findVariable(',
+  'findProperty('
+]) {
+  if (rulesSource.includes(`\n  ${token}`)) {
+    console.error(`Rules class should not expose deleted declaration lookup wrapper ${token}`);
+    failed = true;
+  }
+}
 const directLookupExports = [...directLookup.matchAll(/^export function ([a-zA-Z0-9_]+)/gm)]
   .map(match => match[1]);
 const expectedDirectLookupExports = [

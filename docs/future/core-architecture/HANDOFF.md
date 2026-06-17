@@ -140,31 +140,19 @@ with `--no-verify` after the explicit gates pass.
   used as proof for this batch because it is red in the current AtRule surface.
   Targeted ESLint passed with the existing unrelated no-floating-promises
   warning in `at-rule.test.ts`. Full gates are required before commit.
-- Merge-carried binding review: `findRulesetNamespacePathFast(...)` now
-  prepares the visible
-  callable frame chain for the namespace segment and checks visible child
-  entries to prove uncovered child/reference-import uncertainty is limited to
-  the ruleset-prefix body already being descended into. This replaces broad
-  `findMixinsFast(...)` scans for the targeted `#Namespace` / `.mixin`
-  reference-import array-path cases, including selector-list imported
-  namespaces.
-  No exported helper/API was added; helper logic lives in private `Rules`
-  methods. It does not change render/stringification, and its focused
-  import-style/mixin evidence passed before the merge. No speed claim.
-- Merge-carried binding review: callable namespace child-surface bridge
-  narrowing reuses existing scope-frame lookup and
-  `findMixinsFastForUncoveredCallable(...)` child-entry narrowing. It does not
-  change render/stringification or add public API; focused import-style/mixin
-  evidence passed on the incoming branch. The flagged `try` blocks,
-  `directCrawlHits` spy array, and optional `MixinEntry[]` collection are
-  binding proof/bridge state, not serialization transport. No speed claim.
-- Merge-carried binding review: setDefined readonly result-object deletion
-  replaces the old internal readonly occurrence result wrapper with
-  `applySetDefinedDeclarationReadonlyOccurrence(...)`. It does not change
-  render/stringification; existing cold adoption fallback remains limited to
-  non-variable setDefined insertion. The flagged `ReferenceError`, parent
-  `Error`, and `foundRules.adopt(...)` are existing cold setDefined failure /
-  insertion semantics carried by the incoming merge, not routine render or
-  lookup miss control flow. Focused setDefined tests and
-  `verify:binding-lookup-hot-paths` passed on the incoming branch. No speed
-  claim.
+- Merge-carried binding review: merging `origin/dev` also brought declaration
+  lookup wrapper deletion plus a callable namespace reference-import
+  modeled-miss bridge cut. It deletes `Rules.findVariable`, `findProperty`,
+  `findDeclaration`, and `findAnyDeclaration` without changing
+  render/stringification. `findMixinsFastForUncoveredCallable(...)` reports
+  covered uncovered-surface misses from its existing child-entry loop so the
+  caller avoids reopening broad namespace fallbacks; the `[]` covered-miss
+  sentinel is private lookup state, not output materialization. The flagged
+  `UncoveredCallableCoverage` object is a short-lived private fact carrier used
+  to avoid a broader fallback call; the `broadFastHits` array and `try` block
+  are test-only spy/restoration scaffolding, and the `for (const token of ...)`
+  loop is verifier-script coverage. Incoming proof included
+  `verify:binding-lookup-hot-paths`, focused reference/rules/import
+  style/detached-rulesets/function/selector-attr tests, the SCSS parser
+  `@function` baseline, callable namespace modeled-miss tests, and existing
+  ScopeFrame callable bucket coverage. No speed claim.
