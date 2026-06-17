@@ -23,13 +23,14 @@ const checks = [
     ]
   },
   {
-    label: 'setDefined assignment lookup stays on readonly occurrence helpers',
+    label: 'setDefined assignment lookup stays on setDefined-only readonly occurrence helper',
     file: 'packages/core/src/tree/rules.ts',
     required: [
-      'findVariableDeclarationReadonlyOccurrence(this, key, {',
-      'findPropertyDeclarationReadonlyOccurrence(this, key, {'
+      'findSetDefinedDeclarationReadonlyOccurrence('
     ],
     forbidden: [
+      'findVariableDeclarationReadonlyOccurrence',
+      'findPropertyDeclarationReadonlyOccurrence',
       'includeReadonly: true'
     ]
   },
@@ -80,6 +81,22 @@ for (const check of checks) {
 }
 
 const directLookup = readFileSync(resolve(root, 'packages/core/src/tree/util/direct-rules-lookup.ts'), 'utf8');
+const directLookupExports = [...directLookup.matchAll(/^export function ([a-zA-Z0-9_]+)/gm)]
+  .map(match => match[1]);
+const expectedDirectLookupExports = [
+  'isDirectDeclarationOccurrenceCurrent',
+  'findVariableDeclarationOccurrence',
+  'findVariableDeclarationOccurrence',
+  'findPropertyDeclarationOccurrence',
+  'findPropertyDeclarationOccurrence',
+  'findSetDefinedDeclarationReadonlyOccurrence',
+  'findAnyDeclarationOccurrence'
+];
+if (directLookupExports.join('\n') !== expectedDirectLookupExports.join('\n')) {
+  console.error('direct declaration lookup export surface changed unexpectedly:');
+  console.error(directLookupExports.map(name => `  ${name}`).join('\n'));
+  failed = true;
+}
 const assignmentWrapperCount = (
   directLookup.match(/export function find(?:Variable|Property)DeclarationAssignmentLookup/g) ?? []
 ).length;
@@ -98,6 +115,15 @@ if (directLookup.includes('includeReadonly')) {
   console.error('direct lookup should not expose includeReadonly option branching');
   failed = true;
 }
+for (const token of [
+  'findVariableDeclarationReadonlyOccurrence',
+  'findPropertyDeclarationReadonlyOccurrence'
+]) {
+  if (directLookup.includes(token)) {
+    console.error(`direct lookup should expose one setDefined readonly helper, found stale ${token}`);
+    failed = true;
+  }
+}
 
 const referenceSource = readFileSync(resolve(root, 'packages/core/src/tree/reference.ts'), 'utf8');
 const referenceOptionsMatch = referenceSource.match(/export type ReferenceOptions = \{[\s\S]*?\n\};/);
@@ -114,6 +140,29 @@ if (!referenceOptionsMatch) {
 }
 
 try {
+  const productionWrapperCalls = execFileSync('rg', [
+    '-n',
+    String.raw`\.find(?:Variable|Property|Declaration|AnyDeclaration)\(`,
+    'packages/core/src',
+    '--glob',
+    '!packages/core/src/tree/rules.ts',
+    '--glob',
+    '!**/__tests__/**'
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  console.error('production runtime still calls public Rules.find* declaration wrappers:');
+  console.error(productionWrapperCalls.trimEnd());
+  failed = true;
+} catch (error) {
+  if (error.status !== 1) {
+    throw error;
+  }
+}
+
+try {
   execFileSync('rg', [
     '-n',
     String.raw`findDeclaration\([^\n]+,\s*['"](VarDeclaration|Declaration)['"]|filterType: 'VarDeclaration'|filterType: 'Declaration'`,
@@ -121,7 +170,8 @@ try {
     'packages/core/src/tree/__tests__',
     'packages/jess-parser/src',
     'packages/less-parser/src',
-    'packages/scss-parser/src'
+    'packages/scss-parser/src',
+    'packages/scss-parser/test'
   ], {
     cwd: root,
     encoding: 'utf8',

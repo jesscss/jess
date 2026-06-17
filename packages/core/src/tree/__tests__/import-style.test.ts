@@ -3156,13 +3156,43 @@ describe('Style import', () => {
           ])
         })
       ]);
-
-      const css = await renderNodeToString(node, context, { context });
-      expect(css).toBeString(`
-        #used-namespaced-mixin {
-          was: included;
+      const directCrawlHits: string[] = [];
+      const nestedArrayPathCalls: unknown[] = [];
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '#Namespace' || key === '.mixin') {
+          directCrawlHits.push(key);
         }
-      `);
+        return originalFindMixinsFast.apply(this, args);
+      };
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== node && Array.isArray(args[0])) {
+          nestedArrayPathCalls.push(args[0]);
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        const css = await renderNodeToString(node, context, { context });
+        expect(css).toBeString(`
+          #used-namespaced-mixin {
+            was: included;
+          }
+        `);
+        const generatedFallbackArrayPathCalls = nestedArrayPathCalls.filter(path => (
+          !Array.isArray(path)
+          || path.length !== 2
+          || path[0] !== '#Namespace'
+          || path[1] !== '.mixin'
+        ));
+        expect(generatedFallbackArrayPathCalls).toEqual([]);
+        expect(directCrawlHits).toEqual(['#Namespace', '.mixin']);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
     });
 
     it('import-reference-issues: repeated reference/multiple imports keep import-site-local parent chains', async () => {

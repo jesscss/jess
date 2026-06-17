@@ -103,25 +103,58 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: scalar `Any.writeSyntax(...)` and `AtRule.renderLeafValue(...)`
-  public string transport cut in `packages/core/src/tree/any.ts` and
-  `packages/core/src/tree/at-rule.ts`.
-- Verdict: accepted as a focused serialization transport cut. No speed claim.
-- New traversal: none.
-- New node/materialization: none in runtime. The only node-construction pattern
-  flagged by the review script is a test-only CountingWriter proof instance in
-  `any.test.ts`. The incoming merge diff also contains
-  `DirectDeclarationLookupResult`, a type-only binding alias from `origin/dev`,
-  not runtime materialization.
-- Render path: dynamic leaf at-rule render still evaluates the name/prelude and
-  uses the existing local mark/getSince string boundary for spacing and final
-  `;` assembly, but the captured fragments now call `node.writeSyntax(...)`
-  instead of public `node.toString(...)`. Focused tests prove overriding public
-  `toString()` on the at-rule name and evaluated prelude is not observed.
-- Helper/API surface: no helpers or public APIs added. `Any.writeSyntax(...)`
-  adds the concrete scalar writer the tracker already expected and bypasses the
-  inherited public `toTrimmedString(...)` wrapper.
+- Latest pass: binding/lookup setDefined helper collapse, public-wrapper
+  guard hardening, and namespaced reference-import bridge proof.
+- Verdict: accepted as a helper-surface deletion plus executable proof. No
+  speed claim.
+- New traversal: no production traversal added. A focused import-style test
+  now spies on `findMixin(...)` / `findMixinsFast(...)` to distinguish authored
+  array-path replay from generated fallback arrays for the namespaced
+  reference-import fixture. The verifier adds grep/array checks over source
+  text only; they are not runtime lookup traversal.
+- New node/materialization: none. `DirectDeclarationLookupResult` is a
+  type-only alias for the pre-existing setDefined readonly fallback object; it
+  remains limited to the cold setDefined fallback path, not hot ordinary reads.
+- Render path: no committed render/stringification path change.
+- Helper/API surface: deleted the two family-specific readonly occurrence
+  helper exports and replaced them with one setDefined-only helper. The binding
+  hot-path verifier now guards the direct declaration lookup export surface and
+  rejects production runtime calls to public `Rules.find*` declaration
+  wrappers. The verifier's `try` / `catch` blocks are script-only negative
+  grep control flow.
 - Metadata mutations: none.
-- Allocation changes: none.
-- Evidence: focused `any.test.ts` and `at-rule.test.ts` transport tests passed
-  before doc closeout. Full gates are recorded in the final response.
+- Allocation changes: ordinary occurrence reads cannot allocate the
+  `{ occurrence, readonly }` wrapper through an option branch; wrapper
+  allocation remains limited to the single setDefined readonly helper.
+  `VarDeclaration.copy` appears only in a focused test name proving the
+  assignment path avoids that copy machinery.
+- Evidence: `pnpm run verify:binding-lookup-hot-paths`, `pnpm --filter
+  @jesscss/core exec vitest
+  src/tree/__tests__/rules.test.ts --run --testNamePattern "fails to set if
+  existing variable is readonly|derives setDefined declarations without calling
+  VarDeclaration.copy|updates static setDefined variables without deriving
+  placement declarations|updates modeled setDefined live binding cells without
+  direct occurrence crawl|does not build a scope frame just to try setDefined
+  live binding writes" --reporter=dot`,
+  `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/import-style.test.ts --run --testNamePattern "namespaced
+  reference-imported ruleset array-path lookups" --reporter=dot`,
+  `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/reference.test.ts --run --testNamePattern "setDefined
+  variable assignment uses occurrence lookup without Rules.findVariable|
+  setDefined current-cell probes do not use historical declaration buckets|real
+  Less merge-chain property refs avoid public lookup bridges" --reporter=dot`,
+  `pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts
+  --run --testNamePattern "namespace fast path: mixin-ruleset path unions
+  plain namespace rulesets with callable namespace mixins|routes mixin
+  setDefined writes through the resolved caller binding|evaluates mixin
+  setDefined writes from live parameter bindings" --reporter=dot`,
+  `pnpm --filter @jesscss/core exec vitest src/tree/__tests__/control.test.ts
+  --run --testNamePattern "setDefined writes" --reporter=dot`, `pnpm exec
+  eslint scripts/verify-binding-lookup-hot-paths.mjs
+  packages/core/src/tree/util/direct-rules-lookup.ts
+  packages/core/src/tree/rules.ts
+  packages/core/src/tree/__tests__/import-style.test.ts
+  packages/scss-parser/test/baseline.test.ts`, `pnpm run
+  verify:aggressive-cutting-review`, `pnpm --filter @jesscss/core build`, and
+  `pnpm --filter @jesscss/scss-parser build` passed. No speed claim.

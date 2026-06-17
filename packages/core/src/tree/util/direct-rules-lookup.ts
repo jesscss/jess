@@ -789,20 +789,17 @@ export function findPropertyDeclarationOccurrence(
   return findDeclarationLookupWithStrategy(startRules, key, PROPERTY_LOOKUP, options);
 }
 
-export function findVariableDeclarationReadonlyOccurrence(
+export function findSetDefinedDeclarationReadonlyOccurrence(
   startRules: Rules,
   key: string,
+  isVariable: boolean,
   options?: DirectDeclarationFindOptions
 ): DirectDeclarationLookupResult {
-  return findDeclarationLookupWithStrategy(startRules, key, VARIABLE_LOOKUP, options, true);
-}
-
-export function findPropertyDeclarationReadonlyOccurrence(
-  startRules: Rules,
-  key: string,
-  options?: DirectDeclarationFindOptions
-): DirectDeclarationLookupResult {
-  return findDeclarationLookupWithStrategy(startRules, key, PROPERTY_LOOKUP, options, true);
+  const strategy = isVariable ? VARIABLE_LOOKUP : PROPERTY_LOOKUP;
+  const lookupOptions = isVariable && options?.includeLiveBindings !== false
+    ? { ...options, includeLiveBindings: false }
+    : options;
+  return findDeclarationLookupWithStrategy(startRules, key, strategy, lookupOptions, true);
 }
 
 export function findAnyDeclarationOccurrence(
