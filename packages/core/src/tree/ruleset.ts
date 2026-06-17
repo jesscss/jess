@@ -617,7 +617,12 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     if (selector instanceof Nil || !selector.hasFlag(F_STATIC) || !rules.hasFlag(F_STATIC)) {
       return false;
     }
-    return rules.rules.every(rule => this.canSourceRenderStaticRule(rule, context));
+    for (let i = 0; i < rules.rules.length; i++) {
+      if (!this.canSourceRenderStaticRule(rules.rules[i]!, context)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private evalNilSelectorBodyForRender(context: Context): MaybePromise<Rules | Nil> {
@@ -835,7 +840,12 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       return sel.components.length === 1 && isBareAmpNode(sel.components[0]!);
     }
     if (isNode(sel, N.SelectorList)) {
-      return sel.selectors.every(item => Ruleset.isBareAmpersandSelector(item));
+      for (let i = 0; i < sel.selectors.length; i++) {
+        if (!Ruleset.isBareAmpersandSelector(sel.selectors[i]!)) {
+          return false;
+        }
+      }
+      return true;
     }
     return false;
   }
