@@ -230,11 +230,24 @@ export function flattenVisibleRulesForRender(
           && Ruleset.isBareAmpersandSelector(ownSelector)
           && !Ruleset.isBareAmpersandSelector(child.selector)
         ) {
-          const visibleChildren = getContainerRules(child)!.rules.filter(node => node.visible || node.fullRender);
-          const hasVisibleContainers = visibleChildren.some(node => isNode(node, N.Rules | N.Ruleset | N.AtRule));
+          const childRules = getContainerRules(child)!.rules;
+          let hasVisibleContainers = false;
+          for (let i = 0; i < childRules.length; i++) {
+            const visibleChild = childRules[i]!;
+            if (
+              (visibleChild.visible || visibleChild.fullRender)
+              && isNode(visibleChild, N.Rules | N.Ruleset | N.AtRule)
+            ) {
+              hasVisibleContainers = true;
+              break;
+            }
+          }
           if (!hasVisibleContainers) {
-            for (const leaf of visibleChildren) {
-              pushLeaf(leaf, true);
+            for (let i = 0; i < childRules.length; i++) {
+              const leaf = childRules[i]!;
+              if (leaf.visible || leaf.fullRender) {
+                pushLeaf(leaf, true);
+              }
             }
             continue;
           }
@@ -346,14 +359,15 @@ function getHoistedParent(
     return undefined;
   }
   const renderFrames = runtimeFrames ?? atRule.getRenderFrames();
-  const rulesetFrames = (renderFrames ?? []).filter(frame => isNode(frame, N.Ruleset));
-  if (rulesetFrames.length === 0) {
-    return undefined;
-  }
-  const frame = rulesetFrames[rulesetFrames.length - 1]!;
+  let frame: Ruleset | undefined;
   let parentSelector: Selector | undefined;
-  for (let i = 0; i < rulesetFrames.length; i++) {
-    const currentFrame = rulesetFrames[i]!;
+  const frameCount = renderFrames?.length ?? 0;
+  for (let i = 0; i < frameCount; i++) {
+    const currentFrame = renderFrames![i]!;
+    if (!isNode(currentFrame, N.Ruleset)) {
+      continue;
+    }
+    frame = currentFrame;
     const currentSelector = currentFrame.selector;
     if (!currentSelector || currentSelector instanceof Nil) {
       continue;
@@ -362,6 +376,9 @@ function getHoistedParent(
     parentSelector = parentSelector
       ? Ruleset.composeSelector(nextSelector, parentSelector)
       : nextSelector;
+  }
+  if (!frame) {
+    return undefined;
   }
   return parentSelector ? { frame, selector: parentSelector } : undefined;
 }
@@ -372,7 +389,7 @@ function renderHoistedParentHeader(
   depth: number
 ): string {
   const writer = new OutputWriter();
-  parent.selector.toString({
+  parent.selector.writeSyntax({
     ...options,
     writer,
     collapseNesting: false,
@@ -928,8 +945,15 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       // in `treeFrames` and cause nested output like:
       //   .header { :is(.header-nav, .footer .footer-nav) { ... } }
       // even though the current node is hoisted to root.
-      const atRulesOnly = treeFrames.filter(f => isNode(f, N.AtRule));
-      treeFrames.splice(0, treeFrames.length, ...atRulesOnly, node);
+      let atRuleCount = 0;
+      for (let i = 0; i < treeFrames.length; i++) {
+        const frame = treeFrames[i]!;
+        if (isNode(frame, N.AtRule)) {
+          treeFrames[atRuleCount++] = frame;
+        }
+      }
+      treeFrames.length = atRuleCount;
+      treeFrames.push(node);
       options.inFrames = inFrames = treeFrames;
       const out = renderRulesBody();
       restoreArrayState(treeFrames, savedFrames);

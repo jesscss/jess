@@ -623,10 +623,11 @@ describe('AtRule', () => {
   });
 
   it('renders dynamic leaf at-rule preludes without evaluating an at-rule surface', async () => {
+    const namespaceValue = any('svg');
     const root = rules([
       vardecl({
         name: 'namespace',
-        value: any('svg')
+        value: namespaceValue
       })
     ]);
     const evaldRoot = await root.eval(context);
@@ -640,12 +641,30 @@ describe('AtRule', () => {
     });
     const originalEval = AtRule.prototype.eval;
     const originalNameToString = name.toString;
+    const originalNameWriteSyntax = name.writeSyntax;
     const originalPreludeToString = node.prelude!.toString;
+    const originalNamespaceValueWriteSyntax = namespaceValue.writeSyntax;
     let nameStringCalls = 0;
     let preludeStringCalls = 0;
+    let nameWriteSyntaxCalls = 0;
+    let namespaceValueWriteSyntaxCalls = 0;
     name.toString = () => {
       nameStringCalls++;
       return '@wrong';
+    };
+    name.writeSyntax = function countNameWriteSyntax(
+      this: typeof name,
+      ...args: Parameters<typeof originalNameWriteSyntax>
+    ): ReturnType<typeof originalNameWriteSyntax> {
+      nameWriteSyntaxCalls++;
+      return originalNameWriteSyntax.apply(this, args);
+    };
+    namespaceValue.writeSyntax = function countNamespaceValueWriteSyntax(
+      this: typeof namespaceValue,
+      ...args: Parameters<typeof originalNamespaceValueWriteSyntax>
+    ): ReturnType<typeof originalNamespaceValueWriteSyntax> {
+      namespaceValueWriteSyntaxCalls++;
+      return originalNamespaceValueWriteSyntax.apply(this, args);
     };
     AtRule.prototype.eval = () => {
       throw new Error('leaf at-rule render should not evaluate an at-rule surface');
@@ -665,7 +684,11 @@ describe('AtRule', () => {
       expect(buffer.parts).toEqual(['@namespace svg;']);
       expect(nameStringCalls).toBe(0);
       expect(preludeStringCalls).toBe(0);
+      expect(nameWriteSyntaxCalls).toBe(2);
+      expect(namespaceValueWriteSyntaxCalls).toBe(2);
       name.toString = originalNameToString;
+      name.writeSyntax = originalNameWriteSyntax;
+      namespaceValue.writeSyntax = originalNamespaceValueWriteSyntax;
       node.prelude!.toString = originalPreludeToString;
       const resolved = await Promise.resolve(node.resolve(context));
       expect(resolved.toTrimmedString()).toBe('@namespace svg;');
@@ -675,6 +698,8 @@ describe('AtRule', () => {
     } finally {
       AtRule.prototype.eval = originalEval;
       name.toString = originalNameToString;
+      name.writeSyntax = originalNameWriteSyntax;
+      namespaceValue.writeSyntax = originalNamespaceValueWriteSyntax;
       node.prelude!.toString = originalPreludeToString;
     }
   });

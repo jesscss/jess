@@ -1,6 +1,7 @@
 import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
+import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { buildScopeFrame, lookupScopeFrameVariable, setScopeFrameLiveBinding } from '../scope-frame.js';
 import {
@@ -152,6 +153,36 @@ describe('reference', () => {
     it('should serialize a quoted (property) index', () => {
       let node = ref({ key: quoted('foo') }, { type: 'index' });
       expect(node.toTrimmedString()).toBe('$["foo"]');
+    });
+
+    it('writes node reference keys without public string transport', () => {
+      const key = quoted('foo');
+      key.toString = () => {
+        throw new Error('Reference key syntax should use writeSyntax directly');
+      };
+      const node = ref({ key }, { type: 'index' });
+
+      expect(node.toTrimmedString()).toBe('$["foo"]');
+    });
+
+    it('writes reference targets without public string transport', () => {
+      const target = ref({ key: 'theme' }, { type: 'variable' });
+      target.toString = () => {
+        throw new Error('Reference target syntax should use writeSyntax directly');
+      };
+      const node = ref({ target, key: 'color' }, { type: 'property' });
+
+      expect(node.toTrimmedString()).toBe('$theme[color]');
+    });
+
+    it('writes array reference key segments directly', () => {
+      const chunks: string[] = [];
+      const writer = new OutputWriter(false, chunks);
+      const node = ref({ key: ['#theme', '.dark'] }, { type: 'index' });
+
+      node.writeSyntax(getPrintOptions({ writer }));
+
+      expect(chunks).toEqual(['$', '[', '#theme', '.dark', ']']);
     });
   });
 

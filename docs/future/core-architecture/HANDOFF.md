@@ -148,3 +148,11 @@ with `--no-verify` after the explicit gates pass.
 - Merge note: the branch also incorporates the latest serialization transport
   work from `origin/dev`; keep that progress tracked in
   `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.
+- Merge-carried serialization review: aggressive-review danger tokens from
+  `origin/dev` are serialization/node-row work, not new binding logic. The
+  flagged loops are direct syntax/frame traversal in `ampersand.ts`,
+  `at-rule.ts`, `reference.ts`, and `serialize-helper.ts`; the flagged
+  `OutputWriter`, `BasicSelector(...).inherit(...)`, test `throw new Error`,
+  `try/finally`, and spy arrays belong to that serialization merge. They are
+  accepted as incoming dev state for this binding merge, with detailed
+  ownership remaining in `NODE-REWRITE-TRACKER.md`. No speed claim.

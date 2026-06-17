@@ -222,8 +222,12 @@ function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
     if (!selectorText.includes(',')) {
       return [baseSelector];
     }
-    return splitTopLevelCommas(selectorText)
-      .map(item => new BasicSelector(item).inherit(baseSelector));
+    const parts = splitTopLevelCommas(selectorText);
+    const selectors = new Array<Selector>(parts.length);
+    for (let i = 0; i < parts.length; i++) {
+      selectors[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
+    }
+    return selectors;
   }
   return [baseSelector];
 }
