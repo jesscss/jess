@@ -123,23 +123,14 @@ with `--no-verify` after the explicit gates pass.
   pre-existing mark/readback expectations; non-scalar/custom/trivia arg trim
   marks, async/helper ladders, `evalArgNodes(...)` copy pressure, and callable
   output value selection remain open in the Call row.
-- Merge-carried binding review: merging `origin/dev` also brought the
-  namespaced reference-import crawl deletion in `rules.ts` plus focused
-  import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
-  and direct-child-entry state to prove covered namespace uncertainty; the
-  `Parser` construction, `try/finally`, and small spy arrays are test-only
-  proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
-  production render/string transport.
-- Evidence: full `rules.test.ts` passed and targeted ESLint for `rules.ts`
-  passed. Full gates are required before commit.
-- Merge-carried binding review: merging `origin/dev` also brought the
-  source-static reference handle early-read pass and binding tracker updates.
-  It is lookup-only: no render/stringification path changed, no runtime node
-  materialization was added, and its new helper reads already-stored lookup
-  handle state under narrow guards. The review-flagged
-  `for (const read of reads)` loop and JS-function fixture construction are
-  test-only coverage for source-static reference handle families. The flagged
-  `RulesLookupHandleShape` object is incoming private lookup state created
-  only after an existing handle passes those guards; it is not render/string
-  transport. Detailed binding status remains in `BINDING-LOOKUP-REMAINING.md`;
-  this serialization pass keeps `NODE-REWRITE-TRACKER.md` as the active queue.
+- Merge-carried binding review: merging `origin/dev` also brought the variable
+  reference facade collapse and source-static handle read allocation trim in
+  `packages/core/src/tree/reference.ts`, plus binding tracker/verifier
+  updates. It is lookup-only: no render/stringification path changed, no
+  runtime node materialization was added, and detailed status remains in
+  `BINDING-LOOKUP-REMAINING.md`. The serialization pass keeps
+  `NODE-REWRITE-TRACKER.md` as the active queue.
+- Evidence: focused Call empty-render/content tests, targeted ESLint for
+  `call.ts`, `@jesscss/core` build, `git diff --check`, and
+  `verify:aggressive-cutting-review` passed before the merge. Full gates are
+  required again after conflict resolution.

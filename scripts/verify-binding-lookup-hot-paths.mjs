@@ -14,6 +14,7 @@ const checks = [
       '.findProperty(',
       '.findDeclaration(',
       '.findAnyDeclaration(',
+      'function lookupVariableReference(',
       'includeReadonly: true'
     ],
     required: [
