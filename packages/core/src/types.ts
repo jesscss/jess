@@ -27,9 +27,13 @@ export interface StylesConfig {
   compile?: {
     plugins?: PluginInterface[];
     searchPaths?: string[];
-    enableJavaScript?: boolean;
     mathMode?: MathMode;
     unitMode?: UnitMode;
+    disableScriptModules?: boolean;
+    /**
+     * @deprecated Use `disableScriptModules` instead.
+     */
+    disablePluginRule?: boolean;
   };
   output?: {
     collapseNesting?: boolean;
@@ -52,6 +56,10 @@ export interface LessOptions {
   strictMath?: boolean;
   strictUnits?: boolean;
   javascriptEnabled?: boolean;
+  /**
+   * @deprecated Use `disableScriptModules` instead.
+   */
+  disablePluginRule?: boolean;
   sourceMap?: boolean;
   globalVars?: Record<string, any>;
   modifyVars?: Record<string, any>;

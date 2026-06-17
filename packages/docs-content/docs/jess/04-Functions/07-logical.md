@@ -9,7 +9,7 @@ origin: jess
 ### iif(_condition_, _ifValue_, _elseValue_)
 
 ```css
-@import { iif } from '@jesscss/fns';
+@-from '@jesscss/fns' import (iif);
 .box {
   width: iif($(value > 10), 20px, 10px);
 }
@@ -24,7 +24,7 @@ This example demonstrates a pattern of using `iif` like Less's `when` guards, in
 :::
 
 ```css
-@import { iif } from '@jesscss/fns';
+@-from '@jesscss/fns' import (iif);
 
 @mixin one(value) {
   @mixin one_1 {

@@ -32,6 +32,11 @@ export interface LessOptions {
   javascriptEnabled?: boolean;
 
   /**
+   * @deprecated Use `disableScriptModules` instead.
+   */
+  disablePluginRule?: boolean;
+
+  /**
    * Outputs a makefile import dependency list to stdout.
    * @default false
    */

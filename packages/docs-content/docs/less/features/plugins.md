@@ -12,7 +12,8 @@ Released [v2.5.0](https://github.com/less/less.js/blob/master/CHANGELOG.md)
 :::warning 5.x+ status
 In the 5.x+ track, `@plugin` is **deprecated** and **experimentally supported**.
 
-Prefer `@use` for new work. Dedicated `@use` documentation is not published yet and will be added in a follow-up docs update.
+Prefer `@use` / `@-use` for new script integration when compiling `.less` through the Less CLI compatibility path.
+Dedicated script-module documentation is not published yet and will be added in a follow-up docs update.
 :::
 
 ## Writing your first plugin

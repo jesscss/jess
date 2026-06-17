@@ -7,6 +7,9 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { Parser } from '@jesscss/less-parser';
 import { isNode, N } from '@jesscss/core';
 import { lessCompatPlugin } from '../../src/index.js';
@@ -110,7 +113,8 @@ describe('@plugin directive processing', () => {
     });
 
     plugin.setCurrentFilePath('/tmp/test.less');
-    plugin.setContext({ root: tree });
+    const context = { root: tree, warnings: [] };
+    plugin.setContext(context);
 
     const visitor = normalizeVisitor(plugin.beforeEvalVisitor);
     if (!visitor?.atRule) {
@@ -125,7 +129,61 @@ describe('@plugin directive processing', () => {
 
     expect(result).toBe(pluginDirective);
     expect(pluginInstalled).toBe(true);
+    expect(context.warnings).toHaveLength(1);
+    expect(context.warnings[0]).toMatchObject({
+      code: 'eval/deprecated',
+      message: 'Deprecated feature',
+      reason: '"@plugin" is deprecated.',
+      fix: 'Use "@use / @-use" instead.',
+      note: 'In .less files compiled through the Less CLI compatibility path, migrate script integration to @use / @-use.'
+    });
     expect(Reflect.get(pluginDirective, 'visible')).toBe(false);
+  });
+
+  it('does not fall back to Node execution for local file-based @plugin when plugin-js is unavailable', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-less-plugin-no-node-fallback-'));
+    const pluginPath = path.join(root, 'evil-plugin.js');
+    fs.writeFileSync(
+      pluginPath,
+      [
+        'registerPlugin({',
+        '  install: function(_less, _manager, functions) {',
+        '    functions.add("probe", function() {',
+        '      return typeof process === "undefined" ? "DENIED" : "LEAKED";',
+        '    });',
+        '  }',
+        '});'
+      ].join('\n'),
+      'utf8'
+    );
+
+    const { tree } = parser.parse('@plugin "./evil-plugin.js"; .test { value: probe(); }');
+    if (!tree) {
+      throw new Error('Failed to parse');
+    }
+
+    const plugin = lessCompatPlugin();
+    plugin.setCurrentFilePath(path.join(root, 'input.less'));
+    plugin.setContext({
+      root: tree,
+      warnings: [],
+      plugins: [],
+      opts: {}
+    });
+
+    const visitor = normalizeVisitor(plugin.beforeEvalVisitor);
+    if (!visitor?.atRule) {
+      throw new Error('Plugin should expose an atRule before-eval visitor');
+    }
+
+    const pluginDirective = tree.at(0);
+    if (!pluginDirective || !isNode(pluginDirective, N.AtRule)) {
+      throw new Error('Expected parsed @plugin directive');
+    }
+
+    await expect(Promise.resolve().then(() => visitor.atRule!(pluginDirective))).rejects.toThrow(
+      'Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution.'
+    );
   });
 
   it('should process raw Jess @plugin directives after a leading comment', () => {

@@ -1,4 +1,5 @@
 import * as path from 'path';
+import * as fs from 'fs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import mergeWith from 'lodash-es/mergeWith.js';
@@ -12,8 +13,9 @@ import {
   type WarningDiagnostic,
   JessError,
   toDiagnostic,
+  WARN,
   logger,
-  type Deprecation,
+  Deprecation,
   type Visitor,
   createRenderBuffer,
   finalizeFlatRenderBuffer
@@ -21,8 +23,6 @@ import {
 import {
   getOptions,
   type StylesConfig,
-  type JavaScriptSandboxConfig,
-  type CompileJavaScriptOption,
   type OutputOptions
 } from 'styles-config';
 import type { PluginInterface } from '@jesscss/core';
@@ -76,7 +76,13 @@ type RenderProfile = {
 
 type PluginFactoryRecord = {
   name: string;
-  create: () => PluginInterface;
+  create: (overrideConfig?: JsPluginConfig & { runtimeApi?: 'module' | 'less' }) => PluginInterface;
+};
+
+type JsPluginConfig = {
+  allowHttp?: boolean;
+  allowNetHosts?: string[];
+  jsReadRoot?: string;
 };
 
 type ResolvedRenderConfig = {
@@ -86,8 +92,7 @@ type ResolvedRenderConfig = {
   lessOptions: LessOptions;
   activeOptions: Record<string, any>;
   resolvedOutputFilePath?: string;
-  jsPluginConfig: JavaScriptSandboxConfig;
-  normalizedCompileJavaScript?: JavaScriptSandboxConfig;
+  jsPluginConfig: JsPluginConfig;
   printOptions: { collapseNesting?: boolean };
 };
 
@@ -256,26 +261,61 @@ const resolveFromConsumer = (specifier: string, fromDir?: string): string | unde
   }
 };
 
-const normalizeCompileJavaScript = (
-  javascript: CompileJavaScriptOption | undefined
-): JavaScriptSandboxConfig | undefined => {
-  if (javascript === true) {
-    return {};
+const resolveFromJessPackage = (specifier: string): string | undefined => {
+  try {
+    return createRequire(import.meta.url).resolve(specifier);
+  } catch (err: unknown) {
+    if (err instanceof Error && 'code' in err && err.code === 'MODULE_NOT_FOUND') {
+      return undefined;
+    }
+    throw err;
   }
-  if (!javascript || typeof javascript !== 'object') {
+};
+
+const resolvePackageImportEntry = (specifier: string, fromDir?: string): string | undefined => {
+  const resolvePackageJson = (requireFrom: NodeRequire) => {
+    try {
+      return requireFrom.resolve(`${specifier}/package.json`);
+    } catch (err: unknown) {
+      if (err instanceof Error && 'code' in err && err.code === 'MODULE_NOT_FOUND') {
+        return undefined;
+      }
+      throw err;
+    }
+  };
+  const packageJsonPath = resolvePackageJson(createConsumerRequire(fromDir))
+    ?? resolvePackageJson(createRequire(import.meta.url));
+  if (!packageJsonPath) {
     return undefined;
   }
-  return javascript;
+  const packageRoot = path.dirname(packageJsonPath);
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as unknown;
+  const moduleEntry = packageJson
+    && typeof packageJson === 'object'
+    && 'module' in packageJson
+    && typeof packageJson.module === 'string'
+    ? packageJson.module
+    : undefined;
+  const rootExport = packageJson
+    && typeof packageJson === 'object'
+    && 'exports' in packageJson
+    && packageJson.exports
+    && typeof packageJson.exports === 'object'
+    && '.' in packageJson.exports
+    ? packageJson.exports['.']
+    : undefined;
+  const exportImport = typeof rootExport === 'object' ? rootExport.import : undefined;
+  const entry = moduleEntry ?? exportImport;
+  if (!entry) {
+    return undefined;
+  }
+  return path.resolve(packageRoot, entry);
 };
 
 const resolveJsReadRoot = (
-  jsConfig: JavaScriptSandboxConfig | undefined,
   filePath: string | undefined,
   configFilePath: string | undefined
 ): string => {
-  if (jsConfig?.jsReadRoot) {
-    return path.resolve(jsConfig.jsReadRoot);
-  }
   const entryRoot = filePath ? path.resolve(path.dirname(filePath)) : undefined;
   const configRoot = configFilePath ? path.resolve(path.dirname(configFilePath)) : undefined;
   if (entryRoot && configRoot) {
@@ -339,13 +379,8 @@ export class Compiler {
       renderOptions || {},
       arrayConcatCustomizer
     );
-    const normalizedCompileJavaScript = normalizeCompileJavaScript(effectiveConfig.compile?.javascript);
-    const resolvedJsReadRoot = resolveJsReadRoot(normalizedCompileJavaScript, filePath, configFilePath);
-    const jsPluginConfig: JavaScriptSandboxConfig = {
-      ...(normalizedCompileJavaScript ?? {}),
-      jsReadRoot: normalizedCompileJavaScript?.jsReadRoot
-        ? path.resolve(normalizedCompileJavaScript.jsReadRoot)
-        : resolvedJsReadRoot
+    const jsPluginConfig: JsPluginConfig = {
+      jsReadRoot: resolveJsReadRoot(filePath, configFilePath)
     };
     let resolvedOutputFilePath: string | undefined = renderOptions?.outputFile;
     if (!resolvedOutputFilePath) {
@@ -426,7 +461,6 @@ export class Compiler {
       activeOptions,
       resolvedOutputFilePath,
       jsPluginConfig,
-      normalizedCompileJavaScript,
       printOptions
     };
   }
@@ -525,10 +559,12 @@ export class Compiler {
   }
 
   private getJsPluginFactory(
-    jsConfig: JavaScriptSandboxConfig,
+    jsConfig: JsPluginConfig,
     resolutionBaseDir?: string
   ): { key: PluginFactoryCacheKey; factoryPromise: Promise<PluginFactoryRecord>; resolvedSpecifier: string } | undefined {
-    const resolvedSpecifier = resolveFromConsumer('@jesscss/plugin-js', resolutionBaseDir);
+    const resolvedSpecifier = resolvePackageImportEntry('@jesscss/plugin-js', resolutionBaseDir)
+      ?? resolveFromConsumer('@jesscss/plugin-js', resolutionBaseDir)
+      ?? resolveFromJessPackage('@jesscss/plugin-js');
     if (!resolvedSpecifier) {
       return undefined;
     }
@@ -545,8 +581,8 @@ export class Compiler {
         }
         return {
           name: 'js',
-          create: () => {
-            const plugin = pluginFactory(jsConfig);
+          create: (overrideConfig) => {
+            const plugin = pluginFactory(overrideConfig ?? jsConfig);
             if (!isPluginInterface(plugin)) {
               throw new Error('@jesscss/plugin-js did not resolve to a valid plugin instance');
             }
@@ -564,7 +600,7 @@ export class Compiler {
   }
 
   private createJsPluginProxy(
-    jsConfig: JavaScriptSandboxConfig,
+    jsConfig: JsPluginConfig,
     resolutionBaseDir?: string
   ): LazyPluginInterface | undefined {
     const factoryRecord = this.getJsPluginFactory(jsConfig, resolutionBaseDir);
@@ -578,6 +614,7 @@ export class Compiler {
 
     let pluginPromise: Promise<PluginInterface> | undefined;
     let loadedPlugin: PluginInterface | undefined;
+    let lessPluginPromise: Promise<PluginInterface> | undefined;
     const getPlugin = async (): Promise<PluginInterface> => {
       if (!pluginPromise) {
         pluginPromise = factoryRecord.factoryPromise.then((factory) => {
@@ -587,21 +624,48 @@ export class Compiler {
       }
       return pluginPromise;
     };
+    const getLessPlugin = async (): Promise<PluginInterface> => {
+      if (!lessPluginPromise) {
+        lessPluginPromise = factoryRecord.factoryPromise.then(factory =>
+          factory.create({
+            ...jsConfig,
+            runtimeApi: 'less'
+          })
+        );
+      }
+      return lessPluginPromise;
+    };
 
     const proxy: LazyPluginInterface = {
       name: 'js',
       supportedExtensions: ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'],
-      prewarm: async () => {
-        const plugin = await getPlugin();
-        await plugin.prewarm?.();
-      },
       import: async (absoluteFilePath) => {
         const plugin = await getPlugin();
         if (!plugin.import) {
           throw new Error('Feature not supported. Install @jesscss/plugin-js to enable script execution features.');
         }
         return plugin.import(absoluteFilePath);
+      },
+      importLessPlugin: async (absoluteFilePath: string) => {
+        const plugin = await getLessPlugin() as PluginInterface & {
+          importLessPlugin?: (absoluteFilePath: string) => Promise<unknown>;
+        };
+        if (!plugin.importLessPlugin) {
+          throw new Error('Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution.');
+        }
+        return plugin.importLessPlugin(absoluteFilePath);
+      },
+      dispose: async () => {
+        const plugins = await Promise.all([
+          pluginPromise?.catch(() => undefined),
+          lessPluginPromise?.catch(() => undefined)
+        ]);
+        for (const plugin of plugins) {
+          await plugin?.dispose?.();
+        }
       }
+    } as LazyPluginInterface & {
+      importLessPlugin(absoluteFilePath: string): Promise<unknown>;
     };
     this.jsPluginProxyCache.set(factoryRecord.key, proxy);
     return proxy;
@@ -650,13 +714,6 @@ export class Compiler {
       }
     }
 
-    if (!pluginMap.has('js')) {
-      const jsPlugin = this.createJsPluginProxy(resolved.jsPluginConfig, resolutionBaseDir);
-      if (jsPlugin) {
-        pluginMap.set(jsPlugin.name, jsPlugin);
-      }
-    }
-
     if (pluginMap.has('js')) {
       try {
         const consumerRequire = createConsumerRequire(resolutionBaseDir);
@@ -674,9 +731,11 @@ export class Compiler {
       ...resolved.effectiveConfig.compile,
       ...resolved.activeOptions
     };
-    if (resolved.normalizedCompileJavaScript) {
-      contextOptions.javascript = resolved.jsPluginConfig;
-    }
+    const usesDeprecatedDisablePluginRule = Boolean(contextOptions.disablePluginRule);
+    contextOptions.disableScriptModules = Boolean(
+      contextOptions.disableScriptModules
+      || contextOptions.disablePluginRule
+    );
     contextOptions.collapseNesting = resolved.printOptions.collapseNesting;
     contextOptions.output = {
       ...(typeof resolved.effectiveConfig.output === 'object' && !Array.isArray(resolved.effectiveConfig.output)
@@ -685,7 +744,18 @@ export class Compiler {
       collapseNesting: resolved.printOptions.collapseNesting
     };
 
-    return new Context(contextOptions, plugins);
+    const context = new Context(contextOptions, plugins);
+    if (usesDeprecatedDisablePluginRule) {
+      context.warnings.push(toDiagnostic(WARN.deprecated({
+        filePath: resolved.filePath,
+        meta: {
+          what: 'disablePluginRule',
+          use: 'disableScriptModules',
+          deprecation: Deprecation.fromId('disable-plugin-rule-option') ?? Deprecation.userAuthored
+        }
+      })));
+    }
+    return context;
   }
 
   private async prepareRender(
@@ -715,7 +785,47 @@ export class Compiler {
     return this.createContextFromResolved(resolved, plugins);
   }
 
-  private applyBeforeEvalVisitors(context: Context, tree: Rules, currentFilePath: string): Rules {
+  private async visitBeforeEvalNode(node: any, visitor: any): Promise<any> {
+    let result = node;
+
+    if ((node.type === 'AtRule' || node.type === 'Directive') && typeof visitor.atRule === 'function') {
+      const atRuleResult = await visitor.atRule(node, undefined);
+      if (atRuleResult && typeof atRuleResult !== 'symbol') {
+        result = atRuleResult;
+      }
+    }
+
+    if (typeof visitor.visit === 'function') {
+      const visitResult = await visitor.visit(result);
+      if (visitResult && typeof visitResult !== 'symbol') {
+        result = visitResult;
+      }
+    } else {
+      const maybeAbort = visitor.enter?.(result);
+      if (typeof maybeAbort === 'symbol') {
+        return result;
+      }
+      const methodName = result.type.charAt(0).toLowerCase() + result.type.slice(1);
+      const typeMethod = visitor[methodName];
+      if (typeof typeMethod === 'function') {
+        const typeResult = await typeMethod.call(visitor, result);
+        if (typeResult && typeof typeResult !== 'symbol') {
+          result = typeResult;
+        }
+      }
+      const exitResult = await visitor.exit?.(result);
+      if (exitResult && typeof exitResult !== 'symbol') {
+        result = exitResult;
+      }
+    }
+
+    for (const child of result.children?.() ?? []) {
+      await this.visitBeforeEvalNode(child, visitor);
+    }
+    return result;
+  }
+
+  private async applyBeforeEvalVisitors(context: Context, tree: Rules, currentFilePath: string): Promise<Rules> {
     if (!tree || !context.plugins?.length) {
       return tree;
     }
@@ -751,7 +861,7 @@ export class Compiler {
           if (pass === 1 && processed.has(visitor)) {
             continue;
           }
-          const result = current.accept(visitor);
+          const result = await this.visitBeforeEvalNode(current, visitor);
           if (result instanceof Rules) {
             current = result;
           }
@@ -801,7 +911,7 @@ export class Compiler {
         return result;
       }
       const resolvedPath = result?.resolvedPath ?? currentFilePathFromImport(importPath, filePath);
-      const processedTree = this.applyBeforeEvalVisitors(context, result.node, resolvedPath);
+      const processedTree = await this.applyBeforeEvalVisitors(context, result.node, resolvedPath);
       if (processedTree && processedTree !== result.node) {
         result.node = processedTree;
         if (result.resolvedPath) {
@@ -844,7 +954,7 @@ export class Compiler {
       if (!parsedNode) {
         throw new Error(`Failed to parse ${filePath ?? '<input>'}`);
       }
-      tree = measureProfileSync(profile, 'applyBeforeEvalVisitors', () =>
+      tree = await measureProfileAsync(profile, 'applyBeforeEvalVisitors', () =>
         this.applyBeforeEvalVisitors(context, parsedNode, filePath ?? '<input>')
       );
     } else {
@@ -853,7 +963,7 @@ export class Compiler {
       if (!loadedNode) {
         throw new Error(`Failed to load ${filePath!}`);
       }
-      tree = measureProfileSync(profile, 'applyBeforeEvalVisitors', () =>
+      tree = await measureProfileAsync(profile, 'applyBeforeEvalVisitors', () =>
         this.applyBeforeEvalVisitors(context, loadedNode, filePath!)
       );
     }

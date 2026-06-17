@@ -61,7 +61,6 @@ import {
   whileNode
 } from '../index.js';
 import { extendList } from '../extend-list.js';
-import { jsexpr } from '../js-expr.js';
 import { F_MAY_ASYNC, F_NON_STATIC, Node } from '../node-base.js';
 import { MixinCollection } from '../util/callable-collection.js';
 import { callableRulesEntry } from '../util/callable-entry.js';
@@ -419,7 +418,6 @@ describe('renderNodeToBuffer', () => {
       { surface: 'Block', node: block(seq([any('red'), any('blue')]), { type: 'square' }) },
       { surface: 'Collection', node: coll([decl({ name: 'color', value: any('red') })]) },
       { surface: 'RawRules', node: rawrules([decl({ name: 'color', value: any('red') })]) },
-      { surface: 'JsExpression', node: jsexpr('"ok"'), expected: 'ok' },
       { surface: 'JsImport', node: js({ path: quoted('tools.js') }, { namespace: 'tools' }), expected: '@-use "tools.js" as tools;' },
       { surface: 'Ampersand', node: amp({ appendValue: '-item' }), expected: '', expectedParts: [] }
     ];

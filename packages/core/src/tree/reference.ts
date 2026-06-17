@@ -19,7 +19,6 @@ import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
 import { JsArray } from './js-array.js';
 import { JsObject } from './js-object.js';
-import { JsExpression } from './js-expr.js';
 import { List } from './list.js';
 import { Nil } from './nil.js';
 import {
@@ -2040,20 +2039,6 @@ function evaluateFallbackValue(
   if (textOnly && isNode(fallbackValue, N.List | N.Sequence)) {
     context.popReference();
     return fallbackValue;
-  }
-  if (textOnly && fallbackValue instanceof JsExpression) {
-    context.popReference();
-    return fallbackValue;
-  }
-  if (fallbackValue instanceof JsExpression) {
-    const out = fallbackValue.resolve(context);
-    if (isThenable(out)) {
-      return Promise.resolve(out).finally(() => {
-        context.popReference();
-      });
-    }
-    context.popReference();
-    return out;
   }
   const out = fallbackValue.eval(context);
   if (isThenable(out)) {

@@ -8,7 +8,7 @@ origin: jess
 You can, of course, import functions and call them in a JS expression, like:
 
 ```less
-@import { myFunction } from './functions.js';
+@-from './functions.js' import (myFunction);
 
 .box {
   content: $myFunction();
@@ -19,7 +19,7 @@ However, Jess has a feature where, like Less, it will attempt to evaluate CSS fu
 The reason you might want to do that is to parse a function value as, say, a dimension, like:
 
 ```less
-@import { double } from './functions.js';
+@-from './functions.js' import (double);
 
 .box {
   width: double(10px);

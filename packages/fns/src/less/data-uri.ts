@@ -2,17 +2,17 @@ import { defineFunction, Node, Quoted, Url } from '@jesscss/core';
 import { serializeNodeValue } from '../util/serialize-node.js';
 import { lookupMime, readAsset } from '../util/file-resolution.js';
 
-function toFallbackUrl(node: Node, context: any): Url {
-  const raw = serializeNodeValue(node, context);
+async function toFallbackUrl(node: Node, context: any): Promise<Url> {
+  const raw = await serializeNodeValue(node, context);
   return new Url(new Quoted(raw, { quote: '"' }));
 }
 
 const dataUri = defineFunction(
   'data-uri',
-  function(this: any, mimetypeNode: Node, filePathNode?: Node) {
+  async function(this: any, mimetypeNode: Node, filePathNode?: Node) {
     let mimeNode = filePathNode ? mimetypeNode : undefined;
     let pathNode = filePathNode ?? mimetypeNode;
-    const rawPath = serializeNodeValue(pathNode, this.context);
+    const rawPath = await serializeNodeValue(pathNode, this.context);
 
     let fragment = '';
     let filePath = rawPath;
@@ -22,7 +22,7 @@ const dataUri = defineFunction(
       filePath = rawPath.slice(0, fragmentStart);
     }
 
-    let mimeType = mimeNode ? serializeNodeValue(mimeNode, this.context) : undefined;
+    let mimeType = mimeNode ? await serializeNodeValue(mimeNode, this.context) : undefined;
     let useBase64 = false;
 
     if (!mimeType) {
@@ -44,7 +44,7 @@ const dataUri = defineFunction(
       const uri = `data:${mimeType},${encoded}${fragment}`;
       return new Url(new Quoted(uri, { quote: '"' }));
     } catch {
-      return toFallbackUrl(pathNode, this.context);
+      return await toFallbackUrl(pathNode, this.context);
     }
   },
   {

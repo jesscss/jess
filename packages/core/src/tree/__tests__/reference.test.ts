@@ -1,6 +1,5 @@
 import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
 import { Context } from '../../context.js';
-import { JsExpression } from '../js-expr.js';
 import { isNode } from '../util/is-node.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { buildScopeFrame, lookupScopeFrameVariable, setScopeFrameLiveBinding } from '../scope-frame.js';
@@ -2038,70 +2037,6 @@ describe('reference', () => {
         expect(context.referenceStack).toBe(0);
       } finally {
         fallback.inherit = originalInherit;
-      }
-    });
-
-    it('renders dynamic JsExpression fallback scalars as text without copying the fallback node', async () => {
-      const fallback = new JsExpression('"dynamic-red"');
-      const fallbackParent = fallback.parent;
-      const originalCopy = fallback.copy;
-      let copyCalls = 0;
-      fallback.copy = function copyForCounting(
-        this: typeof fallback,
-        ...args: Parameters<typeof originalCopy>
-      ): ReturnType<typeof originalCopy> {
-        copyCalls++;
-        return originalCopy.apply(this, args);
-      };
-
-      try {
-        const refNode = ref(
-          { key: 'missing' },
-          {
-            type: 'variable',
-            fallbackValue: fallback
-          }
-        );
-
-        expect(await Promise.resolve(refNode.render(context))).toBe('dynamic-red');
-        expect(copyCalls).toBe(0);
-        expect(fallback.parent).toBe(fallbackParent);
-        expect(context.referenceStack).toBe(0);
-      } finally {
-        fallback.copy = originalCopy;
-      }
-    });
-
-    it('resolves dynamic JsExpression fallback scalars without copying the fallback node', async () => {
-      const fallback = new JsExpression('"dynamic-red"');
-      const fallbackParent = fallback.parent;
-      const originalCopy = fallback.copy;
-      let copyCalls = 0;
-      fallback.copy = function copyForCounting(
-        this: typeof fallback,
-        ...args: Parameters<typeof originalCopy>
-      ): ReturnType<typeof originalCopy> {
-        copyCalls++;
-        return originalCopy.apply(this, args);
-      };
-
-      try {
-        const refNode = ref(
-          { key: 'missing' },
-          {
-            type: 'variable',
-            fallbackValue: fallback
-          }
-        );
-
-        const resolved = await refNode.resolve(context);
-
-        expect(resolved.toTrimmedString()).toBe('dynamic-red');
-        expect(copyCalls).toBe(0);
-        expect(fallback.parent).toBe(fallbackParent);
-        expect(context.referenceStack).toBe(0);
-      } finally {
-        fallback.copy = originalCopy;
       }
     });
 

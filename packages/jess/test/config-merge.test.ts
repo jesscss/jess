@@ -156,7 +156,7 @@ describe('Config Merging', () => {
     // This demonstrates that nested objects are merged, not replaced
   });
 
-  it('normalizes compile.javascript=true and resolves jsReadRoot from entry lookup', () => {
+  it('adds configured plugin-js as a lazy proxy without starting Deno at context creation', () => {
     const nestedDir = path.join(tempDir, 'src', 'nested');
     fs.mkdirSync(nestedDir, { recursive: true });
     const testFile = path.join(nestedDir, 'test.less');
@@ -164,35 +164,66 @@ describe('Config Merging', () => {
 
     const compiler = new Compiler({
       compile: {
-        javascript: true
+        plugins: ['@jesscss/plugin-js']
       }
     });
     const context = compiler.createContext(testFile);
-    const jsOpts = (context.opts as any).javascript;
 
-    expect(jsOpts).toBeTruthy();
-    expect(jsOpts).toEqual({
-      jsReadRoot: nestedDir
-    });
+    expect('javascript' in context.opts ? context.opts.javascript : undefined).toBeUndefined();
+    expect(context.plugins.some(plugin => plugin.name === 'js')).toBe(true);
   });
 
-  it('uses explicit javascript.jsReadRoot when provided', () => {
-    const sandboxDir = path.join(tempDir, 'sandbox');
-    fs.mkdirSync(sandboxDir, { recursive: true });
+  it('does not enable script imports without configured plugin-js', async () => {
+    const testFile = path.join(tempDir, 'test.less');
+    fs.writeFileSync(testFile, '.a { color: red; }');
+    const scriptFile = path.join(tempDir, 'tokens.js');
+    fs.writeFileSync(scriptFile, 'export const color = "red";');
+
+    const compiler = new Compiler();
+    const context = compiler.createContext(testFile);
+
+    await expect(context.getModule(scriptFile)).rejects.toThrow(
+      'Feature not supported. Install @jesscss/plugin-js to enable script execution features.'
+    );
+  });
+
+  it('normalizes deprecated disablePluginRule to disableScriptModules', () => {
     const testFile = path.join(tempDir, 'test.less');
     fs.writeFileSync(testFile, '.a { color: red; }');
 
     const compiler = new Compiler({
       compile: {
-        javascript: {
-          jsReadRoot: sandboxDir
+        disablePluginRule: true
+      }
+    });
+    const context = compiler.createContext(testFile);
+
+    expect(context.opts.disableScriptModules).toBe(true);
+    expect(context.warnings.some(warning =>
+      warning.code === 'eval/deprecated'
+      && warning.reason.includes('disablePluginRule')
+      && warning.fix.includes('disableScriptModules')
+    )).toBe(true);
+  });
+
+  it('normalizes deprecated language.less.disablePluginRule to disableScriptModules', () => {
+    const testFile = path.join(tempDir, 'test.less');
+    fs.writeFileSync(testFile, '.a { color: red; }');
+
+    const compiler = new Compiler({
+      language: {
+        less: {
+          disablePluginRule: true
         }
       }
     });
     const context = compiler.createContext(testFile);
-    const jsOpts = (context.opts as any).javascript;
 
-    expect(jsOpts).toBeTruthy();
-    expect(jsOpts.jsReadRoot).toBe(path.resolve(sandboxDir));
+    expect(context.opts.disableScriptModules).toBe(true);
+    expect(context.warnings.some(warning =>
+      warning.code === 'eval/deprecated'
+      && warning.reason.includes('disablePluginRule')
+      && warning.fix.includes('disableScriptModules')
+    )).toBe(true);
   });
 });

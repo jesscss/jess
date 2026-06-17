@@ -537,7 +537,7 @@ test('@import "file.less" parsed as StyleImport', () => {
           optional: false
           inline: false
         }
-        path: 
+        path:
           (Quoted
             quote: '"'
             escaped: false
@@ -559,7 +559,7 @@ test('@-export "./theme.jess" parsed as StyleImport with forward', () => {
         importOptions: {
           forward: true
         }
-        path: 
+        path:
           (Quoted
             quote: '"'
             escaped: false
@@ -572,6 +572,82 @@ test('@-export "./theme.jess" parsed as StyleImport with forward', () => {
     `);
 });
 
+test('@use "./tokens.js" parsed as JsImport with inferred namespace', () => {
+  const { errors, tree } = parser.parse('@use "./tokens.js";');
+  expect(errors.length).toBe(0);
+  expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (JsImport
+        namespace: 'tokens'
+        path:
+          (Quoted
+            quote: '"'
+            escaped: false
+          (Any [role=any]
+            role: 'any'
+            './tokens.js'
+          )
+        )
+      )
+    `);
+});
+
+test('@-use "./tokens.ts" as t parsed as JsImport with namespace', () => {
+  const { errors, tree } = parser.parse('@-use "./tokens.ts" as t;');
+  expect(errors.length).toBe(0);
+  expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (JsImport
+        namespace: 't'
+        path:
+          (Quoted
+            quote: '"'
+            escaped: false
+          (Any [role=any]
+            role: 'any'
+            './tokens.ts'
+          )
+        )
+      )
+    `);
+});
+
+test('@use "#less/math" parsed as JsImport with inferred namespace', () => {
+  const { errors, tree } = parser.parse('@use "#less/math";');
+  expect(errors.length).toBe(0);
+  expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (JsImport
+        namespace: 'math'
+        path:
+          (Quoted
+            quote: '"'
+            escaped: false
+          (Any [role=any]
+            role: 'any'
+            '#less/math'
+          )
+        )
+      )
+    `);
+});
+
+test('@use "./theme.less" stays a plain AtRule, not stylesheet compose', () => {
+  const { errors, tree } = parser.parse('@use "./theme.less";');
+  expect(errors.length).toBe(0);
+  const serialized = serializeTypes(tree, { showOptions: true });
+  expect(serialized).toContain('(AtRule');
+  expect(serialized).toContain('\'@use\'');
+  expect(serialized).toContain('\'./theme.less\'');
+  expect(serialized).not.toContain('(StyleImport');
+});
+
+test('@use "less:math" stays a plain AtRule; Less modules use #less specifiers', () => {
+  const { errors, tree } = parser.parse('@use "less:math";');
+  expect(errors.length).toBe(0);
+  const serialized = serializeTypes(tree, { showOptions: true });
+  expect(serialized).toContain('(AtRule');
+  expect(serialized).toContain('\'less:math\'');
+  expect(serialized).not.toContain('(JsImport');
+});
+
 test('@-export "./theme.jess" as theme parsed with namespace', () => {
   const { errors, tree } = parser.parse('@-export "./theme.jess" as theme;');
   expect(errors.length).toBe(0);
@@ -582,7 +658,7 @@ test('@-export "./theme.jess" as theme parsed with namespace', () => {
         importOptions: {
           forward: true
         }
-        path: 
+        path:
           (Quoted
             quote: '"'
             escaped: false
@@ -628,7 +704,7 @@ test('@import (less, reference) "file" with options', () => {
           optional: false
           inline: false
         }
-        path: 
+        path:
           (Quoted
             quote: '"'
             escaped: false
@@ -673,7 +749,7 @@ test('@import (multiple) "file.less" with multiple option', () => {
           optional: false
           inline: false
         }
-        path: 
+        path:
           (Quoted
             quote: '"'
             escaped: false

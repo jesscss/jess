@@ -25,5 +25,5 @@ export {
   guardWithConditionValue, guardWithCondition, comparison, innerAtRule,
   layerName, keyframesName, mixinName, mixinReference, mixinArgs,
   lookupOrCall, mixinArgList, varName, mixinArg, callArgument,
-  unknownAtRule, exportAtRule
+  unknownAtRule, exportAtRule, useAtRule
 } from './guards.js';

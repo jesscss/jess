@@ -1,371 +1,723 @@
 # Core Architecture Handoff
 
-This is the active runbook for Jess core architecture work. Keep it short:
-enough to make the next LLM choose the right work, and no more.
+This is the active runbook for Jess core architecture work. Keep it short and
+operational.
 
-Use the doc split:
+Use the four-doc split:
 
-- `HANDOFF.md`: current focus, active queue, gates, and handoff discipline.
-- `AGGRESSIVE-CUTTING-REVIEW.md`: patch-shape rules and rejection criteria.
-- `PERFORMANCE-HANDOFF.md`: benchmark protocol and performance evidence.
-- `NODE-REWRITE-TRACKER.md`: node-family rewrite status.
-- `BINDING-INDEX-PROPOSAL.md`: binding/index design target.
-- `BINDING-LOOKUP-REMAINING.md`: total remaining binding/lookup inventory.
+1. `HANDOFF.md`: how to perform the next pass, the active work, gates, focus
+   spec, and completion steps.
+2. `AGGRESSIVE-CUTTING-REVIEW.md`: hardline patch-shape rules.
+3. `PERFORMANCE-HANDOFF.md`: benchmark/profile protocol, evidence history,
+   target queues, and rejected experiments.
+4. `NODE-REWRITE-TRACKER.md`: node-by-node rewrite table and completion
+   status.
 
-## Focus
+Active implementation specs:
 
-Active mode: **registryless lookup and binding slimming**.
+- `BINDING-INDEX-PROPOSAL.md`: binding-index implementation spec for
+  reference lookup, Less contextual semantics, Jess/Sass-style live bindings,
+  and removal of transitional fallback bridges. It is active while the
+  `Active Binding Implementation Lane` below has unchecked items.
 
-This worktree is for deleting registry-style lookup plumbing and simplifying
-`Rules.find*`, direct declaration lookup, callable lookup, reference handles,
-and `ScopeFrame` binding paths. Do not switch to serialization, selector,
-render/materialization, node-copy, or broad cutting work unless the user
-explicitly redirects the branch.
+## How To Work
 
-Goal:
+1. Read this handoff first.
+2. Read `AGGRESSIVE-CUTTING-REVIEW.md` before changing AST, eval/render,
+   lookup, traversal, copying, inheritance, output writer, source/root metadata,
+   or this handoff.
+3. Read `PERFORMANCE-HANDOFF.md` before making or accepting any speed claim, or
+   before touching a measured hot path.
+4. Choose work from the highest-priority active lane below. An unchecked active
+   implementation lane outranks benchmark cutting, node cleanup, and smell
+   sweeps unless this handoff explicitly marks that lane paused.
+5. Start each non-correctness pass from the benchmark leash below when the
+   selected lane touches measured hot paths.
+6. State one hypothesis before editing.
+7. Make the smallest behavior-preserving cut that removes measured work or
+   clearly wrong machinery.
+8. Run focused tests first, then the required gates.
+9. Keep, reshape, or revert based on the benchmark evidence and the aggressive
+   cutting self-prosecution.
+10. Commit and push the completed pass.
+
+Temporary push rule: use `git push --no-verify` after focused tests, build,
+benchmark leash, and `verify:aggressive-cutting-review` pass. The current
+pre-push `verify:baseline` path can hang silently and should not be used again
+until that hook is patched.
+
+## Focus Spec
+
+Active mode: **node `writeSyntax` render/stringification rewrite**.
+
+Temporary lane switch: the binding-index lane is paused by explicit
+user-direction until the `writeSyntax` node queue in
+`NODE-REWRITE-TRACKER.md` is complete or this handoff explicitly switches back.
+Do not let binding cleanup, generic smell sweeps, or unrelated performance
+experiments overrule the `writeSyntax` queue while this mode is active.
+
+Focus lock: Jess core work has one active focus at a time. The current focus is
+the repo-wide node serialization rewrite, spanning all remaining node families.
+No secondary queue may compete for the front of the line. Do not start
+selector/equality cleanup, binding-index work, lookup redesign,
+copy/materialization cleanup, benchmark tuning, or general smell sweeps as
+separate work while this focus is active. If one of those areas is touched, it
+must be only because the currently selected node-family serialization task
+cannot be completed without that exact local edit, and the self-prosecution
+must name the selected node row it serves.
+
+The goal is the fastest credible path from parsed Less to CSS output:
 
 - one canonical source tree;
-- direct tree/frame lookup instead of a separate lookup registry;
-- live binding state and static binding buckets where they remove lookup work;
-- cold materialization only for public APIs or real semantic ownership;
-- fewer hot-path objects, arrays, scans, helper calls, and fallback bridges.
+- live lookup/binding/placement state instead of routine copied eval trees;
+- direct eval/render-to-string for normal output;
+- cold materialization only for public APIs or real semantic ownership
+  boundaries;
+- fewer hot-path objects, arrays, traversals, helper calls, branch ladders,
+  promise/generator states, and metadata mutations.
 
-Do not preserve an unreleased or self-invented public-looking lookup method
-for compatibility alone. If repo usage does not need it and the user has not
-approved it as API, delete or reshape it.
+Less is the optimizing path. Preserve SCSS-enabling seams only when they are
+concrete and cheap or isolated behind cold extension boundaries.
 
-`_indexRules()` is legacy lookup-indexing debt. Do not add new lookup
-dependencies on it. Runtime lookup should crawl the canonical tree directly
-and consult evaluated/live binding state only when that state already exists.
+Work shape while `writeSyntax` is active: run autonomously across the full
+open tracker, not one-node dribbles. When the user asks for a full queue pass
+or to continue, keep selecting the next highest-value unfinished
+node/family row in `NODE-REWRITE-TRACKER.md`, implement the bounded cut, test,
+update docs, commit, push, and immediately continue to the next row. Do not
+stop to report ordinary progress after a single partial cut. Stop only when
+all open tracker rows are complete, a test exposes a real semantic blocker,
+the repo becomes unsafe to proceed, or the next remaining work is explicitly
+benchmark-first tradeoff/design work rather than an evident serialization cut.
 
-## Working Rules
+If context compacts mid-run, resume from the live tracker and git state rather
+than restarting the audit. Treat each commit as a checkpoint, not the end of
+the user's request. A full autonomous run should leave one or more whole
+families complete whenever the code allows it; a pass is invalid if its
+primary result is selector/equality cleanup, benchmark-chasing, lookup cleanup,
+copy cleanup, or generic helper polish instead of node serialization
+completion.
 
-- Work from repo evidence first.
-- A "full queue pass" means an automated uninterrupted burn through every
-  active queue item below, not one micro-edit and not one commit-sized nibble.
-- Do not stop at a wrap-up point merely because one item passed tests. Continue
-  into the next queue item until the queue is empty, a semantic blocker is
-  proven, or the next item would conflict with uncommitted work from a parallel
-  agent.
-- If any active queue item remains unfinished at wrap-up, explicitly explain
-  in the handoff and final response which items remain, what blocked immediate
-  continuation, and why stopping was necessary.
-- Queue items must be whole tasks. Do not create one-line queue items.
-- Before ending a pass, seed the next queue with exactly 15 real
-  binding/lookup tasks.
-- Queue numbering is always plain `1` through `15`. Do not preserve old queue
-  IDs, ticket-like labels, or historical numbering.
-- Reseeding the next queue is mandatory closeout work, not one of the 15 queue
-  items.
-- Keep completed history out of this file. Replace old done items with a short
-  baseline note only when it helps the next worker.
-- Use focused tests while iterating, then run gates before commit.
-- Claim speed only from proper before/after measurement. One-iteration
-  hotpath runs are smoke only.
-- Commit and push after a completed queue pass. Use `--no-verify` for commit
-  and push in this branch because hooks have previously looped.
+Use sub-agents when the tool environment supports them. Good sub-agent work is
+independent, evidence-gathering, and bounded: assign separate open node rows,
+hot call-stack audits, test-surface searches, or "smallest equivalent rewrite"
+proposals. Do not ask sub-agents to make overlapping edits in the same files,
+commit independently, or change the active focus. The main agent owns final
+judgment: compare sub-agent findings against repo evidence, implement the
+chosen cuts in the primary worktree, run the gates, update handoff/tracker
+docs, commit, push, and continue.
 
-## Automated Loop And Sub-Agents
+Queue items must be **entire tasks**, not micro-items. A queue item is a
+meaningful node-family or runtime-path objective with its own proof surface,
+for example "finish the `Call` render/stringification cleanup" or "remove
+`AtRule` leaf/body render string transport where semantics allow it." It may
+contain several sub-tasks, helper deletions, rejected cuts, and tests, but those
+sub-tasks are not themselves queue items. Do not mark a queue item complete
+because a one-line helper moved, a single closure was lifted, one regex was
+replaced, or one narrow fast path was added while the larger stated task remains
+open.
 
-When the user says `continue`, `do all queue items`, or `complete the queue`,
-run this loop without asking for another permission ping:
+Queue floor: after every handoff update, leave at least **15 unchecked sizable
+queue items** available across the active lane unless the lane is genuinely
+within 15 tasks of completion. If fewer than 15 remain, split by whole
+node-family/runtime boundary, not by one-line edits.
 
-1. Snapshot `git status --short --branch`.
-2. Read the active queue and `BINDING-LOOKUP-REMAINING.md`.
-3. Dispatch sub-agents when available for independent slices:
-   declaration/property, callable/namespace, reference handles/plans,
-   import/reference visibility, and verification/review.
-4. Work locally on the critical-path item while sub-agents inspect or edit
-   disjoint owned files.
-5. Integrate returned work, run focused tests, then continue to the next item.
-6. Run commit gates only at a coherent batch boundary, not after every tiny
-   edit, unless a risky semantic split needs its own checkpoint.
-7. Update this handoff and the remaining-work inventory only with facts that
-   change the next worker's decisions.
-8. Commit and push with `--no-verify`.
+A valid autonomous queue run should complete every currently safe cut across
+the open tracker, preferably closing one or more whole queue items. It may
+record a partial cut under an open item only as an intermediate checkpoint
+before immediately continuing, or when the current whole item is blocked by a
+semantic decision, benchmark-first tradeoff, or unsafe behavior boundary. Do
+not create new numbered queue entries just to memorialize every tiny cut.
 
-Sub-agent rules:
+Sweep the unchecked node/family list in `NODE-REWRITE-TRACKER.md`, land every
+bounded deletion that shares the same proof surface, and stop only when the
+remaining candidates require a larger semantic design, a behavior decision, or
+benchmark-first tradeoff work. For each touched node, split direct emission
+from public string capture, make render call the direct writer path after value
+selection, and prove output with focused tests. Run the aggressive cutting
+gate, record any benchmark/profile status if a touched node is hot, then commit
+and push the whole coherent batch. Reject changes that make `render(...)` call
+public `toString(...)`/`toTrimmedString(...)` as transport, or that add helper
+objects/arrays only to describe syntax.
 
-- Prefer sub-agents for sidecar analysis, targeted implementation, and review
-  when their file ownership can be made disjoint.
-- Tell worker agents they are not alone in the codebase and must not revert
-  other workers' changes.
-- The controller owns final integration, gates, handoff, commit, and push.
-- Do not use sub-agents to avoid the critical path; keep moving locally while
-  they run.
+Serialization contract for this lane:
 
-## Current Architecture Baseline
+- `writeSyntax(...)`: direct syntax/source emission to the provided writer,
+  with no returned string and no public string API as transport.
+- `render(...)`: select/evaluate the runtime value, then write directly to the
+  writer or render buffer. Render must not capture a public string just to
+  write it back out.
+- public `toString(...)` / `toTrimmedString(...)`: cold capture wrappers only.
+  They may use `mark/getSince`; render-only paths may not.
+- no render-only `mark/getSince`, `capture`, `preview`, writer readback,
+  helper object, temporary syntax array, or detached writer allocation remains;
+  if one cannot be removed in this focus, the node row must document the cold
+  public materialization boundary or semantic blocker before moving on.
 
-Registryless lookup is still the active runtime direction, but the scope is
-larger than the earlier "three passes" estimate. The old registry classes and
-`_indexRules()` lookup path are no longer the main blocker. The remaining work
-is finishing the binding-frame/direct-crawl replacement so covered simple paths
-do not enter fallback ladders, public materialization wrappers, unnecessary
-child scans, or broad invalidation lanes.
+## Active Work
 
-Current hot evidence after the latest queue pass:
+Correctness queue: no active correctness blockers. If a `.less` fixture fails
+to parse/evaluate, add a focused repro before changing expected output. If CSS
+differs, review semantics manually before changing tests.
 
-- `scope-lookup-stress.less` direct profile now reports
-  `declaration.cacheMiss: 7560`,
-  `declaration.scope.v: 7560`,
-  `declaration.childEntriesScanned: 1575`,
-  `declaration.childEntryEntered: 1575`,
-  `declaration.childEntriesFamilySkip: 5400`,
-  `declaration.childEntryFamilySkip: 1575`, and
-  `declaration.framePrep: 1`.
-- The pre-pass profile for the same fixture was
-  `declaration.cacheMiss: 16560`,
-  `declaration.childEntryEntered: 11520`,
-  `declaration.childEntriesScanned: 10530`, and
-  `declaration.framePrep: 139`.
-- This is counter evidence only. Do not claim wall-clock speed from it.
-- Function handles are per-key; callable handles use
-  `Rules.callableLookupVersion`.
-- Variable/property/declaration handles now use per-key declaration versions.
-  Variable direct occurrences owned by ancestor rules are not cached as variable
-  handles because live/current bindings on the target frame can later shadow
-  them.
-- Scope-frame variable handles use cell identity plus owner-frame current
-  pointer version; cached handle reads no longer re-read
-  `currentBindingsByName`.
-- Reference variable lookup uses one modeled `live-current` lane instead of a
-  second live-only retry. Ancestor variable handle freshness is tracked with
-  target-frame current binding facts.
-- Reference lookup still allocates handle/context shapes around some typed
-  paths. A broad `ReferencePlan` attempt remains rejected after the control
-  loop matrix exposed stale dynamic-surface facts.
-- Reference handle access no longer allocates a separate access object; handle
-  reads/writes use scalar locals and the cached handle shape.
-- Callable namespace lookup routes candidate, child-surface, and
-  reference-import uncertainty through caller-specific decisions before using
-  the old direct-crawl bridge. Terminal mixin-only lookup ignores ruleset-only
-  exact candidates, and namespaced parameterized terminals keep rulesets only
-  as namespace containers.
-- Simple exact callable misses with covered child frames now skip the broad
-  `findMixinsFast` child crawl; frame-less reference-import placements still
-  document the remaining bridge.
-- Rendered reference-import callable misses now prepare the existing scope-frame
-  parent chain for reference-import trees and prove zero broad `findMixinsFast`
-  hits for the real miss fixture. Reference-mode wrappers no longer count as
-  lookup-unknown child surfaces by themselves.
-- Static reference handles now prove `leakyRules` and `searchScope`
-  disqualify handle writes across variable, property, declaration, function,
-  mixin, and mixin-ruleset families. Ordinary simple callable references also
-  prove they do not force scope-frame prep, and simple callable handle reuse
-  proves no repeated public or broad callable bridge after the first write.
-- Callable child-entry aggregate facts now carry reference-import child
-  surfaces separately from exact callable/mixin/ruleset surfaces, so a child
-  reference import no longer has to masquerade as an exact callable surface.
-- Late child additions now update prepared callable child-entry facts for exact
-  callable and reference-import child surfaces while invalidating stale
-  covered-miss frame state.
+Performance leash:
 
-Total remaining scope lives in `BINDING-LOOKUP-REMAINING.md`. Treat that file
-as the burn-down inventory; treat the queue below as the next executable slice.
+1. Start from the current selector `writeSyntax` baseline:
+   broad `benchmark.less` profiler status had `OutputWriter.mark` `54534` and
+   `OutputWriter.getSince` `49502`.
+2. Choose the next node/family task from `NODE-REWRITE-TRACKER.md`; use
+   caller-stack evidence for priority when several unchecked serialization rows
+   are available.
+3. Rerun focused tests and, for hot nodes, broad `benchmark.less` profiler
+   status after the patch.
+4. Keep the patch only if it completes or materially advances the selected
+   serialization row and does not violate the benchmark leash. Performance is
+   a gate here, not the active queue, and a benchmark result does not justify
+   switching focus.
 
-## Active Queue
+Immediate benchmark commands are defined in `PERFORMANCE-HANDOFF.md`.
+Performance evidence/history stays parked there; this handoff owns the active
+work lane and the gates for proving each slice complete.
 
-Complete every item in this queue before committing the next pass.
+Binding status: paused while `writeSyntax` is active. The compact binding lane
+below records completed production facts and the one open binding-handle task.
 
-1. [ ] Split guarded/configured child-surface uncertainty from simple exact
-child-frame misses. Scope: `findMixinsFastForUncoveredCallable`, imported
-guarded mixins, configured import child surfaces, `options.context`, and
-replacement/additive import config. Goal: only genuinely dynamic
-guarded/configured surfaces can reach the broad crawl. Acceptance: child-frame
-exact misses stay zero-bridge; guarded/config matrices stay green.
+## Active Binding Implementation Lane
 
-2. [ ] Finish callable retry-frame bridge deletion where retry frames are
-covered. Scope: parent/fallback frame loops in `Rules.findMixin`, fallback
-frame `prepareCallableLookupFrame`, recursive namespace starts, and
-reference-import fallback frames. Goal: covered retry-frame misses do not keep
-walking into broad direct crawls. Acceptance: parent/fallback callable miss spy
-tests plus existing fallback hit tests.
+This lane tracks `BINDING-INDEX-PROPOSAL.md`. It is currently paused by the
+Focus Spec, but these facts matter when work returns here.
 
-3. [ ] Add retry-frame bridge proof before deleting more fallback bridges.
-Scope: parent scope frames, fallback frames, covered misses, recursive namespace
-starts, and `findMixinsFastForUncoveredCallable`. Goal: prove which retry
-frames are already covered and which still need dynamic child-surface fallback.
-Acceptance: spy tests separate parent/fallback zero-bridge misses from real
-guarded/configured positives.
+Completed:
 
-4. [ ] Delete any remaining simple exact callable child scans that are
-provably covered by frame facts. Scope: current-frame miss, child-entry family
-skip, child-frame covered miss, and terminal mixin-only mode. Goal: avoid
-child-surface crawl when the frame already says the family/key cannot hit.
-Acceptance: `findMixinsFast` spy tests for simple mixin and mixin-ruleset
-misses.
+- [x] Harness semantic proof for current reads, `$!` occurrence reads, `:=`
+  parent-cell mutation, and child `:` shadowing.
+- [x] Static-variable `ScopeFrame` lookup facade.
+- [x] Source-order/current-read hardening, including explicit `$!` syntax.
+- [x] Declaration-bucket binding identity for covered static variable reads.
+- [x] Explicit covered `MISS` vs `UNCOVERED` fallback.
+- [x] Parent-frame coverage for nested static variable lookup.
+- [x] Already-static pending declaration-name promotion before facade lookup.
+- [x] Frame-owned declaration coverage for manual/prebuilt frames.
+- [x] Fallback-frame lookup ownership for covered static variable reads.
+- [x] Standalone lookup-cache attempt rejected; do not bolt on a separate
+  cache layer.
+- [x] Callable-record prototype for simple static callable hit/miss cases.
 
-5. [ ] Retry `ReferencePlan` only for source-static facts. Scope:
-`_lookupStrategy`, key node identity, read mode, target presence, `inCall`, and
-static parent/start shape. Goal: cache repeated preparation only when generated
-control/mixin surfaces cannot change the facts. Acceptance: control loop matrix
-plus variable/property/function/callable handle tests.
+Current facts:
 
-6. [ ] Eliminate remaining positive-path `collectKeyRemainder(...)` arrays.
-Scope: ruleset namespace, compound-prefix namespace, recursive namespace
-fallback paths, and guarded/imported namespace positives. Goal: arrays exist
-only on cold miss/legacy fallback paths. Acceptance: nested array-path spies for
-positive namespace cases stay zero.
+- Covered static variable hits/misses should stop in the binding facade.
+- `UNCOVERED` is only for explicitly unmodeled/cold cases: explicit targets,
+  interpolated keys, non-snapshot contextual `start`, still-dynamic or async
+  deferred declaration names, and frames whose declaration surface is not
+  covered.
+- Ordinary current reads and explicit `$!` source-position reads are distinct;
+  do not revive `$^` or `$~`.
+- No evaluated-value cache exists. Repeated lookup reuse should come from a
+  coherent binding-handle system, not a side cache.
 
-7. [ ] Extend stable namespace no-fallback proof to guarded/imported namespace
-surfaces. Scope: namespace path offsets, guarded mixins, reference imports,
-terminal mixin-only mode, and parameterized terminals. Goal: stable positives
-stay on offset paths without breaking Less semantics. Acceptance: Less fixture,
-guarded namespace tests, and reference-import namespace tests.
+12. [ ] Binding handle reuse model.
+   Design and prototype one coherent binding/index system for repeated
+   references. Do not add a separate "lookup cache" layer. A reference should
+   ask for a binding handle that already carries scope/version, reference
+   shape, resolved declaration/callable/property identity, static/dynamic/live
+   facts, and whether evaluated value or rendered scalar text can be reused.
+   Example target: repeated `.a.b.c[@color-1]` in the same evaluated scope
+   should not rediscover the `.a.b.c` callable/ruleset path and declaration
+   binding twice.
 
-8. [ ] Confirm scalar excluded-node handle invalidation after output binding.
-Scope: merge normalization scalar getters, handle shape before/after
-`bindOutput`, and stale occurrence invalidation. Goal: prove scalar exclusion
-identity changes exactly when the output declaration is bound. Acceptance:
-lower-level/materialization-aware handle test; do not use the rejected
-render-level `Reference.eval` spy shape.
+   Completion gate:
+   - no separate cache layer beside binding/index state
+   - binding handles carry identity from existing reference/path/scope state,
+     not rebuilt string joins or arrays on every lookup
+   - repeated compound-reference fixture proves the same binding facts are not
+     rediscovered
+   - no rules/mixin output caching
+   - no public materialization cache on the hot render path
+   - evaluated value/text reuse requires explicit static/effect facts on the
+     binding handle
+   - benchmark before/after proves value
 
-9. [ ] Add final public-bridge grep/test for ordinary static declaration
-reads. Scope: variable, property, declaration, index, and merge-chain refs.
-Goal: no hot read imports or calls wrapper-returning helpers or public
-`Rules.find*` materialization wrappers. Acceptance: reference spy matrix plus
-grep.
+   Current status:
+   - Static compound reference key arrays now keep their original array
+     identity when they already contain strings. This is a binding-handle
+     adjacent cut, not the finished handle system: it stops rebuilding a path
+     fact the reference already owns.
+   - Callable namespace lookup now walks static path arrays by offset instead
+     of allocating `[segment, ...rest]` at every namespace hop.
+   - Runtime variable binding lookup no longer allocates a defensive
+     `Set<ScopeFrame>` on every lookup, and scope-frame variable lookup no
+     longer allocates a per-call `blockedSource` closure just to test
+     `context.searchScope.has(...)`. Check-only recursion probes read the
+     existing `_searchScope` field directly so misses do not lazily create the
+     set.
+   - `findVarDeclarationFast(...)` now reuses one `Set<Rules>` for its
+     independent scope-surface walks instead of allocating a new visited set
+     for every parent/fallback surface search, and `buildReferenceFilter(...)`
+     no longer allocates a noop pass-through filter or calls a one-line
+     search-scope helper on every filter hit.
+   - Ordinary variable lookup no longer builds the Reference filter callback
+     before trying binding-frame and fast declaration lookup. It carries the
+     original caller filter, `_searchScope`, and param-var rules context as
+     fields and only synthesizes a registry callback for non-variable
+     `Rules.find(...)` paths.
+   - `Rules` callable/ruleset namespace helpers now reuse one `Set<Rules>` per
+     helper invocation for their independent surface searches instead of
+     allocating a fresh visited set for each parent scope.
+   - A focused reference test proves the mixin array-path lookup receives the
+     original static key array instance.
+   - No cache, evaluated-value reuse, side map, materialized node, output
+     wrapper, or render-path change was added.
+   - Current completion boundary: this item is only the callable-record
+     prototype. `Binding handle reuse model` remains open because repeated
+     reference reuse is not implemented as one coherent binding-handle system.
 
-10. [ ] Prove reference-import declaration/callable misses stay on modeled
-frames after retry-frame cleanup. Scope: reference import roots, rendered
-reference imports, parent/fallback frames, and optional callable misses. Goal:
-no regression to frame-less broad crawl. Acceptance: real reference-import
-fixtures plus broad-bridge spies.
+Secondary deep-cut queue:
 
-11. [ ] Hide scalar declaration exclusion fields from exported option shapes
-or document why the constructor still needs an internal overlap. Scope:
-`ReferenceOptions`, `DeclarationFindOptions`, generated declarations, and
-merge normalization. Goal: avoid treating scalar handle keys as user-facing
-API. Acceptance: type/build proof and grep showing only internal use.
+Do not add micro-items here. Completed pass history belongs in git and
+`PERFORMANCE-HANDOFF.md`; this queue should tell the next agent what remains.
 
-12. [ ] Prove assignment-wrapper coldness in CI-friendly form. Scope:
-`find*DeclarationAssignmentLookup`, `find*DeclarationOccurrence`, `setDefined`,
-and ordinary reference reads. Goal: convert the grep proof into a stable test or
-script assertion so future changes cannot route reads through wrappers.
-Acceptance: focused grep/test command committed or documented as gate.
+Completed highlights:
 
-13. [ ] Re-audit public `Rules.find*` materialization wrappers after the
-remaining direct declaration bridge proof. Scope: `findVariable`,
-`findProperty`, `findDeclaration`, `findAnyDeclaration`, and reference import
-reads. Goal: keep hot paths on occurrence helpers while preserving cold API
-surfaces until they are explicitly deleted. Acceptance: no hot reference caller
-uses materialization wrappers.
+- [x] Callable `default()` guard classification moved out of hot candidate
+  prep.
+- [x] Static non-rules-like reference values can return directly without
+  routine copy.
+- [x] `PseudoSelector` and `Ampersand` have structural render/placement cuts.
+- [x] `Reference` passes 1-10 removed wrapper closures, duplicate copy/eval
+  branches, option-object plumbing, render-only post-eval copy/inherit, and
+  several hot lookup helper allocations.
+- [x] Sync immediate eval/render split landed for the covered nodes; routine
+  render replacement should not imply public materialization or `.inherit(...)`.
 
-14. [ ] Run changed-baseline and fix any lookup-owned fallout now that the
-ruleset header streaming blocker is repaired. Scope: changed Less/Jess
-fixtures, ruleset render interaction with lookup work, and branch-local
-failures. Goal: use baseline evidence as a gate again. Acceptance:
-`pnpm run verify:baseline -- --changed` either passes or has a lookup-owned
-failure recorded with a fix.
+Open tasks:
 
-15. [ ] Refresh lookup profile and one-iteration hotpath smoke after the next
-bridge deletion batch. Scope: `scope-lookup-stress.less`, direct lookup
-counters, old registry counters, and smoke timings. Goal: keep counter evidence
-current without claiming speed. Acceptance: profile recorded with old
-`Rules.find`/registry counters empty and smoke values labeled smoke-only.
+Current active queue, refreshed every pass. Each item is a whole task with its
+own proof surface; do not convert these into micro-items. Keep exactly this
+shape current before commit.
 
-## Unfinished-Item Exception
+1. [ ] Finish `Call` render/stringification cleanup: callable output selection,
+   remaining whole-call return/readback boundaries, `evalArgNodes(...)` copy
+   pressure, non-scalar/custom/trivia arg trim marks, async helper ladders, and
+   repeated eval.
 
-This pass proved and fixed prepared child-entry mutation safety for late
-additions. Late exact callable children and late reference-import child
-surfaces now update `directChildRuleEntries` and clear stale scope-frame
-covered-miss facts. It also confirmed ordinary read paths use direct occurrence
-helpers while wrapper-returning declaration lookup stays assignment-only.
+   Current partial status: empty string-name calls skip writer readback;
+   rendered args are side-effect writes instead of discarded strings; plain and
+   evaluated CSS-call buffer render reuses the caller mark; scalar-contract args
+   (`Num`, `Dimension`, `Color`, `Bool`, `Any`, `Anonymous`, `Keyword`) skip
+   per-arg trim/eval when no trivia is active and base `Node.eval` is intact;
+   `writeEvaluatedSyntax(...)` also writes those same static scalar token
+   contracts directly instead of calling `evalImmediateSync(...)`; the scalar
+   check uses direct type tags rather than the generic `isNode(...)`
+   classifier; stylesheet `Func` calls now pass the source arg list to the
+   callable binding surface instead of pre-evaluating a copied replacement
+   `List`; finalized empty string-name fallback calls write the known
+   `name()`/important text directly without opening a call-level mark/readback;
+   source syntax for no-trivia numeric/bool/color comma arg lists writes args
+   directly without the inner trim mark/readback; trim-stable token args
+   (`Any`/`Anonymous`/`Keyword`) now use that same simple source-arg writer and
+   skip the inner arg-list trim mark when no trivia is active; plain/finalized
+   call render now carries a string-only text state for known scalar/no-trivia
+   args and content, including async scalar resolutions, so those paths return
+   known text without whole-call writer readback. Color args are now also
+   covered by the known evaluated scalar writer, matching the earlier
+   `serializeRenderedArgs(...)` scalar classification and avoiding the
+   fallback per-arg trim mark/readback. `evalArgNodes(...)` now runs a
+   sync-first loop, evaluates non-`F_MAY_ASYNC` args through
+   `evalImmediateSync(...)` instead of public `eval(...)`, and only enters an
+   async continuation after an evaluated arg is actually thenable. Focused tests
+   prove base sync args bypass public `Node.eval`, custom sync eval overrides
+   still run, and the existing `copyWithReusableLeaves` ownership boundary plus
+   `calcFrames` cleanup are preserved.
+2. [ ] Finish `QueryCondition` dynamic render by removing the child mark probe
+   only after child render contracts prove write-vs-return behavior directly.
 
-Deferred: guarded/configured child-surface splitting, retry-frame cleanup,
-`ReferencePlan`, namespace array deletion, scalar output-binding invalidation,
-and changed-baseline verification remain active. Namespace positive-path array
-proof already exists, but the remaining `collectKeyRemainder(...)` fallbacks
-need a deeper namespace pass rather than a speculative one-line cut.
-Changed-baseline still selects five packages and was not rerun in this pass;
-the previous full core Vitest no-output blocker remains unresolved rather than
-passed.
+   Current partial status: static child fast-path checks no longer call
+   `Object.getPrototypeOf(...)` per child. QueryCondition now uses explicit
+   owned scalar type/prototype contracts (`Any`/`Anonymous`/`Keyword`, `Bool`,
+   `Dimension`/`Num`, `Color`) before direct `writeSyntax(...)`; custom render
+   overrides still use the localized write-vs-return mark fallback. Exact base
+   `Paren` children are now included in the direct static child contract, while
+   `Paren` subclasses/custom syntax stay on the fallback readback path. Static
+   render and direct flat-buffer render now avoid the top-level query
+   mark/getSince readback for direct scalar/paren children, and dynamic render
+   carries returned text locally so only uncertain/custom children pay the
+   localized probe. QueryCondition child boundary spacing now writes the literal
+   boundary directly instead of calling a one-line helper. A no-op audit kept
+   the localized child probes because focused QueryCondition tests prove custom
+   dynamic children may either return text without writing or write different
+   text than they return.
+3. [ ] Finish `AtRule` body-state staging and remaining custom
+   eval/import/render branch ladders.
 
-## Backlog Sources
+   Current partial status: dynamic leaf rendering no longer calls child
+   public `toString(...)` from `renderLeafNodeToString(...)`; it writes child
+   syntax directly and keeps the existing localized mark only for the needed
+   string boundary. Nested `@layer` registration now reads at-rule name value
+   identity directly instead of calling public name stringification while
+   walking active parent layer records. `evalNode(...)` no longer wraps
+   `evalBodyNode(...)` in a catch/rethrow or async rejection handler that only
+   rethrows, and narrowed async body/prelude branches now call `.then(...)`
+   directly instead of wrapping already-thenable values with
+   `Promise.resolve(...)`. `getHeaderString(...)` now writes non-scalar header
+   name/prelude text into detached `OutputWriter` instances instead of using
+   the caller writer with `mark()/getSince()/restore()` rollback; trailing
+   prelude comment trivia also writes to a detached writer while preserving active
+   emitted-trivia state. Dynamic leaf at-rule name/prelude assembly now uses
+   the same detached writer boundary for non-scalar pieces instead of
+   caller-writer mark/readback. The root-only hoisted-parent frame scan now runs
+   only when `context.bubbleRootAtRules && this.isRootOnly()` can use it, so
+   ordinary at-rule body eval skips the frame walk. Leaf/header whitespace
+   checks now use direct character scans instead of regex `trim()`/`replace()`
+   probes, and prelude/post spacing no longer concatenates temporary strings
+   only to test trailing whitespace. Body eval result finishing is lifted out of
+   per-call nested closure scaffolding into node methods. Evaluated AtRule
+   render now opens the prepared-writer buffer mark only when a shared flat
+   buffer can consume it; segmented and non-shared buffer renders skip that
+   dead mark and use the returned render text path.
+4. [ ] Finish `Ruleset.getHeaderString(...)` capture removal for frame
+   render/comparison paths and same-property duplicate declaration pre-render.
 
-When the active queue is empty, pull the next binding/lookup task from:
+   Current partial status: `getHeaderString(...)` no longer writes selector
+   syntax into the caller's active writer and then rolls it back with
+   `mark()/getSince()/restore()`. Header selector text now uses a detached
+   `OutputWriter`, restores the caller writer/trivia/reference-filter state in
+   `finally`, and the focused Ruleset test asserts the caller writer receives
+   no mark/readback/restore traffic. Duplicate declaration caches and the
+   reverse same-property pre-render pass now allocate/run only after the first
+   scan proves at least one declaration property repeats. Registration now
+   calls `selector.eval(context)` directly instead of routing through a
+   private one-line selector identity helper. Evaluated Ruleset render now opens
+   the prepared-writer buffer mark only when a shared flat buffer can consume it;
+   segmented and non-shared buffer renders skip that dead mark and use the
+   returned render text path. Deeper selector composition, body prep, wrappers,
+   direct container writer splitting, and render branches remain open.
+5. [ ] Finish `Declaration` custom-property raw-source, merge-state, internal
+   mark/replace, and materialization boundaries.
 
-- `BINDING-LOOKUP-REMAINING.md` for the total remaining burn-down inventory.
-- `BINDING-INDEX-PROPOSAL.md` for the larger binding-index migration agenda.
-- `PERFORMANCE-HANDOFF.md` for measured lookup/profile follow-ups.
-- `AGGRESSIVE-CUTTING-REVIEW.md` for rejected patch shapes to avoid.
+   Current partial status: custom-property fallback stringification now uses
+   direct `writeSyntax(...)` with a detached writer instead of child
+   `toString(...)`; custom value writing also uses direct syntax; non-custom
+   declaration `writeSyntax(...)` now writes directly without the outer
+   declaration mark/readback used only by cold string-return callers;
+   space-merge rendering stopped returning an unused captured string; simple
+   no-trivia `Any` property names and important flags now write known text
+   directly without local trim marks. Raw custom-property scalar `Any` values
+   without declaration-terminator line breaks now write directly and skip the
+   custom value mark/replace/readback normalization boundary; trailing-line-break
+   values intentionally stay on the normalization path, and that path now uses
+   a character scan instead of regex replacement to detect/drop the terminal
+   declaration newline. Buffer renders now write declaration syntax directly
+   under their existing outer buffer mark instead of nesting the cold
+   `declValueTrimmedString(...)` mark/readback helper. Known no-trivia
+   `Any` name/value declaration buffer renders with default assignment and no
+   merge/custom/interpolated state now write the final declaration text directly
+   to the requested buffer without prepared-writer mark/readback setup.
+   Render-assignment and
+   custom-interpolated replacement chains now call `.then(...)` directly after
+   `isThenable(...)` narrowing instead of wrapping already-thenable values with
+   `Promise.resolve(...)`. Render-assignment merge adapter state no longer
+   carries the unused stale `value` field; the selected render value remains on
+   the outer declaration render state. Assignment normalization and eval value
+   state now mutate the existing state object directly instead of allocating
+   local setter closures and shadow state variables. Custom-property fallback
+   function call assembly now reads scalar `Any` fallback names/args directly
+   instead of opening detached writer/stringification paths for those parts;
+   non-scalar fallback parts stay on the existing detached cold boundary.
+6. [ ] Finish `Rules` root/body render, imports, placement state, merge output,
+   and duplicate declaration materialization.
 
-Keep only the selected next tasks here. Do not copy backlog history or old
-evidence into this file.
+   Current partial status: root-owned `@charset` output now writes the
+   context-owned scalar charset syntax directly instead of calling public
+   `toTrimmedString(...)`. Root imports and leading comments before root imports
+   now write direct syntax in both no-trivia and trivia-backed detached-writer
+   branches instead of public `toString(...)`/`toTrimmedString(...)` transport,
+   and the root serializer only allocates the leading-comment suppression list
+   when it actually suppresses comments. Source-mode non-container leaf rules
+   now write direct syntax instead of calling public `toTrimmedString(...)` and
+   discarding its returned string. Source-mode child `Rules` wrappers now emit
+   their body directly through `_emitSourceRulesBody(...)` instead of public
+   `toTrimmedString(...)` preview transport; the caller mark is only kept to
+   discard genuinely empty child output. Render-mode static/evaluated child
+   `Rules` wrappers now emit their body directly through `_emitRenderRulesBody(...)`
+   instead of `writer.preview(...)` around public `render(...)` transport.
+   Static declaration registration prep now calls `.then(...)` directly after
+   `isThenable(...)` narrowing instead of wrapping already-thenable prepared
+   nodes with `Promise.resolve(...)`. Render-mode unprepared dynamic child
+   `Rules` wrappers now set up the child rules context and stream the child body
+   directly instead of entering `writer.preview(...)` around public
+   `render(...)` transport. Hoisted parent selector headers now write selector
+   syntax directly instead of calling the parent selector public `toString(...)`
+   into the detached header writer. `Rules.render(..., buffer)` now prepares
+   its print state with the requested render buffer and uses the prepared
+   writeback helper, so shared flat-buffer writers do not append a second copy
+   of the rendered rules body; the helper writes only a missing returned-text
+   suffix when a shared writer already emitted the prefix.
+   Broader body render, placement state, merge output, and duplicate declaration
+   materialization remain open.
+7. [ ] Finish `Reference` public value materialization, rules-like surfaces,
+   merged assign normalization, key conversion, and remaining cold copy/inherit
+   ownership.
+
+   Current partial status: non-buffer `Reference.render(...)` now prepares the
+   context-owned render print state once and passes it to resolved child
+   renders, fixing detached scalar child writes without adding public
+   materialization. Buffer `Reference.render(...)` now strips explicit writers
+   before resolved child renders and writes only the returned text to the
+   requested render buffer. Array-valued reference syntax keys now stream each
+   owned key segment to the writer instead of concatenating a temporary key
+   string before one write.
+8. [ ] Finish `Mixin` guard/default/body copy interactions and callable
+   candidate output.
+
+   Current partial status: callable finalization now reuses an already-attached
+   single-output mixin slot when it matches the same source rules, output rules,
+   and ambient lookup policy instead of rebuilding child segments, maps, and
+   placement arrays. Interpolated mixin registration now evaluates the dynamic
+   name before deriving the replacement mixin, so the prepared wrapper owns the
+   final `Any` name directly instead of copying the interpolated name subtree
+   and replacing it afterward. Callable candidate state no longer assigns the
+   owned output rules to the source mixin body's parent just before adopting
+   those same rules into the actual candidate parent; focused tests prove the
+   canonical mixin body remains parented to the source mixin while the owned
+   output rules land on the definition parent. Guard/default/body ownership
+   remains open.
+9. [ ] Finish `Interpolated` cold replacement capture, selector/generic
+   materialization, and replacement arrays.
+
+   Current partial status: whole-selector and embedded selector interpolation
+   with owned scalar token replacements (`Any`/`Anonymous`/`Keyword`) now build
+   selector text from the replacement value directly instead of calling public
+   `toTrimmedString(...)`. Public `replace(...)` also reads owned scalar token
+   text directly for those replacements. Generic `Any` materialization now
+   writes evaluated replacements directly instead of calling public
+   `Interpolated.toTrimmedString(...)` on itself. Embedded selector-list
+   replacements now write generated `:is(...)` wrapper text directly instead of
+   materializing a temporary generated `PseudoSelector` only to serialize it.
+   Public `replace(...)` now
+   writes non-scalar replacements through direct `writeSyntax(...)` on its cold
+   string boundary instead of calling public replacement
+   `toTrimmedString(...)`. Whole and embedded non-scalar selector assembly now
+   use the same direct replacement writer instead of public replacement
+   `toTrimmedString(...)`. Generic materialization now builds interpolated text
+   through a private direct text builder instead of routing through
+   `writeWithReplacements(...)` and its writer mark/readback capture. Eval and
+   resolve replacement arrays are now allocated lazily only after a replacement
+   changes. Compound selector interpolation now scans simple selector tokens
+   directly instead of using regex `match(...)`, a token array, and a pre-sized
+   selector array. Rendered scalar replacements now write owned token text
+   directly instead of opening a trim mark around scalar `writeSyntax(...)`, and
+   render buffer output reuses the outer render mark instead of taking a second
+   inner mark just to return emitted text. Semantic selector ownership
+   boundaries remain.
+10. [x] Finish `StyleImport` first-use placement copies by replacing them with
+   canonical source placement state, or document the exact semantic blocker.
+
+   Completion status: configured import variable-key matching and binding
+   attachment no longer call declaration-name public `toString(...)`; normal
+   `Any` names use direct `.value`, with non-Any names falling back to
+   `valueOf()`. The remaining first-use child copies are documented in
+   `NODE-REWRITE-TRACKER.md` as semantic placement state: focused tests require
+   owned placement children and source-child mapping. Do not remove them as a
+   convenience-copy cut without a replacement placement-state model.
+11. [x] Finish `Node` base/source render fallback so inherited source render no
+   longer routes hot render through public `toTrimmedString(...)`.
+
+   Completion status: base `Node.writeSyntax(...)` no longer calls child
+   public `toString(...)`; child values write syntax directly. Base
+   `toTrimmedString(...)` also writes child values directly, using the
+   source-trivia emitter instead of child public stringification when trivia is
+   active. Base `renderSource(...)` now writes inherited no-trivia source syntax
+   directly through `writeSyntax(...)` instead of routing through public
+   `toTrimmedString(...)`. Custom `toTrimmedString(...)` overrides and active
+   source-trivia emission remain documented compatibility/source-preservation
+   boundaries.
+12. [ ] Finish scalar wrapper leftovers in `Block`, `Paren`, `Url`, `Quoted`,
+   `Negative`, and `AttributeSelector` where localized mark/readback remains
+   outside documented cold/public boundaries.
+
+   Current partial status: `Block` and `Url` no longer route trivia-backed
+   child emission through public child `toString(...)`; they use direct
+   source-trivia syntax emission. `RawRules` received the same child-emission
+   cut even though it is tracked in the node tracker rather than this scalar
+   wrapper row. `AttributeSelector` now writes common scalar non-bare forms
+   (`Any`/simple `Quoted` values, including resolved variable values) without
+   writer mark/readback, and raw `@{...}` attribute interpolation now uses one
+   direct token parser instead of duplicate regex `match(...)` paths in eval and
+   resolve. `Block` scalar `Any` flat-buffer render and
+   `Negative` scalar dimension flat-buffer render now write known text without
+   print-state setup, writer mark/readback, or a second writer-to-buffer copy.
+   Non-scalar `Block` buffer render now writes syntax directly under the
+   existing outer buffer mark instead of nesting the cold
+   `renderBlockSyntax(...)` mark/readback helper.
+   Resolved `Any` negative render now writes `-value` directly instead of
+   entering child render/operation transport, while public resolve materializes
+   the scalar `Any('-value')` node.
+   `Url` scalar `Any` render now writes/buffers normalized `url(...)` text
+   directly after value selection, without prepared writer setup,
+   mark/getSince, replaceSince, or a second writer-to-buffer copy. Non-scalar
+   URL buffer render now writes syntax directly under the existing outer buffer
+   mark instead of nesting the cold `renderUrlSyntax(...)` mark/readback helper;
+   simple non-escaped quoted URL values now take the direct flat-buffer text
+   path as well. Non-buffer quoted rendering and non-scalar URL normalization
+   still keep their localized boundaries.
+   `Paren` dynamic wrapped render now keeps child
+   intermediate render text out of explicit writers and writes only the final
+   wrapped string to the requested writer or buffer. Resolved no-trivia `Any`
+   paren values now write known wrapper text directly instead of rendering the
+   scalar child to intermediate text. Resolved synchronous non-scalar paren
+   children now stream flat-buffer output as open delimiter, child output, and
+   close delimiter instead of rendering the child to a standalone string and
+   writing the wrapped result back. `Quoted` escaped literal render now
+   writes final raw text to explicit writers and keeps buffer output out of
+   those writers. `Quoted.compare()` now uses value semantics instead of
+   public `toString()` transport. `AttributeSelector.valueOf()` now uses node
+   value semantics for node-valued names instead of public
+   `toTrimmedString()` transport. A no-op audit kept Paren escaped
+   semicolon-list render on the existing `renderListValueSyntax(...)` string
+   boundary because the render path already avoids replacement-list
+   materialization; cutting the remaining mark/readback belongs to shared
+   List string-return contracts. The same audit kept Quoted non-scalar/
+   interpolated value wrapping on the cold `renderQuotedSyntax(...)` boundary.
+13. [x] Finish `List`/`Sequence` public render string-return compatibility:
+   either document it as the cold public boundary or split a direct buffer-only
+   path that avoids returning a string when callers do not need it.
+
+   Completion status: `Sequence.renderResolvedValue(...)` no longer passes
+   an explicit caller writer into the single-node child render when a render
+   buffer is the requested sink. The child result is rendered to a string and
+   written once to the render buffer, so buffer-only sequence rendering no
+   longer also mutates an unrelated explicit writer. This covers both the
+   resolved `value instanceof Node` branch and the single non-`Nil` child
+   branch. `List` does not share this exact leak because its buffer path already
+   goes through `prepareBufferPrintState(...)`, which strips explicit writers.
+   Both `render(context)` overloads and `RenderBufferNode.render(...)` still
+   return `MaybePromise<string>` by public API contract, and the buffer helpers
+   return the text they write. Treat that returned string as the documented
+   public compatibility boundary, not as an open render-only capture bug.
+14. [ ] Finish `List`/`Sequence` addition/materialization copy ownership,
+   including `deriveAdditionSequence(...)`, `copyWithReusableLeaves(...)`, and
+   output ownership after arithmetic/list operations.
+
+   Current partial status: `List.operate(...)` and `Sequence.operate(...)` no
+   longer derive a copied left container and then mutate its value array with
+   `push(...)`. Addition now allocates the final output array length up front
+   and copies left/right operands into their final slots while keeping the
+   existing `copyWithReusableLeaves(...)` ownership boundary. The shared flat
+   render-buffer suffix helper now reads the active buffer parts from the mark
+   directly instead of calling writer `getSince(...)` a second time, preserving
+   the existing one-read List/Sequence shared-buffer contract. Remaining work:
+   decide whether the copied leaves/output ownership boundary itself can be
+   narrowed further without violating canonical-parent tests.
+15. [ ] Finish `Operation` arithmetic materialization and preserve-mode calc
+   fallback/materialization ownership without adopting unchanged canonical
+   operands.
+
+   Current partial status: sync render/resolve operand evaluation now uses
+   `evalImmediateSync(...)` for non-`F_MAY_ASYNC` operands instead of public
+   `eval(...)` plus thenable checks. Preserved-operation flat-buffer render no
+   longer leaks intermediate operand text into a caller-supplied explicit
+   writer. `withOperands(...)` now owns unchanged source operands with
+   `copyOwnedWithReusableLeaves(...)` instead of reusing source-free scalar
+   leaves as output operands. Preserve-mode `calc(...)` fallback now always
+   builds an owned operation wrapper through `withOperands(...)` before marking
+   fallback operands evaluated, so unchanged source operands stay parented to
+   the canonical source operation. Broader arithmetic/list materialization
+   remains open.
+
+Parked until the current `writeSyntax` focus ends:
+
+- selector/extend equality and factory cuts;
+- binding-index fallback bridge cleanup;
+- broad copy-stack work that is not required by the selected node family;
+- benchmark tuning that is not a leash for the active serialization task.
+
+Evidence pointer: use `NODE-REWRITE-TRACKER.md` for per-node status and
+`PERFORMANCE-HANDOFF.md` for benchmark/profile history.
 
 ## Gates
 
-Use focused commands first. Current usual focused set:
+Before editing:
+
+- Build or inspect the relevant code path.
+- Capture or identify the benchmark/profile target when touching hot paths.
+- State the hypothesis in this handoff or in the working notes for the pass.
+
+Required before commit:
 
 ```sh
-pnpm exec eslint packages/core/src/tree/util/direct-rules-lookup.ts packages/core/src/tree/reference.ts packages/core/src/tree/rules.ts packages/core/src/tree/scope-frame.ts
-pnpm --filter @jesscss/core exec vitest src/tree/__tests__/reference.test.ts src/tree/__tests__/mixin.test.ts src/tree/__tests__/call.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/control.test.ts --run --testNamePattern "leaky|function|fallback|static function binding|static callable binding|mixin-ruleset calls with args|namespace fast path|ScopeFrame callable buckets|terminal mixin-only|rulesVisibility|readonly|findAnyDeclaration|iteration vars|import|nested mixin-ruleset|recursive namespace|callable cache|handle|ruleset path|compound-prefix|namespace union|source-order|property|variable|semanticFilter|dynamic|setDefined|ambient" --reporter=dot
-```
-
-Before commit, run:
-
-```sh
-rg -n "ReferenceLookupOptions|registryless|registry-utils|register\\('function'|findFunctionDirect|ReferenceFindOptions|stale registry|registry-backed|registry can find|findDeclaration\\([^,]+, undefined|Parameters<Rules\\['findMixinsFast'\\]>|RULES_LOOKUP_ADAPTERS|\\bRulesLookupAdapter\\b|lookupFunctionReference|lookupCallableReference|currentFrameHasNoMixinChildSurface|buildDeclarationReferenceLookupOptions|buildCallableReferenceLookupOptions|lastCallableLookup|copyLiveBindingSlots|ReferencePlan|_referencePlan|live-only" packages/core/src packages/jess-plugin-less/src packages/language-service/src packages/scss-parser/test/baseline.test.ts
-git diff --check
-pnpm --filter @jesscss/core build
 pnpm run verify:aggressive-cutting-review
-pnpm run audit:node-creation
-pnpm --filter jess build
-pnpm run measure:less:hotpath -- --fixture tests-unit/mixins-guards/mixins-guards.less --fixture scripts/fixtures/less-hotpath/scope-lookup-stress.less --iterations 1
+git diff --check
 ```
 
-Use `pnpm run verify:baseline -- --changed` when the touched area needs a
-broader fixture gate.
+Also run the smallest focused tests for touched behavior.
 
-## Handoff Update Rule
+For performance work, use the exact before/after benchmark/profile lane from
+`PERFORMANCE-HANDOFF.md`. Do not report profiler elapsed time as app runtime;
+label evidence as real benchmark, instrumented profiler, or CPU profile.
 
-At the end of a pass:
+Use `pnpm run verify:baseline -- --changed` when the touched area needs the
+broader gate. If Vitest workers stall, report it as inconclusive; do not mark
+the gate passed.
 
-1. Replace completed queue items with one concise baseline note if needed.
-2. If any active queue item was not completed, record a short explicit
-   unfinished-item exception: which item remains, what blocked immediate
-   continuation, and why stopping was necessary.
-3. Seed only the next active binding/lookup queue. Do not reseed in a way that
-   hides unfinished active queue work.
-4. The new active queue must contain exactly 15 real binding/lookup tasks,
-   numbered `1` through `15`; reseeding itself is not a queue item.
-5. Keep this file small. Pointers to backlog docs are good; copied backlog
-   content is not. If old evidence matters, put it in the commit or
-   `PERFORMANCE-HANDOFF.md`, not here.
-6. Keep `Aggressive Cutting Self-Prosecution` to the latest pass only.
+## When Done
+
+1. Update queue status only at the whole-task level. Mark a queue checkbox done
+   only when the stated task objective is complete against its proof surface.
+   Otherwise record the change as partial status under the still-open item and
+   keep the checkbox open.
+2. Replace the self-prosecution block below with exact files/functions and a
+   clear verdict for the current pass. Do not append pass history.
+3. If the pass produced benchmark/profile evidence, add the evidence summary to
+   `PERFORMANCE-HANDOFF.md`.
+4. If the pass changes the cutting doctrine, update
+   `AGGRESSIVE-CUTTING-REVIEW.md`.
+5. Run gates.
+6. Stage only related files.
+7. Commit and push.
+8. Report:
+   - commit hash;
+   - machinery deleted, rejected, or deferred;
+   - focused tests and gates;
+   - benchmark/profile result or why it was inconclusive;
+   - intentionally dirty unrelated files.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: user-directed merge follow-up for serialization separation in
-  `Condition`, `DefaultGuard`, `Expression`, `Paren`, and `QueryCondition`
-  after the `origin/dev` merge rejected incompatible guard/query-condition
-  files. This was not a binding queue pass; the active binding queue above is
-  unchanged and still must be completed next.
-- Verdict: accepted as source/render separation work needed to keep the merged
-  serialization direction without losing `$($a)` guard references. No speed
-  claim.
-- New traversal: `QueryCondition.writeQueryConditionSyntax` loops over its
-  existing value array once to write source syntax. This replaces prior
-  string/readback transport for the same children and does not add parent
-  walks, child-rule crawls, lookup scans, or registry paths.
-- New node/materialization: production code adds no AST nodes. A new
-  `OutputWriter(false, buffer.parts)` is created only when a flat render buffer
-  requests shared-writer output and no matching active writer exists.
-- Render path: static query conditions now write direct child syntax into the
-  active writer/buffer. Dynamic query children render directly and probe only
-  custom/dynamic children that may return without writing. Guard condition
-  syntax uses child `writeSyntax`, with `Expression.writeSyntax` preserving
-  `$(`...`)` around references.
-- Helper/API surface: added `Node.writeSyntax` as the default trimmed-syntax
-  writer, `OutputWriter.position()` for uncounted internal chunk position, and
-  `OutputWriter.writesTo(...)`/chunk-backed construction for shared flat-buffer
-  writers. These support existing direct writer tests and avoid public lookup
-  surface.
-- Metadata mutations: none. No parent/source/frozen/location state is changed.
-- Allocation changes: no new arrays/maps/side tables. Query rendering avoids
-  static sibling probes; fallback probing remains only for custom/dynamic
-  children and async children that may return without writing.
-- Evidence: `pnpm --filter @jesscss/core build` passed. Focused touched matrix
-  passed (`221` tests). Broader merge matrix passed (`634` passed, `9`
-  skipped). `pnpm run verify:aggressive-cutting-review` exited `0` and flagged
-  only the loop/probe/writer items prosecuted here.
+This section is deliberately current-pass only. Replace it on each pass; do not
+append pass history here. Durable status belongs in the active queue/tracker,
+performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
+recoverable from git history.
+
+Current pass: Declaration scalar render-buffer direct write.
+
+- New traversal: none.
+- New node/materialization: none. The fast path only serializes existing
+  `Any` name/value/important nodes to text.
+- Render path: `Declaration.render(..., buffer)` now writes known no-trivia
+  `Any` name/value declaration output directly to the requested render buffer
+  when assignment is default and there is no merge adapter, custom interpolated
+  state, assignment normalization, source trivia, or non-`Any` value. The
+  broader declaration formatter remains responsible for custom properties with
+  declaration-terminator newlines, merge rendering, interpolated values, trivia,
+  non-default assignment surfaces, and non-buffer public string output.
+- Helper/API surface: no public API or helper surface changed.
+- Metadata mutations: none.
+- Rejected cut: the remaining `Declaration` mark/replace boundaries are not
+  mechanical. Name trimming, non-custom value formatting, raw custom-property
+  newline normalization, merge adapters, contextual important, and interpolated
+  custom replacement output still need the existing formatter boundary until a
+  direct writer contract covers those semantics.
+- Evidence: focused Declaration segmented-buffer test passed with
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/declaration.test.ts --testNamePattern "writes resolved declaration output into segmented buffers"`;
+  full `declaration.test.ts` passed with
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/declaration.test.ts`;
+  changed-file eslint passed with
+  `pnpm exec eslint packages/core/src/tree/declaration.ts packages/core/src/tree/__tests__/declaration.test.ts`;
+  `pnpm --filter @jesscss/core build` passed; and
+  `pnpm run verify:aggressive-cutting-review` exited 0 while flagging expected
+  read-only `sourceRoot` probes for trivia detection, one test-only
+  `new CountingWriter()`, and unrelated dirty-tree danger tokens outside this
+  slice.
+- Verdict: accepted as a bounded partial Declaration render-buffer cut if final
+  gates pass. Raw custom-property branches, merge state, internal mark/replace,
+  and materialization remain open.
+  No performance claim; this was not a measured benchmark pass.

@@ -119,27 +119,27 @@ function substituteChannelVariables(
     if (format === 'rgb' && 'r' in channelValues) {
       switch (channelName) {
         case 'r':
-          return new Dimension({ number: channelValues.r, unit: '' }, node.options, location, node.treeContext);
+          return new Dimension({ number: channelValues.r, unit: '' }, node.options, location).inherit(node);
         case 'g':
-          return new Dimension({ number: channelValues.g, unit: '' }, node.options, location, node.treeContext);
+          return new Dimension({ number: channelValues.g, unit: '' }, node.options, location).inherit(node);
         case 'b':
-          return new Dimension({ number: channelValues.b, unit: '' }, node.options, location, node.treeContext);
+          return new Dimension({ number: channelValues.b, unit: '' }, node.options, location).inherit(node);
         case 'alpha':
           // For RGB context, alpha is 0-1, but when used in calc for r/g/b, it should be 0-255
           // However, according to spec, channel values are resolved first, so alpha stays 0-1
           // The conversion happens when the result is used for r/g/b output
-          return new Dimension({ number: channelValues.alpha, unit: '' }, node.options, location, node.treeContext);
+          return new Dimension({ number: channelValues.alpha, unit: '' }, node.options, location).inherit(node);
       }
     } else if (format === 'hsl' && 'h' in channelValues) {
       switch (channelName) {
         case 'h':
-          return new Dimension({ number: channelValues.h, unit: 'deg' }, node.options, location, node.treeContext);
+          return new Dimension({ number: channelValues.h, unit: 'deg' }, node.options, location).inherit(node);
         case 's':
-          return new Dimension({ number: channelValues.s * 100, unit: '%' }, node.options, location, node.treeContext);
+          return new Dimension({ number: channelValues.s * 100, unit: '%' }, node.options, location).inherit(node);
         case 'l':
-          return new Dimension({ number: channelValues.l * 100, unit: '%' }, node.options, location, node.treeContext);
+          return new Dimension({ number: channelValues.l * 100, unit: '%' }, node.options, location).inherit(node);
         case 'alpha':
-          return new Dimension({ number: channelValues.alpha, unit: '' }, node.options, location, node.treeContext);
+          return new Dimension({ number: channelValues.alpha, unit: '' }, node.options, location).inherit(node);
       }
     }
   }
@@ -153,14 +153,13 @@ function substituteChannelVariables(
             substituteChannelVariables(arg, channelValues, format)
           ),
           args.options,
-          nodeLocation(args),
-          args.treeContext
+          nodeLocation(args)
         ).inherit(args)
       : undefined;
     return new Call({
       ...node.value,
       args: substitutedArgs
-    }, node.options, nodeLocation(node), node.treeContext).inherit(node);
+    }, node.options, nodeLocation(node)).inherit(node);
   }
 
   // If it's an Operation, recursively substitute in its operands
@@ -170,7 +169,7 @@ function substituteChannelVariables(
       substituteChannelVariables(left, channelValues, format),
       op,
       substituteChannelVariables(right, channelValues, format)
-    ], node.options, nodeLocation(node), node.treeContext).inherit(node);
+    ], node.options, nodeLocation(node)).inherit(node);
   }
 
   // If it's a Sequence or List, recursively substitute in its values
@@ -180,8 +179,7 @@ function substituteChannelVariables(
         substituteChannelVariables(item, channelValues, format)
       ),
       node.options,
-      nodeLocation(node),
-      node.treeContext
+      nodeLocation(node)
     ).inherit(node);
   }
 
@@ -191,8 +189,7 @@ function substituteChannelVariables(
         substituteChannelVariables(item, channelValues, format)
       ),
       node.options,
-      nodeLocation(node),
-      node.treeContext
+      nodeLocation(node)
     ).inherit(node);
   }
 

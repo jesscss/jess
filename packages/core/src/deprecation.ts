@@ -55,6 +55,12 @@ export class Deprecation {
     }),
     new Deprecation('property-in-unknown-value', {
       description: '$[ident] in custom property values is treated as literal text, not a property reference. Use ${[ident]} if you want it to be evaluated.'
+    }),
+    new Deprecation('less-plugin', {
+      description: 'Less @plugin is deprecated. Use @use / @-use for script integration in .less files.'
+    }),
+    new Deprecation('disable-plugin-rule-option', {
+      description: 'disablePluginRule is deprecated. Use disableScriptModules instead.'
     })
   ];
 

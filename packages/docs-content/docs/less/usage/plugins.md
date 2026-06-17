@@ -12,8 +12,27 @@ Load plugins before parsing begins in Less.js so plugin features are available d
 :::warning 5.x+ status
 In the 5.x+ track, `@plugin` is **deprecated** and currently **experimental**.
 
-Prefer `@use` for new integrations. We have not published dedicated `@use` documentation yet.
+Prefer `@use` / `@-use` for new script integration when compiling `.less` through the Less CLI compatibility path.
+We have not published dedicated script-module documentation yet.
 :::
+
+### Less 5.x script runtime policy
+
+Legacy file-based `@plugin` scripts are treated as executable code. They do not
+run in the Node host process. To load a local or package `.js`/`.ts` plugin file,
+configure `@jesscss/plugin-js`; that path runs the legacy Less wrapper inside a
+Deno sandbox with Less-compatible injected variables such as `functions`, `tree`,
+`less`, and `registerPlugin`.
+
+The sandbox read root defaults to the entry Less file/config root unless the
+plugin-js options provide a narrower `jsReadRoot`. File reads outside that root
+are denied, environment/process access is denied, and network access is disabled
+unless explicitly allowed by plugin-js policy.
+
+Use `disableScriptModules` to disable executable script modules entirely,
+including file-based `@plugin`. The old Less-compatible `disablePluginRule`
+option is accepted as a deprecated alias for the same behavior; new configs and
+CLI flags should use `disableScriptModules`.
 
 While the easiest way to use a plugin is using the [`@plugin` at-rule](../features/plugins), in a Node.js environment, you can pre-load a global Less.js plugin via the command line or by specifying it in the [Less options](./less-options).
 

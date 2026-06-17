@@ -7,7 +7,7 @@ Jess can import from other Jess stylesheets and JavaScript, and you can use [Rol
 
 ```css
 // JavaScript example
-@import { WIDTH } from './constants.js';
+@-from './constants.js' import (WIDTH);
 
 .box {
   width: $(WIDTH)px;
@@ -15,7 +15,7 @@ Jess can import from other Jess stylesheets and JavaScript, and you can use [Rol
 ```
 ```css
 // Jess example
-@import { myMixin } from './mixins.jess';
+@-from './mixins.jess' import (myMixin);
 
 .box {
   @include myMixin();

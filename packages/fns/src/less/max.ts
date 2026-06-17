@@ -38,7 +38,7 @@ function toCanonical(node: Dimension, forcedUnit?: string) {
 
 export default defineFunction(
   'max',
-  function(this: any, ...input: Node[]) {
+  async function(this: any, ...input: Node[]) {
     let args = input.slice();
     const unitMode = this?.context?.opts?.unitMode ?? 'loose';
     const isLooseMode = unitMode === 'loose';
@@ -84,7 +84,7 @@ export default defineFunction(
       return order[0];
     }
     const sep = this?.context?.compress ? ',' : ', ';
-    const serialized = order.map(n => serializeNodeValue(n, this?.context).trimStart());
+    const serialized = await Promise.all(order.map(async n => (await serializeNodeValue(n, this?.context)).trimStart()));
     return new Any(`max(${serialized.join(sep)})`);
   },
   {

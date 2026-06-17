@@ -7,6 +7,7 @@ import * as net from 'node:net';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { decodeBridgeValue, encodeBridgeArgs } from './bridge.js';
 
 export type JavaScriptSandboxConfig = {
   allowHttp?: boolean;
@@ -16,6 +17,13 @@ export type JavaScriptSandboxConfig = {
 
 export interface JsPluginOptions extends JavaScriptSandboxConfig {
   denoCommand?: string;
+  /**
+   * Runtime API exposed inside the Deno worker.
+   *
+   * Jess `@-use`/script imports run as plain ESM modules. Legacy Less
+   * `@plugin` loading can opt into the Less-compatible global shape.
+   */
+  runtimeApi?: 'module' | 'less';
 }
 
 const SCRIPT_EXTENSIONS = new Set([
@@ -105,17 +113,26 @@ type BrokerResponse = {
 
 type RpcRequest =
   | { id: number; type: 'load'; modulePath: string }
-  | { id: number; type: 'invoke'; modulePath: string; exportName: string; args: unknown[] };
+  | { id: number; type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
+  | { id: number; type: 'loadLessPlugin'; modulePath: string }
+  | { id: number; type: 'invokeLessPluginFunction'; modulePath: string; functionName: string; args: unknown[] };
 
 type RpcResult =
-  | { id: number; ok: true; exports?: Array<{ name: string; kind: 'function' | 'value'; value?: unknown }>; value?: unknown }
+  | {
+    id: number;
+    ok: true;
+    exports?: Array<{ name: string; kind: 'function' | 'value'; value?: unknown }>;
+    functions?: string[];
+    value?: unknown;
+  }
   | { id: number; ok: false; error: string };
 
 type RuntimeState =
   | { status: 'idle' }
   | { status: 'initializing'; promise: Promise<void> }
   | { status: 'ready' }
-  | { status: 'failed'; error: Error };
+  | { status: 'failed'; error: Error }
+  | { status: 'disposed' };
 
 export class JsPlugin extends AbstractPlugin {
   private static cleanupRegistered = false;
@@ -123,6 +140,7 @@ export class JsPlugin extends AbstractPlugin {
   name = 'js';
   supportedExtensions = Array.from(SCRIPT_EXTENSIONS);
   private runtimeState: RuntimeState = { status: 'idle' };
+  private shuttingDown = false;
   private brokerServer: net.Server | undefined;
   private brokerSocketPath: string | undefined;
   private worker: ChildProcessWithoutNullStreams | undefined;
@@ -203,6 +221,9 @@ export class JsPlugin extends AbstractPlugin {
     }
     if (this.runtimeState.status === 'failed') {
       return Promise.reject(this.runtimeState.error);
+    }
+    if (this.runtimeState.status === 'disposed') {
+      return Promise.reject(new Error('Deno worker has been disposed.'));
     }
     const promise = this.startRuntime().then(
       () => {
@@ -288,6 +309,7 @@ export class JsPlugin extends AbstractPlugin {
       fs.unlinkSync(socketPath);
     }
     const server = net.createServer((socket) => {
+      socket.unref();
       let buf = '';
       socket.setEncoding('utf8');
       socket.on('data', (chunk) => {
@@ -321,6 +343,7 @@ export class JsPlugin extends AbstractPlugin {
       server.once('error', reject);
       server.listen(socketPath, () => resolve());
     });
+    server.unref();
     this.brokerServer = server;
     this.brokerSocketPath = socketPath;
     return socketPath;
@@ -334,9 +357,10 @@ export class JsPlugin extends AbstractPlugin {
     const workerScriptPath = fs.existsSync(compiledWorkerPath)
       ? compiledWorkerPath
       : sourceWorkerPath;
+    const runtimeApi = this.opts.runtimeApi ?? 'module';
     const child = spawn(
       denoCommand,
-      ['run', '--no-prompt', workerScriptPath],
+      ['run', '--no-prompt', workerScriptPath, `--runtime-api=${runtimeApi}`],
       {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {
@@ -346,10 +370,19 @@ export class JsPlugin extends AbstractPlugin {
       }
     );
     this.worker = child;
+    child.unref();
+    child.stdin.unref?.();
+    child.stdout.unref?.();
+    child.stderr.unref?.();
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', chunk => this.onWorkerStdout(chunk));
     child.on('exit', () => {
+      this.worker = undefined;
+      if (this.shuttingDown) {
+        this.shuttingDown = false;
+        return;
+      }
       const err = new Error('Deno worker exited unexpectedly.');
       this.rejectAllPending(err);
       if (this.runtimeState.status !== 'failed') {
@@ -357,9 +390,17 @@ export class JsPlugin extends AbstractPlugin {
       }
     });
     return new Promise<void>((resolve, reject) => {
+      let stderrText = '';
       const timer = setTimeout(() => {
-        reject(new Error('Timed out waiting for Deno worker startup.'));
+        reject(new Error(
+          stderrText.trim()
+            ? `Timed out waiting for Deno worker startup.\n${stderrText.trim()}`
+            : 'Timed out waiting for Deno worker startup.'
+        ));
       }, BOOT_TIMEOUT_MS);
+      const onStderr = (chunk: string) => {
+        stderrText += chunk;
+      };
       const onData = (chunk: string) => {
         this.workerBuffer += chunk;
         let idx = this.workerBuffer.indexOf('\n');
@@ -376,6 +417,7 @@ export class JsPlugin extends AbstractPlugin {
             if (parsed.type === 'ready') {
               clearTimeout(timer);
               child.stdout.off('data', onData);
+              child.stderr.off('data', onStderr);
               resolve();
               return;
             }
@@ -385,9 +427,11 @@ export class JsPlugin extends AbstractPlugin {
         }
       };
       child.stdout.on('data', onData);
+      child.stderr.on('data', onStderr);
       child.once('error', (err) => {
         clearTimeout(timer);
         child.stdout.off('data', onData);
+        child.stderr.off('data', onStderr);
         reject(err);
       });
     });
@@ -449,6 +493,8 @@ export class JsPlugin extends AbstractPlugin {
     request:
       | { type: 'load'; modulePath: string }
       | { type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
+      | { type: 'loadLessPlugin'; modulePath: string }
+      | { type: 'invokeLessPluginFunction'; modulePath: string; functionName: string; args: unknown[] }
   ): Promise<RpcResult> {
     await this.ensureRuntime();
     this.clearIdleTimer();
@@ -470,6 +516,10 @@ export class JsPlugin extends AbstractPlugin {
   private shutdown() {
     this.clearIdleTimer();
     if (this.worker && !this.worker.killed) {
+      this.shuttingDown = true;
+      this.worker.stdin.destroy();
+      this.worker.stdout.destroy();
+      this.worker.stderr.destroy();
       this.worker.kill();
     }
     this.worker = undefined;
@@ -491,7 +541,8 @@ export class JsPlugin extends AbstractPlugin {
 
   dispose() {
     this.shutdown();
-    this.runtimeState = { status: 'idle' };
+    JsPlugin.liveInstances.delete(this);
+    this.runtimeState = { status: 'disposed' };
   }
 
   private assertAllowedPath(absoluteFilePath: string) {
@@ -532,12 +583,12 @@ export class JsPlugin extends AbstractPlugin {
               type: 'invoke',
               modulePath,
               exportName: item.name,
-              args
+              args: encodeBridgeArgs(args)
             });
             if (!invokeResult.ok) {
               throw new Error(invokeResult.error);
             }
-            return invokeResult.value;
+            return decodeBridgeValue(invokeResult.value);
           };
         } else {
           moduleObject[item.name] = item.value;
@@ -555,6 +606,42 @@ export class JsPlugin extends AbstractPlugin {
       }
     }
     return safeModule;
+  }
+
+  /**
+   * Loads a legacy Less `@plugin` wrapper file in Deno Less-compat mode.
+   *
+   * @deprecated Less `@plugin` is deprecated. Prefer `@-from` for
+   * ESM-style script imports or `@-use` for Sass-module-style namespace imports.
+   */
+  async importLessPlugin(absoluteFilePath: string): Promise<{ functions: Record<string, (...args: unknown[]) => Promise<unknown>> }> {
+    const ext = path.extname(absoluteFilePath);
+    if (!SCRIPT_EXTENSIONS.has(ext)) {
+      throw new Error(`Plugin "${this.name}" cannot import Less plugin "${absoluteFilePath}"`);
+    }
+    this.assertAllowedPath(absoluteFilePath);
+    await this.ensureRuntime();
+    const modulePath = path.resolve(absoluteFilePath);
+    const loadResult = await this.callWorker({ type: 'loadLessPlugin', modulePath });
+    if (!loadResult.ok) {
+      throw new Error(loadResult.error);
+    }
+    const functions: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
+    for (const functionName of loadResult.functions ?? []) {
+      functions[functionName] = async (...args: unknown[]) => {
+        const invokeResult = await this.callWorker({
+          type: 'invokeLessPluginFunction',
+          modulePath,
+          functionName,
+          args: encodeBridgeArgs(args)
+        });
+        if (!invokeResult.ok) {
+          throw new Error(invokeResult.error);
+        }
+        return decodeBridgeValue(invokeResult.value);
+      };
+    }
+    return { functions };
   }
 }
 

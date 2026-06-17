@@ -11,7 +11,7 @@ Most of these functions (especially color functions) are imported and converted 
 
 To use, import them like:
 ```css
-@import { mix } from '@jesscss/fns';
+@-from '@jesscss/fns' import (mix);
 
 .box {
   color: mix(#ff0000, #0000ff, 50%);
@@ -25,7 +25,7 @@ Unlike Less, all functions must be imported! This keeps the Jess runtime small a
 :::
 
 ```css
-@import { rgb as jessRgb } from '@jesscss/fns';
+@-from '@jesscss/fns' import (rgb as jessRgb);
 
 .color {
   color: jessRgb(1, 2, 3);

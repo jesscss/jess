@@ -1259,9 +1259,9 @@ export abstract class Node<
    * context override this method and serialize their evaluated output
    * through the same print-state machinery.
    */
-  render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
-  render(context: Context, options?: PrintOptions): string;
-  render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
+  render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  render(context: Context, options?: PrintOptions): MaybePromise<string>;
+  render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): MaybePromise<string> {
     if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
       return '';
     }

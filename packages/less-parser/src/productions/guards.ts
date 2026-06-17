@@ -9,26 +9,49 @@ import {
   Any,
   Condition,
   type ConditionOperator,
+  AtRule,
   DefaultGuard,
   Paren,
   List,
   Sequence,
   Call,
   Reference,
-  Interpolated,
   Quoted,
   Rest,
   Nil,
   VarDeclaration,
+  JsImport,
   StyleImport,
   type Url,
   isNode,
   N
 } from '@jesscss/core';
-import { createInterpolatedReference, getInterpolatedNode, getInterpolatedOrString } from '../utils.js';
+import { getInterpolatedNode, getInterpolatedOrString } from '../utils.js';
 
 /** Use `any` for `this` to avoid structural incompatibility between LessRecursiveParser and CssRecursiveParser */
 type P = any;
+
+function isScriptUsePath(path: string): boolean {
+  const filePart = path.replace(/[?#].*$/u, '');
+  return path === '#less'
+    || path.startsWith('#less/')
+    || /\.(?:js|mjs|cjs|ts|mts|cts|json)$/i.test(filePart);
+}
+
+function defaultNamespaceFromPath(path: string): string | undefined {
+  if (path === '#less') {
+    return 'less';
+  }
+  if (path.startsWith('#less/')) {
+    return path.split('/').filter(Boolean).pop();
+  }
+  const base = path.split('/').filter(Boolean).pop();
+  if (!base) {
+    return undefined;
+  }
+  const noExt = base.replace(/\.(less|css|jess|js|mjs|cjs|ts|mts|cts|json)$/i, '');
+  return noExt || undefined;
+}
 
 function getParenFrames(ctx: RuleContext | undefined): boolean[] {
   return (ctx?.parenFrames as boolean[] | undefined) ?? [];
@@ -898,10 +921,81 @@ export function unknownAtRule(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const img = $.LA(1).image;
+    if (img === '@use' || img === '@-use') {
+      return $.SUBRULE($.useAtRule, { ARGS: [ctx] });
+    }
     if (img === '@-export') {
       return $.SUBRULE($.exportAtRule, { ARGS: [ctx] });
     }
     return cssUnknownAtRule.call($, T)(ctx);
+  };
+}
+
+/**
+ * Parse Less v5 script-module imports.
+ *
+ * Stylesheet composition uses `@compose`; `@use` / `@-use` only become
+ * JsImport nodes for script-style paths and aliases like `#less/math`.
+ */
+export function useAtRule(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+    const name = $.CONSUME(T.AtName); // '@use' or '@-use'
+
+    const pathNode: Quoted = $.SUBRULE($.string, { ARGS: [ctx] });
+
+    let namespace: string | undefined;
+    $.OPTION({
+      GATE: () =>
+        $.LA(1).tokenType === T.PlainIdent
+        && $.LA(1).image === 'as',
+      DEF: () => {
+        $.CONSUME(T.PlainIdent);
+        $.OR2([
+          { ALT: () => {
+            namespace = $.CONSUME2(T.PlainIdent).image;
+          } },
+          { ALT: () => {
+            namespace = $.CONSUME(T.Star).image;
+          } }
+        ]);
+      }
+    });
+
+    $.CONSUME(T.Semi);
+
+    const location = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+
+    const rawPath = pathNode.valueOf();
+    if (isScriptUsePath(rawPath)) {
+      return new JsImport(
+        { path: pathNode },
+        { namespace: namespace ?? defaultNamespaceFromPath(rawPath) },
+        location,
+        $.context
+      );
+    }
+
+    const preludeNodes: Node[] = [pathNode];
+    if (namespace) {
+      preludeNodes.push(
+        new Any('as', { role: 'ident' }, undefined, $.context),
+        new Any(namespace, { role: namespace === '*' ? 'operator' : 'ident' }, undefined, $.context)
+      );
+    }
+    return new AtRule(
+      {
+        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context),
+        prelude: new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), $.context)
+      },
+      undefined,
+      location,
+      $.context
+    );
   };
 }
 

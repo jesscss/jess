@@ -65,6 +65,7 @@
     "verify:node-constructor-metadata": "node scripts/verify-node-constructor-metadata.mjs",
     "bench:css:ref": "node scripts/bench-compare-ref.mjs --package @jesscss/css-parser",
     "bench:less:ref": "node scripts/bench-compare-ref.mjs --package @jesscss/less-parser",
+    "prove:less:benchmark:no-deno": "node scripts/prove-less-benchmark-no-deno.mjs",
     "verify:node-copy-frontier": "node scripts/verify-node-copy-frontier.mjs",
     "verify:render-buffer-frontier": "node scripts/verify-render-buffer-frontier.mjs",
     "verify:materialization-frontier": "node scripts/verify-materialization-frontier.mjs",

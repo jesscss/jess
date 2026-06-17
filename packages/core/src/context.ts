@@ -12,6 +12,7 @@ import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
 import { EqualityMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { isNode } from './tree/util/is-node.js';
 import { N } from './tree/node-type.js';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
@@ -21,6 +22,21 @@ import { CallMap } from './tree/util/recursion-helper.js';
 import { createRequire } from 'node:module';
 import { BitSetLibrary } from './tree/util/bitset.js';
 import type { PrintOptions } from './tree/util/print.js';
+
+const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
+const SCRIPT_MODULES_DISABLED_MESSAGE = 'Script modules are disabled by disableScriptModules.';
+
+async function importJsonModule(absoluteFilePath: string): Promise<Record<string, unknown>> {
+  const parsed = JSON.parse(await readFile(absoluteFilePath, 'utf8')) as unknown;
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    const result: Record<string, unknown> = { default: parsed };
+    for (const [key, value] of Object.entries(parsed)) {
+      result[key] = value;
+    }
+    return result;
+  }
+  return { default: parsed };
+}
 
 export interface ContextOptions {
   /** Hash classes for module output */
@@ -38,10 +54,14 @@ export interface ContextOptions {
   dynamic?: boolean;
   collapseNesting?: boolean;
 
-  enableJavaScript?: boolean;
   mathMode?: MathMode;
   unitMode?: UnitMode;
   equalityMode?: EqualityMode;
+  disableScriptModules?: boolean;
+  /**
+   * @deprecated Use `disableScriptModules` instead.
+   */
+  disablePluginRule?: boolean;
 
   /** Directories to search to resolve files */
   searchPaths?: string[];
@@ -73,6 +93,13 @@ export interface ContextOptions {
    * When false, errors are collected and processing continues.
    */
   breakOnError?: boolean;
+
+  /**
+   * Lazily supplies an importer plugin after path resolution proves a module
+   * extension needs one. This keeps heavyweight optional runtimes out of
+   * plugin-free parse/eval paths.
+   */
+  loadPluginForExtension?(extension: string): Promise<PluginInterface | undefined> | PluginInterface | undefined;
 }
 
 export interface TreeContextOptions extends ContextOptions {
@@ -714,21 +741,25 @@ export class Context {
    * @param importOptions
    */
   async getModule(importPath: string, importOptions: ImportOptions = {}) {
-    const isFnsImport = importPath === '@jesscss/fns'
-      || importPath.startsWith('@jesscss/fns/')
-      || importPath === '#less'
-      || importPath.startsWith('#less/')
-      || importPath === '#sass'
-      || importPath.startsWith('#sass/');
-    const { enableJavaScript } = this.opts;
-    if (enableJavaScript === false && !isFnsImport) {
-      throw new Error('JavaScript evaluation is disabled');
-    }
     const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
+    const ext = path.extname(resolvedPath);
+    const isJsonImport = ext === '.json';
+    const isScriptModuleImport = SCRIPT_MODULE_EXTENSIONS.has(ext);
     const { type } = importOptions;
 
     const plugins = this.plugins;
-    const ext = path.extname(resolvedPath);
+
+    if (!type && isJsonImport) {
+      return {
+        module: await importJsonModule(resolvedPath),
+        triedPaths,
+        resolvedPath
+      };
+    }
+
+    if (isScriptModuleImport && (this.opts.disableScriptModules || this.opts.disablePluginRule)) {
+      throw new Error(SCRIPT_MODULES_DISABLED_MESSAGE);
+    }
 
     let plugin: PluginInterface | undefined;
 
@@ -745,7 +776,16 @@ export class Context {
     if (!plugin) {
       plugin = plugins.find(plugin => plugin.supportedExtensions?.includes(ext) && plugin.import);
       if (!plugin) {
-        if (['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'].includes(ext)) {
+        plugin = await this.opts.loadPluginForExtension?.(ext);
+        if (plugin && !this.plugins.includes(plugin)) {
+          this.plugins.push(plugin);
+        }
+        if (plugin && (!plugin.supportedExtensions?.includes(ext) || !plugin.import)) {
+          plugin = undefined;
+        }
+      }
+      if (!plugin) {
+        if (isScriptModuleImport) {
           throw new Error('Feature not supported. Install @jesscss/plugin-js to enable script execution features.');
         }
         throw new Error(`File "${friendlyPath}" not supported`);

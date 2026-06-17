@@ -221,22 +221,44 @@ In Jess, use:
 
 This keeps forward intent explicit, avoids long option bundles, and reflects the current project direction.
 
-## @-use
+## @-use and @-from
 
 We told you we had a good purpose for `@-use`, and here it is. Jess can import and use values from JavaScript, TypeScript, and JSON. Easily.
 
 :::info
 
-In order to evaluate JS/TS while compiling, you need to install the `@jesscss/plugin-js` package. This package is required because it installs the Deno runtime (if you're not already using Deno), as that's the only way to execute unknown JS safely.
+JSON imports are data imports and work without a script runtime. Built-in `#less/*` and `#sass/*` modules also stay inside Jess. To evaluate local or package JS/TS while compiling, install `@jesscss/plugin-js`; that path uses Deno because unknown JavaScript needs isolation.
 
 The reason this is necessary is that, when maintaining Less, we found that it sometimes surprised developers to learn that their stylesheets could execute JavaScript, which meant potential security vulnerabilities if they weren't careful.
 
 :::
 
-We can directly import JS/TS modules with `@-use` e.g.
+Jess supports two script-module forms. Use `@-use` when you want the Sass-module-style namespace form. Like Sass, you can omit `as` and Jess will infer the namespace from the module name:
 
 ```scss
+@-use './my-module.js';
 @-use './my-module.js' as js;
+
+.box {
+  width: $my-module.width;
+  value: $js.myFunc();
+}
+```
+
+Use `@-from` when you want the ESM-style import form. That includes named imports:
+
+```scss
+@-from './my-module.js' import (myFunc as fromJs);
+
+.box {
+  value: $fromJs();
+}
+```
+
+And namespace imports:
+
+```scss
+@-from './my-module.js' import * as js;
 
 .box {
   value: $js.myFunc();

@@ -5,8 +5,8 @@ import { serializeNodeValue } from '../util/serialize-node.js';
 
 const imageHeight = defineFunction(
   'image-height',
-  function(this: any, filePathNode: Node) {
-    const rawPath = serializeNodeValue(filePathNode, this.context);
+  async function(this: any, filePathNode: Node) {
+    const rawPath = await serializeNodeValue(filePathNode, this.context);
     const { contents } = readAsset(this.context, rawPath);
     const size = getImageDimensions(contents);
     return new Dimension({ number: size.height, unit: 'px' });

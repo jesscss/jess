@@ -19,7 +19,7 @@ export function formatColorOutput(
     ...input.options,
     format,
     modernSyntax
-  }, input.location.length === 6 ? input.location : undefined, input.treeContext).inherit(input);
+  }, input.location.length === 6 ? input.location : undefined).inherit(input);
   color.value.node = undefined;
   return color;
 }

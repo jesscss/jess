@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { AbstractPlugin, Any, Declaration, Dimension, JsFunction, type PluginInterface, type PluginVisitor, type Node, type Rules, F_VISIBLE, REMOVE } from '@jesscss/core';
+import { AbstractPlugin, Any, Declaration, Deprecation, Dimension, JsFunction, type PluginInterface, type PluginVisitor, type Node, type Rules, F_VISIBLE, REMOVE, WARN, toDiagnostic } from '@jesscss/core';
 import { toLessNode, fromLessNode, fromLessPluginReturnValue } from './transform/index.js';
 import { LessAdapterBase } from './transform/less-adapter.js';
 import type { LessVisitor } from './types.js';
@@ -12,10 +12,16 @@ import { NodeModulesPlugin } from '@jesscss/plugin-node-modules';
 const isThenable = (v: any): v is PromiseLike<any> =>
   !!v && (typeof v === 'object' || typeof v === 'function') && typeof (v as any).then === 'function';
 
+const LESS_PLUGIN_JS_RUNTIME_MESSAGE = 'Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution.';
+const SCRIPT_MODULES_DISABLED_MESSAGE = 'Less @plugin is disabled by disableScriptModules.';
+
 /**
  * Wrap a Less plugin function and add it to a Jess function registry.
- * Used so that @plugin-loaded functions register into the Rules that contain the @plugin.
+ * Used so that deprecated @plugin-loaded functions register into the Rules that
+ * contain the @plugin.
  * Conversion of Less return values to Jess uses the shared fromLessPluginReturnValue.
+ *
+ * @deprecated Legacy Less @plugin support. Prefer @use / @-use for script integration in .less files.
  */
 function addToJessRegistry(jessRegistry: any, name: string, func: any): void {
   if (!jessRegistry || typeof jessRegistry.add !== 'function') {
@@ -73,16 +79,20 @@ export interface LessCompatPluginOptions {
   /** Enable conversion caching (default: true) */
   cache?: boolean;
   /**
-   * Plugin registry for @plugin directive support.
+   * Plugin registry for deprecated @plugin directive support.
    * Maps plugin names/paths to plugin instances or factory functions.
    * Used when processing @plugin directives in the source.
+   *
+   * @deprecated Less @plugin is deprecated. Prefer @use / @-use for script integration in .less files.
    */
   pluginRegistry?: Record<string, any>;
   /**
-   * Enable auto-loading of plugins by name (Less.js 4.x CLI behavior).
+   * Enable auto-loading of deprecated @plugin plugins by name (Less.js 4.x CLI behavior).
    * When true (default), @plugin directives will attempt to require/import
    * plugins by their npm package name (e.g., "less-plugin-autoprefix").
    * Set to false to disable and only use pluginRegistry.
+   *
+   * @deprecated Less @plugin is deprecated. Prefer @use / @-use for script integration in .less files.
    */
   autoLoadPlugins?: boolean;
   /**
@@ -106,6 +116,7 @@ export class LessCompatPlugin extends AbstractPlugin {
   private _lessPluginManager?: LessPluginManager;
   private _currentFilePath?: string;
   private _jessFunctionRegistry?: any;
+  private _context?: { warnings?: any[]; opts?: any; root?: any; plugins?: any[] };
 
   constructor(public opts: LessCompatPluginOptions = {}) {
     super();
@@ -159,6 +170,7 @@ export class LessCompatPlugin extends AbstractPlugin {
   }
 
   setContext(context: any) {
+    this._context = context;
     try {
       const root = context?.root;
       if (
@@ -201,6 +213,71 @@ export class LessCompatPlugin extends AbstractPlugin {
     return typeof source === 'string' && source.includes('@plugin');
   }
 
+  private warnForPluginDirective(node: any): void {
+    const context = this._context;
+    if (!context || !Array.isArray(context.warnings)) {
+      return;
+    }
+    const deprecation = Deprecation.fromId('less-plugin') ?? Deprecation.userAuthored;
+    context.warnings.push(toDiagnostic(WARN.deprecated({
+      node,
+      filePath: this._currentFilePath,
+      meta: {
+        what: '@plugin',
+        use: '@use / @-use',
+        deprecation
+      },
+      note: 'In .less files compiled through the Less CLI compatibility path, migrate script integration to @use / @-use.'
+    })));
+  }
+
+  private markPluginDirectiveInvisible(node: any): void {
+    const jessNode = node instanceof LessAdapterBase ? node.jessNode : node;
+    if (jessNode && typeof (jessNode as any).removeFlag === 'function') {
+      (jessNode as any).removeFlag(F_VISIBLE);
+    }
+  }
+
+  private registerDenoLessPluginFunctions(jessRegistry: any, functions: Record<string, (...args: unknown[]) => Promise<unknown>>): void {
+    if (!jessRegistry || typeof jessRegistry.add !== 'function') {
+      return;
+    }
+    for (const [name, fn] of Object.entries(functions)) {
+      jessRegistry.add(name.toLowerCase(), async (...args: unknown[]) => fn(...args));
+    }
+  }
+
+  private loadLessPluginFileWithDeno(fullPath: string, targetJessRegistry?: any): boolean | Promise<boolean> {
+    const finish = async (plugin: any): Promise<boolean> => {
+      if (!plugin || typeof plugin.importLessPlugin !== 'function') {
+        return false;
+      }
+      if (this._context?.plugins && !this._context.plugins.includes(plugin)) {
+        this._context.plugins.push(plugin);
+      }
+      const loaded = await plugin.importLessPlugin(fullPath);
+      this.registerDenoLessPluginFunctions(targetJessRegistry ?? this._jessFunctionRegistry, loaded.functions ?? {});
+      return true;
+    };
+    const ext = path.extname(fullPath);
+    const candidatePlugins = [
+      ...(this._context?.plugins ?? []),
+      ...(this.opts.plugins ?? [])
+    ];
+    const existingPlugin = candidatePlugins.find((plugin: any) =>
+      plugin?.supportedExtensions?.includes(ext) && typeof plugin.importLessPlugin === 'function'
+    );
+    if (existingPlugin) {
+      return finish(existingPlugin);
+    }
+    const loader = this._context?.opts?.loadPluginForExtension;
+    if (!loader) {
+      return false;
+    }
+    const load = loader(ext);
+    return isThenable(load) ? load.then(finish) : finish(load);
+  }
+
   beforeEvalVisitorForTree(tree: Rules): PluginInterface['beforeEvalVisitor'] {
     if (!this.hasConfiguredBeforeEvalWork() && !this.sourceMayContainPluginDirective(tree)) {
       return undefined;
@@ -236,7 +313,7 @@ export class LessCompatPlugin extends AbstractPlugin {
     // Use an array that we'll iterate as an iterator to allow dynamic insertion
     const lessVisitorInstances: any[] = [];
 
-    // References for @plugin processing - initialized early so visitor can access them
+    // References for deprecated @plugin processing - initialized early so visitor can access them
     let pluginManagerRef: any = null;
     let mockLessRef: any = null;
 
@@ -295,8 +372,8 @@ export class LessCompatPlugin extends AbstractPlugin {
       }
     }
 
-    // Always create mockLess and pluginManager for @plugin processing
-    // Even if there are no initial plugins, @plugin directives might load plugins
+    // Always create mockLess and pluginManager for deprecated @plugin processing.
+    // Even if there are no initial plugins, @plugin directives might load plugins.
     let currentRealRegistry: any = this._jessFunctionRegistry;
 
     const createFunctionRegistry = () => {
@@ -622,9 +699,9 @@ export class LessCompatPlugin extends AbstractPlugin {
     }
 
     // Don't return undefined even if there are no initial visitors
-    // @plugin directives might add visitors during traversal
-    // We'll create a visitor that can handle @plugin processing
-    // If there are truly no visitors and no @plugin directives, the visitor will just pass through
+    // Deprecated @plugin directives might add visitors during traversal.
+    // We'll create a visitor that can handle @plugin processing.
+    // If there are truly no visitors and no @plugin directives, the visitor will just pass through.
 
     // Track nodes currently being processed to prevent infinite loops
     // This set persists for the entire visitor lifetime to prevent re-processing
@@ -632,12 +709,12 @@ export class LessCompatPlugin extends AbstractPlugin {
     // Track if we're currently inside a Less visitor traversal
     // This prevents the plugin visitor from being triggered when visitArray calls visit()
     let insideLessTraversal = false;
-    // Jess runs early visitors in two passes; ensure we only process each @plugin directive once.
+    // Jess runs early visitors in two passes; ensure we only process each deprecated @plugin directive once.
     const processedPluginDirectives = new WeakSet<object>();
 
     // Create a visitor object that implements the Visitor interface
     const visitor = {
-      // Handle @plugin at-rules - these should be processed early, before evaluation.
+      // Handle deprecated @plugin at-rules - these should be processed early, before evaluation.
       // Less.js also processes @plugin before the tree is evaluated.
       // This ensures plugins loaded via @plugin have their visitors available for subsequent nodes
       atRule: (node: any, _ctx?: any): any => {
@@ -672,6 +749,10 @@ export class LessCompatPlugin extends AbstractPlugin {
               return node;
             }
             processedPluginDirectives.add(pluginDirectiveNode);
+            this.warnForPluginDirective(rawDirective);
+            if (this._context?.opts?.disableScriptModules || this._context?.opts?.disablePluginRule) {
+              throw new Error(SCRIPT_MODULES_DISABLED_MESSAGE);
+            }
             const baseDir = this._currentFilePath ? path.dirname(this._currentFilePath) : undefined;
             // Extract plugin path/name and options from prelude
             // Handle both AtRule (value.prelude) and Directive (value.value) structures
@@ -821,15 +902,21 @@ export class LessCompatPlugin extends AbstractPlugin {
                 // Fallback: direct string value
                 pluginPath = prelude.value;
               }
+              if (!pluginPath && typeof prelude.valueOf === 'function') {
+                const fallbackValue = prelude.valueOf();
+                if (typeof fallbackValue === 'string') {
+                  pluginPath = fallbackValue;
+                }
+              }
             }
 
             if (pluginPath) {
               // Ensure pluginPath is a string and remove quotes if present
               if (typeof pluginPath === 'string') {
-                pluginPath = pluginPath.replace(/^["']|["']$/g, '');
+                pluginPath = pluginPath.trim().replace(/^["']|["']$/g, '').trim();
               } else {
                 // If it's not a string, try to convert it
-                pluginPath = String(pluginPath).replace(/^["']|["']$/g, '');
+                pluginPath = String(pluginPath).trim().replace(/^["']|["']$/g, '').trim();
               }
 
               const isExplicitLocalPath =
@@ -857,6 +944,9 @@ export class LessCompatPlugin extends AbstractPlugin {
               }
 
               const isLocalPath = isExplicitLocalPath || !!resolvedLocalPluginFile;
+              if (isLocalPath && (!pluginManagerRef || !mockLessRef)) {
+                throw new Error(LESS_PLUGIN_JS_RUNTIME_MESSAGE);
+              }
 
               // IMPORTANT: Less allows @plugin to be loaded multiple times in different scopes.
               // Do NOT globally dedupe by pluginPath; this breaks Less's scoping rules.
@@ -892,9 +982,21 @@ export class LessCompatPlugin extends AbstractPlugin {
                     const pluginFactory = this.opts.pluginRegistry[pluginPath];
                     pluginInstance = typeof pluginFactory === 'function' ? pluginFactory() : pluginFactory;
                   } else if (isLocalPath && resolvedLocalPluginFile) {
-                    const { module: pluginModule, registered } = requirePluginFile(resolvedLocalPluginFile, currentRealRegistry);
-                    const PluginClass = pluginModule.default || pluginModule;
-                    pluginInstance = registered || PluginClass;
+                    const loadedWithDeno = this.loadLessPluginFileWithDeno(resolvedLocalPluginFile, currentRealRegistry);
+                    if (isThenable(loadedWithDeno)) {
+                      return loadedWithDeno.then((loaded) => {
+                        if (!loaded) {
+                          throw new Error(LESS_PLUGIN_JS_RUNTIME_MESSAGE);
+                        }
+                        this.markPluginDirectiveInvisible(node);
+                        return node;
+                      });
+                    }
+                    if (!loadedWithDeno) {
+                      throw new Error(LESS_PLUGIN_JS_RUNTIME_MESSAGE);
+                    }
+                  } else if (isLocalPath) {
+                    throw new Error(LESS_PLUGIN_JS_RUNTIME_MESSAGE);
                   } else if (!isLocalPath && this.opts.autoLoadPlugins !== false) {
                     // Auto-load plugins from npm/node_modules (Less.js behavior)
                     // Expand plugin name to try multiple variations (e.g., "clean-css" -> ["clean-css", "less-plugin-clean-css"])
@@ -999,6 +1101,9 @@ export class LessCompatPlugin extends AbstractPlugin {
                     }
                   }
                 } catch (e) {
+                  if (e instanceof Error && e.message === LESS_PLUGIN_JS_RUNTIME_MESSAGE) {
+                    throw e;
+                  }
                   // Plugin loading failed - continue without it
                   void e;
                 }
@@ -1008,10 +1113,7 @@ export class LessCompatPlugin extends AbstractPlugin {
             // After processing @plugin directive (whether pluginPath was found or not),
             // mark it as invisible so it doesn't appear in output
             // This must happen for ALL @plugin directives, not just ones that successfully load
-            const jessNode = node instanceof LessAdapterBase ? node.jessNode : node;
-            if (jessNode && typeof (jessNode as any).removeFlag === 'function') {
-              (jessNode as any).removeFlag(F_VISIBLE);
-            }
+            this.markPluginDirectiveInvisible(node);
           }
         }
 
