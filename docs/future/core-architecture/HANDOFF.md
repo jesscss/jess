@@ -103,16 +103,19 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `AtRule.getHeaderString(...)` header fragment public string
-  transport cut in `packages/core/src/tree/at-rule.ts`.
+- Latest pass: `Call.toTrimmedString(...)` source child public string
+  transport cut in `packages/core/src/tree/call.ts`.
 - Verdict: accepted as a focused serialization transport cut. No speed claim.
 - New traversal: none.
-- New node/materialization: none.
-- Render path: at-rule header name/prelude fragments now call
-  `writeSyntax(...)` while preserving the existing local
-  mark/getSince/restore capture boundary needed for header spacing and trivia.
+- New node/materialization: none in runtime. The `throw new Error` tokens in
+  `call.test.ts` are test-only proof that public child string methods are not
+  used by source serialization.
+- Render path: no render-path change. Public call source stringification now
+  writes name, args, and content through direct `writeSyntax(...)` child
+  contracts while preserving the existing empty string-name no-readback fast
+  path and non-empty public wrapper mark/readback boundary.
 - Helper/API surface: no helpers or public APIs added.
 - Metadata mutations: none.
 - Allocation changes: none.
-- Evidence: focused `at-rule.test.ts` header tests passed before doc closeout.
-  Full gates are recorded in the final response.
+- Evidence: focused `call.test.ts` source string tests passed before doc
+  closeout. Full gates are recorded in the final response.
