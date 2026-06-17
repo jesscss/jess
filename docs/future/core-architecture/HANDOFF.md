@@ -103,47 +103,35 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `Ruleset.composeHeaderSelector(...)` ampersand count in
-  `packages/core/src/tree/ruleset.ts`.
-- Verdict: accepted as a tracker-mismatch reconciliation and
-  serialization-adjacent header-composition cut. No speed claim.
-- New traversal: one straight character loop over existing selector key text
-  replaces `valueOf().match(/&/g)` regex matching plus array allocation. The
-  count is needed at the existing header composition decision point; carrying
-  the fact earlier would require new selector placement state for a single
-  caller.
+- Latest pass: callable namespace child-surface bridge narrowing.
+- Verdict: accepted as a frame/direct-crawl cut with behavior proof. No speed
+  claim.
+- New traversal: no new recursive surface. The changed paths reuse existing
+  scope-frame lookup and the existing `findMixinsFastForUncoveredCallable(...)`
+  child-entry narrowing. Array-path namespace starts now ask the narrow helper
+  before using broad `findMixinsFast(...)`; two-segment callable namespace
+  descendants use direct child-frame hit/miss results before nested
+  `findMixin(...)`.
 - New node/materialization: none.
-- Render path: no render/string behavior changed. This pass only changes the
-  way the existing header composition branch counts ampersands.
-- Helper/API surface: none.
+- Render path: no committed render/stringification path change.
+- Helper/API surface: no helper or public API added.
 - Metadata mutations: none.
-- Allocation changes: removed the regex match array previously allocated only
-  to count `&` characters.
-- Rejected/observed in this pass: deeper `Ruleset.getHeaderString(...)`
-  capture/readback, serialize-helper frame comparison, hoisted-parent detached
-  header rendering, and duplicate declaration pre-render semantics remain
-  separate Ruleset row work.
-- Merge-carried binding review: merging `origin/dev` also brought the
-  namespaced reference-import crawl deletion in `rules.ts` plus focused
-  import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
-  and direct-child-entry state to prove covered namespace uncertainty; the
-  `Parser` construction, `try/finally`, and small spy arrays are test-only
-  proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
-  production render/string transport.
-- Evidence: focused `ruleset.test.ts` compose/header/ampersand/reference/
-  collapse selection passed; core flag bubbling/isolation tests passed; Less
-  at-rule bubbling, mixin, and functions fixtures passed. The root
-  `less-parser/test/selectors.test.ts` selector fixture is red on current
-  serializeTypes field names (`value` versus direct fields), unrelated to this
-  Ruleset count change. Full gates are required before commit.
-- Merge-carried binding review: `findRulesetNamespacePathFast(...)` now
-  prepares the visible
-  callable frame chain for the namespace segment and checks visible child
-  entries to prove uncovered child/reference-import uncertainty is limited to
-  the ruleset-prefix body already being descended into. This replaces broad
-  `findMixinsFast(...)` scans for the targeted `#Namespace` / `.mixin`
-  reference-import array-path cases, including selector-list imported
-  namespaces.
-  No exported helper/API was added; helper logic lives in private `Rules`
-  methods. It does not change render/stringification, and its focused
-  import-style/mixin evidence passed before the merge. No speed claim.
+- Allocation changes: targeted child-surface namespace misses avoid broad start
+  crawl and targeted two-segment namespace descendant misses avoid nested
+  `findMixin(...)`. Existing result arrays from callable bucket collection are
+  unchanged. Tests allocate small spy arrays/counters only for proof.
+- Rejected/observed in this pass: reference-import namespace starts and
+  reference-import descendant positives inside namespace mixin bodies are not
+  fully modeled yet. The cut preserves fallback for unresolved reference-import
+  starts unless the narrow helper returns candidates.
+- Evidence: focused import-style tests for callable child-surface namespace
+  misses, reference-import namespace array paths, selector-list namespace array
+  paths, and guarded/reference-import callable fixtures passed. Focused mixin
+  tests prove callable namespace child-surface covered misses skip nested
+  `findMixin(...)`, fallback-frame hits still resolve, covered misses still
+  avoid direct bridge, stable namespaces avoid fallback, and ruleset/callable
+  namespace unions still return all candidates. Final gates are required before
+  commit. No speed claim.
+- Merge note: the branch also incorporates the latest serialization transport
+  work from `origin/dev`; keep that progress tracked in
+  `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.

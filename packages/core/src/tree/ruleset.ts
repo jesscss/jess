@@ -1079,13 +1079,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       rawParentComposed = options.composedSelectorStack?.at(-2);
     }
     const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
-    const referenceComposeSelectorText = (ownSelector ?? renderSelector).valueOf();
-    let referenceComposeAmpCount = 0;
-    for (let index = 0; index < referenceComposeSelectorText.length; index++) {
-      if (referenceComposeSelectorText.charCodeAt(index) === 38) {
-        referenceComposeAmpCount++;
-      }
-    }
+    const referenceComposeAmpCount = ((ownSelector ?? renderSelector).valueOf()?.match(/&/g) ?? []).length;
     const parentComposed = (
       options.referenceMode === true
       && options.referenceRenderEnabled === true

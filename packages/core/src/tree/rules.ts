@@ -2281,25 +2281,41 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const firstRemainderIncludesRulesets = keys.length === 2 && options.terminalMixinOnly !== true;
       const entryRules = entry.rules;
       const childFrame = entryRules._scopeFrame;
+      let nested: MixinEntry[] | undefined;
       if (childFrame && !options.hasTarget && !options.local) {
         entryRules.prepareCallableLookupFrame(childFrame, firstRemainder, firstRemainderIncludesRulesets);
         const firstRemainderHit = lookupScopeFrameCallable(childFrame, firstRemainder, {
           includeRulesets: firstRemainderIncludesRulesets,
           searchParents: false
         });
-        if (firstRemainderHit.kind === 'miss') {
+        if (firstRemainderHit.kind === 'hit' && keys.length === 2) {
+          nested = collectCallableBucketResults(firstRemainderHit.bucket, firstRemainderIncludesRulesets);
+        } else if (firstRemainderHit.kind === 'miss') {
           continue;
+        } else if (
+          firstRemainderHit.kind === 'uncovered'
+          && keys.length === 2
+          && (firstRemainderHit.reason === 'child-surface' || firstRemainderHit.reason === 'reference-import')
+        ) {
+          nested = entryRules.findMixinsFastForUncoveredCallable(
+            firstRemainder,
+            firstRemainderHit.reason,
+            firstRemainderIncludesRulesets,
+            options
+          );
+          if (firstRemainderHit.reason === 'child-surface' && nested === undefined) {
+            continue;
+          }
         }
       }
       nestedOptions ??= existingNoParentOptions ?? {
         ...options,
         searchParents: false
       };
-      let nested: MixinEntry[] | undefined;
-      if (keys.length === 2) {
+      if (nested === undefined && keys.length === 2) {
         remainder ??= keys[1]!;
         nested = entryRules.findMixin(remainder, undefined, nestedOptions);
-      } else {
+      } else if (nested === undefined) {
         nested = entryRules.findMixinNamespacePathFast(keys, undefined, nestedOptions, 1);
         if (nested === undefined) {
           remainder ??= collectKeyRemainder(keys, 1);
@@ -2478,6 +2494,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             namespaceMixins = collectCallableBucketResults(frameHit.bucket, false) ?? [];
           } else if (frameHit.kind === 'miss') {
             namespaceMixinMissCovered = true;
+          } else if (
+            frameHit.reason === 'child-surface'
+            || frameHit.reason === 'reference-import'
+          ) {
+            namespaceMixins = this.findMixinsFastForUncoveredCallable(
+              namespaceKey,
+              frameHit.reason,
+              false,
+              options
+            );
+            namespaceMixinMissCovered = frameHit.reason === 'child-surface' || namespaceMixins !== undefined;
           }
         }
         if (namespaceMixins === undefined && !namespaceMixinMissCovered) {

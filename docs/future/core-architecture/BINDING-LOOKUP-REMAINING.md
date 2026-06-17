@@ -60,7 +60,9 @@ Goal: keep broad search limited to child entries that actually reported
 `uncovered`, without losing dynamic positives. Acceptance: covered sibling
 child surfaces are not reopened; configured guarded and simple
 reference-import guarded calls stay zero-bridge; remaining dynamic positives
-still resolve.
+still resolve. Current evidence: array-path namespace starts now use the
+narrow helper for child-surface misses; unresolved reference-import namespace
+starts still fall back when the helper cannot produce candidates.
 
 3. [ ] Delete any remaining simple exact callable child scans that are
 provably covered by frame facts. Scope: current-frame miss, child-entry family
@@ -148,7 +150,11 @@ reference imports inside mixin namespace bodies, fallback frames, and
 `findCallableDescendantsWithinMixinNamespaces(...)`. Goal: prevent callable
 namespace descendants from falling back to broad direct crawl when child-frame
 facts can prove hit/miss. Acceptance: focused mixin/import tests with
-`findMixinsFast(...)` spies and union-preserving namespace positives.
+`findMixinsFast(...)` spies and union-preserving namespace positives. Current
+evidence: two-segment callable namespace descendants now return direct
+child-frame hits and stop on child-surface covered misses before nested
+`findMixin(...)`; reference-import descendant positives inside namespace mixin
+bodies are still open and must not be claimed covered.
 
 15. [ ] Revisit `findVisibleCallableRulesetPrefixMatches(...)` recursive child
 walk after selector-list coverage. Scope: direct child-entry flags,
@@ -245,6 +251,16 @@ visited-set allocation.
   `Rules` methods. This keeps the new frame-chain/prefix-ownership logic out
   of public API while avoiding fresh helper closures on each
   `findRulesetNamespacePathFast(...)` call.
+- Array-path namespace starts now route child-surface/reference-import
+  uncertainty through `findMixinsFastForUncoveredCallable(...)` before using
+  the broad `findMixinsFast(...)` start bridge. Child-surface covered misses
+  are terminal for that start; unresolved reference-import starts still fall
+  back unless the narrow helper found candidates, preserving dynamic positives.
+- Callable namespace descendant lookup now uses the child frame directly for
+  two-segment descendant hits and stops on child-surface covered misses before
+  calling nested `findMixin(...)`. A focused mixin test guards the covered-miss
+  case; reference-import descendant positives inside namespace mixin bodies
+  remain unclaimed/open.
 - `setDefined` assignment no longer imports or calls exported
   `findVariableDeclarationAssignmentLookup` /
   `findPropertyDeclarationAssignmentLookup` wrappers. The old
