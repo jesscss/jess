@@ -103,26 +103,19 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: AtRule leaf/header whitespace scan in
+- Latest pass: AtRule no-op eval rethrow deletion in
   `packages/core/src/tree/at-rule.ts`.
-- Verdict: accepted as a mechanical regex/string-probe transport cut. No speed
-  claim.
-- New traversal: small direct character scans over already-rendered header and
-  leaf fragment strings replace regex `trim()` / `replace()` / suffix probes.
+- Verdict: accepted as routine error-control deletion. No speed claim.
+- New traversal: none.
 - New node/materialization: none.
-- Render path: AtRule leaf and header rendering still use the same rendered
-  name/prelude fragments, but whitespace presence, leading trim, trailing trim,
-  and prelude/post spacing checks are now direct character scans instead of
-  regex/string-normalization probes.
-- Helper/API surface: five private module scan helpers were added; no exported
-  API was added, and the helpers replace duplicated regex probes in leaf and
-  header render paths.
+- Render path: no render output behavior changed; `evalBodyResult(...)` and
+  `evalNode(...)` now let direct body-eval throws and async rejections
+  propagate natively instead of wrapping them with no-op catch/rethrow
+  scaffolding.
+- Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: removes regex match/replace work and avoids concatenating
-  `preludeOut + preludePost` only to test trailing whitespace. The flagged
-  `slice(...)` calls are the returned trimmed fragments for the same behavior
-  the removed regex `replace(...)` paths provided, and only run when whitespace
-  is actually trimmed.
+- Allocation changes: removes two no-op `try/catch { throw error }` wrappers
+  and one async rejection callback that only rethrew.
 - Rejected/observed in this pass: broader AtRule comment-trivia serialization
   has an existing red case; branch ladders and detached header string capture
   remain open in the AtRule row.
@@ -133,12 +126,12 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: focused `at-rule.test.ts` selection passed for dynamic leaf
-  at-rule preludes, leaf at-rules without preview scaffolding, leading prelude
-  whitespace normalization, header streaming without capture scaffolding,
-  comment-free headers without cloning, and structural comment stripping.
-  Targeted ESLint passed with the existing unrelated no-floating-promises
-  warning in `at-rule.test.ts`. Full gates are required before commit.
+- Evidence: focused `at-rule.test.ts` throw/restoration selection passed for
+  body eval throw, canonical source hoist fields after throw, cleared ruleset
+  frames after hoisted body throw, prelude eval throw, and post-eval visibility
+  throw cases. Targeted ESLint passed with the existing unrelated
+  no-floating-promises warning in `at-rule.test.ts`. Full gates are required
+  before commit.
 - Merge-carried binding review: merging `origin/dev` also brought declaration
   lookup wrapper deletion plus a callable namespace reference-import
   modeled-miss bridge cut. It deletes `Rules.findVariable`, `findProperty`,

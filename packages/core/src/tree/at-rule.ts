@@ -634,12 +634,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   ): MaybePromise<AtRuleBodyEvalRecord> {
     const finishPrelude = (evaluatedPrelude: Node | undefined): MaybePromise<AtRuleBodyEvalRecord> => {
       const record = this.createBodyEvalRecord(context, evaluatedPrelude, options);
-      let evaluated: MaybePromise<Node>;
-      try {
-        evaluated = this.evalBodyNode(context, record);
-      } catch (error) {
-        throw error;
-      }
+      const evaluated = this.evalBodyNode(context, record);
       const finish = (node: Node): AtRuleBodyEvalRecord => {
         if (!(node instanceof AtRule) && !(node instanceof Nil)) {
           throw new TypeError('Expected at-rule body eval to return AtRule or Nil');
@@ -1258,23 +1253,13 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         output: hasHoistedRulesetParent ? { hoistToRoot: true } : undefined
       })
     };
-    let out: MaybePromise<AtRule | Nil>;
-    try {
-      out = this.evalBodyNode(context, record);
-    } catch (error) {
-      throw error;
-    }
+    const out = this.evalBodyNode(context, record);
     if (isThenable(out)) {
-      return (out as Promise<AtRule | Nil>).then(
-        (value) => {
-          return value instanceof AtRule
-            ? createAtRuleEvalResultNode(this, record)
-            : value;
-        },
-        (error) => {
-          throw error;
-        }
-      );
+      return (out as Promise<AtRule | Nil>).then((value) => {
+        return value instanceof AtRule
+          ? createAtRuleEvalResultNode(this, record)
+          : value;
+      });
     }
     return out instanceof AtRule
       ? createAtRuleEvalResultNode(this, record)

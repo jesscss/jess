@@ -392,8 +392,10 @@ Current hard leftovers after the broad hook sweep:
   trim/replace/probe paths.
   Remove remaining custom eval/render branch ladders where state already
   carries kind. Body eval/registration async branches now use `MaybePromise`
-  narrowing, render sync-path helper closures are lifted out of `render(...)`,
-  and leaf render no longer allocates a local render-node closure.
+  narrowing, body eval entry points no longer wrap direct eval calls or
+  async continuations with no-op catch/rethrow scaffolding, render sync-path
+  helper closures are lifted out of `render(...)`, and leaf render no longer
+  allocates a local render-node closure.
 - [x] `StyleImport`: direct import/render writer and placement state; no
   first-use copied rules surfaces on render-only paths. Placement-state
   bookkeeping no longer stores a redundant top-level `Map`, unused preservation
