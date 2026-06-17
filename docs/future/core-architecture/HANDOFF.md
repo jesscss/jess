@@ -103,21 +103,26 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Rules static registration narrowed-thenable cleanup in
-  `packages/core/src/tree/rules.ts`.
-- Verdict: accepted as a localized promise-wrapper cut. No speed claim.
+- Latest pass: Call empty string-name render fast path in
+  `packages/core/src/tree/call.ts`.
+- Verdict: accepted as a localized empty-call writer readback cut. No speed
+  claim.
 - New traversal: none.
 - New node/materialization: none.
-- Render path: no output path changed. Static child registration prep now
-  calls the already-thenable prepared node result's `.then(...)` directly
-  instead of wrapping it with `Promise.resolve(...)`.
+- Render path: empty string-name CSS calls without args/content now write and
+  return their known `name?() !important` text directly, matching the existing
+  source-string fast path instead of opening a whole-call writer
+  mark/readback. Empty/undefined argument lists also return before preparing a
+  print state or mark window.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: removes one `Promise.resolve(...)` wrapper from the Rules
-  static registration-prep path.
-- Rejected/observed in this pass: broader Rules body render, container
-  indentation capture, placement state, merge output, duplicate declaration
-  materialization, and root serializer capture remain open in the row.
+- Allocation changes: removes the empty-call render mark/readback window and
+  the empty-arg `getPrintOptions(...)`/mark setup.
+- Rejected/observed in this pass: broader Call argument serializer inlining was
+  rejected because the current focused arg-streaming tests still expose muddy
+  pre-existing mark/readback expectations; non-scalar/custom/trivia arg trim
+  marks, async/helper ladders, `evalArgNodes(...)` copy pressure, and callable
+  output value selection remain open in the Call row.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
