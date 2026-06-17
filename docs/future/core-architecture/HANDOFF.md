@@ -129,6 +129,13 @@ with `--no-verify` after the explicit gates pass.
 - Subagent audit note: Ruleset still has a live tracker mismatch in
   `composeHeaderSelector(...)` where `valueOf().match(/&/g)` remains; that is a
   safe next Ruleset mismatch cut, separate from this Rules braced batch.
+- Merge-carried binding review: merging `origin/dev` also brought the
+  namespaced reference-import crawl deletion in `rules.ts` plus focused
+  import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
+  and direct-child-entry state to prove covered namespace uncertainty; the
+  `Parser` construction, `try/finally`, and small spy arrays are test-only
+  proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
+  production render/string transport.
 - Evidence: focused `rules.test.ts` braced/root serializer tests passed, the
   isolated Mixin braced writer proof passed, and control/collection caller test
   files passed. Full gates are required before commit.
