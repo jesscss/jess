@@ -3,7 +3,7 @@ import { Ruleset } from './ruleset.js';
 import { Any } from './any.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
-import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -1113,14 +1113,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
     };
     const printHeaderFragment = (printOptions: FinalPrintOptions, fn: (nextOptions: FinalPrintOptions) => void): string => {
-      const writer = printOptions.writer;
-      const mark = writer.mark();
-      try {
-        fn(printOptions);
-        return writer.getSince(mark);
-      } finally {
-        writer.restore(mark);
-      }
+      const writer = new OutputWriter(printOptions.compress);
+      fn({
+        ...printOptions,
+        writer
+      });
+      return writer.toString();
     };
 
     const nameOut = captureWithoutHeaderTrivia(() => printHeaderFragment(options, nextOptions => name.writeSyntax(nextOptions)));

@@ -103,33 +103,27 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `Ampersand` append/template selector assembly in
-  `packages/core/src/tree/ampersand.ts`.
-- Verdict: accepted as a mechanical callback-array staging cut. No speed claim.
-- New traversal: indexed loops now replace callback `map(...)` staging in
-  selector-list item text capture, template replacements, selector-list append,
-  complex component ownership, and compound part ownership. These loops use
-  arrays already needed for constructor boundaries or public placement state;
-  carrying them earlier would either retain stale placement arrays or broaden
-  selector ownership state.
-- New node/materialization: no new production node/materialization semantics.
-  The `BasicSelector(...).inherit(...)` template fallback was existing
-  structural replacement behavior moved out of a `map(...)` callback; the
-  `new Array(...)` allocations are the required result arrays for selector-list
-  text state or owned selector constructors. The `rules([])` and `throw new
-  Error(...)` tokens are test-only proof scaffolding.
-- Render path: no direct render behavior changed. This pass keeps Ampersand
-  eval/placement semantics and removes callback helper allocation while leaving
-  existing selector ownership and public string boundaries intact.
+- Latest pass: `AtRule.getHeaderString(...)` header fragment transport in
+  `packages/core/src/tree/at-rule.ts`.
+- Verdict: accepted as a caller-writer rollback cut at an existing string-return
+  header boundary. No speed claim.
+- New traversal: none.
+- New node/materialization: no nodes. `printHeaderFragment(...)` now creates a
+  detached `OutputWriter` because `getHeaderString(...)` still has a string
+  contract for frame comparison/output; this removes caller-writer
+  `mark/getSince/restore` rollback without claiming direct render completion.
+- Render path: no `AtRule.render(...)` behavior changed. Header fragments still
+  return strings, but they no longer use the caller writer as temporary
+  transport.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: removed callback result staging from the touched
-  selector-list/template/compound/complex append paths; constructor arrays
-  remain where new owned selector surfaces are semantically required. The
-  existing template-string `.join(...)` fallback remains for non-structural
-  template replacement and was not expanded.
-- Rejected/observed in this pass: broader raw string assembly and structural
-  selector replacement remain open in the Ampersand row.
+- Allocation changes: adds one detached writer per header fragment while
+  removing caller-writer mark/readback/restore. This is accepted only at the
+  existing `getHeaderString(...)` string boundary; deeper frame header contract
+  work remains open.
+- Rejected/observed in this pass: `renderLeafValue(...)`,
+  `serializeRulesContainer(...)` render return transport, and layer-name
+  `toTrimmedString/valueOf` semantics remain separate AtRule work.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -137,12 +131,12 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: focused `ampersand.test.ts` passed, including a selector-list
-  append case that makes `selectors.map` throw; targeted ESLint passed; core
-  package build passed. Root-level less-parser/Jess fixture invocations are
-  currently red before test collection because Vite cannot resolve
-  `@jesscss/core`; raw `tsc --noEmit` is also broadly red on current `dev`
-  test/type drift, so those are not used as proof for this Ampersand slice.
+- Evidence: focused `at-rule.test.ts` header selection passed, including
+  comment-free headers and whitespace normalization; targeted ESLint passed
+  with the existing no-floating-promises warning in `at-rule.test.ts`; full
+  core package build is required before commit. Full `at-rule.test.ts` has a
+  known unrelated comment-trivia red in the current tree, so the focused header
+  selection is the behavior proof for this slice.
 - Merge-carried binding review: `findRulesetNamespacePathFast(...)` now
   prepares the visible
   callable frame chain for the namespace segment and checks visible child
