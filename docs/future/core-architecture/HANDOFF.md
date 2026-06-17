@@ -103,17 +103,23 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `AtRule.valueOf()` name public-string transport cut in
+- Latest pass: scalar `Any.writeSyntax(...)` and `AtRule.renderLeafValue(...)`
+  public string transport cut in `packages/core/src/tree/any.ts` and
   `packages/core/src/tree/at-rule.ts`.
-- Verdict: accepted as a focused value-key serialization cut. No speed claim.
+- Verdict: accepted as a focused serialization transport cut. No speed claim.
 - New traversal: none.
-- New node/materialization: none.
-- Render path: no render path changed. At-rule equality/header-key comparison
-  now reads `this.name.valueOf()` instead of public `this.name.toString()`;
-  prelude keying remains on `prelude.valueOf()`.
-- Helper/API surface: no helpers or APIs added.
+- New node/materialization: none in runtime. The only node-construction pattern
+  flagged by the review script is a test-only CountingWriter proof instance in
+  `any.test.ts`.
+- Render path: dynamic leaf at-rule render still evaluates the name/prelude and
+  uses the existing local mark/getSince string boundary for spacing and final
+  `;` assembly, but the captured fragments now call `node.writeSyntax(...)`
+  instead of public `node.toString(...)`. Focused tests prove overriding public
+  `toString()` on the at-rule name and evaluated prelude is not observed.
+- Helper/API surface: no helpers or public APIs added. `Any.writeSyntax(...)`
+  adds the concrete scalar writer the tracker already expected and bypasses the
+  inherited public `toTrimmedString(...)` wrapper.
 - Metadata mutations: none.
 - Allocation changes: none.
-- Evidence: focused `at-rule.test.ts` coverage proves overriding
-  `name.toString()` is not observed by `AtRule.valueOf()`. Full gates are
-  recorded in the final response.
+- Evidence: focused `any.test.ts` and `at-rule.test.ts` transport tests passed
+  before doc closeout. Full gates are recorded in the final response.

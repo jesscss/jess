@@ -614,21 +614,41 @@ describe('AtRule', () => {
     const evaldRoot = await root.eval(context);
     context.root = evaldRoot;
     context.rulesContext = evaldRoot;
+    const name = any('@namespace', { role: 'atkeyword' });
     const prelude = seq([ref({ key: 'namespace' }, { type: 'variable' })]);
     const node = atrule({
-      name: any('@namespace', { role: 'atkeyword' }),
+      name,
       prelude
     });
     const originalEval = AtRule.prototype.eval;
+    const originalNameToString = name.toString;
+    const originalPreludeToString = node.prelude!.toString;
+    let nameStringCalls = 0;
+    let preludeStringCalls = 0;
+    name.toString = () => {
+      nameStringCalls++;
+      return '@wrong';
+    };
     AtRule.prototype.eval = () => {
       throw new Error('leaf at-rule render should not evaluate an at-rule surface');
     };
 
     try {
+      node.prelude!.toString = function countPreludeString(
+        this: typeof prelude,
+        ...args: Parameters<typeof originalPreludeToString>
+      ): string {
+        preludeStringCalls++;
+        return originalPreludeToString.apply(this, args);
+      };
       expect(await Promise.resolve(node.render(context))).toBe('@namespace svg;');
       const buffer = createRenderBuffer('flat');
       expect(await Promise.resolve(node.render(context, buffer))).toBe('@namespace svg;');
       expect(buffer.parts).toEqual(['@namespace svg;']);
+      expect(nameStringCalls).toBe(0);
+      expect(preludeStringCalls).toBe(0);
+      name.toString = originalNameToString;
+      node.prelude!.toString = originalPreludeToString;
       const resolved = await Promise.resolve(node.resolve(context));
       expect(resolved.toTrimmedString()).toBe('@namespace svg;');
       expect(prelude.parent).toBe(node);
@@ -636,6 +656,8 @@ describe('AtRule', () => {
       expect(node.evaluated).toBe(false);
     } finally {
       AtRule.prototype.eval = originalEval;
+      name.toString = originalNameToString;
+      node.prelude!.toString = originalPreludeToString;
     }
   });
 

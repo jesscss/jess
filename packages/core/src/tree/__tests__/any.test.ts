@@ -32,6 +32,23 @@ describe('Any and Keyword', () => {
     expect(any('foo').toTrimmedString()).toBe('foo');
   });
 
+  it('writes Any syntax directly without public string transport', () => {
+    const node = any('foo');
+    const writer = new CountingWriter();
+    let trimmedCalls = 0;
+    node.toTrimmedString = () => {
+      trimmedCalls++;
+      return 'not-foo';
+    };
+
+    node.writeSyntax({ writer });
+
+    expect(writer.toString()).toBe('foo');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(trimmedCalls).toBe(0);
+  });
+
   it('renders Any values through render(context) and resolves without touching render state', async () => {
     const renderContext = new Context();
     const resolveContext = new Context();
