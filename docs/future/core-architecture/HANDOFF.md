@@ -103,30 +103,30 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: merge reconciliation after `origin/dev` advanced with
-  binding/lookup hot-path guard hardening. The focii router shape is preserved:
-  `FOCII.md` owns goal-settable focus prompts, `HANDOFF.md` stays a short
-  router, and focused trackers keep queue detail.
-- Verdict: accepted as guidance/merge cleanup only. No speed claim.
-- New traversal: incoming `packages/core/src/tree/rules.ts` has a straight
-  indexed loop over `uncoveredChildren` for the binding retry-frame bridge.
-  This preserves a modeled dynamic-child-surface fallback after exact covered
-  misses and avoids reopening the broad direct crawl for covered misses. The
-  other new loops are in `scripts/verify-binding-lookup-hot-paths.mjs`, a cold
-  verifier that scans token rules outside runtime.
-- New node/materialization: no runtime node construction was added. Incoming
-  test spy arrays in `import-style.test.ts` / `mixin.test.ts` and verifier
-  arrays in `scripts/verify-binding-lookup-hot-paths.mjs` are proof-only.
-- Render path: no render/stringification path changed by this reconciliation.
-- Helper/API surface: incoming `verify:binding-lookup-hot-paths` is a cold
-  package script guard, not runtime API. It rejects public `Rules.find*`
-  materialization-wrapper calls from hot lookup sites and proves scalar
-  exclusion fields stay internal.
-- Metadata mutations: none.
-- Allocation changes: incoming runtime allocation is limited to the
-  `uncoveredChildren` fallback list in `Rules.findMixin(...)`, used only when
-  dynamic child-surface uncertainty remains; covered simple misses keep avoiding
-  the broad bridge. Test and script arrays are cold proof machinery.
-- Evidence: `git diff --check`, `pnpm run verify:binding-lookup-hot-paths`, and
-  `pnpm run verify:aggressive-cutting-review` passed during merge
-  reconciliation. No speed claim.
+- Latest pass: `QueryCondition` dynamic render scaffolding cut in
+  `packages/core/src/tree/query-condition.ts`.
+- Verdict: accepted as a focused serialization machinery cut. No speed claim.
+- New traversal: `renderQueryConditionRest(...)` keeps the existing async-rest
+  indexed loop but moves it out of a per-render nested function. The sync loop
+  in `renderQueryConditionSyntax(...)` remains the existing query item walk;
+  the diff re-adds it only because the per-call closure block was removed.
+- New node/materialization: none. No nodes, copied nodes, inherited metadata,
+  arrays, or render-only materialization were added. The `value: Node[]`
+  signature in `renderQueryConditionRest(...)` passes the existing item array
+  through; it does not allocate a new array.
+- Render path: render still selects/evaluates each query child and writes
+  directly to the supplied writer/buffer. The custom dynamic child mark/readback
+  fallback remains isolated because focused tests prove custom children may
+  return-only text or write text different from their return value.
+- Helper/API surface: two private node methods,
+  `renderQueryConditionChild(...)` and `renderQueryConditionRest(...)`, replace
+  the per-call `emitTrimmed` closure and nested `renderRest` async function.
+  The added private surface deletes hotter per-render function allocation.
+- Metadata mutations: no parent/source/frozen/location mutation. Existing
+  `suppressBoundaryTrivia` save/restore behavior and its `try/finally` restore
+  path were preserved while moving code out of the local closure.
+- Allocation changes: removed per-render dynamic child closure and nested async
+  rest function allocation; no replacement objects/arrays were added.
+- Evidence: focused `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/query-condition.test.ts --run --reporter=dot` passed
+  before doc closeout. Full gates are recorded in the final response.
