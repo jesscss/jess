@@ -103,22 +103,24 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Ruleset header selector writer trim in
-  `packages/core/src/tree/ruleset.ts`.
-- Verdict: accepted as a localized string post-processing cut. No speed claim.
+- Latest pass: Ampersand exact BasicSelector template text in
+  `packages/core/src/tree/ampersand.ts`.
+- Verdict: accepted as a localized public-string transport cut. No speed claim.
 - New traversal: none.
 - New node/materialization: none.
-- Render path: `getHeaderString(...)` still returns a public header string, but
-  selector trailing whitespace is now trimmed inside the existing writer window
-  before readback instead of applying a regex replacement to the captured
-  selector string.
-- Helper/API surface: none.
+- Render path: exact `BasicSelector` merge-template replacement and raw comma
+  splitting now read the owned scalar `valueOf()` text instead of public
+  `toTrimmedString(...)`. Other simple selector subclasses stay on the
+  existing fallback path.
+- Helper/API surface: adds one private exact-basic-selector text helper that
+  replaces two public string conversion sites and stays inside `ampersand.ts`.
 - Metadata mutations: none.
-- Allocation changes: removes the header regex post-processing allocation from
-  the Ruleset header string path. The existing header string boundary remains.
-- Rejected/observed in this pass: `getHeaderString(...)` still has a
-  mark/getSince/restore boundary for the public header string; broader hot
-  frame render/comparison capture remains open in the Ruleset row.
+- Allocation changes: removes exact-basic public string wrapper transport from
+  template replacement and comma-splitting checks. Existing selector-list
+  result arrays remain semantic placement output.
+- Rejected/observed in this pass: broader Ampersand raw string assembly,
+  structural selector replacement, and non-BasicSelector fallback string
+  assembly remain open in the row.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -126,10 +128,15 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: focused `ruleset.test.ts` header selector slice passed, proving
-  direct selector writer use, active writer restoration, no capture/preview,
-  and writer-owned trailing whitespace trim. Targeted ESLint for `ruleset.ts`
-  and `ruleset.test.ts` passed. Full gates are required before commit.
+- Evidence: full `ampersand.test.ts` passed, including a BasicSelector
+  template merge test that throws if public `toTrimmedString(...)` is used.
+  Targeted ESLint for `ampersand.ts` and `ampersand.test.ts` passed. The
+  review-flagged comma-split loop and selector construction produce semantic
+  selector placement output for exact-basic comma text, matching the existing
+  fallback behavior while avoiding public string transport. The test exception,
+  cleanup block, and empty rules fixture are proof scaffolding. The touched
+  generic-construction tracker text is existing row history, not new runtime
+  code. Full gates are required before commit.
 - Merge-carried binding review: merging `origin/dev` also brought the
   source-static reference handle early-read pass and binding tracker updates.
   It is lookup-only: no render/stringification path changed, no runtime node

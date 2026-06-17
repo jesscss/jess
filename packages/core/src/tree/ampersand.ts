@@ -182,6 +182,12 @@ function throwCannotAppendSelector(appendValue: string): never {
   throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
 }
 
+function getExactBasicSelectorText(selector: Selector): string | undefined {
+  return selector.constructor === BasicSelector
+    ? (selector as BasicSelector).valueOf()
+    : undefined;
+}
+
 function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
   if (
     isNode(baseSelector, N.PseudoSelector)
@@ -193,6 +199,18 @@ function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
   }
   if (isNode(baseSelector, N.SelectorList)) {
     return baseSelector.selectors;
+  }
+  const exactBasicText = getExactBasicSelectorText(baseSelector);
+  if (exactBasicText !== undefined) {
+    if (!exactBasicText.includes(',')) {
+      return [baseSelector];
+    }
+    const parts = splitTopLevelCommas(exactBasicText);
+    const selectors = new Array<Selector>(parts.length);
+    for (let i = 0; i < parts.length; i++) {
+      selectors[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
+    }
+    return selectors;
   }
   if (isNode(baseSelector, N.SimpleSelector)) {
     const selectorText = baseSelector.toTrimmedString();
@@ -221,7 +239,7 @@ function mergeAmpersandTemplateSelector(
   const merged = new Array<Selector>(replacements.length);
   for (let i = 0; i < replacements.length; i++) {
     const item = replacements[i]!;
-    const value = item.toTrimmedString();
+    const value = getExactBasicSelectorText(item) ?? item.toTrimmedString();
     assertValidAmpersandTemplateJoin(appendValue, value);
     if (templateParts?.length === 2 && templateParts[0] === '' && templateParts[1]) {
       const result = appendSelector(item, templateParts[1]);
