@@ -103,39 +103,30 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `Interpolated` public string transport cut in
-  `packages/core/src/tree/interpolated.ts`.
+- Latest pass: `Mixin` source syntax and interpolated-name registration helper
+  cut in `packages/core/src/tree/mixin.ts`.
 - Verdict: accepted as a focused serialization transport cut. No speed claim.
-- New traversal: two bounded string scans: `replace(...)` now uses a
-  placeholder `while` loop instead of regex callback replacement, and
-  `createSimpleInterpolatedSelector(...)` uses a straight character scan
-  instead of regex `match(...)` plus a token array for compound selector
-  interpolation. Both scans operate on the already-owned source/output strings.
-- New node/materialization: no new render-path node materialization. The
-  `BasicSelector`/`CompoundSelector` constructions remain the existing public
-  `createSelector(...)` materialization boundary, now reached without public
-  replacement string transport. Cold public string boundaries still allocate
-  detached `OutputWriter` instances when a string is the result. Test-only
-  `Error` throws, empty replacement arrays, and `try/finally` restoration in
-  `interpolated.test.ts` are proof scaffolding, not runtime control flow.
-- Render path: replacement emission now calls `replacement.writeSyntax(...)`
-  instead of public `replacement.toTrimmedString(...)`; resolved render keeps
-  direct replacement evaluation and writes to the prepared writer/buffer.
-- Helper/API surface: no public APIs added. New local helpers
-  `writeReplacementSyntax(...)` and `createSimpleInterpolatedSelector(...)`
-  replace repeated public string transport and regex/token-array selector
-  assembly.
-- Metadata mutations: none.
-- Allocation changes: removed the regex callback/token-array paths for public
-  `replace(...)` and compound selector assembly. Retained string `slice(...)`
-  fragments because the public result is string text and the selector
-  materialization boundary needs token text for `BasicSelector` construction.
-  Retained required cold writer allocation where a public string is returned.
-- Evidence: focused `interpolated.test.ts` and `selector-interpolated.test.ts`
-  transport tests passed before doc closeout. Full gates are recorded in the
+- New traversal: none.
+- New node/materialization: no new render-path node materialization.
+  Interpolated-name registration still materializes the existing replacement
+  `Mixin` wrapper once the dynamic name is evaluated; the pass removes
+  conditional object-spread fragments and a per-call `withName` closure around
+  that existing semantic boundary. The `CountingWriter` and `throw new Error`
+  tokens in `mixin.test.ts` are test-only proof that public string methods are
+  not used.
+- Render path: `Mixin.writeSyntax(...)` now writes name, params, guard, and
+  rules directly. Public `toTrimmedString(...)` is a cold wrapper that only
+  marks/reads the already-directed writer output.
+- Helper/API surface: one private `createPreparedNameMixin(...)` method
+  replaces the local `withName` closure in `_prepareMixinNameIdentity(...)`; no
+  public APIs added.
+- Metadata mutations: no new metadata mutation. The `sourceRoot?._treeContext`
+  read is the existing prepared-name wrapper constructor metadata carry-through.
+- Allocation changes: removed conditional object-spread fragments from
+  `deriveMixin(...)` / prepared-name wrapper construction and removed the
+  per-call prepared-name closure. The remaining `MixinValue` objects are the
+  required constructor payloads for existing public materialization boundaries.
+  Kept the cold public wrapper mark/readback for `toTrimmedString(...)`.
+- Evidence: focused `mixin.test.ts` source-writer and interpolated-name
+  registration tests passed before doc closeout. Full gates are recorded in the
   final response.
-- Merge note: the incoming `origin/dev` binding diff also includes
-  script/test-only grep loops, array filters/maps, `try` / `catch` negative
-  checks, and proof arrays in `scripts/verify-binding-lookup-hot-paths.mjs` and
-  `import-style.test.ts`. Those are verifier/test scaffolding from the merged
-  binding batch, not serialization runtime paths.
