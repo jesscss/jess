@@ -103,21 +103,22 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Ruleset hoisted-parent header selector writer cut in
-  `packages/core/src/tree/util/serialize-helper.ts`.
-- Verdict: accepted as a focused public string-transport cut. No speed claim.
-- New traversal: none.
-- New node/materialization: none. The existing detached `OutputWriter` remains
-  because `renderHoistedParentHeader(...)` returns a header string for the
-  current frame contract.
-- Render path: hoisted parent headers now call `selector.writeSyntax(...)`
-  instead of public `selector.toString(...)` while preserving the existing
-  detached header string boundary.
+- Latest pass: Ampersand comma-split replacement assembly in
+  `packages/core/src/tree/ampersand.ts`.
+- Verdict: accepted as a mechanical callback-array staging cut. No speed claim.
+- New traversal: one indexed loop fills the selector replacement array returned
+  from `splitTopLevelCommas(...)`, replacing callback `map(...)` staging. The
+  array is the existing replacement result contract for template distribution.
+- New node/materialization: `BasicSelector(...).inherit(...)` construction is
+  existing raw comma-split replacement behavior moved out of a callback.
+- Render path: no render behavior changed; this only changes Ampersand
+  placement/eval replacement assembly for raw comma-split selector text.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: none.
-- Rejected/observed in this pass: hoisted-parent detached header string
-  rendering still needs a broader frame-header contract change.
+- Allocation changes: removes callback result staging; the replacement result
+  array remains required by the existing selector distribution contract.
+- Rejected/observed in this pass: broader raw string assembly and structural
+  selector replacement remain open in the Ampersand row.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -125,11 +126,8 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: focused `nesting-collapse.test.ts` hoisted-parent selection passed,
-  including a prototype guard that throws on public selector string transport;
-  the flagged `throw new Error(...)` and `try/finally` are test-only guard and
-  restoration scaffolding. Targeted ESLint passed. Full gates are required
-  before commit.
+- Evidence: full focused `ampersand.test.ts` passed and targeted ESLint passed.
+  Full gates are required before commit.
 - Merge-carried binding review: `findRulesetNamespacePathFast(...)` now
   prepares the visible
   callable frame chain for the namespace segment and checks visible child
