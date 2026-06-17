@@ -582,6 +582,7 @@ function writeDetached(options: PrintOptions, fn: (nextOptions: FinalPrintOption
 }
 
 export type RulesVisibility = 'public' | 'optional' | 'private';
+type CallableRulesetPrefixMatch = { ruleset: Ruleset; consumed: string[]; scope: Rules };
 
 export type RulesOptions = {
   /**
@@ -1641,11 +1642,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       local?: boolean;
       searchParents?: boolean;
     }
-  ): Array<{ ruleset: Ruleset; consumed: string[]; scope: Rules }> {
+  ): CallableRulesetPrefixMatch[] {
     const searchSurface = (
       scope: Rules,
       localContext: boolean | undefined,
-      results: Array<{ ruleset: Ruleset; consumed: string[]; scope: Rules }>,
+      results: CallableRulesetPrefixMatch[],
       visited?: Set<Rules>
     ): void => {
       if (visited?.has(scope)) {
@@ -1707,7 +1708,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     };
 
-    const results: Array<{ ruleset: Ruleset; consumed: string[]; scope: Rules }> = [];
+    const results: CallableRulesetPrefixMatch[] = [];
     let cursor: Node | undefined = this;
     let first = true;
     while (cursor) {
@@ -1868,6 +1869,145 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return result === DEFINITE_MIXIN_NAMESPACE_MISS ? [] : result?.entries;
   }
 
+  private callableBucketHasExactMixinNamespace(
+    frame: ScopeFrame,
+    segment: string
+  ): boolean {
+    const bucket = frame.callableBucketsByName?.get(segment);
+    if (!bucket?.length) {
+      return false;
+    }
+    for (let i = bucket.length - 1; i >= 0; i--) {
+      const entry = bucket[i]!;
+      if (entry.match.length === 0 && !isNode(entry.value, N.Ruleset)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private prepareCallableLookupFrameChain(
+    frame: ScopeFrame,
+    segment: string,
+    includeRulesets: boolean,
+    searchParents: boolean
+  ): void {
+    let cursor: ScopeFrame | undefined = frame;
+    while (cursor) {
+      if (isNode(cursor.rulesNode, N.Rules)) {
+        cursor.rulesNode.prepareCallableLookupFrame(cursor, segment, includeRulesets);
+      }
+      if (!searchParents) {
+        break;
+      }
+      cursor = cursor.parent;
+    }
+  }
+
+  private frameChainHasExactMixinNamespace(
+    frame: ScopeFrame,
+    segment: string,
+    searchParents: boolean
+  ): boolean {
+    let cursor: ScopeFrame | undefined = frame;
+    while (cursor) {
+      if (this.callableBucketHasExactMixinNamespace(cursor, segment)) {
+        return true;
+      }
+      if (!searchParents) {
+        break;
+      }
+      cursor = cursor.parent;
+    }
+    return false;
+  }
+
+  private prefixOwnsChildRules(
+    scope: Rules,
+    entryRules: Rules,
+    segment: string,
+    prefixMatches: CallableRulesetPrefixMatch[]
+  ): boolean {
+    for (let i = 0; i < prefixMatches.length; i++) {
+      const { ruleset, consumed, scope: matchScope } = prefixMatches[i]!;
+      if (
+        consumed.length === 1
+        && consumed[0] === segment
+        && sourceRulesOf(ruleset.rules) === sourceRulesOf(entryRules)
+        && (matchScope === scope || sourceRulesOf(matchScope) === sourceRulesOf(scope))
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private childMixinNamespaceUncertaintyIsLimitedToPrefixes(
+    scope: Rules,
+    segment: string,
+    prefixMatches: CallableRulesetPrefixMatch[],
+    options: CallableFindOptions
+  ): boolean {
+    const childEntries = scope.directChildRuleEntries !== undefined
+      ? (scope.directChildRuleEntries ?? undefined)
+      : scope.collectDirectChildRulesEntries();
+    if (!childEntries?.length) {
+      return true;
+    }
+    for (let i = childEntries.length - 1; i >= 0; i--) {
+      const entry = childEntries[i]!;
+      if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options.hasTarget })) {
+        continue;
+      }
+      if (entry.hasExactMixinSurface === false && entry.hasReferenceImportSurface !== true) {
+        continue;
+      }
+      if (entry.node.options?.forward) {
+        continue;
+      }
+      if (options.local && entry.node.options?.local) {
+        continue;
+      }
+      if (!this.prefixOwnsChildRules(scope, entry.node, segment, prefixMatches)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private visibleChildMixinNamespaceUncertaintyIsLimitedToPrefixes(
+    scope: Rules,
+    segment: string,
+    prefixMatches: CallableRulesetPrefixMatch[],
+    searchParents: boolean,
+    options: CallableFindOptions
+  ): boolean {
+    let cursor: Node | undefined = scope;
+    let first = true;
+    while (cursor) {
+      if (isNode(cursor, N.Rules)) {
+        const visibleScope = cursor as Rules;
+        if (!first && isNonClassicImportBoundary(visibleScope)) {
+          break;
+        }
+        first = false;
+        if (!this.childMixinNamespaceUncertaintyIsLimitedToPrefixes(
+          visibleScope,
+          segment,
+          prefixMatches,
+          options
+        )) {
+          return false;
+        }
+      }
+      if (!searchParents) {
+        break;
+      }
+      cursor = cursor.parent;
+    }
+    return true;
+  }
+
   private findRulesetNamespacePathFast(
     keys: string[],
     options: CallableFindOptions = {}
@@ -1880,140 +2020,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     type RulesetNamespaceFastResult = MixinEntry[] | typeof DEFINITE_MISS | undefined;
     const selectorNeedsLegacyFallback = (ruleset: Ruleset): boolean => {
       return blocksAmbientMixinOutputLookup(ruleset.rules);
-    };
-    const bucketHasExactMixinNamespace = (
-      frame: ScopeFrame,
-      segment: string
-    ): boolean => {
-      const bucket = frame.callableBucketsByName?.get(segment);
-      if (!bucket?.length) {
-        return false;
-      }
-      for (let i = bucket.length - 1; i >= 0; i--) {
-        const entry = bucket[i]!;
-        if (entry.match.length === 0 && !isNode(entry.value, N.Ruleset)) {
-          return true;
-        }
-      }
-      return false;
-    };
-    const prepareCallableLookupFrameChain = (
-      frame: ScopeFrame,
-      segment: string,
-      includeRulesets: boolean,
-      searchParents: boolean
-    ): void => {
-      let cursor: ScopeFrame | undefined = frame;
-      while (cursor) {
-        if (isNode(cursor.rulesNode, N.Rules)) {
-          cursor.rulesNode.prepareCallableLookupFrame(cursor, segment, includeRulesets);
-        }
-        if (!searchParents) {
-          break;
-        }
-        cursor = cursor.parent;
-      }
-    };
-    const frameChainHasExactMixinNamespace = (
-      frame: ScopeFrame,
-      segment: string,
-      searchParents: boolean
-    ): boolean => {
-      let cursor: ScopeFrame | undefined = frame;
-      while (cursor) {
-        if (bucketHasExactMixinNamespace(cursor, segment)) {
-          return true;
-        }
-        if (!searchParents) {
-          break;
-        }
-        cursor = cursor.parent;
-      }
-      return false;
-    };
-    const prefixOwnsChildRules = (
-      scope: Rules,
-      entryRules: Rules,
-      segment: string,
-      prefixMatches: Array<{ ruleset: Ruleset; consumed: string[]; scope: Rules }>
-    ): boolean => {
-      for (let i = 0; i < prefixMatches.length; i++) {
-        const { ruleset, consumed, scope: matchScope } = prefixMatches[i]!;
-        if (
-          matchScope === scope
-          && consumed.length === 1
-          && consumed[0] === segment
-          && sourceRulesOf(ruleset.rules) === sourceRulesOf(entryRules)
-        ) {
-          return true;
-        }
-        if (
-          sourceRulesOf(matchScope) === sourceRulesOf(scope)
-          && consumed.length === 1
-          && consumed[0] === segment
-          && sourceRulesOf(ruleset.rules) === sourceRulesOf(entryRules)
-        ) {
-          return true;
-        }
-      }
-      return false;
-    };
-    const childMixinNamespaceUncertaintyIsLimitedToPrefixes = (
-      scope: Rules,
-      segment: string,
-      prefixMatches: Array<{ ruleset: Ruleset; consumed: string[]; scope: Rules }>
-    ): boolean => {
-      const childEntries = scope.directChildRuleEntries !== undefined
-        ? (scope.directChildRuleEntries ?? undefined)
-        : scope.collectDirectChildRulesEntries();
-      if (!childEntries?.length) {
-        return true;
-      }
-      for (let i = childEntries.length - 1; i >= 0; i--) {
-        const entry = childEntries[i]!;
-        if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options.hasTarget })) {
-          continue;
-        }
-        if (entry.hasExactMixinSurface === false && entry.hasReferenceImportSurface !== true) {
-          continue;
-        }
-        if (entry.node.options?.forward) {
-          continue;
-        }
-        if (options.local && entry.node.options?.local) {
-          continue;
-        }
-        if (!prefixOwnsChildRules(scope, entry.node, segment, prefixMatches)) {
-          return false;
-        }
-      }
-      return true;
-    };
-    const visibleChildMixinNamespaceUncertaintyIsLimitedToPrefixes = (
-      scope: Rules,
-      segment: string,
-      prefixMatches: Array<{ ruleset: Ruleset; consumed: string[]; scope: Rules }>,
-      searchParents: boolean
-    ): boolean => {
-      let cursor: Node | undefined = scope;
-      let first = true;
-      while (cursor) {
-        if (isNode(cursor, N.Rules)) {
-          const visibleScope = cursor as Rules;
-          if (!first && isNonClassicImportBoundary(visibleScope)) {
-            break;
-          }
-          first = false;
-          if (!childMixinNamespaceUncertaintyIsLimitedToPrefixes(visibleScope, segment, prefixMatches)) {
-            return false;
-          }
-        }
-        if (!searchParents) {
-          break;
-        }
-        cursor = cursor.parent;
-      }
-      return true;
     };
 
     const walk = (
@@ -2036,7 +2042,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ? scope.getScopeFrame()
         : undefined;
       if (scopeFrame) {
-        prepareCallableLookupFrameChain(scopeFrame, segment, false, searchParents);
+        this.prepareCallableLookupFrameChain(scopeFrame, segment, false, searchParents);
         const frameHit = lookupScopeFrameCallable(scopeFrame, segment, {
           includeRulesets: false,
           searchParents
@@ -2051,12 +2057,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           || frameHit.reason === 'reference-import'
           || frameHit.reason === 'frame'
         ) {
-          if (frameChainHasExactMixinNamespace(scopeFrame, segment, searchParents)) {
+          if (this.frameChainHasExactMixinNamespace(scopeFrame, segment, searchParents)) {
             hasMixinNamespace = true;
             mixinNamespaceCovered = true;
           } else if (
             prefixMatches.length > 0
-            && visibleChildMixinNamespaceUncertaintyIsLimitedToPrefixes(scope, segment, prefixMatches, searchParents)
+            && this.visibleChildMixinNamespaceUncertaintyIsLimitedToPrefixes(
+              scope,
+              segment,
+              prefixMatches,
+              searchParents,
+              options
+            )
           ) {
             mixinNamespaceCovered = true;
           }

@@ -142,19 +142,21 @@ counters, old registry counters, and smoke timings. Goal: keep counter
 evidence current without claiming speed. Acceptance: profile recorded with old
 `Rules.find`/registry counters empty and smoke values labeled smoke-only.
 
-14. [ ] Prove selector-list reference-import namespace array paths use the same
-covered frame route. Scope: imported selector-list namespaces, multi-selector
-rulesets that expose callable entries, and `findRulesetNamespacePathFast(...)`
-prefix ownership checks. Goal: avoid broad `findMixinsFast(...)` crawl for
-selector-list namespace hits/misses. Acceptance: focused import/reference tests
-with bridge spies and existing stable namespace tests.
+14. [ ] Extend namespace frame-chain proof to callable mixin namespaces with
+reference-import descendants. Scope: no-param namespace mixins, nested
+reference imports inside mixin namespace bodies, fallback frames, and
+`findCallableDescendantsWithinMixinNamespaces(...)`. Goal: prevent callable
+namespace descendants from falling back to broad direct crawl when child-frame
+facts can prove hit/miss. Acceptance: focused mixin/import tests with
+`findMixinsFast(...)` spies and union-preserving namespace positives.
 
-15. [ ] Audit `findRulesetNamespacePathFast(...)` helper shape after the
-reference-import cut. Scope: local helper closures for frame-chain preparation,
-prefix ownership, and visible child uncertainty. Goal: collapse or move helper
-surface only if it reduces hot-path function ladders without reopening broad
-crawls. Acceptance: no behavior change, eslint/build green, and aggressive
-review records whether the helper shape is still justified.
+15. [ ] Revisit `findVisibleCallableRulesetPrefixMatches(...)` recursive child
+walk after selector-list coverage. Scope: direct child-entry flags,
+reference-import child surfaces, selector-list prefix matches, and visited-set
+allocation. Goal: skip child recursion when carried flags prove no ruleset
+prefix can exist, without losing imported selector-list positives. Acceptance:
+focused namespace/import tests plus aggressive review explaining any remaining
+visited-set allocation.
 
 ## Latest Binding Baseline
 
@@ -235,6 +237,14 @@ review records whether the helper shape is still justified.
   prove a `['#Namespace', '.missing']` miss stays off generated array fallback
   and direct crawl, while a ruleset namespace/callable namespace union still
   returns all candidates.
+- Selector-list reference-import namespace array paths use the same covered
+  frame route: imported multi-selector rulesets hit and miss without broad
+  `findMixinsFast(...)` crawl, and only the authored array-path lookup is
+  observed by the nested-array spy.
+- The namespace proof helpers were moved from per-call closures into private
+  `Rules` methods. This keeps the new frame-chain/prefix-ownership logic out
+  of public API while avoiding fresh helper closures on each
+  `findRulesetNamespacePathFast(...)` call.
 - `setDefined` assignment no longer imports or calls exported
   `findVariableDeclarationAssignmentLookup` /
   `findPropertyDeclarationAssignmentLookup` wrappers. The old

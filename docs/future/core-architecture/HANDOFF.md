@@ -104,29 +104,31 @@ with `--no-verify` after the explicit gates pass.
 ## Aggressive Cutting Self-Prosecution
 
 - Latest pass: namespaced reference-import array-path direct-crawl deletion.
-- Verdict: accepted as a frame/direct-crawl cut with behavior proof. No speed
-  claim.
+- Verdict: accepted as a frame/direct-crawl cut plus helper-shape cleanup with
+  behavior proof. No speed claim.
 - New traversal: `findRulesetNamespacePathFast(...)` now prepares the visible
   callable frame chain for the namespace segment and checks visible child
   entries to prove uncovered child/reference-import uncertainty is limited to
   the ruleset-prefix body already being descended into. This replaces broad
   `findMixinsFast(...)` scans for the targeted `#Namespace` / `.mixin`
-  reference-import array-path cases.
+  reference-import array-path cases, including selector-list imported
+  namespaces.
 - New node/materialization: none.
 - Render path: no committed render/stringification path change.
 - Helper/API surface: no exported helper or public API added. The new helper
-  closures are local to `findRulesetNamespacePathFast(...)`; the binding
-  tracker carries a follow-up to collapse/move them only if doing so reduces
-  hot-path function ladders without reopening broad crawls.
+  logic was moved into private `Rules` methods so it is not recreated as local
+  closures for each namespace lookup.
 - Metadata mutations: none.
 - Allocation changes: the new prefix proof walks existing child-entry/frame
   state and does not allocate production result arrays on the targeted miss
-  path. Tests allocate small spy arrays only for proof.
+  path. Moving helper closures to private methods also avoids per-call helper
+  function allocation. Tests allocate small spy arrays only for proof.
 - Evidence: focused import-style tests for namespaced reference-import
-  array-path hit/miss and guarded/reference-import callable miss fixtures
-  passed. Focused mixin namespace tests prove stable namespaces still avoid
-  fallback and a ruleset namespace/callable namespace union still returns all
-  candidates. Final gates are required before commit. No speed claim.
+  array-path hit/miss, selector-list namespace array paths, and
+  guarded/reference-import callable miss fixtures passed. Focused mixin
+  namespace tests prove stable namespaces still avoid fallback and a ruleset
+  namespace/callable namespace union still returns all candidates. Final gates
+  are required before commit. No speed claim.
 - Merge note: the branch also incorporates the latest serialization transport
   work from `origin/dev`; keep that progress tracked in
   `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.
