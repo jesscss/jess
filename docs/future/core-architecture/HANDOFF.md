@@ -103,28 +103,27 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Ruleset duplicate declaration pre-render narrowing in
+- Latest pass: Ruleset serializer frame/child filter array cuts in
   `packages/core/src/tree/util/serialize-helper.ts`.
-- Verdict: accepted as a hot serializer transport cut. No speed claim.
-- New traversal: one forward loop counts visible non-variable declaration
-  properties before the existing reverse duplicate pass. The count is needed
-  only inside the flattened render list, and carrying it earlier would add
-  stale declaration state to container flattening.
-- New node/materialization: no nodes. Adds one `Map<string, number>` for
-  declaration property counts so unique declarations skip detached pre-render
-  entirely; repeated properties keep the existing exact-output comparison
-  cache.
-- Render path: unique declarations now fall through to normal emission instead
-  of rendering into the duplicate declaration cache first. Repeated-property
-  duplicate behavior, trivia cache reuse, mixin/call/control exemptions, and
-  generated-output keep rules remain unchanged.
+- Verdict: accepted as hot serializer callback/temp-array removal. No speed
+  claim.
+- New traversal: three straight loops replace `filter(...)`/`some(...)`/spread
+  staging in transparent visible-child flattening, hoisted parent ruleset-frame
+  discovery, and hoisted `treeFrames` reset. The facts are needed only inside
+  the active flattened/frame arrays; carrying them earlier would add stale
+  frame/visibility state to container setup.
+- New node/materialization: none. No new arrays; hoisted tree-frame reset now
+  compacts the existing frame array in place before pushing the active node.
+- Render path: output behavior is unchanged. The serializer now walks existing
+  arrays directly instead of materializing `visibleChildren`, `rulesetFrames`,
+  or `atRulesOnly` arrays on the render path.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: adds a property-count `Map` and removes detached
-  declaration writer/string/trivia cache allocation for unique properties.
-- Rejected/observed in this pass: `getHeaderString(...)` capture/readback,
-  serialize-helper frame comparison, and hoisted-parent detached header
-  rendering still need a broader frame-header contract change.
+- Allocation changes: removes temporary filtered arrays and spread argument
+  materialization in the touched serializer paths.
+- Rejected/observed in this pass: `getHeaderString(...)` capture/readback and
+  hoisted-parent detached header rendering still need a broader frame-header
+  contract change.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -132,11 +131,9 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: focused `ruleset.test.ts` duplicate/header/serialize selection
-  passed, including a unique-declaration test that proves normal emission uses
-  the caller writer instead of duplicate-cache pre-render. The flagged
-  `CountingWriter` construction and `try/finally` are test-only restoration
-  scaffolding. Targeted ESLint passed. Full gates are required before commit.
+- Evidence: focused `nesting-collapse.test.ts` hoist/collapse selection passed;
+  focused `ruleset.test.ts` serialize/header/hoist/source-direct selection
+  passed; targeted ESLint passed. Full gates are required before commit.
 - Merge-carried binding review: `findRulesetNamespacePathFast(...)` now
   prepares the visible
   callable frame chain for the namespace segment and checks visible child

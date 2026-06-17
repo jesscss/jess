@@ -103,8 +103,10 @@ when choosing among unfinished serialization rows. Hot unfinished rows include
   `valueOf().match(...)` array allocation. Serializer flattening/hoisted-frame
   setup now uses indexed loops and existing frame arrays instead of callback
   scans, visible-child temp arrays, filtered frame arrays, spread frame arrays,
-  and `queue.shift()`. Duplicate declaration handling now pre-renders only
-  repeated properties instead of every declaration in the visible render list.
+  and `queue.shift()`; transparent visible-child flattening and hoisted
+  tree-frame reset now compact/walk existing arrays instead of allocating
+  filter results. Duplicate declaration handling now pre-renders only repeated
+  properties instead of every declaration in the visible render list.
   `getHeaderString(...)` now writes the concrete selector through direct
   `writeSyntax(...)` without a defensive public `toTrimmedString(...)`
   fallback branch.
