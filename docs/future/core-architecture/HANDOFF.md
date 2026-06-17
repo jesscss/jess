@@ -103,19 +103,21 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `Call.toTrimmedString(...)` source child public string
-  transport cut in `packages/core/src/tree/call.ts`.
+- Latest pass: `Rules` root charset/comment/import detached public string
+  transport cut in `packages/core/src/tree/rules.ts`.
 - Verdict: accepted as a focused serialization transport cut. No speed claim.
 - New traversal: none.
 - New node/materialization: none in runtime. The `throw new Error` tokens in
-  `call.test.ts` are test-only proof that public child string methods are not
-  used by source serialization.
-- Render path: no render-path change. Public call source stringification now
-  writes name, args, and content through direct `writeSyntax(...)` child
-  contracts while preserving the existing empty string-name no-readback fast
-  path and non-empty public wrapper mark/readback boundary.
-- Helper/API surface: no helpers or public APIs added.
+  `rules.test.ts` are test-only proof that public child string methods are not
+  used by root charset/import source serialization.
+- Render path: no render-path change. Root CSS source serialization still uses
+  a detached writer for hoisted charset/comment/import text, but that detached
+  writer now calls child `writeSyntax(...)` directly instead of public
+  `toString(...)` / `toTrimmedString(...)`.
+- Helper/API surface: replaced the string-returning `printDetached(...)` helper
+  with `writeDetached(...)`, a void writer callback helper for detached syntax
+  capture; no public APIs added.
 - Metadata mutations: none.
 - Allocation changes: none.
-- Evidence: focused `call.test.ts` source string tests passed before doc
+- Evidence: focused `rules.test.ts` root serializer tests passed before doc
   closeout. Full gates are recorded in the final response.
