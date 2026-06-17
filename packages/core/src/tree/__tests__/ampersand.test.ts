@@ -175,6 +175,27 @@ describe('Ampersand', () => {
     }
   });
 
+  it('derives basic selector merge templates without public string transport', async () => {
+    const frame = ruleset({
+      selector: sel([el('.foo')]),
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+    const originalToTrimmedString = BasicSelector.prototype.toTrimmedString;
+    BasicSelector.prototype.toTrimmedString = () => {
+      throw new Error('Ampersand template merge should read exact basic selector text directly');
+    };
+
+    try {
+      const resolved = await amp('&-theme').resolve(context);
+
+      expect(resolved.valueOf()).toBe('.foo-theme');
+      expect(resolved.hoistToRoot).toBe(true);
+    } finally {
+      BasicSelector.prototype.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
   it('derives appended selector-list ampersands without callback array mapping', async () => {
     const parentSelector = sellist([
       sel([el('.one')]),

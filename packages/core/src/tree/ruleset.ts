@@ -1202,13 +1202,14 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     const mark = writer.mark();
     try {
       renderSelector.writeSyntax(options);
+      writer.trimEndSince(mark);
       selOut = writer.getSince(mark);
     } finally {
       writer.restore(mark);
       options.trivia = savedTrivia;
     }
     restorePrintState(options, saved);
-    const header = selOut.replace(/\s+$/, '') + ' {';
+    const header = selOut + ' {';
     return (/^\s*\/\*/u.test(header)
       ? normalizeLeadingBlockTrivia(header, idt)
       : normalizeIndent(header, idt)) + '\n';

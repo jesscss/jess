@@ -183,3 +183,11 @@ with `--no-verify` after the explicit gates pass.
   `RulesLookupHandleShape` object from the source-static handle pass as remote
   baseline context; this pass removes the temporary source-static shape
   allocation by comparing stored handle fields directly.
+- Merge-carried serialization review: `origin/dev` also includes Ampersand
+  exact `BasicSelector` template text work in `packages/core/src/tree/ampersand.ts`.
+  Exact basic selector template replacement and comma checks read owned scalar
+  text instead of public string conversion; broader Ampersand raw string
+  assembly remains tracked in `NODE-REWRITE-TRACKER.md`. The review-flagged
+  loop, selector construction/inheritance, result array, cleanup block, and
+  test exception are serialization proof/placement machinery from that merge,
+  not binding lookup logic. No speed claim.
