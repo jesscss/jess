@@ -103,30 +103,23 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `QueryCondition` dynamic render scaffolding cut in
-  `packages/core/src/tree/query-condition.ts`.
-- Verdict: accepted as a focused serialization machinery cut. No speed claim.
-- New traversal: `renderQueryConditionRest(...)` keeps the existing async-rest
-  indexed loop but moves it out of a per-render nested function. The sync loop
-  in `renderQueryConditionSyntax(...)` remains the existing query item walk;
-  the diff re-adds it only because the per-call closure block was removed.
-- New node/materialization: none. No nodes, copied nodes, inherited metadata,
-  arrays, or render-only materialization were added. The `value: Node[]`
-  signature in `renderQueryConditionRest(...)` passes the existing item array
-  through; it does not allocate a new array.
-- Render path: render still selects/evaluates each query child and writes
-  directly to the supplied writer/buffer. The custom dynamic child mark/readback
-  fallback remains isolated because focused tests prove custom children may
-  return-only text or write text different from their return value.
-- Helper/API surface: two private node methods,
-  `renderQueryConditionChild(...)` and `renderQueryConditionRest(...)`, replace
-  the per-call `emitTrimmed` closure and nested `renderRest` async function.
-  The added private surface deletes hotter per-render function allocation.
+- Latest pass: `Ruleset.getHeaderString(...)` selector fallback removal in
+  `packages/core/src/tree/ruleset.ts`.
+- Verdict: accepted as a focused serialization branch cut. No speed claim.
+- New traversal: none.
+- New node/materialization: none.
+- Render path: header rendering still writes selector syntax to the prepared
+  writer and reads that local header string for indentation/normalization. The
+  defensive fallback to public `renderSelector.toTrimmedString(options)` is
+  gone because `renderSelector` is already a concrete `Selector` after the Nil
+  and reference-filter guards.
+- Helper/API surface: no helpers or APIs added. One structural probe branch and
+  one public string fallback call were deleted.
 - Metadata mutations: no parent/source/frozen/location mutation. Existing
-  `suppressBoundaryTrivia` save/restore behavior and its `try/finally` restore
-  path were preserved while moving code out of the local closure.
-- Allocation changes: removed per-render dynamic child closure and nested async
-  rest function allocation; no replacement objects/arrays were added.
-- Evidence: focused `pnpm --filter @jesscss/core exec vitest
-  src/tree/__tests__/query-condition.test.ts --run --reporter=dot` passed
-  before doc closeout. Full gates are recorded in the final response.
+  print-state save/restore and trivia restore boundaries are unchanged.
+- Allocation changes: no replacement allocations. This removes the fallback
+  branch object/type probe and avoids public string wrapper transport for
+  ruleset headers.
+- Evidence: focused `ruleset.test.ts` header tests and `nesting-collapse.test.ts`
+  collapse/header tests passed before doc closeout. Full gates are recorded in
+  the final response.
