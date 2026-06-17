@@ -135,21 +135,32 @@ describe('Rule', () => {
       resolveCalls++;
       return originalResolve.apply(this, args);
     };
+    const originalMark = OutputWriter.prototype.mark;
+    let marks = 0;
+    OutputWriter.prototype.mark = function countPreparedMarks(this: OutputWriter): number {
+      marks++;
+      return originalMark.call(this);
+    };
 
-    const rendered = await Promise.resolve(node.render(context, buffer));
+    try {
+      const rendered = await Promise.resolve(node.render(context, buffer));
 
-    expect(rendered).toBeString(`
-      foo {
-        color: red;
-      }
-    `);
-    expect(buffer.segments).toHaveLength(1);
-    expect(buffer.segments[0]).toBeString(`
-      foo {
-        color: red;
-      }
-    `);
-    expect(resolveCalls).toBe(0);
+      expect(rendered).toBeString(`
+        foo {
+          color: red;
+        }
+      `);
+      expect(buffer.segments).toHaveLength(1);
+      expect(buffer.segments[0]).toBeString(`
+        foo {
+          color: red;
+        }
+      `);
+      expect(resolveCalls).toBe(0);
+      expect(marks).toBe(4);
+    } finally {
+      OutputWriter.prototype.mark = originalMark;
+    }
   });
 
   it('renders finalized ruleset output directly without public resolve', async () => {

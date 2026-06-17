@@ -784,7 +784,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   ): string {
     if (isRenderBuffer(bufferOrOptions)) {
       const prepared = prepareBufferPrintState(context, options, bufferOrOptions);
-      const mark = prepared.writer.mark();
+      const mark = bufferOrOptions.kind === 'flat' && prepared.writer.writesTo(bufferOrOptions.parts)
+        ? prepared.writer.mark()
+        : 0;
       return writePreparedRenderText(bufferOrOptions, prepared, mark, serializeRulesContainer(node, prepared));
     }
     return serializeRulesContainer(node, prepareRenderPrintState(context, bufferOrOptions));
