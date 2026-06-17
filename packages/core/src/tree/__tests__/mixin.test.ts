@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction, style, Mixin, VarDeclaration } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction, style, Mixin } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { lookupScopeFrameCallable, resolveFrameCell } from '../scope-frame.js';
 import { getRulesEntryTraversalState } from '../util/lookup-utils.js';
@@ -302,8 +302,11 @@ describe('Mixin', () => {
       expect(secondDecl?.parent).toBe(mixinBody);
       expect(sourceDecl.parent).toBe(mixinBody);
       expect(sourceValue.parent).toBe(sourceDecl);
-      expect((firstDecl! as VarDeclaration).valueNode).toBe(sourceValue);
-      expect((secondDecl! as VarDeclaration).valueNode).toBe(sourceValue);
+      if (!isNode(firstDecl, N.VarDeclaration) || !isNode(secondDecl, N.VarDeclaration)) {
+        throw new Error('Expected VarDeclaration output children');
+      }
+      expect(firstDecl.valueNode).toBe(sourceValue);
+      expect(secondDecl.valueNode).toBe(sourceValue);
     });
 
     it('derives ordinary mixin output wrappers without cloning the source Rules root', async () => {
@@ -2821,6 +2824,46 @@ describe('Mixin', () => {
         expect(root._scopeFrame?.mixinCallableMissesCovered).toBe(false);
         expect(root._scopeFrame?.mixinCallableMissCoverageKnown).toBe(true);
         expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: uncovered reference imports do not reopen covered sibling child surfaces', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const missingKey = '.mixed-reference-missing';
+      const broadParentCrawls: string[] = [];
+      const coveredChild = rules([
+        mixin({
+          name: any('.covered-sibling'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        })
+      ]);
+      const referenceChild = rules([
+        style({
+          path: quoted(any('reference-import.jess'))
+        }, {
+          type: 'import',
+          importOptions: { reference: true }
+        })
+      ]);
+      const root = rules([coveredChild, referenceChild]);
+
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key, options] = args;
+        if (this === root && key === missingKey && options?.skipCurrentSurface === true) {
+          broadParentCrawls.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      root.getScopeFrame();
+      coveredChild.getScopeFrame();
+      expect(coveredChild.findMixin(missingKey, 'Mixin', { searchParents: false })).toBeUndefined();
+
+      try {
+        expect(root.findMixin(missingKey, 'Mixin')).toBeUndefined();
+        expect(broadParentCrawls).toEqual([]);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }

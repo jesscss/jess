@@ -1160,7 +1160,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return undefined;
     }
     let canSearchChildSurface = false;
-    let hasUncoveredChildFrame = false;
+    let firstUncoveredChild: Rules | undefined;
+    let uncoveredChildren: Rules[] | undefined;
     let frameResults: MixinEntry[] | undefined;
     for (let i = childEntries.length - 1; i >= 0; i--) {
       const entry = childEntries[i]!;
@@ -1199,23 +1200,43 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           (frameResults ??= []).push(...results);
         }
       } else if (frameHit.kind === 'uncovered') {
-        hasUncoveredChildFrame = true;
+        if (firstUncoveredChild === undefined) {
+          firstUncoveredChild = entry.node;
+        } else {
+          (uncoveredChildren ??= [firstUncoveredChild]).push(entry.node);
+        }
       }
     }
     if (frameResults) {
       return frameResults;
     }
-    if (!canSearchChildSurface || !hasUncoveredChildFrame) {
+    if (!canSearchChildSurface || !firstUncoveredChild) {
       return undefined;
     }
-    const direct = this.findMixinsFast(key, {
-      hasTarget: options.hasTarget,
-      local: options.local,
-      includeRulesets,
-      searchParents: false,
-      skipCurrentSurface: true
-    });
-    return direct.length > 0 ? direct : undefined;
+    if (uncoveredChildren) {
+      for (let i = 0; i < uncoveredChildren.length; i++) {
+        const direct = uncoveredChildren[i]!.findMixinsFast(key, {
+          hasTarget: options.hasTarget,
+          local: options.local,
+          includeRulesets,
+          searchParents: false
+        });
+        if (direct.length > 0) {
+          (frameResults ??= []).push(...direct);
+        }
+      }
+    } else {
+      const direct = firstUncoveredChild.findMixinsFast(key, {
+        hasTarget: options.hasTarget,
+        local: options.local,
+        includeRulesets,
+        searchParents: false
+      });
+      if (direct.length > 0) {
+        frameResults = direct;
+      }
+    }
+    return frameResults;
   }
 
   private addCallableEntry(
@@ -2331,22 +2352,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   findDeclaration(
     keys: string,
-    filterType: 'VarDeclaration',
     options?: DeclarationFindOptions
-  ): VarDeclaration | undefined;
-  findDeclaration(
-    keys: string,
-    filterType: 'Declaration',
-    options?: DeclarationFindOptions
-  ): Declaration | undefined;
-  findDeclaration(
-    keys: string,
-    filterType: 'VarDeclaration' | 'Declaration',
-    options?: DeclarationFindOptions
-  ): Declaration | VarDeclaration | undefined {
-    return filterType === 'VarDeclaration'
-      ? findVariableDeclarationOccurrence(this, keys, options)?.node
-      : findPropertyDeclarationOccurrence(this, keys, options)?.node;
+  ): Declaration | undefined {
+    return findPropertyDeclarationOccurrence(this, keys, options)?.node;
   }
 
   findAnyDeclaration(

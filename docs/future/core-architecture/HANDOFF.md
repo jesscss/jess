@@ -102,26 +102,45 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: documentation-only router split. `HANDOFF.md` now routes to
-  workstream-owned progress docs, `BINDING-LOOKUP-REMAINING.md` owns the
-  binding queue, and `NODE-REWRITE-TRACKER.md` keeps the serialization rewrite
-  agent's row history from `origin/dev`.
-- Verdict: accepted as guidance cleanup only. No runtime change and no speed
-  claim.
-- New traversal: no runtime traversal was added. The scoped diff contains
-  restored serialization-tracker history that mentions prior `.map(...)`,
-  `.some(...)`, and indexed-loop cuts; those are documentation of already-landed
-  work, not new loops, parent walks, child scans, lookup scans, or registry
-  paths.
-- New node/materialization: no runtime node construction or materialization was
-  added. The restored tracker history mentions prior `Rules.clone` and scalar
-  leaf copy boundaries as historical status, not new copy helpers.
-- Render path: no runtime/render path changed.
-- Helper/API surface: no code helpers or APIs added.
-- Metadata mutations: none. The restored tracker history mentions old
-  `Reflect.construct` removal/status notes only as documentation.
-- Allocation changes: none. The restored tracker history mentions old `Map` and
-  `Set` cleanup/status notes only as documentation.
-- Evidence: `git diff --check` passed. `pnpm run
-  verify:aggressive-cutting-review` passed and reported only the restored
-  tracker danger words prosecuted above.
+- Latest pass: binding/lookup pass that narrowed uncovered callable child
+  fallback, removed the old string-filter `Rules.findDeclaration(...)` branch,
+  hid scalar declaration-exclusion fields from exported `ReferenceOptions`, and
+  added `verify:binding-lookup-hot-paths`.
+- Verdict: accepted as a binding-surface slimming pass. It removes a broad
+  child-surface fallback and public-looking string/scalar option shapes. No
+  wall-clock speed claim.
+- New traversal: `findMixinsFastForUncoveredCallable(...)` now loops over only
+  child `Rules` entries whose frames reported `uncovered` instead of calling
+  broad parent `findMixinsFast(..., skipCurrentSurface: true)` over the whole
+  child surface. This replaces a wider recursive child crawl with a narrower
+  one. The new verification script scans a bounded file list for forbidden
+  hot-path tokens.
+- New node/materialization: no AST nodes, copied nodes, wrapper `Rules`, or
+  render materialization were added. The narrowed fallback allocates an
+  `uncoveredChildren` array only when more than one child frame is uncovered;
+  the one-child case stays scalar. The `broadParentCrawls` array and
+  `Expected VarDeclaration output children` guard are test-only scaffolding.
+- Render path: no render/stringification path changed. The touched runtime path
+  is callable lookup before candidate eval/render.
+- Helper/API surface: added `verify:binding-lookup-hot-paths` as a gate script
+  and a small internal `getReferenceDeclarationConstraintOptions(...)` cast
+  helper. Removed the `Rules.findDeclaration(key, filterType)` string-branch
+  API shape; callers now use `findVariable`, `findProperty`/`findDeclaration`,
+  or `findAnyDeclaration`.
+- Metadata mutations: none. The internal reference constraint helper is a
+  typed view over existing options data and does not mutate parent/source/root
+  metadata. The test `try`/`finally` only restores a prototype spy.
+- Allocation changes: no new hot result wrapper or side map. The multi-uncovered
+  child fallback may allocate one array to avoid reopening covered sibling
+  surfaces; the old fallback could scan all child entries recursively.
+- Evidence: focused callable/import/reference/rules matrix passed (`60` tests),
+  `pnpm exec eslint ...` passed, `pnpm --filter @jesscss/core build` passed,
+  `git diff --check` passed, and `pnpm run verify:binding-lookup-hot-paths`
+  passed. `pnpm run verify:aggressive-cutting-review` passed with the danger
+  tokens prosecuted above. `pnpm run verify:baseline -- --changed` promoted to
+  the full baseline and stayed active in `@jesscss/core` tests without output
+  for several minutes, so it was interrupted and is not counted as passed.
+  Hotpath smoke was attempted after fresh `@jesscss/core`, `jess`, and
+  `@jesscss/plugin-js` builds, but `scripts/measure-less-hotpath.mjs` failed
+  before measurement on the existing upstream `mixins-guards.less` fixture with
+  `parse/syntax-error: args.set is not a function`; no speed claim is made.

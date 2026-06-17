@@ -43,12 +43,13 @@ Complete every item in this queue before committing the next binding/lookup
 pass unless a semantic blocker, rejected approach, or unsafe test failure
 forces a focused stop.
 
-1. [ ] Split guarded/configured child-surface uncertainty from simple exact
-child-frame misses. Scope: `findMixinsFastForUncoveredCallable`, imported
-guarded mixins, configured import child surfaces, `options.context`, and
-replacement/additive import config. Goal: only genuinely dynamic
-guarded/configured surfaces can reach the broad crawl. Acceptance: child-frame
-exact misses stay zero-bridge; guarded/config matrices stay green.
+1. [ ] Add bridge-spy proof for guarded/configured import child-surface
+positives and misses. Scope: imported guarded mixins, configured import child
+surfaces, `options.context`, replacement/additive import config, and
+`findMixinsFastForUncoveredCallable`. Goal: prove which guarded/configured
+surfaces still need an uncovered bridge before cutting more. Acceptance:
+guarded/config matrices stay green and record whether broad fallback is
+required.
 
 2. [ ] Finish callable retry-frame bridge deletion where retry frames are
 covered. Scope: parent/fallback frame loops in `Rules.findMixin`, fallback
@@ -57,12 +58,13 @@ reference-import fallback frames. Goal: covered retry-frame misses do not keep
 walking into broad direct crawls. Acceptance: parent/fallback callable miss spy
 tests plus existing fallback hit tests.
 
-3. [ ] Add retry-frame bridge proof before deleting more fallback bridges.
-Scope: parent scope frames, fallback frames, covered misses, recursive namespace
-starts, and `findMixinsFastForUncoveredCallable`. Goal: prove which retry
-frames are already covered and which still need dynamic child-surface fallback.
-Acceptance: spy tests separate parent/fallback zero-bridge misses from real
-guarded/configured positives.
+3. [ ] Extend narrow uncovered-child fallback proof to configured guarded child
+surfaces. Scope: the uncovered child-only fallback in
+`findMixinsFastForUncoveredCallable`, configured guarded imports, and
+reference-import siblings. Goal: keep broad search limited to the child entries
+that actually reported `uncovered`, without losing configured positives.
+Acceptance: covered sibling child surfaces are not reopened; configured
+guarded positives still resolve.
 
 4. [ ] Delete any remaining simple exact callable child scans that are
 provably covered by frame facts. Scope: current-frame miss, child-entry family
@@ -108,24 +110,26 @@ reference imports, parent/fallback frames, and optional callable misses. Goal:
 no regression to frame-less broad crawl. Acceptance: real reference-import
 fixtures plus broad-bridge spies.
 
-11. [ ] Hide scalar declaration exclusion fields from exported option shapes
-or document why the constructor still needs an internal overlap. Scope:
-`ReferenceOptions`, `DeclarationFindOptions`, generated declarations, and
-merge normalization. Goal: avoid treating scalar handle keys as user-facing
-API. Acceptance: type/build proof and grep showing only internal use.
+11. [ ] Audit remaining declaration-constraint reference option fields.
+Scope: `ReferenceOptions.requiredNormalizedFromAssign`, `excludedNodes`,
+merge normalization, and tests that construct filtered references. Goal:
+separate genuinely public semantic options from internal handle/cache scalars.
+Acceptance: `verify:binding-lookup-hot-paths` stays green and any remaining
+public fields have semantic tests.
 
-12. [ ] Prove assignment-wrapper coldness in CI-friendly form. Scope:
-`find*DeclarationAssignmentLookup`, `find*DeclarationOccurrence`, `setDefined`,
-and ordinary reference reads. Goal: convert the grep proof into a stable test or
-script assertion so future changes cannot route reads through wrappers.
-Acceptance: focused grep/test command committed or documented as gate.
+12. [ ] Decide whether cold assignment lookup wrappers can collapse to one
+readonly occurrence path. Scope: `find*DeclarationAssignmentLookup`,
+`find*DeclarationOccurrence`, `setDefined`, and readonly propagation. Goal:
+delete wrapper-only surface if `setDefined` can ask for occurrence plus readonly
+without two exported functions. Acceptance: setDefined/live binding tests and
+hot-path guard stay green.
 
 13. [ ] Re-audit public `Rules.find*` materialization wrappers after the
-remaining direct declaration bridge proof. Scope: `findVariable`,
-`findProperty`, `findDeclaration`, `findAnyDeclaration`, and reference import
-reads. Goal: keep hot paths on occurrence helpers while preserving cold API
-surfaces until they are explicitly deleted. Acceptance: no hot reference caller
-uses materialization wrappers.
+`findDeclaration` string-branch removal. Scope: `findVariable`, `findProperty`,
+`findDeclaration`, `findAnyDeclaration`, and reference import reads. Goal:
+delete or keep only deliberate cold wrappers while hot paths stay on occurrence
+helpers. Acceptance: no hot reference caller uses materialization wrappers and
+stale string-filter grep stays clean.
 
 14. [ ] Run changed-baseline and fix any lookup-owned fallout now that the
 ruleset header streaming blocker is repaired. Scope: changed Less/Jess
@@ -165,6 +169,22 @@ evidence current without claiming speed. Acceptance: profile recorded with old
 - Late child additions update prepared callable child-entry facts for exact
   callable and reference-import child surfaces while invalidating stale
   covered-miss frame state.
+- Current pass narrowed `findMixinsFastForUncoveredCallable(...)`: once child
+  frames prove a covered miss, an uncovered reference-import or child-surface
+  sibling no longer reopens the parent rules' whole child surface. The direct
+  fallback now runs only on child `Rules` entries whose frame actually reported
+  `uncovered`; a focused mixin test guards covered sibling surfaces.
+- `Rules.findDeclaration(...)` no longer takes a string declaration-family
+  branch. Variable callers use `findVariable(...)`, properties use
+  `findDeclaration(...)`/`findProperty(...)`, and `findAnyDeclaration(...)`
+  remains the explicit combined cold wrapper.
+- `ReferenceOptions` no longer exports scalar declaration-exclusion handle
+  fields (`excludedNode0`, `excludedNode1`, `excludedNodesLength`). Internal
+  lookup still reads them through a declaration-constraint view when present.
+- `pnpm run verify:binding-lookup-hot-paths` now guards that reference reads use
+  occurrence helpers, assignment lookup wrappers stay isolated to `setDefined`,
+  old string-filter `Rules.findDeclaration(...)` calls stay gone, and scalar
+  exclusion fields stay out of exported `ReferenceOptions`.
 
 ## Remaining Work Clusters
 
