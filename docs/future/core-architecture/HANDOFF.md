@@ -102,31 +102,37 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding/lookup pass that proved simple reference-import
-  guarded/default-guarded callable hits and misses avoid broad
-  `findMixinsFast(...)`, and stopped parent/fallback retry after a current
-  uncovered child/reference miss when `searchParents:false`.
-- Verdict: accepted as callable bridge proof plus a retry-frame cut. No
-  wall-clock speed claim.
+- Latest pass: binding/lookup namespace-offset pass that stopped legacy
+  nested array-path fallback after the offset namespace walker returns a
+  definitive empty result, and added guarded namespace bridge-spy proof.
+- Verdict: accepted as a fallback cut plus proof. Namespaced reference-import
+  array-path lookup still uses direct crawl and one nested array fallback, so
+  that surface remains in `BINDING-LOOKUP-REMAINING.md`. No wall-clock speed
+  claim.
 - New traversal: no new runtime traversal. Runtime traversal is reduced for
-  `Rules.findMixin(..., { searchParents: false })`: after current-frame
-  child/reference/candidate handling marks the miss covered, lookup returns
-  instead of walking parent/fallback retry frames. The new import/mixin tests add
-  prototype-spy recording around `findMixinsFast(...)`; that is test-only.
+  ruleset namespace, compound-prefix namespace, and mixin namespace descendant
+  misses: `[]` from `findMixinNamespacePathFast(...)` now stops lookup instead
+  of recursively calling `findMixin(collectKeyRemainder(...))`. The new tests
+  add prototype-spy recording around existing lookup methods; that is
+  test-only.
 - New node/materialization: no AST nodes, copied nodes, wrapper `Rules`, render
-  materialization, side map, or hot result array was added. The new
-  `directCrawlHits` and `parentRetryHits` arrays are test-only proof buffers.
-- Render path: no render/stringification path changed. The touched runtime
-  paths are callable lookup before candidate eval/render and declaration
-  lookup for `setDefined` assignment.
-- Helper/API surface: removed exported
-  no helpers or APIs added. The pass uses existing `findMixin(...)` and
-  `findMixinsFast(...)` spy surfaces in tests.
+  materialization, side map, or hot result array was added. The deleted
+  fallback avoids three miss-path `collectKeyRemainder(...)` array allocations
+  in covered namespace cases. The new spy arrays are test-only proof buffers.
+- Render path: no render/stringification path changed. Touched runtime paths
+  are callable namespace lookup before candidate eval/render.
+- Helper/API surface: no helpers or APIs added. The pass uses existing
+  `findMixin(...)` and `findMixinsFast(...)` spy surfaces in tests.
 - Metadata mutations: none. Test `try`/`finally` blocks only restore prototype
   spies.
-- Allocation changes: no new runtime allocation. The new arrays are test-only.
-- Evidence: focused callable/import matrix passed (`51` tests), `pnpm exec
-  eslint ...` passed, `git diff --check` passed, `pnpm run
+- Allocation changes: no new runtime allocation. Namespace miss paths that the
+  offset walker definitively covers no longer allocate remainder arrays for
+  legacy fallback.
+- Evidence: focused namespace/callable mixin matrix passed (`10` tests),
+  `pnpm exec eslint ...` passed, `git diff --check` passed, `pnpm run
   verify:binding-lookup-hot-paths` passed, `pnpm run
   verify:aggressive-cutting-review` passed with the danger tokens prosecuted
-  above, and `pnpm --filter @jesscss/core build` passed. No speed claim.
+  above, and `pnpm --filter @jesscss/core build` passed. `pnpm run
+  verify:baseline -- --changed` did not pass: it reached broad
+  render/call/cloning failures in the core package and then hung in Vitest
+  workers until interrupted. No speed claim.

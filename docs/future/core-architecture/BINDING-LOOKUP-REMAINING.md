@@ -81,17 +81,21 @@ static parent/start shape. Goal: cache repeated preparation only when generated
 control/mixin surfaces cannot change the facts. Acceptance: control loop matrix
 plus variable/property/function/callable handle tests.
 
-6. [ ] Eliminate remaining positive-path `collectKeyRemainder(...)` arrays.
-Scope: ruleset namespace, compound-prefix namespace, recursive namespace
-fallback paths, and guarded/imported namespace positives. Goal: arrays exist
-only on cold miss/legacy fallback paths. Acceptance: nested array-path spies for
-positive namespace cases stay zero.
+6. [ ] Finish reference-import namespace offset coverage. Scope:
+namespaced reference-import rulesets, reference-import child surfaces reached
+through array-path keys, `findMixinNamespacePathFast(...)` unsupported returns,
+and `findMixinsFastForUncoveredCallable(...)`. Goal: imported namespace
+positives and misses stop reopening nested array-path fallback or broad direct
+crawl once placement facts prove the surface. Acceptance: reference-import
+namespace array-path spies show zero nested-array fallback and record/eliminate
+any remaining `findMixinsFast(...)` bridge hits.
 
-7. [ ] Extend stable namespace no-fallback proof to guarded/imported namespace
-surfaces. Scope: namespace path offsets, guarded mixins, reference imports,
-terminal mixin-only mode, and parameterized terminals. Goal: stable positives
-stay on offset paths without breaking Less semantics. Acceptance: Less fixture,
-guarded namespace tests, and reference-import namespace tests.
+7. [ ] Extend stable namespace no-fallback proof to imported namespace
+surfaces. Scope: namespace path offsets, reference imports, terminal
+mixin-only mode, and parameterized terminals. Goal: stable positives stay on
+offset paths without breaking Less semantics. Acceptance: Less fixture,
+reference-import namespace tests, and bridge spies. Guarded namespace positives
+already have zero broad-crawl and zero array-fallback proof.
 
 8. [ ] Confirm scalar excluded-node handle invalidation after output binding.
 Scope: merge normalization scalar getters, handle shape before/after
@@ -203,12 +207,35 @@ evidence current without claiming speed. Acceptance: profile recorded with old
   narrowed child/reference bridge when that bridge proves no result. It no
   longer retries parent/fallback frames after a current-frame uncovered miss
   when parent search is explicitly disabled.
+- Ruleset namespace, compound-prefix namespace, and mixin-namespace descendant
+  direct offset walks now treat `[]` as a definitive miss instead of reopening
+  legacy nested array-path fallback. `undefined` remains the unsupported/cold
+  fallback signal. Focused mixin tests prove positive namespace paths and
+  definite miss paths avoid nested array materialization.
+- Guarded namespace positives in the real parser/render fixture now have
+  bridge-spy proof: `#guarded > #deeper > .mixin` resolves the plain ruleset,
+  silent callable namespace mixin, and defaulted guarded callable namespace
+  mixin without `findMixinsFast(...)` broad crawl or nested array fallback.
+- Namespaced reference-import array-path lookup still reported a direct crawl
+  for `#Namespace` / `.mixin` and one nested array fallback when probed. That
+  surface remains the next namespace target rather than being marked complete.
 - `setDefined` assignment no longer imports or calls exported
   `findVariableDeclarationAssignmentLookup` /
   `findPropertyDeclarationAssignmentLookup` wrappers. It uses the existing
   occurrence helpers with `includeReadonly: true`; the wrapper exports and the
   extra `findDeclarationOccurrenceWithStrategy(...)` forwarding helper are
   gone.
+- A read-only audit found hot declaration reference callers already use
+  occurrence helpers directly. The remaining assignment wrapper shape is
+  limited to `setDefined` readonly fallback: `includeReadonly: true` still
+  returns `{ occurrence, readonly }` from direct declaration lookup and should
+  be handled in the assignment-overload pass.
+- `pnpm run verify:baseline -- --changed` is usable again but not green on this
+  branch: the latest run reached broad render/call/cloning failures in
+  `@jesscss/core` and then hung in Vitest workers until interrupted. The
+  namespace-focused tests and build for this pass were green; the baseline
+  fallout should be triaged separately unless lookup evidence points at one of
+  those failures.
 - Remaining public `ReferenceOptions.excludedNodes` and
   `requiredNormalizedFromAssign` have semantic tests that mutate those inputs
   and verify handle invalidation. They are not scalar handle fields, but their

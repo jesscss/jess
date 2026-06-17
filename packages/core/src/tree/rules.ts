@@ -1982,7 +1982,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             nestedOptions,
             remainderStart
           );
-          if (!resolved?.length) {
+          if (resolved === undefined) {
             resolved = ruleset.rules.findMixin(
               collectKeyRemainder(path, remainderStart),
               undefined,
@@ -2046,7 +2046,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           nestedOptions,
           consumed.length
         );
-        if (!resolved?.length) {
+        if (resolved === undefined) {
           resolved = ruleset.rules.findMixin(
             collectKeyRemainder(keys, consumed.length),
             undefined,
@@ -2108,7 +2108,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         nested = entryRules.findMixin(remainder, undefined, nestedOptions);
       } else {
         nested = entryRules.findMixinNamespacePathFast(keys, undefined, nestedOptions, 1);
-        if (!nested?.length) {
+        if (nested === undefined) {
           remainder ??= collectKeyRemainder(keys, 1);
           nested = entryRules.findMixin(
             remainder,
