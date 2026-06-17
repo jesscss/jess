@@ -103,24 +103,24 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Reference array syntax key direct emission in
-  `packages/core/src/tree/reference.ts`.
-- Verdict: accepted as a mechanical temporary-string transport cut. No speed
-  claim.
-- New traversal: one existing indexed loop over array-valued syntax key
-  segments remains; it now writes each segment directly instead of first
-  concatenating an `out` string.
+- Latest pass: AtRule leaf render syntax helper in
+  `packages/core/src/tree/at-rule.ts`.
+- Verdict: accepted as a mechanical per-call closure cut. No speed claim.
+- New traversal: none.
 - New node/materialization: none.
-- Render path: no resolved-reference render behavior changed. Public
-  `toTrimmedString(...)` is now the cold wrapper around
-  `Reference.writeSyntax(...)`; node-valued keys and reference/call targets use
-  direct `writeSyntax(...)` instead of public string transport, and
-  array-valued syntax keys write segments directly to the active writer.
-- Helper/API surface: none.
-- Metadata mutations: none.
-- Allocation changes: removes the temporary array-key join string.
-- Rejected/observed in this pass: broader resolved value materialization
-  remains open in the Reference row.
+- Render path: dynamic leaf at-rule rendering still captures just the name and
+  prelude syntax text under the existing writer mark/restore boundary, but now
+  calls a module helper instead of allocating a local `renderNode` closure.
+- Helper/API surface: one private module helper replaces the local closure and
+  adds no exported surface.
+- Metadata mutations: the flagged `try/finally` is the existing writer
+  mark/restore guard moved from the local closure into the module helper; it
+  is not routine error control flow.
+- Allocation changes: removes the per-call local render-node closure from
+  `renderLeafValue(...)`.
+- Rejected/observed in this pass: AtRule header capture still uses detached
+  writers for comment/trivia isolation; broader eval/render branch ladders
+  remain open in the AtRule row.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -128,12 +128,12 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: focused `reference.test.ts` serialization selection passed,
-  including guards that throw if node keys or reference targets use public
-  `toString(...)`; the flagged `throw new Error(...)` tokens are test-only
-  proof guards. Array-key chunk proof uses a test-only `OutputWriter` plus a
-  local chunks array to confirm the key pieces are emitted as separate writer
-  chunks. Targeted ESLint passed. Full gates are required before commit.
+- Evidence: focused `at-rule.test.ts` dynamic leaf render selection passed;
+  existing guards prove name/prelude public `toString(...)` is not used, and
+  added counters prove string and flat-buffer leaf render call direct
+  `writeSyntax(...)` for name and the evaluated prelude value. Targeted ESLint
+  passed with the existing unrelated no-floating-promises warning in
+  `at-rule.test.ts`. Full gates are required before commit.
 - Merge-carried binding review: `findRulesetNamespacePathFast(...)` now
   prepares the visible
   callable frame chain for the namespace segment and checks visible child

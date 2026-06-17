@@ -95,6 +95,20 @@ type AtRuleLeafState = {
   parts: AtRuleValue;
 };
 
+function renderAtRuleLeafNodeSyntax(
+  node: Node,
+  printOptions: FinalPrintOptions
+): string {
+  const writer = printOptions.writer;
+  const mark = writer.mark();
+  try {
+    node.writeSyntax(printOptions);
+    return writer.getSince(mark);
+  } finally {
+    writer.restore(mark);
+  }
+}
+
 const activeAtRuleBodyEvalRecords = new WeakMap<Context, AtRuleBodyEvalRecord[]>();
 
 function pushAtRuleBodyEvalRecord(
@@ -671,18 +685,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     const printOptions = isRenderBuffer(bufferOrOptions)
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const renderNode = (node: Node): string => {
-      const writer = printOptions.writer;
-      const mark = writer.mark();
-      try {
-        node.writeSyntax(printOptions);
-        return writer.getSince(mark);
-      } finally {
-        writer.restore(mark);
-      }
-    };
-    const nameOut = renderNode(parts.name);
-    const preludeOut = parts.prelude ? renderNode(parts.prelude) : '';
+    const nameOut = renderAtRuleLeafNodeSyntax(parts.name, printOptions);
+    const preludeOut = parts.prelude
+      ? renderAtRuleLeafNodeSyntax(parts.prelude, printOptions)
+      : '';
     const rendered = preludeOut.trim()
       ? `${nameOut}${/\s$/.test(nameOut) || /^\s/.test(preludeOut) ? '' : ' '}${preludeOut.replace(/^\s+/, '')};`
       : `${nameOut};`;
