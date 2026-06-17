@@ -103,22 +103,24 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Reference source syntax writer in
+- Latest pass: Reference array syntax key direct emission in
   `packages/core/src/tree/reference.ts`.
-- Verdict: accepted as a tracker-reconciliation direct writer cut. No speed
+- Verdict: accepted as a mechanical temporary-string transport cut. No speed
   claim.
-- New traversal: none.
+- New traversal: one existing indexed loop over array-valued syntax key
+  segments remains; it now writes each segment directly instead of first
+  concatenating an `out` string.
 - New node/materialization: none.
 - Render path: no resolved-reference render behavior changed. Public
   `toTrimmedString(...)` is now the cold wrapper around
   `Reference.writeSyntax(...)`; node-valued keys and reference/call targets use
-  direct `writeSyntax(...)` instead of public string transport.
+  direct `writeSyntax(...)` instead of public string transport, and
+  array-valued syntax keys write segments directly to the active writer.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: none.
-- Rejected/observed in this pass: array-valued reference keys still concatenate
-  a temporary string, and broader resolved value materialization remains open
-  in the Reference row.
+- Allocation changes: removes the temporary array-key join string.
+- Rejected/observed in this pass: broader resolved value materialization
+  remains open in the Reference row.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -129,7 +131,9 @@ with `--no-verify` after the explicit gates pass.
 - Evidence: focused `reference.test.ts` serialization selection passed,
   including guards that throw if node keys or reference targets use public
   `toString(...)`; the flagged `throw new Error(...)` tokens are test-only
-  proof guards. Targeted ESLint passed. Full gates are required before commit.
+  proof guards. Array-key chunk proof uses a test-only `OutputWriter` plus a
+  local chunks array to confirm the key pieces are emitted as separate writer
+  chunks. Targeted ESLint passed. Full gates are required before commit.
 - Merge-carried binding review: `findRulesetNamespacePathFast(...)` now
   prepares the visible
   callable frame chain for the namespace segment and checks visible child

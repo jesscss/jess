@@ -1,6 +1,7 @@
 import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
+import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { buildScopeFrame, lookupScopeFrameVariable, setScopeFrameLiveBinding } from '../scope-frame.js';
 let context: Context;
@@ -168,6 +169,16 @@ describe('reference', () => {
       const node = ref({ target, key: 'color' }, { type: 'property' });
 
       expect(node.toTrimmedString()).toBe('$theme[color]');
+    });
+
+    it('writes array reference key segments directly', () => {
+      const chunks: string[] = [];
+      const writer = new OutputWriter(false, chunks);
+      const node = ref({ key: ['#theme', '.dark'] }, { type: 'index' });
+
+      node.writeSyntax(getPrintOptions({ writer }));
+
+      expect(chunks).toEqual(['$', '[', '#theme', '.dark', ']']);
     });
   });
 

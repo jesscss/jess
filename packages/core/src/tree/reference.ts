@@ -2675,11 +2675,9 @@ function emitReferenceSyntaxKey(
     return;
   }
   if (Array.isArray(key)) {
-    let out = '';
     for (let i = 0; i < key.length; i++) {
-      out += String(key[i]);
+      w.add(String(key[i]));
     }
-    w.add(out);
     return;
   }
   w.add(String(key));
