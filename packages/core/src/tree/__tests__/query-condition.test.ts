@@ -4,6 +4,8 @@ import {
   any,
   bool,
   color,
+  condition,
+  Condition,
   dimension,
   F_MAY_ASYNC,
   F_NON_STATIC,
@@ -404,6 +406,42 @@ describe('QueryCondition', () => {
     ]);
     expect(writer.marks).toBe(0);
     expect(writer.reads).toBe(0);
+    expect(writer.hasContentReads).toBe(0);
+  });
+
+  it('writes condition children through the direct source child contract', () => {
+    const writer = new CountingWriter();
+    const node = query([
+      any('screen'),
+      any('and'),
+      condition([dimension([10, 'px']), '>', dimension([1, 'px'])])
+    ]);
+
+    expect(node.toTrimmedString({ writer })).toBe('screen and (10px > 1px)');
+    expect(writer.toString()).toBe('screen and (10px > 1px)');
+    expect(writer.marks).toBe(1);
+    expect(writer.reads).toBe(1);
+    expect(writer.hasContentReads).toBe(0);
+  });
+
+  it('keeps custom condition syntax overrides on the static fallback path', () => {
+    class CustomCondition extends Condition {
+      override writeSyntax(options: Parameters<Condition['writeSyntax']>[0]): void {
+        options.writer.add('(custom-condition)');
+      }
+    }
+
+    const writer = new CountingWriter();
+    const node = query([
+      any('screen'),
+      any('and'),
+      new CustomCondition([bool(true)])
+    ]);
+
+    expect(node.toTrimmedString({ writer })).toBe('screen and (custom-condition)');
+    expect(writer.toString()).toBe('screen and (custom-condition)');
+    expect(writer.marks).toBe(2);
+    expect(writer.reads).toBe(2);
     expect(writer.hasContentReads).toBe(0);
   });
 

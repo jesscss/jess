@@ -163,3 +163,11 @@ with `--no-verify` after the explicit gates pass.
   children keep the fallback. The review-flagged `CountingWriter` construction
   is test-only instrumentation for mark/readback assertions. This is tracked in
   `NODE-REWRITE-TRACKER.md` and is not new binding logic. No speed claim.
+- Merge-carried serialization review: `origin/dev` also includes the
+  QueryCondition exact `Condition` source/static child cut. Exact condition
+  children now write directly on the query source/static syntax path; exact
+  `Operation` remains out because it does not own a direct syntax writer, and
+  custom/subclassed children still use fallback readback. The review-flagged
+  `CountingWriter` and custom condition constructions are test-only proof
+  instrumentation. This is tracked in `NODE-REWRITE-TRACKER.md` and is not new
+  binding logic. No speed claim.

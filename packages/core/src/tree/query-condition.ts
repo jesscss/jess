@@ -3,6 +3,7 @@ import { OutputWriter, type FinalPrintOptions, getPrintOptions, prepareRenderPri
 import { defineType, F_STATIC, type Node } from './node.js';
 import { Sequence } from './sequence.js';
 import { Paren } from './paren.js';
+import { Condition } from './condition.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -50,6 +51,7 @@ export class QueryCondition extends Sequence {
       || node.type === 'Color'
       || node.constructor === QueryCondition
       || node.constructor === Paren
+      || node.constructor === Condition
     );
   }
 
