@@ -1099,6 +1099,8 @@ describe('Style import', () => {
     });
 
     it('keeps variable-only additive "with" configs visible to imported guarded mixins', async () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const directChildSurfaceBridges: string[] = [];
       const libraryPath = resolve(process.cwd(), 'library-guarded-mixin.jess');
       context.sourceTrees.set(libraryPath, rules([
         mixin({
@@ -1161,15 +1163,30 @@ describe('Style import', () => {
         })
       ]);
 
-      const css = await renderNodeToString(node, context, { context });
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key, options] = args;
+        if (key === '.configured-guarded' && options?.searchParents === false) {
+          directChildSurfaceBridges.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
 
-      expect(css).toContain('.dark {');
-      expect(css).toContain('color: red;');
-      expect(css).toContain('border-color: purple;');
-      expect(css).not.toContain('.light {\n  color: red;');
+      try {
+        const css = await renderNodeToString(node, context, { context });
+
+        expect(css).toContain('.dark {');
+        expect(css).toContain('color: red;');
+        expect(css).toContain('border-color: purple;');
+        expect(css).not.toContain('.light {\n  color: red;');
+        expect(directChildSurfaceBridges).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
     });
 
     it('keeps replacement "set" configs visible to imported guarded mixins', async () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const directChildSurfaceBridges: string[] = [];
       const libraryPath = resolve(process.cwd(), 'library-guarded-mixin-set.jess');
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'accentColor', value: any('red') }),
@@ -1233,13 +1250,26 @@ describe('Style import', () => {
         })
       ]);
 
-      const css = await renderNodeToString(node, context, { context });
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key, options] = args;
+        if (key === '.configured-guarded-set' && options?.searchParents === false) {
+          directChildSurfaceBridges.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
 
-      expect(css).toContain('.dark {');
-      expect(css).toContain('color: red;');
-      expect(css).toContain('border-color: purple;');
-      expect(css).not.toContain('.light {\n  color: red;');
-      expect(css).not.toContain('border-color: red;');
+      try {
+        const css = await renderNodeToString(node, context, { context });
+
+        expect(css).toContain('.dark {');
+        expect(css).toContain('color: red;');
+        expect(css).toContain('border-color: purple;');
+        expect(css).not.toContain('.light {\n  color: red;');
+        expect(css).not.toContain('border-color: red;');
+        expect(directChildSurfaceBridges).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
     });
 
     it('keeps variable-only additive "with" configs visible to imported detached ruleset variable closures', async () => {
@@ -3188,7 +3218,7 @@ describe('Style import', () => {
           || path[1] !== '.mixin'
         ));
         expect(generatedFallbackArrayPathCalls).toEqual([]);
-        expect(directCrawlHits).toEqual(['#Namespace', '.mixin']);
+        expect(directCrawlHits).toEqual([]);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
         RulesClass.prototype.findMixin = originalFindMixin;

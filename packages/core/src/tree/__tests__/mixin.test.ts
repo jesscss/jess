@@ -3453,6 +3453,37 @@ describe('Mixin', () => {
       }
     });
 
+    it('ruleset namespace simple remainder miss skips child direct crawl when frame miss is covered', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const directCrawlHits: string[] = [];
+      const root = rules([
+        ruleset({
+          selector: el('#theme'),
+          rules: rules([
+            mixin({
+              name: any('.other'),
+              rules: rules([decl({ name: 'color', value: any('red') })])
+            })
+          ])
+        })
+      ]);
+
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.missing') {
+          directCrawlHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        expect(root.findMixin(['#theme', '.missing'], undefined, { searchParents: false })).toBeUndefined();
+        expect(directCrawlHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('definite namespace misses avoid legacy remainder-array fallback', () => {
       const root = rules([
         ruleset({

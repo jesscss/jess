@@ -103,58 +103,32 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding/lookup setDefined helper collapse, public-wrapper
-  guard hardening, and namespaced reference-import bridge proof.
-- Verdict: accepted as a helper-surface deletion plus executable proof. No
-  speed claim.
-- New traversal: no production traversal added. A focused import-style test
-  now spies on `findMixin(...)` / `findMixinsFast(...)` to distinguish authored
-  array-path replay from generated fallback arrays for the namespaced
-  reference-import fixture. The verifier adds grep/array checks over source
-  text only; they are not runtime lookup traversal.
-- New node/materialization: none. `DirectDeclarationLookupResult` is a
-  type-only alias for the pre-existing setDefined readonly fallback object; it
-  remains limited to the cold setDefined fallback path, not hot ordinary reads.
+- Latest pass: binding/lookup namespaced reference-import array-path bridge
+  deletion and configured guarded import proof.
+- Verdict: accepted as a narrower direct-crawl deletion plus executable bridge
+  proof. No speed claim.
+- New traversal: `findRulesetNamespacePathFast(...)` now computes ruleset
+  prefix matches before deciding whether a broad mixin-namespace crawl is
+  needed, and terminal simple remainders can prepare/read the ruleset body's
+  callable frame before falling back. This replaces `findMixinsFast(...)`
+  child crawls for covered namespace/reference-import cases. Test-only spies
+  record direct-crawl attempts for import and namespace fixtures.
+- New node/materialization: no nodes. The terminal branch may create the
+  ruleset body scope frame so imported callable facts can answer the terminal
+  hit/miss; the binding tracker carries a follow-up to audit whether existing
+  carried child facts can avoid that frame creation in non-reference-import
+  cases.
 - Render path: no committed render/stringification path change.
-- Helper/API surface: deleted the two family-specific readonly occurrence
-  helper exports and replaced them with one setDefined-only helper. The binding
-  hot-path verifier now guards the direct declaration lookup export surface and
-  rejects production runtime calls to public `Rules.find*` declaration
-  wrappers. The verifier's `try` / `catch` blocks are script-only negative
-  grep control flow.
+- Helper/API surface: no new exported helper or public API. The retry-frame
+  loop was audited by a read-only subagent and kept because fallback-frame hit
+  tests still prove it is semantically live.
 - Metadata mutations: none.
-- Allocation changes: ordinary occurrence reads cannot allocate the
-  `{ occurrence, readonly }` wrapper through an option branch; wrapper
-  allocation remains limited to the single setDefined readonly helper.
-  `VarDeclaration.copy` appears only in a focused test name proving the
-  assignment path avoids that copy machinery.
-- Evidence: `pnpm run verify:binding-lookup-hot-paths`, `pnpm --filter
-  @jesscss/core exec vitest
-  src/tree/__tests__/rules.test.ts --run --testNamePattern "fails to set if
-  existing variable is readonly|derives setDefined declarations without calling
-  VarDeclaration.copy|updates static setDefined variables without deriving
-  placement declarations|updates modeled setDefined live binding cells without
-  direct occurrence crawl|does not build a scope frame just to try setDefined
-  live binding writes" --reporter=dot`,
-  `pnpm --filter @jesscss/core exec vitest
-  src/tree/__tests__/import-style.test.ts --run --testNamePattern "namespaced
-  reference-imported ruleset array-path lookups" --reporter=dot`,
-  `pnpm --filter @jesscss/core exec vitest
-  src/tree/__tests__/reference.test.ts --run --testNamePattern "setDefined
-  variable assignment uses occurrence lookup without Rules.findVariable|
-  setDefined current-cell probes do not use historical declaration buckets|real
-  Less merge-chain property refs avoid public lookup bridges" --reporter=dot`,
-  `pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts
-  --run --testNamePattern "namespace fast path: mixin-ruleset path unions
-  plain namespace rulesets with callable namespace mixins|routes mixin
-  setDefined writes through the resolved caller binding|evaluates mixin
-  setDefined writes from live parameter bindings" --reporter=dot`,
-  `pnpm --filter @jesscss/core exec vitest src/tree/__tests__/control.test.ts
-  --run --testNamePattern "setDefined writes" --reporter=dot`, `pnpm exec
-  eslint scripts/verify-binding-lookup-hot-paths.mjs
-  packages/core/src/tree/util/direct-rules-lookup.ts
-  packages/core/src/tree/rules.ts
-  packages/core/src/tree/__tests__/import-style.test.ts
-  packages/scss-parser/test/baseline.test.ts`, `pnpm run
-  verify:aggressive-cutting-review`, `pnpm --filter @jesscss/core build`, and
-  `pnpm --filter @jesscss/scss-parser build` passed. No speed claim.
+- Allocation changes: production avoids the broad direct-crawl result arrays in
+  the targeted namespace/reference-import cases. Tests allocate small spy
+  arrays only for proof.
+- Evidence: focused import-style tests for `namespaced reference-imported
+  ruleset array-path lookups`, variable-only guarded `with`, replacement
+  guarded `set`, and child-surface guarded `with`/`set` passed. Focused
+  mixin tests for the guarded namespace union and the new ruleset namespace
+  simple terminal miss passed. Final gates are required before commit. No
+  speed claim.
