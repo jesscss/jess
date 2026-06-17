@@ -192,10 +192,12 @@ evidence current without claiming speed. Acceptance: profile recorded with old
 - `ReferenceOptions` no longer exports scalar declaration-exclusion handle
   fields (`excludedNode0`, `excludedNode1`, `excludedNodesLength`). Internal
   lookup still reads them through a declaration-constraint view when present.
-- `pnpm run verify:binding-lookup-hot-paths` now guards that reference reads use
-  occurrence helpers, assignment lookup wrappers stay isolated to `setDefined`,
-  old string-filter `Rules.findDeclaration(...)` calls stay gone, and scalar
-  exclusion fields stay out of exported `ReferenceOptions`.
+- `pnpm run verify:binding-lookup-hot-paths` now guards that reference reads,
+  selector attribute interpolation, and stylesheet function return lookup use
+  occurrence helpers instead of public `Rules.find*` materialization wrappers;
+  assignment lookup wrappers stay isolated to `setDefined`, old string-filter
+  `Rules.findDeclaration(...)` calls stay gone, and scalar exclusion fields
+  stay out of exported `ReferenceOptions`.
 - Configured guarded import positives for both replacement `set` and additive
   `with` child surfaces now have bridge-spy proof: they resolve without calling
   `findMixinsFast(..., searchParents: false)` for their guarded callable keys.

@@ -30,6 +30,32 @@ const checks = [
       'findPropertyDeclarationOccurrence(this, key, {',
       'includeReadonly: true'
     ]
+  },
+  {
+    label: 'selector attribute interpolation uses occurrence lookup, not Rules variable wrapper',
+    file: 'packages/core/src/tree/selector-attr.ts',
+    forbidden: [
+      '.findVariable(',
+      '.findProperty(',
+      '.findDeclaration(',
+      '.findAnyDeclaration('
+    ],
+    required: [
+      'findVariableDeclarationOccurrence'
+    ]
+  },
+  {
+    label: 'stylesheet function return lookup uses occurrence lookup, not Rules property wrapper',
+    file: 'packages/core/src/tree/function.ts',
+    forbidden: [
+      '.findVariable(',
+      '.findProperty(',
+      '.findDeclaration(',
+      '.findAnyDeclaration('
+    ],
+    required: [
+      'findPropertyDeclarationOccurrence'
+    ]
   }
 ];
 

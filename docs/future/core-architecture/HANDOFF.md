@@ -102,26 +102,20 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding/lookup imported-namespace audit. The attempted runtime
-  cut was rejected and fully reverted.
-- Verdict: rejected. Routing terminal reference-import child surfaces through
-  `findMixinsFastForUncoveredCallable(...)` removed the imported `.mixin`
-  direct bridge in isolation, but broke the guarded namespace union fixture:
-  `#guarded > #deeper > .mixin` returned only one callable instead of three.
-  No runtime change survived and no wall-clock speed claim was made.
-- New traversal: none in committed runtime. Rejected local attempts included a
-  parent/current-surface namespace scan and extra frame/child-entry branching;
-  both were removed before commit.
+- Latest pass: binding/lookup hot-path guard hardening.
+- Verdict: accepted as verifier coverage only. The guard now rejects public
+  `Rules.find*` materialization-wrapper calls from selector attribute
+  interpolation and stylesheet function return lookup, matching the existing
+  occurrence-helper direction for reference reads and `setDefined`.
+- New traversal: none.
 - New node/materialization: none in committed runtime. Rejected local tests used
-  prototype-spy arrays only; they were removed before commit.
+  prototype-spy arrays only in the prior pass; no node/materialization change
+  was added here.
 - Render path: no committed render/stringification path change.
 - Helper/API surface: no helpers or APIs added.
 - Metadata mutations: none.
-- Allocation changes: none in committed runtime.
-- Evidence: the rejected runtime shape failed
-  `pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts
-  --run --testNamePattern "namespace fast path: mixin-ruleset path unions plain
-  namespace rulesets with callable namespace mixins" --reporter=dot`. After
-  reverting runtime/test changes, `git diff --check` and
-  `pnpm run verify:aggressive-cutting-review` passed for the documentation-only
-  update. No speed claim.
+- Allocation changes: none.
+- Evidence: `pnpm run verify:binding-lookup-hot-paths` and
+  `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/selector-attr.test.ts --run --testNamePattern "occurrence
+  lookup without Rules.findVariable" --reporter=dot` passed. No speed claim.
