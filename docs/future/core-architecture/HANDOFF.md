@@ -103,22 +103,22 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Ampersand comma-split replacement assembly in
-  `packages/core/src/tree/ampersand.ts`.
-- Verdict: accepted as a mechanical callback-array staging cut. No speed claim.
-- New traversal: one indexed loop fills the selector replacement array returned
-  from `splitTopLevelCommas(...)`, replacing callback `map(...)` staging. The
-  array is the existing replacement result contract for template distribution.
-- New node/materialization: `BasicSelector(...).inherit(...)` construction is
-  existing raw comma-split replacement behavior moved out of a callback.
-- Render path: no render behavior changed; this only changes Ampersand
-  placement/eval replacement assembly for raw comma-split selector text.
+- Latest pass: Reference source syntax writer in
+  `packages/core/src/tree/reference.ts`.
+- Verdict: accepted as a tracker-reconciliation direct writer cut. No speed
+  claim.
+- New traversal: none.
+- New node/materialization: none.
+- Render path: no resolved-reference render behavior changed. Public
+  `toTrimmedString(...)` is now the cold wrapper around
+  `Reference.writeSyntax(...)`; node-valued keys and reference/call targets use
+  direct `writeSyntax(...)` instead of public string transport.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: removes callback result staging; the replacement result
-  array remains required by the existing selector distribution contract.
-- Rejected/observed in this pass: broader raw string assembly and structural
-  selector replacement remain open in the Ampersand row.
+- Allocation changes: none.
+- Rejected/observed in this pass: array-valued reference keys still concatenate
+  a temporary string, and broader resolved value materialization remains open
+  in the Reference row.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -126,8 +126,10 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: full focused `ampersand.test.ts` passed and targeted ESLint passed.
-  Full gates are required before commit.
+- Evidence: focused `reference.test.ts` serialization selection passed,
+  including guards that throw if node keys or reference targets use public
+  `toString(...)`; the flagged `throw new Error(...)` tokens are test-only
+  proof guards. Targeted ESLint passed. Full gates are required before commit.
 - Merge-carried binding review: `findRulesetNamespacePathFast(...)` now
   prepares the visible
   callable frame chain for the namespace segment and checks visible child

@@ -149,6 +149,26 @@ describe('reference', () => {
       let node = ref({ key: quoted('foo') }, { type: 'index' });
       expect(node.toTrimmedString()).toBe('$["foo"]');
     });
+
+    it('writes node reference keys without public string transport', () => {
+      const key = quoted('foo');
+      key.toString = () => {
+        throw new Error('Reference key syntax should use writeSyntax directly');
+      };
+      const node = ref({ key }, { type: 'index' });
+
+      expect(node.toTrimmedString()).toBe('$["foo"]');
+    });
+
+    it('writes reference targets without public string transport', () => {
+      const target = ref({ key: 'theme' }, { type: 'variable' });
+      target.toString = () => {
+        throw new Error('Reference target syntax should use writeSyntax directly');
+      };
+      const node = ref({ target, key: 'color' }, { type: 'property' });
+
+      expect(node.toTrimmedString()).toBe('$theme[color]');
+    });
   });
 
   describe('get from scope', () => {

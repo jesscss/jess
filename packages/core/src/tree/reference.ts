@@ -10,7 +10,7 @@ import type { Call } from './call.js';
 import type { Quoted } from './quoted.js';
 import { atIndex } from './util/collections.js';
 import type { Num } from './number.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Interpolated } from './interpolated.js';
@@ -2663,7 +2663,7 @@ function finalizeDirectRawRenderValue(
 function emitReferenceSyntaxKey(
   referenceNode: Reference,
   key: unknown,
-  options: ReturnType<typeof getPrintOptions>
+  options: FinalPrintOptions
 ): void {
   const w = options.writer!;
   if (typeof key === 'string' || typeof key === 'number') {
@@ -2671,7 +2671,7 @@ function emitReferenceSyntaxKey(
     return;
   }
   if (key instanceof Node) {
-    key.toString(options);
+    key.writeSyntax(options);
     return;
   }
   if (Array.isArray(key)) {
@@ -2901,16 +2901,14 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     return '';
   }
 
-  private renderReferenceSyntax(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  private writeReferenceSyntax(options: FinalPrintOptions): void {
     const w = options.writer!;
-    const mark = w.mark();
     let { type = 'variable', resolution, fallbackValue, readMode } = this.options;
     let { target, key } = this;
     const { rawKey } = this;
     const printableKey = rawKey ?? key;
     if (target) {
-      target.toString(options);
+      target.writeSyntax(options);
     } else {
       w.add('$');
     }
@@ -2958,7 +2956,18 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     if (fallbackValue === true) {
       w.add('?');
     }
+  }
+
+  private renderReferenceSyntax(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    this.writeReferenceSyntax(options);
     return w.getSince(mark);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    this.writeReferenceSyntax(options);
   }
 
   /**
