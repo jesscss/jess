@@ -103,38 +103,103 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Rules static registration narrowed-thenable cleanup in
-  `packages/core/src/tree/rules.ts`.
-- Verdict: accepted as a localized promise-wrapper cut. No speed claim.
-- New traversal: none.
-- New node/materialization: none.
-- Render path: no output path changed. Static child registration prep now
-  calls the already-thenable prepared node result's `.then(...)` directly
-  instead of wrapping it with `Promise.resolve(...)`.
-- Helper/API surface: none.
-- Metadata mutations: none.
-- Allocation changes: removes one `Promise.resolve(...)` wrapper from the Rules
-  static registration-prep path.
-- Rejected/observed in this pass: broader Rules body render, container
-  indentation capture, placement state, merge output, duplicate declaration
-  materialization, and root serializer capture remain open in the row.
-- Merge-carried binding review: merging `origin/dev` also brought the
-  namespaced reference-import crawl deletion in `rules.ts` plus focused
-  import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
-  and direct-child-entry state to prove covered namespace uncertainty; the
-  `Parser` construction, `try/finally`, and small spy arrays are test-only
-  proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
-  production render/string transport.
-- Evidence: full `rules.test.ts` passed and targeted ESLint for `rules.ts`
-  passed. Full gates are required before commit.
-- Merge-carried binding review: merging `origin/dev` also brought the
-  source-static reference handle early-read pass and binding tracker updates.
-  It is lookup-only: no render/stringification path changed, no runtime node
-  materialization was added, and its new helper reads already-stored lookup
-  handle state under narrow guards. The review-flagged
-  `for (const read of reads)` loop and JS-function fixture construction are
-  test-only coverage for source-static reference handle families. The flagged
-  `RulesLookupHandleShape` object is incoming private lookup state created
-  only after an existing handle passes those guards; it is not render/string
-  transport. Detailed binding status remains in `BINDING-LOOKUP-REMAINING.md`;
-  this serialization pass keeps `NODE-REWRITE-TRACKER.md` as the active queue.
+- Latest pass: variable reference facade collapse plus source-static handle
+  read allocation trim.
+- Verdict: accepted as a binding/lookup hot-path machinery cut with behavior
+  proof. No speed claim.
+- New traversal: no new runtime traversal, recursion, sort, map/filter, parent
+  walk, or child scan. Variable lookup still uses the existing scope-frame
+  lookup and occurrence fallback only for uncovered/unsupported cases.
+- New node/materialization: no runtime node materialization. No render-only or
+  eval-to-string nodes were added.
+- Render path: no render/stringification path change. The variable lookup path
+  still returns the same binding handle or occurrence values, and source-static
+  handle reads still return through the existing freshness semantics.
+- Helper/API surface: deleted private `lookupVariableReference(...)` and added
+  one private `readCurrentRulesLookupHandleValue(...)` tail shared by normal
+  and source-static handle reads. The net effect removes a facade/fallback
+  call layer and avoids constructing declaration fallback options for covered
+  variable frame hits/misses.
+- Metadata mutations: none. No source/parent/frozen metadata changed.
+- Allocation changes: `performVariableRulesLookup(...)` now tries scope-frame
+  facts before building declaration fallback options; covered variable misses
+  return immediately. `tryReadSourceStaticRulesLookupHandle(...)` compares the
+  stored handle fields directly and no longer creates a temporary
+  `RulesLookupHandleShape` object to call the generic reader.
+- Rejected/observed in this pass: the setDefined callback closure remains open
+  because the callback carries occurrence plus inherited readonly into mutation
+  semantics; a read-only sub-agent audit is running for the next safe shape.
+- Evidence: focused `reference.test.ts` variable/source-static/search-scope
+  matrix passed, and `verify:binding-lookup-hot-paths` passed with a new guard
+  against reintroducing `lookupVariableReference(...)`. Focused
+  `control.test.ts` and `rules.test.ts` setDefined/current-binding slices,
+  targeted ESLint, `@jesscss/core` build, `git diff --check`, and
+  `verify:aggressive-cutting-review` passed. No speed claim.
+- Merge note: the branch also incorporates the latest serialization transport
+  work from `origin/dev`; keep that progress tracked in
+  `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.
+- Merge-carried serialization review: `origin/dev` also includes the AtRule
+  no-op eval rethrow deletion in `packages/core/src/tree/at-rule.ts` plus
+  serialization tracker updates. That removes catch/rethrow scaffolding and is
+  tracked in `NODE-REWRITE-TRACKER.md`; it is not new binding logic. The
+  review-flagged AtRule loops and `slice(...)` calls are direct whitespace
+  scans replacing regex trim/probe work, the `OutputWriter` constructions are
+  isolated header-fragment writers for source syntax capture, and the `try` is
+  paired with trivia restoration around that cold header capture. No speed
+  claim.
+- Merge-carried serialization review: `origin/dev` also includes the
+  QueryCondition nested static direct-child cut in
+  `packages/core/src/tree/query-condition.ts` plus serialization tracker
+  updates. Exact nested query-condition children now write directly instead of
+  entering the unknown-child fallback mark/readback path; custom/subclassed
+  children keep the fallback. The review-flagged `CountingWriter` construction
+  is test-only instrumentation for mark/readback assertions. This is tracked in
+  `NODE-REWRITE-TRACKER.md` and is not new binding logic. No speed claim.
+- Merge-carried serialization review: `origin/dev` also includes the
+  QueryCondition exact `Condition` source/static child cut. Exact condition
+  children now write directly on the query source/static syntax path; exact
+  `Operation` remains out because it does not own a direct syntax writer, and
+  custom/subclassed children still use fallback readback. The review-flagged
+  `CountingWriter` and custom condition constructions are test-only proof
+  instrumentation. This is tracked in `NODE-REWRITE-TRACKER.md` and is not new
+  binding logic. No speed claim.
+- Merge-carried serialization review: `origin/dev` also includes declaration
+  narrowed-thenable continuation cleanup in
+  `packages/core/src/tree/declaration.ts`. Declaration render-assignment and
+  custom-interpolated replacement eval now call already-narrowed thenables
+  directly instead of adding promise wrapper allocations, while preserving the
+  custom-property restoration branch. This is tracked in
+  `NODE-REWRITE-TRACKER.md` and is not new binding logic. No speed claim.
+- Merge-carried serialization review: `origin/dev` also includes Ampersand
+  append-placement dead string snapshot deletion in
+  `packages/core/src/tree/ampersand.ts`. Append placement no longer fills
+  unused selector text snapshots through public `toTrimmedString(...)`; broader
+  Ampersand raw string assembly remains tracked in `NODE-REWRITE-TRACKER.md`.
+  The review-flagged test exception assertion and empty rules fixture are
+  proof scaffolding for the no-snapshot assertion, and the flagged generic
+  construction / null-child-key text is an existing tracker row note carried by
+  the serialization update. This is not new binding logic. No speed claim.
+- Merge-carried binding review: the scoped diff still includes the prior
+  `RulesLookupHandleShape` object from the source-static handle pass as remote
+  baseline context; this pass removes the temporary source-static shape
+  allocation by comparing stored handle fields directly.
+- Merge-carried serialization review: `origin/dev` also includes Ampersand
+  exact `BasicSelector` template text work in `packages/core/src/tree/ampersand.ts`.
+  Exact basic selector template replacement and comma checks read owned scalar
+  text instead of public string conversion; broader Ampersand raw string
+  assembly remains tracked in `NODE-REWRITE-TRACKER.md`. The review-flagged
+  loop, selector construction/inheritance, result array, cleanup block, and
+  test exception are serialization proof/placement machinery from that merge,
+  not binding lookup logic. No speed claim.
+- Merge-carried serialization review: `origin/dev` also includes AtRule
+  narrowed thenable continuation cleanup in
+  `packages/core/src/tree/at-rule.ts`. Async at-rule name/prelude/body
+  continuations now call the already-thenable value directly instead of adding
+  promise wrapper calls; the pre-existing at-rule comment-trivia failure remains
+  tracked outside this binding pass. This is not new binding logic. No speed
+  claim.
+- Merge-carried serialization review: `origin/dev` also includes Rules static
+  registration narrowed-thenable cleanup in `packages/core/src/tree/rules.ts`.
+  Static child registration prep now calls the already-thenable prepared-node
+  result directly instead of adding a promise wrapper call. This is not new
+  binding lookup logic. No speed claim.

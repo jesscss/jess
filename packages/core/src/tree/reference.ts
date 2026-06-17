@@ -811,45 +811,6 @@ function lookupPropertyReference(
   return findPropertyDeclarationOccurrence(targetRules, getLookupKeyString(valueKey), opts);
 }
 
-function lookupVariableReference(
-  targetRules: Rules,
-  valueKey: NormalizedLookupKey,
-  opts: ReferenceDeclarationFindOptions,
-  env: RulesLookupAdapterEnv
-): VariableReferenceLookupReturnValue {
-  const keyStr = getLookupKeyString(valueKey);
-  const frameMode: ScopeFrameVariableBindingMode | undefined = typeof valueKey === 'string'
-    && !env.hasTarget
-    && !env.isInterpolatedVariable
-    && !(opts.start !== undefined && env.readMode !== 'snapshot')
-    ? 'full'
-    : env.readMode !== 'snapshot'
-      ? 'live-current'
-      : undefined;
-  if (frameMode) {
-    const frameHit = lookupScopeFrameVariableBinding(targetRules, keyStr, opts, env, frameMode);
-    if (frameHit) {
-      if (frameHit === SCOPE_FRAME_VARIABLE_MISS) {
-        if (env.readMode !== 'snapshot') {
-          return undefined;
-        }
-      } else {
-        return frameHit;
-      }
-    }
-  }
-  return findVariableDeclarationOccurrence(targetRules, keyStr, {
-    start: opts.start,
-    context: env.context,
-    hasTarget: env.hasTarget,
-    local: opts.local,
-    filter: env.filter,
-    includeLiveBindings: env.readMode !== 'snapshot',
-    ignoreCurrentScopeStart: true,
-    ignoreParentScopeStart: opts.ignoreParentScopeStart === true
-  });
-}
-
 function lookupDeclarationReference(
   targetRules: Rules,
   valueKey: NormalizedLookupKey,
@@ -911,12 +872,35 @@ function performVariableRulesLookup(
   lookupContext: RulesReferenceLookupContext,
   shape: RulesLookupHandleShape
 ): VariableReferenceLookupReturnValue {
-  return lookupVariableReference(
-    scope,
-    lookupContext.valueKey,
-    buildReferenceDeclarationFindOptions(lookupContext, shape),
-    lookupContext.env
-  );
+  const { env, valueKey } = lookupContext;
+  const keyStr = getLookupKeyString(valueKey);
+  const frameMode: ScopeFrameVariableBindingMode | undefined = typeof valueKey === 'string'
+    && !env.hasTarget
+    && !env.isInterpolatedVariable
+    && !(shape.start !== undefined && env.readMode !== 'snapshot')
+    ? 'full'
+    : env.readMode !== 'snapshot'
+      ? 'live-current'
+      : undefined;
+  if (frameMode) {
+    const frameHit = lookupScopeFrameVariableBinding(scope, keyStr, {
+      start: shape.start,
+      filter: env.filter
+    }, env, frameMode);
+    if (frameHit) {
+      return frameHit === SCOPE_FRAME_VARIABLE_MISS ? undefined : frameHit;
+    }
+  }
+  return findVariableDeclarationOccurrence(scope, keyStr, {
+    start: shape.start,
+    context: env.context,
+    hasTarget: env.hasTarget,
+    local: shape.local || undefined,
+    filter: env.filter,
+    includeLiveBindings: env.readMode !== 'snapshot',
+    ignoreCurrentScopeStart: true,
+    ignoreParentScopeStart: shape.ignoreParentScopeStart || undefined
+  });
 }
 
 function performDeclarationRulesLookup(
@@ -1372,6 +1356,36 @@ function areCurrentBindingFactsCurrent(args: {
   return true;
 }
 
+function readCurrentRulesLookupHandleValue(
+  handle: ReferenceRulesLookupHandle
+): RulesLookupHandleReadResult {
+  if (isScopeFrameVariableBindingHandle(handle.returnVal)) {
+    if (
+      handle.returnVal.ownerFrame.currentBindingsVersion !== handle.returnVal.ownerFrameCurrentBindingsVersion
+      || handle.returnVal.cell.lookupIdentity !== handle.returnVal.cellLookupIdentity
+      || !areCurrentBindingFactsCurrent(handle.returnVal)
+    ) {
+      return undefined;
+    }
+    return handle.returnVal;
+  }
+  if (!areCurrentBindingFactsCurrent(handle)) {
+    return undefined;
+  }
+  if (isDirectDeclarationOccurrence(handle.returnVal)) {
+    const node = handle.returnVal.node;
+    if (
+      node.parent !== handle.returnVal.ownerRules
+      || handle.returnVal.ownerRules?.getDeclarationLookupVersion(String(node.name.valueOf())) !== handle.returnVal.ownerLookupVersion
+      || node.index !== handle.returnVal.index
+    ) {
+      return undefined;
+    }
+    return handle.returnVal;
+  }
+  return handle.returnVal;
+}
+
 function readRulesLookupHandle(
   referenceNode: Reference,
   targetRules: Rules | undefined,
@@ -1407,31 +1421,7 @@ function readRulesLookupHandle(
   ) {
     return undefined;
   }
-  if (isScopeFrameVariableBindingHandle(handle.returnVal)) {
-    if (
-      handle.returnVal.ownerFrame.currentBindingsVersion !== handle.returnVal.ownerFrameCurrentBindingsVersion
-      || handle.returnVal.cell.lookupIdentity !== handle.returnVal.cellLookupIdentity
-      || !areCurrentBindingFactsCurrent(handle.returnVal)
-    ) {
-      return undefined;
-    }
-    return handle.returnVal;
-  }
-  if (!areCurrentBindingFactsCurrent(handle)) {
-    return undefined;
-  }
-  if (isDirectDeclarationOccurrence(handle.returnVal)) {
-    const node = handle.returnVal.node;
-    if (
-      node.parent !== handle.returnVal.ownerRules
-      || handle.returnVal.ownerRules?.getDeclarationLookupVersion(String(node.name.valueOf())) !== handle.returnVal.ownerLookupVersion
-      || node.index !== handle.returnVal.index
-    ) {
-      return undefined;
-    }
-    return handle.returnVal;
-  }
-  return handle.returnVal;
+  return readCurrentRulesLookupHandleValue(handle);
 }
 
 function tryReadSourceStaticRulesLookupHandle(args: {
@@ -1488,27 +1478,27 @@ function tryReadSourceStaticRulesLookupHandle(args: {
   ) {
     return undefined;
   }
-  const shape: RulesLookupHandleShape = {
-    start: undefined,
-    local: false,
-    ignoreParentScopeStart: false,
-    terminalMixinOnly: handle.terminalMixinOnly
-  };
+  if (
+    handle.targetRules !== targetRules
+    || !isRulesLookupHandleVersionCurrent(handle, targetRules, handleableLookupType, valueKey)
+    || handle.lookupType !== handleableLookupType
+    || handle.inCall !== env.inCall
+    || handle.valueKey !== valueKey
+  ) {
+    return undefined;
+  }
   if (lookupTypeUsesDeclarationConstraints(handleableLookupType)) {
     const declarationConstraints = getRulesLookupHandleDeclarationConstraintShape(referenceNode);
-    shape.requiredNormalizedFromAssignKey = declarationConstraints.requiredNormalizedFromAssignKey;
-    shape.excludedNode0 = declarationConstraints.excludedNode0;
-    shape.excludedNode1 = declarationConstraints.excludedNode1;
-    shape.excludedNodesLength = declarationConstraints.excludedNodesLength;
+    if (
+      handle.requiredNormalizedFromAssignKey !== declarationConstraints.requiredNormalizedFromAssignKey
+      || handle.excludedNodesLength !== (declarationConstraints.excludedNodesLength ?? 0)
+      || handle.excludedNode0 !== declarationConstraints.excludedNode0
+      || handle.excludedNode1 !== declarationConstraints.excludedNode1
+    ) {
+      return undefined;
+    }
   }
-  return readRulesLookupHandle(
-    referenceNode,
-    targetRules,
-    handleableLookupType,
-    valueKey,
-    env.inCall,
-    shape
-  );
+  return readCurrentRulesLookupHandleValue(handle);
 }
 
 function writeVariableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {

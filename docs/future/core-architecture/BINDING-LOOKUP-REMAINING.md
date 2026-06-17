@@ -79,7 +79,10 @@ plus variable/property/function/callable handle tests. Current evidence:
 source-static variable/property/function/mixin reads now read an already-written
 trivial `RulesLookupHandle` before rebuilding `_lookupStrategy`; contextual
 start, read mode, target/filter, leaky/search-scope, interpolated, and
-nontrivial handle shapes still fall through to normal preparation.
+nontrivial handle shapes still fall through to normal preparation. The
+source-static read now validates the stored handle fields directly and reuses
+the shared freshness tail, so it no longer allocates a temporary
+`RulesLookupHandleShape` object just to re-read a covered handle.
 
 5. [ ] Finish reference-import namespace offset coverage. Scope:
 namespaced reference-import rulesets, reference-import child surfaces reached
@@ -135,7 +138,13 @@ coverage. Scope: explicit-target fallback, selector-attribute interpolation,
 that remains only to route covered misses. Goal: ordinary covered variable hits
 and misses stay on the source-static handle/frame path and never call the
 facade miss helper. Acceptance: focused spies for covered explicit/static
-variable miss and hit paths, plus existing interpolation positives.
+variable miss and hit paths, plus existing interpolation positives. Current
+evidence: the private `lookupVariableReference(...)` facade helper is deleted;
+`performVariableRulesLookup(...)` now tries the scope-frame lane before
+building declaration fallback options, returns covered frame misses directly,
+and only constructs the occurrence-fallback options when the frame lane is
+unavailable or uncovered. `verify:binding-lookup-hot-paths` guards against
+reintroducing the helper.
 
 12. [ ] Run changed-baseline and fix any lookup-owned fallout now that the
 ruleset header streaming blocker is repaired. Scope: changed Less/Jess
@@ -246,6 +255,10 @@ visited-set allocation.
   rebuild. The early path accepts only trivial source-static handle shapes and
   still uses the normal handle reader for version, live-binding, and occurrence
   freshness.
+- Covered variable reference hits/misses no longer route through the private
+  `lookupVariableReference(...)` helper. Variable lookup checks scope-frame
+  facts before constructing declaration fallback options; covered misses return
+  immediately, and unsupported/uncovered cases keep the occurrence fallback.
 - Stale design/test references to deleted declaration wrapper facades were
   cleaned up in `BINDING-INDEX-PROPOSAL.md`; remaining grep hits are either the
   direct occurrence helper names or explicit notes that the public-looking
