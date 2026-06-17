@@ -1431,6 +1431,8 @@ describe('Style import', () => {
     });
 
     it('keeps replacement "set" configs on an imported child rules surface for guarded mixins', async () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const directChildSurfaceBridges: string[] = [];
       const libraryPath = resolve(process.cwd(), 'library-guarded-mixin-set-child-surface.jess');
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'accentColor', value: any('red') }),
@@ -1507,21 +1509,34 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const composedRules = evald.at(0) as Rules;
-      const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
-      const css = await renderNodeToString(node, context, { context });
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key, options] = args;
+        if (key === '.guarded-child-surface-set' && options?.searchParents === false) {
+          directChildSurfaceBridges.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
 
-      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
-      expect(composedRules.options.importBoundary).toBe(true);
-      expect(importedChildSurface?.options.importBoundary).toBeUndefined();
-      expect(css).toContain('.base');
-      expect(css).toContain('.addon');
-      expect(css).toContain('.dark {');
-      expect(css).toContain('color: red;');
-      expect(css).toContain('border-color: purple;');
-      expect(css).not.toContain('.light {\n  color: red;');
-      expect(css).not.toContain('border-color: red;');
+      try {
+        const evald = await node.eval(context);
+        const composedRules = evald.at(0) as Rules;
+        const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
+        const css = await renderNodeToString(node, context, { context });
+
+        expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
+        expect(composedRules.options.importBoundary).toBe(true);
+        expect(importedChildSurface?.options.importBoundary).toBeUndefined();
+        expect(css).toContain('.base');
+        expect(css).toContain('.addon');
+        expect(css).toContain('.dark {');
+        expect(css).toContain('color: red;');
+        expect(css).toContain('border-color: purple;');
+        expect(css).not.toContain('.light {\n  color: red;');
+        expect(css).not.toContain('border-color: red;');
+        expect(directChildSurfaceBridges).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
     });
 
     it('keeps child-surface additive "with" configs compatible with imported mixin calls', async () => {
@@ -1583,6 +1598,8 @@ describe('Style import', () => {
     });
 
     it('keeps child-surface additive "with" configs visible to imported guarded mixins', async () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const directChildSurfaceBridges: string[] = [];
       const libraryPath = resolve(process.cwd(), 'library-child-surface-guarded-mixin.jess');
       context.sourceTrees.set(libraryPath, rules([
         mixin({
@@ -1651,13 +1668,26 @@ describe('Style import', () => {
         })
       ]);
 
-      const css = await renderNodeToString(node, context, { context });
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key, options] = args;
+        if (key === '.guarded-child-surface' && options?.searchParents === false) {
+          directChildSurfaceBridges.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
 
-      expect(css).toContain('.addon');
-      expect(css).toContain('.dark {');
-      expect(css).toContain('color: red;');
-      expect(css).toContain('border-color: purple;');
-      expect(css).not.toContain('.light {\n  color: red;');
+      try {
+        const css = await renderNodeToString(node, context, { context });
+
+        expect(css).toContain('.addon');
+        expect(css).toContain('.dark {');
+        expect(css).toContain('color: red;');
+        expect(css).toContain('border-color: purple;');
+        expect(css).not.toContain('.light {\n  color: red;');
+        expect(directChildSurfaceBridges).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
     });
 
     it('keeps child-surface additive "with" configs visible to imported detached ruleset variable closures', async () => {

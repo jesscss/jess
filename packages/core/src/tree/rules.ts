@@ -78,9 +78,7 @@ import { queueTopImport } from './util/import-queue.js';
 import {
   findAnyDeclarationOccurrence,
   type DirectDeclarationOccurrence,
-  findPropertyDeclarationAssignmentLookup,
   findPropertyDeclarationOccurrence,
-  findVariableDeclarationAssignmentLookup,
   findVariableDeclarationOccurrence
 } from './util/direct-rules-lookup.js';
 const { isArray } = Array;
@@ -1159,7 +1157,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (!childEntries?.length) {
       return undefined;
     }
-    let canSearchChildSurface = false;
     let firstUncoveredChild: Rules | undefined;
     let uncoveredChildren: Rules[] | undefined;
     let frameResults: MixinEntry[] | undefined;
@@ -1187,7 +1184,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (options.local && entry.node.options?.local) {
         continue;
       }
-      canSearchChildSurface = true;
       const childFrame = entry.node.getScopeFrame();
       entry.node.prepareCallableLookupFrame(childFrame, key, includeRulesets);
       const frameHit = lookupScopeFrameCallable(childFrame, key, {
@@ -1210,7 +1206,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (frameResults) {
       return frameResults;
     }
-    if (!canSearchChildSurface || !firstUncoveredChild) {
+    if (!firstUncoveredChild) {
       return undefined;
     }
     if (uncoveredChildren) {
@@ -3150,8 +3146,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         const lookupOptions: DeclarationFindOptions = { searchParents: true };
         const lookup = isNode(node, N.VarDeclaration)
-          ? findVariableDeclarationAssignmentLookup(this, key, { ...lookupOptions, includeLiveBindings: false })
-          : findPropertyDeclarationAssignmentLookup(this, key, lookupOptions);
+          ? findVariableDeclarationOccurrence(this, key, {
+              ...lookupOptions,
+              includeLiveBindings: false,
+              includeReadonly: true
+            })
+          : findPropertyDeclarationOccurrence(this, key, {
+              ...lookupOptions,
+              includeReadonly: true
+            });
         const resultOccurrence = lookup.occurrence;
         const result = resultOccurrence?.node;
         if (result) {

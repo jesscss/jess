@@ -14,8 +14,7 @@ const checks = [
       '.findProperty(',
       '.findDeclaration(',
       '.findAnyDeclaration(',
-      'findVariableDeclarationAssignmentLookup',
-      'findPropertyDeclarationAssignmentLookup'
+      'includeReadonly: true'
     ],
     required: [
       'findVariableDeclarationOccurrence',
@@ -24,11 +23,12 @@ const checks = [
     ]
   },
   {
-    label: 'assignment lookup wrappers stay isolated to setDefined registration',
+    label: 'setDefined assignment lookup stays on readonly occurrence helpers',
     file: 'packages/core/src/tree/rules.ts',
     required: [
-      'findVariableDeclarationAssignmentLookup',
-      'findPropertyDeclarationAssignmentLookup'
+      'findVariableDeclarationOccurrence(this, key, {',
+      'findPropertyDeclarationOccurrence(this, key, {',
+      'includeReadonly: true'
     ]
   }
 ];
@@ -55,8 +55,15 @@ const directLookup = readFileSync(resolve(root, 'packages/core/src/tree/util/dir
 const assignmentWrapperCount = (
   directLookup.match(/export function find(?:Variable|Property)DeclarationAssignmentLookup/g) ?? []
 ).length;
-if (assignmentWrapperCount !== 2) {
-  console.error(`expected exactly 2 cold assignment lookup wrappers, found ${assignmentWrapperCount}`);
+if (assignmentWrapperCount !== 0) {
+  console.error(`expected no cold assignment lookup wrapper exports, found ${assignmentWrapperCount}`);
+  failed = true;
+}
+const readonlyOccurrenceCount = (
+  directLookup.match(/options: DirectDeclarationReadonlyFindOptions/g) ?? []
+).length;
+if (readonlyOccurrenceCount !== 2) {
+  console.error(`expected readonly occurrence overloads for variable and property lookup, found ${readonlyOccurrenceCount}`);
   failed = true;
 }
 
