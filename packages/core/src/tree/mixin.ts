@@ -210,7 +210,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       w.add(' ');
     }
     // Emit rules directly into shared writer; do not re-add return value
-    rules.toBraced(options);
+    rules.writeBraced(options);
   }
 
   override prepareRegistration(context: Context): MaybePromise<Mixin> {

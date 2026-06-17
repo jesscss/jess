@@ -103,28 +103,32 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `Ampersand` direct source writer / collapse parent transport
-  cut in `packages/core/src/tree/ampersand.ts`.
+- Latest pass: `Rules.writeBraced(...)` split and braced caller transport cut
+  in `packages/core/src/tree/rules.ts`.
 - Verdict: accepted as a focused serialization transport cut. No speed claim.
 - New traversal: none.
 - New node/materialization: none in runtime. The `throw new Error` token in
-  `ampersand.test.ts` is test-only proof that collapse-mode parent selector
-  emission does not call public `toString(...)`; the test-local
-  `new OutputWriter()` only captures direct `writeSyntax(...)` output.
-- Render path: source/public output now goes through `Ampersand.writeSyntax(...)`
-  and public `toTrimmedString(...)` is the cold wrapper. Collapse-mode parent
-  selector emission calls parent `writeSyntax(...)` directly instead of public
-  `toString(...)`.
-- Helper/API surface: added one concrete `writeSyntax(...)` override on
-  `Ampersand`, matching the existing selector-family direct writer contract; no
-  public API was added.
+  `mixin.test.ts` is test-only proof that Mixin source syntax does not call
+  public `Rules.toBraced(...)`; the test-local `rules([])` nodes and
+  `WholeBufferCountingWriter` only prove the direct writer path and do not add
+  production materialization.
+- Render path: no render-path change. Source braced body emission now has a
+  void `Rules.writeBraced(...)` writer path. `Rules.toBraced(...)` remains the
+  cold public string wrapper for callers that need a returned string.
+- Helper/API surface: added `Rules.writeBraced(...)` and moved the existing
+  braced body emission into it. Mixin, Func, Collection, If, For, and While
+  source writers now call the void writer path instead of calling and ignoring
+  public `toBraced(...)`.
 - Metadata mutations: none.
-- Generic defensive reads: none in runtime; the `leaf childKeys = null` text in
-  the tracker is pre-existing row context carried in this diff.
 - Allocation changes: none.
-- Rejected in this pass: a naive `Call` render-helper swap from evaluated
-  `toTrimmedString(...)` to `writeSyntax(...)` was tried and reverted because
-  focused call tests showed extra child readbacks and a missing custom content
-  output. Do not retry without a scalar/direct child contract split.
-- Evidence: full `ampersand.test.ts` passed. Full gates are required before
-  commit.
+- Rejected/observed in this pass: the existing Mixin direct-child-writer test
+  still fails on current `dev` when selected because parameter serialization
+  emits `tone: ` instead of the older `$tone` expectation; this batch uses a
+  separate no-param Mixin body test for braced writer proof and does not change
+  parameter semantics.
+- Subagent audit note: Ruleset still has a live tracker mismatch in
+  `composeHeaderSelector(...)` where `valueOf().match(/&/g)` remains; that is a
+  safe next Ruleset mismatch cut, separate from this Rules braced batch.
+- Evidence: focused `rules.test.ts` braced/root serializer tests passed, the
+  isolated Mixin braced writer proof passed, and control/collection caller test
+  files passed. Full gates are required before commit.

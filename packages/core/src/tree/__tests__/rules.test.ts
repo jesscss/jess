@@ -65,9 +65,11 @@ function getDeclEitherWithContext(context: Context, n: Rules, key: string, opts:
 
 class WholeBufferCountingWriter extends OutputWriter {
   wholeBufferReads = 0;
+  readbacks = 0;
   captures = 0;
 
   override getSince(mark: number): string {
+    this.readbacks++;
     if (mark === 0) {
       this.wholeBufferReads++;
     }
@@ -155,6 +157,16 @@ describe('Rules', () => {
     expect(out).toBe('color: red;');
     expect(options.referenceMode).toBe(false);
     expect(options.referenceRenderEnabled).toBe(true);
+  });
+
+  it('writes braced rules without return-value readback', () => {
+    const writer = new WholeBufferCountingWriter();
+    const node = rules([]);
+
+    node.writeBraced(getPrintOptions({ writer }));
+
+    expect(writer.toString()).toBe('{\n\n}');
+    expect(writer.readbacks).toBe(0);
   });
 
   it('lets Rules.evalNode own registration prep', async () => {
