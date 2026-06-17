@@ -427,7 +427,11 @@ shape current before commit.
    directly instead of entering `writer.preview(...)` around public
    `render(...)` transport. Hoisted parent selector headers now write selector
    syntax directly instead of calling the parent selector public `toString(...)`
-   into the detached header writer.
+   into the detached header writer. `Rules.render(..., buffer)` now prepares
+   its print state with the requested render buffer and uses the prepared
+   writeback helper, so shared flat-buffer writers do not append a second copy
+   of the rendered rules body; the helper writes only a missing returned-text
+   suffix when a shared writer already emitted the prefix.
    Broader body render, placement state, merge output, and duplicate declaration
    materialization remain open.
 7. [ ] Finish `Reference` public value materialization, rules-like surfaces,
@@ -644,28 +648,38 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Rules hoisted parent selector header string transport.
+Current pass: Rules shared flat-buffer render writeback.
 
-- New traversal: none. The change reuses the existing hoisted parent selector
-  header path and calls selector `writeSyntax(...)` directly into the detached
-  header writer instead of public `toString(...)`.
-- New node/materialization: no production node/materialization changes. The
-  focused test only overrides the parent selector public `toString(...)` to
-  prove the direct writer path is used.
-- Render path: hoisted parent headers still own the existing detached writer
-  string boundary for frame/header assembly, but selector syntax inside that
-  boundary no longer routes through the selector public string API.
-- Helper/API surface: no helper or public API was added.
+- New traversal: none. The production path adds one already-bounded
+  `getSince(mark)` read only when a flat render buffer shares the active writer
+  and the writer has emitted content since the mark; it does not add a node or
+  child walk.
+- New node/materialization: no production node/materialization. The test
+  creates only a flat render buffer, an `OutputWriter` pointed at that buffer's
+  existing parts array, and an empty root `Rules` fixture to exercise the
+  non-root buffer path.
+- Render path: `Rules.render(..., buffer)` now passes the requested buffer into
+  `prepareBufferPrintState(...)` and delegates writeback to
+  `writePreparedRenderTextResult(...)` instead of rendering to a detached
+  string and pushing that whole string into the buffer. When the shared writer
+  emitted only a prefix of the returned render text, `writePreparedRenderText`
+  appends just the missing suffix with `writer.add(text.slice(...))`; this is a
+  string suffix correction on the active writer, not child-array or syntax-node
+  assembly, and it preserves Rules' buffer-owned trailing separator without
+  duplicating the whole body.
+- Helper/API surface: no public API was added. The existing shared render
+  helper gained a suffix writeback branch so native buffer renders can reuse one
+  prepared-writer contract.
 - Metadata mutations: no parent/source/frozen/location/options/context mutation
   was added.
-- Evidence: focused nesting-collapse, Rules, and node-render-buffer tests
-  passed; eslint on touched serializer/test files passed. The focused test
-  throws only if the hoisted parent header path calls parent selector public
-  `toString(...)`.
+- Evidence: `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/rules.test.ts`
+  passed. A wider `node-render-buffer` focused run still shows unrelated
+  dirty-tree alignment failures in existing Rules/ForRange cases from the
+  current JS-expression-removal work; this pass did not stage those files.
 - Review noise: `verify:aggressive-cutting-review` may report unrelated dirty
   worktree tokens from JS/runtime/docs work outside this slice.
 - Verdict: accepted as a bounded partial cut if final gates pass. Broader Rules
-  root/body render, public string return compatibility, duplicate declaration
-  comparison, and frame/header string identity remain open. No performance
+  root/body render, placement state, merge output, duplicate declaration
+  materialization, and root serializer capture remain open. No performance
   claim; performance remains shelved because this was not a measured benchmark
   pass.

@@ -342,6 +342,24 @@ describe('Rules', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('does not append a second rules body when flat render buffers share a writer', async () => {
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    context.printState.writer = new OutputWriter(false, buffer.parts);
+    context.root = rules([]);
+
+    const rendered = await node.render(context, buffer);
+
+    expect(rendered).toBe('color: red;\n');
+    expect(context.printState.writer.toString()).toBe(rendered);
+    expect(buffer.parts).not.toContain(rendered);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
   it('keeps non-root direct render as a body fragment while buffers keep emitted separators', async () => {
     const node = rules([
       decl({ name: 'color', value: any('red') })

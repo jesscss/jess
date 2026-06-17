@@ -51,7 +51,7 @@ import {
   isRenderBuffer,
   prepareBufferPrintState,
   type RenderBuffer,
-  writeRenderText
+  writePreparedRenderTextResult
 } from './util/render-buffer.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
@@ -200,13 +200,12 @@ function writeRulesRenderOutput(
   options: PrintOptions | undefined,
   directSourceRender: boolean
 ): MaybePromise<string> {
-  const prepared = prepareBufferPrintState(context, options);
+  const prepared = prepareBufferPrintState(context, options, buffer);
+  const mark = prepared.writer.mark();
   const text = node.type === 'Rules' && !directSourceRender
     ? node.toString(prepared)
     : renderRulesToPreparedString(source, node, context, prepared, directSourceRender);
-  return isThenable(text)
-    ? text.then(resolved => writeRenderText(buffer, resolved))
-    : writeRenderText(buffer, text);
+  return writePreparedRenderTextResult(buffer, prepared, mark, text);
 }
 
 function writeRulesStateRenderOutput(

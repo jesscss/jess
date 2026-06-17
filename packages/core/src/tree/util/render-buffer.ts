@@ -183,6 +183,10 @@ export function writePreparedRenderText(
   text: string
 ): string {
   if (buffer.kind === 'flat' && options.writer.writesTo(buffer.parts) && options.writer.hasContentSince(mark)) {
+    const written = options.writer.getSince(mark);
+    if (written.length < text.length && text.startsWith(written)) {
+      options.writer.add(text.slice(written.length));
+    }
     return text;
   }
   return writeRenderText(buffer, text);
