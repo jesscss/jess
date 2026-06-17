@@ -125,18 +125,6 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     ).inherit(this);
   }
 
-  private deriveAdditionSequence(): Sequence {
-    const values = new Array<Node>(this.value.length);
-    for (let i = 0; i < this.value.length; i++) {
-      values[i] = copyWithReusableLeaves(this.value[i]!);
-    }
-    return new Sequence(
-      values,
-      this._options ? { ...this._options } : undefined,
-      this.location.length ? this.location : undefined
-    ).inherit(this);
-  }
-
   private finalizeValues(values: Node[]): Node {
     let count = 0;
     let only: Node | undefined;
@@ -580,8 +568,17 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     if (op !== '+') {
       throw new Error(`Sequence operation "${op}" not supported`);
     }
-    const newSequence = this.deriveAdditionSequence();
+    const leftLength = this.value.length;
     if (b instanceof List) {
+      const leftValues = new Array<Node>(leftLength);
+      for (let i = 0; i < leftLength; i++) {
+        leftValues[i] = copyWithReusableLeaves(this.value[i]!);
+      }
+      const newSequence = new Sequence(
+        leftValues,
+        this._options ? { ...this._options } : undefined,
+        this.location.length ? this.location : undefined
+      ).inherit(this);
       const values = new Array<Node>(b.value.length + 1);
       values[0] = newSequence;
       for (let i = 0; i < b.value.length; i++) {
@@ -589,14 +586,29 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       }
       return new List(values).inherit(this);
     } else if (isNode(b, N.Sequence)) {
-      for (let i = 0; i < b.value.length; i++) {
-        newSequence.value.push(copyWithReusableLeaves(b.value[i]!));
+      const values = new Array<Node>(leftLength + b.value.length);
+      for (let i = 0; i < leftLength; i++) {
+        values[i] = copyWithReusableLeaves(this.value[i]!);
       }
-    } else {
-      b = copyWithReusableLeaves(b);
-      newSequence.value.push(b);
+      for (let i = 0; i < b.value.length; i++) {
+        values[leftLength + i] = copyWithReusableLeaves(b.value[i]!);
+      }
+      return new Sequence(
+        values,
+        this._options ? { ...this._options } : undefined,
+        this.location.length ? this.location : undefined
+      ).inherit(this);
     }
-    return newSequence;
+    const values = new Array<Node>(leftLength + 1);
+    for (let i = 0; i < leftLength; i++) {
+      values[i] = copyWithReusableLeaves(this.value[i]!);
+    }
+    values[leftLength] = copyWithReusableLeaves(b);
+    return new Sequence(
+      values,
+      this._options ? { ...this._options } : undefined,
+      this.location.length ? this.location : undefined
+    ).inherit(this);
   }
 
   /**

@@ -160,6 +160,24 @@ export function writeRenderTextResult(buffer: RenderBuffer, text: MaybePromise<s
     : writeRenderText(buffer, text);
 }
 
+function readFlatBufferTextSince(buffer: FlatRenderBuffer, mark: number): string {
+  if (mark < 0 || mark > buffer.parts.length) {
+    return '';
+  }
+  const length = buffer.parts.length;
+  if (mark === length) {
+    return '';
+  }
+  if (mark === length - 1) {
+    return buffer.parts[mark] ?? '';
+  }
+  let out = '';
+  for (let i = mark; i < length; i++) {
+    out += buffer.parts[i] ?? '';
+  }
+  return out;
+}
+
 export function prepareBufferPrintState(context: Context, options?: PrintOptions, buffer?: RenderBuffer): FinalPrintOptions {
   if (buffer?.kind === 'flat' && buffer.shareWriter && options?.writer === undefined && options?.sourceMap !== true && context.opts.sourceMap !== true) {
     const activeWriter = context.printState.writer;
@@ -183,7 +201,7 @@ export function writePreparedRenderText(
   text: string
 ): string {
   if (buffer.kind === 'flat' && options.writer.writesTo(buffer.parts) && options.writer.hasContentSince(mark)) {
-    const written = options.writer.getSince(mark);
+    const written = readFlatBufferTextSince(buffer, mark);
     if (written.length < text.length && text.startsWith(written)) {
       options.writer.add(text.slice(written.length));
     }

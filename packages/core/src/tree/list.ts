@@ -284,19 +284,6 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     ).inherit(this);
   }
 
-  private deriveAdditionList(): List<Node> {
-    const values = new Array<Node>(this.value.length);
-    for (let i = 0; i < this.value.length; i++) {
-      values[i] = copyWithReusableLeaves(this.value[i]!);
-    }
-    return new List<Node>(
-      values,
-      this._options ? { ...this._options } : undefined,
-      this.location.length ? this.location : undefined,
-      this.sourceRoot?._treeContext
-    ).inherit(this);
-  }
-
   private renderListSyntax(value = this.value, options?: PrintOptions): string {
     if (value.length === 0) {
       return '';
@@ -369,15 +356,33 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     if (op !== '+') {
       throw new Error(`List operation "${op}" not supported`);
     }
-    const newList = this.deriveAdditionList();
+    const leftLength = this.value.length;
     if (b instanceof List) {
-      for (let i = 0; i < b.value.length; i++) {
-        newList.value.push(copyWithReusableLeaves(b.value[i]!));
+      const values = new Array<Node>(leftLength + b.value.length);
+      for (let i = 0; i < leftLength; i++) {
+        values[i] = copyWithReusableLeaves(this.value[i]!);
       }
-    } else {
-      newList.value.push(copyWithReusableLeaves(b));
+      for (let i = 0; i < b.value.length; i++) {
+        values[leftLength + i] = copyWithReusableLeaves(b.value[i]!);
+      }
+      return new List<Node>(
+        values,
+        this._options ? { ...this._options } : undefined,
+        this.location.length ? this.location : undefined,
+        this.sourceRoot?._treeContext
+      ).inherit(this);
     }
-    return newList;
+    const values = new Array<Node>(leftLength + 1);
+    for (let i = 0; i < leftLength; i++) {
+      values[i] = copyWithReusableLeaves(this.value[i]!);
+    }
+    values[leftLength] = copyWithReusableLeaves(b);
+    return new List<Node>(
+      values,
+      this._options ? { ...this._options } : undefined,
+      this.location.length ? this.location : undefined,
+      this.sourceRoot?._treeContext
+    ).inherit(this);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

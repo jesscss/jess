@@ -488,6 +488,24 @@ describe('List', () => {
     expect(rightChild.parent).toBe(right);
   });
 
+  it('assembles list addition output without result-array push staging', () => {
+    const originalPush = Array.prototype.push;
+    let pushCalls = 0;
+    Array.prototype.push = function countPush<T>(this: T[], ...items: T[]): number {
+      pushCalls++;
+      return originalPush.apply(this, items);
+    };
+
+    try {
+      const result = list([any('left')]).operate(list([any('right')]), '+', context);
+
+      expect(pushCalls).toBe(0);
+      expect(result.toTrimmedString()).toBe('left, right');
+    } finally {
+      Array.prototype.push = originalPush;
+    }
+  });
+
   it('adds list values without mapped copy-array scaffolding', () => {
     const left = list([any('left')]);
     const right = list([any('right')]);

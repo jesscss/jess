@@ -568,6 +568,17 @@ shape current before commit.
 14. [ ] Finish `List`/`Sequence` addition/materialization copy ownership,
    including `deriveAdditionSequence(...)`, `copyWithReusableLeaves(...)`, and
    output ownership after arithmetic/list operations.
+
+   Current partial status: `List.operate(...)` and `Sequence.operate(...)` no
+   longer derive a copied left container and then mutate its value array with
+   `push(...)`. Addition now allocates the final output array length up front
+   and copies left/right operands into their final slots while keeping the
+   existing `copyWithReusableLeaves(...)` ownership boundary. The shared flat
+   render-buffer suffix helper now reads the active buffer parts from the mark
+   directly instead of calling writer `getSince(...)` a second time, preserving
+   the existing one-read List/Sequence shared-buffer contract. Remaining work:
+   decide whether the copied leaves/output ownership boundary itself can be
+   narrowed further without violating canonical-parent tests.
 15. [ ] Finish `Operation` arithmetic materialization and preserve-mode calc
    fallback/materialization ownership without adopting unchanged canonical
    operands.
@@ -648,30 +659,43 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Ampersand BasicSelector template replacement string transport.
+Current pass: List/Sequence addition assembly and shared flat-buffer readback.
 
-- New traversal: none. The production change adds one direct scalar branch for
-  string-backed `BasicSelector` values and avoids the existing writer
-  mark/write/readback path for that common case.
-- New node/materialization: no production node/materialization. The focused
-  test builds a normal ruleset frame and temporarily overrides
-  `sourceSelector.writeSyntax` to prove the merge-template path does not use
-  writer transport for the scalar selector.
-- Render path: append/template resolution still returns the existing selector
-  placement result; the scalar BasicSelector replacement now reads
-  `selector.value` directly instead of writing selector syntax to a detached
-  writer only to read it back with `getSince(mark)`.
-- Helper/API surface: no helper or public API was added.
+- New traversal: `List.operate(...)` and `Sequence.operate(...)` now run
+  straight indexed loops over the existing left/right operand arrays to fill a
+  final-sized output array. This replaces the previous helper-plus-`push(...)`
+  staging and does not add an extra child walk. `readFlatBufferTextSince(...)`
+  loops over flat buffer string chunks only when a shared writer has emitted
+  content since the mark and the helper must decide whether to append a returned
+  suffix; it replaces a public writer `getSince(...)` readback that already did
+  the same bounded string-chunk scan.
+- New node/materialization: no new semantic materialization. Addition still
+  creates the same output `List`/`Sequence` ownership boundary and still uses
+  `copyWithReusableLeaves(...)` for operands; this pass deletes the intermediate
+  derived-container mutation step, not the copied output boundary. The
+  `new List(...)`/`new Sequence(...)`, `.inherit(this)`, and List source-root
+  metadata propagation are the pre-existing arithmetic output ownership model,
+  now reached with final-sized arrays instead of helper-built containers that
+  are mutated afterward.
+- Render path: no List/Sequence render transport was added. The render-buffer
+  helper correction preserves the existing shared-writer suffix behavior while
+  keeping List/Sequence shared-buffer tests at one writer mark/readback.
+- Helper/API surface: the private `deriveAdditionList(...)` and
+  `deriveAdditionSequence(...)` helpers were removed. One private
+  `readFlatBufferTextSince(...)` helper was added to keep shared flat-buffer
+  suffix detection off public `OutputWriter.getSince(...)`; net public API
+  surface is unchanged.
 - Metadata mutations: no parent/source/frozen/location/options/context mutation
-  was added. The test restores its temporary method override in `finally`;
-  this is test-only cleanup, not production routine error control.
-- Evidence: the focused Ampersand test for scalar template replacement passed,
-  eslint on `ampersand.ts` and `ampersand.test.ts` passed, and diff whitespace
-  passed. The full `ampersand.test.ts` file still has the two known unrelated
-  collapse-nesting failures (`amp('')` / `amp('-1')`) that predate this slice.
+  was added. Tests temporarily override `Array.prototype.push` and restore it
+  in `finally` to prove addition assembly does not rely on result-array push
+  staging; this is test-only cleanup.
+- Evidence: `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/list.test.ts src/tree/__tests__/sequence.test.ts`
+  passed after the helper correction restored existing shared-buffer read
+  expectations. Further eslint/build/aggressive-review gates still need to run
+  before commit.
 - Review noise: `verify:aggressive-cutting-review` may report unrelated dirty
   worktree tokens from JS/runtime/docs work outside this slice.
-- Verdict: accepted as a bounded partial cut if final gates pass. Broader
-  Ampersand raw fallback string assembly and structural selector replacement
-  remain open. No performance claim; performance remains shelved because this
-  was not a measured benchmark pass.
+- Verdict: accepted as a bounded partial cut if final gates pass. List/Sequence
+  output copy ownership remains open beyond the deleted helper/mutation staging.
+  No performance claim; performance remains shelved because this was not a
+  measured benchmark pass.
