@@ -103,39 +103,32 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `Rules.writeBraced(...)` split and braced caller transport cut
-  in `packages/core/src/tree/rules.ts`.
-- Verdict: accepted as a focused serialization transport cut. No speed claim.
-- New traversal: none.
-- New node/materialization: none in runtime. The `throw new Error` token in
-  `mixin.test.ts` is test-only proof that Mixin source syntax does not call
-  public `Rules.toBraced(...)`; the test-local `rules([])` nodes and
-  `WholeBufferCountingWriter` only prove the direct writer path and do not add
-  production materialization.
-- Render path: no render-path change. Source braced body emission now has a
-  void `Rules.writeBraced(...)` writer path. `Rules.toBraced(...)` remains the
-  cold public string wrapper for callers that need a returned string.
-- Helper/API surface: added `Rules.writeBraced(...)` and moved the existing
-  braced body emission into it. Mixin, Func, Collection, If, For, and While
-  source writers now call the void writer path instead of calling and ignoring
-  public `toBraced(...)`.
+- Latest pass: namespaced reference-import array-path direct-crawl deletion.
+- Verdict: accepted as a frame/direct-crawl cut plus helper-shape cleanup with
+  behavior proof. No speed claim.
+- New traversal: `findRulesetNamespacePathFast(...)` now prepares the visible
+  callable frame chain for the namespace segment and checks visible child
+  entries to prove uncovered child/reference-import uncertainty is limited to
+  the ruleset-prefix body already being descended into. This replaces broad
+  `findMixinsFast(...)` scans for the targeted `#Namespace` / `.mixin`
+  reference-import array-path cases, including selector-list imported
+  namespaces.
+- New node/materialization: none.
+- Render path: no committed render/stringification path change.
+- Helper/API surface: no exported helper or public API added. The new helper
+  logic was moved into private `Rules` methods so it is not recreated as local
+  closures for each namespace lookup.
 - Metadata mutations: none.
-- Allocation changes: none.
-- Rejected/observed in this pass: the existing Mixin direct-child-writer test
-  still fails on current `dev` when selected because parameter serialization
-  emits `tone: ` instead of the older `$tone` expectation; this batch uses a
-  separate no-param Mixin body test for braced writer proof and does not change
-  parameter semantics.
-- Subagent audit note: Ruleset still has a live tracker mismatch in
-  `composeHeaderSelector(...)` where `valueOf().match(/&/g)` remains; that is a
-  safe next Ruleset mismatch cut, separate from this Rules braced batch.
-- Merge-carried binding review: merging `origin/dev` also brought the
-  namespaced reference-import crawl deletion in `rules.ts` plus focused
-  import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
-  and direct-child-entry state to prove covered namespace uncertainty; the
-  `Parser` construction, `try/finally`, and small spy arrays are test-only
-  proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
-  production render/string transport.
-- Evidence: focused `rules.test.ts` braced/root serializer tests passed, the
-  isolated Mixin braced writer proof passed, and control/collection caller test
-  files passed. Full gates are required before commit.
+- Allocation changes: the new prefix proof walks existing child-entry/frame
+  state and does not allocate production result arrays on the targeted miss
+  path. Moving helper closures to private methods also avoids per-call helper
+  function allocation. Tests allocate small spy arrays only for proof.
+- Evidence: focused import-style tests for namespaced reference-import
+  array-path hit/miss, selector-list namespace array paths, and
+  guarded/reference-import callable miss fixtures passed. Focused mixin
+  namespace tests prove stable namespaces still avoid fallback and a ruleset
+  namespace/callable namespace union still returns all candidates. Final gates
+  are required before commit. No speed claim.
+- Merge note: the branch also incorporates the latest serialization transport
+  work from `origin/dev`; keep that progress tracked in
+  `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.

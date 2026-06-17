@@ -3490,6 +3490,73 @@ describe('Style import', () => {
       expect(out).not.toContain('.only-with-visible');
     });
 
+    it('import-reference: namespaced selector-list array-path lookups stay off direct crawl', async () => {
+      const referencedPath = resolve(process.cwd(), 'selector-list-namespace-array.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.mixin')]), sel([el('.alias')])]),
+          rules: rules([
+            decl({ name: any('was'), value: any('included') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        ruleset({
+          selector: el('#Namespace'),
+          rules: rules([
+            style({ path: quoted(any('selector-list-namespace-array.jess')) }, { type: 'import', importOptions: { reference: true } })
+          ])
+        }),
+        ruleset({
+          selector: el('#used-selector-list-namespace'),
+          rules: rules([
+            call({
+              name: ref({ key: ['#Namespace', '.alias'] }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+      const directCrawlHits: string[] = [];
+      const nestedArrayPathCalls: unknown[] = [];
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '#Namespace' || key === '.alias' || key === '.missing') {
+          directCrawlHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== node && Array.isArray(args[0])) {
+          nestedArrayPathCalls.push(args[0]);
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        const css = await renderNodeToString(node, context, { context });
+        expect(css).toBeString(`
+          #used-selector-list-namespace {
+            was: included;
+          }
+        `);
+        expect(node.findMixin(['#Namespace', '.missing'], undefined, { searchParents: false })).toBeUndefined();
+        const generatedFallbackArrayPathCalls = nestedArrayPathCalls.filter(path => (
+          !Array.isArray(path)
+          || path.length !== 2
+          || path[0] !== '#Namespace'
+          || path[1] !== '.alias'
+        ));
+        expect(generatedFallbackArrayPathCalls).toEqual([]);
+        expect(directCrawlHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
     it('import-remote: mapped remote package paths can be resolved as module-like imports', async () => {
       const remoteContext = new Context({}, [{
         name: 'remote-map',
