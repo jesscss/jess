@@ -20,6 +20,23 @@ import {
  * @todo - add more structure?
  */
 export class QueryCondition extends Sequence {
+  /**
+   * Fast-path only node classes whose source syntax writer is known to be
+   * concrete in the current tree model.
+   *
+   * Query conditions are intentionally stricter than generic `Node.writeSyntax`
+   * because this path is used to prove static query rendering does not fall
+   * back to writer readback, child render, or public string transport. A node
+   * should be added here only after its own class owns a direct `writeSyntax`
+   * implementation that writes the exact authored syntax and does not rely on
+   * `Node.toTrimmedString()` readback.
+   *
+   * Remove this whitelist when every node type that can appear in parser-owned
+   * query conditions has a direct `writeSyntax` contract. At that point
+   * `writeStaticChild` can call `node.writeSyntax(options)` unconditionally and
+   * the fallback tests below should be deleted or moved to a cold extension
+   * compatibility path.
+   */
   private canWriteStaticChildDirect(node: Node): boolean {
     return (
       node.type === 'Any'
@@ -33,12 +50,27 @@ export class QueryCondition extends Sequence {
     );
   }
 
+  /**
+   * Static query syntax writer with a temporary fallback for custom/subclassed
+   * nodes that may not yet participate in the direct writer contract.
+   *
+   * The fallback exists only to keep custom overrides, such as a subclassed
+   * `Paren.writeSyntax`, correct while the node family migration is incomplete.
+   * It intentionally performs a small writer readback for unknown static
+   * children, so those children must not be normalized into the fast path until
+   * their concrete class owns direct syntax output.
+   *
+   * Expected deletion condition: once query-condition child types no longer use
+   * inherited/default `Node.writeSyntax` for real source syntax, delete
+   * `canWriteStaticChildDirect`, delete this fallback branch, and make this
+   * method a straight `node.writeSyntax(options)` call.
+   */
   private writeStaticChild(node: Node, options: FinalPrintOptions): void {
     if (this.canWriteStaticChildDirect(node)) {
       node.writeSyntax(options);
       return;
     }
-      const mark = options.writer.mark();
+    const mark = options.writer.mark();
     node.writeSyntax(options);
     const text = options.writer.getSince(mark);
     if (text === '') {
