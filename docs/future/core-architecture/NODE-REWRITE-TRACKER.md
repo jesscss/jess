@@ -387,7 +387,9 @@ Current hard leftovers after the broad hook sweep:
 - [ ] `AtRule`: direct source writer exists, and `getHeaderString(...)` header
   name/prelude capture writes child syntax directly instead of routing through
   public `toString(...)`; header fragment emission no longer allocates local
-  helper/callback closures inside `getHeaderString(...)`.
+  helper/callback closures inside `getHeaderString(...)`, and leaf/header
+  whitespace checks use direct character scans instead of regex
+  trim/replace/probe paths.
   Remove remaining custom eval/render branch ladders where state already
   carries kind. Body eval/registration async branches now use `MaybePromise`
   narrowing, render sync-path helper closures are lifted out of `render(...)`,

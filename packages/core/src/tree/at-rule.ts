@@ -142,6 +142,43 @@ function renderAtRulePostPreludeTrivia(
   return writer.toString();
 }
 
+function isAtRuleWhitespace(code: number): boolean {
+  return code === 32 || code === 9 || code === 10 || code === 13 || code === 12;
+}
+
+function hasNonAtRuleWhitespace(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    if (!isAtRuleWhitespace(text.charCodeAt(i))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function startsWithAtRuleWhitespace(text: string): boolean {
+  return text.length > 0 && isAtRuleWhitespace(text.charCodeAt(0));
+}
+
+function endsWithAtRuleWhitespace(text: string): boolean {
+  return text.length > 0 && isAtRuleWhitespace(text.charCodeAt(text.length - 1));
+}
+
+function trimAtRuleLeadingWhitespace(text: string, replacement = ''): string {
+  let index = 0;
+  while (index < text.length && isAtRuleWhitespace(text.charCodeAt(index))) {
+    index++;
+  }
+  return index === 0 ? text : replacement + text.slice(index);
+}
+
+function trimAtRuleTrailingWhitespace(text: string): string {
+  let end = text.length;
+  while (end > 0 && isAtRuleWhitespace(text.charCodeAt(end - 1))) {
+    end--;
+  }
+  return end === text.length ? text : text.slice(0, end);
+}
+
 const activeAtRuleBodyEvalRecords = new WeakMap<Context, AtRuleBodyEvalRecord[]>();
 
 function pushAtRuleBodyEvalRecord(
@@ -722,8 +759,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     const preludeOut = parts.prelude
       ? renderAtRuleLeafNodeSyntax(parts.prelude, printOptions)
       : '';
-    const rendered = preludeOut.trim()
-      ? `${nameOut}${/\s$/.test(nameOut) || /^\s/.test(preludeOut) ? '' : ' '}${preludeOut.replace(/^\s+/, '')};`
+    const rendered = hasNonAtRuleWhitespace(preludeOut)
+      ? `${nameOut}${endsWithAtRuleWhitespace(nameOut) || startsWithAtRuleWhitespace(preludeOut) ? '' : ' '}${trimAtRuleLeadingWhitespace(preludeOut)};`
       : `${nameOut};`;
     return isRenderBuffer(bufferOrOptions)
       ? writeRenderText(bufferOrOptions, rendered)
@@ -1140,7 +1177,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
 
     const nameOut = renderAtRuleHeaderNodeSyntax(name, options, withoutComments);
-    const nameEndsWithSpace = /\s$/.test(nameOut);
+    const nameEndsWithSpace = endsWithAtRuleWhitespace(nameOut);
     if (prelude) {
       const preludeTrivia = withoutComments
         ? createTriviaMap()
@@ -1154,23 +1191,23 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           }
         : options;
       const preludeOut = renderAtRuleHeaderNodeSyntax(prelude, preludePrintOptions, withoutComments);
-      if (!preludeOut.trim()) {
+      if (!hasNonAtRuleWhitespace(preludeOut)) {
         out += nameOut;
         if (rules) {
-          out = normalizeIndent(out.replace(/\s+$/, '') + ' {', idt) + '\n';
+          out = normalizeIndent(trimAtRuleTrailingWhitespace(out) + ' {', idt) + '\n';
         } else {
-          out = normalizeIndent(out.replace(/\s+$/, '') + ';', idt);
+          out = normalizeIndent(trimAtRuleTrailingWhitespace(out) + ';', idt);
         }
         return out;
       }
-      const preludeStartsWithSpace = /^\s/.test(preludeOut);
+      const preludeStartsWithSpace = startsWithAtRuleWhitespace(preludeOut);
 
       out += nameOut;
       // If name ends with space AND prelude starts with space, trim the prelude's leading space
       // Otherwise, add a space only if neither has spacing
       let finalPreludeOut = preludeOut;
       if (preludeStartsWithSpace) {
-        finalPreludeOut = preludeOut.replace(/^\s+/, nameEndsWithSpace ? '' : ' ');
+        finalPreludeOut = trimAtRuleLeadingWhitespace(preludeOut, nameEndsWithSpace ? '' : ' ');
       } else if (!nameEndsWithSpace && !preludeStartsWithSpace) {
         out += ' ';
       }
@@ -1180,7 +1217,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         : renderAtRulePostPreludeTrivia(prelude, options);
       out += preludePost;
       if (rules) {
-        const preludeEndsWithSpace = /\s$/.test(preludeOut + preludePost);
+        const preludeEndsWithSpace = preludePost
+          ? endsWithAtRuleWhitespace(preludePost)
+          : endsWithAtRuleWhitespace(preludeOut);
         if (!preludeEndsWithSpace) {
           out += ' ';
         }
@@ -1191,7 +1230,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     } else {
       out += nameOut;
       if (rules) {
-        out = normalizeIndent(out.replace(/\s+$/, '') + ' {', idt) + '\n';
+        out = normalizeIndent(trimAtRuleTrailingWhitespace(out) + ' {', idt) + '\n';
       } else {
         out = normalizeIndent(out + ';', idt);
       }

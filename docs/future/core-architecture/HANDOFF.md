@@ -103,26 +103,26 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: AtRule header fragment helper hoist in
+- Latest pass: AtRule leaf/header whitespace scan in
   `packages/core/src/tree/at-rule.ts`.
-- Verdict: accepted as a mechanical per-call local-closure cut. No speed
+- Verdict: accepted as a mechanical regex/string-probe transport cut. No speed
   claim.
-- New traversal: none.
+- New traversal: small direct character scans over already-rendered header and
+  leaf fragment strings replace regex `trim()` / `replace()` / suffix probes.
 - New node/materialization: none.
-- Render path: `getHeaderString(...)` still writes name/prelude syntax through
-  direct `writeSyntax(...)` into detached header writers, but the detached
-  writer/trivia work now lives in private module helpers instead of local
-  callback helpers.
-- Helper/API surface: two private module helpers replace three local helper
-  closures plus per-call arrow callbacks; no exported API was added.
-- Metadata mutations: the flagged `try/finally` is the existing trivia
-  save/restore boundary moved from the local helper closure into
-  `renderAtRuleHeaderNodeSyntax(...)`; it is not routine error control flow.
-- Allocation changes: removes per-call `emptyHeaderTrivia`,
-  `captureWithoutHeaderTrivia`, and `printHeaderFragment` function
-  allocations from `getHeaderString(...)`; detached `OutputWriter` allocation
-  remains the existing header string boundary, now centralized in the private
-  helpers.
+- Render path: AtRule leaf and header rendering still use the same rendered
+  name/prelude fragments, but whitespace presence, leading trim, trailing trim,
+  and prelude/post spacing checks are now direct character scans instead of
+  regex/string-normalization probes.
+- Helper/API surface: five private module scan helpers were added; no exported
+  API was added, and the helpers replace duplicated regex probes in leaf and
+  header render paths.
+- Metadata mutations: none.
+- Allocation changes: removes regex match/replace work and avoids concatenating
+  `preludeOut + preludePost` only to test trailing whitespace. The flagged
+  `slice(...)` calls are the returned trimmed fragments for the same behavior
+  the removed regex `replace(...)` paths provided, and only run when whitespace
+  is actually trimmed.
 - Rejected/observed in this pass: broader AtRule comment-trivia serialization
   has an existing red case; branch ladders and detached header string capture
   remain open in the AtRule row.
@@ -133,11 +133,10 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: focused `at-rule.test.ts` header transport selection passed for
-  `streams at-rule headers without capture scaffolding` and
-  `renders comment-free at-rule headers without cloning`. The broader
-  `serializes comment trivia between at-rule preludes and blocks` case is not
-  used as proof for this batch because it is red in the current AtRule surface.
+- Evidence: focused `at-rule.test.ts` selection passed for dynamic leaf
+  at-rule preludes, leaf at-rules without preview scaffolding, leading prelude
+  whitespace normalization, header streaming without capture scaffolding,
+  comment-free headers without cloning, and structural comment stripping.
   Targeted ESLint passed with the existing unrelated no-floating-promises
   warning in `at-rule.test.ts`. Full gates are required before commit.
 - Merge-carried binding review: merging `origin/dev` also brought declaration
