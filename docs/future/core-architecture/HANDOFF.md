@@ -103,24 +103,20 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Ampersand exact BasicSelector template text in
-  `packages/core/src/tree/ampersand.ts`.
-- Verdict: accepted as a localized public-string transport cut. No speed claim.
+- Latest pass: AtRule narrowed thenable continuation cleanup in
+  `packages/core/src/tree/at-rule.ts`.
+- Verdict: accepted as a localized promise-wrapper cut. No speed claim.
 - New traversal: none.
 - New node/materialization: none.
-- Render path: exact `BasicSelector` merge-template replacement and raw comma
-  splitting now read the owned scalar `valueOf()` text instead of public
-  `toTrimmedString(...)`. Other simple selector subclasses stay on the
-  existing fallback path.
-- Helper/API surface: adds one private exact-basic-selector text helper that
-  replaces two public string conversion sites and stays inside `ampersand.ts`.
+- Render path: narrowed async at-rule name/prelude/body continuations now call
+  the already-thenable value's `.then(...)` directly instead of wrapping it
+  with `Promise.resolve(...)`.
+- Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: removes exact-basic public string wrapper transport from
-  template replacement and comma-splitting checks. Existing selector-list
-  result arrays remain semantic placement output.
-- Rejected/observed in this pass: broader Ampersand raw string assembly,
-  structural selector replacement, and non-BasicSelector fallback string
-  assembly remain open in the row.
+- Allocation changes: removes the last three `Promise.resolve(...)` wrappers
+  from `at-rule.ts`; no at-rule Promise wrapper calls remain.
+- Rejected/observed in this pass: remaining AtRule custom eval/import/render
+  branches and body-state staging remain open in the row.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -128,15 +124,12 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: full `ampersand.test.ts` passed, including a BasicSelector
-  template merge test that throws if public `toTrimmedString(...)` is used.
-  Targeted ESLint for `ampersand.ts` and `ampersand.test.ts` passed. The
-  review-flagged comma-split loop and selector construction produce semantic
-  selector placement output for exact-basic comma text, matching the existing
-  fallback behavior while avoiding public string transport. The test exception,
-  cleanup block, and empty rules fixture are proof scaffolding. The touched
-  generic-construction tracker text is existing row history, not new runtime
-  code. Full gates are required before commit.
+- Evidence: focused `at-rule.test.ts` async prelude/name/body render and layer
+  registration slice passed; targeted ESLint for `at-rule.ts` passed. A source
+  scan found no remaining `Promise.resolve(...)` calls in `at-rule.ts`. Full
+  `at-rule.test.ts` still has the pre-existing comment-trivia failure
+  (`serializes comment trivia between at-rule preludes and blocks`); it is not
+  caused by this async-continuation cut. Full gates are required before commit.
 - Merge-carried binding review: merging `origin/dev` also brought the
   source-static reference handle early-read pass and binding tracker updates.
   It is lookup-only: no render/stringification path changed, no runtime node
