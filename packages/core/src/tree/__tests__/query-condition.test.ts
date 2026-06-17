@@ -11,6 +11,8 @@ import {
   Node,
   num,
   op,
+  paren,
+  Paren,
   query,
   ref,
   rules,
@@ -346,6 +348,45 @@ describe('QueryCondition', () => {
     expect(writer.reads).toBe(0);
     expect(writer.hasContentReads).toBe(0);
     expect(writer.captures).toBe(0);
+  });
+
+  it('renders static paren conditions through the direct child contract', () => {
+    const buffer: FlatRenderBuffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const node = query([
+      any('screen'),
+      any('and'),
+      paren(any('color', { role: 'keyword' }))
+    ]);
+
+    expect(node.render(context, buffer)).toBe('screen and (color)');
+    expect(buffer.parts).toEqual(['screen', ' ', 'and', ' ', '(', 'color', ')']);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(writer.hasContentReads).toBe(0);
+  });
+
+  it('keeps custom paren syntax overrides on the static fallback path', () => {
+    class CustomParen extends Paren {
+      override writeSyntax(options: Parameters<Paren['writeSyntax']>[0]): void {
+        options.writer.add('(custom)');
+      }
+    }
+
+    const writer = new CountingWriter();
+    const node = query([
+      any('screen'),
+      any('and'),
+      new CustomParen(any('color', { role: 'keyword' }))
+    ]);
+
+    expect(node.render(context, { writer })).toBe('screen and (custom)');
+    expect(writer.toString()).toBe('screen and (custom)');
+    expect(writer.marks).toBe(1);
+    expect(writer.reads).toBe(1);
+    expect(writer.hasContentReads).toBe(0);
   });
 
   it('probes only custom dynamic children that return without writing', () => {

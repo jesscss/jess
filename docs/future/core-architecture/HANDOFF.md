@@ -328,13 +328,15 @@ shape current before commit.
    `Object.getPrototypeOf(...)` per child. QueryCondition now uses explicit
    owned scalar type/prototype contracts (`Any`/`Anonymous`/`Keyword`, `Bool`,
    `Dimension`/`Num`, `Color`) before direct `writeSyntax(...)`; custom render
-   overrides still use the localized write-vs-return mark fallback. Static
+   overrides still use the localized write-vs-return mark fallback. Exact base
+   `Paren` children are now included in the direct static child contract, while
+   `Paren` subclasses/custom syntax stay on the fallback readback path. Static
    render and direct flat-buffer render now avoid the top-level query
-   mark/getSince readback for direct scalar children, and dynamic render carries
-   returned text locally so only uncertain/custom children pay the localized
-   probe. QueryCondition child boundary spacing now writes the literal boundary
-   directly instead of calling a one-line helper. A no-op audit kept the
-   localized child probes because focused QueryCondition tests prove custom
+   mark/getSince readback for direct scalar/paren children, and dynamic render
+   carries returned text locally so only uncertain/custom children pay the
+   localized probe. QueryCondition child boundary spacing now writes the literal
+   boundary directly instead of calling a one-line helper. A no-op audit kept
+   the localized child probes because focused QueryCondition tests prove custom
    dynamic children may either return text without writing or write different
    text than they return.
 3. [ ] Finish `AtRule` body-state staging and remaining custom
@@ -640,34 +642,30 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Ampersand merge-template string helpers and Reference array-key
-syntax emission.
+Current pass: QueryCondition exact `Paren` static child direct render.
 
-- New traversal: Ampersand template replacement keeps the existing `indexOf('&')`
-  scan but performs the replacement in the loop instead of delegating to
-  `replaceAll(...)`; ident-join classification uses direct character-code
-  checks instead of a regex test. Reference array-key syntax keeps the existing
-  key loop and writes each segment directly instead of concatenating a temporary
-  string.
-- New node/materialization: none. No new node, copy, inherit, adopt, wrapper,
-  side map, or metadata object is introduced.
-- Render path: no render path is changed. Ampersand placement still returns the
-  same selector ownership surfaces, and Reference unresolved source syntax now
-  streams array-key text directly to the active writer.
-- Helper/API surface: no public API was added. Existing Ampersand helpers keep
-  their names and lose regex/`replaceAll(...)` helper transport.
+- New traversal: none. The change extends the existing direct-child predicate
+  by one exact constructor/prototype check; no loop, recursion, parent/source
+  walk, side-map lookup, or object/array scan was added.
+- New node/materialization: no production node/materialization changes. The
+  focused tests add a local `CustomParen` and `CountingWriter` instances to
+  prove exact base `Paren` uses the direct path while subclass/custom syntax
+  stays on fallback readback.
+- Render path: static `QueryCondition` render now lets exact base `Paren`
+  children use their direct render contract instead of opening the parent
+  `mark()/getSince()` fallback around `writeSyntax(...)`. Custom `Paren`
+  subclasses still use the fallback path, and dynamic/custom child probes remain
+  in place.
+- Helper/API surface: no helper or public API was added.
 - Metadata mutations: no parent/source/frozen/location/options/context mutation
   was added.
-- Evidence: Reference focused subset for array/static-key/direct render cases
-  passed; Ampersand merge-template focused subset passed; eslint on
-  `ampersand.ts` and `reference.ts` passed. Full `ampersand.test.ts` currently
-  fails the same two hoist/appended collapse tests before and after this hunk in
-  the dirty parent worktree, with `Expected compound selector component`.
+- Evidence: focused QueryCondition tests and full `node-render-buffer` tests
+  passed; `verify:render-buffer-frontier` reported no helper regressions; eslint
+  on touched QueryCondition source/test files passed.
 - Review noise: `verify:aggressive-cutting-review` may report unrelated dirty
-  worktree tokens from JS/runtime/docs work outside this slice, including the
-  pre-existing `Reference` JS-expression removal in the same file.
-- Verdict: accepted as bounded partial cuts if final gates pass. Ampersand raw
-  fallback string assembly, structural selector replacement, Reference
-  rules-like surfaces, public value materialization, merged assign
-  normalization, and key conversion remain open. No performance claim;
-  performance remains shelved because this was not a measured benchmark pass.
+  worktree tokens from JS/runtime/docs work outside this slice.
+- Verdict: accepted as a bounded partial cut if final gates pass. The dynamic
+  child mark/probe/readback remains intentionally open because tests prove
+  custom children may return without writing or write different text than they
+  return. No performance claim; performance remains shelved because this was
+  not a measured benchmark pass.

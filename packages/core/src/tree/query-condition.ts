@@ -6,6 +6,7 @@ import { Any } from './any.js';
 import { Bool } from './bool.js';
 import { Color } from './color.js';
 import { Dimension } from './dimension.js';
+import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -51,6 +52,10 @@ export class QueryCondition extends Sequence {
             node.value.node === undefined
             || typeof node.value.node === 'string'
           )
+        )
+        || (
+          node.constructor === Paren
+          && node.render === Paren.prototype.render
         )
       );
   }
