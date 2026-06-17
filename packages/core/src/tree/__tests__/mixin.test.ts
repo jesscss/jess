@@ -3908,6 +3908,81 @@ describe('Mixin', () => {
       expect(found).toBeUndefined();
     });
 
+    it('namespace fast path: ruleset namespace path preserves callable namespace unions', async () => {
+      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const parser = new Parser();
+      const tree = parser.parse(`
+        @namespaceGuard: 1;
+
+        #guarded when (@namespaceGuard > 0) {
+          #deeper {
+            .mixin() {
+              guarded: namespace;
+            }
+          }
+        }
+
+        #guarded() when (@namespaceGuard > 0) {
+          #deeper {
+            .mixin() {
+              silent: namespace;
+            }
+          }
+        }
+
+        #guarded(@variable: default) when (@namespaceGuard > 0) {
+          #deeper {
+            .mixin() {
+              guarded: with default;
+            }
+          }
+        }
+
+        #guarded-caller {
+          #guarded > #deeper > .mixin();
+        }
+      `).tree;
+
+      context.root = tree;
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const directCrawlHits: string[] = [];
+      let nestedArrayPathCalls = 0;
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '#guarded' || key === '#deeper' || key === '.mixin') {
+          directCrawlHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== tree && Array.isArray(args[0])) {
+          nestedArrayPathCalls++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        const found = tree.findMixin(['#guarded', '#deeper', '.mixin'], undefined, {
+          context
+        });
+
+        expect(found).toHaveLength(3);
+
+        const css = await renderNodeToString(tree, context, { context });
+
+        expect(css).toContain('#guarded-caller {');
+        expect(css).toContain('guarded: namespace;');
+        expect(css).toContain('silent: namespace;');
+        expect(css).toContain('guarded: with default;');
+        expect(directCrawlHits).toEqual([]);
+        expect(nestedArrayPathCalls).toBe(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
     it('namespace fast path: real Less stable namespaces avoid direct-crawl and array fallback', async () => {
       const { Parser } = await import('../../../../less-parser/src/index.ts');
       const parser = new Parser();

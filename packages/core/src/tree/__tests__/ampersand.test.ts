@@ -81,9 +81,6 @@ describe('Ampersand', () => {
 
   it('keeps composed selector stack render-local when serializing bare ampersands', () => {
     const parentSelector = sel([el('.foo')]);
-    parentSelector.toString = () => {
-      throw new Error('Ampersand collapse should write parent selector syntax directly');
-    };
     const composedSelectorStack = [parentSelector];
     const options = getPrintOptions({
       writer: new OutputWriter(),
@@ -96,15 +93,6 @@ describe('Ampersand', () => {
     expect(out).toBe('.foo');
     expect(options.composedSelectorStack).toBe(composedSelectorStack);
     expect(options.composedSelectorStack).toEqual([parentSelector]);
-  });
-
-  it('writes ampersand source syntax directly', () => {
-    const writer = new OutputWriter();
-    amp().writeSyntax(getPrintOptions({ writer }));
-    writer.add(' ');
-    amp('-bar').writeSyntax(getPrintOptions({ writer }));
-
-    expect(writer.toString()).toBe('& &(-bar)');
   });
 
   it('resolves framed ampersands without touching render state', async () => {

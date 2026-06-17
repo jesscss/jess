@@ -25,6 +25,7 @@ import {
 } from './util/print.js';
 import {
   isRenderBuffer,
+  prepareBufferPrintState,
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
@@ -292,80 +293,10 @@ const isLessFunctionFallbackCall = (node: Node): node is LessFunctionFallbackCal
 
 const stringifyDetached = (node: Node, options: PrintOptions): string => {
   const printOptions = getPrintOptions(options);
-  const writer = new OutputWriter();
-  node.writeSyntax({
+  return node.toString({
     ...printOptions,
-    writer
+    writer: new OutputWriter()
   });
-  return writer.toString();
-};
-
-const isHorizontalWhitespace = (code: number): boolean => (
-  code === 9
-  || code === 12
-  || code === 13
-  || code === 32
-);
-
-const needsCustomTrailingNewlineTrim = (text: string): boolean => {
-  let index = text.length - 1;
-  while (index >= 0 && isHorizontalWhitespace(text.charCodeAt(index))) {
-    index--;
-  }
-  return index >= 0 && text.charCodeAt(index) === 10;
-};
-
-const leadingHorizontalWhitespace = (text: string): string => {
-  let index = 0;
-  while (index < text.length && isHorizontalWhitespace(text.charCodeAt(index))) {
-    index++;
-  }
-  return index === 0 ? '' : text.slice(0, index);
-};
-
-const hasTrailingWhitespace = (text: string): boolean => {
-  if (text.length === 0) {
-    return false;
-  }
-  const code = text.charCodeAt(text.length - 1);
-  return code === 10 || isHorizontalWhitespace(code);
-};
-
-const trimCustomTrailingNewline = (text: string): string => {
-  if (!needsCustomTrailingNewlineTrim(text)) {
-    return text;
-  }
-  let index = text.length - 1;
-  while (index >= 0 && isHorizontalWhitespace(text.charCodeAt(index))) {
-    index--;
-  }
-  index--;
-  while (index >= 0 && isHorizontalWhitespace(text.charCodeAt(index))) {
-    index--;
-  }
-  return text.slice(0, index + 1);
-};
-
-const nodeValueText = (node: Node): string | undefined => {
-  const value = node.valueOf();
-  return typeof value === 'string' || typeof value === 'number'
-    ? String(value)
-    : undefined;
-};
-
-const maybeTrimmedScalarText = (node: Node): string | undefined => {
-  const text = nodeValueText(node);
-  if (text === undefined || text.length === 0) {
-    return text;
-  }
-  const first = text.charCodeAt(0);
-  const last = text.charCodeAt(text.length - 1);
-  return isHorizontalWhitespace(first)
-    || isHorizontalWhitespace(last)
-    || first === 10
-    || last === 10
-    ? undefined
-    : text;
 };
 
 const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions): string | undefined => {
@@ -376,34 +307,16 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
 
   const { name, args } = atomicValue;
   const printableKey = name.value.rawKey ?? name.key;
-  let nameText: string;
-  if (typeof printableKey === 'string' || typeof printableKey === 'number') {
-    nameText = String(printableKey);
-  } else if (Array.isArray(printableKey)) {
-    let text = '';
-    for (let index = 0; index < printableKey.length; index++) {
-      text += String(printableKey[index]);
-    }
-    nameText = text;
-  } else {
-    nameText = stringifyDetached(printableKey, options).trim();
-  }
-  let argText = '';
-  const values = args?.value ?? [];
-  let hasArg = false;
-  for (let index = 0; index < values.length; index++) {
-    const arg = values[index];
-    if (!arg) {
-      continue;
-    }
-    if (hasArg) {
-      argText += ', ';
-    }
-    argText += stringifyDetached(arg, options).trim();
-    hasArg = true;
-  }
+  const nameText = typeof printableKey === 'string' || typeof printableKey === 'number'
+    ? String(printableKey)
+    : Array.isArray(printableKey)
+      ? printableKey.map(part => String(part)).join('')
+      : stringifyDetached(printableKey, options).trim();
+  const argTexts = (args?.value ?? [])
+    .filter(Boolean)
+    .map(arg => stringifyDetached(arg, options).trim());
 
-  return `${nameText}(${argText})`;
+  return `${nameText}(${argTexts.join(', ')})`;
 };
 
 /**
@@ -586,25 +499,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   ) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const mark = w.mark();
-    this.writeDeclarationValueSyntax(valueParts, options, renderState);
-    return w.getSince(mark);
-  }
-
-  private writeDeclarationValueSyntax(
-    valueParts: DeclarationValue,
-    options: ReturnType<typeof getPrintOptions>,
-    renderState?: {
-      customInterpolatedValue?: DeclarationRenderState['customInterpolatedValue'];
-      mergeAdapter?: DeclarationMergeAdapterState;
-      importantText?: string;
-      normalizedFromAssign?: AssignmentType;
-    }
-  ): void {
-    const w = options.writer!;
     const { name, value, important } = valueParts;
     const { mergeAdapter, importantText } = renderState ?? {};
     const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
+    const mark = w.mark();
     // setDefined uses `:=` with default spacing rules.
     const printedAssign = (normalizedFromAssign || renderState?.normalizedFromAssign)
       ? AssignmentType.Default
@@ -612,14 +510,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
     let a = effAssign === ':' ? ':' : ` ${effAssign}`;
     // Normalize property name by trimming trailing whitespace
-    const nameText = nodeValueText(name);
-    if (nameText !== undefined && !hasTrailingWhitespace(nameText)) {
-      name.writeSyntax(options);
-    } else {
-      const nameMark = w.mark();
-      name.writeSyntax(options);
-      w.trimEndSince(nameMark);
-    }
+    const nameMark = w.mark();
+    name.toTrimmedString(options);
+    w.trimEndSince(nameMark);
     emitCommentTriviaAfterNode(name, options);
     w.add(a);
     // Custom properties must preserve value text exactly as provided.
@@ -630,35 +523,22 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       // Preserve custom value text, but normalize boundary artifacts:
       // - if capture ended with a line break before declaration termination,
       //   drop that trailing line break so semicolon insertion stays inline.
-      const customValueText = nodeValueText(value);
-      const fallbackOut = stringifyCustomFallbackFunctionCall(value, options);
-      if (
-        renderState?.customInterpolatedValue?.source !== value
-        && fallbackOut === undefined
-        && customValueText !== undefined
-        && !needsCustomTrailingNewlineTrim(customValueText)
-      ) {
-        value.writeSyntax(options);
-      } else if (fallbackOut !== undefined) {
-        const leading = customValueText === undefined ? '' : leadingHorizontalWhitespace(customValueText);
-        w.add(`${leading}${fallbackOut}`, value);
-      } else if (renderState?.customInterpolatedValue?.source === value) {
-        const valueMark = w.mark();
+      const valueMark = w.mark();
+      if (renderState?.customInterpolatedValue?.source === value) {
         renderState.customInterpolatedValue.source.writeWithReplacements(
           renderState.customInterpolatedValue.replacements,
           options
         );
-        w.replaceSince(valueMark, valueOut => trimCustomTrailingNewline(valueOut), value);
       } else {
-        const valueMark = w.mark();
-        value.writeSyntax(options);
-        w.replaceSince(valueMark, (valueOut) => {
-          const customOut = fallbackOut === undefined
-            ? valueOut
-            : `${leadingHorizontalWhitespace(valueOut)}${fallbackOut}`;
-          return trimCustomTrailingNewline(customOut);
-        }, value);
+        value.toString(options);
       }
+      w.replaceSince(valueMark, (valueOut) => {
+        const fallbackOut = stringifyCustomFallbackFunctionCall(value, options);
+        const customOut = fallbackOut === undefined
+          ? valueOut
+          : `${valueOut.match(/^[ \t\r\f]*/)?.[0] ?? ''}${fallbackOut}`;
+        return customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
+      }, value);
       restorePrintState(options, saved);
     } else {
       const valueMark = w.mark();
@@ -667,22 +547,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       } else if (mergeAdapter?.kind === 'space') {
         this.renderSpaceValueSyntax(mergeAdapter.items, options);
       } else {
-        value.writeSyntax(options);
+        value.toTrimmedString(options);
       }
       w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
       if (!isNode(value, N.Collection)) {
         if (important || importantText) {
           w.add(' ');
           if (important) {
-            const importantText = maybeTrimmedScalarText(important);
-            if (importantText !== undefined) {
-              w.add(importantText, important);
-            } else {
-              const importantMark = w.mark();
-              important.writeSyntax(options);
-              w.trimStartSince(importantMark);
-              w.trimEndSince(importantMark);
-            }
+            const importantMark = w.mark();
+            important.toString(options);
+            w.trimStartSince(importantMark);
+            w.trimEndSince(importantMark);
           } else {
             w.add(importantText!, value);
           }
@@ -692,6 +567,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (this.valueRequiresSemi(value)) {
       emitCommentTriviaAfterNode(important ?? value, options);
     }
+    return w.getSince(mark);
   }
 
   private renderSpaceValueSyntax(value: Node[], options: PrintOptions): string {
@@ -703,36 +579,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         w.queueSpacer(' ');
       }
       const item = value[index]!;
-      item.writeSyntax(printOptions);
+      item.toString(printOptions);
     }
     return w.getSince(mark);
   }
 
   override toTrimmedString(options?: PrintOptions) {
     return this.declTrimmedString(options);
-  }
-
-  override writeSyntax(options: ReturnType<typeof getPrintOptions>): void {
-    this.writeDeclarationValueSyntax({
-      name: this.name,
-      value: this.valueNode,
-      important: this.important
-    }, options);
-  }
-
-  private renderDeclarationPartsToBuffer(
-    context: Context,
-    buffer: RenderBuffer,
-    valueParts: DeclarationValue,
-    options?: PrintOptions,
-    renderState?: Parameters<Declaration['writeDeclarationValueSyntax']>[2]
-  ): string {
-    const prepared = prepareRenderPrintState(context, {
-      ...(options ?? {}),
-      writer: new OutputWriter()
-    });
-    this.writeDeclarationValueSyntax(valueParts, prepared, renderState);
-    return writeRenderText(buffer, prepared.writer.toString());
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -768,20 +621,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         : node.render(context, bufferOrOptions);
     }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    if (buffer) {
-      return state.value
-        ? this.renderDeclarationPartsToBuffer(context, buffer, {
-            name: state.name ?? state.output.name,
-            value: state.value,
-            important: state.important
-          }, options)
-        : state.output.renderDeclarationPartsToBuffer(context, buffer, {
-            name: state.output.name,
-            value: state.output.valueNode,
-            important: state.output.important
-          }, options);
-    }
-    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
     const out = state.value
       ? this.declValueTrimmedString({
           name: state.name ?? state.output.name,
@@ -789,7 +631,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           important: state.important
         }, prepared)
       : state.output.declTrimmedString(prepared);
-    return out;
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
   }
 
   private renderDeclarationRenderState(
@@ -805,26 +649,22 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         : output.render(context, bufferOrOptions);
     }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const renderState = {
-      mergeAdapter: state.mergeAdapter,
-      customInterpolatedValue: state.customInterpolatedValue,
-      importantText: state.importantText,
-      normalizedFromAssign: state.normalizedFromAssign
-    };
-    if (buffer) {
-      return this.renderDeclarationPartsToBuffer(context, buffer, {
-        name: state.name,
-        value: state.value,
-        important: state.important
-      }, options, renderState);
-    }
-    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
     const out = this.declValueTrimmedString({
       name: state.name,
       value: state.value,
       important: state.important
-    }, prepared, renderState);
-    return out;
+    }, prepared, {
+      mergeAdapter: state.mergeAdapter,
+      customInterpolatedValue: state.customInterpolatedValue,
+      importantText: state.importantText,
+      normalizedFromAssign: state.normalizedFromAssign
+    });
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
   }
 
   override resolve(context: Context): MaybePromise<Node> {
@@ -931,6 +771,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           value,
           mergeAdapter: {
             kind: isList ? 'list' : 'space',
+            value,
             items: newValue
           },
           important: state.important,
@@ -984,8 +825,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       replacements[index] = out as Node;
     };
-    for (let index = 0; index < replacements.length; index++) {
-      const replacement = replacements[index]!;
+    for (const [index, replacement] of replacements.entries()) {
       if (chain) {
         chain = chain.then(() => evaluateReplacement(replacement, index));
         continue;

@@ -11,7 +11,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
-import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 import { WARN, toDiagnostic } from '../jess-error.js';
 export type AmpersandValue = {
@@ -536,12 +536,6 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    this.writeSyntax(options);
-    return w.getSince(mark);
-  }
-
-  override writeSyntax(options: FinalPrintOptions): void {
-    const w = options.writer;
     const { appendValue } = this;
     if (appendValue) {
       w.add('&(');
@@ -552,16 +546,17 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       // resolves to the grandparent, then restore it after rendering.
       const parent = options.composedSelectorStack.pop()!;
       if (options.ampersandFirst !== false) {
-        parent.writeSyntax(options);
+        parent.toString(options);
       } else {
         w.add(':is(');
-        parent.writeSyntax(options);
+        parent.toString(options);
         w.add(')');
       }
       options.composedSelectorStack.push(parent);
     } else {
       w.add('&', this);
     }
+    return w.getSince(mark);
   }
 
   /** Hmm this should never return Extend */

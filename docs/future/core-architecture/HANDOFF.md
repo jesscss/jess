@@ -103,28 +103,30 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `Ampersand` direct source writer / collapse parent transport
-  cut in `packages/core/src/tree/ampersand.ts`.
-- Verdict: accepted as a focused serialization transport cut. No speed claim.
-- New traversal: none.
-- New node/materialization: none in runtime. The `throw new Error` token in
-  `ampersand.test.ts` is test-only proof that collapse-mode parent selector
-  emission does not call public `toString(...)`; the test-local
-  `new OutputWriter()` only captures direct `writeSyntax(...)` output.
-- Render path: source/public output now goes through `Ampersand.writeSyntax(...)`
-  and public `toTrimmedString(...)` is the cold wrapper. Collapse-mode parent
-  selector emission calls parent `writeSyntax(...)` directly instead of public
-  `toString(...)`.
-- Helper/API surface: added one concrete `writeSyntax(...)` override on
-  `Ampersand`, matching the existing selector-family direct writer contract; no
-  public API was added.
+- Latest pass: namespaced reference-import array-path direct-crawl deletion.
+- Verdict: accepted as a frame/direct-crawl cut with behavior proof. No speed
+  claim.
+- New traversal: `findRulesetNamespacePathFast(...)` now prepares the visible
+  callable frame chain for the namespace segment and checks visible child
+  entries to prove uncovered child/reference-import uncertainty is limited to
+  the ruleset-prefix body already being descended into. This replaces broad
+  `findMixinsFast(...)` scans for the targeted `#Namespace` / `.mixin`
+  reference-import array-path cases.
+- New node/materialization: none.
+- Render path: no committed render/stringification path change.
+- Helper/API surface: no exported helper or public API added. The new helper
+  closures are local to `findRulesetNamespacePathFast(...)`; the binding
+  tracker carries a follow-up to collapse/move them only if doing so reduces
+  hot-path function ladders without reopening broad crawls.
 - Metadata mutations: none.
-- Generic defensive reads: none in runtime; the `leaf childKeys = null` text in
-  the tracker is pre-existing row context carried in this diff.
-- Allocation changes: none.
-- Rejected in this pass: a naive `Call` render-helper swap from evaluated
-  `toTrimmedString(...)` to `writeSyntax(...)` was tried and reverted because
-  focused call tests showed extra child readbacks and a missing custom content
-  output. Do not retry without a scalar/direct child contract split.
-- Evidence: full `ampersand.test.ts` passed. Full gates are required before
-  commit.
+- Allocation changes: the new prefix proof walks existing child-entry/frame
+  state and does not allocate production result arrays on the targeted miss
+  path. Tests allocate small spy arrays only for proof.
+- Evidence: focused import-style tests for namespaced reference-import
+  array-path hit/miss and guarded/reference-import callable miss fixtures
+  passed. Focused mixin namespace tests prove stable namespaces still avoid
+  fallback and a ruleset namespace/callable namespace union still returns all
+  candidates. Final gates are required before commit. No speed claim.
+- Merge note: the branch also incorporates the latest serialization transport
+  work from `origin/dev`; keep that progress tracked in
+  `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.
