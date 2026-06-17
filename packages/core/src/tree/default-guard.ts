@@ -14,6 +14,8 @@ export interface DefaultGuard extends Node<string> {
 }
 
 export class DefaultGuard extends Node<string> {
+  static override childKeys = null;
+
   override toTrimmedString(options?: PrintOptions) {
     getPrintOptions(options).writer.add('default', this);
     return 'default';

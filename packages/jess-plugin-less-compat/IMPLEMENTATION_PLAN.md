@@ -390,21 +390,21 @@ export default function lessCompatPlugin(
 
 ### Dimension
 
-**Jess:** `{ value: { number, unit: string } }`
+**Jess:** `{ number, unit?: string }` (with legacy payload still available as `{ value: { number, unit } }` during migration)
 **Less:** `{ value: number, unit: Unit }`
 
 **Transformation:**
-- Map `value.number` → `value`
-- Convert `value.unit` (string) → `Unit` node
+- Map `number` → `value`
+- Convert `unit` (string) → `Unit` node
 
 ### Color
 
-**Jess:** `{ value: { rgb: number[], alpha: number, format, node } }`
+**Jess:** `Color` with direct `node`, `_rgbChannels`, `_hslChannels`, `_alphaValue`, and `options.format` fields
 **Less:** `{ rgb: number[], alpha: number, value: string }`
 
 **Transformation:**
-- Direct mapping for `rgb` and `alpha`
-- Convert `value.format` + `value.node` → `value` string
+- Map direct RGB channels and alpha to `rgb` and `alpha`
+- Convert `options.format` + direct `node` → `value` string
 
 ### Operation
 

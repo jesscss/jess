@@ -9,24 +9,26 @@ import {
   type Lazy
 } from '@jesscss/core';
 
+export async function isrulesetImplementation(value: Lazy<Node>) {
+  try {
+    const resolved = await value();
+    return new Bool(
+      resolved instanceof Rules
+      || resolved instanceof Ruleset
+      || resolved instanceof Mixin
+      || resolved instanceof Collection
+    );
+  } catch (error: unknown) {
+    if (error instanceof ReferenceError) {
+      return new Bool(false);
+    }
+    throw error;
+  }
+}
+
 const isruleset = defineFunction(
   'isruleset',
-  async function(value: Lazy<Node>) {
-    try {
-      const resolved = await value();
-      return new Bool(
-        resolved instanceof Rules
-        || resolved instanceof Ruleset
-        || resolved instanceof Mixin
-        || resolved instanceof Collection
-      );
-    } catch (error: unknown) {
-      if (error instanceof ReferenceError) {
-        return new Bool(false);
-      }
-      throw error;
-    }
-  },
+  isrulesetImplementation,
   {
     params: [{
       name: 'value',

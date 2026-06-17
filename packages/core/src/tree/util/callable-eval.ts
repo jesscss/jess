@@ -7,7 +7,6 @@ import { executeCallableCandidateLoop } from './callable-candidate-loop.js';
 import { createCallableDefaultState } from './callable-default-guard.js';
 import { createCallableOutputState, finalizeCallableEvalOutput } from './callable-output.js';
 import {
-  type MixinEntry,
   createCallableOuterRules,
   createEmptyCallableOutputSurface,
   createMixinOutputRulesWrapper,
@@ -17,6 +16,7 @@ import {
   isIndexedRuleChild,
   resolveCallableSingleOutputSourceRules
 } from './callable-surface.js';
+import type { MixinEntry } from './callable-entry.js';
 
 type EvaluateCallableCollectionOptions = {
   context: Context;
@@ -47,6 +47,10 @@ export async function evaluateCallableCollection({
   const debugDefaultGuard = process.env.DEBUG_DEFAULT_GUARD === '1';
   const restrictMixinOutputLookup = context.leakyRules !== true;
   const defaultState = createCallableDefaultState();
+  const ordinaryCallSiteRules = context.rulesContext ?? caller?.rulesParent ?? caller?.sourceRulesParent;
+  if (!ordinaryCallSiteRules) {
+    throw new TypeError('Callable evaluation requires a rules context');
+  }
 
   await executeCallableCandidateLoop({
     context,
@@ -65,7 +69,7 @@ export async function evaluateCallableCollection({
       return String(raw);
     },
     specialCaseCallSiteRules: caller?.rulesParent ?? caller?.sourceRulesParent ?? context.rulesContext,
-    ordinaryCallSiteRules: context.rulesContext,
+    ordinaryCallSiteRules,
     createOwnedRules: createOwnedCallableRulesSurface,
     createUnlockedRules: createUnlockedCallableRulesSurface,
     getRootSourceRules,

@@ -47,11 +47,11 @@ describe('value', () => {
 
     expect(errors.length).toBe(0);
     const ruleset = tree.value[0]!;
-    const eachNode = ruleset.value.rules.value[0]!;
+    const eachNode = ruleset.rules.value[0]!;
     expect(eachNode.type).toBe('For');
-    expect(eachNode.value.pattern.kind).toBe('tuple');
-    expect(eachNode.value.pattern.values.map((entry: any) => entry.value.name.valueOf())).toEqual(['value', 'key', 'index']);
-    expect(eachNode.value.rules.value).toHaveLength(1);
+    expect(eachNode.pattern.kind).toBe('tuple');
+    expect(eachNode.pattern.values.map((entry: any) => entry.name.valueOf())).toEqual(['value', 'key', 'index']);
+    expect(eachNode.rules.value).toHaveLength(1);
   });
 
   it('preserves explicit each() callback params in the For pattern', () => {
@@ -64,8 +64,8 @@ describe('value', () => {
     expect(errors.length).toBe(0);
     const eachNode = tree.value[0]!;
     expect(eachNode.type).toBe('For');
-    expect(eachNode.value.pattern.kind).toBe('tuple');
-    expect(eachNode.value.pattern.values.map((entry: any) => entry.value.name.valueOf())).toEqual(['v', 'i']);
+    expect(eachNode.pattern.kind).toBe('tuple');
+    expect(eachNode.pattern.values.map((entry: any) => entry.name.valueOf())).toEqual(['v', 'i']);
   });
 });
 

@@ -75,6 +75,21 @@ const cssMediaTypeQuery = cssProductions.mediaTypeQuery;
 
 // ── Helper functions ──────────────────────────────────────────────────
 
+function extendWithSelector(node: ExtendType, selector: Selector | undefined, context: TreeContext): ExtendType {
+  return new Extend({
+    selector,
+    target: node.target,
+    namespace: node.namespace,
+    flag: node.flag
+  }, undefined, node.location.length === 6 ? node.location : undefined, context);
+}
+
+function prependRules(rules: Rules, nodes: Node[], context: TreeContext): Rules {
+  const out = new Rules([...nodes, ...rules.rules], rules.options, rules.location, context);
+  out._location = rules._location;
+  return out;
+}
+
 function getParenFrames(ctx: RuleContext | undefined): boolean[] {
   return (ctx?.parenFrames as boolean[] | undefined) ?? [];
 }
@@ -122,7 +137,7 @@ function guardContainsDefaultCall(node: Node | undefined): boolean {
         return true;
       }
       if (callName instanceof Reference) {
-        const key = callName.value.key;
+        const key = callName.key;
         const keyStr = String(
           (typeof key === 'object' && key !== null && 'valueOf' in key)
             ? key.valueOf()
@@ -159,7 +174,7 @@ function isDefaultGuardCall(node: Node | undefined): node is Call {
     return true;
   }
   if (callName instanceof Reference) {
-    const key = callName.value.key;
+    const key = callName.key;
     const keyStr = String(
       (typeof key === 'object' && key !== null && 'valueOf' in key)
         ? key.valueOf()
@@ -182,7 +197,7 @@ function wrapAtRulePreludeExpression(this: P, node: Node, ctx: RuleContext | und
   if (node instanceof Expression) {
     return node;
   }
-  if (isNode(node, N.Reference) && !node.value.target && typeof node.value.key === 'string') {
+  if (isNode(node, N.Reference) && !node.target && typeof node.key === 'string') {
     return node;
   }
   return new Expression(node, undefined, loc(node), this.context);
@@ -202,7 +217,6 @@ export function wrapOuterExpressionIfNeeded(this: P, node: Node, ctx: RuleContex
 
   // Math expressions: only wrap if this operation would actually be performed.
   if (isNode(node, N.Operation)) {
-    const [left, op, right] = node.value;
     const mathMode = this.mathMode ?? 'parens-division';
     const shouldOperate = shouldOperateWithMathFrames(
       {
@@ -210,9 +224,9 @@ export function wrapOuterExpressionIfNeeded(this: P, node: Node, ctx: RuleContex
         parenFrames: getParenFrames(ctx),
         calcFrames: getCalcFrames(ctx)
       },
-      op,
-      left,
-      right
+      node.operator,
+      node.left,
+      node.right
     );
     if (shouldOperate) {
       return new Expression(node, { parens: true }, loc(node), this.context);
@@ -387,8 +401,13 @@ export function stylesheet(this: P, T: TokenMap) {
 
     if (charset && isNode(root, N.Rules)) {
       let charsetLoc = $.getLocationInfo(charset);
+      root = new Rules(
+        [new Any(charset.image, { role: 'charset' }, charsetLoc, context!), ...root.rules],
+        root.options,
+        root.location,
+        context!
+      );
       let rootLoc = root.location;
-      root.set(null, [new Any(charset.image, { role: 'charset' }, charsetLoc, context!), ...root.value]);
       rootLoc[0] = charsetLoc[0];
       rootLoc[1] = charsetLoc[1];
       rootLoc[2] = charsetLoc[2];
@@ -1156,17 +1175,15 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
         if (!isSelectorList) {
         /** For extends inside rulesets (not bubbled), selector should be undefined
          * so it defaults to ampersand and resolves to the ruleset's selector */
-          for (let e of extend) {
-            e.set('selector', undefined);
-          }
-          rules.set(null, [...extend, ...rules.value]);
+          extend = extend.map(e => extendWithSelector(e, undefined, $.context));
+          rules = prependRules(rules, extend, $.context);
           ctx.extendNodes = undefined;
         } else {
           const selectorList = selector instanceof SelectorList ? selector : undefined;
           if (!selectorList) {
             return;
           }
-          const selectorCount = selectorList.value.length;
+          const selectorCount = selectorList.selectors.length;
           const extendCount = extend.length;
 
           // Determine if extends should bubble up:
@@ -1184,8 +1201,8 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
             // All extends have same target and flag - can be inside ruleset
               let extendNodes = finalExtends[0]!;
               let finalExtend = isArray(extendNodes) ? extendNodes[0]! : extendNodes;
-              finalExtend.set('selector', undefined);
-              rules.set(null, [finalExtend, ...rules.value]);
+              finalExtend = extendWithSelector(finalExtend, undefined, $.context);
+              rules = prependRules(rules, [finalExtend], $.context);
               ctx.extendNodes = undefined;
             } else {
             // Multiple extend groups (different targets/flags) - bubble up
@@ -1281,9 +1298,10 @@ export function qualifiedRule(this: P, T: TokenMap) {
       // Set the Extend nodes' selector to the ruleset's selector (not &)
       // This allows the extends to work correctly when evaluated in the wrapper Rules context
       for (const extendNode of ctx.extendNodes) {
-        const { selector: extendSelector } = extendNode.value;
+        const { selector: extendSelector } = extendNode;
         if (extendSelector === undefined || extendSelector instanceof Ampersand) {
-          extendNode.set('selector', selector);
+          const index = ctx.extendNodes.indexOf(extendNode);
+          ctx.extendNodes[index] = extendWithSelector(extendNode, selector, $.context);
         }
       }
       /** Prepend a rules block */
@@ -1321,46 +1339,53 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     // Helper function to convert Any nodes to VarDeclaration nodes for mixin definition parameters
-    const convertArgsForDefinition = (args: List<Node> | undefined) => {
-      if (!args || !args.value.length) {
+    const convertArgsForDefinition = (args: List<Node> | undefined): void => {
+      if (!args || !args.items.length) {
         return;
       }
 
-      for (let i = 0; i < args.value.length; i++) {
-        const node = args.value[i]!;
+      for (let i = 0; i < args.items.length; i++) {
+        const node = args.items[i]!;
         const location = Array.isArray(node.location) && node.location.length > 0 ? node.location : undefined;
 
         // If it's an Any node with role: 'name', convert it to VarDeclaration for mixin definition parameters
-        if (isNode(node, N.Any) && node.options.role === 'name') {
+        if (isNode(node, N.Any) && node.role === 'name') {
           // Create a new Any node with role 'property' for the name
           const nameNode = new Any(node.valueOf(), { ...node.options, role: 'property' }, node.location, $.context);
-          args.set(i, new VarDeclaration({
+          const replacement = new VarDeclaration({
             name: nameNode,
             value: new Nil(undefined, undefined, location, $.context)
-          }, { paramVar: true }, location, $.context));
+          }, { paramVar: true }, location, $.context);
+          args.adopt(replacement);
+          args.items[i] = replacement;
         }
         // Rest nodes with string values can stay as-is for mixin definitions
       }
     };
 
     // Helper function to convert Any nodes to Reference nodes for mixin call arguments
-    const convertArgsForCall = (args: List<Node> | undefined) => {
-      if (!args || !args.value.length) {
+    const convertArgsForCall = (args: List<Node> | undefined): void => {
+      if (!args || !args.items.length) {
         return;
       }
 
-      for (let i = 0; i < args.value.length; i++) {
-        const node = args.value[i]!;
+      for (let i = 0; i < args.items.length; i++) {
+        const node = args.items[i]!;
         const location = Array.isArray(node.location) && node.location.length > 0 ? node.location : undefined;
 
         // If it's an Any node with role: 'name', convert it to Reference for mixin call arguments
-        if (isNode(node, N.Any) && node.options.role === 'name') {
-          args.set(i, new Reference({ key: node.valueOf() }, { type: 'variable' }, location, $.context));
+        let replacement: Node | undefined;
+        if (isNode(node, N.Any) && node.role === 'name') {
+          replacement = new Reference({ key: node.valueOf() }, { type: 'variable' }, location, $.context);
         } else if (node instanceof Rest) {
-          const restValue = node.value;
+          const restValue = node.node;
           if (typeof restValue === 'string') {
-            args.set(i, new Rest(new Reference({ key: restValue }, { type: 'variable' }, location, $.context), undefined, location, $.context));
+            replacement = new Rest(new Reference({ key: restValue }, { type: 'variable' }, location, $.context), undefined, location, $.context);
           }
+        }
+        if (replacement) {
+          args.adopt(replacement);
+          args.items[i] = replacement;
         }
       }
     };
@@ -1556,9 +1581,10 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
             // Set the Extend nodes' selector to the ruleset's selector (not &)
             // This allows the extends to work correctly when evaluated in the wrapper Rules context
             for (const extendNode of ctx.extendNodes) {
-              const { selector: extendSelector } = extendNode.value;
+              const { selector: extendSelector } = extendNode;
               if (extendSelector === undefined || extendSelector instanceof Ampersand) {
-                extendNode.set('selector', selector);
+                const index = ctx.extendNodes.indexOf(extendNode);
+                ctx.extendNodes[index] = extendWithSelector(extendNode, selector, $.context);
               }
             }
             rule = new Rules([

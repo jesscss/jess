@@ -4,7 +4,8 @@ import {
   Color,
   ColorFormat,
   defineFunction,
-  Any
+  Any,
+  type DefineFunctionOptions
 } from '@jesscss/core';
 import { percentOf, toNumber, splitSequence } from '@jesscss/core';
 import { parseRelativeColorSyntax, evaluateOriginColor, evaluateRGBChannelReference } from '../util/relative-color.js';
@@ -15,7 +16,7 @@ function alphaChannelFromNode(node: unknown, alphaValue: number): number | [numb
   if (!(node instanceof Dimension)) {
     return alphaValue;
   }
-  const { number, unit } = node.value;
+  const { number, unit } = node;
   if (unit === '%') {
     const percentValue = Math.max(0, Math.min(100, number));
     return [percentValue, '%'];
@@ -24,11 +25,11 @@ function alphaChannelFromNode(node: unknown, alphaValue: number): number | [numb
 }
 
 function getRawAlphaChannel(rawArgs: any, alphaValue: number, hasExplicitAlpha: boolean): number | [number, string] {
-  if (!hasExplicitAlpha || !rawArgs?.value?.length) {
+  if (!hasExplicitAlpha || !rawArgs?.items?.length) {
     return alphaValue;
   }
   const dimensions: Dimension[] = [];
-  collectRawDimensions(rawArgs.value, dimensions);
+  collectRawDimensions(rawArgs.items, dimensions);
   const lastDimension = dimensions.at(-1);
   if (lastDimension) {
     return alphaChannelFromNode(lastDimension, alphaValue);
@@ -40,7 +41,7 @@ function rgbChannelFromNode(node: unknown, channelValue: number): number | [numb
   if (!(node instanceof Dimension)) {
     return channelValue;
   }
-  const { number, unit } = node.value;
+  const { number, unit } = node;
   if (unit === '%') {
     return [number, '%'];
   }
@@ -53,11 +54,11 @@ function getRawRgbChannels(
   g: number,
   b: number
 ): [number | [number, string], number | [number, string], number | [number, string]] {
-  if (!rawArgs?.value?.length) {
+  if (!rawArgs?.items?.length) {
     return [r, g, b];
   }
   const dimensions: Dimension[] = [];
-  collectRawDimensions(rawArgs.value, dimensions);
+  collectRawDimensions(rawArgs.items, dimensions);
   const [rDim, gDim, bDim] = dimensions;
   return [
     rgbChannelFromNode(rDim, r),
@@ -74,9 +75,7 @@ function coerceRgbNumber(arg: unknown): number {
   return number;
 }
 
-const rgb = defineFunction(
-  'rgb',
-  async function(this: FunctionThis, ...args: any[]) {
+export async function rgbImplementation(this: FunctionThis | undefined, ...args: any[]): Promise<Color> {
     const modernSyntax = Boolean(this?.caller?.options?.modernSyntax);
     // Check for relative color syntax first: rgb(from color r g b)
     if (this?.context && this.rawArgs) {
@@ -209,7 +208,7 @@ const rgb = defineFunction(
     } else if (args.length >= 1 && args.length <= 2 && args[0] instanceof Color) {
       // [Color, Dimension?] - output the color in RGB format and optionally set alpha
       const inputColor = args[0];
-      let alphaChannel = inputColor.value.alpha;
+      let alphaChannel = inputColor._alphaValue;
       if (args[1] !== undefined) {
         // args[1] is already converted by percentOf(1), toNumber() conversion plugins
         const alpha = coerceRgbNumber(args[1]);
@@ -221,9 +220,10 @@ const rgb = defineFunction(
     } else {
       throw new Error('Invalid arguments for rgb function');
     }
-  },
-  {
-    params: [
+}
+
+export const rgbOptions = {
+  params: [
       // [Dimension, Dimension, Dimension, Dimension?] - r, g, b, optional alpha (most common, try first)
       [
         {
@@ -261,8 +261,13 @@ const rgb = defineFunction(
         }
       ]
     ],
-    preprocessParams: [splitSequence()]
-  }
+  preprocessParams: [splitSequence()]
+} satisfies DefineFunctionOptions;
+
+const rgb = defineFunction(
+  'rgb',
+  rgbImplementation,
+  rgbOptions
 );
 
 export default rgb;

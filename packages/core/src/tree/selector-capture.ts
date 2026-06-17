@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { Node, F_STATIC, defineType } from './node.js';
+import { Node, F_STATIC, defineType, type LocationInfo } from './node.js';
 import { Selector } from './selector.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -24,16 +24,26 @@ const isSelectorNode = (value: unknown): value is Selector => (
  * (e.g. Less `*[ ... ]`, Sass `selector.parse(\"...\")`).
  */
 export class SelectorCapture extends Node<Selector> {
+  static override childKeys = ['selector'] as const;
+
+  readonly selector: Selector;
+
+  constructor(value: Selector, options?: undefined, location?: LocationInfo, treeContext?: Context['treeContext']) {
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.selector = value;
+  }
+
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('*[', this);
-    this.value.writeSyntax(options);
+    this.selector.writeSyntax(options);
     w.add(']', this);
   }
 
   override valueOf(): string {
-    return String(this.value.valueOf());
+    return String(this.selector.valueOf());
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -66,7 +76,7 @@ export class SelectorCapture extends Node<Selector> {
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    const out = this.value.eval(context);
+    const out = this.selector.eval(context);
     if (isThenable(out)) {
       return out.then(value => this.requireSelector(value));
     }
@@ -79,9 +89,9 @@ export class SelectorCapture extends Node<Selector> {
 
   private resolveValue(context: Context): MaybePromise<Selector> {
     if (this.hasFlag(F_STATIC)) {
-      return this.value;
+      return this.selector;
     }
-    const out = this.value.resolve(context);
+    const out = this.selector.resolve(context);
     if (isThenable(out)) {
       return out.then(value => this.requireSelector(value));
     }
@@ -94,5 +104,6 @@ type Params = ConstructorParameters<typeof SelectorCapture>;
 export const selcap = defineType(SelectorCapture, 'SelectorCapture', 'selcap') as (
   value: Params[0],
   options?: Params[1],
-  location?: Params[2]
+  location?: Params[2],
+  treeContext?: Params[3]
 ) => SelectorCapture;

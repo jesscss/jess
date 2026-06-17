@@ -33,7 +33,7 @@ function setGeneratedPseudoPlacementOverride(
   source: PseudoSelector,
   override: GeneratedPseudoPlacementOverrideState
 ): void {
-  source.value.generatedPseudoPlacementOverride = override;
+  source.generatedPseudoPlacementOverride = override;
 }
 
 function createEvaluatedPseudoSelector(
@@ -42,14 +42,20 @@ function createEvaluatedPseudoSelector(
 ): PseudoSelector {
   const node = new PseudoSelector(
     {
-      ...source.value,
-      arg
+      name: source.name,
+      arg,
+      generatedPseudoPlacementOverride: source.generatedPseudoPlacementOverride
     },
-    source._options ? { ...source._options } : undefined,
-    source.location.length ? source.location : undefined
+    source.options ? { ...source.options } : undefined,
+    source.location.length === 6 ? source.location : undefined,
+    source.sourceRoot?._treeContext
   ).inherit(source);
   node.generated = source.generated;
   return node;
+}
+
+function isSelectorNode(node: Node | undefined): node is Selector {
+  return isNode(node, N.Selector);
 }
 
 /**
@@ -58,35 +64,51 @@ function createEvaluatedPseudoSelector(
  *   e.g. :hover, :focus, :active
 */
 export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
+  static override childKeys = ['name', 'arg'] as const;
+
+  readonly name: string;
+  arg: Node | undefined;
+  generatedPseudoPlacementOverride: GeneratedPseudoPlacementOverrideState | undefined;
+
+  constructor(
+    value: PseudoSelectorValue,
+    options?: ConstructorParameters<typeof SimpleSelector<PseudoSelectorValue>>[1],
+    location?: ConstructorParameters<typeof SimpleSelector<PseudoSelectorValue>>[2],
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.name = value.name;
+    this.arg = value.arg;
+    this.generatedPseudoPlacementOverride = value.generatedPseudoPlacementOverride;
+  }
+
   private renderPseudoSyntax(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { name, arg } = this.value;
+    const { name } = this;
+    const { arg } = this;
     const mark = w.mark();
-    const generatedOverride = this.generated
-      && name === ':is'
-      && arg
-      && isNode(arg, N.Selector)
-      ? this.value.generatedPseudoPlacementOverride
-      : undefined;
-    if (generatedOverride) {
+    const selectorArg = isSelectorNode(arg) ? arg : undefined;
+    if (this.generated && name === ':is' && selectorArg && this.generatedPseudoPlacementOverride) {
+      const generatedOverride = this.generatedPseudoPlacementOverride;
       if (this.keySetLibrary) {
-        attachSelectorBitLibrary(arg, this.keySetLibrary);
+        attachSelectorBitLibrary(selectorArg, this.keySetLibrary);
       }
       const omitGeneratedWrapper = generatedOverride.omitWrapperForSingleSelectorList === true
-        && (!isNode(arg, N.SelectorList) || arg.value.length === 1);
+        && (!isNode(selectorArg, N.SelectorList) || selectorArg.selectors.length === 1);
       if (omitGeneratedWrapper) {
-        arg.toString(options);
+        selectorArg.toString(options);
         return w.getSince(mark);
       }
       const argMark = w.mark();
-      arg.toString(options);
-      w.replaceSince(argMark, normalizeSelectorArg, arg);
+      selectorArg.toString(options);
+      w.replaceSince(argMark, normalizeSelectorArg, selectorArg);
       const out = w.getSince(argMark);
       w.restore(argMark);
       w.add(name, this);
       w.add('(');
-      w.add(out, arg);
+      w.add(out, selectorArg);
       w.add(')');
       return w.getSince(mark);
     }
@@ -109,7 +131,8 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
       return;
     }
-    const { name, arg } = this.value;
+    const { name } = this;
+    const { arg } = this;
     const library = this._requireKeySetLibrary();
     if (isNode(arg, N.Selector)) {
       arg.keySetLibrary ??= library;
@@ -118,10 +141,10 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         this._visibleKeySet = arg.visibleKeySet;
         if (isNode(arg, N.SelectorList)) {
           const omitGeneratedWrapper = this.generated
-            && this.value.generatedPseudoPlacementOverride?.omitWrapperForSingleSelectorList === true
-            && arg.value.length === 1;
+            && this.generatedPseudoPlacementOverride?.omitWrapperForSingleSelectorList === true
+            && arg.selectors.length === 1;
           this._requiredKeySet = omitGeneratedWrapper
-            ? arg.value[0]!.requiredKeySet
+            ? arg.selectors[0]!.requiredKeySet
             : library.getBitset();
         } else {
           this._requiredKeySet = arg.requiredKeySet;
@@ -149,7 +172,8 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   override valueOf(): string {
     let valueOf = this._valueOf;
     if (!valueOf) {
-      let { name, arg } = this.value;
+      const { name } = this;
+      const { arg } = this;
       // For :is() with SelectorList, use valueOf() to avoid newlines
 
       /**
@@ -166,9 +190,32 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     return valueOf;
   }
 
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
+    let arg = this.arg;
+    if (deep && arg) {
+      cloneFn ??= n => n.clone(deep);
+      arg = cloneFn(arg);
+    }
+    const cloned = new PseudoSelector(
+      {
+        name: this.name,
+        ...(arg !== undefined && { arg }),
+        ...(this.generatedPseudoPlacementOverride !== undefined && {
+          generatedPseudoPlacementOverride: this.generatedPseudoPlacementOverride
+        })
+      },
+      this._options ? { ...this._options } : undefined,
+      this.location,
+      this.sourceRoot?._treeContext
+    ) as this;
+    cloned.inherit(this);
+    cloned.keySetLibrary = this.keySetLibrary;
+    return cloned;
+  }
+
   override evalNode(context: Context): MaybePromise<PseudoSelector> {
     attachSelectorBitLibrary(this, context.selectorBits);
-    const currentArg = this.value.arg;
+    const currentArg = this.arg;
     if (!currentArg) {
       return this;
     }

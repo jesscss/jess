@@ -6,9 +6,9 @@ export function num(values: Dimension | number): number;
 export function num(values: Array<Dimension | number>): number[];
 export function num(values: Dimension | number | Array<Dimension | number>): number | number[] {
   if (isArray(values)) {
-    return values.map(n => n instanceof Dimension ? n.value.number : n);
+    return values.map(n => n instanceof Dimension ? n.number : n);
   }
-  return values instanceof Dimension ? values.value.number : values;
+  return values instanceof Dimension ? values.number : values;
 }
 
 export const mathHelper = (
@@ -28,14 +28,14 @@ export const mathHelper = (
   const val = input[0];
   if (unit === null) {
     const numberResult = fn(...num(input));
-    const preservedUnit = val instanceof Dimension ? val.value.unit : undefined;
+    const preservedUnit = val instanceof Dimension ? val.unit : undefined;
     return new Dimension({ number: numberResult, unit: preservedUnit });
   }
   const normalizedInput = input.map((v) => {
     if (!(v instanceof Dimension)) {
       return v;
     }
-    const { number, unit: u } = v.value;
+    const { number, unit: u } = v;
     if (u === 'deg') {
       return number * Math.PI / 180;
     }
@@ -47,7 +47,7 @@ export const mathHelper = (
     }
     return number;
   });
-  unit ??= val instanceof Dimension ? val.value.unit : '';
+  unit ??= val instanceof Dimension ? val.unit : '';
   if (unit === undefined || unit === null) {
     return new Num(fn(...(normalizedInput as number[])));
   }

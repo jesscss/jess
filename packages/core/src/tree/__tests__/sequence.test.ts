@@ -68,6 +68,16 @@ describe('Sequence', () => {
     expect(rule.toTrimmedString()).toBe('10 20 30');
   });
 
+  it('stores child nodes on a constructor-owned direct field', () => {
+    const first = num(10);
+    const second = num(20);
+    const rule = seq([first, second]);
+
+    expect(Sequence.childKeys).toEqual(['items']);
+    expect(rule.items).toEqual([first, second]);
+    expect(rule.items).toBe(rule.value);
+  });
+
   it('serializes empty sequence syntax without writer readback scaffolding', () => {
     const writer = new CountingWriter();
 

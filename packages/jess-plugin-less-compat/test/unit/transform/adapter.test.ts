@@ -9,7 +9,7 @@ import {
   Reference
 } from '@jesscss/core';
 import { LessAdapterBase, createLessAdapter, toLessNode, toLessTree } from '../../../src/transform/index.js';
-import type { LessAdapterNode, LessElement, LessRuleset, LessVariable, LessProperty, LessVariableCall } from '../../../src/types.js';
+import type { LessAdapterNode, LessElement, LessRuleset, LessVariable, LessProperty, LessVariableCall, LessDeclaration } from '../../../src/types.js';
 
 function isLessElement(value: unknown): value is LessElement {
   return value instanceof LessAdapterBase
@@ -40,6 +40,10 @@ function isLessProperty(value: unknown): value is LessProperty {
 
 function isLessVariableCall(value: unknown): value is LessVariableCall {
   return value instanceof LessAdapterBase && 'type' in value && value.type === 'VariableCall';
+}
+
+function isLessDeclaration(value: unknown): value is LessDeclaration {
+  return value instanceof LessAdapterBase && 'type' in value && value.type === 'Declaration';
 }
 
 describe('createLessAdapter', () => {
@@ -81,6 +85,26 @@ describe('createLessAdapter', () => {
     }
     expect(adapter.jessNode).toBe(selector);
     expect(adapter.__jessNode).toBe(selector);
+  });
+
+  it('routes deprecated Less declaration value mutation through the Jess direct field', () => {
+    const declaration = new Declaration({
+      name: new Any('color', { role: 'property' }),
+      value: new Any('red')
+    });
+    const adapter = toLessNode(declaration);
+
+    expect(isLessDeclaration(adapter)).toBe(true);
+    if (!isLessDeclaration(adapter)) {
+      throw new Error('Expected Less declaration adapter');
+    }
+
+    const nextValue = new Any('blue');
+    adapter.value = nextValue;
+
+    expect(declaration.valueNode).toBe(nextValue);
+    expect(declaration.value.value).not.toBe(nextValue);
+    expect(declaration.toTrimmedString()).toBe('color: blue');
   });
 });
 

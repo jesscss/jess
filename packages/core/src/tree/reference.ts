@@ -173,7 +173,7 @@ function promoteResolvedPendingVarDecls(
       continue;
     }
 
-    const declName = decl.value.name;
+    const declName = decl.name;
     const isStaticName = !(declName instanceof Node) || declName.hasFlag(F_STATIC);
     if (!isStaticName) {
       remaining.push(decl);
@@ -205,7 +205,7 @@ function promoteResolvedPendingVarDecls(
     if (!hasEntry) {
       const entry: BindingEntry = {
         cell: {
-          value: decl.value.value,
+          value: decl.valueNode,
           sourceNode: decl,
           readonly: decl.options?.readonly
         },
@@ -258,7 +258,7 @@ function normalizeSelectorReferenceKey(selector: Selector): string | string[] {
   }
 
   if (isNode(selector, N.ComplexSelector)) {
-    for (const node of selector.value) {
+    for (const node of selector.components) {
       if (
         isNode(node, N.BasicSelector)
         || isNode(node, N.CompoundSelector)
@@ -1413,7 +1413,7 @@ function readRulesLookupHandle(
     const node = handle.returnVal.node;
     if (
       node.parent !== handle.returnVal.ownerRules
-      || handle.returnVal.ownerRules?.getDeclarationLookupVersion(String(node.value.name.valueOf())) !== handle.returnVal.ownerLookupVersion
+      || handle.returnVal.ownerRules?.getDeclarationLookupVersion(String(node.name.valueOf())) !== handle.returnVal.ownerLookupVersion
       || node.index !== handle.returnVal.index
     ) {
       return undefined;
@@ -1662,7 +1662,7 @@ function lookupResolvedReference(args: {
   const { env } = prepareReferenceLookup({
     referenceNode,
     lookupType,
-    keyNode: referenceNode.value.key,
+    keyNode: referenceNode.key,
     target,
     originalFilter,
     context
@@ -1839,7 +1839,7 @@ function resolveInitialReferenceTarget(
   referenceNode: Reference,
   context: Context
 ): MaybePromise<unknown> {
-  const { target } = referenceNode.value;
+  const { target } = referenceNode;
   if (
     target
     && referenceNode.options.type === 'index'
@@ -1863,7 +1863,7 @@ function resolveInitialReferenceTarget(
     return finalizeRawTarget(rawTarget);
   }
   const runtimeRulesParent = referenceNode.rulesParent;
-  const runtimeKey = referenceNode.value.rawKey ?? referenceNode.value.key;
+  const runtimeKey = referenceNode.rawKey ?? referenceNode.key;
   let runtimeLiveSlotKey: string | undefined;
   if (typeof runtimeKey === 'string') {
     runtimeLiveSlotKey = runtimeKey;
@@ -1888,7 +1888,7 @@ function isDirectIndexContainerTarget(
   resolvedTarget: unknown
 ): boolean {
   return referenceNode.options.type === 'index'
-    && referenceNode.value.target !== undefined
+    && referenceNode.target !== undefined
     && (
       isNode(resolvedTarget, N.List | N.Sequence | N.Rules)
       || resolvedTarget instanceof JsArray
@@ -1915,7 +1915,7 @@ function getRedirectReferenceTargetKey(
     return undefined;
   }
   const targetKey = isNode(resolvedTarget, N.Color)
-    ? String((resolvedTarget as Color).value.node)
+    ? String((resolvedTarget as Color).node)
     : resolvedTarget.valueOf();
   return typeof targetKey === 'string' ? targetKey : undefined;
 }
@@ -1928,14 +1928,17 @@ function resolveAmbiguousReferenceTarget(args: {
   const { referenceNode, context, resolvedTarget } = args;
   const targetKey = getRedirectReferenceTargetKey(referenceNode, resolvedTarget);
   if (targetKey !== undefined) {
-    const refNode = new Reference(targetKey, { type: 'mixin-ruleset' });
+    const refNode = new Reference(
+      targetKey,
+      { type: 'mixin-ruleset' },
+      undefined,
+      referenceNode.sourceRoot?._treeContext
+    );
     referenceNode.adopt(refNode);
     return refNode.eval(context);
   }
   return resolvedTarget;
 }
-
-type JsFunctionTarget = Node<(...args: unknown[]) => unknown>;
 
 function materializeReferenceTarget(args: {
   resolvedTarget: unknown;
@@ -1949,14 +1952,22 @@ function materializeReferenceTarget(args: {
     return Promise.resolve(resolvedTarget.evalCall(context)).then(r => [r, valueKey]);
   }
   if (isNode(resolvedTarget, N.JsFunction)) {
-    const jsResult = (resolvedTarget as JsFunctionTarget).value.call(context);
+    const jsResult = (resolvedTarget as JsFunction).fn.call(context);
     if (isThenable(jsResult)) {
       return Promise.resolve(jsResult).then(result => [result, valueKey]);
     }
     return [jsResult, valueKey];
   }
-  if (isNode(resolvedTarget, N.Mixin | N.Ruleset)) {
-    const sourceRules = resolvedTarget.value.rules;
+  if (isNode(resolvedTarget, N.Mixin)) {
+    const sourceRules = resolvedTarget.rules;
+    const mixinResult = sourceRules.eval(context);
+    if (isThenable(mixinResult)) {
+      return Promise.resolve(mixinResult).then(rules => [rules, valueKey]);
+    }
+    return [mixinResult, valueKey];
+  }
+  if (isNode(resolvedTarget, N.Ruleset)) {
+    const sourceRules = resolvedTarget.rules;
     const mixinResult = sourceRules.eval(context);
     if (isThenable(mixinResult)) {
       return Promise.resolve(mixinResult).then(rules => [rules, valueKey]);
@@ -2070,9 +2081,7 @@ function finalizeFallbackReferenceResult(
     throw getReferenceNotFoundError(lookupType, valueKeyStr);
   }
   if (fallbackValue === true) {
-    const any = new Any(`${valueKey}`);
-    any.options.role = referenceNode.options.role;
-    return any;
+    return new Any(`${valueKey}`, { role: referenceNode.role });
   }
   return evaluateFallbackValue(fallbackValue, context, textOnly);
 }
@@ -2241,11 +2250,11 @@ function finalizeDeclarationReferenceResult(
   declaration: Declaration | VarDeclaration,
   context: Context
 ): MaybePromise<Node> {
-  const declarationValue = declaration.value.value;
+  const declarationValue = declaration.valueNode;
   let isMergedAssign = false;
   let hasImportant = false;
   if (isNode(declaration, N.Declaration)) {
-    hasImportant = !!declaration.value.important;
+    hasImportant = !!declaration.important;
     const normalizedAssign = declaration.options?.normalizedFromAssign;
     isMergedAssign = normalizedAssign === '+:' || normalizedAssign === '&,:' || normalizedAssign === '&_:';
   }
@@ -2416,7 +2425,7 @@ function normalizeMergedAssignReferenceResult(node: Node): Node {
   let mergedItems: Node[] | undefined;
   const collect = (child: Node): void => {
     if (child instanceof List) {
-      for (const item of child.value) {
+      for (const item of child.items) {
         collect(item);
       }
       return;
@@ -2430,8 +2439,8 @@ function normalizeMergedAssignReferenceResult(node: Node): Node {
     }
   };
 
-  for (let i = 0; i < node.value.length; i++) {
-    const child = node.value[i]!;
+  for (let i = 0; i < node.items.length; i++) {
+    const child = node.items[i]!;
     const needsNormalization = (
       child instanceof List
       || child instanceof Nil
@@ -2446,7 +2455,7 @@ function normalizeMergedAssignReferenceResult(node: Node): Node {
     if (!mergedItems) {
       mergedItems = [];
       for (let j = 0; j < i; j++) {
-        mergedItems.push(node.value[j]!);
+        mergedItems.push(node.items[j]!);
       }
     }
     collect(child);
@@ -2504,10 +2513,10 @@ function finalizeRawReferenceLookupTarget(
     return getBindingHandleValue(returnVal);
   }
   if (isDirectDeclarationOccurrence(returnVal)) {
-    return returnVal.node.value.value;
+    return returnVal.node.valueNode;
   }
   if (isNode(returnVal, N.Declaration) || isNode(returnVal, N.VarDeclaration)) {
-    return returnVal.value.value;
+    return returnVal.valueNode;
   }
   return returnVal;
 }
@@ -2516,7 +2525,7 @@ function resolveRawReferenceLookupTarget(
   referenceNode: Reference,
   context: Context
 ): MaybePromise<unknown> {
-  const { target, key } = referenceNode.value;
+  const { target, key } = referenceNode;
   const lookupType = referenceNode.options.type;
   context.pushReference();
   const initialTarget = resolveInitialReferenceTarget(referenceNode, context);
@@ -2615,7 +2624,7 @@ function resolveRawReferenceLookupTarget(
 
 function canRenderRawVariableReferenceDirectly(referenceNode: Reference): boolean {
   return (referenceNode.options.type ?? 'variable') === 'variable'
-    && referenceNode.value.target === undefined
+    && referenceNode.target === undefined
     && referenceNode.options.filter === undefined
     && referenceNode.options.preserveRulesLike !== true;
 }
@@ -2849,14 +2858,30 @@ function evaluateReferenceNode(args: {
  * which can itself contain a reference (a variable variable).
  */
 export class Reference extends Node<ReferenceValue, ReferenceOptions> {
+  static override childKeys = ['target', 'key'] as const;
+
   _rulesLookupHandle: ReferenceRulesLookupHandle | undefined;
   _lookupStrategy: ReferenceLookupStrategy | undefined;
+  readonly target: ReferenceValue['target'];
+  readonly key: ReferenceValue['key'];
+  readonly rawKey: ReferenceValue['rawKey'];
+  readonly role: AnyRole | undefined;
 
-  constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: LocationInfo) {
+  constructor(
+    value: ReferenceValue | string,
+    options?: ReferenceOptions,
+    location?: LocationInfo,
+    treeContext?: Context['treeContext']
+  ) {
     if (typeof value === 'string') {
       value = { key: value };
     }
     super(value, options, location);
+    this._treeContext = treeContext;
+    this.target = value.target;
+    this.key = value.key;
+    this.rawKey = value.rawKey;
+    this.role = options?.role;
     // References are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC);
   }
@@ -2870,7 +2895,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     const w = options.writer!;
     const mark = w.mark();
     let { type = 'variable', resolution, fallbackValue, readMode } = this.options;
-    let { target, key, rawKey } = this.value;
+    let { target, key } = this;
+    const { rawKey } = this;
     const printableKey = rawKey ?? key;
     if (target) {
       target.toString(options);
@@ -2951,8 +2977,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           }
           const evaluated = evaluateReferenceNode({
             referenceNode: this,
-            target: this.value.target,
-            key: this.value.key,
+            target: this.target,
+            key: this.key,
             lookupType: (this.options.type ?? 'variable') as LookupType,
             fallbackValue: this.options.fallbackValue,
             originalFilter: this.options.filter,
@@ -2983,8 +3009,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     }
     const evaluated = evaluateReferenceNode({
       referenceNode: this,
-      target: this.value.target,
-      key: this.value.key,
+      target: this.target,
+      key: this.key,
       lookupType: (this.options.type ?? 'variable') as LookupType,
       fallbackValue: this.options.fallbackValue,
       originalFilter: this.options.filter,
@@ -3008,7 +3034,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
    * should never resolve to itself
    */
   override evalNode(context: Context): MaybePromise<Node> {
-    let { target, key } = this.value;
+    let { target, key } = this;
     let { type, fallbackValue, filter: originalFilter } = this.options;
     const lookupType = (type ?? 'variable') as LookupType;
     const result = evaluateReferenceNode({

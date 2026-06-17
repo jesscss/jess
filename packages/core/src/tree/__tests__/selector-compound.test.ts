@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { amp, any, attr, compound, el, pseudo, ref, rules, Rules, vardecl } from '../index.js';
+import { amp, any, attr, compound, CompoundSelector, el, pseudo, ref, rules, Rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
@@ -52,6 +52,16 @@ describe('Compound Selector', () => {
   });
 
   describe('equality', () => {
+    test('exposes components as the direct child field', () => {
+      const first = el('.foo');
+      const second = el('.bar');
+      const node = compound([first, second]);
+
+      expect(node.components).toEqual([first, second]);
+      expect(node.value).toEqual([first, second]);
+      expect(CompoundSelector.childKeys).toEqual(['components']);
+    });
+
     test('renders compound selector syntax through toTrimmedString()', () => {
       const node = compound([
         el('a'),
@@ -226,8 +236,8 @@ describe('Compound Selector', () => {
         value: ref({ key: 'capture-attr' }, { type: 'variable' })
       })
     ]);
-    const sourceElement = selector.value[0]!;
-    const sourceAttr = selector.value[1]!;
+    const sourceElement = selector.components[0]!;
+    const sourceAttr = selector.components[1]!;
     const resolved = await selector.resolve(context);
 
     expect(resolved.render(context)).toBe('a[data=foo]');
@@ -241,7 +251,7 @@ describe('Compound Selector', () => {
       amp(),
       el('.keep')
     ]);
-    const sourceChild = selector.value[1]!;
+    const sourceChild = selector.components[1]!;
     const sourceParent = sourceChild.parent;
     const sourceLocation = sourceChild.location;
     const resolved = await selector.eval(context);

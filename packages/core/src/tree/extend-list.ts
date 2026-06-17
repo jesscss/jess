@@ -19,11 +19,17 @@ export interface ExtendList extends Node<Extend[]> {
 }
 
 export class ExtendList extends Node<Extend[]> {
+  static override childKeys = ['nodes'] as const;
+
+  readonly nodes: Extend[];
+
   override allowRoot = true;
   override allowRuleRoot = true;
 
-  constructor(value: Extend[], options?: NodeOptions, location?: NodeLocation) {
+  constructor(value: Extend[], options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
     super(value, options, location);
+    this._treeContext = treeContext;
+    this.nodes = value;
     this.removeFlag(F_VISIBLE);
   }
 
@@ -36,7 +42,7 @@ export class ExtendList extends Node<Extend[]> {
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
-    if (this.value.length === 0) {
+    if (this.nodes.length === 0) {
       options.writer.add(';', this);
       return ';';
     }
@@ -57,7 +63,7 @@ export class ExtendList extends Node<Extend[]> {
   }
 
   private renderExtendEffects(context: Context): MaybePromise<void> {
-    const nodes = this.value;
+    const nodes = this.nodes;
     for (let i = 0; i < nodes.length; i++) {
       const out = nodes[i]!.runEffect(context);
       if (isThenable(out)) {
@@ -73,7 +79,7 @@ export class ExtendList extends Node<Extend[]> {
     index: number
   ): Promise<void> {
     await pending;
-    const nodes = this.value;
+    const nodes = this.nodes;
     for (let i = index; i < nodes.length; i++) {
       await nodes[i]!.runEffect(context);
     }

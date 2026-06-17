@@ -1,4 +1,4 @@
-import { Node, F_MAY_ASYNC, F_STATIC, defineType } from './node.js';
+import { Node, F_MAY_ASYNC, F_STATIC, defineType, type NodeLocation } from './node.js';
 import { Nil } from './nil.js';
 import { List } from './list.js';
 import type { Context } from '../context.js';
@@ -81,6 +81,17 @@ function writeRenderedSequenceNode(
  * actually be a sequence of values (like for shorthand)
  */
 export class Sequence extends Node<Node[], SequenceOptions> {
+  static override childKeys = ['items'] as const;
+
+  readonly items: Node[];
+  readonly preserveWhitespace: boolean | undefined;
+
+  constructor(value: Node[], options?: SequenceOptions, location?: NodeLocation, _treeContext?: Context['treeContext']) {
+    super(value, options, location);
+    this.items = value;
+    this.preserveWhitespace = options?.preserveWhitespace;
+  }
+
   private withValue(value: Node[]): Sequence {
     return new Sequence(
       value,
@@ -90,9 +101,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   }
 
   private deriveAdditionSequence(): Sequence {
-    const values = new Array<Node>(this.value.length);
-    for (let i = 0; i < this.value.length; i++) {
-      values[i] = copyWithReusableLeaves(this.value[i]!);
+    const values = new Array<Node>(this.items.length);
+    for (let i = 0; i < this.items.length; i++) {
+      values[i] = copyWithReusableLeaves(this.items[i]!);
     }
     return new Sequence(
       values,
@@ -105,7 +116,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     let count = 0;
     let only: Node | undefined;
     let hasNil = false;
-    let unchanged = values.length === this.value.length;
+    let unchanged = values.length === this.items.length;
     for (let i = 0; i < values.length; i++) {
       const node = values[i]!;
       if (!node || node instanceof Nil) {
@@ -115,11 +126,11 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       }
       count++;
       only = node;
-      if (unchanged && node !== this.value[i]) {
+      if (unchanged && node !== this.items[i]) {
         unchanged = false;
       }
     }
-    if (count === 1 && !this._options?.preserveWhitespace) {
+    if (count === 1 && !this.preserveWhitespace) {
       return only!;
     }
     if (unchanged) {
@@ -142,7 +153,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   override compare(other: Node) {
     if (other instanceof Sequence) {
       const equalityMode = this.sourceRoot?._treeContext?.equalityMode ?? 'coerce';
-      const result = compareNodeArray(this.value, other.value, equalityMode);
+      const result = compareNodeArray(this.items, other.items, equalityMode);
       return result;
     }
     if (other.type === 'Any') {
@@ -154,7 +165,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return undefined;
   }
 
-  private renderSequenceSyntax(value = this.value, options?: PrintOptions): string {
+  private renderSequenceSyntax(value = this.items, options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
     if (printOptions.inCustom) {
       const w = printOptions.writer!;
@@ -226,8 +237,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     let prev: Node | undefined;
 
     if (printOptions.inCustom) {
-      for (let i = 0; i < this.value.length; i++) {
-        const node = this.value[i]!;
+      for (let i = 0; i < this.items.length; i++) {
+        const node = this.items[i]!;
         if (node instanceof Nil) {
           continue;
         }
@@ -236,8 +247,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return w.getSince(mark);
     }
 
-    for (let i = 0; i < this.value.length; i++) {
-      const node = this.value[i]!;
+    for (let i = 0; i < this.items.length; i++) {
+      const node = this.items[i]!;
       if (node instanceof Nil) {
         continue;
       }
@@ -290,8 +301,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     const mark = w.mark();
 
     const renderCustomRest = async (start: number): Promise<string> => {
-      for (let i = start; i < this.value.length; i++) {
-        const node = this.value[i]!;
+      for (let i = start; i < this.items.length; i++) {
+        const node = this.items[i]!;
         if (node instanceof Nil) {
           continue;
         }
@@ -301,8 +312,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     };
 
     if (printOptions.inCustom) {
-      for (let i = 0; i < this.value.length; i++) {
-        const node = this.value[i]!;
+      for (let i = 0; i < this.items.length; i++) {
+        const node = this.items[i]!;
         if (node instanceof Nil) {
           continue;
         }
@@ -316,8 +327,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
     const renderRest = async (start: number, previous: Node | undefined): Promise<string> => {
       let prev = previous;
-      for (let i = start; i < this.value.length; i++) {
-        const node = this.value[i]!;
+      for (let i = start; i < this.items.length; i++) {
+        const node = this.items[i]!;
         if (node instanceof Nil) {
           continue;
         }
@@ -331,8 +342,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     };
 
     let prev: Node | undefined;
-    for (let i = 0; i < this.value.length; i++) {
-      const node = this.value[i]!;
+    for (let i = 0; i < this.items.length; i++) {
+      const node = this.items[i]!;
       if (node instanceof Nil) {
         continue;
       }
@@ -392,14 +403,14 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    return this.renderSequenceSyntax(this.value, options);
+    return this.renderSequenceSyntax(this.items, options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (this.hasFlag(F_STATIC)) {
-      return this.renderResolvedValue(context, this.value, bufferOrOptions, options);
+      return this.renderResolvedValue(context, this.items, bufferOrOptions, options);
     }
     if (!this.hasFlag(F_MAY_ASYNC)) {
       return this.renderDirectValue(context, bufferOrOptions, options);
@@ -431,7 +442,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       count++;
       only = node;
     }
-    if (count === 1 && !this._options?.preserveWhitespace) {
+    if (count === 1 && !this.preserveWhitespace) {
       const node = only!;
       return buffer
         ? writeRenderedSequenceNode(buffer, node.render(context, options))
@@ -496,21 +507,38 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     const newSequence = this.deriveAdditionSequence();
     if (b instanceof List) {
-      const values = new Array<Node>(b.value.length + 1);
+      const values = new Array<Node>(b.items.length + 1);
       values[0] = newSequence;
-      for (let i = 0; i < b.value.length; i++) {
-        values[i + 1] = copyWithReusableLeaves(b.value[i]!);
+      for (let i = 0; i < b.items.length; i++) {
+        values[i + 1] = copyWithReusableLeaves(b.items[i]!);
       }
       return new List(values).inherit(this);
     } else if (isNode(b, N.Sequence)) {
-      for (let i = 0; i < b.value.length; i++) {
-        newSequence.value.push(copyWithReusableLeaves(b.value[i]!));
+      const values = new Array<Node>(newSequence.items.length + b.items.length);
+      for (let i = 0; i < newSequence.items.length; i++) {
+        values[i] = newSequence.items[i]!;
       }
+      for (let i = 0; i < b.items.length; i++) {
+        values[newSequence.items.length + i] = copyWithReusableLeaves(b.items[i]!);
+      }
+      return new Sequence(
+        values,
+        newSequence._options ? { ...newSequence._options } : undefined,
+        newSequence.location.length ? newSequence.location : undefined
+      ).inherit(newSequence);
     } else {
       b = copyWithReusableLeaves(b);
-      newSequence.value.push(b);
+      const values = new Array<Node>(newSequence.items.length + 1);
+      for (let i = 0; i < newSequence.items.length; i++) {
+        values[i] = newSequence.items[i]!;
+      }
+      values[newSequence.items.length] = b;
+      return new Sequence(
+        values,
+        newSequence._options ? { ...newSequence._options } : undefined,
+        newSequence.location.length ? newSequence.location : undefined
+      ).inherit(newSequence);
     }
-    return newSequence;
   }
 
   /**
@@ -531,9 +559,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return this;
     }
     if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this.finalizeValues(evaluateNodeArraySync(context, this.value));
+      return this.finalizeValues(evaluateNodeArraySync(context, this.items));
     }
-    const values = evaluateNodeArrayMaybe(context, this.value);
+    const values = evaluateNodeArrayMaybe(context, this.items);
     return isThenable(values)
       ? (values as Promise<Node[]>).then(resolved => this.finalizeValues(resolved))
       : this.finalizeValues(values as Node[]);
@@ -546,7 +574,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   /** @todo move to visitors */
   // toCSS(context: Context, out: OutputCollector): void {
   //   const cast = context.cast
-  //   this.value.forEach(n => {
+  //   this.items.forEach(n => {
   //     const val = cast(n)
   //     val.toCSS(context, out)
   //   })
@@ -555,8 +583,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   // toModule(context: Context, out: OutputCollector) {
   //   const loc = this.location
   //   out.add('$J.expr([', loc)
-  //   const length = this.value.length - 1
-  //   this.value.forEach((n, i) => {
+  //   const length = this.items.length - 1
+  //   this.items.forEach((n, i) => {
   //     n.toModule(context, out)
   //     if (i < length) {
   //       out.add(', ')

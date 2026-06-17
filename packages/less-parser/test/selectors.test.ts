@@ -54,10 +54,11 @@ describe('Selector Productions', () => {
           name: ':host'
           arg:
             (CompoundSelector
-              [
-                (BasicSelector '.sel')
-                (BasicSelector '.a')
-              ]
+              value:
+                [
+                  (BasicSelector '.sel')
+                  (BasicSelector '.a')
+                ]
             )
         )
       `);
@@ -66,10 +67,11 @@ describe('Selector Productions', () => {
           name: ':host-context'
           arg:
             (CompoundSelector
-              [
-                (BasicSelector '.sel')
-                (BasicSelector '.b')
-              ]
+              value:
+                [
+                  (BasicSelector '.sel')
+                  (BasicSelector '.b')
+                ]
             )
         )
       `);
@@ -79,7 +81,7 @@ describe('Selector Productions', () => {
       const { errors, tree, trivia } = parser.parse(':unknown(.sel.a) { color: red; }');
       expect(errors.length).toBe(0);
       const ruleset = tree.value[0];
-      const selector = ruleset.value.selector;
+      const selector = ruleset.selector;
 
       expect(selector.toString({ trivia })).toBe(':unknown(.sel.a)');
       expect(serializeTypes(selector)).toContainString(`
@@ -87,10 +89,11 @@ describe('Selector Productions', () => {
           name: ':unknown'
           arg:
             (Sequence
-              [
-                (Any '.sel')
-                (Any '.a')
-              ]
+              value:
+                [
+                  (Any '.sel')
+                  (Any '.a')
+                ]
             )
         )
       `);
@@ -110,7 +113,7 @@ describe('Selector Productions', () => {
         const { errors, tree, trivia } = parser.parse(source);
         expect(errors.length).toBe(0);
         const ruleset = tree.value[0];
-        expect(ruleset.value.selector.toString({ trivia })).toBe(expected);
+        expect(ruleset.selector.toString({ trivia })).toBe(expected);
       }
     });
 
@@ -128,7 +131,7 @@ describe('Selector Productions', () => {
         const { errors, tree, trivia } = parser.parse(source);
         expect(errors.length).toBe(0);
         const ruleset = tree.value[0];
-        const selector = ruleset.value.selector;
+        const selector = ruleset.selector;
         expect(selector.toString({ trivia })).toBe(expected);
         expect(serializeTypes(selector)).toContainString(shape);
       }
@@ -159,8 +162,8 @@ describe('Selector Productions', () => {
         const { errors, tree, trivia } = parser.parse(source);
         expect(errors.length).toBe(0);
         const ruleset = tree.value[0];
-        expect(ruleset.value.selector.toString({ trivia })).toBe(expected);
-        expect(serializeTypes(ruleset.value.selector)).toContainString('(ComplexSelector');
+        expect(ruleset.selector.toString({ trivia })).toBe(expected);
+        expect(serializeTypes(ruleset.selector)).toContainString('(ComplexSelector');
       }
     });
 
@@ -293,7 +296,7 @@ describe('Selector Productions', () => {
       expect(serializeTypes(tree)).toContainString('(Ampersand');
       const amp = [...tree.nodes(true)].find(isAmpersand);
       expect(amp).toBeDefined();
-      expect(amp?.value.appendValue).toBe('');
+      expect(amp?.appendValue).toBe('');
     });
 
     it('should parse &(nil) as an explicit nil parent template', () => {
@@ -302,7 +305,7 @@ describe('Selector Productions', () => {
       expect(serializeTypes(tree)).toContainString('(Ampersand');
       const amp = [...tree.nodes(true)].find(isAmpersand);
       expect(amp).toBeDefined();
-      expect(amp?.value.appendValue).toBe('');
+      expect(amp?.appendValue).toBe('');
     });
 
     it('should parse pseudo selector', () => {

@@ -126,17 +126,6 @@ describe('Node Flags', () => {
       expect(node.hasFlag(F_HAS_NODE_CHILD)).toBe(true);
     });
 
-    it('whole-value replacement refreshes F_HAS_NODE_CHILD', () => {
-      const node = paren(any('hello'));
-      expect(node.hasFlag(F_HAS_NODE_CHILD)).toBe(true);
-
-      node.set(null, 'hello');
-      expect(node.hasFlag(F_HAS_NODE_CHILD)).toBe(false);
-
-      node.set(null, any('world'));
-      expect(node.hasFlag(F_HAS_NODE_CHILD)).toBe(true);
-    });
-
     it('container with one non-static child should get F_NON_STATIC', () => {
       const items: Parameters<typeof list>[0] = [any('hello'), ref({ key: any('name') })];
       const node = list(items);

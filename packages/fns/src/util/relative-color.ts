@@ -22,7 +22,7 @@ function unwrapCalcChannelExpression(node: Node): Node {
   if (!(node instanceof Call)) {
     return node;
   }
-  const { name } = node.value;
+  const { name } = node;
   const isCalc = (
     (typeof name === 'string' && name.toLowerCase() === 'calc')
     || (name instanceof Any && typeof name.value === 'string' && name.value.toLowerCase() === 'calc')
@@ -30,8 +30,8 @@ function unwrapCalcChannelExpression(node: Node): Node {
   if (!isCalc) {
     return node;
   }
-  const { args } = node.value;
-  const items = args?.value;
+  const { args } = node;
+  const items = args?.items;
   return items?.[0] ?? node;
 }
 
@@ -47,15 +47,15 @@ export function parseRelativeColorSyntax(rawArgs: List): {
   channels: Node[];
   alpha?: Node;
 } | null {
-  if (!rawArgs || !rawArgs.value || rawArgs.value.length === 0) {
+  if (!rawArgs || rawArgs.items.length === 0) {
     return null;
   }
 
-  const firstArg = rawArgs.value[0];
+  const firstArg = rawArgs.items[0];
 
   // Check if first argument is a Sequence starting with "from"
-  if (firstArg instanceof Sequence && firstArg.value && firstArg.value.length > 0) {
-    const seqValues = firstArg.value;
+  if (firstArg instanceof Sequence && firstArg.items.length > 0) {
+    const seqValues = firstArg.items;
     const firstItem = seqValues[0];
 
     // Check if first item is "from" keyword
@@ -68,10 +68,10 @@ export function parseRelativeColorSyntax(rawArgs: List): {
       const originColor = seqValues[1]!;
       const channels = seqValues.slice(2) || [];
 
-      // Check if there's an alpha value separated by / (rawArgs.value[1] when sep is '/')
+      // Check if there's an alpha value separated by / (rawArgs.items[1] when sep is '/')
       let alpha: Node | undefined;
-      if (rawArgs.value.length > 1 && rawArgs.options?.sep === '/') {
-        alpha = rawArgs.value[1];
+      if (rawArgs.items.length > 1 && rawArgs.options?.sep === '/') {
+        alpha = rawArgs.items[1];
       }
 
       return {
@@ -146,10 +146,10 @@ function substituteChannelVariables(
 
   // If it's a Call node (like calc()), substitute channel variables and evaluate
   if (node instanceof Call) {
-    const { args } = node.value;
+    const { args } = node;
     const substitutedArgs = args
       ? new List(
-          args.value.map((arg: Node) =>
+          args.items.map((arg: Node) =>
             substituteChannelVariables(arg, channelValues, format)
           ),
           args.options,
@@ -157,25 +157,25 @@ function substituteChannelVariables(
         ).inherit(args)
       : undefined;
     return new Call({
-      ...node.value,
+      name: node.name,
+      contentNode: node.contentNode,
       args: substitutedArgs
     }, node.options, nodeLocation(node)).inherit(node);
   }
 
   // If it's an Operation, recursively substitute in its operands
   if (node instanceof Operation) {
-    const [left, op, right] = node.value;
     return new Operation([
-      substituteChannelVariables(left, channelValues, format),
-      op,
-      substituteChannelVariables(right, channelValues, format)
+      substituteChannelVariables(node.left, channelValues, format),
+      node.operator,
+      substituteChannelVariables(node.right, channelValues, format)
     ], node.options, nodeLocation(node)).inherit(node);
   }
 
   // If it's a Sequence or List, recursively substitute in its values
   if (node instanceof Sequence) {
     return new Sequence(
-      node.value.map((item: Node) =>
+      node.items.map((item: Node) =>
         substituteChannelVariables(item, channelValues, format)
       ),
       node.options,
@@ -185,7 +185,7 @@ function substituteChannelVariables(
 
   if (node instanceof List) {
     return new List(
-      node.value.map((item: Node) =>
+      node.items.map((item: Node) =>
         substituteChannelVariables(item, channelValues, format)
       ),
       node.options,
@@ -246,7 +246,7 @@ export async function evaluateRGBChannelReference(
   // For other node types, try to evaluate and extract numeric value
   const evaluated = await channel.eval(context);
   if (evaluated instanceof Dimension) {
-    return Math.max(0, Math.min(255, evaluated.value.number));
+    return Math.max(0, Math.min(255, evaluated.number));
   }
 
   throw new Error(`Channel reference must be an identifier or evaluate to a Dimension, got ${channel.type}`);

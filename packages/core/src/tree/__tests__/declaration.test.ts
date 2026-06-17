@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any, mixin } from '../index.js';
+import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, Ruleset, Declaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any, mixin } from '../index.js';
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
@@ -47,6 +47,26 @@ describe('Declaration', () => {
   beforeEach(() => {
     context = new Context();
   });
+
+  it('preserves parser tree context on Declaration and VarDeclaration construction', () => {
+    const treeContext = new Context().treeContext;
+    const declaration = new Declaration(
+      { name: any('color', { role: 'property' }), value: any('red') },
+      undefined,
+      undefined,
+      treeContext
+    );
+    const varDeclaration = new VarDeclaration(
+      { name: any('color', { role: 'property' }), value: any('red') },
+      undefined,
+      undefined,
+      treeContext
+    );
+
+    expect(declaration.sourceRoot?._treeContext).toBe(treeContext);
+    expect(varDeclaration.sourceRoot?._treeContext).toBe(treeContext);
+  });
+
   it('should serialize to CSS', () => {
     let rule = decl({ name: 'color', value: color('#eee') });
     expect(rule.toTrimmedString()).toBe('color: #eee');
@@ -209,7 +229,7 @@ describe('Declaration', () => {
       name: any('color'),
       value: ref({ key: 'brand' }, { type: 'variable' })
     });
-    const originalWithParts = Reflect.get(node, 'withParts');
+    const originalWithParts = (node as unknown as { withParts?: unknown }).withParts;
     if (typeof originalWithParts !== 'function') {
       throw new TypeError('Expected declaration withParts method');
     }
@@ -370,7 +390,7 @@ describe('Declaration', () => {
       name: any('color'),
       value: ref({ key: 'tone' }, { type: 'variable' })
     });
-    const sourceValue = node.value.value;
+    const sourceValue = node.valueNode;
 
     const resolved = await node.resolve(context);
 
@@ -395,7 +415,7 @@ describe('Declaration', () => {
       name: sourceName,
       value: sourceValue
     });
-    const originalDerive = Reflect.get(node, 'derive');
+    const originalDerive = (node as unknown as { derive?: unknown }).derive;
     if (typeof originalDerive !== 'function') {
       throw new TypeError('Expected declaration derive method');
     }
@@ -429,8 +449,8 @@ describe('Declaration', () => {
 
     const prepared = await Promise.resolve(node.prepareRegistration(context));
 
-    expect(prepared.value.value.type).toBe('Sequence');
-    expect(prepared.value.value.toTrimmedString()).toBe('$.src one');
+    expect(prepared.valueNode.type).toBe('Sequence');
+    expect(prepared.valueNode.toTrimmedString()).toBe('$.src one');
     expect(valuePrepCalls).toBe(0);
     expect(value.registrationPrepared).toBe(false);
   });
@@ -440,7 +460,7 @@ describe('Declaration', () => {
       name: any('src'),
       value: any('one')
     }, { assign: AssignmentType.MergeSequence });
-    const originalDerive = Reflect.get(node, 'derive');
+    const originalDerive = (node as unknown as { derive?: unknown }).derive;
     if (typeof originalDerive !== 'function') {
       throw new TypeError('Expected declaration derive method');
     }
@@ -452,7 +472,7 @@ describe('Declaration', () => {
 
     const prepared = await Promise.resolve(node.prepareRegistration(context));
 
-    expect(prepared.value.value.toTrimmedString()).toBe('$.src one');
+    expect(prepared.valueNode.toTrimmedString()).toBe('$.src one');
     expect(deriveCalls).toBe(0);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -486,7 +506,7 @@ describe('Declaration', () => {
         }),
         value: ref({ key: 'tone' }, { type: 'variable' })
       });
-      const sourceName = node.value.name;
+      const sourceName = node.name;
       const resolved = await node.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('border-color: red');
@@ -1018,7 +1038,7 @@ describe('Declaration', () => {
     await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('background-color: red, blue !important');
     expect(buffer.segments).toEqual(['background-color: red, blue !important']);
     expect(context.hasImportantSource).toBe(false);
-    expect(node.value.value.parent).toBe(node);
+    expect(node.valueNode.parent).toBe(node);
   });
 
   it('renders assignment merge adapter state without stale value transport', async () => {
@@ -1040,7 +1060,9 @@ describe('Declaration', () => {
       options: unknown,
       renderState?: { mergeAdapter?: Record<string, unknown> }
     ) => unknown;
-    const originalWriteDeclarationValueSyntax: unknown = Reflect.get(node, 'writeDeclarationValueSyntax');
+    const originalWriteDeclarationValueSyntax: unknown = (
+      node as unknown as { writeDeclarationValueSyntax?: unknown }
+    ).writeDeclarationValueSyntax;
     const isWriteDeclarationValueSyntax = (value: unknown): value is WriteDeclarationValueSyntax => (
       typeof value === 'function'
     );
@@ -1084,7 +1106,7 @@ describe('Declaration', () => {
 
     await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('--tokens:blue');
     expect(buffer.segments).toEqual(['--tokens:blue']);
-    expect(node.value.value.parent).toBe(node);
+    expect(node.valueNode.parent).toBe(node);
   });
 
   it('renders contextual important flags without materializing a flag node', () => {
@@ -1096,7 +1118,7 @@ describe('Declaration', () => {
 
     expect(node.render(context)).toBe('color: red !important');
     expect(context.hasImportantSource).toBe(false);
-    expect(node.value.important).toBeUndefined();
+    expect(node.important).toBeUndefined();
   });
 
   it('finalizes contextual important state without creating a flag node', () => {
@@ -1321,6 +1343,51 @@ describe('Declaration', () => {
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 4px 6px rgba(0, 0, 0, 0.1);
       }
     `);
+  });
+
+  it('continues a property merge chain with direct important state after mixin output', async () => {
+    const important = any('!important', { role: 'flag' });
+    const node = rules([
+      mixin({
+        name: any('.shadow-base'),
+        rules: rules([
+          decl({
+            name: any('box-shadow'),
+            value: any('0 1px 3px rgba(0, 0, 0, 0.12)'),
+            important
+          }, { assign: AssignmentType.Add })
+        ])
+      }),
+      ruleset({
+        selector: el('.shadow-elevated'),
+        rules: rules([
+          call({
+            name: ref({ key: '.shadow-base' }, { type: 'mixin' })
+          }),
+          decl({
+            name: any('box-shadow'),
+            value: any('0 4px 6px rgba(0, 0, 0, 0.1)')
+          }, { assign: AssignmentType.Add })
+        ])
+      })
+    ]);
+
+    expect(await renderNodeToString(node, context)).toBeString(`
+      .shadow-elevated {
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+      }
+    `);
+    const elevated = node.value[1];
+    expect(elevated).toBeInstanceOf(Ruleset);
+    if (!(elevated instanceof Ruleset)) {
+      throw new TypeError('Expected ruleset output');
+    }
+    const emitted = elevated.rules.flatRules(true).find(rule => rule instanceof Declaration);
+    expect(emitted).toBeInstanceOf(Declaration);
+    if (!(emitted instanceof Declaration)) {
+      throw new TypeError('Expected declaration output');
+    }
+    expect(emitted.important).toBe(important);
   });
 
   it('continues a property merge chain after a callable ruleset emits the first declaration', async () => {

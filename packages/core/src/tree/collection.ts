@@ -27,7 +27,7 @@ export class Collection extends Rules {
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
-    this.writeBracedSyntax(options);
+    this.toBraced(options);
   }
 
   /**

@@ -60,8 +60,8 @@ export function encodeBridgeValue(value: unknown): unknown {
     return {
       __jessBridge: true,
       kind: 'dimension',
-      value: value.value.number,
-      unit: value.value.unit
+      value: value.number,
+      unit: value.unit
     } satisfies JsBridgeValue;
   }
   if (value instanceof Color) {
@@ -78,14 +78,14 @@ export function encodeBridgeValue(value: unknown): unknown {
       __jessBridge: true,
       kind: 'quoted',
       value: String(value.value),
-      quote: value.options.quote,
-      escaped: value.options.escaped
+      quote: value.quote,
+      escaped: value.escaped
     } satisfies JsBridgeValue;
   }
   if (value instanceof Any) {
     return {
       __jessBridge: true,
-      kind: value.options.role === 'keyword' ? 'keyword' : 'anonymous',
+      kind: value.role === 'keyword' ? 'keyword' : 'anonymous',
       value: value.value
     } satisfies JsBridgeValue;
   }

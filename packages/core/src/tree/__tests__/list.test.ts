@@ -68,6 +68,16 @@ describe('List', () => {
     expect(rule.toTrimmedString()).toBe('1 2 3, four');
   });
 
+  it('stores child items on a constructor-owned direct field', () => {
+    const first = any('one');
+    const second = any('two');
+    const rule = list([first, second]);
+
+    expect(List.childKeys).toEqual(['items']);
+    expect(rule.items).toEqual([first, second]);
+    expect(rule.items).toBe(rule.value);
+  });
+
   it('does not allocate options when rendering list syntax with defaults', () => {
     const rule = list([num(1), num(2), num(3)]);
 

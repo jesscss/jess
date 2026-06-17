@@ -15,8 +15,8 @@ import { type Operator } from './util/calculate.js';
 export class Num extends Dimension {
   // Numbers are static and don't need evaluation
 
-  constructor(value: number | { number: number }, options?: NodeOptions, location?: LocationInfo) {
-    super(typeof value === 'number' ? { number: value } : value, options, location);
+  constructor(value: number | { number: number }, options?: NodeOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
+    super(typeof value === 'number' ? { number: value } : value, options, location, treeContext);
   }
 
   // Method overloads for better type safety
@@ -29,8 +29,8 @@ export class Num extends Dimension {
     const result = super.operate(b, op, context);
 
     // If the result is a Dimension and has an empty unit, convert it to a Num
-    if (result instanceof Dimension && !result.value.unit) {
-      return new Num(result.value.number).inherit(this);
+    if (result instanceof Dimension && !result.unit) {
+      return new Num(result.number).inherit(this);
     }
 
     // Otherwise, pass through the result as-is
@@ -43,5 +43,6 @@ defineType(Num, 'Num');
 export const num = (
   value: number,
   options?: NodeOptions,
-  location?: LocationInfo
-) => new Num(value, options, location);
+  location?: LocationInfo,
+  treeContext?: Context['treeContext']
+) => new Num(value, options, location, treeContext);

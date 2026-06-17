@@ -6,6 +6,7 @@ import type { Node } from '../node.js';
 import type { Rules } from '../rules.js';
 import { withRulesContext } from './context.js';
 import { evaluateCallableCandidateOutput } from './callable-candidate-output.js';
+import type { CallSignature } from './recursion-helper.js';
 
 export const CALLABLE_DEFAULT_FALSE_EITHER = -1;
 export const CALLABLE_DEFAULT_NONE = 0;
@@ -43,7 +44,7 @@ export type PendingCallableDefaultCandidate = {
   sourceRules: Rules;
   candidateParent?: Node;
   candidateIndex?: number;
-  params?: List<Node>;
+  params?: CallSignature;
 };
 
 export type CallableDefaultState = {
@@ -80,7 +81,7 @@ type RecordCallableDefaultGuardResultOptions = {
   sourceRules: Rules;
   candidateParent?: Node;
   candidateIndex?: number;
-  params?: List<Node>;
+  params?: CallSignature;
 };
 
 type FlushCallableDefaultOutputsOptions = {
@@ -211,7 +212,8 @@ export async function executeCallableDefaultCandidates<
       await runCandidate(candidate);
       continue;
     }
-    if (!candidate.candidateParent) {
+    const candidateParent = candidate.candidateParent;
+    if (!candidateParent) {
       throw new TypeError('Pending callable default candidate is missing candidateParent');
     }
     await withRulesContext(context, candidate.rules, async () => {
@@ -219,7 +221,7 @@ export async function executeCallableDefaultCandidates<
         context,
         currentCall: context.callStack.at(-1),
         getParamsSignature: () => candidate.params,
-        candidateParent: candidate.candidateParent,
+        candidateParent,
         candidateIndex: candidate.candidateIndex,
         rules: candidate.rules,
         sourceRules: candidate.sourceRules,

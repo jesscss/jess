@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { any, call, condition, defaultguard, el, list, ref, rules, ruleset, vardecl } from '../../index.js';
 import { Nil } from '../../nil.js';
 import { N } from '../../node-type.js';
-import { callableRulesEntry, type CallableEntry, type MixinEntry } from '../callable-entry.js';
+import {
+  callableRulesEntry,
+  getCallableEntryParams,
+  type CallableEntry,
+  type MixinEntry
+} from '../callable-entry.js';
 import { prepareCallableCandidateMatches, resolveCallableCandidateMatches } from '../callable-candidate-match.js';
 import { isNode } from '../is-node.js';
 
@@ -24,7 +29,7 @@ describe('callable candidate match helper', () => {
       hasFileContext: false,
       rulesEvalStack: [],
       isCallableEntry: (entry: MixinEntry): entry is CallableEntry => !isNode(entry, N.Ruleset),
-      getCallableEntryParams: entry => entry.value.params
+      getCallableEntryParams
     });
 
     expect(prepared.evalCandidates).toEqual([callable]);
@@ -51,7 +56,7 @@ describe('callable candidate match helper', () => {
       hasFileContext: false,
       rulesEvalStack: [],
       isCallableEntry: (entry: MixinEntry): entry is CallableEntry => !isNode(entry, N.Ruleset),
-      getCallableEntryParams: entry => entry.value.params
+      getCallableEntryParams
     });
 
     expect(prepared.hasDefault).toBe(true);
@@ -76,7 +81,7 @@ describe('callable candidate match helper', () => {
       rulesEvalStack: [],
       caller,
       isCallableEntry: (entry: MixinEntry): entry is CallableEntry => !isNode(entry, N.Ruleset),
-      getCallableEntryParams: entry => entry.value.params
+      getCallableEntryParams
     });
 
     expect(prepared.evalCandidates).toEqual([]);
@@ -96,7 +101,7 @@ describe('callable candidate match helper', () => {
       hasFileContext: false,
       rulesEvalStack: [],
       isCallableEntry: (entry: MixinEntry): entry is CallableEntry => !isNode(entry, N.Ruleset),
-      getCallableEntryParams: entry => entry.value.params
+      getCallableEntryParams
     })).toThrowError(new ReferenceError('No matching mixins found.'));
   });
 });

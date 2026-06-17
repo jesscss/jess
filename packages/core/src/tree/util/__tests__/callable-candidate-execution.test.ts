@@ -25,7 +25,7 @@ describe('callable candidate execution helper', () => {
     callSiteRules.getScopeFrame();
 
     const bindingInfo = matchCallableParams({
-      params: candidate.value.params!,
+      params: candidate.params!,
       args: [any('blue')],
       hasFileContext: false
     });
@@ -36,7 +36,7 @@ describe('callable candidate execution helper', () => {
       callSiteRules,
       leakyRules: true,
       resolvedBindingInfo: bindingInfo,
-      createOwnedRules: sourceRules => sourceRules.derive(sourceRules.value.slice()),
+      createOwnedRules: sourceRules => sourceRules.derive(sourceRules.rules.slice()),
       createUnlockedRules: sourceRules => sourceRules.derive(),
       getRootSourceRules: rulesNode => rulesNode
     });
@@ -47,7 +47,7 @@ describe('callable candidate execution helper', () => {
       hasDefault: false,
       candidate,
       candidateGuard: undefined,
-      candidateParams: candidate.value.params,
+      candidateParams: candidate.params,
       candidateState,
       nodeArgs: [any('blue')],
       defaultState,
@@ -82,7 +82,7 @@ describe('callable candidate execution helper', () => {
       candidate,
       callSiteRules,
       leakyRules: true,
-      createOwnedRules: sourceRules => sourceRules.derive(sourceRules.value.slice()),
+      createOwnedRules: sourceRules => sourceRules.derive(sourceRules.rules.slice()),
       createUnlockedRules: sourceRules => sourceRules.derive(),
       getRootSourceRules: rulesNode => rulesNode
     });
@@ -92,8 +92,8 @@ describe('callable candidate execution helper', () => {
       context,
       hasDefault: true,
       candidate,
-      candidateGuard: candidate.value.guard,
-      candidateParams: candidate.value.params,
+      candidateGuard: candidate.guard,
+      candidateParams: candidate.params,
       candidateState,
       nodeArgs: [],
       defaultState,

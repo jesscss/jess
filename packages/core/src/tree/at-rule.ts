@@ -1,4 +1,4 @@
-import { Node, defineType, F_STATIC, F_VISIBLE, type NodeOptions } from './node.js';
+import { Node, defineType, F_STATIC, F_VISIBLE, type LocationInfo, type NodeOptions } from './node.js';
 import { Ruleset } from './ruleset.js';
 import { Any } from './any.js';
 import { Rules } from './rules.js';
@@ -31,14 +31,14 @@ function registerInnerExtendRootIfHoisted(
   context: Context,
   layerName?: string
 ): void {
-  if (wrapperRules.value.length !== 1) {
+  if (wrapperRules.rules.length !== 1) {
     return;
   }
-  const first = wrapperRules.value[0];
+  const first = wrapperRules.rules[0];
   if (!isNode(first, N.Ruleset)) {
     return;
   }
-  const innerRules = first.value.rules;
+  const innerRules = first.rules;
   if (!innerRules || !isNode(innerRules, N.Rules)) {
     return;
   }
@@ -92,7 +92,7 @@ type AtRuleBodyRegistrationState = {
 type AtRuleLeafState = {
   kind: 'leaf-render';
   source: AtRule;
-  value: AtRuleValue;
+  parts: AtRuleValue;
 };
 
 const activeAtRuleBodyEvalRecords = new WeakMap<Context, AtRuleBodyEvalRecord[]>();
@@ -227,7 +227,9 @@ function setAtRuleBodyEvalPrelude(
 ): void {
   record.evaluatedPrelude = prelude;
   if (record.writeEvaluatedPrelude) {
-    record.evalFrame.value.prelude = prelude;
+    record.evalFrame.adopt(prelude);
+    record.evalFrame.prelude = prelude;
+    record.evalFrame._valueOf = undefined;
   }
 }
 
@@ -260,19 +262,27 @@ function createAtRuleEvalResultNode(
   source: AtRule,
   record: AtRuleBodyEvalRecord
 ): AtRule {
+  const ownsEvaluatedPrelude = Boolean(
+    record.evaluatedPrelude
+    && record.evaluatedPrelude !== source.prelude
+  );
   const ownsEvaluatedBody = Boolean(
     record.evaluatedBody
-    && record.evaluatedBody !== source.value.rules
+    && record.evaluatedBody !== source.rules
   );
   const ownsOutput = Boolean(
     (record.output?.hoistToRoot !== undefined && record.output.hoistToRoot !== source.hoistToRoot)
     || (record.output?.frames !== undefined && record.output.frames !== source.frames)
   );
-  if (!ownsEvaluatedBody && !ownsOutput) {
+  if (!ownsEvaluatedPrelude && !ownsEvaluatedBody && !ownsOutput) {
     return source;
   }
   return applyAtRuleBodyPublicResultState(
-    source.deriveAtRule(source.value),
+    source.deriveAtRule({
+      name: source.name,
+      prelude: source.prelude,
+      rules: source.rules
+    }),
     record,
     ownsEvaluatedBody || ownsOutput ? record.evaluatedBody : undefined
   );
@@ -354,12 +364,14 @@ function applyAtRuleBodyPublicResultState(
   record: AtRuleBodyEvalRecord,
   evaluatedBody: Rules | undefined = record.evaluatedBody
 ): AtRule {
-  if (record.evaluatedPrelude) {
-    node.value.prelude = record.evaluatedPrelude;
+  if (record.evaluatedPrelude && record.evaluatedPrelude !== node.prelude) {
+    node.adopt(record.evaluatedPrelude);
+    node.prelude = record.evaluatedPrelude;
+    node._valueOf = undefined;
   }
-  if (evaluatedBody && evaluatedBody !== node.value.rules) {
+  if (evaluatedBody && evaluatedBody !== node.rules) {
     node.adopt(evaluatedBody);
-    node.value.rules = evaluatedBody;
+    node.rules = evaluatedBody;
   }
   if (record.visible === false) {
     node.removeFlag(F_VISIBLE);
@@ -394,11 +406,23 @@ export type AtRuleOptions = NodeOptions;
  * A rule like @charset or @media
  */
 export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
+  static override childKeys = ['name', 'prelude', 'rules'] as const;
   override allowRoot = true;
 
   frames: (Ruleset | AtRule)[] | undefined;
 
   protected _valueOf: string | undefined;
+  name: AtRuleValue['name'];
+  prelude: AtRuleValue['prelude'];
+  rules: AtRuleValue['rules'];
+
+  constructor(value: AtRuleValue, options?: AtRuleOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
+    super(value, options, location);
+    this.name = value.name;
+    this.prelude = value.prelude;
+    this.rules = value.rules;
+    this._treeContext = treeContext;
+  }
 
   private ownName(name: AtRuleValue['name']): AtRuleValue['name'] {
     const owned = canReuseLeaf(name) ? reuseLeaf(name) : copyWithReusableLeaves(name);
@@ -426,12 +450,16 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return node;
   }
 
-  private deriveAtRule(value: AtRuleValue, sourceValue: AtRuleValue = this.value): AtRule {
+  deriveAtRule(parts: AtRuleValue, sourceParts: AtRuleValue = {
+    name: this.name,
+    prelude: this.prelude,
+    rules: this.rules
+  }): AtRule {
     const node = new AtRule(
       {
-        name: value.name === sourceValue.name ? this.ownName(value.name) : value.name,
-        prelude: value.prelude && value.prelude === sourceValue.prelude ? this.ownNode(value.prelude) : value.prelude,
-        rules: value.rules && value.rules === sourceValue.rules ? this.ownRules(value.rules) : value.rules
+        name: parts.name === sourceParts.name ? this.ownName(parts.name) : parts.name,
+        prelude: parts.prelude && parts.prelude === sourceParts.prelude ? this.ownNode(parts.prelude) : parts.prelude,
+        rules: parts.rules && parts.rules === sourceParts.rules ? this.ownRules(parts.rules) : parts.rules
       },
       this._options ? { ...this._options } : undefined,
       this.location.length ? this.location : undefined,
@@ -442,14 +470,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   /** Used for equality comparison with other at-rules */
   override valueOf() {
-    return (this._valueOf ??= (this.value.name.toString() + (this.value.prelude ? ' ' + this.value.prelude.valueOf() : '')));
+    return (this._valueOf ??= (this.name.toString() + (this.prelude ? ' ' + this.prelude.valueOf() : '')));
   }
 
   /**
    * Means: can bubble ruleset parents to children.
    */
   isNestable() {
-    const atRuleName = this.value.name.valueOf();
+    const atRuleName = this.name.valueOf();
     for (let i = 0; i < NESTABLE_AT_RULES.length; i++) {
       if (NESTABLE_AT_RULES[i] === atRuleName) {
         return true;
@@ -462,7 +490,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
    * For legacy collapseNesting, will push ruleset to root silently.
    */
   isRootOnly() {
-    const atRuleName = this.value.name.valueOf();
+    const atRuleName = this.name.valueOf();
     for (let i = 0; i < ROOT_ONLY_AT_RULES.length; i++) {
       if (ROOT_ONLY_AT_RULES[i] === atRuleName) {
         return true;
@@ -486,7 +514,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   getRenderRules(): Rules | undefined {
-    return this.value.rules;
+    return this.rules;
   }
 
   private evalForRender(context: Context): MaybePromise<Node | AtRuleLeafState | AtRuleBodyEvalRecord> {
@@ -499,7 +527,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (this.registrationPrepared) {
       return this.eval(context);
     }
-    if (!this.value.rules) {
+    if (!this.rules) {
       const value = this.evalLeafValue(context);
       return isThenable(value)
         ? value.then(resolved => this.createLeafRenderState(resolved))
@@ -553,7 +581,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
   ): AtRuleBodyEvalRecord {
     const evalFrame = this;
-    const sourceRules = this.value.rules;
+    const sourceRules = this.rules;
     let hasRulesetFrame = false;
     for (let i = 0; i < context.frames.length; i++) {
       if (isNode(context.frames[i], N.Ruleset)) {
@@ -586,7 +614,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private evalBodyPreludeState(context: Context): MaybePromise<Node | undefined> {
-    const { prelude } = this.value;
+    const { prelude } = this;
     if (!prelude) {
       return undefined;
     }
@@ -598,7 +626,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       if (!(name instanceof Any) && !(name instanceof Interpolated)) {
         throw new TypeError('Expected at-rule name to resolve to Any or Interpolated');
       }
-      const { prelude } = this.value;
+      const { prelude } = this;
       if (!prelude) {
         return { name };
       }
@@ -611,7 +639,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         prelude: resolvedPrelude as Node
       };
     };
-    const name = this.value.name;
+    const name = this.name;
     const evaluatedName = name instanceof Interpolated ? name.eval(context) : name;
     return isThenable(evaluatedName)
       ? evaluatedName.then(finishName)
@@ -630,12 +658,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return {
       kind: 'leaf-render',
       source: this,
-      value
+      parts: value
     };
   }
 
   private renderLeafValue(
-    value: AtRuleValue,
+    parts: AtRuleValue,
     context: Context,
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
@@ -653,8 +681,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         writer.restore(mark);
       }
     };
-    const nameOut = renderNode(value.name);
-    const preludeOut = value.prelude ? renderNode(value.prelude) : '';
+    const nameOut = renderNode(parts.name);
+    const preludeOut = parts.prelude ? renderNode(parts.prelude) : '';
     const rendered = preludeOut.trim()
       ? `${nameOut}${/\s$/.test(nameOut) || /^\s/.test(preludeOut) ? '' : ' '}${preludeOut.replace(/^\s+/, '')};`
       : `${nameOut};`;
@@ -663,11 +691,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       : rendered;
   }
 
-  private resolveLeafValue(value: AtRuleValue): AtRule {
+  private resolveLeafValue(parts: AtRuleValue): AtRule {
     const node = new AtRule(
       {
-        name: value.name === this.value.name ? this.ownName(value.name) : value.name,
-        prelude: value.prelude && value.prelude === this.value.prelude ? this.ownNode(value.prelude) : value.prelude
+        name: parts.name === this.name ? this.ownName(parts.name) : parts.name,
+        prelude: parts.prelude && parts.prelude === this.prelude ? this.ownNode(parts.prelude) : parts.prelude
       },
       this._options ? { ...this._options } : undefined,
       this.location.length ? this.location : undefined,
@@ -678,7 +706,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   private resolveBodyResult(record: AtRuleBodyEvalRecord): AtRule {
     return applyAtRuleBodyPublicResultState(
-      this.deriveAtRule(this.value),
+      this.deriveAtRule({
+        name: this.name,
+        prelude: this.prelude,
+        rules: this.rules
+      }),
       record
     );
   }
@@ -743,7 +775,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
       const evaluatedBody = resultNode instanceof Nil
         ? undefined
-        : (record.evaluatedBody ?? resultNode.value.rules);
+        : (record.evaluatedBody ?? resultNode.rules);
       const runtimeHoist = record.output?.hoistToRoot !== this.hoistToRoot
         ? record.output?.hoistToRoot
         : undefined;
@@ -753,7 +785,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       return renderEvaluatedAtRule(
         this,
         record.evaluatedPrelude,
-        evaluatedBody !== this.value.rules ? evaluatedBody : undefined,
+        evaluatedBody !== this.rules ? evaluatedBody : undefined,
         runtimeHoist,
         runtimeFrames
       );
@@ -775,7 +807,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         return renderBodyResult(node);
       }
       if (isAtRuleLeafState(node)) {
-        return node.source.renderLeafValue(node.value, context, bufferOrOptions, options);
+        return node.source.renderLeafValue(node.parts, context, bufferOrOptions, options);
       }
       return isRenderBuffer(bufferOrOptions)
         ? node.render(context, bufferOrOptions, options)
@@ -803,35 +835,36 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private _prepareAtRuleNameIdentity(context: Context): MaybePromise<AtRule> {
-    if (!(this.value.name instanceof Interpolated)) {
+    if (!(this.name instanceof Interpolated)) {
       return this;
     }
 
-    const node = this.deriveAtRule(this.value);
-    node.registrationPrepared = true;
+    const node = this.deriveAtRule({
+      name: this.name,
+      prelude: this.prelude,
+      rules: this.rules
+    });
+    const finish = (key: Node): AtRule => {
+      if (!(key instanceof Any)) {
+        throw new TypeError('Expected interpolated at-rule name to resolve to Any');
+      }
+      node.adopt(key);
+      node.name = key;
+      node._valueOf = undefined;
+      node.registrationPrepared = true;
+      return node;
+    };
 
-    const maybeKey = node.value.name.eval(context);
+    const maybeKey = node.name.eval(context);
     if (isThenable(maybeKey)) {
-      return Promise.resolve(maybeKey).then((key) => {
-        if (!(key instanceof Any)) {
-          throw new TypeError('Expected interpolated at-rule name to resolve to Any');
-        }
-        node.adopt(key);
-        node.value.name = key;
-        return node;
-      });
+      return Promise.resolve(maybeKey).then(finish);
     }
 
-    if (!(maybeKey instanceof Any)) {
-      throw new TypeError('Expected interpolated at-rule name to resolve to Any');
-    }
-    node.adopt(maybeKey);
-    node.value.name = maybeKey;
-    return node;
+    return finish(maybeKey);
   }
 
   private _prepareAtRuleRegistration(node: AtRule, context: Context, original: AtRule): MaybePromise<AtRule> {
-    const { rules } = node.value;
+    const { rules } = node;
     // Defer prelude evaluation to evalNode so variable lookups happen in the correct
     // live scope (e.g. mixin parameters referenced from nested @media preludes).
     return this._prepareAtRuleBodyRegistration(node, context, original, rules);
@@ -845,7 +878,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   ): MaybePromise<AtRule> {
     const ensureDerived = (): AtRule => {
       if (node === original) {
-        node = original.deriveAtRule(original.value);
+        node = original.deriveAtRule({
+          name: original.name,
+          prelude: original.prelude,
+          rules: original.rules
+        });
       }
       node.registrationPrepared = true;
       return node;
@@ -873,7 +910,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               throw new TypeError('Expected at-rule body registration prep to return Rules');
             }
             if (resolvedRules !== rules) {
-              ensureDerived().value.rules = resolvedRules;
+              node = ensureDerived();
+              node.adopt(resolvedRules);
+              node.rules = resolvedRules;
+              node.registrationPrepared = true;
             }
             return finalize();
           },
@@ -888,7 +928,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         throw new TypeError('Expected at-rule body registration prep to return Rules');
       }
       if (preparedRules !== rules) {
-        ensureDerived().value.rules = preparedRules;
+        node = ensureDerived();
+        node.adopt(preparedRules);
+        node.rules = preparedRules;
+        node.registrationPrepared = true;
       }
     }
     return finalize();
@@ -935,8 +978,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     context: Context,
     evaluatedPrelude?: Node
   ): string | undefined {
-    const atRuleName = node.value.name?.toTrimmedString?.() ?? node.value.name?.toString?.() ?? '';
-    const prelude = evaluatedPrelude ?? node.value.prelude;
+    const atRuleName = node.name?.toTrimmedString?.() ?? node.name?.toString?.() ?? '';
+    const prelude = evaluatedPrelude ?? node.prelude;
     if (atRuleName === '@layer' && prelude) {
       const preludeStr = String(prelude.valueOf?.() ?? prelude.toTrimmedString?.() ?? prelude.toString?.() ?? '');
       if (preludeStr) {
@@ -946,10 +989,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           for (let i = activeRecords.length - 1; i >= 0; i--) {
             const record = activeRecords[i]!;
             const frame = record.source;
-            if (frame === node || frame.value.name?.toTrimmedString?.() !== '@layer') {
+            if (frame === node || frame.name?.toTrimmedString?.() !== '@layer') {
               continue;
             }
-            const children = frame.value.rules?.value;
+            const children = frame.rules?.value;
             let frameContainsNode = false;
             if (children) {
               for (let childIndex = 0; childIndex < children.length; childIndex++) {
@@ -1004,7 +1047,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     restoreBodyEvalContext: () => void
   ): MaybePromise<AtRuleBodyRegistrationState> {
     const node = record.evalFrame;
-    const rules = record.bodyRules ?? node.value.rules!;
+    const rules = record.bodyRules ?? node.rules!;
     if (!node.isNestable()) {
       return createAtRuleBodyRecordRegistration(record, rules, {
         pushedExtendRoot: false
@@ -1039,10 +1082,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   /** Render the opening of this at-rule (name and prelude) */
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
-    let { name } = this.value;
+    let { name } = this;
     let prelude = options.atRuleHeaderNode === this
-      ? (options.atRuleHeaderPrelude ?? this.value.prelude)
-      : this.value.prelude;
+      ? (options.atRuleHeaderPrelude ?? this.prelude)
+      : this.prelude;
     const rules = options.atRuleBodyNode === this
       ? options.atRuleBodyOverride
       : this.getRenderRules();
@@ -1191,7 +1234,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     let node = bodyEvalRecord.evalFrame;
     // @plugin is handled by the Less compatibility plugin during preparation.
     // If we reach eval and it's still visible, no plugin processed it.
-    const atName = String(node.value?.name?.valueOf?.() ?? '');
+    const atName = String(node.name?.valueOf?.() ?? '');
     if (atName === '@plugin' && node.visible) {
       throw new Error('@plugin is only supported when using the Less compatibility plugin (@jesscss/plugin-less-compat).');
     }
@@ -1212,7 +1255,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       return node;
     };
     const finishBodyEval = (): MaybePromise<AtRule> => {
-      let rules = bodyEvalRecord.bodyRules ?? node.value.rules;
+      let rules = bodyEvalRecord.bodyRules ?? node.rules;
       if (rules) {
         if (bodyEvalRecord.renderSourceBody) {
           return finishVisibility();
@@ -1220,9 +1263,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         const out = source.runBodyEvalInvocation(context, bodyEvalRecord, node, (restoreBodyEvalContext) => {
           const finishPreparedBody = (registration: AtRuleBodyRegistrationState): MaybePromise<AtRule> => {
             const { bodyToEval } = registration;
-            const onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
+            const onlyRuleSetChild = isNode(bodyToEval.rules[0], N.Ruleset);
             const finishEval = (r: Rules): AtRule => {
-              const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
+              const finalRules = onlyRuleSetChild && isNode(r.rules[0], N.Rules) ? r.rules[0] : r;
               storeAtRuleBodyEvalRecordRules(bodyEvalRecord, finalRules);
               registration.finalRules = finalRules;
               if (registration.pushedExtendRoot && node.isNestable()) {
@@ -1257,7 +1300,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (bodyEvalRecord.evaluatedPrelude) {
       return finishBodyEval();
     }
-    let { prelude } = node.value;
+    let { prelude } = node;
     if (prelude) {
       // Evaluate the prelude in the outer (enclosing) Rules scope, not the nested @media Rules scope.
       // This matches Less behavior for mixin parameters referenced from nested @media preludes.
@@ -1334,7 +1377,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (this.registrationPrepared) {
       return this.eval(context);
     }
-    if (!this.value.rules) {
+    if (!this.rules) {
       const value = this.evalLeafValue(context);
       return isThenable(value)
         ? value.then(resolved => this.resolveLeafValue(resolved))

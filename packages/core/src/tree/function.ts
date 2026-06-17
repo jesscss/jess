@@ -34,14 +34,29 @@ export type FuncOptions = {
 };
 
 export class Func extends Node<FuncValue, FuncOptions> {
-  constructor(value: FuncValue, options?: FuncOptions, location?: LocationInfo) {
+  static override childKeys = ['name', 'params', 'body'] as const;
+
+  readonly name: FuncValue['name'];
+  readonly params: FuncValue['params'];
+  readonly body: Rules;
+
+  constructor(
+    value: FuncValue,
+    options?: FuncOptions,
+    location?: LocationInfo,
+    treeContext?: Context['treeContext']
+  ) {
     super(value, options, location);
+    this.name = value.name;
+    this.params = value.params;
+    this.body = value.body;
+    this._treeContext = treeContext;
     // Like mixins/functions in source languages: not emitted directly.
     this.removeFlag(F_VISIBLE);
   }
 
   get nameKey(): string | undefined {
-    const { name } = this.value;
+    const { name } = this;
     if (!name) {
       return undefined;
     }
@@ -52,7 +67,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, params, body } = this.value;
+    const { name, params, body } = this;
 
     w.add('$function', this);
     w.add(' ');
@@ -81,11 +96,11 @@ export class Func extends Node<FuncValue, FuncOptions> {
   async evalCall(context: Context, args: List<Node> = list([])): Promise<Node> {
     const returnName = this._options?.returnName ?? 'return';
 
-    const bodyRules = this.value.body;
+    const bodyRules = this.body;
 
     const coll = new MixinCollection([
       callableRulesEntry(
-        { rules: bodyRules, params: this.value.params },
+        { rules: bodyRules, params: this.params },
         this.parent,
         this.index
       )
@@ -101,7 +116,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must return a value (missing "${returnName}: ...")`);
     }
     // Return the declaration's value (already in the correct scope).
-    return await decl.value.value.eval(context);
+    return await decl.valueNode.eval(context);
   }
 }
 

@@ -15,28 +15,28 @@ describe('Sass math utility functions', () => {
       const number = new Dimension({ number: 10 });
       const result = unitless(number);
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).data).toBe(true);
+      expect((result as Bool).value).toBe(true);
     });
 
     it('returns false for number with unit', () => {
       const number = new Dimension({ number: 10, unit: 'px' });
       const result = unitless(number);
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).data).toBe(false);
+      expect((result as Bool).value).toBe(false);
     });
 
     it('returns false for number with percentage unit', () => {
       const number = new Dimension({ number: 50, unit: '%' });
       const result = unitless(number);
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).data).toBe(false);
+      expect((result as Bool).value).toBe(false);
     });
 
     it('works with object parameters', () => {
       const number = new Dimension({ number: 5 });
       const result = unitless({ number });
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).data).toBe(true);
+      expect((result as Bool).value).toBe(true);
     });
   });
 
@@ -46,7 +46,7 @@ describe('Sass math utility functions', () => {
       const number2 = new Dimension({ number: 20, unit: 'px' });
       const result = compatible.call(context, number1, number2);
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).data).toBe(true);
+      expect((result as Bool).value).toBe(true);
     });
 
     it('returns true for compatible units (both unitless)', () => {
@@ -54,7 +54,7 @@ describe('Sass math utility functions', () => {
       const number2 = new Dimension({ number: 20 });
       const result = compatible.call(context, number1, number2);
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).data).toBe(true);
+      expect((result as Bool).value).toBe(true);
     });
 
     it('returns true for compatible units (convertible length units)', () => {
@@ -71,7 +71,7 @@ describe('Sass math utility functions', () => {
       const number2 = new Dimension({ number: 20, unit: 's' });
       const result = compatible.call(context, number1, number2);
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).data).toBe(false);
+      expect((result as Bool).value).toBe(false);
     });
 
     it('works with object parameters', () => {
@@ -79,7 +79,7 @@ describe('Sass math utility functions', () => {
       const number2 = new Dimension({ number: 20, unit: 'px' });
       const result = compatible.call(context, { number1, number2 });
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).data).toBe(true);
+      expect((result as Bool).value).toBe(true);
     });
   });
 });

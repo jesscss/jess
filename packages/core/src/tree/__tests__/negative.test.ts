@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Context } from '../../context.js';
+import { Context, TreeContext } from '../../context.js';
 import {
   any,
   Any,
   Dimension,
+  Negative,
   dimension,
   negative,
   num,
@@ -49,6 +50,21 @@ describe('Negative', () => {
 
   it('renders negative syntax through toTrimmedString()', () => {
     expect(negative(num(10)).toTrimmedString()).toBe('-10');
+  });
+
+  it('preserves parser tree context on construction', () => {
+    const treeContext = new TreeContext();
+    const node = negative(num(10), undefined, undefined, treeContext);
+
+    expect(node._treeContext).toBe(treeContext);
+  });
+
+  it('stores the negative child on a constructor-owned direct field', () => {
+    const value = num(10);
+    const node = negative(value);
+
+    expect(node.node).toBe(value);
+    expect(Negative.childKeys).toEqual(['node']);
   });
 
   it('returns simple dimension negative syntax without writer readback', () => {
@@ -180,9 +196,9 @@ describe('Negative', () => {
 
   it('renders sync negative values without may-async continuation scaffolding', () => {
     const negativeNode = negative(num(20));
-    const originalEval = negativeNode.value.eval;
-    negativeNode.value.eval = function evalSyncOnly(
-      this: typeof negativeNode.value,
+    const originalEval = negativeNode.node.eval;
+    negativeNode.node.eval = function evalSyncOnly(
+      this: typeof negativeNode.node,
       renderContext: Context
     ) {
       const out = originalEval.call(this, renderContext);

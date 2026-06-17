@@ -20,6 +20,8 @@ import {
  * @todo - add more structure?
  */
 export class QueryCondition extends Sequence {
+  static override childKeys = ['items'] as const;
+
   /**
    * Fast-path only node classes whose source syntax writer is known to be
    * concrete in the current tree model.
@@ -207,11 +209,11 @@ export class QueryCondition extends Sequence {
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
-    this.writeQueryConditionSyntax(this.value, options);
+    this.writeQueryConditionSyntax(this.items, options);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    if (this.value.length === 0) {
+    if (this.items.length === 0) {
       return '';
     }
     const printOptions = getPrintOptions(options);
@@ -237,7 +239,7 @@ export class QueryCondition extends Sequence {
         : prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, printOptions);
     if (this.hasFlag(F_STATIC)) {
-      this.writeQueryConditionSyntax(this.value, prepared);
+      this.writeQueryConditionSyntax(this.items, prepared);
       const rendered = sharesWriter
         ? buffer!.kind === 'flat'
           ? buffer!.parts.join('')
@@ -248,8 +250,8 @@ export class QueryCondition extends Sequence {
         : rendered;
     }
     const rendered = this.hasFlag(F_STATIC)
-      ? this.renderQueryConditionSyntax(this.value, prepared)
-      : this.renderQueryConditionSyntax(this.value, prepared, context);
+      ? this.renderQueryConditionSyntax(this.items, prepared)
+      : this.renderQueryConditionSyntax(this.items, prepared, context);
     if (isThenable(rendered)) {
       return buffer
         ? (rendered as Promise<string>).then(out => writeRenderText(buffer, out))

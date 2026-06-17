@@ -52,9 +52,9 @@ describe('callable special-case helper', () => {
     expect(result.output).toBeDefined();
     expect(result.output?.index).toBe(candidate.index);
     expect(result.output?.toString()).toContain('color: red;');
-    expect(result.output?.options.mixinOutputSlot?.rulesetPlacement?.sourceRules).toBe(candidate.value.rules);
+    expect(result.output?.options.mixinOutputSlot?.rulesetPlacement?.sourceRules).toBe(candidate.rules);
     expect(getMixinOutputPlacementRecord(result.output!)).toEqual({
-      source: candidate.value.rules,
+      source: candidate.rules,
       output: result.output
     });
   });
@@ -152,9 +152,9 @@ describe('callable special-case helper', () => {
       caller: undefined,
       callSiteRules: undefined,
       restrictMixinOutputLookup: true,
-      candidateName: candidate.value.name,
-      candidateParams: candidate.value.params,
-      candidateGuard: candidate.value.guard,
+      candidateName: candidate.name,
+      candidateParams: candidate.params,
+      candidateGuard: candidate.guard,
       createOwnedRules: createOwnedCallableRulesSurface,
       createUnlockedRules: createUnlockedCallableRulesSurface,
       getRootSourceRules

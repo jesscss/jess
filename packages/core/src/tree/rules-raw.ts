@@ -16,7 +16,7 @@ export class RawRules extends Rules {
   // Do not add newlines/indent; emit children exactly as-is
   override toBraced(options?: PrintOptions) {
     options = getPrintOptions(options);
-    if (this.value.length === 0) {
+    if (this.rules.length === 0) {
       options.writer.add('{}', this);
       return '{}';
     }
@@ -29,8 +29,8 @@ export class RawRules extends Rules {
   override writeBracedSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('{');
-    for (let i = 0; i < this.value.length; i++) {
-      const child = this.value[i]!;
+    for (let i = 0; i < this.rules.length; i++) {
+      const child = this.rules[i]!;
       const trivia = options.trivia ?? child.sourceRoot?._treeContext?.opts?.trivia;
       if (trivia) {
         emitNodeSourceSyntaxWithTrivia(child, options);
@@ -44,8 +44,8 @@ export class RawRules extends Rules {
   // Keep trimmed output minimal – emit children verbatim without extras
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
-    for (let i = 0; i < this.value.length; i++) {
-      const child = this.value[i]!;
+    for (let i = 0; i < this.rules.length; i++) {
+      const child = this.rules[i]!;
       const trivia = options.trivia ?? child.sourceRoot?._treeContext?.opts?.trivia;
       if (trivia) {
         emitNodeSourceSyntaxWithTrivia(child, options);
@@ -57,7 +57,7 @@ export class RawRules extends Rules {
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
-    if (this.value.length === 0) {
+    if (this.rules.length === 0) {
       return '';
     }
     const mark = options.writer.mark();

@@ -92,11 +92,12 @@ describe('serializeTypes coverage', () => {
     expect(errors.length).toBe(0);
     expect(serializeTypes(tree)).toContainString(`
       (CustomDeclaration
-        name: 
+        name:
           (Any [role=property] '--custom')
-        value: 
+        valueNode:
           (Sequence
-            [
+            value:
+              [
               (Call
     `);
   });
@@ -122,26 +123,28 @@ describe('serializeTypes coverage', () => {
     const out = serializeTypes(tree);
     expect(out).toContainString(`
       (Mixin
-        name: 
+        name:
           (Any [role=name] '.mixin')
-        params: 
+        params:
           (List
-            [
-              (VarDeclaration
-                name: 
-                  (Any [role=property] 'color')
-                value: 
-                  (Nil '')
-              )
-            ]
+            value:
+              [
+                (VarDeclaration
+                  name:
+                    (Any [role=property] 'color')
+                  valueNode:
+                    (Nil '')
+                )
+              ]
           )
-        rules: 
+        rules:
           (Rules
-            [
-              (Declaration
-                name: 
-                  (Any [role=property] 'color')
-                value: 
+            value:
+              [
+                (Declaration
+                  name:
+                    (Any [role=property] 'color')
+                  valueNode:
                   (Reference
                     key: 'color'
                   )
@@ -160,9 +163,10 @@ describe('serializeTypes coverage', () => {
           (Any [role=name] '.mixin')
         rules:
           (Rules
-            [
-              (Comment '/**/')
-            ]
+            value:
+              [
+                (Comment '/**/')
+              ]
           )
       )
     `);
@@ -176,7 +180,7 @@ describe('serializeTypes coverage', () => {
       }
     `);
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree)).toMatch(/\(Rules\s+\[\s+\(Comment '\/\*\*\/'\)\s+\(Declaration/u);
+    expect(serializeTypes(tree)).toMatch(/\(Rules\s+value:\s+\[\s+\(Comment '\/\*\*\/'\)\s+\(Declaration/u);
   });
 
   test('value block comments stay trivia instead of direct rules children', () => {
@@ -221,20 +225,16 @@ describe('serializeTypes coverage', () => {
     expect(errors.length).toBe(0);
     expect(serializeTypes(tree)).toContainString(`
       (Call
-        name: 
+        name:
           (Reference [role=name]
             key: '.mixin'
-            rawKey:
-              (BasicSelector '.mixin')
           )
-        args: 
+        args:
           (List
-            [
-              (Color
-                node: 'red'
-                rgb:
-                [255, 0, 0]
-                alpha: 1
+            value:
+              [
+                (Color
+                  node: 'red'
               )
             ]
           )
@@ -303,15 +303,16 @@ describe('serializeTypes coverage', () => {
     expect(errors.length).toBe(0);
     expect(serializeTypes(tree)).toContainString(`
         (InterpolatedSelector
-          (Interpolated [role=ident]
-            source: '.${INTERPOLATION_PLACEHOLDER}-button'
-            replacements:
-            [
-              (Reference [role=ident]
-                key: 'prefix'
-              )
-            ]
-          )
+          node:
+            (Interpolated [role=ident]
+              source: '.${INTERPOLATION_PLACEHOLDER}-button'
+              replacements:
+                [
+                  (Reference [role=ident]
+                    key: 'prefix'
+                  )
+                ]
+            )
         )
     `);
   });
@@ -372,16 +373,18 @@ describe('serializeTypes coverage', () => {
     const { errors, tree } = parser.parse('@media @breakpoints[mobile] { .foo { color: red; } }');
     expect(errors.length).toBe(0);
     expect(serializeTypes(tree)).toContainString(`
-      prelude: 
+      prelude:
         (Expression
-          (Reference
-            target: 
-              (Reference
-                key: 'breakpoints'
-              )
-            key: 
-              (Quoted 'mobile')
-          )
+          node:
+            (Reference
+              target:
+                (Reference
+                  key: 'breakpoints'
+                )
+              key:
+                (Quoted
+                  value: 'mobile'
+                )
         )
     `);
   });
@@ -393,27 +396,28 @@ test('rest parameter in mixin', () => {
   const out = serializeTypes(tree);
   expect(out).toContainString(`
     (Mixin
-      name: 
+      name:
         (Any [role=name] '.mixin')
-      params: 
+      params:
         (List
-          [
-            (Rest 'args')
-          ]
+          value:
+            [
+              (Rest
+                node: 'args'
+              )
+            ]
         )
-      rules: 
+      rules:
         (Rules
-          [
-            (Declaration
-              name: 
-                (Any [role=property] 'color')
-              value: 
-                (Color
-                  node: 'red'
-                  rgb:
-                    [255, 0, 0]
-                  alpha: 1
-                )
+          value:
+            [
+              (Declaration
+                name:
+                  (Any [role=property] 'color')
+                valueNode:
+                  (Color
+                    node: 'red'
+                  )
             )
           ]
         )
@@ -436,18 +440,18 @@ test('operation', () => {
   expect(serializeTypes(tree, { showOptions: true })).toContainString('parens: true');
   expect(serializeTypes(tree)).toContainString(`
       (Expression
-        (Operation
-          [
+        node:
+          (Operation
+            left:
             (Dimension
               number: 10
               unit: 'px'
             )
-            (undefined)
+            right:
             (Dimension
               number: 5
               unit: 'px'
             )
-          ]
         )
       )
     `);
@@ -832,11 +836,12 @@ test('parse known at-rule as variable call', () => {
   expect(tree.toString()).toContain('$media()');
   expect(serializeTypes(tree)).toContainString(`
       (Expression
-        (Call
-          name:
-            (Reference [role=name]
-              key:
-                (Any [role=ident] 'media')
+        node:
+          (Call
+            name:
+              (Reference [role=name]
+                key:
+                  (Any [role=ident] 'media')
             )
         )
       )

@@ -4,7 +4,7 @@ import { F_STATIC } from '../node.js';
 import type { ScopeFrame } from '../scope-frame.js';
 import type { CallableParamMatch, CallableParamBindingRecord } from './callable-param-match.js';
 import type { Rules } from '../rules.js';
-import type { CallableEntry } from './callable-entry.js';
+import { getMixinEntryRules, type CallableEntry } from './callable-entry.js';
 import { isNode } from './is-node.js';
 
 export type PreparedCallableCandidateState = {
@@ -38,9 +38,9 @@ export function prepareCallableCandidateState({
   createUnlockedRules,
   getRootSourceRules
 }: PrepareCallableCandidateStateOptions): PreparedCallableCandidateState {
-  const candidateRules = candidate.value.rules;
+  const candidateRules = getMixinEntryRules(candidate);
   const sourceRules = getRootSourceRules(candidateRules);
-  const canUseUnlockedRules = candidateRules.hasFlag(F_STATIC) && candidateRules.value.length === 0;
+  const canUseUnlockedRules = candidateRules.hasFlag(F_STATIC) && candidateRules.rules.length === 0;
   const rules = canUseUnlockedRules
     ? createUnlockedRules(candidateRules)
     : createOwnedRules(candidateRules);

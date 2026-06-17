@@ -142,7 +142,7 @@ describe('Comment', () => {
       ])
     });
     visible._location = [100, 8, 1, 116, 10, 1];
-    visible.value.selector._location = visible.location;
+    visible.selector._location = visible.location;
     const trivia = createTriviaMap({
       before: new Map([
         [visible.location[0], [

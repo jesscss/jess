@@ -45,6 +45,15 @@ describe('quoted', () => {
     expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
   });
 
+  it('keeps value as the Less-compatible direct child field', () => {
+    const value = any('hello');
+    const rule = quoted(value);
+
+    expect(rule.value).toBe(value);
+    expect(value.parent).toBe(rule);
+    expect(rule.constructor.childKeys).toEqual(['value']);
+  });
+
   it('does not allocate options when comparing default quoted values', () => {
     const left = quoted('hello');
     const right = quoted('hello');

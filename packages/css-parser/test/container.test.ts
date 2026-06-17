@@ -5,7 +5,7 @@ import { serializeTypes } from '@jesscss/core';
 const cssParser = new CssParser();
 
 function getPreludeQueryNode(atRule: any) {
-  const prelude = atRule.value.prelude;
+  const prelude = atRule.prelude;
   if (prelude?.type === 'Sequence') {
     return prelude.value[0];
   }
@@ -86,14 +86,17 @@ describe('@container at-rule parsing and serialization', () => {
     expect(out).toContain('@container');
     expect(out).toContain('QueryCondition');
     expect(out).toContainString(`
-      prelude: 
+      prelude:
         (Sequence
-          [
+          value:
+            [
             (QueryCondition
-              [
+              value:
+                [
                 (Keyword [role=keyword] 'not')
                 (Paren
-                  (QueryCondition
+                  node:
+                    (QueryCondition
       `);
   });
 
@@ -178,8 +181,8 @@ describe('@container at-rule parsing and serialization', () => {
     const queryNode = getPreludeQueryNode(atRule);
     const out = serializeTypes(tree);
     expect(queryNode.type).toBe('Paren');
-    expect(queryNode.value.type).toBe('QueryCondition');
-    expect(queryNode.value.value.length).toBe(3);
+    expect(queryNode.node.type).toBe('QueryCondition');
+    expect(queryNode.node.value.length).toBe(3);
     expect(out).toContain('QueryCondition');
     expect(out).toContain('Paren');
   });
@@ -194,16 +197,18 @@ describe('@media at-rule - QueryCondition parsing', () => {
     const out = serializeTypes(tree);
     if (queryNode) {
       expect(queryNode.type).toBe('Paren');
-      expect(queryNode.value.type).toBe('QueryCondition');
-      expect(queryNode.value.value.length).toBe(3);
+      expect(queryNode.node.type).toBe('QueryCondition');
+      expect(queryNode.node.value.length).toBe(3);
     }
     expect(out).toContain('QueryCondition');
     expect(out).toContain('Paren');
     expect(out).toContainString(`
-      prelude: 
+      prelude:
         (Paren
-          (QueryCondition
-            [
+          node:
+            (QueryCondition
+              value:
+                [
               (Any [role=ident] 'width')
               (Any [role=operator] '>')
       `);
@@ -260,29 +265,24 @@ describe('@container - container query type functions', () => {
     const queryNode = getPreludeQueryNode(atRule);
     expect(queryNode.type).toBe('QueryCondition');
     expect(queryNode.value[0].type).toBe('Call');
-    expect(queryNode.value[0].value.name).toBe('scroll-state');
-    const argList = queryNode.value[0].value.args;
+    expect(queryNode.value[0].name).toBe('scroll-state');
+    const argList = queryNode.value[0].args;
     expect(argList.type).toBe('List');
     expect(argList.value.length).toBe(1);
     const firstArg = argList.value[0];
     expect(firstArg.type).toBe('QueryCondition');
     expect(firstArg.value.length).toBe(3); // Paren, Any('and'), Paren
     expect(firstArg.value[0].type).toBe('Paren');
-    expect(firstArg.value[0].value.type).toBe('Declaration');
+    expect(firstArg.value[0].node.type).toBe('Declaration');
     expect(firstArg.value[1].type).toBe('Keyword');
     expect(firstArg.value[1].value).toBe('and');
     expect(firstArg.value[2].type).toBe('Paren');
-    expect(firstArg.value[2].value.type).toBe('Declaration');
+    expect(firstArg.value[2].node.type).toBe('Declaration');
+    expect(out).toContainString(`name: 'scroll-state'`);
     expect(out).toContainString(`
-      (Call
-        name: 'scroll-state'
-        args: 
-          (List
-            [
-              (QueryCondition
-                [
                   (Paren
-                    (Declaration
+                    node:
+                      (Declaration
       `);
   });
 
@@ -304,18 +304,20 @@ describe('@container - container query type functions', () => {
     expect(queryNode.value[0].value).toBe('not');
     expect(queryNode.value[1].type).toBe('QueryCondition');
     expect(queryNode.value[1].value[0].type).toBe('Call');
-    expect(queryNode.value[1].value[0].value.name).toBe('scroll-state');
+    expect(queryNode.value[1].value[0].name).toBe('scroll-state');
     expect(out).toContainString(`
-      (QueryCondition
-        [
-          (Keyword [role=keyword] 'not')
-          (QueryCondition
-            [
-              (Call
-                name: 'scroll-state'
-                args: 
-                  (List
-      `);
+	      (QueryCondition
+	        value:
+	          [
+	            (Keyword [role=keyword] 'not')
+	            (QueryCondition
+	              value:
+	                [
+	                  (Call
+	                    name: 'scroll-state'
+	                    args:
+	                      (List
+	      `);
   });
 
   test('complex style() queries with commas, and/or/not', () => {

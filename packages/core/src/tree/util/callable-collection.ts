@@ -6,6 +6,15 @@ import type { MixinEntry } from './callable-entry.js';
 import { evaluateCallableCollection } from './callable-eval.js';
 
 export class MixinCollection extends Node<MixinEntry[]> {
+  static override childKeys = null;
+
+  readonly entries: MixinEntry[];
+
+  constructor(value: MixinEntry[]) {
+    super(value);
+    this.entries = value;
+  }
+
   override adopt() {
     return this;
   }
@@ -17,7 +26,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
   async evalCall(context: Context, args?: List<Node>): Promise<Rules> {
     return evaluateCallableCollection({
       context,
-      mixinEntries: this.value,
+      mixinEntries: this.entries,
       args: args?.value ?? []
     });
   }

@@ -30,7 +30,7 @@ This document analyzes potential tweaks to Jess Node AST structure and `defineFu
 
 **Question: Is there inherent benefit to storing colors in their original color space?**
 
-**Answer:** Jess already preserves the original authored statement via `value.node` (string or Node). For most color adjustments, no - operations typically convert to a working space (like HSL), perform the operation, then convert back. However, storing channel values in multiple formats can be useful for:
+**Answer:** Jess already preserves the original authored statement via `Color.node` (string or Node). For most color adjustments, no - operations typically convert to a working space (like HSL), perform the operation, then convert back. However, storing channel values in multiple formats can be useful for:
 - Avoiding unnecessary conversions when the format matches the operation
 - Supporting color space-specific operations (e.g., `color.channel()` in Sass)
 - Faster access to commonly-used formats (RGB and HSL are both frequently needed)
@@ -190,8 +190,8 @@ export type DimensionValue = {
 ```typescript
 get numeratorUnits(): string[] {
   if (this._numeratorUnits) return this._numeratorUnits;
-  // Parse this.value.unit if it contains '*'
-  return this.value.unit?.split('*') || [];
+  // Parse this.unit if it contains '*'
+  return this.unit?.split('*') || [];
 }
 ```
 
@@ -448,7 +448,7 @@ The most impactful changes would be:
 **Key Findings:**
 - **List brackets**: Already representable via `Paren` node wrapper - no `hasBrackets` flag needed
 - **String quotes**: Already supported via `Quoted` node - just need to use it in conversion
-- **Color original statement**: Already preserved via `value.node` - no changes needed
+- **Color original statement**: Already preserved via `Color.node` - no changes needed
 - **Color channels**: Should be normalized float values (not units). Storing RGB+HSL is trivial and useful
 - **Compound units**: Result from calc() operations, not standard CSS. Current string-based approach works for Less and most Jess cases. Only needed for Sass `math.div()` → `calc()` output
 - **Missing channels**: CSS Color 4 feature, rare in practice. Only needed if supporting relative color syntax

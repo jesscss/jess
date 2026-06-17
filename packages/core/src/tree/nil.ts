@@ -28,13 +28,18 @@ export interface Nil extends Node<''> {
  * `$var:;`
  */
 export class Nil extends Node<''> {
+  static override childKeys = null;
+
   override allowRoot = true;
   override allowRuleRoot = true;
   constructor(
     value?: '',
     options?: NodeOptions,
-    location?: LocationInfo) {
+    location?: LocationInfo,
+    treeContext?: Context['treeContext']
+  ) {
     super('', options, location);
+    this._treeContext = treeContext;
     this.addFlag(F_STATIC);
     this.removeFlag(F_VISIBLE);
     // Nil nodes should never render, even if fullRender is set on prototype (e.g., in tests)

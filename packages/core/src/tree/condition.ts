@@ -36,8 +36,25 @@ export interface Condition extends Node<ConditionValue, ConditionOptions> {
 }
 
 export class Condition extends Node<ConditionValue, ConditionOptions> {
-  constructor(value: ConditionValue, options?: ConditionOptions, location?: NodeLocation) {
+  static override childKeys = ['left', 'right'] as const;
+
+  readonly left: Node;
+  readonly operator: ConditionOperator | undefined;
+  readonly right: Node | undefined;
+  readonly negate: boolean;
+
+  constructor(
+    value: ConditionValue,
+    options?: ConditionOptions,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
     super(value, options, location);
+    this.left = value[0];
+    this.operator = value[1];
+    this.right = value[2];
+    this.negate = options?.negate === true;
+    this._treeContext = treeContext;
     // Conditions are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
@@ -45,8 +62,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
-    let [left, op, right] = this.value;
-    const negate = this._options?.negate === true;
+    const { left, operator: op, right, negate } = this;
     const needsParens = Boolean(right || negate);
     if (negate) {
       w.add('not ');
@@ -69,8 +85,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     this.writeSyntax(options);
-    const [left, op, right] = this.value;
-    const negate = this._options?.negate === true;
+    const { left, operator: op, right, negate } = this;
     const needsParens = Boolean(right || negate);
     let out = '';
     if (negate) {
@@ -136,8 +151,8 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   }
 
   evaluateBoolean(context: Context): MaybePromise<boolean> {
-    const [left, op, right] = this.value;
-    const negated = this._options?.negate === true;
+    const { left, operator: op, right } = this;
+    const negated = this.negate;
     const leftResult = left.eval(context);
     if (isThenable(leftResult)) {
       return (leftResult as Promise<Node>).then((resolvedLeft) => {

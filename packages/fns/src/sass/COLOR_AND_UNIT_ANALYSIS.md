@@ -5,9 +5,9 @@
 ### Current State
 
 Jess Color node already preserves the original authored statement:
-- `value.node` can be a `string` (hex) or `Node` (parsed color function)
+- `Color.node` can be a `string` (hex) or `Node` (parsed color function)
 - Only converts when operations are performed
-- Serialization checks `value.node` first, falling back to format-based serialization
+- Serialization checks `Color.node` first, falling back to format-based serialization
 
 ### Proposed Enhancement: Store Multiple Channel Formats
 
@@ -19,8 +19,8 @@ Jess Color node already preserves the original authored statement:
 **Proposed Structure:**
 ```typescript
 export interface ColorData {
-  node?: string | Node;  // Original authored statement (already exists)
-  format?: ColorFormat;  // Preferred output format (already exists)
+  node?: string | Node;  // Original authored statement
+  format?: ColorFormat;  // Preferred output format
   
   // Store channels for RGB and HSL (both commonly used)
   rgb?: [number, number, number];

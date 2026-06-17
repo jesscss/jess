@@ -117,7 +117,7 @@ describe('Ampersand', () => {
       rules: rules([])
     });
     context.rulesetFrames.push(frame);
-    const sourceSelector = frame.value.selector;
+    const sourceSelector = frame.selector;
     expect(sourceSelector).toBeInstanceOf(Selector);
     if (!(sourceSelector instanceof Selector)) {
       throw new Error(`Expected Selector, got ${sourceSelector.type}`);
@@ -140,7 +140,7 @@ describe('Ampersand', () => {
       expect(resolved.toTrimmedString()).toBe('.foo-bar');
       expect(resolved).not.toBe(sourceSelector);
       expect(sourceSelector.toTrimmedString()).toBe('.foo');
-      expect(frame.value.selector).toBe(sourceSelector);
+      expect(frame.selector).toBe(sourceSelector);
       expect(resolved.hoistToRoot).toBe(true);
     } finally {
       sourceSelector.clone = originalClone;
@@ -153,7 +153,7 @@ describe('Ampersand', () => {
       rules: rules([])
     });
     context.rulesetFrames.push(frame);
-    const sourceSelector = frame.value.selector;
+    const sourceSelector = frame.selector;
     expect(sourceSelector).toBeInstanceOf(Selector);
     if (!(sourceSelector instanceof Selector)) {
       throw new Error(`Expected Selector, got ${sourceSelector.type}`);
@@ -164,7 +164,7 @@ describe('Ampersand', () => {
 
     expect(resolved.toTrimmedString()).toBe('.foo .bar-baz');
     expect(resolved).not.toBe(sourceSelector);
-    expect(frame.value.selector).toBe(sourceSelector);
+    expect(frame.selector).toBe(sourceSelector);
     expect(sourceSelector.toTrimmedString()).toBe('.foo .bar');
     expect(sourceChildren.map(child => child.parent)).toEqual(sourceChildren.map(() => sourceSelector));
   });
@@ -467,7 +467,7 @@ describe('Ampersand', () => {
     expect(context.selectorBits.hasBit(resolved.visibleKeySet, '.one')).toBe(true);
     expect(context.selectorBits.hasBit(resolved.visibleKeySet, '.two')).toBe(true);
     expect(context.selectorBits.hasBit(resolved.visibleKeySet, '.child-theme')).toBe(true);
-    expect(frame.value.selector).toBe(sourceSelector);
+    expect(frame.selector).toBe(sourceSelector);
     expect(sourceSelector.toTrimmedString()).toBe('.one > .child,\n.two .child');
     expect(sourceSelector.value).toEqual(sourceChildren);
     expect(sourceChildren.map(child => child.parent)).toEqual(sourceChildren.map(() => sourceSelector));

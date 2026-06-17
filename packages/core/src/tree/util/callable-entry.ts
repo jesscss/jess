@@ -44,13 +44,16 @@ export function callableGuardContainsDefault(node: Node | undefined, seen?: Set<
     return true;
   }
   if (isNode(node, N.Call)) {
-    const name = node.value.name;
+    const name = node.name;
     const callName = String(typeof name === 'string' ? name : name.valueOf());
     if (callName === 'default') {
       return true;
     }
   }
   const value = node.value;
+  if (isNode(value)) {
+    return callableGuardContainsDefault(value, seen);
+  }
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i++) {
       const item = value[i];
@@ -99,17 +102,29 @@ export function isCallableEntry(entry: MixinEntry): entry is CallableEntry {
 }
 
 export function getMixinEntryRules(entry: MixinEntry): Rules {
+  if (isNode(entry, N.Mixin)) {
+    return entry.rules;
+  }
+  if (isNode(entry, N.Ruleset)) {
+    return entry.rules;
+  }
   return entry.value.rules;
 }
 
 export function getCallableEntryName(entry: CallableEntry): unknown {
-  return entry.value.name;
+  return isNode(entry, N.Mixin)
+    ? entry.name
+    : entry.value.name;
 }
 
 export function getCallableEntryParams(entry: CallableEntry): List<Node> | undefined {
-  return entry.value.params;
+  return isNode(entry, N.Mixin)
+    ? entry.params
+    : entry.value.params;
 }
 
 export function getCallableEntryGuard(entry: CallableEntry): Node | undefined {
-  return entry.value.guard;
+  return isNode(entry, N.Mixin)
+    ? entry.guard
+    : entry.value.guard;
 }

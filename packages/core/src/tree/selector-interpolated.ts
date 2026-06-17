@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { defineType } from './node.js';
+import { defineType, type NodeLocation, type NodeOptions } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { Interpolated } from './interpolated.js';
@@ -16,6 +16,21 @@ export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
  * This allows interpolation to be used in selector contexts
  */
 export class InterpolatedSelector extends SimpleSelector<Interpolated> {
+  static override childKeys = ['node'] as const;
+
+  readonly node: Interpolated;
+
+  constructor(
+    value: Interpolated,
+    options?: NodeOptions,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.node = value;
+  }
+
   get isClass() {
     return this.valueOf()[0] === '.';
   }
@@ -31,13 +46,13 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
-    this.value.writeSyntax(options);
+    this.node.writeSyntax(options);
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
     const { selectorBits } = context;
     this.keySetLibrary ??= selectorBits;
-    const out = this.value.evalToSelector(context);
+    const out = this.node.evalToSelector(context);
     if (isThenable(out)) {
       return out.then(selector => attachSelectorBitLibrary(selector, selectorBits));
     }
@@ -51,7 +66,7 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   private resolveValue(context: Context): MaybePromise<Selector> {
     const { selectorBits } = context;
     this.keySetLibrary ??= selectorBits;
-    const out = this.value.evalToSelector(context, 'resolve');
+    const out = this.node.evalToSelector(context, 'resolve');
     if (isThenable(out)) {
       return out.then(selector => attachSelectorBitLibrary(selector, selectorBits));
     }
@@ -68,7 +83,7 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   }
 
   override valueOf(): string {
-    return this.value.valueOf();
+    return this.node.valueOf();
   }
 }
 

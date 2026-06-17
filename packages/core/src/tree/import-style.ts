@@ -93,7 +93,7 @@ function variableNameKey(node: Node): string {
   if (!isNode(node, N.VarDeclaration)) {
     return '';
   }
-  const name = node.value.name;
+  const name = node.name;
   return name instanceof Any
     ? name.value
     : String(name.valueOf?.() ?? '');
@@ -169,7 +169,8 @@ function copyImportPlacementNode(node: Node): Node {
     return new Comment(
       node.value,
       node.options ? { ...node.options } : undefined,
-      node.location.length === 0 ? undefined : node.location
+      node.location.length === 0 ? undefined : node.location,
+      node.sourceRoot?._treeContext
     ).inherit(node);
   }
   const derivedAmpersand = copyImportPlacementAmpersand(node);
@@ -449,8 +450,8 @@ export function getImportPlacementSourceChild(
   if (segmentSource) {
     return segmentSource;
   }
-  const index = placementRules.value.indexOf(placementChild);
-  return index >= 0 ? state.source.value[index] : undefined;
+  const index = placementRules.rules.indexOf(placementChild);
+  return index >= 0 ? state.source.rules[index] : undefined;
 }
 
 export function getImportPlacementSegmentSourceChild(
@@ -462,7 +463,7 @@ export function getImportPlacementSegmentSourceChild(
     return undefined;
   }
   for (const segment of state.childSegments) {
-    const placementSegment = placementRules.value[segment.index];
+    const placementSegment = placementRules.rules[segment.index];
     if (placementSegment === placementChild) {
       return segment.source;
     }
@@ -484,7 +485,7 @@ export function getImportPlacementChildSegments(placementRules: Rules): readonly
   const segments = new Array<ImportPlacementChildSegment>(state.childSegments.length);
   for (let i = 0; i < state.childSegments.length; i++) {
     const segment = state.childSegments[i]!;
-    segments[i] = createPlacementChildSegment(segment.source, placementRules.value[segment.index], segment.index);
+    segments[i] = createPlacementChildSegment(segment.source, placementRules.rules[segment.index], segment.index);
   }
   return segments;
 }
@@ -540,6 +541,12 @@ export function getImportPostludeRenderState(outputRules: Rules): ImportPostlude
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
 export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
+  static override childKeys = ['path', 'withNode'] as const;
+
+  readonly path: StyleImportValue['path'];
+  readonly with: StyleImportValue['with'] | undefined;
+  readonly withNode: StyleImportValue['with']['node'] | undefined;
+
   private getImportAnchorRules(context: Context): Rules {
     return isNode(context.rulesContext, N.Rules)
       ? context.rulesContext
@@ -580,7 +587,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (childNodes) {
       for (const childNode of childNodes) {
         wrapped.adopt(childNode);
-        wrapped.value.push(childNode);
+        wrapped.rules.push(childNode);
       }
     }
     return wrapped;
@@ -601,10 +608,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 
   private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
-    const children = new Array<Node>(sourceRules.value.length);
-    const childSegments = new Array<PlacementChildSegment>(sourceRules.value.length);
-    for (let index = 0; index < sourceRules.value.length; index++) {
-      const source = sourceRules.value[index]!;
+    const children = new Array<Node>(sourceRules.rules.length);
+    const childSegments = new Array<PlacementChildSegment>(sourceRules.rules.length);
+    for (let index = 0; index < sourceRules.rules.length; index++) {
+      const source = sourceRules.rules[index]!;
       const child = copyImportPlacementNode(source);
       children[index] = child;
       childSegments[index] = createPlacementChildSegment(source, child, index);
@@ -626,7 +633,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (!postlude) {
       return [];
     }
-    return isNode(postlude, N.Sequence) || isNode(postlude, N.List) ? postlude.value : [postlude];
+    if (isNode(postlude, N.List)) {
+      return postlude.items;
+    }
+    return isNode(postlude, N.Sequence) ? postlude.items : [postlude];
   }
 
   private wrapRulesInAtRuleSurface(anchorRules: Rules, rules: Rules, name: string, prelude: Node): Rules {
@@ -669,8 +679,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     replacementsByIndex: Map<number, Node>;
   } {
     const firstVarIndexByName = new Map<string, number>();
-    for (let index = 0; index < sourceRules.value.length; index++) {
-      const existingNode = sourceRules.value[index]!;
+    for (let index = 0; index < sourceRules.rules.length; index++) {
+      const existingNode = sourceRules.rules[index]!;
       if (!isNode(existingNode, N.VarDeclaration)) {
         continue;
       }
@@ -682,7 +692,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
     const newVariables: Node[] = [];
     const replacementsByIndex = new Map<number, Node>();
-    for (const injectedNode of withRules.value) {
+    for (const injectedNode of withRules.rules) {
       if (isNode(injectedNode, N.VarDeclaration)) {
         const varName = variableNameKey(injectedNode);
         if (varName) {
@@ -712,12 +722,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       return importedRules;
     }
 
-    importedRules.value.length = 0;
-    for (let index = 0; index < sourceRules.value.length; index++) {
-      const originalNode = sourceRules.value[index]!;
+    importedRules.rules.length = 0;
+    for (let index = 0; index < sourceRules.rules.length; index++) {
+      const originalNode = sourceRules.rules[index]!;
       const nextNode = replacementsByIndex.get(index) ?? originalNode;
       importedRules.adopt(nextNode);
-      importedRules.value.push(nextNode);
+      importedRules.rules.push(nextNode);
     }
     return importedRules;
   }
@@ -746,11 +756,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const finalRules = this.deriveRulesSurface(sourceRules, [], { resetScopeFrame: true });
     for (const newNode of additiveNonVariableNodes) {
       finalRules.adopt(newNode);
-      finalRules.value.push(newNode);
+      finalRules.rules.push(newNode);
     }
     this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
     finalRules.adopt(importedRules);
-    finalRules.value.push(importedRules);
+    finalRules.rules.push(importedRules);
     return finalRules;
   }
 
@@ -781,7 +791,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         continue;
       }
       liveSlots.set(name, {
-        value: node.value.value,
+        value: node.valueNode,
         sourceNode: node,
         readonly: node.options?.readonly
       } satisfies BindingCell);
@@ -851,8 +861,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }, undefined, location);
   }
 
-  constructor(value: StyleImportValue, options?: StyleImportOptions, location?: NodeLocation) {
+  constructor(value: StyleImportValue, options?: StyleImportOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
     super(value, options, location);
+    this._treeContext = treeContext;
+    this.path = value.path;
+    this.with = value.with;
+    this.withNode = value.with?.node;
     // Style imports are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
@@ -876,15 +890,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   private writeImportPathSyntax(options: FinalPrintOptions): void {
     const canonicalPath = this.getCanonicalSourcePath(options);
     if (canonicalPath === undefined) {
-      this.value.path.writeSyntax(options);
+      this.path.writeSyntax(options);
       return;
     }
-    const quote = this.value.path instanceof Url
+    const quote = this.path instanceof Url
       ? '"'
-      : this.value.path.options?.quote ?? '"';
-    options.writer.add(quote, this.value.path);
-    options.writer.add(escapeQuotedImportPath(canonicalPath, quote), this.value.path);
-    options.writer.add(quote, this.value.path);
+      : this.path.options?.quote ?? '"';
+    options.writer.add(quote, this.path);
+    options.writer.add(escapeQuotedImportPath(canonicalPath, quote), this.path);
+    options.writer.add(quote, this.path);
   }
 
   /** @internal */
@@ -1003,7 +1017,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   private _preparePathIdentity(context: Context): MaybePromise<Node> {
     try {
-      return this.value.path.eval(context);
+      return this.path.eval(context);
     } catch (e) {
       // Tag path-resolution errors so the eval-queue retry policy can
       // distinguish "path interpolation not ready" (cheap, worth retrying)
@@ -1021,7 +1035,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    */
   override evalNode(context: Context): MaybePromise<Rules> {
     let node = this;
-    const { with: withValues } = node.value;
+    const { with: withValues } = node;
     const { options } = node;
     options.importOptions ??= {};
     const { type, importOptions } = options;
@@ -1280,7 +1294,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // getFinalRules can derive a placement wrapper; re-register all descendant rulesets
           // under finalRules' extend root set.
           if (shouldReRegisterLocalRootRulesets) {
-            visitDescendantRulesets(finalRules.value, ruleset => registerRulesetWithRoot(finalRules, ruleset));
+            visitDescendantRulesets(finalRules.rules, ruleset => registerRulesetWithRoot(finalRules, ruleset));
           }
         // Don't push to stack - import type uses parent's root for extends inside the import
         // But we register it so extends from parent can find rulesets in the imported Rules
@@ -1335,10 +1349,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
       if (isNode(current, N.Call)) {
-        const callName = String(current.value.name).toLowerCase();
+        const callName = String(current.name).toLowerCase();
         if (callName === 'media' || callName === 'supports' || callName === 'layer') {
-          const args = current.value.args?.value ?? [];
-          const prelude = args.length <= 1 ? args[0] : current.value.args;
+          const args = current.args?.items ?? [];
+          const prelude = args.length <= 1 ? args[0] : current.args;
           if (prelude) {
             wrappedRules = this.wrapRulesInAtRuleSurface(anchorRules, wrappedRules, `@${callName}`, prelude);
             postludeNames.unshift(`@${callName}`);

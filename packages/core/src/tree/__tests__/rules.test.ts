@@ -102,6 +102,15 @@ describe('Rules', () => {
     context.id = 'testing';
   });
 
+  it('exposes constructor-owned rules as the direct child field', () => {
+    const child = decl({ name: 'color', value: any('red') });
+    const node = rules([child]);
+
+    expect(node.rules).toBe(node.value);
+    expect(node.rules[0]).toBe(child);
+    expect(node.constructor.childKeys).toEqual(['rules']);
+  });
+
   it.skip('assigns position linearly for nested rules', async () => {
     let node = rules([
       vardecl({ name: 'one', value: any('one') }),
@@ -863,7 +872,7 @@ describe('Rules', () => {
         expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: third');
 
         // Test with start parameter - should find value before start position
-        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.value.name.valueOf() === 'var' && n.value.value.valueOf() === 'third');
+        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.name.valueOf() === 'var' && n.valueNode.valueOf() === 'third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
@@ -947,7 +956,7 @@ describe('Rules', () => {
         expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: root-third');
 
         // Test with start parameter pointing to root-third
-        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.value.name.valueOf() === 'var' && n.value.value.valueOf() === 'root-third');
+        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.name.valueOf() === 'var' && n.valueNode.valueOf() === 'root-third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
@@ -1067,15 +1076,15 @@ describe('Rules', () => {
         if (!isNode(scope1, N.Ruleset)) {
           throw new Error(`Expected Ruleset at index 1, got ${scope1?.type ?? 'undefined'}`);
         }
-        const scope2 = scope1.value.rules.at(1);
+        const scope2 = scope1.rules.at(1);
         if (!isNode(scope2, N.Ruleset)) {
           throw new Error(`Expected Ruleset at nested index 1, got ${scope2?.type ?? 'undefined'}`);
         }
-        const scope3 = scope2.value.rules.at(0);
+        const scope3 = scope2.rules.at(0);
         if (!isNode(scope3, N.Ruleset)) {
           throw new Error(`Expected Ruleset at nested index 0, got ${scope3?.type ?? 'undefined'}`);
         }
-        const scope3Rules = scope3.value.rules;
+        const scope3Rules = scope3.rules;
         expect(getVar(scope3Rules, 'z', { start: 0 })?.toTrimmedString()).toBe('$z: black');
         const scope3Found = scope3Rules.findVariable('z', {
           filter: () => true,
@@ -1163,8 +1172,8 @@ describe('Rules', () => {
         if (!isNode(grid, N.Ruleset)) {
           throw new Error(`Expected Ruleset at index 0, got ${grid?.type ?? 'undefined'}`);
         }
-        const width = expectDeclarationNode(grid.value.rules.at(0));
-        context.rulesContext = grid.value.rules;
+        const width = expectDeclarationNode(grid.rules.at(0));
+        context.rulesContext = grid.rules;
         const evald = await width.eval(context);
         expect(evald.toTrimmedString()).toBe('total-width: 96em');
       });
@@ -1323,8 +1332,8 @@ describe('Rules', () => {
         if (!boxRuleset || !isNode(boxRuleset, N.Ruleset)) {
           throw new Error(`Expected Ruleset at index 2, got ${boxRuleset?.type || 'undefined'}`);
         }
-        // After evaluation, rulesets are still Rulesets, access via .value.rules
-        let boxRules = boxRuleset.value.rules;
+        // After evaluation, rulesets are still Rulesets, access via direct rules.
+        let boxRules = boxRuleset.rules;
         if (!boxRules) {
           throw new Error('Expected .box ruleset to have rules');
         }
@@ -1332,7 +1341,7 @@ describe('Rules', () => {
         if (!isNode(boxRules, N.Rules)) {
           throw new Error(`Expected Rules, got ${boxRules?.type ?? 'undefined'}`);
         }
-        expect(boxRules.value.length).toBe(2);
+        expect(boxRules.rules.length).toBe(2);
 
         // First declaration: color: $color
         let boxDecl1 = await boxRules.at(0)!.eval(context);
@@ -1358,14 +1367,14 @@ describe('Rules', () => {
         if (!box3Ruleset || !isNode(box3Ruleset, N.Ruleset)) {
           throw new Error(`Expected Ruleset at index 4, got ${box3Ruleset?.type || 'undefined'}`);
         }
-        let box3Rules = box3Ruleset.value.rules;
+        let box3Rules = box3Ruleset.rules;
         if (!box3Rules) {
           throw new Error('Expected .box3 ruleset to have rules');
         }
         if (!isNode(box3Rules, N.Rules)) {
           throw new Error(`Expected Rules, got ${box3Rules?.type ?? 'undefined'}`);
         }
-        expect(box3Rules.value.length).toBe(2);
+        expect(box3Rules.rules.length).toBe(2);
 
         // First declaration: color: $color
         let box3Decl1 = await box3Rules.at(0)!.eval(context);

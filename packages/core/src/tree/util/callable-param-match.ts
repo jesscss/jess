@@ -8,6 +8,13 @@ import { isNode } from './is-node.js';
 import { cloneBoundValue, createRestBindingValue } from './callable-binding.js';
 import { getCallableNodeSignature, getCallableRestSignature, getCallableSignatureKey } from './callable-signature.js';
 
+function cloneDefinedBoundValue(value: Node | undefined): Node {
+  if (!value) {
+    throw new TypeError('Callable parameter binding requires a value');
+  }
+  return cloneBoundValue(value);
+}
+
 export type CallableParamBindingRecord = {
   name: string;
   value?: Node;
@@ -35,8 +42,8 @@ export function matchCallableParams({
   const bindingRecordsByIndex = new Array<CallableParamBindingRecord | undefined>(params.length);
   const signatureParts: Array<string | undefined> = new Array(params.length);
   let hasRestParam = false;
-  for (let i = 0; i < params.value.length; i++) {
-    if (params.value[i]!.type === 'Rest') {
+  for (let i = 0; i < params.items.length; i++) {
+    if (params.items[i]!.type === 'Rest') {
       hasRestParam = true;
       break;
     }
@@ -45,13 +52,13 @@ export function matchCallableParams({
   const positions = params.length;
   let requiredPositions = 0;
 
-  for (let i = 0; i < params.value.length; i++) {
-    const param = params.value[i]!;
+  for (let i = 0; i < params.items.length; i++) {
+    const param = params.items[i]!;
     if (isNode(param, N.VarDeclaration)) {
-      if (param.value.value instanceof Nil) {
+      if (param.valueNode instanceof Nil) {
         requiredPositions++;
       }
-    } else if (isNode(param, N.Any) && param.options.role === 'property') {
+    } else if (isNode(param, N.Any) && param.role === 'property') {
       requiredPositions++;
     } else if (param.type !== 'Rest') {
       requiredPositions++;
@@ -71,32 +78,32 @@ export function matchCallableParams({
     let argValue: Node;
 
     if (isNode(arg, N.VarDeclaration)) {
-      for (let j = 0; j < params.value.length; j++) {
-        const candidate = params.value[j]!;
+      for (let j = 0; j < params.items.length; j++) {
+        const candidate = params.items[j]!;
         if (isNode(candidate, N.VarDeclaration)) {
-          if (candidate.value.name.valueOf() === arg.value.name.valueOf()) {
+          if (candidate.name.valueOf() === arg.name.valueOf()) {
             paramIndex = j;
             break;
           }
           continue;
         }
-        if (isNode(candidate, N.Any) && candidate.options.role === 'property') {
-          if (candidate.valueOf() === arg.value.name.valueOf()) {
+        if (isNode(candidate, N.Any) && candidate.role === 'property') {
+          if (candidate.valueOf() === arg.name.valueOf()) {
             paramIndex = j;
             break;
           }
         }
       }
       if (paramIndex >= 0) {
-        param = params.value[paramIndex];
-        argValue = arg.value.value;
+        param = params.items[paramIndex];
+        argValue = arg.valueNode;
       } else {
         match = false;
         break;
       }
     } else {
       paramIndex = i;
-      param = params.value[paramIndex];
+      param = params.items[paramIndex];
       if (!param) {
         match = false;
         break;
@@ -111,18 +118,18 @@ export function matchCallableParams({
 
     if (isNode(param, N.VarDeclaration)) {
       bindingRecordsByIndex[paramIndex] = {
-        name: param.value.name.valueOf(),
+        name: param.name.valueOf(),
         value: argValue,
-        prepareValue: cloneBoundValue,
+        prepareValue: cloneDefinedBoundValue,
         readonly: param.options.readonly,
         sourceNode: isNode(arg, N.VarDeclaration) ? arg : param
       };
       signatureParts[paramIndex] = getCallableNodeSignature(argValue);
-    } else if (isNode(param, N.Any) && param.options.role === 'property') {
+    } else if (isNode(param, N.Any) && param.role === 'property') {
       bindingRecordsByIndex[paramIndex] = {
         name: param.valueOf(),
         value: argValue,
-        prepareValue: cloneBoundValue,
+        prepareValue: cloneDefinedBoundValue,
         sourceNode: isNode(arg, N.VarDeclaration) ? arg : param
       };
       signatureParts[paramIndex] = getCallableNodeSignature(argValue);
@@ -160,7 +167,7 @@ export function matchCallableParams({
   if (argPos < requiredPositions) {
     return undefined;
   }
-  if (args.length > 1 && params.value.length === 1 && requiredPositions === 1) {
+  if (args.length > 1 && params.items.length === 1 && requiredPositions === 1) {
     return undefined;
   }
   if (!match) {
@@ -168,19 +175,19 @@ export function matchCallableParams({
   }
 
   for (let i = 0; i < positions; i++) {
-    const param = params.value[i]!;
+    const param = params.items[i]!;
     if (signatureParts[i] !== undefined) {
       continue;
     }
     if (isNode(param, N.VarDeclaration)) {
       bindingRecordsByIndex[i] = {
-        name: param.value.name.valueOf(),
-        value: param.value.value,
-        prepareValue: cloneBoundValue,
+        name: param.name.valueOf(),
+        value: param.valueNode,
+        prepareValue: cloneDefinedBoundValue,
         readonly: param.options.readonly,
         sourceNode: param
       };
-      signatureParts[i] = getCallableNodeSignature(param.value.value);
+      signatureParts[i] = getCallableNodeSignature(param.valueNode);
     } else if (param.type === 'Rest') {
       const restName = param.value ? `${param.value}` : `rest${i}`;
       bindingRecordsByIndex[i] = {

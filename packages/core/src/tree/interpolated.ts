@@ -105,18 +105,33 @@ export interface Interpolated<
 export class Interpolated<
   Role extends AnyRole = AnyRole
 > extends Node<InterpolatedValue, InterpolatedOptions<Role>> {
-  constructor(value: InterpolatedValue, options?: InterpolatedOptions<Role>, location?: NodeLocation) {
+  static override childKeys = ['source', 'replacements'] as const;
+
+  readonly source: string;
+  readonly replacements: Node[];
+  readonly role: Role | undefined;
+
+  constructor(
+    value: InterpolatedValue,
+    options?: InterpolatedOptions<Role>,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
     super(value, options, location);
+    this._treeContext = treeContext;
+    this.source = value.source;
+    this.replacements = value.replacements;
+    this.role = options?.role as Role | undefined;
     // Interpolated nodes are always non-static and may be async
     this.addFlags(F_VISIBLE, F_MAY_ASYNC, F_NON_STATIC);
   }
 
   override valueOf(): string {
-    return this.value.source;
+    return this.source;
   }
 
   replace(replacements: Node[], options?: PrintOptions): string {
-    let { source } = this.value;
+    let { source } = this;
     let output = source;
     let i = 0;
     let printOpts = getPrintOptions(options);
@@ -156,7 +171,7 @@ export class Interpolated<
 
   private writeInterpolated(replacements: Node[], options: PrintOptions): void {
     const w = getPrintOptions(options).writer!;
-    const { source } = this.value;
+    const { source } = this;
     let sourceOffset = 0;
     for (let i = 0; i < replacements.length; i++) {
       sourceOffset = this.writeNextSourceSegment(w, source, sourceOffset);
@@ -177,7 +192,7 @@ export class Interpolated<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    this.writeInterpolated(this.value.replacements, options);
+    this.writeInterpolated(this.replacements, options);
     return w.getSince(mark);
   }
 
@@ -200,7 +215,7 @@ export class Interpolated<
    * Legacy "list of mixin references" (e.g. @var: .a, .b, .c) is not supported; use *[.a, .b, .c].
    */
   createSelector(mode: 'eval' | 'resolve' = 'eval') {
-    let { source, replacements } = this.value;
+    let { source, replacements } = this;
     const firstPlaceholder = source.indexOf(INTERPOLATION_PLACEHOLDER);
     const secondPlaceholder = firstPlaceholder < 0
       ? -1
@@ -272,9 +287,7 @@ export class Interpolated<
 
   createGeneric() {
     const trimmedString = this.toTrimmedString();
-    let any = new Any<Role>(trimmedString).inherit(this);
-    any.options.role = this.options.role;
-    return any;
+    return new Any<Role>(trimmedString, { role: this.role }).inherit(this);
   }
 
   /** Convenience: evaluate replacements then convert to Selector (BasicSelector or SelectorList) */
@@ -315,7 +328,7 @@ export class Interpolated<
   private renderEvaluatedReplacementText(context: Context, options: PrintOptions): MaybePromise<string> {
     const w = getPrintOptions(options).writer!;
     const mark = w.mark();
-    const { source, replacements } = this.value;
+    const { source, replacements } = this;
     let sourceOffset = 0;
     for (let i = 0; i < replacements.length; i++) {
       sourceOffset = this.writeNextSourceSegment(w, source, sourceOffset);
@@ -340,8 +353,8 @@ export class Interpolated<
     start: number
   ): MaybePromise<string> {
     const w = getPrintOptions(options).writer!;
-    const { source } = this.value;
-    const replacements = this.value.replacements;
+    const { source } = this;
+    const replacements = this.replacements;
     for (let i = start; i < replacements.length; i++) {
       sourceOffset = this.writeNextSourceSegment(w, source, sourceOffset);
       const out = replacements[i]!.resolve(context);
@@ -374,7 +387,7 @@ export class Interpolated<
    */
   _evalToInterpolated(context: Context, mode: 'eval' | 'resolve' = 'eval'): MaybePromise<Interpolated<Role>> {
     const node = this;
-    const currentReplacements = node.value.replacements;
+    const currentReplacements = node.replacements;
     const evaluatedReplacements = new Array<Node>(currentReplacements.length);
     let changed = false;
     for (let idx = 0; idx < currentReplacements.length; idx++) {
@@ -401,7 +414,7 @@ export class Interpolated<
     start: number,
     changed: boolean
   ): MaybePromise<Interpolated<Role>> {
-    const currentReplacements = this.value.replacements;
+    const currentReplacements = this.replacements;
     for (let idx = start; idx < currentReplacements.length; idx++) {
       const n = currentReplacements[idx]!;
       const out = this.evaluateReplacement(context, n, mode);
@@ -428,11 +441,12 @@ export class Interpolated<
     }
     return new Interpolated<Role>(
       {
-        source: this.value.source,
+        source: this.source,
         replacements: evaluatedReplacements
       },
       this._options ? { ...this._options } : undefined,
-      this.location
+      this.location,
+      this.sourceRoot?._treeContext
     ).inherit(this);
   }
 }

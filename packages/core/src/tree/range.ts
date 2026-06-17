@@ -30,16 +30,35 @@ export type RangeOptions = {
  * - `1> to <10 step 2`
  */
 export class Range extends Node<RangeValue, RangeOptions> {
+  static override childKeys = ['start', 'end', 'step'] as const;
+
+  readonly start: Node;
+  readonly end: Node;
+  readonly step: Node | undefined;
+
+  constructor(
+    value: RangeValue,
+    options?: RangeOptions,
+    location?: ConstructorParameters<typeof Node<RangeValue, RangeOptions>>[2],
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.start = value.start;
+    this.end = value.end;
+    this.step = value.step;
+  }
+
   private scalarBoundText(value: Node): string | undefined {
     if (value instanceof Any) {
       return value.value;
     }
     if (value instanceof Dimension) {
-      const unit = value.value.unit ?? '';
+      const unit = value.unit ?? '';
       if (unit.includes('/') || unit.includes('*') || unit.includes('±')) {
         return undefined;
       }
-      return `${round(value.value.number, 8)}`.toLowerCase() + unit;
+      return `${round(value.number, 8)}`.toLowerCase() + unit;
     }
     return undefined;
   }
@@ -48,7 +67,7 @@ export class Range extends Node<RangeValue, RangeOptions> {
     if (options?.trivia || options?.sourceMap) {
       return undefined;
     }
-    const { start, end, step } = this.value;
+    const { start, end, step } = this;
     const startText = this.scalarBoundText(start);
     const endText = this.scalarBoundText(end);
     const stepText = step ? this.scalarBoundText(step) : undefined;
@@ -77,7 +96,7 @@ export class Range extends Node<RangeValue, RangeOptions> {
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
-    const { start, end, step } = this.value;
+    const { start, end, step } = this;
     const includeStart = this._options?.includeStart !== false;
     const includeEnd = this._options?.includeEnd !== false;
 
@@ -138,5 +157,6 @@ type RangeParams = ConstructorParameters<typeof Range>;
 export const range = defineType(Range, 'Range', 'range') as (
   value: RangeParams[0],
   options?: RangeParams[1],
-  location?: RangeParams[2]
+  location?: RangeParams[2],
+  treeContext?: RangeParams[3]
 ) => Range;

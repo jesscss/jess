@@ -179,7 +179,7 @@ function passesDeclarationFilter(
       return false;
     }
   }
-  if (String(node.value.name.valueOf()) !== key) {
+  if (String(node.name.valueOf()) !== key) {
     return false;
   }
   if (start !== undefined && !(node.index !== undefined && node.index < start)) {
@@ -211,7 +211,7 @@ function getDirectDeclarationBucket(
     if (node.options?.setDefined) {
       continue;
     }
-    if (String(node.value.name.valueOf()) === key) {
+    if (String(node.name.valueOf()) === key) {
       bucket ??= [];
       bucket.push(node);
     }
@@ -256,7 +256,7 @@ function createDeclarationOccurrence(
   slot?: number
 ): DirectDeclarationOccurrence {
   const ownerRules = isNode(node.parent, N.Rules) ? node.parent : undefined;
-  const key = String(node.value.name.valueOf());
+  const key = String(node.name.valueOf());
   return {
     kind: 'direct-declaration-occurrence',
     node,
@@ -272,7 +272,7 @@ export function isDirectDeclarationOccurrenceCurrent(
 ): boolean {
   return (
     occurrence.node.parent === occurrence.ownerRules
-    && occurrence.ownerRules?.getDeclarationLookupVersion(String(occurrence.node.value.name.valueOf())) === occurrence.ownerLookupVersion
+    && occurrence.ownerRules?.getDeclarationLookupVersion(String(occurrence.node.name.valueOf())) === occurrence.ownerLookupVersion
     && occurrence.node.index === occurrence.index
   );
 }

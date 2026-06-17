@@ -243,7 +243,7 @@ describe('jess-parser (variables)', () => {
     const decl = rules?.value.find(n => isNode(n, N.VarDeclaration));
     expect(isNode(decl, N.VarDeclaration)).toBe(true);
     if (isNode(decl, N.VarDeclaration)) {
-      expect(decl.value.name.valueOf()).toBe('size');
+      expect(decl.name.valueOf()).toBe('size');
     }
   });
 
@@ -299,7 +299,7 @@ describe('jess-parser (mixins)', () => {
     const mixin = rules?.value.find(n => isNode(n, N.Mixin));
     expect(isNode(mixin, N.Mixin)).toBe(true);
     if (isNode(mixin, N.Mixin)) {
-      expect(String(mixin.value.name)).toBe('clearfix');
+      expect(String(mixin.name)).toBe('clearfix');
     }
   });
 
@@ -339,7 +339,7 @@ describe('jess-parser (mixins)', () => {
     const mixin = rules?.value.find(n => isNode(n, N.Mixin));
     expect(isNode(mixin, N.Mixin)).toBe(true);
     if (isNode(mixin, N.Mixin)) {
-      expect(mixin.value.guard).toBeDefined();
+      expect(mixin.guard).toBeDefined();
     }
   });
 
@@ -369,7 +369,7 @@ describe('jess-parser (imports)', () => {
     const rules = isNode(tree, N.Rules) ? tree : null;
     const si = rules?.value.find(n => isNode(n, N.StyleImport));
     expect(isNode(si, N.StyleImport) && si.options.type).toBe('compose');
-    expect(isNode(si, N.StyleImport) && si.value.path.valueOf()).toBe('./base.jess');
+    expect(isNode(si, N.StyleImport) && si.path.valueOf()).toBe('./base.jess');
   });
 
   it('parses @-compose with namespace', () => {
@@ -403,21 +403,21 @@ describe('jess-parser (imports)', () => {
     const tree = parse('@-from "./tokens.js" import ( primary, secondary );');
     const rules = isNode(tree, N.Rules) ? tree : null;
     const jsImport = rules?.value.find(n => isNode(n, N.JsImport));
-    expect(isNode(jsImport, N.JsImport) && jsImport.value.imports).toEqual(['primary', 'secondary']);
+    expect(isNode(jsImport, N.JsImport) && jsImport.imports).toEqual(['primary', 'secondary']);
   });
 
   it('parses @-from with named imports — braces form', () => {
     const tree = parse('@-from "./tokens.js" import { primary, secondary };');
     const rules = isNode(tree, N.Rules) ? tree : null;
     const jsImport = rules?.value.find(n => isNode(n, N.JsImport));
-    expect(isNode(jsImport, N.JsImport) && jsImport.value.imports).toEqual(['primary', 'secondary']);
+    expect(isNode(jsImport, N.JsImport) && jsImport.imports).toEqual(['primary', 'secondary']);
   });
 
   it('parses @-from with aliased imports', () => {
     const tree = parse('@-from "./tokens.js" import ( primary as p, secondary );');
     const rules = isNode(tree, N.Rules) ? tree : null;
     const jsImport = rules?.value.find(n => isNode(n, N.JsImport));
-    expect(isNode(jsImport, N.JsImport) && jsImport.value.imports).toEqual([['primary', 'p'], 'secondary']);
+    expect(isNode(jsImport, N.JsImport) && jsImport.imports).toEqual([['primary', 'p'], 'secondary']);
   });
 });
 

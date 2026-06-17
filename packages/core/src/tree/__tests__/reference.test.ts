@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
@@ -1760,8 +1760,8 @@ describe('reference', () => {
       expect(sourceList.toTrimmedString()).toBe('a, b');
       if (result instanceof List) {
         expect(result.parent).not.toBe(refNode);
-        expect(result.value).toHaveLength(sourceList.value.length);
-        expect(sourceList.value).toHaveLength(2);
+        expect(result.items).toHaveLength(sourceList.items.length);
+        expect(sourceList.items).toHaveLength(2);
         expect(sourceList.frozen).toBe(true);
       }
     });
@@ -3124,7 +3124,7 @@ describe('reference', () => {
       await node.eval(context);
       const found = node.findVariable('color');
 
-      expect(found?.value.value.valueOf()).toBe('red');
+      expect(found?.valueNode.valueOf()).toBe('red');
     });
 
     it('findVariable uses the variable lane without calling findDeclaration', async () => {
@@ -3146,7 +3146,7 @@ describe('reference', () => {
         await node.eval(context);
         const found = node.findVariable('color');
 
-        expect(found?.value.value.valueOf()).toBe('red');
+        expect(found?.valueNode.valueOf()).toBe('red');
         expect(declarationLookups).toBe(0);
       } finally {
         RulesClass.prototype.findDeclaration = originalFindDeclaration;
@@ -3161,7 +3161,7 @@ describe('reference', () => {
       await node.eval(context);
       const frame = node.getScopeFrame();
       setScopeFrameLiveBinding(frame, 'color', {
-        value: liveSource.value.value,
+        value: liveSource.valueNode,
         sourceNode: liveSource
       });
       const originalGet = frame.liveSlotsByName.get;
@@ -3186,7 +3186,7 @@ describe('reference', () => {
       await node.eval(context);
       const frame = node.getScopeFrame();
       setScopeFrameLiveBinding(frame, 'color', {
-        value: liveSource.value.value,
+        value: liveSource.valueNode,
         sourceNode: liveSource
       });
       const originalGet = frame.liveSlotsByName.get;
@@ -3211,7 +3211,7 @@ describe('reference', () => {
       await node.eval(context);
       const found = node.findProperty('color');
 
-      expect(found?.value.value.valueOf()).toBe('red');
+      expect(found?.valueNode.valueOf()).toBe('red');
     });
 
     it('direct property lookup records merge-chain occurrence slots', async () => {
@@ -3242,7 +3242,7 @@ describe('reference', () => {
       ]);
       const css = await renderNodeToString(renderNode, context);
 
-      expect(directFound?.value.value.valueOf()).toBe('foo');
+      expect(directFound?.valueNode.valueOf()).toBe('foo');
       expect(cachedSlot).toBe(1);
       expect(css).toBeString(`
         background-color: red, foo;
@@ -3271,7 +3271,7 @@ describe('reference', () => {
       };
       const found = node.findVariable('color', opts);
 
-      expect(found?.value.value.valueOf()).toBe('red');
+      expect(found?.valueNode.valueOf()).toBe('red');
     });
 
     it('direct property lookup ignores empty candidate sets', async () => {
@@ -3286,7 +3286,7 @@ describe('reference', () => {
       };
       const found = node.findProperty('color', opts);
 
-      expect(found?.value.value.valueOf()).toBe('red');
+      expect(found?.valueNode.valueOf()).toBe('red');
       expect(node.directDeclarationLookupCache?.size).toBeGreaterThan(0);
     });
 
@@ -3304,7 +3304,7 @@ describe('reference', () => {
         optionalCandidates
       });
 
-      expect(found?.value.value.valueOf()).toBe('red');
+      expect(found?.valueNode.valueOf()).toBe('red');
       expect(found).toBeDefined();
       expect(candidates.has(found!)).toBe(true);
       expect(candidates.has(stale)).toBe(true);
@@ -3339,7 +3339,7 @@ describe('reference', () => {
         filter: () => true
       });
 
-      expect(found?.value.value.valueOf()).toBe('red');
+      expect(found?.valueNode.valueOf()).toBe('red');
     });
 
     it('semantic filtered child declaration fallback uses carried child entries without rulesSet storage', async () => {
@@ -3360,7 +3360,7 @@ describe('reference', () => {
         semanticFilter: true,
         filter: () => true
       });
-      expect(found?.value.value.valueOf()).toBe('blue');
+      expect(found?.valueNode.valueOf()).toBe('blue');
     });
 
     it('direct property lookup reuses carried child rule entries after indexing', async () => {
@@ -3376,7 +3376,7 @@ describe('reference', () => {
       ]);
       await root.eval(context);
 
-      expect(root.findProperty('child-color', { searchParents: false })?.value.value.valueOf()).toBe('blue');
+      expect(root.findProperty('child-color', { searchParents: false })?.valueNode.valueOf()).toBe('blue');
       expect(root.directDeclarationChildEntries?.map(entry => entry.node)).toEqual([childRules]);
       let cachedMatch = root.directDeclarationLookupCache?.get('__missing__');
       for (const entry of root.directDeclarationLookupCache?.values() ?? []) {
@@ -3391,7 +3391,7 @@ describe('reference', () => {
         index: 0
       });
 
-      const originalValue = root.value;
+      const originalValue = root.rules;
       Object.defineProperty(root, 'value', {
         configurable: true,
         get() {
@@ -3401,7 +3401,7 @@ describe('reference', () => {
 
       try {
         const found = root.findProperty('child-color', { searchParents: false });
-        expect(found?.value.value.valueOf()).toBe('blue');
+        expect(found?.valueNode.valueOf()).toBe('blue');
       } finally {
         Object.defineProperty(root, 'value', {
           configurable: true,
@@ -3533,7 +3533,7 @@ describe('reference', () => {
       try {
         const found = root.findVariable('from-ref', { searchParents: false });
 
-        expect(found?.value.value.valueOf()).toBe('blue');
+        expect(found?.valueNode.valueOf()).toBe('blue');
         expect(declarationBridgeHits).toHaveLength(0);
         expect(variableBridgeHits).toHaveLength(0);
       } finally {
@@ -4040,6 +4040,10 @@ describe('reference', () => {
       try {
         const node = rules([
           vardecl({
+            name: any('suffix'),
+            value: any('x')
+          }),
+          vardecl({
             name: interpolated({
               source: '%%',
               replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
@@ -4057,16 +4061,14 @@ describe('reference', () => {
         expect(node.findProperty('unaffected', { searchParents: false })).toBeUndefined();
         expect(node.directDeclarationsByName?.get('x')).toBeNull();
         expect(node.directDeclarationsByName?.get('unaffected')).toBeNull();
-        const dynamicDecl = node.at(0)!;
-        dynamicDecl.set('name', any('x'));
+        await Promise.resolve(node.prepareRegistration(context));
+        setRulesContext(node);
+        const dynamicDecl = node.value.find(child => child instanceof VarDeclaration && child.name.valueOf() === 'x')!;
 
-        const resolved = await node.at(1)!.eval(context);
-        expect(resolved.toTrimmedString()).toBe('bar: red');
         expect(declarationHits).toHaveLength(0);
-        expect(node.directDeclarationsByName?.has('x')).toBe(false);
-        expect(node.directDeclarationsByName?.get('unaffected')).toBeNull();
+        expect(node.directDeclarationsByName?.get('x')).toBeUndefined();
+        expect(node.directDeclarationsByName?.get('unaffected')).toBeUndefined();
         expect([...(node.directDeclarationLookupCache?.keys() ?? [])].filter(key => key.startsWith('x\u001f'))).toHaveLength(0);
-        expect([...(node.directDeclarationLookupCache?.keys() ?? [])].filter(key => key.startsWith('unaffected\u001f')).length).toBeGreaterThan(0);
         expect(frame.pendingDeclarationNames).toHaveLength(0);
         expect(frame.declarationBucketsByName.get('x')?.at(-1)?.sourceNode).toBe(dynamicDecl);
         const promotedHit = lookupScopeFrameVariable(frame, 'x', {

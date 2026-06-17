@@ -35,7 +35,7 @@ import { Rules as RulesClass } from '../index.js';
 import { getImportPlacementChildSegments, getImportPlacementReferenceMode, getImportPlacementRenderState, getImportPlacementRulesVisibility, getImportPlacementSegmentSourceChild, getImportPlacementSourceChild, getImportPostludePlacement, getImportPostludeRenderOrder, getImportPostludeRenderState } from '../import-style.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
-import { Context } from '../../context.js';
+import { Context, TreeContext } from '../../context.js';
 import type { CallableFindOptions, DeclarationFindOptions } from '../util/lookup-utils.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { OutputWriter, getPrintOptions } from '../util/print.js';
@@ -44,6 +44,17 @@ import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
 
 let context: Context;
+
+describe('Style import construction', () => {
+  it('preserves parser tree context on construction', () => {
+    const treeContext = new TreeContext();
+    const node = style({
+      path: quoted('module.jess')
+    }, { type: 'compose' }, undefined, treeContext);
+
+    expect(node._treeContext).toBe(treeContext);
+  });
+});
 
 function getVarWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
@@ -136,7 +147,7 @@ describe('Style import', () => {
 
       // The imported ruleset should be able to reference the parent variable
       // The declaration should already be evaluated as part of the ruleset evaluation
-      const importedDecl = (importedRuleset as any).value.rules.at(0);
+      const importedDecl = (importedRuleset as any).rules.at(0);
       expect(importedDecl.toTrimmedString()).toBe('color: red');
     });
 
@@ -170,7 +181,7 @@ describe('Style import', () => {
 
       // The composed ruleset should NOT be able to reference the parent variable
       // It should use the fallback value instead
-      const composedDecl = (composedRuleset as any).value.rules.at(0);
+      const composedDecl = (composedRuleset as any).rules.at(0);
       const resolved = await composedDecl.eval(context);
       expect(resolved.toTrimmedString()).toBe('color: blue');
     });
@@ -225,7 +236,7 @@ describe('Style import', () => {
       expect(composedRules.options.importBoundary).toBe(true);
       expect(composedRules.sourceNode).toBe(composedRules);
 
-      const composedDecl = (composedRuleset as any).value.rules.at(0);
+      const composedDecl = (composedRuleset as any).rules.at(0);
       const resolved = await composedDecl.eval(context);
       expect(resolved.toTrimmedString()).toBe('color: blue');
     });
@@ -251,7 +262,7 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const parentRuleset = evald.at(1);
-      const parentDecl = (parentRuleset as any).value.rules.at(0);
+      const parentDecl = (parentRuleset as any).rules.at(0);
       const resolved = await parentDecl.eval(context);
       expect(resolved.toTrimmedString()).toBe('color: green');
     });
@@ -288,7 +299,7 @@ describe('Style import', () => {
 
         const evald = await node.eval(context);
         const parentRuleset = evald.at(1);
-        const parentDecl = (parentRuleset as any).value.rules.at(0);
+        const parentDecl = (parentRuleset as any).rules.at(0);
         const resolved = await parentDecl.eval(context);
         expect(resolved.toTrimmedString()).toBe('color: green');
         expect(declarationHits).toHaveLength(0);
@@ -320,7 +331,7 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const parentRuleset = evald.at(1);
-      const parentDecl = (parentRuleset as any).value.rules.at(0);
+      const parentDecl = (parentRuleset as any).rules.at(0);
       const resolved = await parentDecl.eval(context);
       // Should use composedVar from the compose
       expect(resolved.toTrimmedString()).toBe('color: purple');
@@ -360,7 +371,7 @@ describe('Style import', () => {
 
         const evald = await node.eval(context);
         const parentRuleset = evald.at(1);
-        const parentDecl = (parentRuleset as any).value.rules.at(0);
+        const parentDecl = (parentRuleset as any).rules.at(0);
         const resolved = await parentDecl.eval(context);
         expect(resolved.toTrimmedString()).toBe('color: purple');
         expect(declarationHits).toHaveLength(0);
@@ -397,7 +408,7 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const parentRuleset = evald.at(1);
-      const mixinCall = (parentRuleset as any).value.rules.at(0);
+      const mixinCall = (parentRuleset as any).rules.at(0);
       const resolved = await mixinCall.eval(context);
       expect(resolved.toTrimmedString()).toContainString('color: blue');
     });
@@ -430,7 +441,7 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const parentRuleset = evald.at(1);
-      const mixinCall = (parentRuleset as any).value.rules.at(0);
+      const mixinCall = (parentRuleset as any).rules.at(0);
       const resolved = await mixinCall.eval(context);
       expect(resolved.toTrimmedString()).toContainString('color: yellow');
     });
@@ -464,7 +475,7 @@ describe('Style import', () => {
 
       const evald1 = await node1.eval(context);
       const parentRuleset1 = evald1.at(1);
-      const mixinCall1 = (parentRuleset1 as any).value.rules.at(0);
+      const mixinCall1 = (parentRuleset1 as any).rules.at(0);
       const resolved1 = await mixinCall1.eval(context);
       expect(resolved1.toTrimmedString()).toContainString('color: white');
     });
@@ -689,7 +700,7 @@ describe('Style import', () => {
       const composedRules = evald.at(0) as Rules;
       const css = await renderNodeToString(node, context, { context });
 
-      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(false);
+      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(false);
       expect(composedRules.options.importBoundary).toBe(true);
 
       // Test 1: Verify injected variables are accessible
@@ -697,7 +708,7 @@ describe('Style import', () => {
       expect(injectedVar).toBeDefined();
       // The variable declaration exists, which means the injection worked
       // We can verify the value by evaluating the variable's value property
-      const injectedVarValueNode = injectedVar!.value.value;
+      const injectedVarValueNode = injectedVar!.valueNode;
       const injectedVarValue = await injectedVarValueNode.eval(context);
       expect(injectedVarValue.toTrimmedString()).toBe('purple');
 
@@ -735,14 +746,14 @@ describe('Style import', () => {
       const composedRules = evald.at(0) as Rules;
       const css = await renderNodeToString(node, context, { context });
 
-      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(false);
+      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(false);
 
       // Test 1: Verify injected variables are accessible
       const injectedVar = getVarWithContext(context, composedRules, 'primaryColor');
       expect(injectedVar).toBeDefined();
       // The variable declaration exists, which means the injection worked
       // We can verify the value by evaluating the variable's value property
-      const injectedVarValueNode = injectedVar!.value.value;
+      const injectedVarValueNode = injectedVar!.valueNode;
       const injectedVarValue = await injectedVarValueNode.eval(context);
       expect(injectedVarValue.toTrimmedString()).toBe('orange');
 
@@ -780,13 +791,13 @@ describe('Style import', () => {
       // Verify baseColor has the injected value
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
-      const baseColorValue = await baseColor!.value.value.eval(context);
+      const baseColorValue = await baseColor!.valueNode.eval(context);
       expect(baseColorValue.toTrimmedString()).toBe('blue');
 
       // Verify derivedColor reflects the injected value (scope lookup)
       const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
       expect(derivedColor).toBeDefined();
-      const derivedColorValue = await derivedColor!.value.value.eval(context);
+      const derivedColorValue = await derivedColor!.valueNode.eval(context);
       expect(derivedColorValue.toTrimmedString()).toBe('blue');
     });
 
@@ -820,13 +831,13 @@ describe('Style import', () => {
       // Verify baseColor has the injected value
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
-      const baseColorValue = await baseColor!.value.value.eval(context);
+      const baseColorValue = await baseColor!.valueNode.eval(context);
       expect(baseColorValue.toTrimmedString()).toBe('green');
 
       // Verify derivedColor reflects the injected value (linear lookup)
       const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
       expect(derivedColor).toBeDefined();
-      const derivedColorValue = await derivedColor!.value.value.eval(context);
+      const derivedColorValue = await derivedColor!.valueNode.eval(context);
       expect(derivedColorValue.toTrimmedString()).toBe('green');
     });
 
@@ -860,13 +871,13 @@ describe('Style import', () => {
       // Verify baseColor has the injected value
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
-      const baseColorValue = await baseColor!.value.value.eval(context);
+      const baseColorValue = await baseColor!.valueNode.eval(context);
       expect(baseColorValue.toTrimmedString()).toBe('yellow');
 
       // Verify derivedColor reflects the injected value (scope lookup)
       const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
       expect(derivedColor).toBeDefined();
-      const derivedColorValue = await derivedColor!.value.value.eval(context);
+      const derivedColorValue = await derivedColor!.valueNode.eval(context);
       expect(derivedColorValue.toTrimmedString()).toBe('yellow');
     });
 
@@ -904,7 +915,7 @@ describe('Style import', () => {
       // Verify baseColor was injected (should be the injected one, not the original)
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
-      const baseColorValue = await baseColor!.value.value.eval(context);
+      const baseColorValue = await baseColor!.valueNode.eval(context);
       expect(baseColorValue.toTrimmedString()).toBe('cyan');
 
       // Verify derivedColor reflects the injected value (linear lookup)
@@ -914,7 +925,7 @@ describe('Style import', () => {
       expect(derivedColor).toBeDefined();
       // The value should already be evaluated during the import evaluation
       // and should have used the injected baseColor
-      const derivedColorValue = await derivedColor!.value.value.eval(context);
+      const derivedColorValue = await derivedColor!.valueNode.eval(context);
       expect(derivedColorValue.toTrimmedString()).toBe('cyan');
     });
 
@@ -1036,10 +1047,10 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
-      const importedChildSurface = composedRules.value.find(child => isNode(child, N.Rules)) as Rules | undefined;
+      const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
       const css = await renderNodeToString(node, context, { context });
 
-      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
       expect(composedRules.options.importBoundary).toBe(true);
       expect(importedChildSurface?.options.importBoundary).toBeUndefined();
       expect(css).toContain('.base');
@@ -1077,11 +1088,11 @@ describe('Style import', () => {
       const composedRules = evald.at(0) as Rules;
       const css = await renderNodeToString(node, context, { context });
 
-      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(false);
+      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(false);
       expect(composedRules.options.importBoundary).toBe(true);
       const injectedVar = getVarWithContext(context, composedRules, 'accentColor');
       expect(injectedVar).toBeDefined();
-      const injectedVarValue = await injectedVar!.value.value.eval(context);
+      const injectedVarValue = await injectedVar!.valueNode.eval(context);
       expect(injectedVarValue.toTrimmedString()).toBe('purple');
       expect(css).toContain('.base');
       expect(css).toContain('color: purple');
@@ -1287,7 +1298,7 @@ describe('Style import', () => {
         this: RulesClass,
         ...args: Parameters<typeof originalClone>
       ): ReturnType<typeof originalClone> {
-        if (this.value.some(node => isNode(node, N.VarDeclaration) && node.value.name.valueOf() === 'baseColor')) {
+        if (this.value.some(node => isNode(node, N.VarDeclaration) && node.name.valueOf() === 'baseColor')) {
           clonedLibraryRules++;
         }
         return originalClone.apply(this, args);
@@ -1328,10 +1339,10 @@ describe('Style import', () => {
       try {
         const evald = await node.eval(context);
         const composedRules = evald.at(0) as Rules;
-        const importedChildSurface = composedRules.value.find(child => isNode(child, N.Rules)) as Rules | undefined;
+        const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
         const css = await renderNodeToString(node, context, { context });
 
-        expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+        expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
         expect(composedRules.options.importBoundary).toBe(true);
         expect(importedChildSurface?.options.importBoundary).toBeUndefined();
         expect(css).toContain('.base');
@@ -1340,7 +1351,7 @@ describe('Style import', () => {
 
         const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
         expect(derivedColor).toBeDefined();
-        const derivedColorValue = await derivedColor!.value.value.eval(context);
+        const derivedColorValue = await derivedColor!.valueNode.eval(context);
         expect(derivedColorValue.toTrimmedString()).toBe('teal');
       } finally {
         RulesClass.prototype.clone = originalClone;
@@ -1406,10 +1417,10 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
-      const importedChildSurface = composedRules.value.find(child => isNode(child, N.Rules)) as Rules | undefined;
+      const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
       const css = await renderNodeToString(node, context, { context });
 
-      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
       expect(composedRules.options.importBoundary).toBe(true);
       expect(importedChildSurface?.options.importBoundary).toBeUndefined();
       expect(css).toContain('.base');
@@ -1498,10 +1509,10 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
-      const importedChildSurface = composedRules.value.find(child => isNode(child, N.Rules)) as Rules | undefined;
+      const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
       const css = await renderNodeToString(node, context, { context });
 
-      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
       expect(composedRules.options.importBoundary).toBe(true);
       expect(importedChildSurface?.options.importBoundary).toBeUndefined();
       expect(css).toContain('.base');
@@ -1564,7 +1575,7 @@ describe('Style import', () => {
       const composedRules = evald.at(0) as Rules;
       const css = await renderNodeToString(node, context, { context });
 
-      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
       expect(css).toContain('.base');
       expect(css).toContain('.addon');
       expect(css).toContain('.consumer {');
@@ -1876,7 +1887,7 @@ describe('Style import', () => {
           ])
         })
       ]);
-      const sourceChild = importedRules.value[0];
+      const sourceChild = importedRules.rules[0];
       context.sourceTrees.set('shared-import-child.jess', importedRules);
 
       const node = rules([
@@ -1924,7 +1935,7 @@ describe('Style import', () => {
       if (!isNode(placementDecl, N.Declaration)) {
         throw new TypeError('Expected placement child to be a declaration');
       }
-      expect(placementDecl.value.value).toBe(red);
+      expect(placementDecl.valueNode).toBe(red);
       expect(red.parent).toBe(sourceDecl);
     });
 
@@ -1969,7 +1980,7 @@ describe('Style import', () => {
       ]);
       expect(getImportPlacementSourceChild(placement, placementRuleset)).toBe(sourceRuleset);
       expect(getImportPlacementSegmentSourceChild(placement, placementRuleset)).toBe(sourceRuleset);
-      const placementDecl = placementRuleset.value.rules?.value[0];
+      const placementDecl = placementRuleset.rules?.value[0];
       expect(placementDecl).not.toBe(sourceDecl);
       expect(isNode(placementDecl, N.Declaration)).toBe(true);
       if (!isNode(placementDecl, N.Declaration)) {
@@ -1979,7 +1990,7 @@ describe('Style import', () => {
       expect(getImportPlacementSegmentSourceChild(placement, placementDecl)).toBe(sourceDecl);
       expect(getImportPlacementSourceChild(placement, red)).toBe(red);
       expect(getImportPlacementSegmentSourceChild(placement, red)).toBe(red);
-      expect(placementDecl.value.value).toBe(red);
+      expect(placementDecl.valueNode).toBe(red);
       expect(red.parent).toBe(sourceDecl);
     });
 
@@ -2075,7 +2086,7 @@ describe('Style import', () => {
         outputRules: wrapped
       });
       expect(placement?.outputRules).toBe(wrapped);
-      expect(isNode(placement?.sourceRules.value[0], N.Ruleset)).toBe(true);
+      expect(isNode(placement?.sourceRules.rules[0], N.Ruleset)).toBe(true);
       expect(isNode(wrapped.value[0], N.AtRule)).toBe(true);
       expect(await evald.render(context)).toContain('@layer components');
     });
@@ -2196,8 +2207,8 @@ describe('Style import', () => {
       if (!(wrappedImport instanceof RulesClass)) {
         throw new Error('Expected inline wrapped import to be Rules');
       }
-      expect(wrappedImport.value).toHaveLength(1);
-      expect(isNode(wrappedImport.value[0], N.AtRule)).toBe(true);
+      expect(wrappedImport.rules).toHaveLength(1);
+      expect(isNode(wrappedImport.rules[0], N.AtRule)).toBe(true);
       const css = await renderNodeToString(node, inlineContext, { context: inlineContext });
       expect(css).toContain('@media (min-width: 600px)');
       expect(css).toContain('#css { color: yellow; }');
@@ -2260,31 +2271,31 @@ describe('Style import', () => {
       if (!(wrappedImport instanceof RulesClass)) {
         throw new Error('Expected inline wrapped import to be Rules');
       }
-      expect(isNode(wrappedImport.value[0], N.AtRule)).toBe(true);
-      if (!isNode(wrappedImport.value[0], N.AtRule)) {
+      expect(isNode(wrappedImport.rules[0], N.AtRule)).toBe(true);
+      if (!isNode(wrappedImport.rules[0], N.AtRule)) {
         throw new Error('Expected inline wrapped import child to be AtRule');
       }
-      expect(wrappedImport.value[0].value.name.toTrimmedString()).toBe('@layer');
-      const supportsRules = wrappedImport.value[0].value.rules;
+      expect(wrappedImport.rules[0].name.toTrimmedString()).toBe('@layer');
+      const supportsRules = wrappedImport.rules[0].rules;
       expect(supportsRules).toBeInstanceOf(RulesClass);
       if (!(supportsRules instanceof RulesClass)) {
         throw new Error('Expected @layer rules to be wrapped in Rules');
       }
-      expect(isNode(supportsRules.value[0], N.AtRule)).toBe(true);
-      if (!isNode(supportsRules.value[0], N.AtRule)) {
+      expect(isNode(supportsRules.rules[0], N.AtRule)).toBe(true);
+      if (!isNode(supportsRules.rules[0], N.AtRule)) {
         throw new Error('Expected @layer child to be AtRule');
       }
-      expect(supportsRules.value[0].value.name.toTrimmedString()).toBe('@supports');
-      const mediaRules = supportsRules.value[0].value.rules;
+      expect(supportsRules.rules[0].name.toTrimmedString()).toBe('@supports');
+      const mediaRules = supportsRules.rules[0].rules;
       expect(mediaRules).toBeInstanceOf(RulesClass);
       if (!(mediaRules instanceof RulesClass)) {
         throw new Error('Expected @supports rules to be wrapped in Rules');
       }
-      expect(isNode(mediaRules.value[0], N.AtRule)).toBe(true);
-      if (!isNode(mediaRules.value[0], N.AtRule)) {
+      expect(isNode(mediaRules.rules[0], N.AtRule)).toBe(true);
+      if (!isNode(mediaRules.rules[0], N.AtRule)) {
         throw new Error('Expected @supports child to be AtRule');
       }
-      expect(mediaRules.value[0].value.name.toTrimmedString()).toBe('@media');
+      expect(mediaRules.rules[0].name.toTrimmedString()).toBe('@media');
 
       const css = await renderNodeToString(node, inlineContext, { context: inlineContext });
       expect(css).toContain('@layer theme');
@@ -2321,12 +2332,12 @@ describe('Style import', () => {
         throw new Error('Expected wrapped import to be Rules');
       }
       expect(wrappedImport).not.toBe(context.sourceTrees.get(importedPath));
-      expect(wrappedImport.value).toHaveLength(1);
-      expect(isNode(wrappedImport.value[0], N.AtRule)).toBe(true);
-      if (!isNode(wrappedImport.value[0], N.AtRule)) {
+      expect(wrappedImport.rules).toHaveLength(1);
+      expect(isNode(wrappedImport.rules[0], N.AtRule)).toBe(true);
+      if (!isNode(wrappedImport.rules[0], N.AtRule)) {
         throw new Error('Expected wrapped import child to be AtRule');
       }
-      expect(wrappedImport.value[0].value.rules).toBeInstanceOf(RulesClass);
+      expect(wrappedImport.rules[0].rules).toBeInstanceOf(RulesClass);
       const css = await renderNodeToString(node, context, { context });
       expect(css).toContain('@media screen and (min-width: 600px)');
       expect(css).toContain('.imported');
@@ -2454,7 +2465,7 @@ describe('Style import', () => {
       ]);
       const evald = await node.eval(context);
       const rulesetNode = evald.at(1) as any;
-      const declaration = rulesetNode.value.rules.at(0);
+      const declaration = rulesetNode.rules.at(0);
       const resolved = await declaration.eval(context);
       expect(resolved.toTrimmedString()).toBe('value: 42');
     });

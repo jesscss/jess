@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Context } from '../../context.js';
+import { Context, TreeContext } from '../../context.js';
 import { any, decl, el, extend, ExtendFlag, rules, ruleset, sel, sellist } from '../index.js';
 import { Extend } from '../extend.js';
 import { ExtendList, extendList } from '../extend-list.js';
@@ -52,6 +52,17 @@ describe('Extend render', () => {
     };
 
     expect(node.render(context)).toBe('');
+  });
+
+  it('preserves parser tree context on extend lists', () => {
+    const treeContext = new TreeContext();
+    const child = extend({ target: el('.base') });
+    const node = extendList([child], undefined, undefined, treeContext);
+
+    expect(node._treeContext).toBe(treeContext);
+    expect(node.nodes).toEqual([child]);
+    expect(node.value).toEqual([child]);
+    expect(ExtendList.childKeys).toEqual(['nodes']);
   });
 
   it('keeps extend behavior when rendered inside a ruleset', async () => {
@@ -177,14 +188,14 @@ describe('Extend render', () => {
       expect(combinator.valueOf()).toBe(' ');
       expect(generatedChild).not.toBe(childSelector);
 
-      if (!isNode(generatedParent, N.PseudoSelector) || !generatedParent.value.arg || !isNode(generatedParent.value.arg, N.SelectorList)) {
+      if (!isNode(generatedParent, N.PseudoSelector) || !generatedParent.arg || !isNode(generatedParent.arg, N.SelectorList)) {
         throw new Error(`Expected generated :is(...) parent wrapper, got ${generatedParent.type}`);
       }
 
       expect(generatedParent.generated).toBe(true);
-      expect(generatedParent.value.arg).not.toBe(parentSelector);
-      expect(generatedParent.value.arg.value[0]).not.toBe(parentItems[0]);
-      expect(generatedParent.value.arg.value[1]).not.toBe(parentItems[1]);
+      expect(generatedParent.arg).not.toBe(parentSelector);
+      expect(generatedParent.arg.value[0]).not.toBe(parentItems[0]);
+      expect(generatedParent.arg.value[1]).not.toBe(parentItems[1]);
     } finally {
       parentA.clone = originalAClone;
       parentB.clone = originalBClone;

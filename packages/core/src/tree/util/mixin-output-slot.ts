@@ -92,8 +92,8 @@ export function getMixinOutputChildSegments(
   sourceRules: Rules,
   outputRules?: Rules
 ): MixinOutputChildSegment[] {
-  const source = sourceRules.value;
-  const output = outputRules?.value;
+  const source = sourceRules.rules;
+  const output = outputRules?.rules;
   const out = new Array<MixinOutputChildSegment>(source.length);
   for (let i = 0; i < source.length; i++) {
     out[i] = createPlacementChildSegment(source[i]!, output?.[i], i);
@@ -204,7 +204,7 @@ export function assignMixinOutputRuleIndexes(
   isIndexedRuleChild: (node: Node) => boolean
 ): void {
   let outputRuleIndex = 0;
-  for (const outputChild of outputRules.value) {
+  for (const outputChild of outputRules.rules) {
     const sourceChild = getMixinOutputSourceChild(outputRules, outputChild) ?? outputChild;
     outputChild.index = isIndexedRuleChild(sourceChild)
       ? getMixinOutputRuleIndex(outputRules, outputChild, outputRuleIndex++)
@@ -230,10 +230,10 @@ export function assignMixinOutputFallbackFrame(
 
 function validateMixinOutputSlot(slot: MixinOutputSlot): void {
   for (const segment of slot.childSegments) {
-    if (slot.sourceRules.value[segment.index] !== segment.source) {
+    if (slot.sourceRules.rules[segment.index] !== segment.source) {
       throw new TypeError('Mixin output slot source segment order mismatch');
     }
-    if (segment.output && !slot.outputRules.value.includes(segment.output)) {
+    if (segment.output && !slot.outputRules.rules.includes(segment.output)) {
       throw new TypeError('Mixin output slot references an output child outside its output Rules');
     }
   }
@@ -401,9 +401,9 @@ export function attachMixinOutputSlot(
       outputBySource.set(segment.source, segment.output);
     }
   }
-  const placementChildren = new Array<Node>(outputRules.value.length);
-  for (let i = 0; i < outputRules.value.length; i++) {
-    placementChildren[i] = outputRules.value[i]!;
+  const placementChildren = new Array<Node>(outputRules.rules.length);
+  for (let i = 0; i < outputRules.rules.length; i++) {
+    placementChildren[i] = outputRules.rules[i]!;
   }
   const slot: MixinOutputSlot = {
     sourceRules,

@@ -13,8 +13,16 @@ export interface BasicSelector extends SimpleSelector<string> {
  *   e.g. div, .foo, #bar
 */
 export class BasicSelector extends SimpleSelector<string> {
-  constructor(...args: ConstructorParameters<typeof SimpleSelector<string>>) {
-    super(...args);
+  static override childKeys = null;
+
+  constructor(
+    value: string,
+    options?: ConstructorParameters<typeof SimpleSelector<string>>[1],
+    location?: ConstructorParameters<typeof SimpleSelector<string>>[2],
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
     this.addFlag(F_STATIC);
   }
 
@@ -33,6 +41,7 @@ export class BasicSelector extends SimpleSelector<string> {
 
   override evalNode(context: Context): BasicSelector {
     const node = this;
+    super.evalNode(context);
     if (node.isClass) {
       context.hashClass(node.value);
     }

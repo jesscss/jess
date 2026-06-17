@@ -66,14 +66,6 @@ type NodeRecordValue = BasicNodeTypes | Array<BasicNodeTypes | PrimitiveOrFunc[]
 export type NodeValueObject = Record<string, NodeRecordValue>;
 export type NodeValue = BasicNodeTypes | BasicNodeTypes[] | NodeValueObject;
 
-export type NodeSetKey<Data> =
-  null | (Data extends readonly any[] ? number : Data extends object ? string & keyof Data : never);
-
-export type NodeSetValue<Data, K> =
-  K extends null ? Data
-    : Data extends readonly any[] ? K extends number ? Data[number] : never
-      : K extends keyof Data ? Data[K] : never;
-
 export type NodeMapArray<
   T extends NodeValueObject = NodeValueObject,
   K = keyof T,
@@ -136,12 +128,6 @@ function sourceRootOf(node: Node): Rules | undefined {
     current = current.parent;
   }
   return undefined;
-}
-
-type MutableNodeValue = Record<string | number, unknown>;
-
-function isMutableNodeValue(value: unknown): value is MutableNodeValue {
-  return typeof value === 'object' && value !== null;
 }
 
 type TreeVisitMethod = (node: Node, ctx?: unknown) => NodeVisitReturn;
@@ -273,6 +259,14 @@ export abstract class Node<
   Data = unknown,
   O extends NodeOptions = NodeOptions
 > {
+  /**
+   * Keys of direct instance fields that hold child nodes.
+   *
+   * `undefined` means this node still uses legacy `value` introspection.
+   * `null` marks a migrated leaf with no child fields.
+   */
+  static childKeys: readonly string[] | null | undefined = undefined;
+
   _location: NodeLocation | undefined;
   get location() {
     return (this._location ??= []);
@@ -400,20 +394,8 @@ export abstract class Node<
    *
    * This is `readonly` to prevent accidental unforked mutation.
    *
-   * Mutation paths, in order of preference:
-   *   1. `node.set(key, value)` — canonical mutation with parent adoption.
-   *   2. Direct assignment with an explicit `@ts-expect-error` escape:
-   *        // @ts-expect-error direct mutation: <why fork machinery is not needed here>
-   *        node.value = newValue;
-   *      Use this only when you know the caller is not bypassing parent
-   *      adoption or other node invariants (parse time, in-place selector
-   *      reshape helpers, etc.).
-   *      Every bypass must carry its justification inline.
-   *
-   * Short-term exception: `util/extend.ts` and friends still do extensive
-   * in-place selector reshaping and use the escape hatch liberally. That
-   * subtree is on the list to migrate; new code outside it should prefer
-   * option (1).
+   * Mutation should happen through constructor-owned direct fields or
+   * replacement-node construction. Do not add generic mutation helpers here.
    */
   readonly value: Data;
 
@@ -542,18 +524,6 @@ export abstract class Node<
     this.value = this._processNodes(value);
     this._location = location;
     this._options = options;
-  }
-
-  set<K extends NodeSetKey<Data>>(key: K, value: NodeSetValue<Data, K>): void;
-  set(key: null | string | number, value: any) {
-    if (key == null) {
-      this.value = this._processNodes(value);
-    } else {
-      if (!isMutableNodeValue(this.value)) {
-        throw new TypeError('Cannot set keyed value on a primitive node value.');
-      }
-      this.value[key] = this._processNodes(value);
-    }
   }
 
   /**

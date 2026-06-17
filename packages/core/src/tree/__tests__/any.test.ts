@@ -1,5 +1,5 @@
 import { any, keyword, seq } from '../index.js';
-import { Context } from '../../context.js';
+import { Context, TreeContext } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { OutputWriter } from '../util/print.js';
 
@@ -19,6 +19,15 @@ class CountingWriter extends OutputWriter {
 }
 
 describe('Any and Keyword', () => {
+  it('preserves parser tree context on Any and Keyword construction', () => {
+    const treeContext = new TreeContext();
+    const anyNode = any('foo', { role: 'ident' }, undefined, treeContext);
+    const keywordNode = keyword('inherit', undefined, undefined, treeContext);
+
+    expect(anyNode._treeContext).toBe(treeContext);
+    expect(keywordNode._treeContext).toBe(treeContext);
+  });
+
   it('renders Any syntax through toTrimmedString()', () => {
     expect(any('foo').toTrimmedString()).toBe('foo');
   });

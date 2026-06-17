@@ -151,7 +151,7 @@ export function collectDeclarationMergeAdapterItems(
   const mergedItems: Node[] = [];
   const collect = (child: Node) => {
     if (isNode(child, N.List) || (options.includeSequences && isNode(child, N.Sequence))) {
-      for (const item of child.value) {
+      for (const item of child.items) {
         collect(item);
       }
       return;
@@ -261,8 +261,11 @@ const valueShouldResolveCustomProperty = (value: unknown): boolean => {
 };
 
 const unwrapAtomicCustomValue = (node: Node): Node => {
-  if ((isNode(node, N.Sequence) || isNode(node, N.List)) && node.value.length === 1) {
-    return unwrapAtomicCustomValue(node.value[0]!);
+  if (isNode(node, N.List) && node.items.length === 1) {
+    return unwrapAtomicCustomValue(node.items[0]!);
+  }
+  if (isNode(node, N.Sequence) && node.items.length === 1) {
+    return unwrapAtomicCustomValue(node.items[0]!);
   }
   return node;
 };
@@ -274,20 +277,18 @@ const canReuseSourceFreeAssignmentInput = (node: Node): boolean => {
   if (node.location.length !== 0 || !node.hasFlag(F_STATIC)) {
     return false;
   }
-  return node.value.every(child => child instanceof Node && canReuseLeaf(child));
+  return node.items.every(child => child instanceof Node && canReuseLeaf(child));
 };
 
 type LessFunctionFallbackCall = Call & {
-  value: Call['value'] & {
-    name: Reference;
-  };
+  name: Reference;
 };
 
 const isLessFunctionFallbackCall = (node: Node): node is LessFunctionFallbackCall => (
   isNode(node, N.Call)
-  && isNode(node.value.name, N.Reference)
-  && node.value.name.options?.type === 'function'
-  && node.value.name.options?.fallbackValue === true
+  && isNode(node.name, N.Reference)
+  && node.name.options?.type === 'function'
+  && node.name.options?.fallbackValue === true
 );
 
 const stringifyDetached = (node: Node, options: PrintOptions): string => {
@@ -304,8 +305,8 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
     return undefined;
   }
 
-  const { name, args } = atomicValue.value;
-  const printableKey = name.value.rawKey ?? name.value.key;
+  const { name, args } = atomicValue;
+  const printableKey = name.value.rawKey ?? name.key;
   const nameText = typeof printableKey === 'string' || typeof printableKey === 'number'
     ? String(printableKey)
     : Array.isArray(printableKey)
@@ -325,7 +326,25 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
  * Once evaluated, name must be a string
  */
 export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
+  static override childKeys = ['name', 'valueNode', 'important'];
+
+  readonly name: DeclarationValue['name'];
+  readonly valueNode: DeclarationValue['value'];
+  readonly important: DeclarationValue['important'];
+
   override allowRuleRoot = true;
+
+  constructor(
+    value: DeclarationValue,
+    options?: Opts,
+    location?: LocationInfo,
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location, treeContext);
+    this.name = value.name;
+    this.valueNode = value.value;
+    this.important = value.important;
+  }
 
   private copyNameForDerived(node: DeclarationValue['name']): DeclarationValue['name'] {
     if (canReuseLeaf(node)) {
@@ -386,15 +405,31 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   private derive(): this {
     return this.withParts({
-      name: this.copyNameForDerived(this.value.name),
-      value: this.copyValueForDerived(this.value.value),
-      important: this.copyImportantForDerived(this.value.important)
+      name: this.copyNameForDerived(this.name),
+      value: this.copyValueForDerived(this.valueNode),
+      important: this.copyImportantForDerived(this.important)
     });
   }
 
   deriveWithOptions(options: Opts & DeclarationOptions): this {
     const node = this.derive();
     node.options = options;
+    return node;
+  }
+
+  deriveWithParts(parts: Partial<DeclarationValue>): this {
+    const node = this.withParts({
+      name: parts.name === undefined
+        ? this.copyNameForDerived(this.name)
+        : parts.name,
+      value: parts.value === undefined
+        ? this.copyValueForDerived(this.valueNode)
+        : parts.value,
+      important: parts.important === undefined
+        ? this.copyImportantForDerived(this.important)
+        : parts.important
+    });
+    node.registrationPrepared = this.registrationPrepared;
     return node;
   }
 
@@ -437,7 +472,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   /** If the value has curly braces, a semi-colon is not required */
   override get requiredSemi() {
-    return this.valueRequiresSemi(this.value.value);
+    return this.valueRequiresSemi(this.valueNode);
   }
 
   private valueRequiresSemi(value: Node): boolean {
@@ -445,7 +480,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   protected declTrimmedString(options?: PrintOptions) {
-    return this.declValueTrimmedString(this.value, options);
+    return this.declValueTrimmedString({
+      name: this.name,
+      value: this.valueNode,
+      important: this.important
+    }, options);
   }
 
   private declValueTrimmedString(
@@ -587,7 +626,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       : prepareRenderPrintState(context, bufferOrOptions);
     const out = state.value
       ? this.declValueTrimmedString({
-          name: state.name ?? state.output.value.name,
+          name: state.name ?? state.output.name,
           value: state.value,
           important: state.important
         }, prepared)
@@ -775,7 +814,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     context: Context,
     node: Interpolated
   ): MaybePromise<DeclarationRenderState['customInterpolatedValue']> {
-    const replacements = [...node.value.replacements];
+    const replacements = [...node.replacements];
     let chain: Promise<void> | undefined;
     const evaluateReplacement = (replacement: Node, index: number): MaybePromise<void> => {
       const out = replacement.eval(context);
@@ -825,7 +864,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         (isListMergedAssign && isNode(child, N.List))
         || (isSpaceMergedAssign && isNode(child, N.Sequence))
       ) {
-        for (const item of child.value) {
+        for (const item of child.items) {
           collect(item);
         }
         return;
@@ -852,9 +891,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         : this.materializeValueState(resolved);
       return {
         output,
-        name: output instanceof Declaration ? output.value.name : undefined,
-        value: output instanceof Declaration ? output.value.value : undefined,
-        important: output instanceof Declaration ? output.value.important : undefined,
+        name: output instanceof Declaration ? output.name : undefined,
+        value: output instanceof Declaration ? output.valueNode : undefined,
+        important: output instanceof Declaration ? output.important : undefined,
         nil: output instanceof Nil
       };
     };
@@ -885,23 +924,23 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   ): DeclarationRegistrationState {
     if (options.reuseCanonical === true) {
       return {
-        name: this.value.name,
-        value: this.value.value,
-        important: this.value.important
+        name: this.name,
+        value: this.valueNode,
+        important: this.important
       };
     }
     return {
-      name: this.copyNameForDerived(this.value.name),
-      value: this.copyValueForDerived(this.value.value),
-      important: this.copyImportantForDerived(this.value.important)
+      name: this.copyNameForDerived(this.name),
+      value: this.copyValueForDerived(this.valueNode),
+      important: this.copyImportantForDerived(this.important)
     };
   }
 
   private createRenderRegistrationState(): DeclarationRegistrationState {
     return {
-      name: this.value.name,
-      value: this.value.value,
-      important: this.value.important,
+      name: this.name,
+      value: this.valueNode,
+      important: this.important,
       renderOnly: true
     };
   }
@@ -996,7 +1035,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               '+,:',
               '+_:'
             ]
-          });
+          }, undefined, this.sourceRoot?._treeContext);
           state.bindOutput = (node: Declaration) => {
             outputNode = node;
             boundOutputNode = node;
@@ -1031,7 +1070,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               fallbackValue: new Nil(),
               // Prevent self-referential reads while normalizing this node.
               filter: n => n !== outputNode && n !== this
-            });
+            }, undefined, this.sourceRoot?._treeContext);
             if (state.renderOnly) {
               state.renderAssignment = {
                 items: [ref, inputValue],
@@ -1044,7 +1083,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           } else {
             setValue(
               new Operation([
-                new Reference({ key: referenceKey }, { type }),
+                new Reference({ key: referenceKey }, { type }, undefined, this.sourceRoot?._treeContext),
                 '+',
                 inputValue
               ])
@@ -1057,7 +1096,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             new Reference({ key: referenceKey }, {
               type,
               fallbackValue: inputValue
-            })
+            }, undefined, this.sourceRoot?._treeContext)
           );
           break;
         }
@@ -1071,9 +1110,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     options: DeclarationRegistrationOptions = {}
   ): this {
     const changed = (
-      state.name !== this.value.name
-      || state.value !== this.value.value
-      || state.important !== this.value.important
+      state.name !== this.name
+      || state.value !== this.valueNode
+      || state.important !== this.important
       || state.normalizedFromAssign !== undefined
       || state.bindOutput !== undefined
     );
@@ -1082,9 +1121,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return this;
     }
     const node = this.withParts({
-      name: state.name === this.value.name ? this.copyNameForDerived(state.name) : state.name,
-      value: state.value === this.value.value ? this.copyValueForDerived(state.value) : state.value,
-      important: state.important === this.value.important
+      name: state.name === this.name ? this.copyNameForDerived(state.name) : state.name,
+      value: state.value === this.valueNode ? this.copyValueForDerived(state.value) : state.value,
+      important: state.important === this.important
         ? this.copyImportantForDerived(state.important)
         : state.important
     });
@@ -1101,8 +1140,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       this.evaluated = true;
       return {
         source: this,
-        value: this.value.value,
-        important: this.value.important,
+        value: this.valueNode,
+        important: this.important,
         changed: false
       };
     }
@@ -1110,8 +1149,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       let node = this;
       const state: DeclarationValueState = {
         source: node,
-        value: node.value.value,
-        important: node.value.important,
+        value: node.valueNode,
+        important: node.important,
         changed: false
       };
       const setVal = (newValue: Node) => {
@@ -1154,7 +1193,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       if (node.type === 'VarDeclaration') {
         return state;
       }
-      const { name, value } = node.value;
+      const { name, valueNode: value } = node;
       if (value instanceof Node) {
         const isCustomProperty = name.valueOf().startsWith('--');
         if (isCustomProperty) {
@@ -1203,11 +1242,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return node;
     }
     const output = node.withParts({
-      name: this.copyNameForDerived(node.value.name),
-      value: state.value === node.value.value
+      name: this.copyNameForDerived(node.name),
+      value: state.value === node.valueNode
         ? this.copyValueForDerived(state.value)
         : state.value,
-      important: state.important === node.value.important
+      important: state.important === node.important
         ? this.copyImportantForDerived(state.important)
         : state.important
     });

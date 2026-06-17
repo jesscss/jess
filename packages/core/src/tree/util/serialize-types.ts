@@ -103,8 +103,8 @@ function serializePlainObject(obj: Record<string, unknown>, depth: number, opts:
   for (const key of keys) {
     const v = obj[key];
     if (isJessNode(v)) {
-      const inner = '\n' + serializeNode(v, depth + 2, opts, visiting);
-      lines.push(`${indent(depth + 1, opts.indentSize)}${key}: ${inner}`);
+      const inner = serializeNode(v, depth + 2, opts, visiting);
+      lines.push(`${indent(depth + 1, opts.indentSize)}${key}:\n${inner}`);
     } else if (Array.isArray(v)) {
       const inner = serializeArray(v, depth + 2, opts, visiting);
       lines.push(`${indent(depth + 1, opts.indentSize)}${key}:\n${inner}`);
@@ -138,10 +138,26 @@ function serializeNodeOptions(n: Node, depth: number, opts: Required<SerializeTy
   return serializePlainObject(nodeOptions, depth + 1, opts, visiting);
 }
 
+function serializeNodeChildFields(n: Node, depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>): string | null {
+  const childKeys = (n.constructor as typeof Node).childKeys;
+  if (childKeys === undefined || childKeys === null) {
+    return null;
+  }
+  const fields = n as unknown as Record<string, unknown>;
+  const childValues: Record<string, unknown> = {};
+  for (const key of childKeys) {
+    const value = fields[key];
+    if (value !== undefined) {
+      childValues[key] = value;
+    }
+  }
+  return serializePlainObject(childValues, depth, opts, visiting);
+}
+
 function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>): string {
   const typeName = opts.useShortType ? n.shortType : n.type;
   const pad = indent(depth, opts.indentSize);
-  const roleValue = n.options.role;
+  const roleValue = n.role;
   const role = typeof roleValue === 'string' ? roleValue : undefined;
   const meta = role ? ` [role=${role}]` : '';
   const open = `${pad}(${typeName}${meta}`;
@@ -152,9 +168,17 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
   }
   visiting.add(n);
 
-  const { value } = n;
   const optionsStr = serializeNodeOptions(n, depth, opts, visiting);
+  const childFieldsStr = serializeNodeChildFields(n, depth, opts, visiting);
+  if (childFieldsStr !== null) {
+    visiting.delete(n);
+    if (optionsStr) {
+      return `${open}\n${optionsStr}${childFieldsStr ? '\n' + childFieldsStr : ''}\n${pad})`;
+    }
+    return childFieldsStr ? `${open}\n${childFieldsStr}\n${pad})` : `${open})`;
+  }
 
+  const { value } = n;
   // If the main value is a primitive, include it inline
   if (
     value === null

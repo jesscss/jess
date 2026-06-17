@@ -783,7 +783,7 @@ describe('Call', () => {
 
     expect(await rule.render(context, buffer)).toBe('rgb(10, 20, 30)');
     expect(buffer.parts).toEqual(['rgb(10, 20, 30)']);
-    expect(arg.parent).toBe(rule.value.args);
+    expect(arg.parent).toBe(rule.args);
     expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
@@ -799,7 +799,7 @@ describe('Call', () => {
     };
 
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('rgb(10, 20, 30)');
-    expect(arg.parent).toBe(rule.value.args);
+    expect(arg.parent).toBe(rule.args);
     expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
@@ -1081,6 +1081,37 @@ describe('Call', () => {
     } finally {
       derivedCalls.restore();
     }
+  });
+
+  it('marks declarations important by replacing owned declaration slots', () => {
+    const topDeclaration = decl({ name: 'color', value: any('red') });
+    const nestedDeclaration = decl({ name: 'background', value: any('blue') });
+    const nestedRules = rules([nestedDeclaration]);
+    const nestedRuleset = ruleset({
+      selector: el('.nested'),
+      rules: nestedRules
+    });
+    const root = rules([topDeclaration, nestedRuleset]);
+    const rule = call({ name: 'noop' });
+
+    expect(rule.makeImportant(root)).toBe(root);
+
+    const topReplacement = root.rules[0];
+    const nestedReplacement = nestedRules.value[0];
+    expect(topReplacement).not.toBe(topDeclaration);
+    expect(nestedReplacement).not.toBe(nestedDeclaration);
+    expect(isNode(topReplacement, N.Declaration)).toBe(true);
+    expect(isNode(nestedReplacement, N.Declaration)).toBe(true);
+    expect(topDeclaration.important).toBeUndefined();
+    expect(nestedDeclaration.important).toBeUndefined();
+    expect(topReplacement?.parent).toBe(root);
+    expect(nestedReplacement?.parent).toBe(nestedRules);
+    expect(root.toTrimmedString()).toBeString(`
+      color: red !important;
+      .nested {
+        background: blue !important;
+      }
+    `);
   });
 
   it('writes finalized CSS call output into segmented buffers', () => {
@@ -1693,7 +1724,7 @@ describe('Call', () => {
       expect(result.toTrimmedString()).toBe('ok');
       expect(CountingSequence.constructedCopies).toBe(1);
       expect(rawArg).not.toBe(originalValue);
-      expect(rawArg instanceof Sequence ? rawArg.value[0] : undefined).toBe(originalLeaf);
+      expect(rawArg instanceof Sequence ? rawArg.items[0] : undefined).toBe(originalLeaf);
       expect(rawArg?.parent?.parent).toBe(rule);
       expect(originalValue.parent).toBe(originalArgs);
       expect(originalArgs.parent).toBe(rule);
@@ -2052,7 +2083,7 @@ describe('Call', () => {
         'echo',
         async function(this: { rawArgs: List }) {
           const value = this.rawArgs.value[0];
-          return any(isNode(value, N.Sequence) && value.value[0]?.valueOf() === 'red' ? 'ok' : 'bad');
+          return any(isNode(value, N.Sequence) && value.items[0]?.valueOf() === 'red' ? 'ok' : 'bad');
         },
         { params: [{ name: 'value', type: Sequence }] }
       )

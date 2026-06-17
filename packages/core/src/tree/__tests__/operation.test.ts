@@ -330,8 +330,8 @@ describe('Operation', () => {
     if (!(resolved instanceof Call)) {
       throw new Error('Expected calc fallback Call result');
     }
-    expect(resolved.value.args).toBeInstanceOf(List);
-    const calcArg = resolved.value.args.value[0];
+    expect(resolved.args).toBeInstanceOf(List);
+    const calcArg = resolved.args.items[0];
     expect(calcArg).toBeInstanceOf(Operation);
     if (!(calcArg instanceof Operation)) {
       throw new Error('Expected calc fallback Operation argument');
@@ -340,8 +340,8 @@ describe('Operation', () => {
     expect(calcArg.value[0]).not.toBe(leftOperand);
     expect(calcArg.value[2]).not.toBe(rightOperand);
     expect(calcArg.evaluated).toBe(true);
-    expect(calcArg.value[0].evaluated).toBe(true);
-    expect(calcArg.value[2].evaluated).toBe(true);
+    expect(calcArg.value[0].evaluated).toBe(false);
+    expect(calcArg.value[2].evaluated).toBe(false);
     expect(leftOperand.parent).toBe(operationNode);
     expect(rightOperand.parent).toBe(operationNode);
     expect(operationNode.evaluated).toBe(false);

@@ -147,7 +147,7 @@ describe('jess-parser (baseline)', () => {
     expect(isNode(imported, N.StyleImport)).toBe(true);
     if (isNode(imported, N.StyleImport)) {
       expect(imported.options.type).toBe('compose');
-      expect(imported.value.path.valueOf()).toBe('./theme.jess');
+      expect(imported.path.valueOf()).toBe('./theme.jess');
     }
   });
 
@@ -176,7 +176,7 @@ describe('jess-parser (baseline)', () => {
     const imported = rules?.value.find(n => isNode(n, N.JsImport));
     expect(isNode(imported, N.JsImport)).toBe(true);
     if (isNode(imported, N.JsImport)) {
-      expect(imported.value.path.valueOf()).toBe('./tokens.js');
+      expect(imported.path.valueOf()).toBe('./tokens.js');
       expect(imported.options.namespace).toBe('tokens');
     }
   });
@@ -191,8 +191,8 @@ describe('jess-parser (baseline)', () => {
     const imported = rules?.value.find(n => isNode(n, N.JsImport));
     expect(isNode(imported, N.JsImport)).toBe(true);
     if (isNode(imported, N.JsImport)) {
-      expect(imported.value.imports).toContain('primary');
-      expect(imported.value.imports).toContain('secondary');
+      expect(imported.imports).toContain('primary');
+      expect(imported.imports).toContain('secondary');
     }
   });
 
@@ -206,7 +206,7 @@ describe('jess-parser (baseline)', () => {
     const imported = rules?.value.find(n => isNode(n, N.JsImport));
     expect(isNode(imported, N.JsImport)).toBe(true);
     if (isNode(imported, N.JsImport)) {
-      expect(imported.value.imports).toContain('primary');
+      expect(imported.imports).toContain('primary');
     }
   });
 
@@ -221,7 +221,7 @@ describe('jess-parser (baseline)', () => {
     expect(isNode(imported, N.StyleImport)).toBe(true);
     if (isNode(imported, N.StyleImport)) {
       expect(imported.options.importOptions?.forward).toBe(true);
-      expect(imported.value.path.valueOf()).toBe('./theme.jess');
+      expect(imported.path.valueOf()).toBe('./theme.jess');
     }
   });
 
@@ -251,7 +251,7 @@ describe('jess-parser (baseline)', () => {
     const mixin = rules?.value.find(n => isNode(n, N.Mixin));
     expect(isNode(mixin, N.Mixin)).toBe(true);
     if (isNode(mixin, N.Mixin)) {
-      expect(mixin.value.guard).toBeDefined();
+      expect(mixin.guard).toBeDefined();
     }
   });
 

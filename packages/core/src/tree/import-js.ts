@@ -31,8 +31,21 @@ export type JsImportValue = {
 };
 
 export class JsImport extends Node<JsImportValue, JsImportOptions> {
-  constructor(value: JsImportValue, options?: JsImportOptions, location?: NodeLocation) {
+  static override childKeys = ['path'] as const;
+
+  readonly path: Quoted;
+  readonly imports: JsImportSpecifier[] | undefined;
+
+  constructor(
+    value: JsImportValue,
+    options?: JsImportOptions,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
     super(value, options, location);
+    this.path = value.path;
+    this.imports = value.imports;
+    this._treeContext = treeContext;
     // JS imports are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
@@ -40,9 +53,9 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
-    const { path } = this.value;
+    const { path } = this;
     const namespace = this._options?.namespace;
-    const imports = this.value.imports ?? (Array.isArray(this._options?.imports) ? this._options.imports : undefined);
+    const imports = this.imports ?? (Array.isArray(this._options?.imports) ? this._options.imports : undefined);
 
     if (this._options?.source === 'from' && imports?.length) {
       w.add('@-from ');

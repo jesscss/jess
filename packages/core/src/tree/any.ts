@@ -45,8 +45,19 @@ export interface Any<
 export class Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {
-  constructor(...args: ConstructorParameters<typeof Node<string, AnyOptions<Role>>>) {
-    super(...args);
+  static override childKeys = null;
+
+  readonly role: Role | undefined;
+
+  constructor(
+    value: string,
+    options?: AnyOptions<Role>,
+    location?: LocationInfo,
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.role = options?.role as Role | undefined;
     this.addFlag(F_STATIC);
   }
 
@@ -83,13 +94,8 @@ export class Any<
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
-      const otherValue = other.value;
-      const otherNumber = typeof otherValue === 'object' && otherValue !== null && 'number' in otherValue
-        ? otherValue.number
-        : undefined;
-      const otherUnit = typeof otherValue === 'object' && otherValue !== null && 'unit' in otherValue
-        ? otherValue.unit
-        : undefined;
+      const otherNumber = 'number' in other ? other.number : undefined;
+      const otherUnit = 'unit' in other ? other.unit : undefined;
       if (typeof otherNumber !== 'number') {
         return undefined;
       }
@@ -106,9 +112,11 @@ export class Any<
 // Custom any function that properly handles role narrowing
 export function any<Role extends AnyRole = AnyRole>(
   value: string,
-  options?: AnyOptions<Role>
+  options?: AnyOptions<Role>,
+  location?: LocationInfo,
+  treeContext?: Context['treeContext']
 ): Any<Role> {
-  return new Any(value, options);
+  return new Any(value, options, location, treeContext);
 }
 defineType(Any, 'Any');
 
@@ -132,10 +140,11 @@ export class Keyword extends Any<'keyword'> {
   constructor(
     value: string,
     options?: Omit<NodeOptions, 'role'>,
-    location?: LocationInfo
+    location?: LocationInfo,
+    treeContext?: Context['treeContext']
   ) {
     // Force role to 'keyword'
-    super(value, { ...options, role: 'keyword' }, location);
+    super(value, { ...options, role: 'keyword' }, location, treeContext);
   }
 }
 defineType(Keyword, 'Keyword');
@@ -146,7 +155,8 @@ defineType(Keyword, 'Keyword');
 export function keyword(
   value: string,
   options?: Omit<NodeOptions, 'role'>,
-  location?: LocationInfo
+  location?: LocationInfo,
+  treeContext?: Context['treeContext']
 ): Keyword {
-  return new Keyword(value, options, location);
+  return new Keyword(value, options, location, treeContext);
 }

@@ -8,6 +8,7 @@ import { Interpolated } from './interpolated.js';
 import { defineType, F_VISIBLE, type Node, type NodeLocation } from './node.js';
 import { Nil } from './nil.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import type { Context } from '../context.js';
 
 export type VarDeclarationOptions = DeclarationOptions & {
   paramVar?: boolean;
@@ -33,9 +34,10 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
   constructor(
     value: DeclarationValue<AnyRole>,
     options?: VarDeclarationOptions,
-    location?: NodeLocation
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, treeContext);
     this.removeFlag(F_VISIBLE);
     /** Parameter declarations are not like var declarations */
     if (options?.paramVar) {
@@ -51,10 +53,10 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     //
     // Special-case parameter vars (used in mixin signatures) that have no default value:
     // print `$name` (no `: <value>`).
-    if (this._options?.paramVar && this.value.value instanceof Nil) {
+    if (this._options?.paramVar && this.valueNode instanceof Nil) {
       w.add('$', this);
-      const normalizedName = String(this.value.name).replace(/\s+$/, '');
-      w.add(normalizedName, this.value.name);
+      const normalizedName = String(this.name).replace(/\s+$/, '');
+      w.add(normalizedName, this.name);
       return w.getSince(mark);
     }
 
@@ -73,7 +75,8 @@ defineType<DeclarationValue>(VarDeclaration, 'VarDeclaration', 'vardecl');
 export const vardecl = (
   value: DeclarationValue<AnyRole> | { name: string; value: Node; important?: Any<'flag'> },
   options?: VarDeclarationOptions,
-  location?: NodeLocation
+  location?: NodeLocation,
+  treeContext?: Context['treeContext']
 ) => {
   const { name } = value;
   const nameNode: DeclarationValue['name'] = typeof name === 'string'
@@ -81,11 +84,16 @@ export const vardecl = (
     : name instanceof Any
       ? new Any(name.value, { role: 'property' })
       : name instanceof Interpolated
-        ? new Interpolated(name.value, { ...name.options, role: 'property' }, name.location)
+        ? new Interpolated(
+          { source: name.source, replacements: name.replacements },
+          { ...name.options, role: 'property' },
+          name.location,
+          name.sourceRoot?._treeContext
+        )
         : name;
   const declarationValue: DeclarationValue = {
     ...value,
     name: nameNode
   };
-  return new VarDeclaration(declarationValue, options, location);
+  return new VarDeclaration(declarationValue, options, location, treeContext);
 };

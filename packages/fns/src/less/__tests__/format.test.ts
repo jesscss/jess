@@ -15,7 +15,7 @@ describe('format() / %()', () => {
     );
     expect(result).toBeInstanceOf(Quoted);
     expect((result as Quoted).valueOf()).toBe('/users/a%20b?name=x y%');
-    expect((result as Quoted).options.quote).toBe('\'');
+    expect((result as Quoted).quote).toBe('\'');
   });
 
   it('returns Any for non-quoted templates', async () => {

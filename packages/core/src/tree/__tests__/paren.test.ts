@@ -61,6 +61,14 @@ describe('Paren', () => {
     expect(paren(any('foo')).toTrimmedString()).toBe('(foo)');
   });
 
+  it('stores the wrapped child on a constructor-owned direct field', () => {
+    const child = any('foo');
+    const node = paren(child);
+
+    expect(node.node).toBe(child);
+    expect(Paren.childKeys).toEqual(['node']);
+  });
+
   it('writes empty paren syntax without writer readback', () => {
     const writer = new CountingWriter();
     const escapedWriter = new CountingWriter();

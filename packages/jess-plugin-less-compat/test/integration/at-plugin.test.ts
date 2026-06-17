@@ -137,7 +137,7 @@ describe('@plugin directive processing', () => {
       fix: 'Use "@use / @-use" instead.',
       note: 'In .less files compiled through the Less CLI compatibility path, migrate script integration to @use / @-use.'
     });
-    expect(Reflect.get(pluginDirective, 'visible')).toBe(false);
+    expect((pluginDirective as unknown as { visible?: unknown }).visible).toBe(false);
   });
 
   it('does not fall back to Node execution for local file-based @plugin when plugin-js is unavailable', async () => {
@@ -223,7 +223,7 @@ describe('@plugin directive processing', () => {
       throw new Error('Expected parsed @plugin directive');
     }
     expect(pluginInstalled).toBe(true);
-    expect(Reflect.get(pluginDirective, 'visible')).toBe(false);
+    expect((pluginDirective as unknown as { visible?: unknown }).visible).toBe(false);
   });
 
   it('should process @plugin before other nodes (before-eval behavior)', () => {

@@ -24,8 +24,8 @@ const format = defineFunction(
     }
     result = result.replace(/%%/g, '%');
 
-    if (template instanceof Quoted && !template.options.escaped) {
-      return new Quoted(result, { quote: template.options.quote, escaped: false });
+    if (template instanceof Quoted && !template.escaped) {
+      return new Quoted(result, { quote: template.quote, escaped: false });
     }
     return new Any(result, { role: 'keyword' });
   },

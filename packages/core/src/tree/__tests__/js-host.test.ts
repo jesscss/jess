@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { Context } from '../../context.js';
+import { Context, TreeContext } from '../../context.js';
 import { JsArray, JsFunction, JsObject } from '../index.js';
 
 describe('JS host wrapper nodes', () => {
+  it('preserves parser tree context on JS function construction', () => {
+    const treeContext = new TreeContext();
+    const node = new JsFunction({ name: 'unit', fn: () => 'ok' }, undefined, undefined, treeContext);
+
+    expect(node._treeContext).toBe(treeContext);
+  });
+
   it('resolves JS functions without eval stamping host values', () => {
     const context = new Context();
     const node = new JsFunction({ name: 'unit', fn: () => 'ok' });

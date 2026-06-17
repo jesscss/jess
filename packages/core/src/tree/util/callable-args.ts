@@ -30,9 +30,15 @@ export async function evaluateCallableArgs({
         const evald = await arg.eval(context);
         if (evald.type === 'Rest') {
           const restValue = evald.value;
-          if (isNode(restValue, N.Sequence) || isNode(restValue, N.List)) {
-            for (let j = 0; j < restValue.value.length; j++) {
-              evaluatedArgs.push(restValue.value[j]!);
+          if (isNode(restValue, N.List)) {
+            for (let j = 0; j < restValue.items.length; j++) {
+              evaluatedArgs.push(restValue.items[j]!);
+            }
+            continue;
+          }
+          if (isNode(restValue, N.Sequence)) {
+            for (let j = 0; j < restValue.items.length; j++) {
+              evaluatedArgs.push(restValue.items[j]!);
             }
             continue;
           }

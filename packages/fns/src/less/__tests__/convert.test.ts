@@ -8,12 +8,12 @@ describe('convert()', () => {
     const ms = convert(new Dimension({ number: 2, unit: 's' }), new Any('ms', { role: 'keyword' }));
     const deg = convert(new Dimension({ number: 1, unit: 'turn' }), new Quoted('deg'));
 
-    expect(cm.data.number).toBe(100);
-    expect(cm.data.unit).toBe('cm');
-    expect(ms.data.number).toBe(2000);
-    expect(ms.data.unit).toBe('ms');
-    expect(deg.data.number).toBe(360);
-    expect(deg.data.unit).toBe('deg');
+    expect(cm.number).toBe(100);
+    expect(cm.unit).toBe('cm');
+    expect(ms.number).toBe(2000);
+    expect(ms.unit).toBe('ms');
+    expect(deg.number).toBe(360);
+    expect(deg.unit).toBe('deg');
   });
 
   it('returns original value for missing/same/incompatible units', () => {

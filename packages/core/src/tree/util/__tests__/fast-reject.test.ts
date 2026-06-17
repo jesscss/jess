@@ -125,11 +125,12 @@ describe('Fast-reject in selectorMatch', () => {
       selector: el('.alpha'),
       rules: rules([])
     });
-    const clonedParent = parent.clone(true) as typeof parent;
-    clonedParent.selector.keySetLibrary = context.selectorBits;
-
     const patched = el('.beta');
     patched.keySetLibrary = context.selectorBits;
+    const clonedParent = ruleset({
+      selector: patched,
+      rules: parent.rules
+    });
 
     const find = sel([
       amp({ selectorContainer: clonedParent.value }),
@@ -154,8 +155,6 @@ describe('Fast-reject in selectorMatch', () => {
     const findList = sellist([find]);
     findList.keySetLibrary = context.selectorBits;
 
-    clonedParent.value.selector = patched;
-
     expect(find.compare(target, context)).toBe(0);
     expect(findList.compare(target, context)).toBe(0);
   });
@@ -167,11 +166,12 @@ describe('Fast-reject in selectorMatch', () => {
       selector: el('.alpha'),
       rules: rules([])
     });
-    const clonedParent = parent.clone(true) as typeof parent;
-    clonedParent.selector.keySetLibrary = contextA.selectorBits;
-
     const patched = el('.beta');
     patched.keySetLibrary = contextA.selectorBits;
+    const clonedParent = ruleset({
+      selector: patched,
+      rules: parent.rules
+    });
 
     const find = sel([
       amp({ selectorContainer: clonedParent.value }),
@@ -192,8 +192,6 @@ describe('Fast-reject in selectorMatch', () => {
         child.keySetLibrary = contextA.selectorBits;
       }
     }
-
-    clonedParent.value.selector = patched;
 
     expect(() => find.compare(target, contextA)).not.toThrow();
     expect(find.compare(target, contextA)).toBe(0);

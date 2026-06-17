@@ -21,14 +21,24 @@ export interface Expression extends Node<Node> {
 }
 
 export class Expression extends Node<Node> {
-  constructor(value: Node, options?: NodeOptions, location?: NodeLocation) {
+  static override childKeys = ['node'] as const;
+
+  readonly node: Node;
+
+  constructor(
+    value: Node,
+    options?: NodeOptions,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
     super(value, options, location);
+    this._treeContext = treeContext;
+    this.node = value;
     this.addFlag(F_NON_STATIC);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    const { value } = this;
-    const out = value.eval(context);
+    const out = this.node.eval(context);
     /** @todo - Cast as selector if the context is within a selector */
     if (isThenable(out)) {
       return out as Promise<Node>;
@@ -47,13 +57,13 @@ export class Expression extends Node<Node> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (this.value instanceof List || this.value instanceof Sequence) {
+    if (this.node instanceof List || this.node instanceof Sequence) {
       return isRenderBuffer(bufferOrOptions)
-        ? this.value.render(context, bufferOrOptions, options)
-        : this.value.render(context, bufferOrOptions);
+        ? this.node.render(context, bufferOrOptions, options)
+        : this.node.render(context, bufferOrOptions);
     }
-    if (!this.value.hasFlag(F_MAY_ASYNC)) {
-      const node = this.value.eval(context);
+    if (!this.node.hasFlag(F_MAY_ASYNC)) {
+      const node = this.node.eval(context);
       if (!(node instanceof Node)) {
         throw new TypeError('Expected expression value to evaluate to a node');
       }
@@ -76,7 +86,7 @@ export class Expression extends Node<Node> {
     const w = options.writer;
     w.add('$', this);
     w.add('(');
-    this.value.writeSyntax(options);
+    this.node.writeSyntax(options);
     w.add(')');
   }
 
@@ -93,5 +103,6 @@ type Params = ConstructorParameters<typeof Expression>;
 export const expr = defineType(Expression, 'Expression', 'expr') as (
   value: Params[0],
   options?: Params[1],
-  location?: Params[2]
+  location?: Params[2],
+  treeContext?: Params[3]
 ) => Expression;

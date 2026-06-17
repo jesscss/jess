@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction, style } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction, style, Mixin, VarDeclaration } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { lookupScopeFrameCallable, resolveFrameCell } from '../scope-frame.js';
 import { getRulesEntryTraversalState } from '../util/lookup-utils.js';
@@ -302,8 +302,8 @@ describe('Mixin', () => {
       expect(secondDecl?.parent).toBe(mixinBody);
       expect(sourceDecl.parent).toBe(mixinBody);
       expect(sourceValue.parent).toBe(sourceDecl);
-      expect(Reflect.get(firstDecl!, 'value').value).toBe(sourceValue);
-      expect(Reflect.get(secondDecl!, 'value').value).toBe(sourceValue);
+      expect((firstDecl! as VarDeclaration).valueNode).toBe(sourceValue);
+      expect((secondDecl! as VarDeclaration).valueNode).toBe(sourceValue);
     });
 
     it('derives ordinary mixin output wrappers without cloning the source Rules root', async () => {
@@ -1257,7 +1257,7 @@ describe('Mixin', () => {
           decl({ name: 'sub-scope-only', value: ref({ key: 'subScopeOnly' }, { type: 'variable' }) })
         ])
       });
-      const mixinBody = mixinNoParam.value.rules;
+      const mixinBody = mixinNoParam.rules;
 
       const callerRules = rules([
         vardecl({ name: 'parameterDefault', value: any('inside') }),
@@ -1842,7 +1842,7 @@ describe('Mixin', () => {
       const css = await renderNodeToString(root, context);
       expect(css).toBe('');
       expect(defaultValue.parent).toBe(param);
-      expect(param.parent?.parent).toBe(root.value[0]);
+      expect(param.parent?.parent).toBe(root.rules[0]);
     });
 
     it('does not clone source-free scalar leaves inside copied positional param containers', async () => {
@@ -3681,7 +3681,7 @@ describe('Mixin', () => {
       expect(found).toHaveLength(1);
       expect(found?.[0]?.type).toBe('Mixin');
       const mixinHit = found?.[0];
-      expect(mixinHit?.type === 'Mixin' ? mixinHit.value.name?.valueOf() : undefined).toBe('.colors');
+      expect(mixinHit instanceof Mixin ? mixinHit.name?.valueOf() : undefined).toBe('.colors');
     });
 
     it('namespace fast path: type=mixin misses ignore callable ruleset starts', () => {
@@ -5904,7 +5904,7 @@ describe('Mixin', () => {
 
       expect(prepared).not.toBe(node);
       expect(prepared.sourceNode).toBe(prepared);
-      expect(prepared.value.name.valueOf()).toBe('.inner-foo');
+      expect(prepared.name.valueOf()).toBe('.inner-foo');
       expect(dynamicMixinName.parent).toBe(node);
       expect(params.parent).toBe(node);
       expect(body.parent).toBe(node);

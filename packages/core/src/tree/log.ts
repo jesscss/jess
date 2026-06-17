@@ -25,15 +25,24 @@ export interface Log extends Node<LogValue, NodeOptions> {
  * These are compile-time diagnostic directives that should not appear in CSS output.
  */
 export class Log extends Node<LogValue, NodeOptions> {
+  static override childKeys = ['level', 'message'] as const;
+
   override allowRoot = true;
   override allowRuleRoot = true;
+
+  readonly level: LogLevel;
+  readonly message: Node;
 
   constructor(
     value: LogValue,
     options?: NodeOptions,
-    location?: LocationInfo
+    location?: LocationInfo,
+    treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
+    this.level = value.level;
+    this.message = value.message;
+    this._treeContext = treeContext;
     // Log nodes should not be visible (they serialize to empty strings)
     this.removeFlag(F_VISIBLE);
   }
@@ -47,7 +56,7 @@ export class Log extends Node<LogValue, NodeOptions> {
   override writeSyntax(_options: FinalPrintOptions): void {}
 
   private runLogEffect(context: Context): MaybePromise<void> {
-    const messageResult = this.value.message.eval(context);
+    const messageResult = this.message.eval(context);
     if (isThenable(messageResult)) {
       return messageResult.then((evaluatedMessage) => {
         this._logMessage(evaluatedMessage);
@@ -75,7 +84,7 @@ export class Log extends Node<LogValue, NodeOptions> {
 
   private _logMessage(message: Node): void {
     const messageStr = String(message);
-    const { level } = this.value;
+    const { level } = this;
 
     switch (level) {
       case 'debug':

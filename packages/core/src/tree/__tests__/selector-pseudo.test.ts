@@ -39,6 +39,13 @@ describe('PseudoSelector', () => {
     expect(pseudo({ name: ':hover' }).toTrimmedString()).toBe(':hover');
   });
 
+  it('preserves parser tree context on construction', () => {
+    const treeContext = new TreeContext();
+    const node = pseudo({ name: ':hover' }, undefined, undefined, treeContext);
+
+    expect(node._treeContext).toBe(treeContext);
+  });
+
   it('renders compound selector arguments without sequence spacing', () => {
     expect(pseudo({
       name: ':host',
@@ -213,7 +220,7 @@ describe('PseudoSelector', () => {
       name: ':is',
       arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
     });
-    const sourceArg = pseudoNode.value.arg;
+    const sourceArg = pseudoNode.arg;
     const resolved = await pseudoNode.resolve(context);
 
     expect(resolved.render(context)).toBe(':is(.foo, .bar)');
@@ -235,7 +242,7 @@ describe('PseudoSelector', () => {
       arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
     });
     pseudoNode.generated = true;
-    const sourceArg = pseudoNode.value.arg;
+    const sourceArg = pseudoNode.arg;
     const resolved = await pseudoNode.resolve(context);
 
     expect(resolved).toBeInstanceOf(PseudoSelector);
@@ -260,7 +267,7 @@ describe('PseudoSelector', () => {
       arg: ref({ key: 'capture-selector' }, { type: 'variable' })
     });
     pseudoNode.generated = true;
-    const sourceArg = pseudoNode.value.arg;
+    const sourceArg = pseudoNode.arg;
     const resolved = await pseudoNode.resolve(context);
 
     expect(resolved).toBeInstanceOf(PseudoSelector);
@@ -338,7 +345,7 @@ describe('PseudoSelector', () => {
       arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
     });
     pseudoNode.generated = true;
-    const sourceArg = pseudoNode.value.arg;
+    const sourceArg = pseudoNode.arg;
     const resolved = await pseudoNode.resolve(context);
 
     expect(resolved).toBeInstanceOf(PseudoSelector);

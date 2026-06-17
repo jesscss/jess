@@ -18,7 +18,7 @@ const keys = defineFunction(
     for (const node of map.value) {
       if (isNode(node, N.Declaration)) {
         // The key is the declaration's name - convert to a Node
-        const name = node.value.name;
+        const name = node.name;
         // If it's already a Node (Any or Interpolated), use it directly
         // Otherwise wrap it in a Quoted node
         if (name instanceof Any || (name as any).type) {

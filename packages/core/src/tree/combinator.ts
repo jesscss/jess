@@ -12,8 +12,16 @@ export interface Combinator extends Selector<Combinators> {
 }
 
 export class Combinator extends Selector<Combinators> {
-  constructor(...args: ConstructorParameters<typeof Selector<Combinators>>) {
-    super(...args);
+  static override childKeys = null;
+
+  constructor(
+    value: Combinators,
+    options?: ConstructorParameters<typeof Selector<Combinators>>[1],
+    location?: ConstructorParameters<typeof Selector<Combinators>>[2],
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
     this.addFlag(F_STATIC);
   }
 

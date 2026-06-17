@@ -34,6 +34,7 @@ import { processExtends } from './util/extend-roots.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
+import type { Declaration } from './declaration.js';
 import { List } from './list.js';
 import {
   indent,
@@ -44,6 +45,7 @@ import {
 } from './util/serialize-helper.js';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
+import type { StyleImport } from './import-style.js';
 import {
   assignScopeFrameVariable,
   buildScopeFrame,
@@ -75,6 +77,7 @@ import { isIndexedRuleChild } from './util/callable-surface.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
   findAnyDeclarationOccurrence,
+  type DirectDeclarationOccurrence,
   findPropertyDeclarationAssignmentLookup,
   findPropertyDeclarationOccurrence,
   findVariableDeclarationAssignmentLookup,
@@ -83,7 +86,6 @@ import {
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
-type StyleImportRegistrationNode = Node<{ path: unknown }>;
 type PathResolutionError = Error & { _isPathResolutionError?: boolean };
 type FlagLikeNode = { hasFlag(flag: number): boolean };
 type PendingPrepHandler = (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean;
@@ -121,13 +123,24 @@ type CallableRulesetPathResult = {
 const DEFINITE_MIXIN_NAMESPACE_MISS = Symbol('definite-mixin-namespace-miss');
 type CallableNamespaceFastResult = CallableRulesetPathResult | typeof DEFINITE_MIXIN_NAMESPACE_MISS | undefined;
 
-function isStyleImportRegistrationNode(node: Node): node is StyleImportRegistrationNode {
+function syncDeclarationValueNode(declaration: Declaration, value: Node): void {
+  declaration.value.value = value;
+  Object.defineProperty(declaration, 'valueNode', {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value
+  });
+  declaration.adopt(value);
+}
+
+function isStyleImportRegistrationNode(node: Node): node is StyleImport {
   return node.type === 'StyleImport';
 }
 
 function isImportAtRule(node: Node): node is AtRule {
   return isNode(node, N.AtRule)
-    && String(node.value.name.valueOf?.() ?? node.value.name ?? '').trim() === '@import';
+    && String(node.name.valueOf?.() ?? node.name ?? '').trim() === '@import';
 }
 
 function keysStartWith(keys: readonly string[], path: readonly string[]): boolean {
@@ -187,7 +200,7 @@ function splitStaticCallablePathKey(key: string): string[] | undefined {
 }
 
 function getCallableRulesetKeyPaths(ruleset: Ruleset): string[][] {
-  const selector = ruleset.value.selector;
+  const selector = ruleset.selector;
   if (isNode(selector, N.Nil)) {
     return [];
   }
@@ -206,17 +219,7 @@ function getCallableRulesetKeyPaths(ruleset: Ruleset): string[][] {
 }
 
 function isSelectorLikeNode(node: unknown): node is Selector {
-  return isNode(
-    node,
-    N.Selector
-    | N.SelectorList
-    | N.ComplexSelector
-    | N.CompoundSelector
-    | N.BasicSelector
-    | N.InterpolatedSelector
-    | N.Ampersand
-    | N.PseudoSelector
-  );
+  return isNode(node, N.Selector) || (isNode(node) && node.type === 'InterpolatedSelector');
 }
 
 function renderRulesToString(
@@ -330,7 +333,7 @@ function renderRulesToPreparedString(
   prepared: FinalPrintOptions,
   directSourceRender: boolean
 ): MaybePromise<string> {
-  if (directSourceRender && node.type === 'Rules') {
+  if (directSourceRender && isNode(node, N.Rules)) {
     if (
       (node === context.root || source === context.root)
       && (context.currentCharset || context.topImports?.length)
@@ -344,12 +347,12 @@ function renderRulesToPreparedString(
       : finish(rendered);
   }
   if (
-    node.type === 'Rules'
+    isNode(node, N.Rules)
     && (node === context.root || source === context.root)
   ) {
     return node.toString(prepared);
   }
-  return node.type === 'Rules'
+  return isNode(node, N.Rules)
     ? node.toRenderString(prepared)
     : node.toTrimmedString(prepared);
 }
@@ -394,7 +397,7 @@ function childRulesOf(node: Node): Rules | undefined {
     return node;
   }
   if (isNode(node, N.Ruleset) || isNode(node, N.AtRule) || isNode(node, N.Mixin)) {
-    return node.value.rules;
+    return node.rules;
   }
   return undefined;
 }
@@ -404,13 +407,13 @@ function childCallableRulesOf(node: Node): Rules | undefined {
     return node;
   }
   if (isNode(node, N.Ruleset) || isNode(node, N.AtRule)) {
-    return node.value.rules;
+    return node.rules;
   }
   return undefined;
 }
 
 function rulesMayContainExactCallableSurface(rules: Rules): boolean {
-  const value = rules.value;
+  const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
     if (isNode(node, N.Mixin | N.Ruleset | N.AtRule | N.Rules)) {
@@ -421,7 +424,7 @@ function rulesMayContainExactCallableSurface(rules: Rules): boolean {
 }
 
 function rulesMayContainExactMixinSurface(rules: Rules): boolean {
-  const value = rules.value;
+  const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
     if (isNode(node, N.Mixin)) {
@@ -436,7 +439,7 @@ function rulesMayContainExactMixinSurface(rules: Rules): boolean {
 }
 
 function rulesMayContainExactRulesetSurface(rules: Rules): boolean {
-  const value = rules.value;
+  const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
     if (isNode(node, N.Ruleset)) {
@@ -451,7 +454,7 @@ function rulesMayContainExactRulesetSurface(rules: Rules): boolean {
 }
 
 function rulesMayContainDeclarationSurface(rules: Rules): boolean {
-  const value = rules.value;
+  const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
     if (isNode(node, N.Declaration) && !isNode(node, N.VarDeclaration) && !node.options?.setDefined) {
@@ -466,7 +469,7 @@ function rulesMayContainDeclarationSurface(rules: Rules): boolean {
 }
 
 function rulesMayContainVarDeclarationSurface(rules: Rules): boolean {
-  const value = rules.value;
+  const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
     if (isNode(node, N.VarDeclaration) && !node.options?.setDefined) {
@@ -484,7 +487,7 @@ function rulesMayContainExtends(rules: Rules): boolean {
   if (rules._hasExtends) {
     return true;
   }
-  const value = rules.value;
+  const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
     if (node.type === 'Extend' || node.type === 'ExtendList') {
@@ -506,7 +509,7 @@ function rulesMayContainReferenceImports(rules: Rules): boolean {
   ) {
     return true;
   }
-  const value = rules.value;
+  const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
     if (node.type === 'StyleImport') {
@@ -730,6 +733,10 @@ function collectCallableBucketResults(
  * ]
  */
 export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
+  static override childKeys = ['rules'] as const;
+
+  readonly rules: Node[];
+
   override allowRuleRoot = true;
   override allowRoot = true;
 
@@ -787,7 +794,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return newRules;
   }
 
-  derive(value: Node[] = [...this.value]): Rules {
+  derive(value: Node[] = [...this.rules]): Rules {
     const sourceLocation = this.location.length === 6 ? this.location : undefined;
     const derived = Reflect.construct(
       this.constructor,
@@ -922,7 +929,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private collectScopeFramePendingDeclarationNames(): VarDeclaration[] | undefined {
     let pendingDeclarationNames: VarDeclaration[] | undefined;
-    const value = this.value;
+    const value = this.rules;
     for (let i = 0; i < value.length; i++) {
       const node = value[i]!;
       if (isNode(node, N.VarDeclaration) && !this._hasStaticName(node)) {
@@ -934,7 +941,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private prepareScopeFrameDeclarationIndex(): VarDeclaration[] | undefined {
     const varsByName = this.varsByName = new Map();
-    const value = this.value;
+    const value = this.rules;
     let pendingDeclarationNames: VarDeclaration[] | undefined;
     this._hasReferenceImports = (
       this._hasReferenceImports
@@ -968,7 +975,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         (pendingDeclarationNames ??= []).push(node);
         continue;
       }
-      const name = node.value.name.valueOf();
+      const name = node.name.valueOf();
       let bucket = varsByName.get(name);
       if (!bucket) {
         varsByName.set(name, bucket = []);
@@ -998,7 +1005,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (this.directChildRuleEntries !== undefined) {
       return false;
     }
-    const value = this.value;
+    const value = this.rules;
     for (let i = 0; i < value.length; i++) {
       const child = childCallableRulesOf(value[i]!);
       const childHasSurface = includeRulesets
@@ -1257,11 +1264,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     lookupKey: string,
     bucket: CallableLookupEntry[]
   ): void {
-    const value = rules.value;
+    const value = rules.rules;
     for (let i = 0; i < value.length; i++) {
       const node = value[i]!;
       if (isNode(node, N.Mixin)) {
-        const name = node.value.name;
+        const name = node.name;
         if (name && name.type !== 'Interpolated') {
           this.addCallableEntry(lookupKey, String(name.valueOf()), node, [], bucket);
         }
@@ -1270,7 +1277,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!isNode(node, N.Ruleset)) {
         continue;
       }
-      let selector = node.value.selector;
+      let selector = node.selector;
       if (isNode(selector, N.Nil)) {
         continue;
       }
@@ -1305,7 +1312,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       if (keys.length > 0 && ownSelector && !isNode(ownSelector, N.Nil)) {
         const parentSelector = isNode(node.parent?.parent, N.Ruleset)
-          ? (node.parent.parent as Ruleset).value.selector
+          ? (node.parent.parent as Ruleset).selector
           : undefined;
         const parentKeys = parentSelector && !isNode(parentSelector, N.Nil)
           ? getOrderedSelectorKeys(parentSelector)
@@ -1388,7 +1395,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return this.directChildRuleEntries ?? undefined;
     }
     let out: Array<RulesEntryLike> | undefined;
-    const value = this.value;
+    const value = this.rules;
     for (let i = 0; i < value.length; i++) {
       const child = childCallableRulesOf(value[i]!);
       if (!child) {
@@ -1421,7 +1428,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return this.directDeclarationChildEntries ?? undefined;
     }
     let out: Array<RulesEntryLike> | undefined;
-    const value = this.value;
+    const value = this.rules;
     for (let i = 0; i < value.length; i++) {
       const child = childRulesOf(value[i]!);
       if (!child) {
@@ -1535,8 +1542,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         visited.add(scope);
       }
 
-      for (let i = scope.value.length - 1; i >= 0; i--) {
-        const candidate = scope.value[i]!;
+      for (let i = scope.rules.length - 1; i >= 0; i--) {
+        const candidate = scope.rules[i]!;
         if (!isNode(candidate, N.Ruleset)) {
           continue;
         }
@@ -1630,8 +1637,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         visited.add(scope);
       }
 
-      for (let i = scope.value.length - 1; i >= 0; i--) {
-        const candidate = scope.value[i]!;
+      for (let i = scope.rules.length - 1; i >= 0; i--) {
+        const candidate = scope.rules[i]!;
         if (!isNode(candidate, N.Ruleset)) {
           continue;
         }
@@ -1798,13 +1805,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (!includeRulesets) {
             return undefined;
           }
-          nestedScope = match.value.rules;
+          nestedScope = match.rules;
         } else if (isNode(match, N.Mixin)) {
           if (!mixinHasNoRequiredParams(match)) {
             sawDefiniteMiss = true;
             continue;
           }
-          nestedScope = match.value.rules;
+          nestedScope = match.rules;
         } else {
           return undefined;
         }
@@ -1854,7 +1861,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const DEFINITE_MISS = Symbol('definite-ruleset-namespace-miss');
     type RulesetNamespaceFastResult = MixinEntry[] | typeof DEFINITE_MISS | undefined;
     const selectorNeedsLegacyFallback = (ruleset: Ruleset): boolean => {
-      return blocksAmbientMixinOutputLookup(ruleset.value.rules);
+      return blocksAmbientMixinOutputLookup(ruleset.rules);
     };
 
     const walk = (
@@ -1935,11 +1942,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             includeRulesets: options.terminalMixinOnly !== true,
             searchParents: false
           };
-          const simpleCallableMatches = ruleset.value.rules.findMixinsFast(segment, simpleLookupOptions);
+          const simpleCallableMatches = ruleset.rules.findMixinsFast(segment, simpleLookupOptions);
           if (simpleCallableMatches.length > 0) {
             resolved = simpleCallableMatches;
           } else if (options.terminalMixinOnly !== true) {
-            const simpleCallableRulesets = ruleset.value.rules.findVisibleExactCallableRulesetPath([segment], {
+            const simpleCallableRulesets = ruleset.rules.findVisibleExactCallableRulesetPath([segment], {
               hasTarget: options.hasTarget,
               local: options.local,
               searchParents: false
@@ -1952,14 +1959,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             searchParents: false
           };
           const remainderStart = consumed.length;
-          resolved = ruleset.value.rules.findMixinNamespacePathFast(
+          resolved = ruleset.rules.findMixinNamespacePathFast(
             path,
             undefined,
             nestedOptions,
             remainderStart
           );
           if (!resolved?.length) {
-            resolved = ruleset.value.rules.findMixin(
+            resolved = ruleset.rules.findMixin(
               collectKeyRemainder(path, remainderStart),
               undefined,
               nestedOptions
@@ -2014,16 +2021,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       };
       let resolved: MixinEntry[] | undefined;
       if (remainderLength === 1) {
-        resolved = ruleset.value.rules.findMixin(keys[consumed.length]!, undefined, nestedOptions);
+        resolved = ruleset.rules.findMixin(keys[consumed.length]!, undefined, nestedOptions);
       } else {
-        resolved = ruleset.value.rules.findMixinNamespacePathFast(
+        resolved = ruleset.rules.findMixinNamespacePathFast(
           keys,
           undefined,
           nestedOptions,
           consumed.length
         );
         if (!resolved?.length) {
-          resolved = ruleset.value.rules.findMixin(
+          resolved = ruleset.rules.findMixin(
             collectKeyRemainder(keys, consumed.length),
             undefined,
             nestedOptions
@@ -2062,9 +2069,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       const firstRemainder = keys[1]!;
       const firstRemainderIncludesRulesets = keys.length === 2 && options.terminalMixinOnly !== true;
-      const childFrame = entry.value.rules._scopeFrame;
+      const entryRules = entry.rules;
+      const childFrame = entryRules._scopeFrame;
       if (childFrame && !options.hasTarget && !options.local) {
-        entry.value.rules.prepareCallableLookupFrame(childFrame, firstRemainder, firstRemainderIncludesRulesets);
+        entryRules.prepareCallableLookupFrame(childFrame, firstRemainder, firstRemainderIncludesRulesets);
         const firstRemainderHit = lookupScopeFrameCallable(childFrame, firstRemainder, {
           includeRulesets: firstRemainderIncludesRulesets,
           searchParents: false
@@ -2080,12 +2088,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let nested: MixinEntry[] | undefined;
       if (keys.length === 2) {
         remainder ??= keys[1]!;
-        nested = entry.value.rules.findMixin(remainder, undefined, nestedOptions);
+        nested = entryRules.findMixin(remainder, undefined, nestedOptions);
       } else {
-        nested = entry.value.rules.findMixinNamespacePathFast(keys, undefined, nestedOptions, 1);
+        nested = entryRules.findMixinNamespacePathFast(keys, undefined, nestedOptions, 1);
         if (!nested?.length) {
           remainder ??= collectKeyRemainder(keys, 1);
-          nested = entry.value.rules.findMixin(
+          nested = entryRules.findMixin(
             remainder,
             undefined,
             nestedOptions
@@ -2429,7 +2437,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ctx.charsetEmitted = true;
       }
       if (ctx?.topImports?.length) {
-        for (const node of this.value) {
+        for (const node of this.rules) {
           const leadingTrivia = consumeLeadingTrivia(node, options);
           if (leadingTrivia.trim()) {
             w.add(normalizeIndent(leadingTrivia, ''), node);
@@ -2445,7 +2453,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return isNode(node, N.Comment) && node.visible;
       };
       if (ctx?.topImports?.length) {
-        for (const node of this.value) {
+        for (const node of this.rules) {
           if (!isCommentLike(node)) {
             break;
           }
@@ -2463,11 +2471,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (ctx?.topImports?.length) {
         for (const importRule of ctx.topImports) {
           if (isNode(importRule, N.AtRule)) {
-            const importPrelude = importRule.value.prelude;
+            const importPrelude = importRule.prelude;
             if (importPrelude && String(importPrelude.valueOf?.() ?? '').includes('$')) {
               const maybePrelude = importPrelude.eval(ctx);
               if (!isThenable(maybePrelude)) {
-                importRule.value.prelude = maybePrelude as Node;
+                importRule.prelude = maybePrelude as Node;
+                importRule.adopt(importRule.prelude);
               }
             }
           }
@@ -2534,6 +2543,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Merge with existing options to preserve rulesVisibility
     const mergedOptions = { ...options, rulesVisibility };
     super(value ?? [], mergedOptions, location);
+    this.rules = value;
     this._sourceRoot = this;
     this._treeContext = treeContext;
   }
@@ -2603,14 +2613,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!isNode(node, N.Rules)) {
         return false;
       }
-      if (node.value.length !== 1) {
+      if (node.rules.length !== 1) {
         return false;
       }
-      const only = node.value[0]!;
-      return isNode(only, N.Any) && only.options.role === 'any';
+      const only = node.rules[0]!;
+      return isNode(only, N.Any) && only.role === 'any';
     };
     const isBlockContainer = (node: Node): node is Ruleset | AtRule => {
-      return isNode(node, N.Ruleset) || (isNode(node, N.AtRule) && Boolean(node.value.rules));
+      return isNode(node, N.Ruleset) || (isNode(node, N.AtRule) && Boolean(node.rules));
     };
 
     let emittedCount = 0;
@@ -2711,8 +2721,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Rules nodes inside Rules nodes are at the same level
       if (isChildRules) {
         let hasRenderableChild = false;
-        for (let i = 0; i < n.value.length; i++) {
-          const child = n.value[i]!;
+        for (let i = 0; i < n.rules.length; i++) {
+          const child = n.rules[i]!;
           if (
             child.visible
             || child.fullRender
@@ -2923,7 +2933,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   flatRules(visibleOnly: boolean = false) {
     const finalRules: Node[] = [];
     const iterateRules = (rules: Rules) => {
-      for (let n of rules.value) {
+      for (let n of rules.rules) {
         if (isNode(n, N.Rules)) {
           iterateRules(n);
           continue;
@@ -2939,8 +2949,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   visibleRules() {
     const out: Node[] = [];
-    for (let i = 0; i < this.value.length; i++) {
-      const node = this.value[i]!;
+    for (let i = 0; i < this.rules.length; i++) {
+      const node = this.rules[i]!;
       if (node.visible) {
         out.push(node);
       }
@@ -2949,8 +2959,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   hasVisibleRules(): boolean {
-    for (let i = 0; i < this.value.length; i++) {
-      if (this.value[i]!.visible) {
+    for (let i = 0; i < this.rules.length; i++) {
+      if (this.rules[i]!.visible) {
         return true;
       }
     }
@@ -2966,9 +2976,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   toObject(convertToPrimitives: boolean = true): Record<string, string | number | boolean | Node> {
     let output = new Map<string, boolean | string | number | Node>();
     const iterateRules = (rules: Rules) => {
-      for (let n of rules.value) {
+      for (let n of rules.rules) {
         if (isNode(n, N.Declaration)) {
-          let { name, value, important } = n.value;
+          let { value } = n.value;
+          let { important } = n;
+          let { name } = n;
           if (convertToPrimitives) {
             let primitive = value.valueOf();
             let outputValue = important ? `${primitive} ${important}` : primitive;
@@ -2991,18 +3003,27 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   registerNode(node: Node, options?: Record<string, any>, context?: Context) {
     this.lookupVersion++;
-    if (isNode(node, N.Declaration | N.VarDeclaration)) {
+    if (isNode(node, N.Declaration)) {
       if (this._hasStaticName(node)) {
-        this.bumpDeclarationLookupVersion(String(node.value.name.valueOf()));
+        this.bumpDeclarationLookupVersion(String(node.name.valueOf()));
+      } else {
+        this.bumpDeclarationLookupVersion();
+      }
+    } else if (isNode(node, N.VarDeclaration)) {
+      if (this._hasStaticName(node)) {
+        this.bumpDeclarationLookupVersion(String(node.name.valueOf()));
       } else {
         this.bumpDeclarationLookupVersion();
       }
     }
     const directChildRules = childCallableRulesOf(node);
+    const isCallableLookupNode = isNode(node, N.Mixin)
+      || isNode(node, N.Ruleset)
+      || isNode(node, N.Rules);
     const affectsCallableLookup = (
-      isNode(node, N.Mixin | N.Ruleset | N.Rules)
+      isCallableLookupNode
       || Boolean(directChildRules && !isNode(node, N.Rules))
-      || node.type === 'StyleImport'
+      || isStyleImportRegistrationNode(node)
     );
     const rebuildCallableCache = affectsCallableLookup && (this.callableLookupCache !== undefined || this._scopeFrame !== undefined);
     if (affectsCallableLookup) {
@@ -3093,9 +3114,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        * older non-variable declaration placement behavior.
        */
       if (node.options?.setDefined) {
-        let key = node.value.name?.toString();
+        let key = node.name.toString();
         if (isNode(node, N.VarDeclaration) && this._scopeFrame) {
-          let assignedValue = node.value.value;
+          let assignedValue = node.valueNode;
           if (context) {
             const evaluatedValue = assignedValue.eval(context);
             if (!isThenable(evaluatedValue)) {
@@ -3112,8 +3133,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               throw new ReferenceError(`"${key}" is readonly`);
             }
             variableHit.cell.value = assignedValue;
-            if (isNode(variableHit.sourceNode, N.VarDeclaration)) {
-              variableHit.sourceNode.value.value = assignedValue;
+            const sourceNode = variableHit.sourceNode;
+            if (isNode(sourceNode, N.VarDeclaration)) {
+              syncDeclarationValueNode(sourceNode, assignedValue);
             }
             return;
           }
@@ -3129,15 +3151,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             throw new ReferenceError(`"${key}" is readonly`);
           }
           if (isNode(node, N.VarDeclaration) && isNode(result, N.VarDeclaration)) {
-            let assignedValue = node.value.value;
+            let assignedValue = node.valueNode;
             if (context) {
               const evaluatedValue = assignedValue.eval(context);
               if (!isThenable(evaluatedValue)) {
                 assignedValue = evaluatedValue;
               }
             }
-            result.value.value = assignedValue;
             if (isNode(result.parent, N.Rules)) {
+              syncDeclarationValueNode(result, assignedValue);
               assignScopeFrameVariable(result.parent._scopeFrame, key, assignedValue);
             }
             return;
@@ -3160,12 +3182,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
           // Add to the value array AFTER the found declaration
           // This ensures it shadows the original and is evaluated after it
-          const foundIndex = foundRules.value.indexOf(result);
+          const foundIndex = foundRules.rules.indexOf(result);
           if (foundIndex !== -1) {
-            foundRules.value.splice(foundIndex + 1, 0, newDeclaration);
+            foundRules.rules.splice(foundIndex + 1, 0, newDeclaration);
           } else {
             // If not found in array, add at the beginning
-            foundRules.value.unshift(newDeclaration);
+            foundRules.rules.unshift(newDeclaration);
           }
 
           // Re-run child bookkeeping for the inserted declaration. We skip
@@ -3196,7 +3218,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
             pending.length = write;
           }
-          const name = (node as VarDeclaration).value.name.valueOf();
+          const name = (node as VarDeclaration).name.valueOf();
           const map = (this.varsByName ??= new Map());
           let arr = map.get(name);
           if (!arr) {
@@ -3218,7 +3240,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             if (!hasBucketEntry) {
               const entry = {
                 cell: {
-                  value: (node as VarDeclaration).value.value,
+                  value: (node as VarDeclaration).valueNode,
                   sourceNode: node,
                   readonly: node.options?.readonly
                 },
@@ -3247,7 +3269,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
     } else if (isNode(node, N.Ruleset) || isNode(node, N.Mixin)) {
-      // Callable lookup crawls Rules.value directly and filters candidates at lookup/call time.
+      // Callable lookup crawls Rules.rules directly and filters candidates at lookup/call time.
     } else if (isNode(node, N.Func)) {
       if (node.nameKey) {
         (this.functionsByName ??= new Map()).set(node.nameKey, node);
@@ -3277,7 +3299,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   push(...nodes: Node[]) {
     for (let node of nodes) {
       this.adopt(node);
-      this.value.push(node);
+      this.rules.push(node);
       this.registerNode(node);
     }
   }
@@ -3286,8 +3308,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let target = index;
     if (target < 0) {
       let indexedCount = 0;
-      for (let i = 0; i < this.value.length; i++) {
-        if (isIndexedRuleChild(this.value[i]!)) {
+      for (let i = 0; i < this.rules.length; i++) {
+        if (isIndexedRuleChild(this.rules[i]!)) {
           indexedCount++;
         }
       }
@@ -3297,8 +3319,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     }
     let current = 0;
-    for (let i = 0; i < this.value.length; i++) {
-      const node = this.value[i]!;
+    for (let i = 0; i < this.rules.length; i++) {
+      const node = this.rules[i]!;
       if (!isIndexedRuleChild(node)) {
         continue;
       }
@@ -3391,7 +3413,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _isNestableAtRuleBody(): boolean {
     const parentAtRule = isNode(this.parent, N.AtRule) ? this.parent : undefined;
-    return parentAtRule ? NESTABLE_AT_RULE_NAMES.has(parentAtRule.value.name.valueOf()) : false;
+    return parentAtRule ? NESTABLE_AT_RULE_NAMES.has(parentAtRule.name.valueOf()) : false;
   }
 
   /**
@@ -3426,7 +3448,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let indexedRuleCount = 0;
     const processNode = (node: Node, index: number): MaybePromise<void> => {
       const nodeIndex = isIndexedRuleChild(node) ? indexedRuleCount++ : undefined;
-      if (isNode(node, N.Any) && node.options.role === 'charset') {
+      if (isNode(node, N.Any) && node.role === 'charset') {
         // Charset is root output-order bookkeeping, not name registration.
         if (!context.currentCharset) {
           context.currentCharset = node;
@@ -3439,7 +3461,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         );
         placeholder.sourceNode = node;
         placeholder.index = nodeIndex;
-        rules.value[index] = placeholder;
+        rules.rules[index] = placeholder;
         return;
       }
       if (isImportAtRule(node)) {
@@ -3454,7 +3476,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         );
         placeholder.sourceNode = node;
         placeholder.index = nodeIndex;
-        rules.value[index] = placeholder;
+        rules.rules[index] = placeholder;
         return;
       }
       // Nodes that don't register by name (Call, Expression, etc.) skip
@@ -3468,8 +3490,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return this._prepareRegisterableNode(rules, node, index, nodeIndex, prepState, context);
     };
     const processRest = (start: number): MaybePromise<RegistrationPrepState> => {
-      for (let i = start; i < rules.value.length; i++) {
-        const result = processNode(rules.value[i]!, i);
+      for (let i = start; i < rules.rules.length; i++) {
+        const result = processNode(rules.rules[i]!, i);
         if (isThenable(result)) {
           return result.then(() => processRest(i + 1));
         }
@@ -3568,7 +3590,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     prepState: RegistrationPrepState,
     context: Context
   ): void {
-    rules.value[index] = node;
+    rules.rules[index] = node;
     node.index = nodeIndex;
     // After prep, check if it still has a static name.
     if (this._hasStaticName(node)) {
@@ -3586,23 +3608,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   private _hasStaticName(node: Node): boolean {
     if (isNode(node, N.VarDeclaration)) {
-      const name = node.value.name;
+      const name = node.name;
       return this._isStatic(name);
     }
     if (isNode(node, N.Mixin)) {
-      const name = node.value.name;
+      const name = node.name;
       return this._isStatic(name);
     }
     if (isNode(node, N.Declaration)) {
-      const name = node.value.name;
+      const name = node.name;
       return this._isStatic(name);
     }
     if (isStyleImportRegistrationNode(node)) {
-      const path = node.value.path;
+      const path = node.path;
       return this._isStatic(path);
     }
     if (isNode(node, N.Ruleset)) {
-      const selector = node.value.selector;
+      const selector = node.selector;
       // BasicSelector, CompoundSelector, ComplexSelector etc. are always static
       // Only Interpolated selectors need resolution
       if (
@@ -3731,12 +3753,34 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         resolvedByIndex.set(resolvedNode.index, resolvedNode);
       }
     }
-    for (let i = 0; i < rules.value.length; i++) {
-      const node = rules.value[i]!;
+    for (let i = 0; i < rules.rules.length; i++) {
+      const node = rules.rules[i]!;
       const resolvedNode = resolvedByIndex.get(node.index);
       if (resolvedNode && resolvedNode !== node) {
-        rules.value[i] = resolvedNode;
+        rules.rules[i] = resolvedNode;
         rules.adopt(resolvedNode);
+        if (isNode(node, N.VarDeclaration) && isNode(resolvedNode, N.VarDeclaration)) {
+          this._replacePendingDeclarationNameNode(rules, node, resolvedNode);
+        }
+      }
+    }
+  }
+
+  private _replacePendingDeclarationNameNode(
+    rules: Rules,
+    sourceNode: VarDeclaration,
+    replacement: VarDeclaration
+  ): void {
+    const pending = rules._scopeFrame?.pendingDeclarationNames;
+    if (!pending?.length) {
+      return;
+    }
+    const sourceIdentity = sourceNode.sourceNode ?? sourceNode;
+    for (let i = 0; i < pending.length; i++) {
+      const entry = pending[i]!;
+      const entryIdentity = entry.sourceNode ?? entry;
+      if (entry === sourceNode || entry === sourceIdentity || entryIdentity === sourceIdentity) {
+        pending[i] = replacement;
       }
     }
   }
@@ -3911,7 +3955,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   /** Assign depth-first document order to every Ruleset under the given Rules (single walk, source order). */
   private _assignDocumentOrderDepthFirst(rules: Rules, map: WeakMap<Ruleset, number>, counter: { value: number }): void {
-    const value = rules.value;
+    const value = rules.rules;
     if (!isArray(value)) {
       return;
     }
@@ -3936,7 +3980,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       if (result !== rule) {
-        rules.value[idx] = result;
+        rules.rules[idx] = result;
         if (isNode(result, N.Rules)) {
           result.index = idx;
           rules.adopt(result);
@@ -3992,8 +4036,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       allowImportRetry: boolean
     ): MaybePromise<void> => {
       const evaluateRest = (start: number): MaybePromise<void> => {
-        for (let idx = start; idx < rules.value.length; idx++) {
-          const rule = rules.value[idx]!;
+        for (let idx = start; idx < rules.rules.length; idx++) {
+          const rule = rules.rules[idx]!;
           if (!shouldEvaluate(rule)) {
             continue;
           }
@@ -4072,17 +4116,29 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const isMergedAssign = (assign: unknown): boolean => (
       assign === '+:' || assign === '&,:' || assign === '&_:'
     );
-    const getDeclValue = (decl: Node) => {
+    const getDeclValue = (decl: Node): Node | undefined => {
       if (!isNode(decl, N.Declaration)) {
         return undefined;
       }
-      return decl.value;
+      return decl.valueNode;
     };
-    const setDeclValue = (decl: Node, value: Node): void => {
-      if (!isNode(decl, N.Declaration)) {
-        return;
+    const replaceOwnedDeclaration = (
+      ownerRules: Rules,
+      source: Declaration,
+      replacement: Declaration
+    ): Declaration => {
+      const index = ownerRules.rules.indexOf(source);
+      if (index !== -1) {
+        ownerRules.rules[index] = replacement;
       }
-      decl.value.value = value;
+      ownerRules.adopt(replacement);
+      return replacement;
+    };
+    const replaceDeclarationValue = (decl: Declaration, value: Node): Declaration => {
+      const replacement = decl.deriveWithParts({ value });
+      return isNode(decl.parent, N.Rules)
+        ? replaceOwnedDeclaration(decl.parent, decl, replacement)
+        : replacement;
     };
     const copyMergedValue = (value: Node): Node => (
       canReuseLeaf(value)
@@ -4099,8 +4155,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       while (stack.length > 0 && keepGoing) {
         const node = stack.pop()!;
         if (isNode(node, N.List) || (assign === '&_:' && isNode(node, N.Sequence))) {
-          for (let i = node.value.length - 1; i >= 0; i--) {
-            stack.push(node.value[i]!);
+          for (let i = node.items.length - 1; i >= 0; i--) {
+            stack.push(node.items[i]!);
           }
           continue;
         }
@@ -4167,10 +4223,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
     const composeMergedValue = (
       decl: Node,
+      ownerRules: Rules,
       prior: Node,
       assign: string,
       priorAccumulatedValue?: Node
-    ): Node | undefined => {
+    ): { value: Node; node: Node } | undefined => {
       if (!isNode(decl, N.Declaration) || !isNode(prior, N.Declaration)) {
         return undefined;
       }
@@ -4179,61 +4236,66 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return undefined;
       }
       const basePriorValue = priorAccumulatedValue
-        ?? getDeclValue(prior)?.value;
+        ?? getDeclValue(prior);
       if (!basePriorValue) {
         return undefined;
       }
-      if (startsWithMergedValue(nextDeclValue.value, basePriorValue, assign)) {
-        return nextDeclValue.value;
+      if (startsWithMergedValue(nextDeclValue, basePriorValue, assign)) {
+        return { value: nextDeclValue, node: decl };
       }
-      const mergedValue = mergeDeclarationValues(basePriorValue, nextDeclValue.value, assign);
-      setDeclValue(decl, mergedValue);
-      normalizeMergedDeclarationValue(decl);
-      const declImportant = decl.value.important;
-      const priorImportant = prior.value.important;
+      const mergedValue = mergeDeclarationValues(basePriorValue, nextDeclValue, assign);
+      let outputDecl = replaceDeclarationValue(decl, mergedValue);
+      outputDecl = normalizeMergedDeclarationValue(outputDecl);
+      const declImportant = decl.important;
+      const priorImportant = prior.important;
       if (!declImportant && priorImportant) {
-        decl.value.important = priorImportant;
+        outputDecl = replaceOwnedDeclaration(
+          ownerRules,
+          outputDecl,
+          outputDecl.deriveWithParts({
+            value: outputDecl.valueNode,
+            important: priorImportant
+          })
+        );
       }
-      const mergedDeclValue = getDeclValue(decl);
-      return mergedDeclValue?.value;
+      const mergedDeclValue = getDeclValue(outputDecl);
+      return mergedDeclValue ? { value: mergedDeclValue, node: outputDecl } : undefined;
     };
-    const normalizeMergedDeclarationValue = (node: Node): void => {
+    const normalizeMergedDeclarationValue = (node: Node): Declaration => {
       if (!isNode(node, N.Declaration)) {
-        return;
+        throw new TypeError('Expected declaration while normalizing merged declaration value');
       }
       const declValue = getDeclValue(node);
       if (!declValue) {
-        return;
+        return node;
       }
-      const current = declValue.value;
-      if (!isNode(current, N.List) || current.value.length === 0) {
-        return;
+      const current = declValue;
+      if (!isNode(current, N.List) || current.items.length === 0) {
+        return node;
       }
-      const first = current.value[0];
+      const first = current.items[0];
       const isEmptyPlaceholder = Boolean(
         first
         && (
           isNode(first, N.Nil)
-          || (isNode(first, N.List) && first.value.length === 0)
+          || (isNode(first, N.List) && first.items.length === 0)
           || (isNode(first, N.Any) && first.value === '')
         )
       );
       if (!isEmptyPlaceholder) {
-        return;
+        return node;
       }
-      if (current.value.length === 1) {
-        setDeclValue(node, new Nil());
-        return;
+      if (current.items.length === 1) {
+        return replaceDeclarationValue(node, new Nil());
       }
-      if (current.value.length === 2) {
-        setDeclValue(node, copyMergedValue(current.value[1]!));
-        return;
+      if (current.items.length === 2) {
+        return replaceDeclarationValue(node, copyMergedValue(current.items[1]!));
       }
-      const rest = new Array<Node>(current.value.length - 1);
-      for (let i = 1; i < current.value.length; i++) {
-        rest[i - 1] = copyMergedValue(current.value[i]!);
+      const rest = new Array<Node>(current.items.length - 1);
+      for (let i = 1; i < current.items.length; i++) {
+        rest[i - 1] = copyMergedValue(current.items[i]!);
       }
-      setDeclValue(node, new List(rest));
+      return replaceDeclarationValue(node, new List(rest));
     };
 
     const lastVisibleByName = new Map<string, DeclOccurrence>();
@@ -4243,7 +4305,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!isNode(node, N.Declaration)) {
         return;
       }
-      const name = String(node.value.name);
+      let currentNode: Node = node;
+      const name = String(node.name);
       const assign = String(node.options.normalizedFromAssign ?? '');
       const merged = isMergedAssign(assign);
 
@@ -4255,30 +4318,33 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         return;
       }
-      normalizeMergedDeclarationValue(node);
+      currentNode = normalizeMergedDeclarationValue(node);
       let currentAccumulatedValue: Node | undefined;
 
       const prior = lastVisibleByName.get(name);
       const needsCrossScopeCompose = prior
         && prior.ownerRules !== ownerRules;
       if (prior && needsCrossScopeCompose) {
-        currentAccumulatedValue = composeMergedValue(
-          node,
+        const composed = composeMergedValue(
+          currentNode,
+          ownerRules,
           prior.node,
           assign,
           accumulatedValueByName.get(name)
-        ) ?? currentAccumulatedValue;
+        );
+        currentAccumulatedValue = composed?.value ?? currentAccumulatedValue;
+        currentNode = composed?.node ?? currentNode;
       }
-      const currentValue = getDeclValue(node)?.value;
+      const currentValue = getDeclValue(currentNode);
       currentAccumulatedValue ??= currentValue;
 
       const existingAnchor = mergedAnchorByName.get(name);
-      const occurrence = { node, ownerRules };
+      const occurrence = { node: currentNode, ownerRules };
       if (existingAnchor && isNode(existingAnchor.node, N.Declaration)) {
-        const anchorIsSameOccurrence = existingAnchor.node === node
+        const anchorIsSameOccurrence = existingAnchor.node === currentNode
           && existingAnchor.ownerRules === ownerRules;
         if (!anchorIsSameOccurrence) {
-          if (existingAnchor.node === node && existingAnchor.ownerRules !== ownerRules) {
+          if (existingAnchor.node === currentNode && existingAnchor.ownerRules !== ownerRules) {
             existingAnchor.ownerRules.removeFlag(F_VISIBLE);
           } else {
             existingAnchor.node.removeFlag(F_VISIBLE);
@@ -4287,7 +4353,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (currentAccumulatedValue) {
             accumulatedValueByName.set(name, currentAccumulatedValue);
           }
-          if (node.visible) {
+          if (currentNode.visible) {
             lastVisibleByName.set(name, occurrence);
           }
           return;
@@ -4298,7 +4364,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (currentAccumulatedValue) {
         accumulatedValueByName.set(name, currentAccumulatedValue);
       }
-      if (node.visible) {
+      if (currentNode.visible) {
         lastVisibleByName.set(name, occurrence);
       }
     };
@@ -4310,12 +4376,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!isNode(node, N.Rules)) {
         return;
       }
-      for (let i = 0; i < node.value.length; i++) {
-        walkMergedDeclarations(node.value[i]!, node);
+      for (let i = 0; i < node.rules.length; i++) {
+        walkMergedDeclarations(node.rules[i]!, node);
       }
     };
 
-    for (const node of rules.value) {
+    for (const node of rules.rules) {
       walkMergedDeclarations(node, rules);
     }
   }
@@ -4330,8 +4396,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   private _normalizeCallDeclarationRulesOrder(rules: Rules): void {
     let firstNestedIdx = -1;
-    for (let i = 0; i < rules.value.length; i++) {
-      if (isNode(rules.value[i]!, N.Ruleset | N.AtRule)) {
+    for (let i = 0; i < rules.rules.length; i++) {
+      if (isNode(rules.rules[i]!, N.Ruleset | N.AtRule)) {
         firstNestedIdx = i;
         break;
       }
@@ -4343,12 +4409,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (
         !isNode(n, N.Rules)
         || n.options?.callDeclarationOutput !== true
-        || n.value.length === 0
+        || n.rules.length === 0
       ) {
         return false;
       }
-      for (let i = 0; i < n.value.length; i++) {
-        if (!isNode(n.value[i]!, N.Declaration | N.Comment)) {
+      for (let i = 0; i < n.rules.length; i++) {
+        const child = n.rules[i]!;
+        if (!isNode(child, N.Declaration) && !isNode(child, N.Comment)) {
           return false;
         }
       }
@@ -4356,8 +4423,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
     const moved: Node[] = [];
     const remainder: Node[] = [];
-    for (let i = firstNestedIdx; i < rules.value.length; i++) {
-      const node = rules.value[i]!;
+    for (let i = firstNestedIdx; i < rules.rules.length; i++) {
+      const node = rules.rules[i]!;
       if (shouldMove(node)) {
         moved.push(node);
       } else {
@@ -4367,10 +4434,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (moved.length === 0) {
       return;
     }
-    const reordered: Node[] = new Array(rules.value.length);
+    const reordered: Node[] = new Array(rules.rules.length);
     let write = 0;
     for (let i = 0; i < firstNestedIdx; i++) {
-      reordered[write++] = rules.value[i]!;
+      reordered[write++] = rules.rules[i]!;
     }
     for (let i = 0; i < moved.length; i++) {
       reordered[write++] = moved[i]!;
@@ -4378,7 +4445,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     for (let i = 0; i < remainder.length; i++) {
       reordered[write++] = remainder[i]!;
     }
-    rules.value = reordered;
+    for (let i = 0; i < reordered.length; i++) {
+      rules.rules[i] = reordered[i]!;
+    }
   }
 
   /**
@@ -4416,24 +4485,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (!childEntries?.length) {
       return;
     }
-    const currentRules = rules.value;
+    const currentRules = rules.rules;
     for (const entry of childEntries) {
       if (!entry.readonly) {
         continue;
       }
-      const importedRules = entry.node.value;
+      const importedRules = entry.node.rules;
       for (let i = 0; i < importedRules.length; i++) {
         const importedDecl = importedRules[i]!;
         if (!isNode(importedDecl, N.VarDeclaration)) {
           continue;
         }
-        const key = String(importedDecl.value.name.valueOf());
+        const key = String(importedDecl.name.valueOf());
         for (let j = 0; j < currentRules.length; j++) {
           const currentDecl = currentRules[j]!;
           if (
             isNode(currentDecl, N.VarDeclaration)
             && !currentDecl.options?.setDefined
-            && String(currentDecl.value.name.valueOf()) === key
+            && String(currentDecl.name.valueOf()) === key
           ) {
             throw new ReferenceError(`"${key}" is readonly`);
           }
@@ -4652,21 +4721,21 @@ type PendingOrderedIdentityPrepState = {
  */
 // type ScopeNodes = Declaration | VarDeclaration | Mixin | Ruleset | Rules
 function mixinHasNoRequiredParams(mixinNode: Mixin): boolean {
-  const params = mixinNode.value.params;
+  const params = mixinNode.params;
   if (!params || params.length === 0) {
     return true;
   }
-  for (const param of params.value) {
+  for (const param of params.items) {
     if (param.type === 'Rest') {
       continue;
     }
     if (isNode(param, N.VarDeclaration)) {
-      if (param.value.value instanceof Nil) {
+      if (param.valueNode instanceof Nil) {
         return false;
       }
       continue;
     }
-    if (isNode(param, N.Any) && param.options.role === 'property') {
+    if (isNode(param, N.Any) && param.role === 'property') {
       return false;
     }
     return false;

@@ -280,7 +280,7 @@ export function buildScopeFrame(
         const decl = decls[i]!;
         entries[i] = {
           cell: {
-            value: decl.value.value,
+            value: decl.valueNode,
             lookupIdentity: nextBindingCellLookupIdentity++,
             sourceNode: decl,
             readonly: decl.options?.readonly
@@ -357,7 +357,7 @@ function pendingDeclarationMayAffectName(
   name: string
 ): boolean {
   for (let i = 0; i < pendingDeclarationNames.length; i++) {
-    const declName = pendingDeclarationNames[i]!.value.name;
+    const declName = pendingDeclarationNames[i]!.name;
     if (declName instanceof Node && !declName.hasFlag(F_STATIC)) {
       return true;
     }

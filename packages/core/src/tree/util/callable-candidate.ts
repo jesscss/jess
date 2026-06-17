@@ -24,7 +24,7 @@ function hasFailedGuardAncestor(node: Node): boolean {
   let current = node.parent;
   while (current) {
     if (isNode(current, N.Ruleset)) {
-      const guardNode = current.value.guard;
+      const guardNode = current.guard;
       if (guardNode instanceof Nil) {
         return true;
       }
@@ -76,12 +76,12 @@ function getCallKey(node: Node | undefined): string | undefined {
   if (!isNode(node, N.Call)) {
     return undefined;
   }
-  const name = node.value.name;
+  const name = node.name;
   if (typeof name === 'string') {
     return name;
   }
   if (isNode(name, N.Reference)) {
-    return stringifyCallableKey(name.value.key);
+    return stringifyCallableKey(name.key);
   }
   return String(name.valueOf());
 }
@@ -114,7 +114,7 @@ function nodeContainsCallKey(node: Node, key: string): boolean {
 }
 
 function rulesContainCallKey(rules: Rules, key: string): boolean {
-  const value = rules.value;
+  const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     if (nodeContainsCallKey(value[i]!, key)) {
       return true;

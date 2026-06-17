@@ -361,7 +361,7 @@ describe('renderNodeToBuffer', () => {
       }
     ];
 
-    expect(cases).toHaveLength(20);
+    expect(cases).toHaveLength(19);
 
     for (const item of cases) {
       item.setup?.(context);
@@ -422,7 +422,7 @@ describe('renderNodeToBuffer', () => {
       { surface: 'Ampersand', node: amp({ appendValue: '-item' }), expected: '', expectedParts: [] }
     ];
 
-    expect(cases).toHaveLength(20);
+    expect(cases).toHaveLength(19);
 
     for (const item of cases) {
       const context = new Context();

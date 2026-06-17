@@ -126,8 +126,8 @@ export function processScssStringInterpolation(
 
     const parsed = parseInterpolationExpression(match.content.trim());
     const simpleRef = asSingleVariableReference(parsed);
-    if (simpleRef && typeof simpleRef.value.key === 'string') {
-      replacements.push(new Reference({ key: simpleRef.value.key }, { type: 'variable', role: 'ident' }, location, context));
+    if (simpleRef && typeof simpleRef.key === 'string') {
+      replacements.push(new Reference({ key: simpleRef.key }, { type: 'variable', role: 'ident' }, location, context));
     } else if (isNode(parsed, N.Reference)) {
       replacements.push(new Expression(parsed, undefined, location, context));
     } else {
@@ -142,8 +142,8 @@ export function processScssStringInterpolation(
 import { Expression } from '@jesscss/core';
 
 export function unwrapSingleSequence(n: Node): Node {
-  if (isNode(n, N.Sequence) && (n as Sequence).value.length === 1) {
-    return (n as Sequence).value[0]!;
+  if (isNode(n, N.Sequence) && (n as Sequence).items.length === 1) {
+    return (n as Sequence).items[0]!;
   }
   return n;
 }
@@ -153,8 +153,8 @@ export function asSingleVariableReference(n: Node): Reference | undefined {
   if (
     isNode(node, N.Reference)
     && node.options?.type === 'variable'
-    && !(node as Reference).value.target
-    && typeof (node as Reference).value.key === 'string'
+    && !(node as Reference).target
+    && typeof (node as Reference).key === 'string'
   ) {
     return node as Reference;
   }
@@ -183,8 +183,8 @@ export function toNameInterpolationReplacement(
   location?: OptionalLocation
 ): Node {
   const simpleRef = asSingleVariableReference(expr);
-  if (simpleRef && typeof simpleRef.value.key === 'string') {
-    return new Reference({ key: simpleRef.value.key }, { type: 'variable', role: 'ident' }, location, parser.context);
+  if (simpleRef && typeof simpleRef.key === 'string') {
+    return new Reference({ key: simpleRef.key }, { type: 'variable', role: 'ident' }, location, parser.context);
   }
   const tmpName = parser.nextTempVarName();
   parser.enqueuePendingNode(makePrivateTempVarDecl(parser, tmpName, expr, location));
@@ -212,7 +212,7 @@ export function desugarMapLookup(
     return call;
   }
 
-  const args = isNode(argsList, N.List) ? (argsList as List).value : [];
+  const args = isNode(argsList, N.List) ? (argsList as List).items : [];
   if (args.length < 2) {
     return call;
   }

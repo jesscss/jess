@@ -141,7 +141,7 @@ describe('ExtendLocation API Tests', () => {
       // Just check that it contains the expected selectors, ignore formatting
       const extendedStr = extended.valueOf().replace(/\s+/g, '');
       expect(extendedStr).toBe(':where(.a,.b,.c)');
-      expect(selector.value.arg).toBe(sourceList);
+      expect(selector.arg).toBe(sourceList);
       expect(sourceItems.map(item => item.parent)).toEqual(sourceItems.map(() => sourceList));
       expect(extendWith.parent).toBeUndefined();
     });

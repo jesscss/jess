@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, F_STATIC, F_VISIBLE, defineType } from './node.js';
+import { Node, F_STATIC, F_VISIBLE, defineType, type LocationInfo, type NodeOptions } from './node.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
 
@@ -11,8 +11,16 @@ export interface Bool extends Node<boolean> {
  * A boolean. Named `Bool` to avoid conflict with the built-in `Boolean` class.
  */
 export class Bool extends Node<boolean> {
-  constructor(...args: ConstructorParameters<typeof Node<boolean>>) {
-    super(...args);
+  static override childKeys = null;
+
+  constructor(
+    value: boolean,
+    options?: NodeOptions,
+    location?: LocationInfo,
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
     this.addFlag(F_STATIC);
   }
 

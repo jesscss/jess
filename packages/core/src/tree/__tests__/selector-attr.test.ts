@@ -159,7 +159,7 @@ describe('Attribute Selector', () => {
       op: '=',
       value: ref({ key: 'attr-data' }, { type: 'variable' })
     });
-    const sourceValue = attrNode.value.value;
+    const sourceValue = attrNode.attributeValue;
     const resolved = await attrNode.resolve(context);
 
     expect(resolved.render(context)).toBe('[data=foo]');

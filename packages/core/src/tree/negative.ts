@@ -14,31 +14,40 @@ import round from 'lodash-es/round.js';
 const NEGATIVE_ONE = new Dimension({ number: -1 });
 
 export class Negative extends Node<Node> {
+  static override childKeys = ['node'] as const;
+
+  readonly node: Node;
+
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('-', this);
-    this.value.writeSyntax(options);
+    this.node.writeSyntax(options);
   }
 
-  constructor(value: Node, options?: NodeOptions, location?: LocationInfo) {
+  constructor(value: Node, options?: NodeOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
     super(value, options, location);
+    this._treeContext = treeContext;
+    this.node = value;
     // Negative operations are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
-    if (this.value instanceof Dimension && !this.isCompoundDimension(this.value)) {
-      const unit = this.value.value.unit ?? '';
-      const out = `-${`${round(this.value.value.number, 8)}`.toLowerCase()}${unit}`;
+    const node = this.node;
+    if (node instanceof Dimension && !this.isCompoundDimension(node)) {
+      const value = node;
+      const unit = value.unit ?? '';
+      const out = `-${`${round(value.number, 8)}`.toLowerCase()}${unit}`;
       options.writer.add(out, this);
       return out;
     }
-    if (this.value instanceof Any) {
-      const out = `-${this.value.value}`;
+    if (node instanceof Any) {
+      const value = node;
+      const out = `-${value.value}`;
       options.writer.add('-', this);
-      options.writer.add(this.value.value, this.value);
+      options.writer.add(value.value, value);
       return out;
     }
     const mark = options.writer.mark();
@@ -61,11 +70,11 @@ export class Negative extends Node<Node> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (!this.value.hasFlag(F_MAY_ASYNC)) {
-      const evaluated = this.value.evalImmediateSync(context);
+    if (!this.node.hasFlag(F_MAY_ASYNC)) {
+      const evaluated = this.node.eval(context) as Node;
       return this.renderEvaluatedValue(context, evaluated, bufferOrOptions, options);
     }
-    const value = this.value.eval(context);
+    const value = this.node.eval(context);
     return isThenable(value)
       ? value.then(evaluated => this.renderEvaluatedValue(context, evaluated, bufferOrOptions, options))
       : this.renderEvaluatedValue(context, value, bufferOrOptions, options);
@@ -99,21 +108,21 @@ export class Negative extends Node<Node> {
   }
 
   private isCompoundDimension(value: Dimension): boolean {
-    const unit = value.value.unit;
+    const unit = value.unit;
     return Boolean(unit && (unit.includes('/') || unit.includes('*') || unit.includes('±')));
   }
 
   private negatedDimensionText(value: Dimension): string {
-    const unit = value.value.unit ?? '';
-    return `${round(value.value.number * -1, 8)}`.toLowerCase() + unit;
+    const unit = value.unit ?? '';
+    return `${round(value.number * -1, 8)}`.toLowerCase() + unit;
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    if (!this.value.hasFlag(F_MAY_ASYNC)) {
-      const evaluated = this.value.evalImmediateSync(context);
+    if (!this.node.hasFlag(F_MAY_ASYNC)) {
+      const evaluated = this.node.eval(context) as Node;
       return this.operateNegativeValue(evaluated, context);
     }
-    const value = this.value.eval(context);
+    const value = this.node.eval(context);
     return isThenable(value)
       ? value.then(evaluated => this.operateNegativeValue(evaluated, context))
       : this.operateNegativeValue(value, context);

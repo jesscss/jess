@@ -1,4 +1,5 @@
 import { type Context } from '../context.js';
+import { Any } from './any.js';
 import { Bool, createPublicBool } from './bool.js';
 import { Expression } from './expression.js';
 import { Operation } from './operation.js';
@@ -33,7 +34,7 @@ const getDefaultGuardBool = (node: Node | undefined, context: Context): Bool | u
 };
 
 function normalizeEscapedList(value: List): List {
-  return new List([...value.value], { ...value.options, sep: ',' }).inherit(value);
+  return new List([...value.items], { ...value.options, sep: ',' }).inherit(value);
 }
 
 function emitParenValue(value: Node, options: ReturnType<typeof getPrintOptions>): void {
@@ -74,16 +75,63 @@ function writeParenValue(value: Node, options: FinalPrintOptions): void {
  * An expression in parenthesis
  */
 export class Paren extends Node<Node | undefined, ParenOptions> {
+  static override childKeys = ['node'] as const;
+
+  readonly node: Node | undefined;
+
+  private getDelimiters(): [open: string, close: string] {
+    return this._options?.delimiter === 'square' ? ['[', ']'] : ['(', ')'];
+  }
+
+  private simpleWrappedText(value: Node | undefined): string | undefined {
+    const escapeChar = this._options?.escaped ? '~' : '';
+    const [open, close] = this.getDelimiters();
+    if (!value || !value.visible) {
+      return `${escapeChar}${open}${close}`;
+    }
+    if (value instanceof Any) {
+      return `${escapeChar}${open}${value.value}${close}`;
+    }
+    return undefined;
+  }
+
+  private writeSimpleWrappedSyntax(value: Node | undefined, options: FinalPrintOptions): string | undefined {
+    const text = this.simpleWrappedText(value);
+    if (text === undefined) {
+      return undefined;
+    }
+    const w = options.writer;
+    const escapeChar = this._options?.escaped ? '~' : '';
+    const [open, close] = this.getDelimiters();
+    if (escapeChar) {
+      w.add(escapeChar, this);
+    }
+    w.add(open, this);
+    if (value instanceof Any) {
+      w.add(value.value, value);
+    }
+    w.add(close, this);
+    return text;
+  }
+
   private withValue(value: Node | undefined): Paren {
     return new Paren(
       value,
       this._options ? { ...this._options } : undefined,
-      this.location
+      this.location,
+      this.sourceRoot?._treeContext
     ).inherit(this);
   }
 
-  constructor(value?: Node, options?: ParenOptions, location?: NodeLocation) {
+  constructor(
+    value?: Node,
+    options?: ParenOptions,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
     super(value, options, location);
+    this._treeContext = treeContext;
+    this.node = value;
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);
     }
@@ -91,6 +139,12 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
 
   override toTrimmedString(options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
+    if (!printOptions.trivia) {
+      const simple = this.writeSimpleWrappedSyntax(this.node, printOptions);
+      if (simple !== undefined) {
+        return simple;
+      }
+    }
     const w = printOptions.writer;
     const mark = w.mark();
     this.writeSyntax(printOptions);
@@ -99,15 +153,17 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
+    if (!options.trivia && this.writeSimpleWrappedSyntax(this.node, options) !== undefined) {
+      return;
+    }
     const w = options.writer;
     const escapeChar = this._options?.escaped ? '~' : '';
     if (escapeChar) {
       w.add(escapeChar, this);
     }
-    const open = this._options?.delimiter === 'square' ? '[' : '(';
-    const close = this._options?.delimiter === 'square' ? ']' : ')';
+    const [open, close] = this.getDelimiters();
     w.add(open);
-    let value = this.value;
+    let value = this.node;
     if (value) {
       if (value instanceof Node) {
         writeParenValue(value, options);
@@ -121,7 +177,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    const guardValue = getDefaultGuardValue(this.value, context);
+    const guardValue = getDefaultGuardValue(this.node, context);
     if (guardValue !== undefined) {
       const out = String(guardValue);
       return isRenderBuffer(bufferOrOptions)
@@ -136,7 +192,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): MaybePromise<string> {
-    const currentValue = this.value;
+    const currentValue = this.node;
     if (!currentValue) {
       return this.renderOutput(context, this, bufferOrOptions, options);
     }
@@ -200,32 +256,66 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       if (value instanceof List && value.options?.sep === ';') {
         return this.renderEscapedSemicolonList(context, value, bufferOrOptions, options);
       }
-      return this.renderOutput(context, value, bufferOrOptions, options);
+      return this.renderWrappedValue(context, value, bufferOrOptions, options);
     }
-    while (value instanceof Paren && value.value) {
-      value = value.value;
+    while (value instanceof Paren && value.node) {
+      value = value.node;
     }
     if (value instanceof Bool || value instanceof Dimension) {
       return this.renderOutput(context, value, bufferOrOptions, options);
     }
     if (isOp && !isOpOrExpression(value)) {
-      return this.renderOutput(context, value, bufferOrOptions, options);
+      return this.renderWrappedValue(context, value, bufferOrOptions, options);
     }
     if (value === currentValue) {
       return this.renderOutput(context, this, bufferOrOptions, options);
     }
-    const rendered = value.render(context, isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions);
-    const open = this._options?.delimiter === 'square' ? '[' : '(';
-    const close = this._options?.delimiter === 'square' ? ']' : ')';
-    const wrapped = isThenable(rendered)
-      ? rendered.then(out => `${open}${out}${close}`)
-      : `${open}${rendered}${close}`;
-    if (!isRenderBuffer(bufferOrOptions)) {
-      return wrapped;
+    return this.renderWrappedValue(context, value, bufferOrOptions, options);
+  }
+
+  private renderWrappedValue(
+    context: Context,
+    value: Node,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): MaybePromise<string> {
+    const simple = this.simpleWrappedText(value);
+    if (simple !== undefined) {
+      if (isRenderBuffer(bufferOrOptions)) {
+        return writeRenderText(bufferOrOptions, simple);
+      }
+      const prepared = prepareRenderPrintState(context, bufferOrOptions);
+      this.writeSimpleWrappedSyntax(value, prepared);
+      return simple;
     }
-    return isThenable(wrapped)
-      ? (wrapped as Promise<string>).then(out => writeRenderText(bufferOrOptions, out))
-      : writeRenderText(bufferOrOptions, wrapped);
+    const escapeChar = this._options?.escaped ? '~' : '';
+    const [open, close] = this.getDelimiters();
+    const prefix = `${escapeChar}${open}`;
+    if (isRenderBuffer(bufferOrOptions)) {
+      writeRenderText(bufferOrOptions, prefix);
+      const rendered = value.render(context, bufferOrOptions, options);
+      const finish = (out: string): string => {
+        writeRenderText(bufferOrOptions, close);
+        return `${prefix}${out}${close}`;
+      };
+      return isThenable(rendered)
+        ? (rendered as Promise<string>).then(finish)
+        : finish(rendered);
+    }
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    const w = prepared.writer;
+    if (escapeChar) {
+      w.add(escapeChar, this);
+    }
+    w.add(open, this);
+    const rendered = value.render(context, prepared);
+    const finish = (out: string): string => {
+      w.add(close, this);
+      return `${prefix}${out}${close}`;
+    };
+    return isThenable(rendered)
+      ? (rendered as Promise<string>).then(finish)
+      : finish(rendered);
   }
 
   private renderEscapedSemicolonList(
@@ -238,14 +328,14 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const out = renderListValueSyntax(value.value, prepared, ',');
+    const out = renderListValueSyntax(value.items, prepared, ',');
     return buffer
       ? writeRenderText(buffer, out)
       : out;
   }
 
   private evaluateValue(context: Context): MaybePromise<Node> {
-    const currentValue = this.value;
+    const currentValue = this.node;
     if (currentValue) {
       const guardBool = getDefaultGuardBool(currentValue, context);
       if (guardBool) {
@@ -278,8 +368,8 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
          * so it's really just a DX tool that can be ignored
          * on output.
          */
-        while (value instanceof Paren && value.value) {
-          value = value.value;
+        while (value instanceof Paren && value.node) {
+          value = value.node;
         }
         if (value instanceof Bool || value instanceof Dimension) {
           return value;

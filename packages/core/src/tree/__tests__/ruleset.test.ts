@@ -313,7 +313,7 @@ describe('Rule', () => {
       }
     `);
     expect(selector.parent).toBe(node);
-    expect(bodyAtRule.parent).toBe(node.value.rules);
+    expect(bodyAtRule.parent).toBe(node.rules);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -348,7 +348,7 @@ describe('Rule', () => {
       }
     `);
     expect(selector.parent).toBe(node);
-    expect(bodyAtRule.parent).toBe(node.value.rules);
+    expect(bodyAtRule.parent).toBe(node.rules);
   });
 
   it('hoists root-only body at-rules in sibling order when hoist is active', async () => {
@@ -375,7 +375,7 @@ describe('Rule', () => {
         font-family: Body;
       }
     `);
-    expect(bodyAtRule.parent).toBe(node.value.rules);
+    expect(bodyAtRule.parent).toBe(node.rules);
   });
 
   it('keeps source selector and body parentage canonical during direct render', async () => {
@@ -720,7 +720,7 @@ describe('Rule', () => {
     expect(body.parent).toBe(node);
     expect(guard.evaluated).toBe(false);
     expect(body.evaluated).toBe(false);
-    expect(node.value.guard).toBe(guard);
+    expect(node.guard).toBe(guard);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -867,7 +867,7 @@ describe('Rule', () => {
 
     expect(prepared).not.toBe(node);
     expect(selector.parent).toBe(node);
-    expect(prepared.value.rules).toBe(body);
+    expect(prepared.rules).toBe(body);
   });
 
   it('renders comment-free ruleset headers without cloning source-free selector leaves', () => {
@@ -986,7 +986,7 @@ describe('Rule', () => {
     `);
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
-    expect(resolved.value.rules).not.toBe(body);
+    expect(resolved.rules).not.toBe(body);
   });
 
   it('getHeaderString keeps reference target filtering render-local', () => {

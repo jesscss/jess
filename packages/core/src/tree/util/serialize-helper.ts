@@ -123,7 +123,7 @@ function getContainerRules(node: AtRule | Ruleset, options?: FinalPrintOptions):
           ? options.atRuleBodyOverride
           : node.getRenderRules()
       )
-    : node.value.rules;
+    : node.rules;
 }
 
 function isAncestorFrame(frame: AtRule | Ruleset, node: AtRule | Ruleset): boolean {
@@ -158,13 +158,13 @@ function canMergeSameHeaderRuleset(
 ): boolean {
   const currentOwn = (currentFrame.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
   const priorOwn = (priorFrame.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
-  const currentSelector = currentOwn ?? currentFrame.value.selector;
-  const priorSelector = priorOwn ?? priorFrame.value.selector;
+  const currentSelector = currentOwn ?? currentFrame.selector;
+  const priorSelector = priorOwn ?? priorFrame.selector;
   return (
     currentFrame.hasFlag(F_EXTENDED)
     || priorFrame.hasFlag(F_EXTENDED)
-    || Ruleset.hasExtendedTopLevelSelector(currentFrame.value.selector)
-    || Ruleset.hasExtendedTopLevelSelector(priorFrame.value.selector)
+    || Ruleset.hasExtendedTopLevelSelector(currentFrame.selector)
+    || Ruleset.hasExtendedTopLevelSelector(priorFrame.selector)
     || isNode(currentOwn, N.Ampersand)
     || isNode(priorOwn, N.Ampersand)
     || containsNodeType(currentSelector, 'InterpolatedSelector')
@@ -199,7 +199,7 @@ export function flattenVisibleRulesForRender(
     allowTransparentFlatten: boolean,
     forceLeadingLeaves: boolean = false
   ) => {
-    for (const child of current.value) {
+    for (const child of current.rules) {
       const isEvaluatedDefinitionNode = current.evaluated && isNode(child, N.Mixin | N.VarDeclaration);
       if (isEvaluatedDefinitionNode && !hasPrintableTrivia(child, options)) {
         continue;
@@ -228,9 +228,9 @@ export function flattenVisibleRulesForRender(
         if (
           ownSelector
           && Ruleset.isBareAmpersandSelector(ownSelector)
-          && !Ruleset.isBareAmpersandSelector(child.value.selector)
+          && !Ruleset.isBareAmpersandSelector(child.selector)
         ) {
-          const visibleChildren = getContainerRules(child)!.value.filter(node => node.visible || node.fullRender);
+          const visibleChildren = getContainerRules(child)!.rules.filter(node => node.visible || node.fullRender);
           const hasVisibleContainers = visibleChildren.some(node => isNode(node, N.Rules | N.Ruleset | N.AtRule));
           if (!hasVisibleContainers) {
             for (const leaf of visibleChildren) {
@@ -243,7 +243,7 @@ export function flattenVisibleRulesForRender(
       if (
         allowTransparentFlatten
         && isNode(child, N.Ruleset)
-        && Ruleset.isBareAmpersandSelector(child.value.selector)
+        && Ruleset.isBareAmpersandSelector(child.selector)
         && getContainerRules(child)
       ) {
         iterateRules(getContainerRules(child)!, true, true);
@@ -354,7 +354,7 @@ function getHoistedParent(
   let parentSelector: Selector | undefined;
   for (let i = 0; i < rulesetFrames.length; i++) {
     const currentFrame = rulesetFrames[i]!;
-    const currentSelector = currentFrame.value.selector;
+    const currentSelector = currentFrame.selector;
     if (!currentSelector || currentSelector instanceof Nil) {
       continue;
     }
@@ -387,7 +387,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
   let inFrames = options.inFrames;
   const frameHeaders = options.frameHeaders;
 
-  if (isNode(node, N.Ruleset) && (node as Ruleset).value.selector instanceof Nil) {
+  if (isNode(node, N.Ruleset) && (node as Ruleset).selector instanceof Nil) {
     return '';
   }
   // Ensure every Ruleset pushes to composedSelectorStack for collapseNesting.
@@ -400,7 +400,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
   let isTransparentWrapper = false;
   if (options.collapseNesting && isNode(node, N.Ruleset)) {
     const rs = node as Ruleset;
-    const sel = rs.value.selector;
+    const sel = rs.selector;
     const isBareAmp = sel && !(sel instanceof Nil) && isNode(sel, N.Ampersand);
     if (isBareAmp) {
       isTransparentWrapper = true;
@@ -429,7 +429,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     const inReferenceMode = previousReferenceMode || ownReferenceMode;
     const enteringReferenceMode = !previousReferenceMode && ownReferenceMode;
     const nodeExtendsReference = isNode(node, N.Ruleset)
-      && (node.hasFlag(F_EXTENDED) || Ruleset.hasExtendedTopLevelSelector(node.value.selector));
+      && (node.hasFlag(F_EXTENDED) || Ruleset.hasExtendedTopLevelSelector(node.selector));
     const inheritedRenderEnabled = enteringReferenceMode ? false : previousReferenceRenderEnabled;
     const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
     options.referenceMode = inReferenceMode;
@@ -515,7 +515,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       declarationOutputCache.set(i, declOut);
       declarationTriviaCache.set(i, declEmittedTrivia);
       const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
-      const declProp = node.value.name.valueOf();
+      const declProp = node.name.valueOf();
       let seenValues = seenDeclarationsByProp.get(declProp);
       if (!seenValues) {
         seenValues = new Set<string>();
@@ -686,7 +686,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         let renderedRulesOutput: string | undefined;
         let renderedRulesTrivia: Set<IToken[]> | undefined;
         if (isNode(nn, N.Rules)) {
-          const hasRenderableChild = nn.value.some(child =>
+          const hasRenderableChild = nn.rules.some(child =>
             child.visible || child.fullRender || hasPrintableTrivia(child, options)
           );
           if (!hasRenderableChild && !hasPrintableTrivia(nn, options)) {
@@ -835,7 +835,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           const declNormalized = hasEmptyValue && (!normalizedLeading || normalizedLeading.trim() === '')
             ? `${idt}${out}`
             : normalizeIndent(declIn, idt, true);
-          if (nn.value.name.valueOf().startsWith('--')) {
+          if (nn.name.valueOf().startsWith('--')) {
             w.add(idt);
             w.add(out, nn);
           } else {

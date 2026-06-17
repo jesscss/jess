@@ -762,58 +762,70 @@ export class LessCompatPlugin extends AbstractPlugin {
             let pluginOptions: string | undefined;
 
             if (prelude) {
+              type NodeValueLike = { type?: unknown; value?: unknown };
+              type ValueOfLike = { valueOf(): unknown };
+
+              const isObjectLike = (value: unknown): value is NodeValueLike =>
+                typeof value === 'object' && value !== null;
+
+              const hasValueOf = (value: unknown): value is ValueOfLike =>
+                isObjectLike(value) && typeof value.valueOf === 'function';
+
+              const valueOfString = (value: unknown, trim = false): string | undefined => {
+                if (!hasValueOf(value)) {
+                  return undefined;
+                }
+                const output = value.valueOf();
+                return typeof output === 'string'
+                  ? (trim ? output.trim() : output)
+                  : undefined;
+              };
+
+              const stringFromNodeValue = (value: unknown): string | undefined => {
+                if (typeof value === 'string') {
+                  return value;
+                }
+                const valueResult = valueOfString(value);
+                if (valueResult !== undefined) {
+                  return valueResult;
+                }
+                if (isObjectLike(value) && typeof value.value === 'string') {
+                  return value.value;
+                }
+                return undefined;
+              };
+
               // Helper to extract string value from a node (Quoted, Url, or string)
-              const extractStringValue = (node: any): string | undefined => {
+              const extractStringValue = (node: unknown): string | undefined => {
                 if (!node) {
                   return undefined;
                 }
                 if (typeof node === 'string') {
                   return node;
                 }
+                if (!isObjectLike(node)) {
+                  return undefined;
+                }
                 if (node.type === 'Quoted' && node.value) {
                   // Quoted.value can be string | Any | Interpolated
-                  if (typeof node.value === 'string') {
-                    return node.value;
+                  const value = stringFromNodeValue(node.value);
+                  if (value !== undefined) {
+                    return value;
                   }
-                  if (node.value?.value && typeof node.value.value === 'string') {
-                    return node.value.value;
-                  }
-                  // Try valueOf() for Any nodes
-                  if (typeof node.valueOf === 'function') {
-                    const val = node.valueOf();
-                    if (typeof val === 'string') {
-                      return val;
-                    }
-                  }
+                  return valueOfString(node);
                 }
                 if (node.type === 'Url' && node.value) {
                   // Url.value can be Quoted, string, or other
-                  if (typeof node.value === 'string') {
-                    return node.value;
+                  const value = stringFromNodeValue(node.value);
+                  if (value !== undefined) {
+                    return value;
                   }
-                  if (node.value.type === 'Quoted' && node.value.value) {
-                    if (typeof node.value.value === 'string') {
-                      return node.value.value;
-                    }
-                    if (node.value.value?.value && typeof node.value.value.value === 'string') {
-                      return node.value.value.value;
-                    }
+                  if (isObjectLike(node.value) && node.value.type === 'Quoted') {
+                    return extractStringValue(node.value);
                   }
-                  // Try valueOf() for Url nodes
-                  if (typeof node.valueOf === 'function') {
-                    const val = node.valueOf();
-                    if (typeof val === 'string') {
-                      return val;
-                    }
-                  }
+                  return valueOfString(node);
                 }
-                if (typeof node.valueOf === 'function') {
-                  const val = node.valueOf();
-                  if (typeof val === 'string') {
-                    return val.trim();
-                  }
-                }
-                return undefined;
+                return valueOfString(node, true);
               };
 
               // Prelude might contain options in parentheses followed by the plugin path

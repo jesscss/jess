@@ -27,7 +27,7 @@ describe('source map segments', () => {
       decl({ name: any('color'), value: any('red') })
     ], undefined, undefined, treeContext);
     // fake location & file for mapping
-    (root.value[0] as any)._location = [0, 1, 1, 0, 1, 6];
+    (root.rules[0] as any)._location = [0, 1, 1, 0, 1, 6];
     const css = root.toString(getPrintOptions({ writer: w }));
     expect(css).toBe('color: red;\n');
     const segs = w.getSegments();
@@ -50,7 +50,7 @@ describe('source map segments', () => {
       })
     ], undefined, undefined, treeContext);
     // attach fake locations and files
-    const rs = (nested.value[0] as any).value.rules;
+    const rs = (nested.value[0] as any).rules;
     (rs.value[0] as any)._location = [0, 1, 3, 0, 1, 8];
     const css = nested.toString(getPrintOptions({ writer: w }));
     expect(css).toBe('.a {\n  x: y;\n}\n');

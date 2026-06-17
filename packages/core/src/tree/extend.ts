@@ -62,20 +62,37 @@ export interface Extend extends Node<ExtendValue> {
 }
 
 export class Extend extends Node<ExtendValue> {
-  constructor(value: ExtendValue, options?: NodeOptions, location?: NodeLocation) {
+  static override childKeys = ['selector', 'target'] as const;
+
+  readonly selector: Selector | undefined;
+  readonly target: Selector;
+  readonly namespace: string | undefined;
+  readonly flag: ExtendFlag | undefined;
+
+  constructor(
+    value: ExtendValue,
+    options?: NodeOptions,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
     super(value, options, location);
+    this._treeContext = treeContext;
+    this.selector = value.selector;
+    this.target = value.target;
+    this.namespace = value.namespace;
+    this.flag = value.flag;
     this.removeFlag(F_VISIBLE);
     this.addFlags(F_NON_STATIC, F_MAY_ASYNC);
   }
 
   override valueOf() {
-    return `$extend ${this.value.target.valueOf()}`;
+    return `$extend ${this.target.valueOf()}`;
   }
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
-    let { target, selector, flag, namespace } = this.value;
+    const { target, selector, flag, namespace } = this;
     w.add('$extend');
     if (selector) {
       w.add(' ');
@@ -112,7 +129,7 @@ export class Extend extends Node<ExtendValue> {
 
   /** @internal Run the invisible extend registration effect without public render/eval materialization. */
   runEffect(context: Context): MaybePromise<void> {
-    let { selector, target, flag } = this.value;
+    let { selector, target, flag } = this;
     const { selectorBits } = context;
     attachSelectorBitLibrary(target, selectorBits);
 
@@ -149,7 +166,7 @@ export class Extend extends Node<ExtendValue> {
         extendRoot,
         target,
         selector: sel,
-        authoredSelector: this.value.selector,
+        authoredSelector: this.selector,
         flag,
         currentFrame: currentFrame && isNode(currentFrame, N.Ruleset) ? currentFrame : undefined
       });
@@ -310,7 +327,7 @@ function materializeImplicitAmpersands(
     if (isNode(node, N.ComplexSelector)) {
       const complex = node;
       const parts: ComplexSelectorComponent[] = [];
-      for (const part of complex.value) {
+      for (const part of complex.components) {
         if (isNode(part, N.Ampersand)) {
           const amp = part;
           if (amp.hasFlag(F_IMPLICIT_AMPERSAND)) {
@@ -322,7 +339,7 @@ function materializeImplicitAmpersands(
             ) {
               const repl = materialize(copySelector(resolved));
               if (isNode(repl, N.ComplexSelector)) {
-                parts.push(...repl.value.map(item => copySelector(item) as ComplexSelectorComponent));
+                parts.push(...repl.selectors.map(item => copySelector(item) as ComplexSelectorComponent));
               } else {
                 parts.push(copySelector(repl) as ComplexSelectorComponent);
               }
@@ -338,7 +355,7 @@ function materializeImplicitAmpersands(
 
     if (isNode(node, N.SelectorList)) {
       return attachSelectorBitLibrary(
-        SelectorList.create(node.value.map(item => materialize(item as Selector))).inherit(node),
+        SelectorList.create(node.selectors.map(item => materialize(item as Selector))).inherit(node),
         library
       );
     }
@@ -366,14 +383,14 @@ function hasMaterializableImplicitAmpersand(
     }
 
     if (isNode(node, N.ComplexSelector)) {
-      return node.value.some(part => (
+      return node.components.some(part => (
         !isNode(part, N.Combinator)
         && visit(part)
       ));
     }
 
     if (isNode(node, N.SelectorList)) {
-      return node.value.some(item => visit(item as Selector));
+      return node.selectors.some(item => visit(item as Selector));
     }
 
     return false;

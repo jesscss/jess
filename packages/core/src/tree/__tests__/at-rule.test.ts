@@ -100,7 +100,7 @@ describe('AtRule', () => {
     if (!(prepared instanceof AtRule)) {
       throw new Error('Expected AtRule result');
     }
-    expect(prepared.value.name.valueOf()).toBe('@media');
+    expect(prepared.name.valueOf()).toBe('@media');
     expect(prelude.parent).toBe(node);
   });
 
@@ -126,7 +126,7 @@ describe('AtRule', () => {
     if (!(prepared instanceof AtRule)) {
       throw new Error('Expected AtRule result');
     }
-    expect(prepared.value.rules).toBe(preparedRules);
+    expect(prepared.rules).toBe(preparedRules);
     expect(sourceRules.parent).toBe(node);
     expect(sourcePrelude.parent).toBe(node);
     expect(node.registrationPrepared).toBe(false);
@@ -203,7 +203,7 @@ describe('AtRule', () => {
     context.rulesContext = savedRulesContext;
 
     await expect(Promise.resolve(node.eval(context))).resolves.toBe(node);
-    expect(node.value.prelude?.toTrimmedString()).toBe('print');
+    expect(node.prelude?.toTrimmedString()).toBe('print');
     expect(context.rulesContext).toBe(savedRulesContext);
   });
 
@@ -447,8 +447,8 @@ describe('AtRule', () => {
     expect(outerBody.parent).toBe(outerLayer);
     expect(nestedLayer.parent).toBe(outerBody);
     expect(nestedBody.parent).toBe(nestedLayer);
-    expect(outerLayer.value.rules).toBe(outerBody);
-    expect(nestedLayer.value.rules).toBe(nestedBody);
+    expect(outerLayer.rules).toBe(outerBody);
+    expect(nestedLayer.rules).toBe(nestedBody);
   });
 
   it('registers async nested layer names from invocation records without mutating source children', async () => {
@@ -493,8 +493,8 @@ describe('AtRule', () => {
     expect(outerBody.parent).toBe(outerLayer);
     expect(nestedLayer.parent).toBe(outerBody);
     expect(nestedBody.parent).toBe(nestedLayer);
-    expect(outerLayer.value.rules).toBe(outerBody);
-    expect(nestedLayer.value.rules).toBe(nestedBody);
+    expect(outerLayer.rules).toBe(outerBody);
+    expect(nestedLayer.rules).toBe(nestedBody);
   });
 
   it('renders already evaluated at-rules without deriving another eval surface', async () => {
@@ -659,7 +659,7 @@ describe('AtRule', () => {
         color: red;
       }
     `);
-    expect(node.value.prelude).toBe(sourcePrelude);
+    expect(node.prelude).toBe(sourcePrelude);
     expect(sourcePrelude.parent).toBe(node);
     expect(sourcePrelude.evaluated).toBe(false);
     expect(sourceRules.parent).toBe(node);
@@ -844,8 +844,8 @@ describe('AtRule', () => {
 
     expect(await Promise.resolve(node.render(context))).toBe('');
     expect(node.visible).toBe(true);
-    expect(node.value.rules?.parent).toBe(node);
-    expect(node.value.rules?.evaluated).toBe(false);
+    expect(node.rules?.parent).toBe(node);
+    expect(node.rules?.evaluated).toBe(false);
   });
 
   it('keeps public body-resolve visibility on the owned result', async () => {
@@ -871,7 +871,7 @@ describe('AtRule', () => {
 
     expect(resolved.toString()).toBe('');
     expect(node.visible).toBe(true);
-    expect(node.value.rules).toBe(sourceRules);
+    expect(node.rules).toBe(sourceRules);
     expect(sourceRules.parent).toBe(node);
     if (resolved instanceof AtRule) {
       expect(resolved).not.toBe(node);
@@ -909,7 +909,7 @@ describe('AtRule', () => {
     expect(node.hoistToRoot).toBeUndefined();
     expect(node.frames).toBeUndefined();
     expect(node.evaluated).toBe(false);
-    expect(node.getRenderRules()).toBe(node.value.rules);
+    expect(node.getRenderRules()).toBe(node.rules);
   });
 
   it('returns an owned at-rule when body eval changes hoist output', async () => {
@@ -1162,7 +1162,7 @@ describe('AtRule', () => {
       }
     `);
     expect(preludeEvalCalls).toBe(1);
-    expect(node.value.prelude).toBe(sourcePrelude);
+    expect(node.prelude).toBe(sourcePrelude);
     expect(sourcePrelude.parent).toBe(node);
     expect(sourcePrelude.evaluated).toBe(false);
     expect(node.evaluated).toBe(false);
@@ -1195,9 +1195,9 @@ describe('AtRule', () => {
       throw new Error('Expected evaluated AtRule result');
     }
     expect(evaluated).not.toBe(node);
-    expect(node.value.rules).toBe(originalRules);
+    expect(node.rules).toBe(originalRules);
     expect(node.getRenderRules()).toBe(originalRules);
-    expect(evaluated.value.rules).toBe(evaluatedRules);
+    expect(evaluated.rules).toBe(evaluatedRules);
     expect(evaluated.getRenderRules()).toBe(evaluatedRules);
     expect(node.toTrimmedString()).toBeString(`
       @font-face {
@@ -1240,7 +1240,7 @@ describe('AtRule', () => {
     });
 
     expect(() => node.eval(context)).toThrow('hasVisibleRules failed');
-    expect(node.value.rules).toBe(originalRules);
+    expect(node.rules).toBe(originalRules);
     expect(node.getRenderRules()).toBe(originalRules);
     expect(node.toTrimmedString()).toBeString(`
       @font-face {
@@ -1267,9 +1267,9 @@ describe('AtRule', () => {
         decl({ name: 'color', value: any('red') })
       ])
     });
-    const sourceName = node.value.name;
-    const sourcePrelude = node.value.prelude;
-    const sourceRules = node.value.rules;
+    const sourceName = node.name;
+    const sourcePrelude = node.prelude;
+    const sourceRules = node.rules;
 
     const resolved = await node.resolve(context);
 
@@ -1281,9 +1281,9 @@ describe('AtRule', () => {
     expect(sourceName.parent).toBe(node);
     expect(sourcePrelude?.parent).toBe(node);
     expect(sourceRules?.parent).toBe(node);
-    expect(node.value.prelude).toBe(sourcePrelude);
+    expect(node.prelude).toBe(sourcePrelude);
     if (resolved instanceof AtRule) {
-      expect(resolved.value.prelude).not.toBe(sourcePrelude);
+      expect(resolved.prelude).not.toBe(sourcePrelude);
     }
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
@@ -1336,7 +1336,7 @@ describe('AtRule', () => {
         color: red;
       }
     `);
-    expect(node.value.rules).toBe(originalRules);
+    expect(node.rules).toBe(originalRules);
     expect(originalRules.parent).toBe(node);
   });
 
@@ -1363,7 +1363,7 @@ describe('AtRule', () => {
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
       rules: sourceRules
     });
-    const sourcePrelude = node.value.prelude;
+    const sourcePrelude = node.prelude;
     const originalPrepareRegistration = Rules.prototype.prepareRegistration;
     const bodyPrepFrames: Node[] = [];
     Rules.prototype.prepareRegistration = function countBodyPrepFrame(
@@ -1396,9 +1396,9 @@ describe('AtRule', () => {
         }
       }
     `);
-    expect(node.value.prelude).toBe(sourcePrelude);
+    expect(node.prelude).toBe(sourcePrelude);
     expect(sourcePrelude?.parent).toBe(node);
-    expect(node.value.rules).toBe(sourceRules);
+    expect(node.rules).toBe(sourceRules);
     expect(sourceRules.parent).toBe(node);
     expect(node.evaluated).toBe(false);
     expect(node.visible).toBe(true);
@@ -1433,13 +1433,13 @@ describe('AtRule', () => {
       throw new Error('Expected public at-rule results');
     }
 
-    first.value.prelude = any('print');
+    first.prelude = any('print');
 
     expect(first).not.toBe(node);
     expect(first).not.toBe(second);
-    expect(second.value.prelude?.toTrimmedString()).toBe('screen');
-    expect(node.value.prelude).toBe(sourcePrelude);
-    expect(node.value.rules).toBe(sourceRules);
+    expect(second.prelude?.toTrimmedString()).toBe('screen');
+    expect(node.prelude).toBe(sourcePrelude);
+    expect(node.rules).toBe(sourceRules);
     expect(sourcePrelude.parent).toBe(node);
     expect(sourceRules.parent).toBe(node);
   });
@@ -1485,8 +1485,8 @@ describe('AtRule', () => {
     }
 
     expect(resolved).not.toBe(node);
-    expect(resolved.value.rules).not.toBe(sourceRules);
-    expect(resolved.getRenderRules()).toBe(resolved.value.rules);
+    expect(resolved.rules).not.toBe(sourceRules);
+    expect(resolved.getRenderRules()).toBe(resolved.rules);
     expect(resolved.hoistToRoot).toBe(true);
     expect(resolved.isHoisted({ collapseNesting: false })).toBe(true);
     expect(resolved.getRenderFrames()).toBeUndefined();
@@ -1498,8 +1498,8 @@ describe('AtRule', () => {
         }
       }
     `);
-    expect(node.value.prelude).toBe(sourcePrelude);
-    expect(node.value.rules).toBe(sourceRules);
+    expect(node.prelude).toBe(sourcePrelude);
+    expect(node.rules).toBe(sourceRules);
     expect(sourcePrelude.parent).toBe(node);
     expect(sourceRules.parent).toBe(node);
     expect(node.hoistToRoot).toBeUndefined();
@@ -1574,8 +1574,8 @@ describe('AtRule', () => {
       rules: rules([])
     });
     const options = getPrintOptions({ writer });
-    const name = node.value.name;
-    const prelude = node.value.prelude!;
+    const name = node.name;
+    const prelude = node.prelude!;
     const originalNameToString = name.toString;
     const originalPreludeToString = prelude.toString;
     let nameUsedActiveWriter = false;
@@ -3056,7 +3056,7 @@ describe('AtRule', () => {
             }),
             atrule({
               name: any('@page', { role: 'atkeyword' }),
-              prelude: list([el('Test:first')]),
+              prelude: list([any('Test:first', { role: 'ident' })]),
               rules: rules([
                 decl({
                   name: 'margin',

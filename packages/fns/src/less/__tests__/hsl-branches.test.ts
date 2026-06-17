@@ -1,26 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Color, ColorFormat, Context, Dimension, List } from '@jesscss/core';
 import hsl from '../hsl.js';
-
-type HslInternal = {
-  _internal: (this: {
-    caller?: { options?: { modernSyntax?: boolean } };
-    context?: Context;
-    rawArgs?: unknown;
-    args?: () => Promise<unknown[]>;
-  }, ...args: unknown[]) => Promise<Color>;
-};
-
-function hasHslInternal(value: unknown): value is HslInternal {
-  return typeof value === 'function' && typeof Reflect.get(value, '_internal') === 'function';
-}
-
-function getHslInternal(fn: unknown): HslInternal['_internal'] {
-  if (!hasHslInternal(fn)) {
-    throw new Error('Expected hsl function with _internal helper');
-  }
-  return fn._internal;
-}
+import { hslImplementation } from '../hsl.js';
 
 describe('hsl() branch coverage', () => {
   it('canonicalizes fully clamped HSL output through RGB before serialization', async () => {
@@ -44,8 +25,7 @@ describe('hsl() branch coverage', () => {
     expect(result).toBeInstanceOf(Color);
     expect(result.options.format).toBe(ColorFormat.HSL);
 
-    const hslInternal = getHslInternal(hsl);
-    const internalResult = await hslInternal.call(
+    const internalResult = await hslImplementation.call(
       {
         caller: { options: { modernSyntax: true } },
         context: new Context(),
@@ -60,9 +40,8 @@ describe('hsl() branch coverage', () => {
   });
 
   it('throws for invalid internal argument signatures', async () => {
-    const hslInternal = getHslInternal(hsl);
     await expect(
-      hslInternal.call(
+      hslImplementation.call(
         {
           context: new Context(),
           rawArgs: new List([]),

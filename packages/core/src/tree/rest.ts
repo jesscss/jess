@@ -1,5 +1,5 @@
 import { Any } from './any.js';
-import { defineType, Node } from './node.js';
+import { defineType, Node, type NodeLocation, type NodeOptions } from './node.js';
 import type { Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
@@ -11,8 +11,23 @@ import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRend
  * lists / sequences, so this is mostly for serialization.
  */
 export class Rest extends Node<Node | string | undefined> {
+  static override childKeys = ['node'] as const;
+
+  readonly node: Node | string | undefined;
+
+  constructor(
+    value?: Node | string,
+    options?: NodeOptions,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.node = value;
+  }
+
   get name(): string {
-    let { value } = this;
+    const value = this.node;
     if (value) {
       if (isNode(value)) {
         if (value instanceof Any) {
@@ -29,7 +44,7 @@ export class Rest extends Node<Node | string | undefined> {
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('...$');
-    const value = this.value;
+    const value = this.node;
     if (value) {
       if (isNode(value)) {
         value.writeSyntax(options);
@@ -41,7 +56,7 @@ export class Rest extends Node<Node | string | undefined> {
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
-    const value = this.value;
+    const value = this.node;
     if (!value || !isNode(value)) {
       const out = value ? `...$$${value}` : '...$';
       options.writer.add(out, this);
@@ -63,7 +78,7 @@ export class Rest extends Node<Node | string | undefined> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
-    const value = this.value;
+    const value = this.node;
     if (value && isNode(value) && !(value instanceof Any)) {
       return this.renderSource(context, bufferOrOptions, options);
     }

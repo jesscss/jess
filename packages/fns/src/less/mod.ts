@@ -4,8 +4,8 @@ export default defineFunction(
   'mod',
   function(a: Dimension, b: Dimension) {
     return new Dimension({
-      number: a.value.number % b.value.number,
-      unit: a.value.unit
+      number: a.number % b.number,
+      unit: a.unit
     });
   },
   {

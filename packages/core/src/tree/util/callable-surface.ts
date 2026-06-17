@@ -1,10 +1,13 @@
 import { attachMixinOutputSlot } from './mixin-output-slot.js';
 import { Comment } from '../comment.js';
-import { F_STATIC, Node } from '../node.js';
+import { F_STATIC, Node, type LocationInfo } from '../node.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 import { Rules } from '../rules.js';
 import { canReuseLeaf, reuseLeaf } from './cloning.js';
+import { Mixin } from '../mixin.js';
+import { Ruleset } from '../ruleset.js';
+import { AtRule } from '../at-rule.js';
 
 export function isIndexedRuleChild(node: Node): boolean {
   return !isNode(node, N.Comment);
@@ -61,7 +64,8 @@ function copyCallableCommentNode(node: Comment): Node {
   return new Comment(
     node.value,
     node.options ? { ...node.options } : undefined,
-    node.location.length === 0 ? undefined : node.location
+    node.location.length === 0 ? undefined : node.location,
+    node.sourceRoot?._treeContext
   ).inherit(node);
 }
 
@@ -84,6 +88,66 @@ function constructCallableRulesNode(node: Node, value: unknown): Node {
   return copy.inherit(node);
 }
 
+function callableLocation(node: Node): LocationInfo | undefined {
+  return node.location.length === 6 ? node.location : undefined;
+}
+
+function copyCallableDirectFieldNode(node: Node): Node | undefined {
+  if (isNode(node, N.Mixin)) {
+    return new Mixin(
+      {
+        ...(node.name !== undefined && {
+          name: copyCallableRulesNode(node.name) as Mixin['name']
+        }),
+        rules: copyCallableRulesNode(node.rules) as Rules,
+        ...(node.params !== undefined && {
+          params: copyCallableRulesNode(node.params) as Mixin['params']
+        }),
+        ...(node.guard !== undefined && {
+          guard: copyCallableRulesNode(node.guard) as Mixin['guard']
+        })
+      },
+      node.options ? { ...node.options } : undefined,
+      callableLocation(node),
+      node.sourceRoot?._treeContext
+    ).inherit(node);
+  }
+  if (isNode(node, N.Ruleset)) {
+    return new Ruleset(
+      {
+        selector: copyCallableRulesNode(node.selector) as Ruleset['selector'],
+        rules: copyCallableRulesNode(node.rules) as Rules,
+        ...(node.guard !== undefined && {
+          guard: copyCallableRulesNode(node.guard) as Ruleset['guard']
+        }),
+        ...(node.selectorBeforeExtend !== undefined && {
+          selectorBeforeExtend: copyCallableRulesNode(node.selectorBeforeExtend) as Ruleset['selectorBeforeExtend']
+        })
+      },
+      node.options ? { ...node.options } : undefined,
+      callableLocation(node),
+      node.sourceRoot?._treeContext
+    ).inherit(node);
+  }
+  if (isNode(node, N.AtRule)) {
+    return new AtRule(
+      {
+        name: copyCallableRulesNode(node.name) as AtRule['name'],
+        ...(node.prelude !== undefined && {
+          prelude: copyCallableRulesNode(node.prelude)
+        }),
+        ...(node.rules !== undefined && {
+          rules: copyCallableRulesNode(node.rules) as Rules
+        })
+      },
+      node.options ? { ...node.options } : undefined,
+      callableLocation(node),
+      node.sourceRoot?._treeContext
+    ).inherit(node);
+  }
+  return undefined;
+}
+
 function copyCallableRulesNode(node: Node): Node {
   if (isNode(node, N.Comment)) {
     return copyCallableCommentNode(node);
@@ -96,11 +160,15 @@ function copyCallableRulesNode(node: Node): Node {
   if (reusableLeaf) {
     return reusableLeaf;
   }
+  const directFieldCopy = copyCallableDirectFieldNode(node);
+  if (directFieldCopy) {
+    return directFieldCopy;
+  }
   return constructCallableRulesNode(node, copyCallableRulesValue(node.value));
 }
 
 function copyCallableRulesChildren(sourceRules: Rules): Node[] {
-  const source = sourceRules.value;
+  const source = sourceRules.rules;
   const out = new Array<Node>(source.length);
   for (let i = 0; i < source.length; i++) {
     out[i] = copyCallableRulesNode(source[i]!);
@@ -110,13 +178,10 @@ function copyCallableRulesChildren(sourceRules: Rules): Node[] {
 
 function createStaticCallableRulesSurface(sourceRules: Rules): Rules {
   const output = sourceRules.derive([]);
-  const source = sourceRules.value;
-  const value = new Array<Node>(source.length);
+  const source = sourceRules.rules;
   for (let i = 0; i < source.length; i++) {
-    value[i] = source[i]!;
+    output.value.push(source[i]!);
   }
-  // Assign after construction so source children keep canonical parentage.
-  output.value = value;
   return output;
 }
 
@@ -124,11 +189,12 @@ function canReuseStaticCallableChildren(sourceRules: Rules): boolean {
   if (!sourceRules.hasFlag(F_STATIC)) {
     return false;
   }
-  const value = sourceRules.value;
+  const value = sourceRules.rules;
   for (let i = 0; i < value.length; i++) {
     const child = value[i]!;
     if (
-      isNode(child, N.Ruleset | N.AtRule)
+      child.type === 'Ruleset'
+      || child.type === 'AtRule'
       || child.options?.assign !== undefined
     ) {
       return false;

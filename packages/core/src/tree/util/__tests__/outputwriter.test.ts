@@ -19,15 +19,19 @@ function isNumberArray(value: unknown): value is number[] {
   return Array.isArray(value) && value.every(item => typeof item === 'number');
 }
 
+function writerField(writer: OutputWriter, key: string): unknown {
+  return (writer as unknown as Record<string, unknown>)[key];
+}
+
 function positionArraysFor(writer: OutputWriter): WriterPositionArrays {
-  const oldPositions: unknown = Reflect.get(writer, '_positions');
+  const oldPositions: unknown = writerField(writer, '_positions');
   if (oldPositions !== undefined) {
     throw new TypeError('OutputWriter should not keep object position records');
   }
-  const line: unknown = Reflect.get(writer, '_posLine');
-  const column: unknown = Reflect.get(writer, '_posColumn');
-  const segments: unknown = Reflect.get(writer, '_posSegments');
-  const length: unknown = Reflect.get(writer, '_posLength');
+  const line: unknown = writerField(writer, '_posLine');
+  const column: unknown = writerField(writer, '_posColumn');
+  const segments: unknown = writerField(writer, '_posSegments');
+  const length: unknown = writerField(writer, '_posLength');
   if (!isNumberArray(line) || !isNumberArray(column) || !isNumberArray(segments) || !isNumberArray(length)) {
     throw new TypeError('Expected OutputWriter parallel position arrays');
   }
@@ -230,7 +234,7 @@ describe('OutputWriter', () => {
       const mark = w.mark();
       w.add('chunk2');
       w.add('chunk3');
-      const chunks = Reflect.get(w, 'chunks');
+      const chunks = writerField(w, 'chunks');
       if (!Array.isArray(chunks)) {
         throw new Error('Expected OutputWriter chunks array');
       }
@@ -304,13 +308,13 @@ describe('OutputWriter', () => {
 
       w.add('one');
       w.queueSpacer(' ');
-      expect(Reflect.get(w, '_queuedSpacer')).toBeUndefined();
-      expect(Reflect.get(w, '_queuedSpacerText')).toBe(' ');
+      expect(writerField(w, '_queuedSpacer')).toBeUndefined();
+      expect(writerField(w, '_queuedSpacerText')).toBe(' ');
       w.add('two');
 
       expect(w.toString()).toBe('one two');
-      expect(Reflect.get(w, '_queuedSpacerText')).toBe('');
-      expect(Reflect.get(w, '_queuedSpacerShouldAdd')).toBeUndefined();
+      expect(writerField(w, '_queuedSpacerText')).toBe('');
+      expect(writerField(w, '_queuedSpacerShouldAdd')).toBeUndefined();
     });
 
     it('drops a queued spacer when the next chunk already starts with whitespace', () => {
@@ -345,9 +349,9 @@ describe('OutputWriter', () => {
       w.add('two');
 
       expect(w.toString()).toBe('onetwo');
-      expect(Reflect.get(w, '_queuedSpacer')).toBeUndefined();
-      expect(Reflect.get(w, '_queuedSpacerText')).toBe('');
-      expect(Reflect.get(w, '_queuedSpacerShouldAdd')).toBeUndefined();
+      expect(writerField(w, '_queuedSpacer')).toBeUndefined();
+      expect(writerField(w, '_queuedSpacerText')).toBe('');
+      expect(writerField(w, '_queuedSpacerShouldAdd')).toBeUndefined();
     });
 
     it('restore reverts to mark position', () => {

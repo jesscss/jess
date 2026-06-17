@@ -40,7 +40,7 @@ describe('callable collection helper', () => {
     const result = await callable.evalCall(context, list([]));
 
     expect(result.toString()).toContain('color: red;');
-    expect(result.options.mixinOutputSlot?.sourceRules).toBe(mixinDef.value.rules);
+    expect(result.options.mixinOutputSlot?.sourceRules).toBe(mixinDef.rules);
     expect(result.options.mixinOutputSlot?.outputRules).toBe(result);
   });
 });

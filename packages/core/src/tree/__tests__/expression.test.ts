@@ -1,4 +1,4 @@
-import { expr, any, list, ref, Rules, rules, vardecl } from '../index.js';
+import { expr, any, Expression, list, ref, Rules, rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -19,9 +19,13 @@ describe('Expression', () => {
   });
 
   it('renders expression syntax through toTrimmedString()', () => {
-    const rule = expr(any('foo'));
+    const child = any('foo');
+    const rule = expr(child);
 
     expect(rule.toTrimmedString()).toBe('$(foo)');
+    expect(rule.node).toBe(child);
+    expect(rule.value).toBe(child);
+    expect(Expression.childKeys).toEqual(['node']);
   });
 
   it('renders resolved expression values through render(context)', async () => {
@@ -66,7 +70,7 @@ describe('Expression', () => {
     let expressionResolveCalls = 0;
     renderedNode.resolve = (renderContext: Context) => {
       expressionResolveCalls++;
-      return renderedNode.value.resolve(renderContext);
+      return renderedNode.node.resolve(renderContext);
     };
     let childResolveCalls = 0;
     const originalChildResolve = expressionChild.resolve;

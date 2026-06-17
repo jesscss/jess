@@ -6,6 +6,7 @@ import {
   F_VISIBLE,
   type LocationInfo,
   type NodeOptions,
+  type NodeLocation,
   defineType
 } from './node.js';
 import { type Operator, calculate } from './util/calculate.js';
@@ -52,8 +53,21 @@ export interface Dimension extends Node<DimensionValue> {
  * A number or dimension
  */
 export class Dimension extends Node<DimensionValue> {
-  constructor(...args: ConstructorParameters<typeof Node<DimensionValue>>) {
-    super(...args);
+  static override childKeys = null;
+
+  readonly number: number;
+  readonly unit: string | undefined;
+
+  constructor(
+    value: DimensionValue,
+    options?: NodeOptions,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.number = value.number;
+    this.unit = value.unit;
     this.addFlag(F_STATIC);
   }
 
@@ -66,7 +80,7 @@ export class Dimension extends Node<DimensionValue> {
   }
 
   private operateAsColor(b: Color, op: Operator, context?: Context): Color {
-    const { number, unit } = this.value;
+    const { number, unit } = this;
     const unitMode = context?.opts?.unitMode ?? 'preserve';
     const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
     if (unit && isStrictLikeMode) {
@@ -80,7 +94,7 @@ export class Dimension extends Node<DimensionValue> {
   }
 
   override valueOf() {
-    let { number, unit } = this.value;
+    const { number, unit } = this;
     return unit ? `${number}${unit}` : number;
   }
 
@@ -92,8 +106,8 @@ export class Dimension extends Node<DimensionValue> {
     if (b instanceof Color) {
       return this.operateAsColor(b, op, context);
     }
-    let { number: aVal, unit: aUnit } = this.value;
-    let { number: bVal, unit: bUnit } = b.value;
+    let { number: aVal, unit: aUnit } = this;
+    let { number: bVal, unit: bUnit } = b;
     let unitMode = context?.opts.unitMode ?? 'preserve';
     let isStrictMode = unitMode === 'strict';
     let isPreserveMode = unitMode === 'preserve';
@@ -187,7 +201,7 @@ export class Dimension extends Node<DimensionValue> {
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
-      return this.value.number === Number(text) ? 0 : undefined;
+      return this.number === Number(text) ? 0 : undefined;
     }
     if (b.type === 'Quoted') {
       return undefined;
@@ -202,7 +216,7 @@ export class Dimension extends Node<DimensionValue> {
     let unitMode = context?.opts?.unitMode ?? 'preserve';
     let isStrictMode = unitMode === 'strict';
     let isPreserveMode = unitMode === 'preserve';
-    let { number: aVal, unit: aUnit } = this.value;
+    let { number: aVal, unit: aUnit } = this;
 
     /** Normalize percentages to a number for numerical comparison */
     if (aUnit === '%') {
@@ -222,7 +236,7 @@ export class Dimension extends Node<DimensionValue> {
       let thisColor = new Color({ rgb: [aVal, aVal, aVal] }, { format: ColorFormat.RGB }).inherit(this);
       return thisColor.compare(b);
     }
-    let { number: bVal, unit: bUnit } = b.value;
+    let { number: bVal, unit: bUnit } = b;
     if (bUnit === '%') {
       bVal = bVal / 100;
       bUnit = undefined;
@@ -293,7 +307,7 @@ export class Dimension extends Node<DimensionValue> {
   }
 
   private serializeSyntax(): string {
-    let { number, unit = '' } = this.value;
+    let { number, unit = '' } = this;
 
     // Check if unit is compound (contains '/', '*', or '±')
     const isCompoundUnit = unit && (unit.includes('/') || unit.includes('*') || unit.includes('±'));
@@ -395,11 +409,12 @@ defineType(Dimension, 'Dimension');
 export const dimension = (
   value: DimensionValue | [number, string] | number,
   options?: NodeOptions,
-  location?: LocationInfo
+  location?: LocationInfo,
+  treeContext?: Context['treeContext']
 ) => {
   if (isArray(value)) {
     let [number, unit] = value;
-    return new Dimension({ number, unit }, options, location);
+    return new Dimension({ number, unit }, options, location, treeContext);
   }
-  return new Dimension(typeof value === 'number' ? { number: value } : value, options, location);
+  return new Dimension(typeof value === 'number' ? { number: value } : value, options, location, treeContext);
 };

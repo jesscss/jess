@@ -1,4 +1,4 @@
-import { any, attr, co, compound, el, pseudo, ref, rules, Rules as RulesClass, sel, sellist, vardecl } from '../index.js';
+import { any, attr, co, compound, el, pseudo, ref, rules, Rules as RulesClass, sel, sellist, SelectorList, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { OutputWriter } from '../util/print.js';
@@ -32,6 +32,16 @@ describe('Selector list', () => {
   };
 
   describe('equality', () => {
+    test('exposes selectors as the direct child field', () => {
+      const first = el('.foo');
+      const second = el('.bar');
+      const node = sellist([first, second]);
+
+      expect(node.selectors).toEqual([first, second]);
+      expect(node.value).toEqual([first, second]);
+      expect(SelectorList.childKeys).toEqual(['selectors']);
+    });
+
     test('renders selector-list syntax through toTrimmedString()', () => {
       const node = sellist([
         el('.foo'),
@@ -305,7 +315,7 @@ describe('Selector list', () => {
     const selector = pseudo({ name: ':is', arg: inner });
 
     const resolved = await selector.resolve(context);
-    const resolvedArg = resolved.value.arg;
+    const resolvedArg = resolved.arg;
 
     expect(resolved.toTrimmedString()).toBe(':is(.source .child)');
     expect(resolvedArg).not.toBe(sourceChild);

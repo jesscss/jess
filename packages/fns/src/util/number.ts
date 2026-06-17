@@ -8,7 +8,7 @@ export function clamp(val: number) {
 
 export function getNumber(n: Node | number, ignoreUnit = false) {
   if (n instanceof Dimension) {
-    const { number, unit } = n.value;
+    const { number, unit } = n;
     if (unit === '%') {
       return number / 100;
     } else if (!unit || ignoreUnit) {

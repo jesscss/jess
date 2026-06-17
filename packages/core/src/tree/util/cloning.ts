@@ -1,5 +1,6 @@
 import { F_HAS_NODE_CHILD, F_NON_STATIC, Node } from '../node-base.js';
 import { N } from '../node-type.js';
+import { PseudoSelector } from '../selector-pseudo.js';
 import { isNode } from './is-node.js';
 
 /**
@@ -115,12 +116,12 @@ function copyRenderMetadata(source: Node, target: Node): void {
 }
 
 function constructCopy(node: Node, value: unknown): Node {
-  const options = node._options;
+  const options = node.options;
   const copy = Reflect.construct(
     node.constructor,
     [
       value,
-      options && isRecord(options) ? { ...options } : undefined,
+      isRecord(options) ? { ...options } : undefined,
       node.location
     ]
   );
@@ -128,6 +129,29 @@ function constructCopy(node: Node, value: unknown): Node {
     throw new TypeError('Copied value must construct a Node');
   }
   copy.inherit(node);
+  copyRenderMetadata(node, copy);
+  return copy;
+}
+
+function constructPseudoCopy(node: Node, preserveComments: boolean): Node | undefined {
+  if (!isNode(node, N.PseudoSelector)) {
+    return undefined;
+  }
+  const arg = node.arg
+    ? (preserveComments ? copyChildPreservingComments(node.arg) : copyChild(node.arg))
+    : undefined;
+  const copy = new PseudoSelector(
+    {
+      name: node.name,
+      ...(arg instanceof Node && { arg }),
+      ...(node.generatedPseudoPlacementOverride !== undefined && {
+        generatedPseudoPlacementOverride: node.generatedPseudoPlacementOverride
+      })
+    },
+    isRecord(node.options) ? { ...node.options } : undefined,
+    node.location,
+    node.sourceRoot?._treeContext
+  ).inherit(node);
   copyRenderMetadata(node, copy);
   return copy;
 }
@@ -158,6 +182,11 @@ export function copyWithReusableLeaves(node: Node): Node {
   if (canReuseLeaf(node)) {
     return reuseLeaf(node);
   }
+  const pseudoCopy = constructPseudoCopy(node, false);
+  if (pseudoCopy) {
+    pseudoCopy.frozen = true;
+    return pseudoCopy;
+  }
   const copy = constructCopy(node, copyChild(node.value));
   copy.frozen = true;
   return copy;
@@ -171,6 +200,11 @@ export function copyWithReusableLeavesPreservingComments(node: Node): Node {
   }
   if (canReuseLeaf(node)) {
     return reuseLeaf(node);
+  }
+  const pseudoCopy = constructPseudoCopy(node, true);
+  if (pseudoCopy) {
+    pseudoCopy.frozen = true;
+    return pseudoCopy;
   }
   const copy = constructCopy(node, copyChildPreservingComments(node.value));
   copy.frozen = true;
@@ -188,6 +222,11 @@ export function copyOwnedWithReusableLeaves(node: Node): Node {
   if (derivedAmpersand) {
     derivedAmpersand.frozen = true;
     return derivedAmpersand;
+  }
+  const pseudoCopy = constructPseudoCopy(node, false);
+  if (pseudoCopy) {
+    pseudoCopy.frozen = true;
+    return pseudoCopy;
   }
   const copy = constructCopy(node, copyChild(node.value));
   copy.frozen = true;

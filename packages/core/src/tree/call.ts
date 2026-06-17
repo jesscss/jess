@@ -4,7 +4,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { cast } from './util/cast.js';
 import { callWithContext, getRawArgsPlacement, setRawArgsPlacement } from '../define-function.js';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Rules } from './rules.js';
@@ -41,7 +41,7 @@ function withMixinRulesetCallArgsHint(name: string | Node, args?: List<Node>): s
 function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<Node>): T | Reference;
 function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<Node>): T | Reference {
   if (
-    args?.value.length
+    args?.items.length
     && isNode(name, N.Reference)
     && name.options?.type === 'mixin-ruleset'
     && name.options.mixinRulesetCallHasArgs !== true
@@ -52,7 +52,8 @@ function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<No
         ...name.options,
         mixinRulesetCallHasArgs: true
       },
-      name.location.length === 0 ? undefined : name.location
+      name.location.length === 0 ? undefined : name.location,
+      name.sourceRoot?._treeContext
     );
   }
   return name;
@@ -120,12 +121,12 @@ export function getCallRawArgsPlacement(rawArgs: List<Node>): CallRawArgsPlaceme
 
 export function getCallRawArgSourceNode(rawArgs: List<Node>, index: number): Node | undefined {
   const placement = getCallRawArgsPlacement(rawArgs);
-  return placement?.sourceArgs.value[index];
+  return placement?.sourceArgs.items[index];
 }
 
 export function getCallRawArgDiagnosticSource(rawArgs: List<Node>, index: number): CallRawArgDiagnosticSource | undefined {
   const placement = getCallRawArgsPlacement(rawArgs);
-  const sourceArg = placement?.sourceArgs.value[index];
+  const sourceArg = placement?.sourceArgs.items[index];
   if (!placement || !sourceArg) {
     return undefined;
   }
@@ -170,11 +171,17 @@ export type ExtendedFn<T extends unknown[] = unknown[], R = unknown> = ((this: C
  * is not a string, but is an (optional) variable reference.
  */
 export class Call extends Node<CallValue, CallOptions> {
+  static override childKeys = ['name', 'args', 'contentNode'] as const;
+
+  readonly name: CallValue['name'];
+  readonly args: CallValue['args'];
+  readonly contentNode: CallValue['contentNode'];
+
   override _requiredSemi = true;
 
   private createEvalState(): CallEvalState {
-    const preservesRulesLikeVariableTarget = isNode(this.value.name, N.Reference) && this.value.name.options?.type === 'variable';
-    let name = this.value.name;
+    const preservesRulesLikeVariableTarget = isNode(this.name, N.Reference) && this.name.options?.type === 'variable';
+    let name = this.name;
     if (
       preservesRulesLikeVariableTarget
       && isNode(name, N.Reference)
@@ -186,15 +193,16 @@ export class Call extends Node<CallValue, CallOptions> {
           ...name.options,
           preserveRulesLike: true
         },
-        name.location.length === 0 ? undefined : name.location
+        name.location.length === 0 ? undefined : name.location,
+        name.sourceRoot?._treeContext
       );
     }
-    name = withMixinRulesetCallArgsHint(name, this.value.args);
+    name = withMixinRulesetCallArgsHint(name, this.args);
     return {
       source: this,
       name,
-      args: this.value.args,
-      contentNode: this.value.contentNode,
+      args: this.args,
+      contentNode: this.contentNode,
       preservesRulesLikeVariableTarget
     };
   }
@@ -217,7 +225,7 @@ export class Call extends Node<CallValue, CallOptions> {
     fallbackValue: unknown
   ): Promise<Node> {
     const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
-      ? String(name.value.key)
+      ? String(name.key)
       : stringifyValueOf(fallbackValue);
     const rendered = await state.source.renderFinalizedCallSyntax(fallbackName, state, context, prepareRenderPrintState(context), {
       args: state.args,
@@ -233,7 +241,7 @@ export class Call extends Node<CallValue, CallOptions> {
     if (!nodes) {
       return undefined;
     }
-    const source = nodes.value;
+    const source = nodes.items;
     const out = new Array<Node>(source.length);
     for (let i = 0; i < source.length; i++) {
       const node = source[i]!;
@@ -247,12 +255,12 @@ export class Call extends Node<CallValue, CallOptions> {
     if (ownOutput) {
       node.inherit(this);
     }
-    if (!isNode(node, N.Rules) || node.value.length === 0) {
+    if (!isNode(node, N.Rules) || node.rules.length === 0) {
       return node;
     }
     let hasOnlyDeclarationsAndComments = true;
-    for (let i = 0; i < node.value.length; i++) {
-      if (!isNode(node.value[i]!, N.Declaration | N.Comment)) {
+    for (let i = 0; i < node.rules.length; i++) {
+      if (!isNode(node.rules[i]!, N.Declaration | N.Comment)) {
         hasOnlyDeclarationsAndComments = false;
         break;
       }
@@ -260,9 +268,9 @@ export class Call extends Node<CallValue, CallOptions> {
     if (
       hasOnlyDeclarationsAndComments
       && !(
-        isNode(this.value.name, N.Reference)
-        && (this.value.name.options?.type === 'mixin'
-          || this.value.name.options?.type === 'mixin-ruleset')
+        isNode(this.name, N.Reference)
+        && (this.name.options?.type === 'mixin'
+          || this.name.options?.type === 'mixin-ruleset')
       )
     ) {
       node.options.callDeclarationOutput = true;
@@ -315,10 +323,10 @@ export class Call extends Node<CallValue, CallOptions> {
     renderFailureWith?: PrintOptions
   ): Promise<OptionalFallbackRenderOutput | undefined> {
     if (
-      typeof this.value.name === 'string'
+      typeof this.name === 'string'
       || !this.options?.silentFail
       || this.options?.markImportant
-      || (!renderFailureWith && this.value.contentNode)
+      || (!renderFailureWith && this.contentNode)
     ) {
       return undefined;
     }
@@ -335,19 +343,19 @@ export class Call extends Node<CallValue, CallOptions> {
       if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
         evaluatedName = await evaluatedName.eval(context);
       }
-      const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName;
+      const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.fn : evaluatedName;
       if (isExtendedFn(fn) && !fn._internal && !fn.options?.params) {
         return this.runAsCaller(context, async () => {
           try {
             const result = state.args
-              ? await callWithContext(context, fn, ...state.args.value)
+              ? await callWithContext(context, fn, ...state.args.items)
               : await callWithContext(context, fn);
             if (isNode(result)) {
               return this.markCallOutput(await result.eval(context), ownOutput);
             }
             const castResult = cast(result);
-            if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
-              return this.markCallOutput(castResult.value[0]!, ownOutput);
+            if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
+              return this.markCallOutput(castResult.rules[0]!, ownOutput);
             }
             return this.markCallOutput(castResult, ownOutput);
           } catch (error) {
@@ -355,13 +363,13 @@ export class Call extends Node<CallValue, CallOptions> {
             if (unitMode === 'strict') {
               throw error;
             }
-            const fallbackName = isNode(this.value.name, N.Reference) && this.value.name.options.fallbackValue === true
-              ? String(this.value.name.value.key)
+            const fallbackName = isNode(this.name, N.Reference) && this.name.options.fallbackValue === true
+              ? String(this.name.key)
               : stringifyValueOf(fn);
             if (renderFailureWith) {
               return this.renderFinalizedCallSyntax(fallbackName, state, context, renderFailureWith);
             }
-            return this.evalOptionalFallbackCallSyntax(context, state, this.value.name, fn);
+            return this.evalOptionalFallbackCallSyntax(context, state, this.name, fn);
           }
         });
       }
@@ -392,8 +400,8 @@ export class Call extends Node<CallValue, CallOptions> {
     ownOutput = true
   ): Promise<Node | undefined> {
     if (
-      typeof this.value.name === 'string'
-      || this.value.contentNode
+      typeof this.name === 'string'
+      || this.contentNode
       || this.options?.silentFail
       || this.options?.markImportant
     ) {
@@ -405,7 +413,7 @@ export class Call extends Node<CallValue, CallOptions> {
       return undefined;
     }
     const evaluatedName = await name.eval(context);
-    const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName;
+    const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.fn : evaluatedName;
     if (
       !isExtendedFn(fn)
       || fn._internal
@@ -416,14 +424,14 @@ export class Call extends Node<CallValue, CallOptions> {
 
     return this.runInCallFrame(context, { caller: true }, async () => {
       const result = state.args
-        ? await callWithContext(context, fn, ...state.args.value)
+        ? await callWithContext(context, fn, ...state.args.items)
         : await callWithContext(context, fn);
       if (isNode(result)) {
         return this.markCallOutput(await result.eval(context), ownOutput);
       }
       const castResult = cast(result);
-      if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
-        return this.markCallOutput(castResult.value[0]!, ownOutput);
+      if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
+        return this.markCallOutput(castResult.rules[0]!, ownOutput);
       }
       return this.markCallOutput(castResult, ownOutput);
     });
@@ -434,8 +442,8 @@ export class Call extends Node<CallValue, CallOptions> {
     ownOutput = true
   ): Promise<Node | undefined> {
     if (
-      typeof this.value.name === 'string'
-      || this.value.contentNode
+      typeof this.name === 'string'
+      || this.contentNode
     ) {
       return undefined;
     }
@@ -445,7 +453,7 @@ export class Call extends Node<CallValue, CallOptions> {
       return undefined;
     }
     const evaluatedName = await name.eval(context);
-    const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName;
+    const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.fn : evaluatedName;
     if (
       !isExtendedFn(fn)
       || (!fn._internal && !fn.options?.params)
@@ -468,8 +476,8 @@ export class Call extends Node<CallValue, CallOptions> {
         return this.markCallOutput(evald, ownOutput);
       }
       const castResult = cast(result);
-      if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
-        return this.markCallOutput(castResult.value[0]!, ownOutput);
+      if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
+        return this.markCallOutput(castResult.rules[0]!, ownOutput);
       }
       return this.markCallOutput(castResult, ownOutput);
     });
@@ -486,7 +494,7 @@ export class Call extends Node<CallValue, CallOptions> {
     if (!args) {
       return '';
     }
-    const rawArgs = args.value;
+    const rawArgs = args.items;
     const last = rawArgs.length - 1;
     const serializeArgAt = (start: number): MaybePromise<string> => {
       let i = start;
@@ -600,7 +608,7 @@ export class Call extends Node<CallValue, CallOptions> {
     };
     let renderedArgs: MaybePromise<string>;
     try {
-      renderedArgs = this.serializeRenderedArgs(callNode.value.args, context, prepared);
+      renderedArgs = this.serializeRenderedArgs(callNode.args, context, prepared);
     } catch (error) {
       if (isCalc) {
         context.calcFrames--;
@@ -667,7 +675,7 @@ export class Call extends Node<CallValue, CallOptions> {
     prepared: PrintOptions
   ): Promise<string | undefined> {
     if (
-      typeof this.value.name === 'string'
+      typeof this.name === 'string'
       || !this.options?.silentFail
     ) {
       return undefined;
@@ -684,7 +692,7 @@ export class Call extends Node<CallValue, CallOptions> {
       if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
         evaluatedName = await evaluatedName.eval(context);
       }
-      const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName;
+      const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.fn : evaluatedName;
       if (isExtendedFn(fn)) {
         return undefined;
       }
@@ -705,7 +713,7 @@ export class Call extends Node<CallValue, CallOptions> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): Promise<string> {
-    if (typeof this.value.name !== 'string') {
+    if (typeof this.name !== 'string') {
       const state = this.createEvalState();
       const { name } = state;
       if (typeof name !== 'string') {
@@ -714,7 +722,7 @@ export class Call extends Node<CallValue, CallOptions> {
         if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
           evaluatedName = await evaluatedName.eval(context);
         }
-        const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName;
+        const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.fn : evaluatedName;
         if (isExtendedFn(fn)) {
           const isMetadataFunction = Boolean(fn._internal || fn.options?.params);
           if (isMetadataFunction || !this.options?.markImportant) {
@@ -725,7 +733,7 @@ export class Call extends Node<CallValue, CallOptions> {
                   ? (
                       isMetadataFunction
                         ? await callWithContext(context, fn, state.args)
-                        : await callWithContext(context, fn, ...state.args.value)
+                        : await callWithContext(context, fn, ...state.args.items)
                     )
                   : await callWithContext(context, fn);
               } catch (error) {
@@ -736,8 +744,8 @@ export class Call extends Node<CallValue, CallOptions> {
                 ) {
                   throw error;
                 }
-                const fallbackName = isNode(this.value.name, N.Reference) && this.value.name.options.fallbackValue === true
-                  ? String(this.value.name.value.key)
+                const fallbackName = isNode(this.name, N.Reference) && this.name.options.fallbackValue === true
+                  ? String(this.name.key)
                   : stringifyValueOf(fn);
                 return this.renderFinalizedCallSyntax(fallbackName, state, context, prepared);
               }
@@ -752,8 +760,8 @@ export class Call extends Node<CallValue, CallOptions> {
                 return this.markCallOutput(evald, false);
               }
               const castResult = cast(result);
-              if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
-                return this.markCallOutput(castResult.value[0]!, false);
+              if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
+                return this.markCallOutput(castResult.rules[0]!, false);
               }
               return this.markCallOutput(castResult, false);
             });
@@ -783,7 +791,7 @@ export class Call extends Node<CallValue, CallOptions> {
               evaluatedName.parent = sourceParent;
             }
           }
-          if (state.args && state.args.value.length > 0) {
+          if (state.args && state.args.items.length > 0) {
             throw new ReferenceError(`Cannot call ${evaluatedName.type} with arguments`);
           }
           const collection = new MixinCollection([
@@ -836,7 +844,7 @@ export class Call extends Node<CallValue, CallOptions> {
                   return this.markCallOutput(new Any(stringifyValueOf(collection), { role: 'ident' }), false);
                 }
                 if (isNode(name, N.Reference)) {
-                  throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
+                  throw new ReferenceError(`No matching mixins found for '${name.key.valueOf()}'`);
                 }
                 throw error;
               }
@@ -894,8 +902,17 @@ export class Call extends Node<CallValue, CallOptions> {
     return this.renderOutput(context, output, bufferOrOptions, options);
   }
 
-  constructor(value: CallValue, options?: CallOptions, location?: NodeLocation) {
+  constructor(
+    value: CallValue,
+    options?: CallOptions,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
     super(value, options, location);
+    this._treeContext = treeContext;
+    this.name = value.name;
+    this.args = value.args;
+    this.contentNode = value.contentNode;
     // Function calls are always non-static and may be async
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
@@ -905,8 +922,7 @@ export class Call extends Node<CallValue, CallOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, contentNode } = this.value;
-    const args = this.value.args;
+    const { name, contentNode, args } = this;
     if (typeof name === 'string') {
       w.add(name, this);
     } else {
@@ -933,6 +949,36 @@ export class Call extends Node<CallValue, CallOptions> {
     return w.getSince(mark);
   }
 
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const silentFail = this._options?.silentFail;
+    const w = options.writer;
+    const { name, contentNode, args } = this;
+    if (typeof name === 'string') {
+      w.add(name, this);
+    } else {
+      name.writeSyntax(options);
+    }
+    if (silentFail) {
+      w.add('?');
+    }
+    w.add('(');
+    if (args) {
+      const argsMark = w.mark();
+      args.writeSyntax(options);
+      w.trimHorizontalStartSince(argsMark);
+      w.trimHorizontalEndSince(argsMark);
+    }
+    w.add(')');
+    if (this._options?.markImportant) {
+      w.add(' !important');
+    }
+    if (contentNode) {
+      w.add(': ');
+      contentNode.writeSyntax(options);
+    }
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
@@ -944,7 +990,7 @@ export class Call extends Node<CallValue, CallOptions> {
           this.renderPlainFunctionCall(this, context, prepared)
         );
       }
-      if (typeof this.value.name !== 'string') {
+      if (typeof this.name !== 'string') {
         const prepared = prepareBufferPrintState(context, options);
         return this.renderDynamicFunctionOutput(context, prepared, bufferOrOptions, options);
       }
@@ -960,7 +1006,7 @@ export class Call extends Node<CallValue, CallOptions> {
     if (this.evaluated) {
       return this.renderPlainFunctionCall(this, context, prepared);
     }
-    if (typeof this.value.name === 'string') {
+    if (typeof this.name === 'string') {
       return this.renderPlainFunctionCall(this, context, prepared);
     }
     return this.renderDynamicFunctionOutput(context, prepared, bufferOrOptions, options);
@@ -971,8 +1017,8 @@ export class Call extends Node<CallValue, CallOptions> {
       return this;
     }
     if (
-      typeof this.value.name === 'string'
-      && !this.value.contentNode
+      typeof this.name === 'string'
+      && !this.contentNode
     ) {
       return this.evalNode(context);
     }
@@ -994,18 +1040,21 @@ export class Call extends Node<CallValue, CallOptions> {
   /** Recursively makes declarations important */
   makeImportant(rules: Rules): Rules {
     const important = createImportantFlag();
-    for (const rule of rules.value) {
+    for (let index = 0; index < rules.rules.length; index++) {
+      const rule = rules.rules[index]!;
       if (isNode(rule, N.Declaration)) {
-        rule.value.important = important;
+        const replacement = rule.deriveWithParts({ important });
+        rules.adopt(replacement);
+        rules.rules[index] = replacement;
       } else if (isNode(rule, N.Rules)) {
         this.makeImportant(rule);
       } else if (isNode(rule, N.AtRule)) {
-        if (rule.value.rules) {
-          this.makeImportant(rule.value.rules);
+        if (rule.rules) {
+          this.makeImportant(rule.rules);
         }
       } else if (isNode(rule, N.Ruleset)) {
-        if (rule.value.rules) {
-          this.makeImportant(rule.value.rules);
+        if (rule.rules) {
+          this.makeImportant(rule.rules);
         }
       }
     }
@@ -1074,7 +1123,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       // Detached rulesets/collections share the same callable-body path as
       // anonymous mixin bodies. They still reject explicit arguments.
-      if (args && args.value.length > 0) {
+      if (args && args.items.length > 0) {
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
       n = new MixinCollection([
@@ -1107,7 +1156,7 @@ export class Call extends Node<CallValue, CallOptions> {
               return this.markCallOutput(new Any(stringifyValueOf(n), { role: 'ident' }));
             }
             if (isNode(name, N.Reference)) {
-              throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
+              throw new ReferenceError(`No matching mixins found for '${name.key.valueOf()}'`);
             }
             throw e;
           }
@@ -1119,7 +1168,7 @@ export class Call extends Node<CallValue, CallOptions> {
       });
     }
 
-    let fn = isNode(n, N.JsFunction) ? n.value : n;
+    let fn = isNode(n, N.JsFunction) ? n.fn : n;
     if (isExtendedFn(fn)) {
       const callable = fn;
       return this.runAsCaller(context, async () => {
@@ -1137,7 +1186,7 @@ export class Call extends Node<CallValue, CallOptions> {
               ? (
                   shouldPassListArgs
                     ? callWithContext(context, callable, callArgs)
-                    : callWithContext(context, callable, ...callArgs.value)
+                    : callWithContext(context, callable, ...callArgs.items)
                 )
               : callWithContext(context, callable)
           );
@@ -1156,8 +1205,8 @@ export class Call extends Node<CallValue, CallOptions> {
             return this.markCallOutput(evald);
           }
           let castResult = cast(result);
-          if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
-            return this.markCallOutput(castResult.value[0]!);
+          if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
+            return this.markCallOutput(castResult.rules[0]!);
           }
           return this.markCallOutput(castResult);
         } catch (e) {
@@ -1168,7 +1217,7 @@ export class Call extends Node<CallValue, CallOptions> {
               return this.markCallOutput(new Any(stringifyValueOf(n), { role: 'ident' }));
             }
             if (isNode(name, N.Reference)) {
-              throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
+              throw new ReferenceError(`No matching mixins found for '${name.key.valueOf()}'`);
             }
             throw e;
           }
@@ -1191,14 +1240,14 @@ export class Call extends Node<CallValue, CallOptions> {
       if (
         n === 'calc' && evaluatedArgs
       ) {
-        if (isNode(evaluatedArgs.value[0], N.Dimension)) {
-          return evaluatedArgs.value[0]!;
+        if (isNode(evaluatedArgs.items[0], N.Dimension)) {
+          return evaluatedArgs.items[0]!;
         } else if (context.calcFrames !== 0) {
-          return new Paren(evaluatedArgs.value[0]!);
+          return new Paren(evaluatedArgs.items[0]!);
         }
       }
       const finalizedName = typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n);
-      if (this._options?.silentFail && typeof this.value.name !== 'string') {
+      if (this._options?.silentFail && typeof this.name !== 'string') {
         const rendered = await state.source.renderFinalizedCallSyntax(finalizedName, state, context, prepareRenderPrintState(context), {
           args: evaluatedArgs,
           ...(state.contentNode && { contentNode: state.contentNode })
@@ -1214,7 +1263,8 @@ export class Call extends Node<CallValue, CallOptions> {
         this._options
           ? { ...this._options, silentFail: false }
           : { silentFail: false },
-        this.location
+        this.location,
+        this.sourceRoot?._treeContext
       );
       return this.markCallOutput(node);
     };

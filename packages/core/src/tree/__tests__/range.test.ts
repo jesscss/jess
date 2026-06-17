@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Context } from '../../context.js';
+import { Context, TreeContext } from '../../context.js';
 import { any, num, range } from '../index.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
@@ -26,6 +26,16 @@ class CountingWriter extends OutputWriter {
 }
 
 describe('Range', () => {
+  it('preserves parser tree context on construction', () => {
+    const treeContext = new TreeContext();
+    const node = range({
+      start: num(1),
+      end: num(3)
+    }, undefined, undefined, treeContext);
+
+    expect(node._treeContext).toBe(treeContext);
+  });
+
   it('renders range syntax through toTrimmedString()', () => {
     expect(range({
       start: num(1),

@@ -77,11 +77,28 @@ export type MixinOptions = {
  * @todo - Even though we allow a selector as a name.
  */
 export class Mixin extends Node<MixinValue, MixinOptions> {
-  constructor(value: MixinValue, options?: MixinOptions, location?: LocationInfo) {
+  static override childKeys = ['name', 'params', 'rules', 'guard'] as const;
+
+  readonly name: MixinValue['name'];
+  readonly rules: Rules;
+  readonly params: MixinValue['params'];
+  readonly guard: MixinValue['guard'];
+
+  constructor(
+    value: MixinValue,
+    options?: MixinOptions,
+    location?: LocationInfo,
+    treeContext?: Context['treeContext']
+  ) {
     if (options?.hasDefault === undefined && value.guard && callableGuardContainsDefault(value.guard)) {
       options = { ...options, hasDefault: true };
     }
     super(value, options, location);
+    this._treeContext = treeContext;
+    this.name = value.name;
+    this.rules = value.rules;
+    this.params = value.params;
+    this.guard = value.guard;
     this.removeFlag(F_VISIBLE);
   }
 
@@ -134,7 +151,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
         ...(value.guard !== undefined && { guard: this.ownGuard(value.guard) })
       },
       this._options ? { ...this._options } : undefined,
-      this.location.length ? this.location : undefined,
+      this.location.length === 6 ? this.location : undefined,
       this.sourceRoot?._treeContext
     ).inherit(this);
   }
@@ -144,7 +161,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   get keySet() {
     let keySet = this._keySet;
     if (!keySet) {
-      let { name } = this.value;
+      let { name } = this;
       if (!name) {
         return (this._keySet = new Set());
       }
@@ -156,7 +173,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { name, rules, params, guard } = this.value;
+    let { name, rules, params, guard } = this;
     const mark = w.mark();
     w.add(name ? `${name}` : '@');
     if (name || params || guard) {
@@ -189,11 +206,16 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     // Mixins should NOT prepare their body rules during initial registration.
     // Body rules are prepared/evaluated when the mixin is called.
     let node: Mixin = this;
-    let { name, rules } = node.value;
+    let { name, rules } = node;
     if (name && name instanceof Interpolated) {
-      node = this.deriveMixin(this.value);
-      name = node.value.name;
-      rules = node.value.rules;
+      node = this.deriveMixin({
+        name: this.name,
+        rules: this.rules,
+        params: this.params,
+        guard: this.guard
+      });
+      name = node.name;
+      rules = node.rules;
     }
     node.registrationPrepared = true;
     this._prepareMixinBodyVisibility(rules, context);
@@ -217,6 +239,16 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     name: MixinValue['name'],
     context: Context
   ): MaybePromise<Mixin> {
+    const withName = (key: Any<'name'>): Mixin => {
+      const out = new Mixin({
+        name: key,
+        rules: node.rules,
+        ...(node.params !== undefined && { params: node.params }),
+        ...(node.guard !== undefined && { guard: node.guard })
+      }, node.options, node.location.length ? node.location : undefined, node.sourceRoot?._treeContext).inherit(node);
+      out.registrationPrepared = node.registrationPrepared;
+      return out;
+    };
     if (name && name instanceof Interpolated) {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
@@ -224,16 +256,13 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
           if (!(key instanceof Any)) {
             throw new TypeError('Expected evaluated mixin name');
           }
-          node.adopt(key);
-          node.value.name = key;
-          return node;
+          return withName(key as Any<'name'>);
         });
       }
       if (!(maybeKey instanceof Any)) {
         throw new TypeError('Expected evaluated mixin name');
       }
-      node.adopt(maybeKey);
-      node.value.name = maybeKey;
+      return withName(maybeKey as Any<'name'>);
     }
     return node;
   }

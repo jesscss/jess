@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { amp, any, attr, co, compound, el, pseudo, ref, rules, Rules, sel, sellist, vardecl } from '../index.js';
+import { amp, any, attr, co, compound, ComplexSelector, el, pseudo, ref, rules, Rules, sel, sellist, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
@@ -56,6 +56,17 @@ describe('Complex selector', () => {
       ]);
 
       expect(node.toTrimmedString()).toBe('a > .foo');
+    });
+
+    test('exposes components as direct child field', () => {
+      const first = el('a');
+      const combinator = co('>');
+      const second = el('.foo');
+      const node = sel([first, combinator, second]);
+
+      expect(node.components).toEqual([first, combinator, second]);
+      expect(node.value).toEqual([first, combinator, second]);
+      expect(ComplexSelector.childKeys).toEqual(['components']);
     });
 
     test('writes empty complex selector syntax without writer readback', () => {
@@ -236,9 +247,9 @@ describe('Complex selector', () => {
         co('>'),
         el('.foo')
       ]);
-      const sourceCompound = selector.value[0]!;
-      const sourceCombinator = selector.value[1]!;
-      const sourceChild = selector.value[2]!;
+      const sourceCompound = selector.components[0]!;
+      const sourceCombinator = selector.components[1]!;
+      const sourceChild = selector.components[2]!;
       const resolved = await selector.resolve(context);
 
       expect(resolved.render(context)).toBe('a[data=foo] > .foo');
@@ -253,7 +264,7 @@ describe('Complex selector', () => {
         amp(),
         el('.keep')
       ]);
-      const sourceChild = selector.value[1]!;
+      const sourceChild = selector.components[1]!;
       const sourceParent = sourceChild.parent;
       const sourceLocation = sourceChild.location;
       const resolved = await selector.eval(context);

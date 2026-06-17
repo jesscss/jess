@@ -33,7 +33,7 @@ import {
   op,
   vardecl
 } from '../index.js';
-import { Context } from '../../context.js';
+import { Context, TreeContext } from '../../context.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
@@ -91,8 +91,8 @@ function normalizePattern(pattern: any) {
   if (pattern instanceof VarDeclaration) {
     return { kind: 'single' as const, value: pattern };
   }
-  if (pattern instanceof Block && pattern.value instanceof List) {
-    const values = pattern.value.value.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
+  if (pattern instanceof Block && pattern.node instanceof List) {
+    const values = pattern.node.value.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
     const [first, ...rest] = values;
     if (!first) {
       throw new Error('Expected at least one binding in block pattern');
@@ -113,6 +113,27 @@ function normalizePattern(pattern: any) {
 }
 
 describe('Control Nodes', () => {
+  it('preserves parser tree context on control constructors', () => {
+    const treeContext = new TreeContext();
+    const branchRules = rules([]);
+    const ifRule = new If({
+      branches: [{ condition: bool(true), rules: branchRules }]
+    }, undefined, undefined, treeContext);
+    const forRule = new For({
+      pattern: { kind: 'single', value: vardecl({ name: any('item'), value: any('') }, { paramVar: true }) },
+      iterable: { kind: 'node', value: list([any('a')]) },
+      rules: rules([])
+    }, undefined, undefined, treeContext);
+    const whileRule = new While({
+      condition: bool(false),
+      rules: rules([])
+    }, undefined, undefined, treeContext);
+
+    expect(ifRule._treeContext).toBe(treeContext);
+    expect(forRule._treeContext).toBe(treeContext);
+    expect(whileRule._treeContext).toBe(treeContext);
+  });
+
   it('serializes $if source syntax through toTrimmedString()', () => {
     const node = new If({
       branches: [
@@ -1599,18 +1620,18 @@ describe('Control Nodes', () => {
         }
       })
     });
-    expect(ifNode.value.branches[0]!.rules.options.rulesVisibility.Declaration).toBe('public');
-    expect(ifNode.value.branches[0]!.rules.options.rulesVisibility.Ruleset).toBe('public');
-    expect(ifNode.value.branches[0]!.rules.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(ifNode.value.branches[0]!.rules.options.rulesVisibility.Mixin).toBe('public');
-    expect(forNode.value.rules.options.rulesVisibility.Declaration).toBe('public');
-    expect(forNode.value.rules.options.rulesVisibility.Ruleset).toBe('public');
-    expect(forNode.value.rules.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(forNode.value.rules.options.rulesVisibility.Mixin).toBe('public');
-    expect(whileNode.value.rules.options.rulesVisibility.Declaration).toBe('public');
-    expect(whileNode.value.rules.options.rulesVisibility.Ruleset).toBe('public');
-    expect(whileNode.value.rules.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(whileNode.value.rules.options.rulesVisibility.Mixin).toBe('public');
+    expect(ifNode.branches[0]!.rules.options.rulesVisibility.Declaration).toBe('public');
+    expect(ifNode.branches[0]!.rules.options.rulesVisibility.Ruleset).toBe('public');
+    expect(ifNode.branches[0]!.rules.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(ifNode.branches[0]!.rules.options.rulesVisibility.Mixin).toBe('public');
+    expect(forNode.rules.options.rulesVisibility.Declaration).toBe('public');
+    expect(forNode.rules.options.rulesVisibility.Ruleset).toBe('public');
+    expect(forNode.rules.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(forNode.rules.options.rulesVisibility.Mixin).toBe('public');
+    expect(whileNode.rules.options.rulesVisibility.Declaration).toBe('public');
+    expect(whileNode.rules.options.rulesVisibility.Ruleset).toBe('public');
+    expect(whileNode.rules.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(whileNode.rules.options.rulesVisibility.Mixin).toBe('public');
   });
 
   it('keeps nested eval state isolated across mixin calls and $for iterations', async () => {

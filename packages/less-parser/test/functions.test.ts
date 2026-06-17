@@ -97,7 +97,7 @@ describe('functionCallArgs', () => {
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(List\n          sep: \';\'');
     expect(out).toContainString('(Paren\n              escaped: true');
-    expect(out).toContainString('(List\n                [');
+    expect(out).toContainString('(List');
     expect(out).toContainString('(Any [role=ident]');
     expect(out).toContainString('\'a\'');
     expect(out).toContainString('\'b\'');

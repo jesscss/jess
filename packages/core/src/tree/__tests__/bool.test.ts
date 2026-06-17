@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Bool, bool } from '../index.js';
-import { Context } from '../../context.js';
+import { Context, TreeContext } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { cast } from '../util/cast.js';
 import { OutputWriter } from '../util/print.js';
@@ -25,6 +25,13 @@ describe('Bool', () => {
 
   beforeEach(() => {
     context = new Context();
+  });
+
+  it('preserves parser tree context on construction', () => {
+    const treeContext = new TreeContext();
+    const node = bool(true, undefined, undefined, treeContext);
+
+    expect(node._treeContext).toBe(treeContext);
   });
 
   it('renders bool syntax through toTrimmedString()', () => {

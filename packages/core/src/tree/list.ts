@@ -1,6 +1,6 @@
 import { type Context } from '../context.js';
-import { defineType, F_MAY_ASYNC, F_STATIC, Node } from './node.js';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { defineType, F_MAY_ASYNC, F_STATIC, Node, type NodeLocation } from './node.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import {
@@ -27,6 +27,20 @@ function emitListItem<T extends Node>(
   options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
   try {
     item.toString(options);
+  } finally {
+    options.suppressBoundaryTrivia = saved;
+  }
+}
+
+function emitListItemSyntax<T extends Node>(
+  item: T,
+  options: FinalPrintOptions,
+  suppressPre = false
+): void {
+  const saved = options.suppressBoundaryTrivia;
+  options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
+  try {
+    item.writeSyntax(options);
   } finally {
     options.suppressBoundaryTrivia = saved;
   }
@@ -245,6 +259,17 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
  * or one / two / three
  */
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
+  static override childKeys = ['items'] as const;
+
+  readonly items: T[];
+  readonly sep: ListOptions['sep'];
+
+  constructor(value: T[], options?: ListOptions, location?: NodeLocation, _treeContext?: Context['treeContext']) {
+    super(value, options, location);
+    this.items = value;
+    this.sep = options?.sep;
+  }
+
   private withResolvedValue(value: Node[]): List<Node> {
     return new List<Node>(
       value,
@@ -253,9 +278,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   private deriveAdditionList(): List<Node> {
-    const values = new Array<Node>(this.value.length);
-    for (let i = 0; i < this.value.length; i++) {
-      values[i] = copyWithReusableLeaves(this.value[i]!);
+    const values = new Array<Node>(this.items.length);
+    for (let i = 0; i < this.items.length; i++) {
+      values[i] = copyWithReusableLeaves(this.items[i]!);
     }
     return new List<Node>(
       values,
@@ -265,33 +290,48 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     ).inherit(this);
   }
 
-  private renderListSyntax(value = this.value, options?: PrintOptions): string {
-    return renderListValueSyntax(value, getPrintOptions(options), this._options?.sep ?? ',');
+  private renderListSyntax(value = this.items, options?: PrintOptions): string {
+    return renderListValueSyntax(value, getPrintOptions(options), this.sep ?? ',');
   }
 
   get length() {
-    return this.value.length;
+    return this.items.length;
   }
 
   * [Symbol.iterator]() {
-    yield* this.value.entries();
+    yield* this.items.entries();
   }
 
   private _valueOf: string | undefined;
 
   override valueOf() {
-    return (this._valueOf ??= this.value.map(v => v.valueOf()).join(';'));
+    return (this._valueOf ??= this.items.map(v => v.valueOf()).join(';'));
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    return this.renderListSyntax(this.value, options);
+    return this.renderListSyntax(this.items, options);
+  }
+
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    if (this.items.length === 0) {
+      return;
+    }
+    let item = this.items[0]!;
+    emitListItemSyntax(item, options);
+    for (let i = 1; i < this.items.length; i++) {
+      const prev = item;
+      item = this.items[i]!;
+      emitListSeparator(prev, item, options, this.sep ?? ',');
+      emitListItemSyntax(item, options, true);
+    }
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (this.hasFlag(F_STATIC)) {
-      return this.renderResolvedListValue(context, this.value, bufferOrOptions, options);
+      return this.renderResolvedListValue(context, this.items, bufferOrOptions, options);
     }
     if (!this.hasFlag(F_MAY_ASYNC)) {
       return this.renderDirectListValue(context, bufferOrOptions, options);
@@ -302,7 +342,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   override compare(other: Node) {
     if (other instanceof List) {
       const equalityMode = this.sourceRoot?._treeContext?.equalityMode ?? 'coerce';
-      const result = compareNodeArray(this.value, other.value, equalityMode);
+      const result = compareNodeArray(this.items, other.items, equalityMode);
       return result;
     }
     if (other.type === 'Any') {
@@ -320,11 +360,11 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     }
     const newList = this.deriveAdditionList();
     if (b instanceof List) {
-      for (let i = 0; i < b.value.length; i++) {
-        newList.value.push(copyWithReusableLeaves(b.value[i]!));
+      for (let i = 0; i < b.items.length; i++) {
+        newList.items.push(copyWithReusableLeaves(b.items[i]!));
       }
     } else {
-      newList.value.push(copyWithReusableLeaves(b));
+      newList.items.push(copyWithReusableLeaves(b));
     }
     return newList;
   }
@@ -358,7 +398,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const out = renderListValueDirect(context, this.value, prepared, this._options?.sep ?? ',');
+    const out = renderListValueDirect(context, this.items, prepared, this.sep ?? ',');
     return buffer
       ? writeRenderText(buffer, out)
       : out;
@@ -373,7 +413,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const out = renderListValueDirectMaybe(context, this.value, prepared, this._options?.sep ?? ',');
+    const out = renderListValueDirectMaybe(context, this.items, prepared, this.sep ?? ',');
     if (isThenable(out)) {
       return (out as Promise<string>).then(rendered => buffer ? writeRenderText(buffer, rendered) : rendered);
     }
@@ -386,7 +426,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
-    const source = this.value;
+    const source = this.items;
     const values = this.hasFlag(F_MAY_ASYNC)
       ? evaluateNodeArrayMaybe(context, source)
       : evaluateNodeArraySync(context, source);

@@ -547,12 +547,13 @@ export class Compiler {
           return loadedPlugin.name;
         }
         if (Reflect.has(target, prop)) {
-          return Reflect.get(target, prop, receiver);
+          const value = (target as unknown as Record<PropertyKey, unknown>)[prop];
+          return typeof value === 'function' ? value.bind(receiver) : value;
         }
         if (!loadedPlugin) {
           return undefined;
         }
-        const value = Reflect.get(loadedPlugin, prop, loadedPlugin);
+        const value = (loadedPlugin as unknown as Record<PropertyKey, unknown>)[prop];
         return typeof value === 'function' ? value.bind(loadedPlugin) : value;
       }
     });

@@ -358,7 +358,7 @@ export async function findColorsInAST(root: Node): Promise<Array<{ node: Node; c
     }
 
     // Traverse children
-    const value = Reflect.get(node, 'data');
+    const value = (node as unknown as { data?: unknown }).data;
     for (const child of getValues(value)) {
       if (isNode(child)) {
         stack.push(child);

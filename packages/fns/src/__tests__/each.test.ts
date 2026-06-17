@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Any, List, Mixin, Nil, Rules, VarDeclaration, For, Paren, Context, type FunctionThis } from '@jesscss/core';
-import { each } from '../less/index.js';
+import { eachImplementation } from '../less/each.js';
 
 function makeMixin(paramNames?: string[]) {
   const mixinRules = new Rules([]);
@@ -14,40 +14,28 @@ function makeMixin(paramNames?: string[]) {
 }
 
 function assertTupleBindings(loop: For, expectedNames: string[]) {
-  const { pattern } = loop.value;
+  const { pattern } = loop;
   expect(pattern.kind).toBe('tuple');
   const vars = pattern.values;
   expect(Array.isArray(vars)).toBe(true);
   expect(vars).toHaveLength(3);
-  const names = vars.map(variable => variable.value.name.valueOf());
+  const names = vars.map(variable => variable.name.valueOf());
   expect(names).toEqual(expectedNames);
   for (const variable of vars) {
     expect(variable).toBeInstanceOf(VarDeclaration);
-    expect(variable.value.value).toBeInstanceOf(Nil);
+    expect(variable.valueNode).toBeInstanceOf(Nil);
     expect(variable.options.paramVar).toBe(true);
   }
 }
 
-type EachInternal = {
-  _internal: (ctx: FunctionThis, list: Any | List | Paren, mixin: Mixin | Rules) => Promise<For>;
-};
-
-function hasEachInternal(value: unknown): value is EachInternal {
-  return typeof value === 'function' && typeof Reflect.get(value, '_internal') === 'function';
-}
-
 describe('each', () => {
-  if (!hasEachInternal(each)) {
-    throw new Error('each() test expected a defineFunction wrapper with _internal');
-  }
-  const { _internal: eachInternal } = each;
   const callEach = async (list: Any | List | Paren, mixin: Mixin | Rules): Promise<For> => {
     const functionThis: FunctionThis = {
       context: new Context(),
       args: () => new List([]),
       rawArgs: new List([])
     };
-    return eachInternal(functionThis, list, mixin);
+    return eachImplementation(functionThis, list, mixin);
   };
 
   it('uses default binding names when called with a rules node', async () => {
@@ -58,10 +46,10 @@ describe('each', () => {
 
     expect(result).toBeInstanceOf(For);
     assertTupleBindings(result, ['value', 'key', 'index']);
-    expect(result.value.iterable.value).toBe(list);
-    expect(result.value.rules).toBeInstanceOf(Rules);
-    expect(result.value.rules).toBe(mixinRules);
-    expect(Reflect.has(result.value.rules, 'sourceParent')).toBe(false);
+    expect(result.iterable.value).toBe(list);
+    expect(result.rules).toBeInstanceOf(Rules);
+    expect(result.rules).toBe(mixinRules);
+    expect(Reflect.has(result.rules, 'sourceParent')).toBe(false);
   });
 
   it('uses default binding names when mixin has no params', async () => {
@@ -71,9 +59,9 @@ describe('each', () => {
     const result = await callEach(list, mixin);
 
     assertTupleBindings(result, ['value', 'key', 'index']);
-    expect(result.value.rules).toBeInstanceOf(Rules);
-    expect(result.value.rules).toBe(mixin.value.rules);
-    expect(Reflect.has(result.value.rules, 'sourceParent')).toBe(false);
+    expect(result.rules).toBeInstanceOf(Rules);
+    expect(result.rules).toBe(mixin.rules);
+    expect(Reflect.has(result.rules, 'sourceParent')).toBe(false);
   });
 
   it('overrides only the first binding name with one param', async () => {
@@ -110,6 +98,6 @@ describe('each', () => {
     const result = await callEach(list, mixin);
 
     expect(result).toBeInstanceOf(For);
-    expect(result.value.iterable.value).toBe(list);
+    expect(result.iterable.value).toBe(list);
   });
 });

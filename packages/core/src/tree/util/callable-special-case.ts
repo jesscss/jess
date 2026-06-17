@@ -5,7 +5,7 @@ import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import type { List } from '../list.js';
 import type { Rules } from '../rules.js';
-import type { MixinEntry } from './callable-entry.js';
+import { getMixinEntryRules, type MixinEntry } from './callable-entry.js';
 import { isNode } from './is-node.js';
 import { attachMixinOutputSlot } from './mixin-output-slot.js';
 import { withRulesContext } from './context.js';
@@ -43,17 +43,17 @@ export async function evaluateCallableSpecialCaseCandidate({
   getRootSourceRules
 }: EvaluateCallableSpecialCaseCandidateOptions): Promise<CallableSpecialCaseResult> {
   if (isNode(candidate, N.Ruleset)) {
-    const rulesetGuard = candidate.value.guard;
+    const rulesetGuard = candidate.guard;
     if (rulesetGuard instanceof Nil) {
       return { handled: true };
     }
 
-    const sourceRules = getRootSourceRules(candidate.value.rules);
+    const sourceRules = getRootSourceRules(candidate.rules);
     let rules = createOwnedRules(sourceRules);
     const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
     let needsCallerPlacementDuringEval = false;
-    for (let i = 0; i < sourceRules.value.length; i++) {
-      if (isNode(sourceRules.value[i], N.Ruleset | N.AtRule)) {
+    for (let i = 0; i < sourceRules.rules.length; i++) {
+      if (isNode(sourceRules.rules[i], N.Ruleset | N.AtRule)) {
         needsCallerPlacementDuringEval = true;
         break;
       }
@@ -74,7 +74,7 @@ export async function evaluateCallableSpecialCaseCandidate({
   }
 
   if (!isNode(candidate, N.Mixin) && !candidateName && !candidateParams && !candidateGuard) {
-    const sourceRules = getRootSourceRules(candidate.value.rules);
+    const sourceRules = getRootSourceRules(getMixinEntryRules(candidate));
     let unlocked = createUnlockedRules(sourceRules);
     const parentFrame = isNode(callSiteRules, N.Rules)
       ? callSiteRules.getScopeFrame()

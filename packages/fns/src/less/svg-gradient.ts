@@ -4,12 +4,15 @@ type GradientStop = { color: Color; position?: Dimension };
 
 function flattenSingle(node: Node): Node {
   while (node instanceof Paren) {
-    node = node.value!;
+    node = node.node!;
   }
-  while ((node instanceof Sequence || node instanceof List) && node.value.length === 1) {
-    node = node.value[0]!;
+  while (
+    (node instanceof Sequence && node.items.length === 1)
+    || (node instanceof List && node.items.length === 1)
+  ) {
+    node = node instanceof List ? node.items[0]! : node.items[0]!;
     while (node instanceof Paren) {
-      node = node.value!;
+      node = node.node!;
     }
   }
   return node;
@@ -20,9 +23,16 @@ function maybeGradientStop(node: Node): GradientStop | undefined {
   if (node instanceof Color) {
     return { color: node };
   }
-  if ((node instanceof Sequence || node instanceof List) && node.value.length === 2) {
-    const first = flattenSingle(node.value[0]!);
-    const second = flattenSingle(node.value[1]!);
+  if (node instanceof List && node.items.length === 2) {
+    const first = flattenSingle(node.items[0]!);
+    const second = flattenSingle(node.items[1]!);
+    if (first instanceof Color && second instanceof Dimension) {
+      return { color: first, position: second };
+    }
+  }
+  if (node instanceof Sequence && node.items.length === 2) {
+    const first = flattenSingle(node.items[0]!);
+    const second = flattenSingle(node.items[1]!);
     if (first instanceof Color && second instanceof Dimension) {
       return { color: first, position: second };
     }
@@ -38,8 +48,12 @@ function collectStops(nodes: Node[], out: GradientStop[]): void {
       out.push(stop);
       continue;
     }
-    if (node instanceof Sequence || node instanceof List) {
-      collectStops(node.value, out);
+    if (node instanceof List) {
+      collectStops(node.items, out);
+      continue;
+    }
+    if (node instanceof Sequence) {
+      collectStops(node.items, out);
       continue;
     }
     throw new Error('svg-gradient expects direction, start_color [start_position], [color position,]..., end_color [end_position] or direction, color list');
@@ -92,14 +106,15 @@ const svgGradient = defineFunction(
     const normalizeNode = async (node: Node): Promise<Node> => {
       let normalized = await node.eval(this.context);
       while (normalized instanceof Paren) {
-        normalized = await normalized.value!.eval(this.context);
+        normalized = await normalized.node!.eval(this.context);
       }
-      if (normalized instanceof Sequence || normalized instanceof List) {
-        const items = await Promise.all((normalized.value ?? []).map(item => normalizeNode(item)));
-        if (normalized instanceof Sequence) {
-          const loc = normalized.location.length ? normalized.location as import('@jesscss/core').LocationInfo : undefined;
-          return new Sequence(items, normalized.options, loc).inherit(normalized);
-        }
+      if (normalized instanceof Sequence) {
+        const items = await Promise.all(normalized.items.map(item => normalizeNode(item)));
+        const loc = normalized.location.length ? normalized.location as import('@jesscss/core').LocationInfo : undefined;
+        return new Sequence(items, normalized.options, loc).inherit(normalized);
+      }
+      if (normalized instanceof List) {
+        const items = await Promise.all(normalized.items.map(item => normalizeNode(item)));
         const loc = normalized.location.length ? normalized.location as import('@jesscss/core').LocationInfo : undefined;
         return new List(items, normalized.options, loc).inherit(normalized);
       }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Color, ColorFormat, Dimension, Num } from '../index.js';
 import { Call, List } from '../index.js';
-import { Context } from '../../context.js';
+import { Context, TreeContext } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { OutputWriter } from '../util/print.js';
 
@@ -22,6 +22,13 @@ class CountingWriter extends OutputWriter {
 
 describe('Color Node', () => {
   describe('Constructor and Basic Properties', () => {
+    it('preserves parser tree context on construction', () => {
+      const treeContext = new TreeContext();
+      const color = new Color('#ff0000', undefined, undefined, treeContext);
+
+      expect(color._treeContext).toBe(treeContext);
+    });
+
     it('should create color from RGB values', () => {
       const color = new Color({
         format: ColorFormat.RGB,
@@ -504,11 +511,11 @@ describe('Color Node', () => {
       }, { format: ColorFormat.RGB });
 
       expect(color.options.format).toBe(ColorFormat.RGB);
-      expect(color.value.node).toBeInstanceOf(Call);
-      if (!(color.value.node instanceof Call)) {
+      expect(color.node).toBeInstanceOf(Call);
+      if (!(color.node instanceof Call)) {
         throw new TypeError('Expected color node to preserve RGB Call');
       }
-      expect(color.value.node.value.name).toBe('rgb');
+      expect(color.node.name).toBe('rgb');
       expect(color.alpha).toBe(1);
     });
 
@@ -527,11 +534,11 @@ describe('Color Node', () => {
       }, { format: ColorFormat.HSL });
 
       expect(color.options.format).toBe(ColorFormat.HSL);
-      expect(color.value.node).toBeInstanceOf(Call);
-      if (!(color.value.node instanceof Call)) {
+      expect(color.node).toBeInstanceOf(Call);
+      if (!(color.node instanceof Call)) {
         throw new TypeError('Expected color node to preserve HSL Call');
       }
-      expect(color.value.node.value.name).toBe('hsl');
+      expect(color.node.name).toBe('hsl');
       expect(color.alpha).toBe(1);
     });
   });

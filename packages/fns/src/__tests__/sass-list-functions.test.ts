@@ -18,26 +18,26 @@ describe('Sass list functions', () => {
       const list = new List([new Num(1), new Num(2), new Num(3)]);
       const result = length(list);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).data.number).toBe(3);
-      expect((result as Dimension).data.unit).toBeUndefined();
+      expect((result as Dimension).number).toBe(3);
+      expect((result as Dimension).unit).toBeUndefined();
     });
 
     it('returns 0 for empty list', () => {
       const list = new List([]);
       const result = length(list);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).data.number).toBe(0);
+      expect((result as Dimension).number).toBe(0);
     });
 
     it('works with direct list arguments', () => {
       const list = new List([new Num(1), new Num(2)]);
       const result = length(list);
-      expect((result as Dimension).data.number).toBe(2);
+      expect((result as Dimension).number).toBe(2);
     });
 
     it('treats a scalar as a list of one item', () => {
       const result = length(new Any('solo'));
-      expect((result as Dimension).data.number).toBe(1);
+      expect((result as Dimension).number).toBe(1);
     });
   });
 
@@ -97,7 +97,7 @@ describe('Sass list functions', () => {
       const value = new Num(20);
       const result = index(list, value);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).data.number).toBe(2);
+      expect((result as Dimension).number).toBe(2);
     });
 
     it('returns 1 for first element', () => {
@@ -105,7 +105,7 @@ describe('Sass list functions', () => {
       const value = new Num(10);
       const result = index(list, value);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).data.number).toBe(1);
+      expect((result as Dimension).number).toBe(1);
     });
 
     it('returns null when value is not found', () => {
@@ -120,20 +120,20 @@ describe('Sass list functions', () => {
       const value = new Quoted('b');
       const result = index(list, value);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).data.number).toBe(2);
+      expect((result as Dimension).number).toBe(2);
     });
 
     it('works with object parameters', () => {
       const list = new List([new Num(10), new Num(20)]);
       const value = new Num(20);
       const result = index({ list, value });
-      expect((result as Dimension).data.number).toBe(2);
+      expect((result as Dimension).number).toBe(2);
     });
 
     it('treats a scalar as a list of one item', () => {
       const value = new Any('solo');
       const result = index(value, new Any('solo'));
-      expect((result as Dimension).data.number).toBe(1);
+      expect((result as Dimension).number).toBe(1);
     });
   });
 
@@ -184,7 +184,7 @@ describe('Sass list functions', () => {
       new Paren(list, { delimiter: 'square' });
       const result = isBracketed(list);
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).data).toBe(true);
+      expect((result as Bool).value).toBe(true);
     });
 
     it('returns false for a list wrapped in ordinary parens', () => {
@@ -192,14 +192,14 @@ describe('Sass list functions', () => {
       new Paren(list, { delimiter: 'paren' });
       const result = isBracketed(list);
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).data).toBe(false);
+      expect((result as Bool).value).toBe(false);
     });
 
     it('returns false for an unwrapped list', () => {
       const list = new List([new Num(1), new Num(2)]);
       const result = isBracketed(list);
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).data).toBe(false);
+      expect((result as Bool).value).toBe(false);
     });
 
     it('works with object parameters', () => {
@@ -207,12 +207,12 @@ describe('Sass list functions', () => {
       new Paren(list, { delimiter: 'square' });
       const result = isBracketed({ list });
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).data).toBe(true);
+      expect((result as Bool).value).toBe(true);
     });
 
     it('returns true when called with the bracketed paren directly', () => {
       const result = isBracketed(new Paren(new List([new Num(1)]), { delimiter: 'square' }));
-      expect((result as Bool).data).toBe(true);
+      expect((result as Bool).value).toBe(true);
     });
   });
 });

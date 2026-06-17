@@ -212,7 +212,7 @@ describe('Interpolated', () => {
     const resolved = await interpolatedNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('hello-one, world');
-    expect(interpolatedNode.value.replacements[0]?.parent).toBe(interpolatedNode);
+    expect(interpolatedNode.replacements[0]?.parent).toBe(interpolatedNode);
     expect(interpolatedNode.toTrimmedString()).toBe('hello-one, $name');
   });
 

@@ -170,7 +170,7 @@ function findDisallowedExtendSelector(selector: Selector, allowed?: readonly Ext
     return undefined;
   }
   if (isNode(selector, N.SelectorList)) {
-    for (const item of selector.value) {
+    for (const item of selector.selectors) {
       const disallowed = findDisallowedExtendSelector(item, allowed);
       if (disallowed) {
         return disallowed;
@@ -232,7 +232,7 @@ function groupExtendsByTargetAndFlag(
   const groups = new Map<string, Extend | Extend[]>();
 
   for (const ext of extendNodes) {
-    const { target, flag = 1 } = ext.value; // ExtendFlag.Exact = 1
+    const { target, flag = 1 } = ext; // ExtendFlag.Exact = 1
     // Create a key from target valueOf() and flag
     const key = `${target.valueOf()}|${flag}`;
 
@@ -266,6 +266,9 @@ function mergeExtends(
     target: currentTarget,
     flag: currentFlag
   }, undefined, location, context);
+  const flushCurrent = (): void => {
+    (extendNodes ??= []).push(currentNode);
+  };
   for (let i = 1; i < extendTargets.length; i++) {
     let ext = extendTargets[i]!;
     let thisFlag = (ext.flag ?? flag) ? 0 : 1;
@@ -274,16 +277,20 @@ function mergeExtends(
      * selector lists with different flags are not merged.
      */
     if (thisFlag === currentFlag) {
-      const { target } = currentNode.value;
+      const { target } = currentNode;
+      let nextTarget: Selector;
       if (!(target instanceof SelectorList)) {
-        currentNode.set('target', new SelectorList([target, ext.target], undefined, location, context));
+        nextTarget = new SelectorList([target, ext.target], undefined, location, context);
       } else {
-        target.set(null, [...target.value, ext.target]);
+        nextTarget = new SelectorList([...target.selectors, ext.target], undefined, location, context);
       }
+      currentNode = new Extend({
+        selector,
+        target: nextTarget,
+        flag: currentFlag
+      }, undefined, location, context);
     } else {
-      if (!extendNodes || !extendNodes.includes(currentNode)) {
-        (extendNodes ??= []).push(currentNode);
-      }
+      flushCurrent();
       currentFlag = thisFlag;
       currentTarget = ext.target;
       currentNode = new Extend({
@@ -291,16 +298,25 @@ function mergeExtends(
         target: currentTarget,
         flag: currentFlag
       }, undefined, location, context);
-      extendNodes.push(currentNode);
     }
   };
   if (!extendNodes) {
     return currentNode;
   }
+  flushCurrent();
   if (extendNodes.length === 1) {
     return extendNodes[0]!;
   }
   return extendNodes;
+}
+
+function extendWithSelector(node: Extend, selector: Selector | undefined, location: LocationInfo | undefined, context: TreeContext): Extend {
+  return new Extend({
+    selector,
+    target: node.target,
+    namespace: node.namespace,
+    flag: node.flag
+  }, undefined, location, context);
 }
 
 // ── Helper: isSelectorLikeListItem / isLegacySelectorLikeValue ───────
@@ -313,8 +329,11 @@ function isSelectorLikeListItem(node: Node): boolean {
   if (isNode(node, N.Reference)) {
     return node.options.type === 'mixin-ruleset';
   }
-  if (node instanceof List || node instanceof Sequence) {
-    return node.value.length > 0 && node.value.every(isSelectorLikeListItem);
+  if (node instanceof List) {
+    return node.items.length > 0 && node.items.every(isSelectorLikeListItem);
+  }
+  if (node instanceof Sequence) {
+    return node.items.length > 0 && node.items.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -327,8 +346,11 @@ function isLegacySelectorLikeValue(node: Node): boolean {
   if (isNode(node, N.Reference)) {
     return false;
   }
-  if (node instanceof List || node instanceof Sequence) {
-    return node.value.length > 1 && node.value.every(isSelectorLikeListItem);
+  if (node instanceof List) {
+    return node.items.length > 1 && node.items.every(isSelectorLikeListItem);
+  }
+  if (node instanceof Sequence) {
+    return node.items.length > 1 && node.items.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -355,11 +377,24 @@ export function relativeSelector(this: P, T: TokenMap) {
           let combinator = new Combinator(toCombinator(co.image), undefined, $.getLocationInfo(co), $.context);
           let targetNode =
             node instanceof Extend
-              ? node.value.selector
+              ? node.selector
               : node;
           if (targetNode instanceof ComplexSelector) {
-            targetNode.set(null, [combinator, ...targetNode.value]);
-            targetNode._location = $.getLocationFromNodes(targetNode.value);
+            const nodes = [combinator, ...targetNode.components] as ComplexSelectorValue;
+            const complex = new ComplexSelector(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
+            if (node instanceof Extend) {
+              const location = node.location.length === 6
+                ? ([...node.location] as LocationInfo)
+                : undefined;
+              if (location) {
+                location[0] = co.startOffset!;
+                location[1] = co.startLine!;
+                location[2] = co.startColumn!;
+              }
+              node = extendWithSelector(node, complex, location, $.context);
+            } else {
+              node = complex;
+            }
           } else {
             if (!isComplexSelectorComponentNode(targetNode)) {
               throw new Error(`Expected selector component after relative combinator; got ${targetNode?.type ?? 'none'}.`);
@@ -367,11 +402,15 @@ export function relativeSelector(this: P, T: TokenMap) {
             let nodes = [combinator, targetNode];
             let complex = new ComplexSelector(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
             if (node instanceof Extend) {
-              node.set('selector', complex);
-              let location = node.location;
-              location[0] = co.startOffset;
-              location[1] = co.startLine;
-              location[2] = co.startColumn;
+              const location = node.location.length === 6
+                ? ([...node.location] as LocationInfo)
+                : undefined;
+              if (location) {
+                location[0] = co.startOffset!;
+                location[1] = co.startLine!;
+                location[2] = co.startColumn!;
+              }
+              node = extendWithSelector(node, complex, location, $.context);
             } else {
               node = complex;
             }
@@ -637,7 +676,7 @@ export function ampersandExtend(this: P, T: TokenMap) {
         }
       }
       // Return Nil instead of the extend node - extends are handled via ctx.extendNodes
-      // pathway to avoid duplicates (cssMain collects returned nodes into rules.value).
+      // pathway to avoid duplicates (cssMain collects returned nodes into rules.rules).
       // Nil is needed because undefined confuses cssMain (treats it as semicolon).
       return new Nil(undefined, undefined, location, $.context);
     }
@@ -863,7 +902,7 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
       // Check if this should be parsed as Collection or Rules
       const shouldBeCollection = (() => {
         let properties: Declaration[] = [];
-        for (const node of rules.value) {
+        for (const node of rules.rules) {
           if (node.type === 'Declaration') {
             properties.push(node);
           } else if (node.type === 'Comment' || node.type === 'VarDeclaration') {
@@ -905,7 +944,7 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
         || usage === 'default-param';
       const shouldBeCollectionFinal = shouldBeCollection && !forceMixinForDynamicUsage;
       if (shouldBeCollectionFinal) {
-        return new Collection(rules.value, rules.options, $.endRule(), $.context);
+        return new Collection(rules.rules, rules.options, $.endRule(), $.context);
       }
     }
 

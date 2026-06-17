@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../../context.js';
 import { any, decl, el, list, mixin, ref, rules, ruleset, vardecl } from '../../index.js';
-import { callableRulesEntry } from '../callable-entry.js';
+import {
+  callableRulesEntry,
+  getCallableEntryGuard,
+  getCallableEntryName,
+  getCallableEntryParams,
+  getMixinEntryRules
+} from '../callable-entry.js';
 import {
   createCallableOuterRules,
   createOwnedCallableRulesSurface,
@@ -46,16 +52,16 @@ describe('callable candidate loop helper', () => {
       getRootSourceRules: rulesNode => rulesNode,
       createOuterRules: createCallableOuterRules,
       isCallableEntry: entry => !('type' in entry && entry.type === 'Ruleset'),
-      getMixinEntryRules: entry => entry.value.rules,
-      getCallableEntryName: entry => entry.value.name,
-      getCallableEntryParams: entry => entry.value.params,
-      getCallableEntryGuard: entry => entry.value.guard
+      getMixinEntryRules,
+      getCallableEntryName,
+      getCallableEntryParams,
+      getCallableEntryGuard
     });
 
-    expect(outputState.sourceRules).toBe(candidate.value.rules);
+    expect(outputState.sourceRules).toBe(candidate.rules);
     expect(outputState.outputRules).toHaveLength(1);
     expect(getMixinOutputPlacementRecord(outputState.outputRules[0]!)).toEqual({
-      source: candidate.value.rules,
+      source: candidate.rules,
       output: outputState.outputRules[0]
     });
   });
@@ -76,7 +82,7 @@ describe('callable candidate loop helper', () => {
     context.rulesContext = callerRules;
 
     const bindingInfo = matchCallableParams({
-      params: candidate.value.params!,
+      params: candidate.params!,
       args: [any('blue')],
       hasFileContext: false
     });
@@ -103,13 +109,13 @@ describe('callable candidate loop helper', () => {
       getRootSourceRules: rulesNode => rulesNode,
       createOuterRules: createCallableOuterRules,
       isCallableEntry: entry => !('type' in entry && entry.type === 'Ruleset'),
-      getMixinEntryRules: entry => entry.value.rules,
-      getCallableEntryName: entry => entry.value.name,
-      getCallableEntryParams: entry => entry.value.params,
-      getCallableEntryGuard: entry => entry.value.guard
+      getMixinEntryRules,
+      getCallableEntryName,
+      getCallableEntryParams,
+      getCallableEntryGuard
     });
 
-    expect(outputState.sourceRules).toBe(candidate.value.rules);
+    expect(outputState.sourceRules).toBe(candidate.rules);
     expect(outputState.outputRules).toHaveLength(1);
     expect(outputState.outputRules[0]?.toString()).toContain('color: blue;');
   });
@@ -144,10 +150,10 @@ describe('callable candidate loop helper', () => {
       getRootSourceRules: rulesNode => rulesNode,
       createOuterRules: createCallableOuterRules,
       isCallableEntry: entry => !('type' in entry && entry.type === 'Ruleset'),
-      getMixinEntryRules: entry => entry.value.rules,
-      getCallableEntryName: entry => entry.value.name,
-      getCallableEntryParams: entry => entry.value.params,
-      getCallableEntryGuard: entry => entry.value.guard
+      getMixinEntryRules,
+      getCallableEntryName,
+      getCallableEntryParams,
+      getCallableEntryGuard
     });
 
     expect(outputState.outputRules).toHaveLength(1);

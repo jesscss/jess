@@ -22,7 +22,7 @@ describe('callable candidate state helper', () => {
     definitionParent.getScopeFrame();
 
     const resolvedBindingInfo = matchCallableParams({
-      params: candidate.value.params!,
+      params: candidate.params!,
       args: [any('blue')],
       hasFileContext: false
     });
@@ -38,8 +38,8 @@ describe('callable candidate state helper', () => {
       getRootSourceRules: rulesNode => rulesNode
     });
 
-    expect(state.sourceRules).toBe(candidate.value.rules);
-    expect(state.rules).not.toBe(candidate.value.rules);
+    expect(state.sourceRules).toBe(candidate.rules);
+    expect(state.rules).not.toBe(candidate.rules);
     expect(state.rules.options.rulesVisibility?.VarDeclaration).toBe('public');
     expect(state.rules.parent).toBe(candidate.parent);
     expect(state.paramBindings).toHaveLength(1);
@@ -70,7 +70,7 @@ describe('callable candidate state helper', () => {
 
     expect(state.sourceRules).toBe(sourceRules);
     expect(state.rules).not.toBe(sourceRules);
-    expect(state.rules.value[0]).toBe(sourceDecl);
+    expect(state.rules.rules[0]).toBe(sourceDecl);
     expect(sourceDecl.parent).toBe(sourceRules);
     expect(state.rules.options.rulesVisibility?.VarDeclaration).toBe('private');
     expect(state.parentFrame).toBe(callSiteRules.getScopeFrame());
@@ -121,7 +121,7 @@ describe('callable candidate state helper', () => {
 
     expect(state.sourceRules).toBe(sourceRules);
     expect(state.rules).not.toBe(sourceRules);
-    expect(state.rules.value).toEqual([]);
+    expect(state.rules.rules).toEqual([]);
     expect(state.parentFrame).toBeUndefined();
     expect(state.fallbackScopeFrame).toBeUndefined();
   });

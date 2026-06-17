@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { any, rest } from '../index.js';
+import { any, Rest, rest } from '../index.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { OutputWriter } from '../util/print.js';
 
@@ -29,6 +29,14 @@ describe('Rest', () => {
   it('renders rest syntax through toTrimmedString()', () => {
     expect(rest('items').toTrimmedString()).toBe('...$$items');
     expect(rest(any('items')).toTrimmedString()).toBe('...$items');
+  });
+
+  it('stores the rest child on a constructor-owned direct field', () => {
+    const value = any('items');
+    const node = rest(value);
+
+    expect(node.node).toBe(value);
+    expect(Rest.childKeys).toEqual(['node']);
   });
 
   it('returns scalar rest syntax without writer readback', () => {

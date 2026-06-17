@@ -1,4 +1,4 @@
-import { Node, F_STATIC, defineType } from './node.js';
+import { Node, F_STATIC, defineType, type NodeLocation, type NodeOptions } from './node.js';
 import type { Context } from '../context.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
@@ -11,11 +11,31 @@ import { prepareRenderPrintState } from './util/print.js';
  * e.g. url('foo.png')
  */
 export class Url extends Node<Node> {
-  private withValue(value: Node): Url {
-    return new Url(value).inherit(this);
+  static override childKeys = ['node'] as const;
+
+  readonly node: Node;
+
+  constructor(
+    value: Node,
+    options?: NodeOptions,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.node = value;
   }
 
-  private renderUrlSyntax(value = this.value, options?: PrintOptions): string {
+  private withValue(value: Node): Url {
+    return new Url(
+      value,
+      this._options ? { ...this._options } : undefined,
+      this.location,
+      this.sourceRoot?._treeContext
+    ).inherit(this);
+  }
+
+  private renderUrlSyntax(value = this.node, options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
@@ -41,7 +61,7 @@ export class Url extends Node<Node> {
    * @todo - enable URL rewriting
    */
   override valueOf(): string {
-    const value = this.value;
+    const value = this.node;
     if (isNode(value, N.Quoted)) {
       const quotedValue = value.value;
       if (isNode(quotedValue)) {
@@ -53,7 +73,7 @@ export class Url extends Node<Node> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    return this.renderUrlSyntax(this.value, options);
+    return this.renderUrlSyntax(this.node, options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -63,7 +83,7 @@ export class Url extends Node<Node> {
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const value = this.hasFlag(F_STATIC) ? this.value : this.value.eval(context);
+    const value = this.hasFlag(F_STATIC) ? this.node : this.node.eval(context);
     if (isThenable(value)) {
       return (value as Promise<Node>).then((resolved) => {
         const out = this.renderUrlSyntax(resolved, prepared);
@@ -86,9 +106,9 @@ export class Url extends Node<Node> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
-    const value = this.value.eval(context);
+    const value = this.node.eval(context);
     const finalize = (resolvedValue: Node): Node => {
-      if (resolvedValue === this.value) {
+      if (resolvedValue === this.node) {
         return this;
       }
       return this.withValue(resolvedValue);

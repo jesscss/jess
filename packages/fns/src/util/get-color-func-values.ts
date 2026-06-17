@@ -14,10 +14,10 @@ export function getColorFunctionValues(one: Sequence | Dimension, two: Dimension
   /**
    * Comma-less syntax
    *   e.g. rgb(0 128 255 / 50%)
-   */
+  */
   let alpha: Node | number = 1;
   if (one instanceof Sequence) {
-    const val = one.value as Dimension[];
+    const val = one.items as Dimension[];
     one = val[0]!;
     two = val[1]!;
     three = val[2]!;

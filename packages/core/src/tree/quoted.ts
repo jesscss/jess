@@ -25,11 +25,17 @@ export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions>
  * to avoid conflict with the built-in `String` class.
  */
 export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
+  static override childKeys = ['value'] as const;
+
+  readonly quote: '"' | '\'' | undefined;
+  readonly escaped: boolean;
+
   private withValue(value: string | Any | Interpolated): Quoted {
     return new Quoted(
       value,
       this._options ? { ...this._options } : undefined,
-      this.location
+      this.location,
+      this.sourceRoot?._treeContext
     ).inherit(this);
   }
 
@@ -37,9 +43,8 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const quote = this._options?.quote ?? '"';
-    const escaped = this._options?.escaped;
-    let escapeChar = escaped ? '~' : '';
+    const quote = this.quote ?? '"';
+    let escapeChar = this.escaped ? '~' : '';
     if (escapeChar) {
       w.add(escapeChar, this);
     }
@@ -53,9 +58,17 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return w.getSince(mark);
   }
 
-  constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: NodeLocation) {
+  constructor(
+    value: string | Any | Interpolated,
+    options?: QuotedOptions,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
     super(value, options, location);
-    if (typeof value === 'string' && !options?.escaped) {
+    this._treeContext = treeContext;
+    this.quote = options?.quote;
+    this.escaped = !!options?.escaped;
+    if (typeof value === 'string' && !this.escaped) {
       this.addFlag(F_STATIC);
     } else {
       this.addFlag(F_NON_STATIC);
@@ -86,7 +99,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): MaybePromise<string> {
-    if (this._options?.escaped) {
+    if (this.escaped) {
       if (value instanceof Node) {
         return this.renderOutput(context, value, bufferOrOptions, options);
       }
@@ -109,7 +122,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
-    if (other instanceof Quoted && !this._options?.escaped && !other._options?.escaped) {
+    if (other instanceof Quoted && !this.escaped && !other.escaped) {
       const left = String(this.valueOf());
       const right = String(other.valueOf?.() ?? '');
       if (left === right) {
@@ -122,7 +135,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
 
   private evaluateValue(context: Context): MaybePromise<Quoted | Node> {
     const cont = (value: string | Any | Interpolated | Node): Quoted | Node => {
-      if (this._options?.escaped) {
+      if (this.escaped) {
         if (value instanceof Node) {
           return value;
         }

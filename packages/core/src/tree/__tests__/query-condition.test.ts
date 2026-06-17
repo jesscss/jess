@@ -14,6 +14,7 @@ import {
   paren,
   Paren,
   query,
+  QueryCondition,
   ref,
   rules,
   Sequence,
@@ -94,6 +95,16 @@ describe('QueryCondition', () => {
     const node = query([any('screen'), any('and'), ref({ key: 'mode' }, { type: 'variable' })]);
 
     expect(node.toTrimmedString()).toBe('screen and $mode');
+  });
+
+  it('inherits the sequence direct child field', () => {
+    const first = any('screen');
+    const second = any('(color)');
+    const node = query([first, second]);
+
+    expect(node.items).toEqual([first, second]);
+    expect(node.items).toBe(node.value);
+    expect(QueryCondition.childKeys).toEqual(['items']);
   });
 
   it('writes empty query-condition syntax without writer readback', () => {

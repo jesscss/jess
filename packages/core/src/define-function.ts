@@ -13,7 +13,7 @@ export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;
 export type Lazy<T> = () => MaybePromise<T>;
 
 /**
- * FunctionThis provides a proxy-based interface for function execution context.
+ * FunctionThis provides the function execution context.
  *
  * The `args` property is always a function that returns a `MaybePromise<List>`,
  * providing a consistent API regardless of lazy parameter configuration.
@@ -331,25 +331,23 @@ export function defineFunction<
     return fn(...positionalArgs);
   };
 
-  /** Allow runtime reflection on the function */
-  return new Proxy(result, {
-    has(target, prop) {
-      if (prop === 'name' || prop === 'options') {
-        return true;
-      }
-      return prop in target;
+  /** Attach runtime metadata directly; keep the callable as a real function. */
+  Object.defineProperties(result, {
+    name: {
+      value: name,
+      configurable: true
     },
-    get(target, prop) {
-      if (prop === 'name') {
-        return name;
-      } else if (prop === 'options') {
-        return options;
-      } else if (prop === '_internal') {
-        return fn;
-      }
-      return Reflect.get(target, prop);
+    options: {
+      value: options,
+      configurable: true
+    },
+    _internal: {
+      value: fn,
+      configurable: true
     }
   });
+
+  return result;
 }
 
 /** This will be called internally by Jess to functions created with defineFunction */
@@ -404,7 +402,7 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
     }
     originalArgsList = new List(copiedArgs);
   }
-  const originalValues = originalArgsList.value;
+  const originalValues = originalArgsList.items;
   args = new Array(originalValues.length);
   for (let i = 0; i < originalValues.length; i++) {
     args[i] = originalValues[i];

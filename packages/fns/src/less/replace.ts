@@ -12,8 +12,8 @@ const replace = defineFunction(
     const flagValue = flags ? await serializeNodeValue(flags, this.context) : '';
     const result = source.replace(new RegExp(patternValue, flagValue), replacementValue);
 
-    if (input instanceof Quoted && !input.options.escaped) {
-      return new Quoted(result, { quote: input.options.quote, escaped: false });
+    if (input instanceof Quoted && !input.escaped) {
+      return new Quoted(result, { quote: input.quote, escaped: false });
     }
     return new Any(result, { role: 'keyword' });
   },

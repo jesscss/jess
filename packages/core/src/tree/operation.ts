@@ -8,8 +8,13 @@ import { N } from './node-type.js';
 import { Call } from './call.js';
 import { list } from './list.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
-import { isRenderBuffer, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
+import {
+  isRenderBuffer,
+  prepareBufferPrintState,
+  writeRenderText,
+  type RenderBuffer
+} from './util/render-buffer.js';
+import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 
 export type { Operator };
 /** Operation is always a tuple */
@@ -32,33 +37,50 @@ type OperationRenderResult =
  * as an operation.
  */
 export class Operation extends Node<OperationValue> {
+  static override childKeys = ['left', 'right'] as const;
+
+  readonly left: Node;
+  readonly operator: Operator;
+  readonly right: Node;
+
   private static isPreservedSlashList(node: Node): boolean {
     return isNode(node, N.List) && (node as Node & { options?: { sep?: string } }).options?.sep === '/';
   }
 
   private withOperands(left: Node, right: Node): Operation {
-    const finalLeft = left === this.value[0] ? copyWithReusableLeaves(left) : left;
-    const finalRight = right === this.value[2] ? copyWithReusableLeaves(right) : right;
+    const finalLeft = left === this.left ? copyOwnedWithReusableLeaves(left) : left;
+    const finalRight = right === this.right ? copyOwnedWithReusableLeaves(right) : right;
     const node = new Operation(
-      [finalLeft, this.value[1], finalRight],
+      [finalLeft, this.operator, finalRight],
       this._options ? { ...this._options } : undefined,
-      this.location
+      this.location,
+      this._treeContext
     );
     return node.inherit(this);
   }
 
   private createCalcFallback(left: Node, right: Node, baseLeft: Node, baseRight: Node): Call {
-    const operationNode = (left === baseLeft && right === baseRight)
-      ? this
-      : this.withOperands(left, right);
+    const operationNode = this.withOperands(left, right);
     operationNode.evaluated = true;
-    left.evaluated = true;
-    right.evaluated = true;
-    return (new Call({ name: 'calc', args: list([operationNode]) })).inherit(this);
+    return (new Call(
+      { name: 'calc', args: list([operationNode]) },
+      undefined,
+      undefined,
+      this.sourceRoot?._treeContext
+    )).inherit(this);
   }
 
-  constructor(value: OperationValue, options?: NodeOptions, location?: NodeLocation) {
+  constructor(
+    value: OperationValue,
+    options?: NodeOptions,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
     super(value, options, location);
+    this.left = value[0];
+    this.operator = value[1];
+    this.right = value[2];
+    this._treeContext = treeContext;
     // Operations are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
@@ -67,9 +89,9 @@ export class Operation extends Node<OperationValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let [left, op, right] = this.value;
+    const { left, operator: op, right } = this;
     const leftMark = w.mark();
-    left.toString(options);
+    left.writeSyntax(options);
     w.trimEndSince(leftMark);
     w.add(` ${op} `, this);
     if (options.trivia) {
@@ -82,7 +104,7 @@ export class Operation extends Node<OperationValue> {
     const saved = options.suppressBoundaryTrivia;
     options.suppressBoundaryTrivia = 'pre';
     try {
-      right.toString(options);
+      right.writeSyntax(options);
     } finally {
       options.suppressBoundaryTrivia = saved;
     }
@@ -99,7 +121,7 @@ export class Operation extends Node<OperationValue> {
   }
 
   private evaluateRenderOperands(context: Context): MaybePromise<OperationRenderResult> {
-    let [left, op, right] = this.value;
+    const { left, operator: op, right } = this;
     const maybeLeft = left.eval(context);
     const finalize = (l: Node, r: Node): MaybePromise<OperationRenderResult> => {
       const renderOperands = (): OperationRenderResult => {
@@ -163,10 +185,12 @@ export class Operation extends Node<OperationValue> {
     if (output instanceof Node) {
       return this.renderOutput(context, output, bufferOrOptions, options);
     }
-    const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
+    const printOptions = isRenderBuffer(bufferOrOptions)
+      ? prepareBufferPrintState(context, options)
+      : bufferOrOptions;
     const finish = (leftOut: string): MaybePromise<string> => {
       const right = output.right.render(context, printOptions);
-      const combine = (rightOut: string): string => `${leftOut} ${this.value[1]} ${rightOut}`;
+      const combine = (rightOut: string): string => `${leftOut} ${this.operator} ${rightOut}`;
       return isThenable(right)
         ? right.then(combine)
         : combine(right);
@@ -185,7 +209,7 @@ export class Operation extends Node<OperationValue> {
 
   private evaluateOperands(context: Context): MaybePromise<Node> {
     let n = this;
-    let [left, op, right] = n.value;
+    const { left, operator: op, right } = n;
     const maybeLeft = left.eval(context);
     const finalize = (l: Node, r: Node): MaybePromise<Node> => {
       if (Operation.isPreservedSlashList(l) || Operation.isPreservedSlashList(r)) {

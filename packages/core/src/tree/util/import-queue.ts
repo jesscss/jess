@@ -22,13 +22,13 @@ function importSyntaxMatches(a: AtRule, b: AtRule): boolean {
   if (!locationsEqual(a.location, b.location)) {
     return false;
   }
-  const aName = a.value.name.valueOf?.() ?? a.value.name;
-  const bName = b.value.name.valueOf?.() ?? b.value.name;
+  const aName = a.name.valueOf?.() ?? a.name;
+  const bName = b.name.valueOf?.() ?? b.name;
   if (String(aName) !== String(bName)) {
     return false;
   }
-  const aPrelude = a.value.prelude?.valueOf?.() ?? '';
-  const bPrelude = b.value.prelude?.valueOf?.() ?? '';
+  const aPrelude = a.prelude?.valueOf?.() ?? '';
+  const bPrelude = b.prelude?.valueOf?.() ?? '';
   return String(aPrelude) === String(bPrelude);
 }
 
