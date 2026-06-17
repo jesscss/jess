@@ -388,7 +388,9 @@ Current hard leftovers after the broad hook sweep:
   hoisting writes detached child syntax directly instead of calling public
   child string wrappers; Mixin, Func, Collection, If, For,
   and While source writers now call the void `writeBraced(...)` path directly
-  instead of ignoring public `toBraced(...)` return strings; isolate
+  instead of ignoring public `toBraced(...)` return strings, and static
+  child registration prep now calls narrowed thenables directly instead of
+  wrapping them with `Promise.resolve(...)`; isolate
   remaining frame header comparison, imports, and
   duplicate declaration materialization.
 - [x] `RawRules`: direct raw body writer.

@@ -198,3 +198,8 @@ with `--no-verify` after the explicit gates pass.
   promise wrapper calls; the pre-existing at-rule comment-trivia failure remains
   tracked outside this binding pass. This is not new binding logic. No speed
   claim.
+- Merge-carried serialization review: `origin/dev` also includes Rules static
+  registration narrowed-thenable cleanup in `packages/core/src/tree/rules.ts`.
+  Static child registration prep now calls the already-thenable prepared-node
+  result directly instead of adding a promise wrapper call. This is not new
+  binding lookup logic. No speed claim.
