@@ -45,8 +45,8 @@ forces a focused stop.
 
 1. [ ] Extend bridge-spy proof from simple reference-import guarded calls to
 namespace/reference-import child-surface combinations. Scope: namespaced
-reference-import guarded mixins, selector-list reference imports, configured
-import child surfaces, `options.context`, and `findMixinsFastForUncoveredCallable`.
+reference-import guarded mixins, configured import child surfaces,
+`options.context`, and `findMixinsFastForUncoveredCallable`.
 Goal: prove which dynamic surfaces still need an uncovered bridge before
 cutting more. Acceptance: guarded/config and reference-import matrices stay
 green and record whether direct fallback is required.
@@ -62,11 +62,12 @@ parent/fallback callable miss spy tests plus existing fallback hit tests.
 3. [ ] Extend narrow uncovered-child fallback proof to namespaced
 reference-import child surfaces. Scope: the uncovered child-only fallback in
 `findMixinsFastForUncoveredCallable`, reference-import siblings, rendered
-reference imports, and namespace offsets. Goal: keep broad search limited to
-child entries that actually reported `uncovered`, without losing dynamic
-positives. Acceptance: covered sibling child surfaces are not reopened;
-configured guarded and simple reference-import guarded calls stay zero-bridge;
-remaining dynamic positives still resolve.
+reference imports, selector-list reference imports, and namespace offsets.
+Goal: keep broad search limited to child entries that actually reported
+`uncovered`, without losing dynamic positives. Acceptance: covered sibling
+child surfaces are not reopened; configured guarded and simple
+reference-import guarded calls stay zero-bridge; remaining dynamic positives
+still resolve.
 
 4. [ ] Delete any remaining simple exact callable child scans that are
 provably covered by frame facts. Scope: current-frame miss, child-entry family
@@ -83,12 +84,13 @@ plus variable/property/function/callable handle tests.
 
 6. [ ] Finish reference-import namespace offset coverage. Scope:
 namespaced reference-import rulesets, reference-import child surfaces reached
-through array-path keys, `findMixinNamespacePathFast(...)` unsupported returns,
-and `findMixinsFastForUncoveredCallable(...)`. Goal: imported namespace
-positives and misses stop reopening nested array-path fallback or broad direct
+through array-path keys, selector-list reference-import namespaces,
+`findMixinNamespacePathFast(...)` unsupported returns, and
+`findMixinsFastForUncoveredCallable(...)`. Goal: imported namespace positives
+and misses stop reopening generated remainder-array fallback or broad direct
 crawl once placement facts prove the surface. Acceptance: reference-import
-namespace array-path spies show zero nested-array fallback and record/eliminate
-any remaining `findMixinsFast(...)` bridge hits.
+namespace array-path spies show zero generated remainder-array fallback and
+record/eliminate any remaining `findMixinsFast(...)` bridge hits.
 
 7. [ ] Extend stable namespace no-fallback proof to imported namespace
 surfaces. Scope: namespace path offsets, reference imports, terminal
@@ -216,9 +218,17 @@ evidence current without claiming speed. Acceptance: profile recorded with old
   bridge-spy proof: `#guarded > #deeper > .mixin` resolves the plain ruleset,
   silent callable namespace mixin, and defaulted guarded callable namespace
   mixin without `findMixinsFast(...)` broad crawl or nested array fallback.
-- Namespaced reference-import array-path lookup still reported a direct crawl
-  for `#Namespace` / `.mixin` and one nested array fallback when probed. That
-  surface remains the next namespace target rather than being marked complete.
+- Namespaced reference-import array-path lookup still reports direct
+  `findMixinsFast(...)` bridge hits for `#Namespace` / `.mixin` when probed.
+  A follow-up attempt to route terminal reference-import child surfaces through
+  `findMixinsFastForUncoveredCallable(...)` removed the imported `.mixin`
+  bridge in isolation, but broke the guarded namespace union fixture:
+  `#guarded > #deeper > .mixin` returned only one callable instead of the
+  required plain-ruleset namespace plus callable namespace mixin union. The
+  next cut must preserve that union while narrowing the reference-import
+  terminal bridge. The remaining array-path call in the import fixture is the
+  authored lookup key from the call site, not a materialized fallback
+  remainder.
 - `setDefined` assignment no longer imports or calls exported
   `findVariableDeclarationAssignmentLookup` /
   `findPropertyDeclarationAssignmentLookup` wrappers. It uses the existing

@@ -102,37 +102,26 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding/lookup namespace-offset pass that stopped legacy
-  nested array-path fallback after the offset namespace walker returns a
-  definitive empty result, and added guarded namespace bridge-spy proof.
-- Verdict: accepted as a fallback cut plus proof. Namespaced reference-import
-  array-path lookup still uses direct crawl and one nested array fallback, so
-  that surface remains in `BINDING-LOOKUP-REMAINING.md`. No wall-clock speed
-  claim.
-- New traversal: no new runtime traversal. Runtime traversal is reduced for
-  ruleset namespace, compound-prefix namespace, and mixin namespace descendant
-  misses: `[]` from `findMixinNamespacePathFast(...)` now stops lookup instead
-  of recursively calling `findMixin(collectKeyRemainder(...))`. The new tests
-  add prototype-spy recording around existing lookup methods; that is
-  test-only.
-- New node/materialization: no AST nodes, copied nodes, wrapper `Rules`, render
-  materialization, side map, or hot result array was added. The deleted
-  fallback avoids three miss-path `collectKeyRemainder(...)` array allocations
-  in covered namespace cases. The new spy arrays are test-only proof buffers.
-- Render path: no render/stringification path changed. Touched runtime paths
-  are callable namespace lookup before candidate eval/render.
-- Helper/API surface: no helpers or APIs added. The pass uses existing
-  `findMixin(...)` and `findMixinsFast(...)` spy surfaces in tests.
-- Metadata mutations: none. Test `try`/`finally` blocks only restore prototype
-  spies.
-- Allocation changes: no new runtime allocation. Namespace miss paths that the
-  offset walker definitively covers no longer allocate remainder arrays for
-  legacy fallback.
-- Evidence: focused namespace/callable mixin matrix passed (`10` tests),
-  `pnpm exec eslint ...` passed, `git diff --check` passed, `pnpm run
-  verify:binding-lookup-hot-paths` passed, `pnpm run
-  verify:aggressive-cutting-review` passed with the danger tokens prosecuted
-  above, and `pnpm --filter @jesscss/core build` passed. `pnpm run
-  verify:baseline -- --changed` did not pass: it reached broad
-  render/call/cloning failures in the core package and then hung in Vitest
-  workers until interrupted. No speed claim.
+- Latest pass: binding/lookup imported-namespace audit. The attempted runtime
+  cut was rejected and fully reverted.
+- Verdict: rejected. Routing terminal reference-import child surfaces through
+  `findMixinsFastForUncoveredCallable(...)` removed the imported `.mixin`
+  direct bridge in isolation, but broke the guarded namespace union fixture:
+  `#guarded > #deeper > .mixin` returned only one callable instead of three.
+  No runtime change survived and no wall-clock speed claim was made.
+- New traversal: none in committed runtime. Rejected local attempts included a
+  parent/current-surface namespace scan and extra frame/child-entry branching;
+  both were removed before commit.
+- New node/materialization: none in committed runtime. Rejected local tests used
+  prototype-spy arrays only; they were removed before commit.
+- Render path: no committed render/stringification path change.
+- Helper/API surface: no helpers or APIs added.
+- Metadata mutations: none.
+- Allocation changes: none in committed runtime.
+- Evidence: the rejected runtime shape failed
+  `pnpm --filter @jesscss/core exec vitest src/tree/__tests__/mixin.test.ts
+  --run --testNamePattern "namespace fast path: mixin-ruleset path unions plain
+  namespace rulesets with callable namespace mixins" --reporter=dot`. After
+  reverting runtime/test changes, `git diff --check` and
+  `pnpm run verify:aggressive-cutting-review` passed for the documentation-only
+  update. No speed claim.
