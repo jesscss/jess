@@ -40,8 +40,9 @@ describe('callable candidate state helper', () => {
 
     expect(state.sourceRules).toBe(candidate.value.rules);
     expect(state.rules).not.toBe(candidate.value.rules);
+    expect(candidate.value.rules.parent).toBe(candidate);
     expect(state.rules.options.rulesVisibility?.VarDeclaration).toBe('public');
-    expect(state.rules.parent).toBe(candidate.parent);
+    expect(state.rules.parent).toBe(definitionParent);
     expect(state.paramBindings).toHaveLength(1);
     expect(state.signatureKey).toBeDefined();
     expect(state.parentFrame).toBe(callSiteRules.getScopeFrame());

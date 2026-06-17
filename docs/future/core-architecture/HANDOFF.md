@@ -467,7 +467,12 @@ shape current before commit.
    placement arrays. Interpolated mixin registration now evaluates the dynamic
    name before deriving the replacement mixin, so the prepared wrapper owns the
    final `Any` name directly instead of copying the interpolated name subtree
-   and replacing it afterward. Guard/default/body ownership remains open.
+   and replacing it afterward. Callable candidate state no longer assigns the
+   owned output rules to the source mixin body's parent just before adopting
+   those same rules into the actual candidate parent; focused tests prove the
+   canonical mixin body remains parented to the source mixin while the owned
+   output rules land on the definition parent. Guard/default/body ownership
+   remains open.
 9. [ ] Finish `Interpolated` cold replacement capture, selector/generic
    materialization, and replacement arrays.
 
@@ -675,32 +680,36 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: AtRule segmented-buffer evaluated render mark.
+Current pass: Mixin callable candidate parent churn.
 
-- New traversal: none. The existing evaluated AtRule render path and
-  `serializeRulesContainer(...)` call are unchanged.
-- New node/materialization: none. The focused test adds a `CountingWriter`
-  fixture only.
-- Render path: `renderEvaluatedAtRule(...)` now opens the prepared-writer mark
-  only when rendering to a flat buffer whose writer writes directly to the
-  buffer parts. Segmented buffers and non-shared writers pass through
-  `writePreparedRenderText(...)` by returned text, so the previous unconditional
-  buffer mark was dead bookkeeping.
-- Helper/API surface: no public API or helper surface changed.
-- Metadata mutations: none.
-- Rejected cut: broader AtRule `getHeaderString(...)` detached writer removal
-  is still unsafe as a tiny patch because spacing, empty-prelude detection,
-  trailing comment trivia, and shared `serializeRulesContainer(...)` string
-  boundaries still depend on that cold capture surface.
-- Evidence: focused AtRule test passed with
-  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/at-rule.test.ts --testNamePattern "writes finalized at-rule output into segmented buffers"`;
-  full `at-rule.test.ts` passed; changed-file eslint passed with one existing
-  warning at `packages/core/src/tree/__tests__/at-rule.test.ts:581`;
+- New traversal: none. Callable candidate state still resolves source rules,
+  owned output rules, frames, and visibility through the existing path.
+- New node/materialization: no new materialization. The patch removes one
+  transient parent mutation on the owned rules surface.
+- Render path: no writer/stringification path changed. This is a Mixin
+  callable-output ownership cut, selected after the direct writer rows were
+  blocked by larger header/container design boundaries.
+- Helper/API surface: no public API changed. `prepareCallableCandidateState(...)`
+  no longer special-cases `Mixin` by assigning `rules.parent =
+  candidateRules.parent` immediately before `candidateParent.adopt(rules)`.
+- Metadata mutations: reduced. The canonical source mixin body keeps its source
+  mixin parent; the owned callable output rules are parented once by the actual
+  candidate parent adoption.
+- Rejected cut: reusing the source `Mixin.value.rules` directly for dynamic or
+  interpolated candidate output remains unsafe because constructing replacement
+  mixin surfaces would reparent canonical children. Guard/default copy removal
+  also remains blocked by `hasDefault` metadata and callable matching semantics.
+- Evidence: focused helper/Mixin tests passed with
+  `pnpm --filter @jesscss/core test -- --run src/tree/util/__tests__/callable-candidate-state.test.ts src/tree/__tests__/mixin.test.ts --testNamePattern "callable candidate state helper|interpolated mixin registration prep wrappers"`;
+  full helper and Mixin suites passed with
+  `pnpm --filter @jesscss/core test -- --run src/tree/util/__tests__/callable-candidate-state.test.ts src/tree/__tests__/mixin.test.ts`.
+  Changed-file eslint passed with
+  `pnpm exec eslint packages/core/src/tree/util/callable-candidate-state.ts packages/core/src/tree/util/__tests__/callable-candidate-state.test.ts`;
   `pnpm --filter @jesscss/core build` passed; and
   `pnpm run verify:aggressive-cutting-review` exited 0 while flagging the
-  expected test-only `new CountingWriter()` plus unrelated dirty-tree danger
-  tokens outside this slice.
-- Verdict: accepted as a bounded partial AtRule render-buffer cut if final
-  gates pass. Body-state staging, custom eval/import/render branch ladders, and
-  broader header/container writer splits remain open. No performance claim;
-  this was not a measured benchmark pass.
+  expected handoff prose about removed parent/adopt mutation plus unrelated
+  dirty-tree danger tokens outside this slice.
+- Verdict: accepted as a bounded Mixin callable-output ownership cut if final
+  gates pass. Guard/default/body copy interactions and broader callable
+  candidate output remain open. No performance claim; this was not a measured
+  benchmark pass.

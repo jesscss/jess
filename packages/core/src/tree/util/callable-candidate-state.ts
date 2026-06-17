@@ -50,10 +50,6 @@ export function prepareCallableCandidateState({
     throw new TypeError('Callable candidate setup requires a parent or call-site rules');
   }
 
-  if (isNode(candidate, N.Mixin)) {
-    rules.parent = candidateRules.parent;
-  }
-
   rules.options.rulesVisibility ??= {};
   rules.options.rulesVisibility.VarDeclaration = leakyRules ? 'public' : 'private';
   candidateParent.adopt(rules);
