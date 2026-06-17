@@ -139,3 +139,9 @@ with `--no-verify` after the explicit gates pass.
 - Evidence: full `declaration.test.ts` passed. Build passed. ESLint passed for
   `declaration.ts`; linting the whole declaration test file still reports
   pre-existing unsafe reflection assertions in the test file.
+- Merge-carried test-only review: the `origin/dev` merge also includes
+  guarded import proof tests that use `try/finally` to restore
+  `Rules.findMixinsFast` prototype spies and allocate small
+  `directChildSurfaceBridges` arrays for assertions. These are test-only
+  evidence collectors, not production render/eval control flow or runtime
+  allocation changes.
