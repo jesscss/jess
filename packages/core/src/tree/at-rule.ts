@@ -109,6 +109,39 @@ function renderAtRuleLeafNodeSyntax(
   }
 }
 
+function renderAtRuleHeaderNodeSyntax(
+  node: Node,
+  printOptions: FinalPrintOptions,
+  withoutComments?: boolean
+): string {
+  const savedTrivia = printOptions.trivia;
+  if (withoutComments) {
+    printOptions.trivia = createTriviaMap();
+  }
+  try {
+    const writer = new OutputWriter(printOptions.compress);
+    node.writeSyntax({
+      ...printOptions,
+      writer
+    });
+    return writer.toString();
+  } finally {
+    printOptions.trivia = savedTrivia;
+  }
+}
+
+function renderAtRulePostPreludeTrivia(
+  prelude: Node,
+  printOptions: FinalPrintOptions
+): string {
+  const writer = new OutputWriter(printOptions.compress);
+  emitCommentTriviaAfterNode(prelude, {
+    ...printOptions,
+    writer
+  });
+  return writer.toString();
+}
+
 const activeAtRuleBodyEvalRecords = new WeakMap<Context, AtRuleBodyEvalRecord[]>();
 
 function pushAtRuleBodyEvalRecord(
@@ -1106,32 +1139,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
     }
 
-    const emptyHeaderTrivia = () => createTriviaMap();
-    const captureWithoutHeaderTrivia = (fn: () => string): string => {
-      const savedTrivia = options.trivia;
-      if (withoutComments) {
-        options.trivia = emptyHeaderTrivia();
-      }
-      try {
-        return fn();
-      } finally {
-        options.trivia = savedTrivia;
-      }
-    };
-    const printHeaderFragment = (printOptions: FinalPrintOptions, fn: (nextOptions: FinalPrintOptions) => void): string => {
-      const writer = new OutputWriter(printOptions.compress);
-      fn({
-        ...printOptions,
-        writer
-      });
-      return writer.toString();
-    };
-
-    const nameOut = captureWithoutHeaderTrivia(() => printHeaderFragment(options, nextOptions => name.writeSyntax(nextOptions)));
+    const nameOut = renderAtRuleHeaderNodeSyntax(name, options, withoutComments);
     const nameEndsWithSpace = /\s$/.test(nameOut);
     if (prelude) {
       const preludeTrivia = withoutComments
-        ? emptyHeaderTrivia()
+        ? createTriviaMap()
         : options.trivia ?? prelude.sourceRoot?._treeContext?.opts?.trivia;
       const preludePrintOptions: FinalPrintOptions = options.context && preludeTrivia
         ? {
@@ -1141,7 +1153,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             emittedTrivia: options.emittedTrivia
           }
         : options;
-      const preludeOut = captureWithoutHeaderTrivia(() => printHeaderFragment(preludePrintOptions, nextOptions => prelude.writeSyntax(nextOptions)));
+      const preludeOut = renderAtRuleHeaderNodeSyntax(prelude, preludePrintOptions, withoutComments);
       if (!preludeOut.trim()) {
         out += nameOut;
         if (rules) {
@@ -1165,7 +1177,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       out += finalPreludeOut;
       const preludePost = withoutComments
         ? ''
-        : printHeaderFragment(options, nextOptions => emitCommentTriviaAfterNode(prelude, nextOptions));
+        : renderAtRulePostPreludeTrivia(prelude, options);
       out += preludePost;
       if (rules) {
         const preludeEndsWithSpace = /\s$/.test(preludeOut + preludePost);

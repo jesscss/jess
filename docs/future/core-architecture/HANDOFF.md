@@ -103,21 +103,29 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Call evaluated CSS syntax direct writer in
-  `packages/core/src/tree/call.ts`.
-- Verdict: accepted as a red-to-green public string transport cut. No speed
+- Latest pass: AtRule header fragment helper hoist in
+  `packages/core/src/tree/at-rule.ts`.
+- Verdict: accepted as a mechanical per-call local-closure cut. No speed
   claim.
 - New traversal: none.
 - New node/materialization: none.
-- Render path: evaluated CSS call names, args, escaped args, and content now
-  write the evaluated node syntax directly through the active print writer
-  instead of calling public `toTrimmedString(...)`.
-- Helper/API surface: none.
-- Metadata mutations: none.
-- Allocation changes: none beyond deleting public string wrapper transport.
-- Rejected/observed in this pass: broader Call callable output selection,
-  calc/finalized fallback copy pressure, and remaining branch ladders stay open
-  in the Call row.
+- Render path: `getHeaderString(...)` still writes name/prelude syntax through
+  direct `writeSyntax(...)` into detached header writers, but the detached
+  writer/trivia work now lives in private module helpers instead of local
+  callback helpers.
+- Helper/API surface: two private module helpers replace three local helper
+  closures plus per-call arrow callbacks; no exported API was added.
+- Metadata mutations: the flagged `try/finally` is the existing trivia
+  save/restore boundary moved from the local helper closure into
+  `renderAtRuleHeaderNodeSyntax(...)`; it is not routine error control flow.
+- Allocation changes: removes per-call `emptyHeaderTrivia`,
+  `captureWithoutHeaderTrivia`, and `printHeaderFragment` function
+  allocations from `getHeaderString(...)`; detached `OutputWriter` allocation
+  remains the existing header string boundary, now centralized in the private
+  helpers.
+- Rejected/observed in this pass: broader AtRule comment-trivia serialization
+  has an existing red case; branch ladders and detached header string capture
+  remain open in the AtRule row.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -125,13 +133,13 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: focused `call.test.ts` selection was red before the patch and now
-  passes for dynamic CSS call names, evaluated args, escaped evaluated args,
-  and evaluated content without public `toTrimmedString(...)` transport.
-  Targeted ESLint passed. Full `call.test.ts` remains red in the same ten
-  cases on clean `origin/dev` (`/tmp/jess-origin-dev-call-check` comparison),
-  so the focused slice is the proof for this batch. Full gates are required
-  before commit.
+- Evidence: focused `at-rule.test.ts` header transport selection passed for
+  `streams at-rule headers without capture scaffolding` and
+  `renders comment-free at-rule headers without cloning`. The broader
+  `serializes comment trivia between at-rule preludes and blocks` case is not
+  used as proof for this batch because it is red in the current AtRule surface.
+  Targeted ESLint passed with the existing unrelated no-floating-promises
+  warning in `at-rule.test.ts`. Full gates are required before commit.
 - Merge-carried binding review: `findRulesetNamespacePathFast(...)` now
   prepares the visible
   callable frame chain for the namespace segment and checks visible child
