@@ -117,50 +117,42 @@ export class QueryCondition extends Sequence {
       return w.getSince(mark);
     }
 
-    const emitTrimmed = (node: Node): MaybePromise<string | void> => {
-      const saved = options.suppressBoundaryTrivia;
-      options.suppressBoundaryTrivia = 'pre';
-      if (node.hasFlag(F_STATIC)) {
-        try {
-          const rendered = node.render(context, options);
-          if (isThenable(rendered)) {
-            const before = w.mark();
-            return rendered.then(
-              (out) => {
-                if (!w.hasContentSince(before)) {
-                  w.add(out);
-                } else {
-                  return w.getSince(before);
-                }
-                options.suppressBoundaryTrivia = saved;
-                return out;
-              },
-              (error) => {
-                options.suppressBoundaryTrivia = saved;
-                throw error;
-              }
-            );
-          }
-          return rendered;
-        } finally {
-          options.suppressBoundaryTrivia = saved;
-        }
+    for (let i = 0; i < length; i++) {
+      if (i > 0) {
+        w.add(' ');
       }
-      const before = w.mark();
-      let asyncOut = false;
+      const rendered = this.renderQueryConditionChild(value[i]!, options, context);
+      if (isThenable(rendered)) {
+        return (rendered as Promise<string | void>)
+          .then(() => this.renderQueryConditionRest(value, options, context, i + 1));
+      }
+    }
+
+    return w.toString();
+  }
+
+  private renderQueryConditionChild(
+    node: Node,
+    options: FinalPrintOptions,
+    context: Context
+  ): MaybePromise<string | void> {
+    const w = options.writer;
+    const saved = options.suppressBoundaryTrivia;
+    options.suppressBoundaryTrivia = 'pre';
+    if (node.hasFlag(F_STATIC)) {
       try {
-        const out = context
-          ? node.render(context, options)
-          : node.toString(options);
-        if (isThenable(out)) {
-          asyncOut = true;
-          return out.then(
-            (rendered) => {
-              if (w.position() === before) {
-                w.add(rendered);
+        const rendered = node.render(context, options);
+        if (isThenable(rendered)) {
+          const before = w.mark();
+          return rendered.then(
+            (out) => {
+              if (!w.hasContentSince(before)) {
+                w.add(out);
+              } else {
+                return w.getSince(before);
               }
               options.suppressBoundaryTrivia = saved;
-              return rendered;
+              return out;
             },
             (error) => {
               options.suppressBoundaryTrivia = saved;
@@ -168,43 +160,63 @@ export class QueryCondition extends Sequence {
             }
           );
         }
-        if (typeof out === 'string') {
-          if (!w.hasContentSince(before)) {
-            w.add(out);
-          } else {
-            return w.getSince(before);
-          }
-        }
-        options.suppressBoundaryTrivia = saved;
-        return out;
+        return rendered;
       } finally {
-        if (!asyncOut) {
-          options.suppressBoundaryTrivia = saved;
+        options.suppressBoundaryTrivia = saved;
+      }
+    }
+
+    const before = w.mark();
+    let asyncOut = false;
+    try {
+      const out = node.render(context, options);
+      if (isThenable(out)) {
+        asyncOut = true;
+        return out.then(
+          (rendered) => {
+            if (w.position() === before) {
+              w.add(rendered);
+            }
+            options.suppressBoundaryTrivia = saved;
+            return rendered;
+          },
+          (error) => {
+            options.suppressBoundaryTrivia = saved;
+            throw error;
+          }
+        );
+      }
+      if (typeof out === 'string') {
+        if (!w.hasContentSince(before)) {
+          w.add(out);
+        } else {
+          return w.getSince(before);
         }
       }
-    };
+      options.suppressBoundaryTrivia = saved;
+      return out;
+    } finally {
+      if (!asyncOut) {
+        options.suppressBoundaryTrivia = saved;
+      }
+    }
+  }
 
-    for (let i = 0; i < length; i++) {
+  private async renderQueryConditionRest(
+    value: Node[],
+    options: FinalPrintOptions,
+    context: Context,
+    start: number
+  ): Promise<string> {
+    const w = options.writer;
+    const length = value.length;
+    for (let i = start; i < length; i++) {
       if (i > 0) {
         w.add(' ');
       }
-      const rendered = emitTrimmed(value[i]!);
-      if (isThenable(rendered)) {
-        return (rendered as Promise<string | void>).then(() => renderRest(i + 1));
-      }
+      await this.renderQueryConditionChild(value[i]!, options, context);
     }
-
     return w.toString();
-
-    async function renderRest(start: number): Promise<string> {
-      for (let i = start; i < length; i++) {
-        if (i > 0) {
-          w.add(' ');
-        }
-        await emitTrimmed(value[i]!);
-      }
-      return w.toString();
-    }
   }
 
   /** @internal */
@@ -249,9 +261,7 @@ export class QueryCondition extends Sequence {
         ? sharesWriter ? rendered : writeRenderText(buffer, rendered)
         : rendered;
     }
-    const rendered = this.hasFlag(F_STATIC)
-      ? this.renderQueryConditionSyntax(this.items, prepared)
-      : this.renderQueryConditionSyntax(this.items, prepared, context);
+    const rendered = this.renderQueryConditionSyntax(this.items, prepared, context);
     if (isThenable(rendered)) {
       return buffer
         ? (rendered as Promise<string>).then(out => writeRenderText(buffer, out))
