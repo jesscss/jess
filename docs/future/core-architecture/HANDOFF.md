@@ -103,46 +103,38 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: source-static reference handle early read plus stale
-  declaration-wrapper design cleanup.
-- Verdict: accepted as a narrow binding/lookup hot-path preparation cut with
-  behavior proof. No speed claim.
+- Latest pass: variable reference facade collapse plus source-static handle
+  read allocation trim.
+- Verdict: accepted as a binding/lookup hot-path machinery cut with behavior
+  proof. No speed claim.
 - New traversal: no new runtime traversal, recursion, sort, map/filter, parent
-  walk, or child scan. The review-flagged `for (const read of reads)` loop is
-  test-only coverage over four source-static reference families. The new helper
-  reads the already-stored `_rulesLookupHandle` and delegates freshness to the
-  existing handle reader.
-- New node/materialization: no runtime node materialization. The review-flagged
-  function constructor call is a test fixture for the function reference family;
-  the focused test also builds ordinary variable/property/mixin fixtures only
-  to prove the stored handle path. No render-only or eval-to-string nodes were
-  added.
-- Render path: no render/stringification path change. The new path returns the
-  same handle values as the existing reader and falls through to normal lookup
-  whenever the source-static shape is not trivial.
-- Helper/API surface: added one private
-  `tryReadSourceStaticRulesLookupHandle(...)` helper. It is deliberately
-  narrower than a public plan/cache API: it accepts only existing handle state
-  with `start === undefined`, `local === false`, no parent-start ignore, stable
-  terminal-mixin bit, no target/filter/read mode/interpolation/leaky/search
-  scope, and a string key equal to the normalized lookup key. It lets repeated
-  source-static references skip `_lookupStrategy` rebuild and rules lookup
-  shape preparation; it does not introduce a registry or exported facade.
-- Metadata mutations: none beyond the existing `_lookupStrategy` test reset
-  used to prove the helper does not rewrite it. No source/parent/frozen
-  metadata changed.
-- Allocation changes: the review-flagged `RulesLookupHandleShape` object is
-  created only after an existing handle passes the source-static guards, so the
-  normal first lookup path is unchanged. Declaration constraints are read only
-  for declaration/property/variable handle families, then validated by the
-  existing reader.
-- Rejected/observed in this pass: moving the read before reference env prep was
-  rejected because `inCall`, target/filter/read-mode/interpolation, leaky, and
-  search-scope facts are part of the handle safety boundary. Stale design
-  references to the deleted declaration facades were updated; remaining grep
-  hits are occurrence helper names or explicit deletion notes.
-- Evidence: focused `reference.test.ts` source-static handle test passed.
-  Final gates are required before commit. No speed claim.
+  walk, or child scan. Variable lookup still uses the existing scope-frame
+  lookup and occurrence fallback only for uncovered/unsupported cases.
+- New node/materialization: no runtime node materialization. No render-only or
+  eval-to-string nodes were added.
+- Render path: no render/stringification path change. The variable lookup path
+  still returns the same binding handle or occurrence values, and source-static
+  handle reads still return through the existing freshness semantics.
+- Helper/API surface: deleted private `lookupVariableReference(...)` and added
+  one private `readCurrentRulesLookupHandleValue(...)` tail shared by normal
+  and source-static handle reads. The net effect removes a facade/fallback
+  call layer and avoids constructing declaration fallback options for covered
+  variable frame hits/misses.
+- Metadata mutations: none. No source/parent/frozen metadata changed.
+- Allocation changes: `performVariableRulesLookup(...)` now tries scope-frame
+  facts before building declaration fallback options; covered variable misses
+  return immediately. `tryReadSourceStaticRulesLookupHandle(...)` compares the
+  stored handle fields directly and no longer creates a temporary
+  `RulesLookupHandleShape` object to call the generic reader.
+- Rejected/observed in this pass: the setDefined callback closure remains open
+  because the callback carries occurrence plus inherited readonly into mutation
+  semantics; a read-only sub-agent audit is running for the next safe shape.
+- Evidence: focused `reference.test.ts` variable/source-static/search-scope
+  matrix passed, and `verify:binding-lookup-hot-paths` passed with a new guard
+  against reintroducing `lookupVariableReference(...)`. Focused
+  `control.test.ts` and `rules.test.ts` setDefined/current-binding slices,
+  targeted ESLint, `@jesscss/core` build, `git diff --check`, and
+  `verify:aggressive-cutting-review` passed. No speed claim.
 - Merge note: the branch also incorporates the latest serialization transport
   work from `origin/dev`; keep that progress tracked in
   `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.
