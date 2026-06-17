@@ -154,3 +154,10 @@ with `--no-verify` after the explicit gates pass.
   No exported helper/API was added; helper logic lives in private `Rules`
   methods. It does not change render/stringification, and its focused
   import-style/mixin evidence passed before the merge. No speed claim.
+- Merge-carried binding review: callable namespace child-surface bridge
+  narrowing reuses existing scope-frame lookup and
+  `findMixinsFastForUncoveredCallable(...)` child-entry narrowing. It does not
+  change render/stringification or add public API; focused import-style/mixin
+  evidence passed on the incoming branch. The flagged `try` blocks,
+  `directCrawlHits` spy array, and optional `MixinEntry[]` collection are
+  binding proof/bridge state, not serialization transport. No speed claim.

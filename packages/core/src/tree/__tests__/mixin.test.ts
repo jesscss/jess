@@ -2767,6 +2767,42 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: callable namespace child-surface covered miss skips nested findMixin', () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      let namespaceRulesFindMixinCount = 0;
+      let namespaceRules: RulesClass;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this === namespaceRules) {
+          namespaceRulesFindMixinCount++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        const childSurface = rules([
+          mixin({
+            name: any('.other-child-mixin'),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          })
+        ]);
+        namespaceRules = rules([childSurface]);
+        const root = rules([
+          mixin({
+            name: any('#parent-namespace'),
+            rules: namespaceRules
+          })
+        ]);
+        root.getScopeFrame();
+        namespaceRules.getScopeFrame();
+        childSurface.getScopeFrame();
+
+        expect(root.findMixin(['#parent-namespace', '.missing-child-mixin'], undefined)).toBeUndefined();
+        expect(namespaceRulesFindMixinCount).toBe(0);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
     it('ScopeFrame callable buckets: recursive namespace hit reaches fallback frame before child direct crawl', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];
