@@ -2662,7 +2662,7 @@ describe('Style import', () => {
             missing: .missing-reference-mixin;
           }
         `);
-        expect(directCrawlHits).toEqual(['#Namespace', '.mixin']);
+        expect(directCrawlHits).toEqual([]);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }
@@ -2829,7 +2829,7 @@ describe('Style import', () => {
         expect(css).toContain('color: red;');
         expect(css).not.toContain('.light {\n  color: red;');
         expect(css).toContain('missing: .guarded-ref(color)');
-        expect(directCrawlHits).toEqual(['#Namespace', '.mixin']);
+        expect(directCrawlHits).toEqual([]);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }
@@ -3218,7 +3218,54 @@ describe('Style import', () => {
           || path[1] !== '.mixin'
         ));
         expect(generatedFallbackArrayPathCalls).toEqual([]);
-        expect(directCrawlHits).toEqual(['#Namespace', '.mixin']);
+        expect(directCrawlHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('import-reference: namespaced reference-imported ruleset array-path misses stay off direct crawl', () => {
+      const referencedPath = resolve(process.cwd(), 'simple-mixin-array-miss.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        ruleset({
+          selector: el('.mixin'),
+          rules: rules([
+            decl({ name: any('was'), value: any('included') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        ruleset({
+          selector: el('#Namespace'),
+          rules: rules([
+            style({ path: quoted(any('simple-mixin-array-miss.jess')) }, { type: 'import', importOptions: { reference: true } })
+          ])
+        })
+      ]);
+      const directCrawlHits: string[] = [];
+      const nestedArrayPathCalls: unknown[] = [];
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '#Namespace' || key === '.missing') {
+          directCrawlHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== node && Array.isArray(args[0])) {
+          nestedArrayPathCalls.push(args[0]);
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        expect(node.findMixin(['#Namespace', '.missing'], undefined, { searchParents: false })).toBeUndefined();
+        expect(nestedArrayPathCalls).toEqual([]);
+        expect(directCrawlHits).toEqual([]);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
         RulesClass.prototype.findMixin = originalFindMixin;

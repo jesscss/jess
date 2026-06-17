@@ -103,27 +103,30 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: configured guarded import bridge proof plus rejected
-  namespaced reference-import array-path deletion attempt.
-- Verdict: accepted only as proof/audit. The attempted direct-crawl deletion
-  was reverted because it dropped namespace/callable union candidates. No speed
+- Latest pass: namespaced reference-import array-path direct-crawl deletion.
+- Verdict: accepted as a frame/direct-crawl cut with behavior proof. No speed
   claim.
-- New traversal: none in production after the revert. Test-only spies record
-  direct-crawl attempts for import fixtures.
+- New traversal: `findRulesetNamespacePathFast(...)` now prepares the visible
+  callable frame chain for the namespace segment and checks visible child
+  entries to prove uncovered child/reference-import uncertainty is limited to
+  the ruleset-prefix body already being descended into. This replaces broad
+  `findMixinsFast(...)` scans for the targeted `#Namespace` / `.mixin`
+  reference-import array-path cases.
 - New node/materialization: none.
 - Render path: no committed render/stringification path change.
-- Helper/API surface: no new exported helper or public API. The retry-frame
-  loop was audited by a read-only subagent and kept because fallback-frame hit
-  tests still prove it is semantically live.
+- Helper/API surface: no exported helper or public API added. The new helper
+  closures are local to `findRulesetNamespacePathFast(...)`; the binding
+  tracker carries a follow-up to collapse/move them only if doing so reduces
+  hot-path function ladders without reopening broad crawls.
 - Metadata mutations: none.
-- Allocation changes: none in production. Tests allocate small spy arrays only
-  for proof.
-- Evidence: focused import-style tests for `namespaced reference-imported
-  ruleset array-path lookups`, variable-only guarded `with`, replacement
-  guarded `set`, and child-surface guarded `with`/`set` should pass before
-  commit. The namespace deletion attempt failed the guarded union/terminal miss
-  proof and remains item 1 in the binding queue. Final gates are required
-  before commit. No speed claim.
+- Allocation changes: the new prefix proof walks existing child-entry/frame
+  state and does not allocate production result arrays on the targeted miss
+  path. Tests allocate small spy arrays only for proof.
+- Evidence: focused import-style tests for namespaced reference-import
+  array-path hit/miss and guarded/reference-import callable miss fixtures
+  passed. Focused mixin namespace tests prove stable namespaces still avoid
+  fallback and a ruleset namespace/callable namespace union still returns all
+  candidates. Final gates are required before commit. No speed claim.
 - Merge note: the branch also incorporates the latest serialization transport
   work from `origin/dev`; keep that progress tracked in
   `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.
