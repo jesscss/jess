@@ -169,6 +169,9 @@ evidence current without claiming speed. Acceptance: profile recorded with old
 - Function handles are per-key; callable handles use
   `Rules.callableLookupVersion`; variable/property/declaration handles use
   per-key declaration versions.
+- Static stylesheet `Func` definitions now participate in registration prep
+  and write through `Rules.setFunctionBinding(...)`, so function references can
+  use the same direct binding/version lane as explicit function bindings.
 - Reference variable lookup uses one modeled `live-current` lane. Ancestor
   variable handles track target-frame current binding freshness.
 - Callable namespace lookup routes candidate, child-surface, and
@@ -230,7 +233,8 @@ evidence current without claiming speed. Acceptance: profile recorded with old
   next cut must preserve that union while narrowing the reference-import
   terminal bridge. The remaining array-path call in the import fixture is the
   authored lookup key from the call site, not a materialized fallback
-  remainder.
+  remainder. A narrower attempt to route ruleset-namespace prechecks through
+  the uncovered-child helper hit the same union blocker and was reverted.
 - `setDefined` assignment no longer imports or calls exported
   `findVariableDeclarationAssignmentLookup` /
   `findPropertyDeclarationAssignmentLookup` wrappers. It uses the existing

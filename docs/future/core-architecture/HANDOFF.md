@@ -102,20 +102,24 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding/lookup hot-path guard hardening.
-- Verdict: accepted as verifier coverage only. The guard now rejects public
-  `Rules.find*` materialization-wrapper calls from selector attribute
-  interpolation and stylesheet function return lookup, matching the existing
-  occurrence-helper direction for reference reads and `setDefined`.
+- Latest pass: binding/lookup stylesheet function registration.
+- Verdict: accepted. Static `Func` nodes now enter registration prep and store
+  through `Rules.setFunctionBinding(...)`, so stylesheet function references
+  resolve through the direct function binding/version lane. A local attempt to
+  narrow namespaced reference-import bridge calls was rejected because the
+  guarded namespace union fixture again returned only one callable instead of
+  three; that runtime attempt was reverted.
 - New traversal: none.
-- New node/materialization: none in committed runtime. Rejected local tests used
-  prototype-spy arrays only in the prior pass; no node/materialization change
-  was added here.
+- New node/materialization: none.
 - Render path: no committed render/stringification path change.
-- Helper/API surface: no helpers or APIs added.
+- Helper/API surface: no helpers or APIs added. Existing registration helpers
+  now include `Func` in their registerable/static-name checks.
 - Metadata mutations: none.
 - Allocation changes: none.
-- Evidence: `pnpm run verify:binding-lookup-hot-paths` and
+- Evidence: `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/func.test.ts --run --reporter=dot`,
   `pnpm --filter @jesscss/core exec vitest
-  src/tree/__tests__/selector-attr.test.ts --run --testNamePattern "occurrence
-  lookup without Rules.findVariable" --reporter=dot` passed. No speed claim.
+  src/tree/__tests__/reference.test.ts --run --testNamePattern "function
+  handles|function binding|function lookup|stale function" --reporter=dot`,
+  `pnpm run verify:binding-lookup-hot-paths`, and
+  `pnpm --filter @jesscss/core build` passed. No speed claim.

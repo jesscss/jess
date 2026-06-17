@@ -3289,9 +3289,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     } else if (isNode(node, N.Ruleset) || isNode(node, N.Mixin)) {
       // Callable lookup crawls Rules.rules directly and filters candidates at lookup/call time.
     } else if (isNode(node, N.Func)) {
-      if (node.nameKey) {
-        (this.functionsByName ??= new Map()).set(node.nameKey, node);
-      }
+      this.setFunctionBinding(node.nameKey, node);
     }
     if (rebuildCallableCache && this._scopeFrame) {
       this._scopeFrame.callableBucketsByName = this.callableLookupCache;
@@ -3597,7 +3595,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * for the normal source-order eval walk.
    */
   private _isRegisterableType(node: Node): boolean {
-    return isNode(node, N.VarDeclaration | N.Declaration | N.Mixin | N.Ruleset) || isStyleImportRegistrationNode(node);
+    return isNode(node, N.VarDeclaration | N.Declaration | N.Mixin | N.Ruleset | N.Func) || isStyleImportRegistrationNode(node);
   }
 
   private _storePreparedRegistrationNode(
@@ -3636,6 +3634,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (isNode(node, N.Declaration)) {
       const name = node.name;
       return this._isStatic(name);
+    }
+    if (isNode(node, N.Func)) {
+      const name = node.name;
+      return name ? this._isStatic(name) : false;
     }
     if (isStyleImportRegistrationNode(node)) {
       const path = node.path;
@@ -3676,6 +3678,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     } else if (isNode(node, N.Mixin)) {
       rules.registerNode(node, undefined, context);
     } else if (isNode(node, N.Ruleset)) {
+      rules.registerNode(node, undefined, context);
+    } else if (isNode(node, N.Func)) {
       rules.registerNode(node, undefined, context);
     }
   }
