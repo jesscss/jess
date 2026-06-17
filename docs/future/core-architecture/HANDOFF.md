@@ -124,3 +124,6 @@ with `--no-verify` after the explicit gates pass.
   commit. The namespace deletion attempt failed the guarded union/terminal miss
   proof and remains item 1 in the binding queue. Final gates are required
   before commit. No speed claim.
+- Merge note: the branch also incorporates the latest serialization transport
+  work from `origin/dev`; keep that progress tracked in
+  `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.

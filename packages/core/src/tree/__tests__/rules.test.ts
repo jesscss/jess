@@ -560,12 +560,20 @@ describe('Rules', () => {
 
   it('streams root charset and imports without capture scaffolding', () => {
     const writer = new WholeBufferCountingWriter();
-    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
+    const charset = any('@charset "utf-8";', { role: 'charset' });
+    const importRule = atrule({
+      name: any('@import', { role: 'atkeyword' }),
+      prelude: quoted(any('theme.css'))
+    });
+    charset.toTrimmedString = () => {
+      throw new Error('Rules root serializer should write charset syntax directly');
+    };
+    importRule.toString = () => {
+      throw new Error('Rules root serializer should write imports directly');
+    };
+    context.currentCharset = charset;
     context.topImports = [
-      atrule({
-        name: any('@import', { role: 'atkeyword' }),
-        prelude: quoted(any('theme.css'))
-      })
+      importRule
     ];
     const node = rules([]);
 

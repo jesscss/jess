@@ -572,13 +572,13 @@ function consumeEofTrivia(node: Node, options: PrintOptions): string {
   return trivia ? consumeTriviaText(trivia, Infinity, 'before', options) : '';
 }
 
-function printDetached(options: PrintOptions, fn: (nextOptions: PrintOptions) => string): string {
+function writeDetached(options: PrintOptions, fn: (nextOptions: FinalPrintOptions) => void): string {
   const writer = new OutputWriter();
-  const out = fn({
+  fn(getPrintOptions({
     ...options,
     writer
-  });
-  return writer.toString() || out;
+  }));
+  return writer.toString();
 }
 
 export type RulesVisibility = 'public' | 'optional' | 'private';
@@ -2442,7 +2442,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // @charset must be first
       if (ctx?.currentCharset && !ctx.charsetEmitted) {
         const charset = ctx.currentCharset;
-        const charsetStr = printDetached(options, nextOptions => charset.toTrimmedString(nextOptions));
+        const charsetStr = writeDetached(options, nextOptions => charset.writeSyntax(nextOptions));
         w.add(charsetStr, charset);
         w.add('\n');
         // Do not permanently flip `charsetEmitted` here; restore at end.
@@ -2469,7 +2469,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (!isCommentLike(node)) {
             break;
           }
-          const commentStr = printDetached(options, nextOptions => node.toTrimmedString(nextOptions));
+          const commentStr = writeDetached(options, nextOptions => node.writeSyntax(nextOptions));
           w.add(normalizeIndent(commentStr, ''), node);
           w.add('\n');
           const wasVisible = node.hasFlag(F_VISIBLE);
@@ -2492,7 +2492,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               }
             }
           }
-          const importStr = printDetached(options, nextOptions => importRule.toString(nextOptions));
+          const importStr = writeDetached(options, nextOptions => importRule.writeSyntax(nextOptions));
           w.add(normalizeIndent(importStr, ''), importRule);
           w.add('\n');
         }

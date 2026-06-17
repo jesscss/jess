@@ -193,6 +193,28 @@ describe('Call', () => {
     expect(writer.readbacks).toBe(1);
   });
 
+  it('serializes call source syntax through direct child writers', () => {
+    const name = ref('rgb', { fallbackValue: true });
+    const args = list([num(100), num(100), num(100)]);
+    const contentNode = any('raw body');
+    name.toString = () => {
+      throw new Error('Call.toTrimmedString should not stringify the name publicly');
+    };
+    args.toTrimmedString = () => {
+      throw new Error('Call.toTrimmedString should not stringify args publicly');
+    };
+    contentNode.toString = () => {
+      throw new Error('Call.toTrimmedString should not stringify content publicly');
+    };
+    const rule = call({
+      name,
+      args,
+      contentNode
+    }, { markImportant: true });
+
+    expect(rule.toTrimmedString()).toBe('$rgb?(100, 100, 100) !important: raw body');
+  });
+
   it('serializes empty CSS calls without writer readback scaffolding', () => {
     const writer = new CountingWriter();
     const rule = call({ name: 'button' });

@@ -1123,7 +1123,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
     };
 
-    const nameOut = captureWithoutHeaderTrivia(() => printHeaderFragment(options, nextOptions => name.toString(nextOptions)));
+    const nameOut = captureWithoutHeaderTrivia(() => printHeaderFragment(options, nextOptions => name.writeSyntax(nextOptions)));
     const nameEndsWithSpace = /\s$/.test(nameOut);
     if (prelude) {
       const preludeTrivia = withoutComments
@@ -1137,7 +1137,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             emittedTrivia: options.emittedTrivia
           }
         : options;
-      const preludeOut = captureWithoutHeaderTrivia(() => printHeaderFragment(preludePrintOptions, nextOptions => prelude.toString(nextOptions)));
+      const preludeOut = captureWithoutHeaderTrivia(() => printHeaderFragment(preludePrintOptions, nextOptions => prelude.writeSyntax(nextOptions)));
       if (!preludeOut.trim()) {
         out += nameOut;
         if (rules) {

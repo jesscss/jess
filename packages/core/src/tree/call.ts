@@ -918,25 +918,26 @@ export class Call extends Node<CallValue, CallOptions> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    const silentFail = this._options?.silentFail;
     options = getPrintOptions(options);
     const w = options.writer!;
+    if (!this.args && !this.contentNode && typeof this.name === 'string') {
+      const out = `${this.name}${this._options?.silentFail ? '?' : ''}()${this._options?.markImportant ? ' !important' : ''}`;
+      w.add(out, this);
+      return out;
+    }
     const mark = w.mark();
     const { name, contentNode, args } = this;
     if (typeof name === 'string') {
       w.add(name, this);
     } else {
-      name.toString(options);
+      name.writeSyntax(options);
     }
-    if (silentFail) {
+    if (this._options?.silentFail) {
       w.add('?');
     }
     w.add('(');
     if (args) {
-      const argsMark = w.mark();
-      args.toTrimmedString(options);
-      w.trimHorizontalStartSince(argsMark);
-      w.trimHorizontalEndSince(argsMark);
+      args.writeSyntax(options);
     }
     w.add(')');
     if (this._options?.markImportant) {
@@ -944,7 +945,7 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     if (contentNode) {
       w.add(': ');
-      contentNode.toString(options);
+      contentNode.writeSyntax(options);
     }
     return w.getSince(mark);
   }

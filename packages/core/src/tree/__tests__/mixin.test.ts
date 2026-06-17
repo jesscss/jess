@@ -1,5 +1,6 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction, style, Mixin } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction, style, Mixin, nil } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
+import { OutputWriter } from '../util/print.js';
 import { lookupScopeFrameCallable, resolveFrameCell } from '../scope-frame.js';
 import { getRulesEntryTraversalState } from '../util/lookup-utils.js';
 import { renderNodeToString } from '../util/render-buffer.js';
@@ -27,6 +28,15 @@ import {
 import { createCallableOuterRules, createMixinOutputRulesWrapper } from '../util/callable-surface.js';
 
 let context: Context;
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 // Helper to check for errors without serializing the resolved value
 async function expectRejects<T>(
@@ -115,6 +125,41 @@ describe('Mixin', () => {
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('writes mixin syntax through direct child writers', () => {
+    const name = any('.button');
+    const params = list([vardecl({ name: any('tone'), value: nil() }, { paramVar: true })]);
+    const guard = condition([ref({ key: 'enabled' }, { type: 'variable' })]);
+    const node = mixin({
+      name,
+      params,
+      guard,
+      rules: rules([
+        decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
+      ])
+    });
+    name.toString = () => {
+      throw new Error('Mixin.writeSyntax should not stringify the name publicly');
+    };
+    params.toString = () => {
+      throw new Error('Mixin.writeSyntax should not stringify params publicly');
+    };
+    guard.toString = () => {
+      throw new Error('Mixin.writeSyntax should not stringify guard publicly');
+    };
+    const writer = new CountingWriter();
+
+    expect(node.toTrimmedString({ writer })).toBeString(`
+      .button($tone) when $enabled {
+        color: $tone;
+      }
+    `);
+    expect(writer.toString()).toBeString(`
+      .button($tone) when $enabled {
+        color: $tone;
+      }
+    `);
   });
 
   it('prepares mixin identity without pre-evaluating the body', async () => {
