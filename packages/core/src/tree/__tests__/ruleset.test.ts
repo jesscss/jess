@@ -49,6 +49,42 @@ describe('Rule', () => {
     `);
   });
 
+  it('renders unique declarations at emission time instead of duplicate-cache pre-render', () => {
+    const writer = new CountingWriter();
+    const colorDecl = decl({ name: 'color', value: any('red') });
+    const sizeDecl = decl({ name: 'font-size', value: any('12px') });
+    const originalToTrimmedString = colorDecl.toTrimmedString;
+    let colorUsedCallerWriter = false;
+    colorDecl.toTrimmedString = function countCallerWriterUse(
+      ...args: Parameters<typeof originalToTrimmedString>
+    ): ReturnType<typeof originalToTrimmedString> {
+      const options = args[0];
+      if (options?.writer === writer) {
+        colorUsedCallerWriter = true;
+      }
+      return originalToTrimmedString.apply(this, args);
+    };
+    const node = ruleset({
+      selector: sel([el('.box')]),
+      rules: rules([
+        colorDecl,
+        sizeDecl
+      ])
+    });
+
+    try {
+      expect(node.toTrimmedString({ writer })).toBeString(`
+        .box {
+          color: red;
+          font-size: 12px;
+        }
+      `);
+      expect(colorUsedCallerWriter).toBe(true);
+    } finally {
+      colorDecl.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
   it('keeps authored literal and interpolated sibling rulesets separate without collapse', async () => {
     const node = rules([
       ruleset({

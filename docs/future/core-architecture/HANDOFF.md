@@ -103,27 +103,28 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `AtRule.getHeaderString(...)` header fragment transport in
-  `packages/core/src/tree/at-rule.ts`.
-- Verdict: accepted as a caller-writer rollback cut at an existing string-return
-  header boundary. No speed claim.
-- New traversal: none.
-- New node/materialization: no nodes. `printHeaderFragment(...)` now creates a
-  detached `OutputWriter` because `getHeaderString(...)` still has a string
-  contract for frame comparison/output; this removes caller-writer
-  `mark/getSince/restore` rollback without claiming direct render completion.
-- Render path: no `AtRule.render(...)` behavior changed. Header fragments still
-  return strings, but they no longer use the caller writer as temporary
-  transport.
+- Latest pass: Ruleset duplicate declaration pre-render narrowing in
+  `packages/core/src/tree/util/serialize-helper.ts`.
+- Verdict: accepted as a hot serializer transport cut. No speed claim.
+- New traversal: one forward loop counts visible non-variable declaration
+  properties before the existing reverse duplicate pass. The count is needed
+  only inside the flattened render list, and carrying it earlier would add
+  stale declaration state to container flattening.
+- New node/materialization: no nodes. Adds one `Map<string, number>` for
+  declaration property counts so unique declarations skip detached pre-render
+  entirely; repeated properties keep the existing exact-output comparison
+  cache.
+- Render path: unique declarations now fall through to normal emission instead
+  of rendering into the duplicate declaration cache first. Repeated-property
+  duplicate behavior, trivia cache reuse, mixin/call/control exemptions, and
+  generated-output keep rules remain unchanged.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: adds one detached writer per header fragment while
-  removing caller-writer mark/readback/restore. This is accepted only at the
-  existing `getHeaderString(...)` string boundary; deeper frame header contract
-  work remains open.
-- Rejected/observed in this pass: `renderLeafValue(...)`,
-  `serializeRulesContainer(...)` render return transport, and layer-name
-  `toTrimmedString/valueOf` semantics remain separate AtRule work.
+- Allocation changes: adds a property-count `Map` and removes detached
+  declaration writer/string/trivia cache allocation for unique properties.
+- Rejected/observed in this pass: `getHeaderString(...)` capture/readback,
+  serialize-helper frame comparison, and hoisted-parent detached header
+  rendering still need a broader frame-header contract change.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -131,12 +132,11 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: focused `at-rule.test.ts` header selection passed, including
-  comment-free headers and whitespace normalization; targeted ESLint passed
-  with the existing no-floating-promises warning in `at-rule.test.ts`; full
-  core package build is required before commit. Full `at-rule.test.ts` has a
-  known unrelated comment-trivia red in the current tree, so the focused header
-  selection is the behavior proof for this slice.
+- Evidence: focused `ruleset.test.ts` duplicate/header/serialize selection
+  passed, including a unique-declaration test that proves normal emission uses
+  the caller writer instead of duplicate-cache pre-render. The flagged
+  `CountingWriter` construction and `try/finally` are test-only restoration
+  scaffolding. Targeted ESLint passed. Full gates are required before commit.
 - Merge-carried binding review: `findRulesetNamespacePathFast(...)` now
   prepares the visible
   callable frame chain for the namespace segment and checks visible child
