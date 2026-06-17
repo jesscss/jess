@@ -262,7 +262,9 @@ export class Call extends Node<CallValue, CallOptions> {
     const out = new Array<Node>(source.length);
     for (let i = 0; i < source.length; i++) {
       const node = source[i]!;
-      const evald = node.eval(context);
+      const evald = node.hasFlag(F_MAY_ASYNC)
+        ? node.eval(context)
+        : node.evalImmediateSync(context);
       if (isThenable(evald)) {
         return evald.then(value => this.finishEvalArgNodes(context, nodes, out, i, node, value));
       }
@@ -283,7 +285,9 @@ export class Call extends Node<CallValue, CallOptions> {
     out[index] = evald === node ? copyWithReusableLeaves(evald) : evald;
     for (let i = index + 1; i < source.length; i++) {
       const next = source[i]!;
-      const nextEvald = next.eval(context);
+      const nextEvald = next.hasFlag(F_MAY_ASYNC)
+        ? next.eval(context)
+        : next.evalImmediateSync(context);
       if (isThenable(nextEvald)) {
         return nextEvald.then(value => this.finishEvalArgNodes(context, nodes, out, i, next, value));
       }

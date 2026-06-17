@@ -318,9 +318,12 @@ shape current before commit.
    call render now carries a string-only text state for known scalar/no-trivia
    args and content, including async scalar resolutions, so those paths return
    known text without whole-call writer readback. `evalArgNodes(...)` now runs a
-   sync-first loop and only enters an async continuation after an evaluated arg
-   is actually thenable, while preserving the existing `copyWithReusableLeaves`
-   ownership boundary and `calcFrames` cleanup.
+   sync-first loop, evaluates non-`F_MAY_ASYNC` args through
+   `evalImmediateSync(...)` instead of public `eval(...)`, and only enters an
+   async continuation after an evaluated arg is actually thenable. Focused tests
+   prove base sync args bypass public `Node.eval`, custom sync eval overrides
+   still run, and the existing `copyWithReusableLeaves` ownership boundary plus
+   `calcFrames` cleanup are preserved.
 2. [ ] Finish `QueryCondition` dynamic render by removing the child mark probe
    only after child render contracts prove write-vs-return behavior directly.
 
@@ -659,43 +662,32 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: List/Sequence addition assembly and shared flat-buffer readback.
+Current pass: Call `evalArgNodes(...)` immediate sync argument evaluation.
 
-- New traversal: `List.operate(...)` and `Sequence.operate(...)` now run
-  straight indexed loops over the existing left/right operand arrays to fill a
-  final-sized output array. This replaces the previous helper-plus-`push(...)`
-  staging and does not add an extra child walk. `readFlatBufferTextSince(...)`
-  loops over flat buffer string chunks only when a shared writer has emitted
-  content since the mark and the helper must decide whether to append a returned
-  suffix; it replaces a public writer `getSince(...)` readback that already did
-  the same bounded string-chunk scan.
-- New node/materialization: no new semantic materialization. Addition still
-  creates the same output `List`/`Sequence` ownership boundary and still uses
-  `copyWithReusableLeaves(...)` for operands; this pass deletes the intermediate
-  derived-container mutation step, not the copied output boundary. The
-  `new List(...)`/`new Sequence(...)`, `.inherit(this)`, and List source-root
-  metadata propagation are the pre-existing arithmetic output ownership model,
-  now reached with final-sized arrays instead of helper-built containers that
-  are mutated afterward.
-- Render path: no List/Sequence render transport was added. The render-buffer
-  helper correction preserves the existing shared-writer suffix behavior while
-  keeping List/Sequence shared-buffer tests at one writer mark/readback.
-- Helper/API surface: the private `deriveAdditionList(...)` and
-  `deriveAdditionSequence(...)` helpers were removed. One private
-  `readFlatBufferTextSince(...)` helper was added to keep shared flat-buffer
-  suffix detection off public `OutputWriter.getSince(...)`; net public API
-  surface is unchanged.
-- Metadata mutations: no parent/source/frozen/location/options/context mutation
-  was added. Tests temporarily override `Array.prototype.push` and restore it
-  in `finally` to prove addition assembly does not rely on result-array push
-  staging; this is test-only cleanup.
-- Evidence: `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/list.test.ts src/tree/__tests__/sequence.test.ts`
-  passed after the helper correction restored existing shared-buffer read
-  expectations. Further eslint/build/aggressive-review gates still need to run
-  before commit.
+- New traversal: none. The existing argument loops remain; each iteration now
+  chooses `evalImmediateSync(...)` for non-`F_MAY_ASYNC` args and public
+  `eval(...)` only for async-capable args.
+- New node/materialization: no new materialization. The existing
+  `copyWithReusableLeaves(...)` ownership boundary for unchanged evaluated args
+  remains; this pass changes only the sync evaluation entrypoint. The
+  `SyncOverrideAny` construction is test-only scaffolding for the custom eval
+  override contract.
+- Render path: no render/string transport was added. The change is in CSS-call
+  eval argument preparation, and calc-frame cleanup remains on the existing
+  sync/async paths.
+- Helper/API surface: no helper or public API was added.
+- Metadata mutations: no production parent/source/frozen/location/options/
+  context mutation was added. Tests temporarily override `Node.prototype.eval`
+  and restore it in `finally` to prove base non-async args bypass public eval;
+  this is test-only cleanup.
+- Evidence: `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/call.test.ts -t "evaluates non-async CSS call args through the immediate sync boundary"`
+  passed, and `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/call.test.ts src/tree/__tests__/operation.test.ts`
+  passed. Further eslint/build/aggressive-review gates still need to run before
+  commit.
 - Review noise: `verify:aggressive-cutting-review` may report unrelated dirty
   worktree tokens from JS/runtime/docs work outside this slice.
-- Verdict: accepted as a bounded partial cut if final gates pass. List/Sequence
-  output copy ownership remains open beyond the deleted helper/mutation staging.
-  No performance claim; performance remains shelved because this was not a
-  measured benchmark pass.
+- Verdict: accepted as a bounded partial cut if final gates pass. Call copy
+  ownership in eval/finalized fallback paths, non-scalar/custom/trivia arg trim
+  marks, async helper ladders, and callable output remain open. No performance
+  claim; performance remains shelved because this was not a measured benchmark
+  pass.

@@ -1,6 +1,6 @@
 import type { IToken } from 'chevrotain';
 import * as treeIndex from '../index.js';
-import { Any, Call, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, fn, list, mixin, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Any, Call, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, fn, list, mixin, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import {
   getCallRawArgDiagnosticMessageSource,
   getCallRawArgDiagnosticSource,
@@ -86,6 +86,15 @@ class RejectingAny extends Any<string> {
 class ThrowingAny extends Any<string> {
   override eval() {
     throw new Error(this.value);
+  }
+}
+
+class SyncOverrideAny extends Any<string> {
+  evalCalls = 0;
+
+  override eval() {
+    this.evalCalls++;
+    return any(this.value);
   }
 }
 
@@ -1222,6 +1231,47 @@ describe('Call', () => {
     });
 
     await expect(rule.eval(context)).rejects.toThrow('bad arg');
+    expect(context.calcFrames).toBe(0);
+  });
+
+  it('evaluates non-async CSS call args through the immediate sync boundary', async () => {
+    const originalEval = Node.prototype.eval;
+    let publicEvalCalls = 0;
+    Node.prototype.eval = function countPublicEval(
+      this: Node,
+      ...args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      publicEvalCalls++;
+      return originalEval.apply(this, args);
+    };
+
+    try {
+      const rule = call({
+        name: 'calc',
+        args: list([any('20px')])
+      });
+
+      const result = await rule.evalNode(context);
+
+      expect(result.toTrimmedString()).toBe('calc(20px)');
+      expect(publicEvalCalls).toBe(0);
+      expect(context.calcFrames).toBe(0);
+    } finally {
+      Node.prototype.eval = originalEval;
+    }
+  });
+
+  it('keeps custom sync CSS call argument eval overrides on the immediate boundary', async () => {
+    const arg = new SyncOverrideAny('20px');
+    const rule = call({
+      name: 'calc',
+      args: list([arg])
+    });
+
+    const result = await rule.evalNode(context);
+
+    expect(result.toTrimmedString()).toBe('calc(20px)');
+    expect(arg.evalCalls).toBe(1);
     expect(context.calcFrames).toBe(0);
   });
 
