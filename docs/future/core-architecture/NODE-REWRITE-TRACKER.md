@@ -118,7 +118,9 @@ when choosing among unfinished serialization rows. Hot unfinished rows include
   declaration children now write through direct syntax hooks, and custom
   fallback function assembly uses straight loops. Render assignment and custom
   interpolated replacement eval plus render/resolve/registration branches now
-  rely on `MaybePromise` narrowing instead of local promise/node casts.
+  rely on `MaybePromise` narrowing instead of local promise/node casts, with
+  narrowed declaration render-assignment/custom-interpolated thenables calling
+  `.then(...)` directly instead of `Promise.resolve(...)` wrappers.
   Multiline value formatting and custom fallback leading whitespace now use
   character scans instead of regex `match(...)` arrays, and custom interpolated
   render replacement evaluation uses an indexed loop instead of

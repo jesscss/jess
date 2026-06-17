@@ -171,3 +171,10 @@ with `--no-verify` after the explicit gates pass.
   `CountingWriter` and custom condition constructions are test-only proof
   instrumentation. This is tracked in `NODE-REWRITE-TRACKER.md` and is not new
   binding logic. No speed claim.
+- Merge-carried serialization review: `origin/dev` also includes declaration
+  narrowed-thenable continuation cleanup in
+  `packages/core/src/tree/declaration.ts`. Declaration render-assignment and
+  custom-interpolated replacement eval now call already-narrowed thenables
+  directly instead of adding promise wrapper allocations, while preserving the
+  custom-property restoration branch. This is tracked in
+  `NODE-REWRITE-TRACKER.md` and is not new binding logic. No speed claim.
