@@ -103,26 +103,33 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `Ruleset.composeHeaderSelector(...)` ampersand count in
-  `packages/core/src/tree/ruleset.ts`.
-- Verdict: accepted as a tracker-mismatch reconciliation and
-  serialization-adjacent header-composition cut. No speed claim.
-- New traversal: one straight character loop over existing selector key text
-  replaces `valueOf().match(/&/g)` regex matching plus array allocation. The
-  count is needed at the existing header composition decision point; carrying
-  the fact earlier would require new selector placement state for a single
-  caller.
-- New node/materialization: none.
-- Render path: no render/string behavior changed. This pass only changes the
-  way the existing header composition branch counts ampersands.
+- Latest pass: `Ampersand` append/template selector assembly in
+  `packages/core/src/tree/ampersand.ts`.
+- Verdict: accepted as a mechanical callback-array staging cut. No speed claim.
+- New traversal: indexed loops now replace callback `map(...)` staging in
+  selector-list item text capture, template replacements, selector-list append,
+  complex component ownership, and compound part ownership. These loops use
+  arrays already needed for constructor boundaries or public placement state;
+  carrying them earlier would either retain stale placement arrays or broaden
+  selector ownership state.
+- New node/materialization: no new production node/materialization semantics.
+  The `BasicSelector(...).inherit(...)` template fallback was existing
+  structural replacement behavior moved out of a `map(...)` callback; the
+  `new Array(...)` allocations are the required result arrays for selector-list
+  text state or owned selector constructors. The `rules([])` and `throw new
+  Error(...)` tokens are test-only proof scaffolding.
+- Render path: no direct render behavior changed. This pass keeps Ampersand
+  eval/placement semantics and removes callback helper allocation while leaving
+  existing selector ownership and public string boundaries intact.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: removed the regex match array previously allocated only
-  to count `&` characters.
-- Rejected/observed in this pass: deeper `Ruleset.getHeaderString(...)`
-  capture/readback, serialize-helper frame comparison, hoisted-parent detached
-  header rendering, and duplicate declaration pre-render semantics remain
-  separate Ruleset row work.
+- Allocation changes: removed callback result staging from the touched
+  selector-list/template/compound/complex append paths; constructor arrays
+  remain where new owned selector surfaces are semantically required. The
+  existing template-string `.join(...)` fallback remains for non-structural
+  template replacement and was not expanded.
+- Rejected/observed in this pass: broader raw string assembly and structural
+  selector replacement remain open in the Ampersand row.
 - Merge-carried binding review: merging `origin/dev` also brought the
   namespaced reference-import crawl deletion in `rules.ts` plus focused
   import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
@@ -130,12 +137,12 @@ with `--no-verify` after the explicit gates pass.
   `Parser` construction, `try/finally`, and small spy arrays are test-only
   proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
   production render/string transport.
-- Evidence: focused `ruleset.test.ts` compose/header/ampersand/reference/
-  collapse selection passed; core flag bubbling/isolation tests passed; Less
-  at-rule bubbling, mixin, and functions fixtures passed. The root
-  `less-parser/test/selectors.test.ts` selector fixture is red on current
-  serializeTypes field names (`value` versus direct fields), unrelated to this
-  Ruleset count change. Full gates are required before commit.
+- Evidence: focused `ampersand.test.ts` passed, including a selector-list
+  append case that makes `selectors.map` throw; targeted ESLint passed; core
+  package build passed. Root-level less-parser/Jess fixture invocations are
+  currently red before test collection because Vite cannot resolve
+  `@jesscss/core`; raw `tsc --noEmit` is also broadly red on current `dev`
+  test/type drift, so those are not used as proof for this Ampersand slice.
 - Merge-carried binding review: `findRulesetNamespacePathFast(...)` now
   prepares the visible
   callable frame chain for the namespace segment and checks visible child
