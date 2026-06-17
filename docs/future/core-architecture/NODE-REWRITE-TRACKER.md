@@ -330,9 +330,9 @@ Current hard leftovers after the broad hook sweep:
 - [ ] `Call`: direct source syntax writer exists, empty string-name source calls
   return their known source token without writer readback, explicit empty arg
   lists skip render/source argument mark windows, node-valued call names in
-  public source syntax and finalized/plain call syntax write directly instead
-  of using public `toString(...)` / `toTrimmedString(...)`, and evaluated call
-  args/content now use
+  public source syntax and finalized/plain call syntax, including evaluated
+  CSS-call names, write directly instead of using public `toString(...)` /
+  `toTrimmedString(...)`, and evaluated call args/content now use
   `writeSyntax(...)` instead of public string transport. Direct
   `Rules`/`Collection` callable render/eval paths now call
   `evaluateCallableCollection(...)` without constructing a one-entry
@@ -386,11 +386,16 @@ Current hard leftovers after the broad hook sweep:
   wrapper necessity remains out of scope for this source-writer pass.
 - [ ] `AtRule`: direct source writer exists, and `getHeaderString(...)` header
   name/prelude capture writes child syntax directly instead of routing through
-  public `toString(...)`.
+  public `toString(...)`; header fragment emission no longer allocates local
+  helper/callback closures inside `getHeaderString(...)`, and leaf/header
+  whitespace checks use direct character scans instead of regex
+  trim/replace/probe paths.
   Remove remaining custom eval/render branch ladders where state already
   carries kind. Body eval/registration async branches now use `MaybePromise`
-  narrowing, render sync-path helper closures are lifted out of `render(...)`,
-  and leaf render no longer allocates a local render-node closure.
+  narrowing, body eval entry points no longer wrap direct eval calls or
+  async continuations with no-op catch/rethrow scaffolding, render sync-path
+  helper closures are lifted out of `render(...)`, and leaf render no longer
+  allocates a local render-node closure.
 - [x] `StyleImport`: direct import/render writer and placement state; no
   first-use copied rules surfaces on render-only paths. Placement-state
   bookkeeping no longer stores a redundant top-level `Map`, unused preservation

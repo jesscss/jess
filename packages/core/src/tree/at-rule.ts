@@ -109,6 +109,76 @@ function renderAtRuleLeafNodeSyntax(
   }
 }
 
+function renderAtRuleHeaderNodeSyntax(
+  node: Node,
+  printOptions: FinalPrintOptions,
+  withoutComments?: boolean
+): string {
+  const savedTrivia = printOptions.trivia;
+  if (withoutComments) {
+    printOptions.trivia = createTriviaMap();
+  }
+  try {
+    const writer = new OutputWriter(printOptions.compress);
+    node.writeSyntax({
+      ...printOptions,
+      writer
+    });
+    return writer.toString();
+  } finally {
+    printOptions.trivia = savedTrivia;
+  }
+}
+
+function renderAtRulePostPreludeTrivia(
+  prelude: Node,
+  printOptions: FinalPrintOptions
+): string {
+  const writer = new OutputWriter(printOptions.compress);
+  emitCommentTriviaAfterNode(prelude, {
+    ...printOptions,
+    writer
+  });
+  return writer.toString();
+}
+
+function isAtRuleWhitespace(code: number): boolean {
+  return code === 32 || code === 9 || code === 10 || code === 13 || code === 12;
+}
+
+function hasNonAtRuleWhitespace(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    if (!isAtRuleWhitespace(text.charCodeAt(i))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function startsWithAtRuleWhitespace(text: string): boolean {
+  return text.length > 0 && isAtRuleWhitespace(text.charCodeAt(0));
+}
+
+function endsWithAtRuleWhitespace(text: string): boolean {
+  return text.length > 0 && isAtRuleWhitespace(text.charCodeAt(text.length - 1));
+}
+
+function trimAtRuleLeadingWhitespace(text: string, replacement = ''): string {
+  let index = 0;
+  while (index < text.length && isAtRuleWhitespace(text.charCodeAt(index))) {
+    index++;
+  }
+  return index === 0 ? text : replacement + text.slice(index);
+}
+
+function trimAtRuleTrailingWhitespace(text: string): string {
+  let end = text.length;
+  while (end > 0 && isAtRuleWhitespace(text.charCodeAt(end - 1))) {
+    end--;
+  }
+  return end === text.length ? text : text.slice(0, end);
+}
+
 const activeAtRuleBodyEvalRecords = new WeakMap<Context, AtRuleBodyEvalRecord[]>();
 
 function pushAtRuleBodyEvalRecord(
@@ -564,12 +634,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   ): MaybePromise<AtRuleBodyEvalRecord> {
     const finishPrelude = (evaluatedPrelude: Node | undefined): MaybePromise<AtRuleBodyEvalRecord> => {
       const record = this.createBodyEvalRecord(context, evaluatedPrelude, options);
-      let evaluated: MaybePromise<Node>;
-      try {
-        evaluated = this.evalBodyNode(context, record);
-      } catch (error) {
-        throw error;
-      }
+      const evaluated = this.evalBodyNode(context, record);
       const finish = (node: Node): AtRuleBodyEvalRecord => {
         if (!(node instanceof AtRule) && !(node instanceof Nil)) {
           throw new TypeError('Expected at-rule body eval to return AtRule or Nil');
@@ -689,8 +754,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     const preludeOut = parts.prelude
       ? renderAtRuleLeafNodeSyntax(parts.prelude, printOptions)
       : '';
-    const rendered = preludeOut.trim()
-      ? `${nameOut}${/\s$/.test(nameOut) || /^\s/.test(preludeOut) ? '' : ' '}${preludeOut.replace(/^\s+/, '')};`
+    const rendered = hasNonAtRuleWhitespace(preludeOut)
+      ? `${nameOut}${endsWithAtRuleWhitespace(nameOut) || startsWithAtRuleWhitespace(preludeOut) ? '' : ' '}${trimAtRuleLeadingWhitespace(preludeOut)};`
       : `${nameOut};`;
     return isRenderBuffer(bufferOrOptions)
       ? writeRenderText(bufferOrOptions, rendered)
@@ -1106,32 +1171,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
     }
 
-    const emptyHeaderTrivia = () => createTriviaMap();
-    const captureWithoutHeaderTrivia = (fn: () => string): string => {
-      const savedTrivia = options.trivia;
-      if (withoutComments) {
-        options.trivia = emptyHeaderTrivia();
-      }
-      try {
-        return fn();
-      } finally {
-        options.trivia = savedTrivia;
-      }
-    };
-    const printHeaderFragment = (printOptions: FinalPrintOptions, fn: (nextOptions: FinalPrintOptions) => void): string => {
-      const writer = new OutputWriter(printOptions.compress);
-      fn({
-        ...printOptions,
-        writer
-      });
-      return writer.toString();
-    };
-
-    const nameOut = captureWithoutHeaderTrivia(() => printHeaderFragment(options, nextOptions => name.writeSyntax(nextOptions)));
-    const nameEndsWithSpace = /\s$/.test(nameOut);
+    const nameOut = renderAtRuleHeaderNodeSyntax(name, options, withoutComments);
+    const nameEndsWithSpace = endsWithAtRuleWhitespace(nameOut);
     if (prelude) {
       const preludeTrivia = withoutComments
-        ? emptyHeaderTrivia()
+        ? createTriviaMap()
         : options.trivia ?? prelude.sourceRoot?._treeContext?.opts?.trivia;
       const preludePrintOptions: FinalPrintOptions = options.context && preludeTrivia
         ? {
@@ -1141,34 +1185,36 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             emittedTrivia: options.emittedTrivia
           }
         : options;
-      const preludeOut = captureWithoutHeaderTrivia(() => printHeaderFragment(preludePrintOptions, nextOptions => prelude.writeSyntax(nextOptions)));
-      if (!preludeOut.trim()) {
+      const preludeOut = renderAtRuleHeaderNodeSyntax(prelude, preludePrintOptions, withoutComments);
+      if (!hasNonAtRuleWhitespace(preludeOut)) {
         out += nameOut;
         if (rules) {
-          out = normalizeIndent(out.replace(/\s+$/, '') + ' {', idt) + '\n';
+          out = normalizeIndent(trimAtRuleTrailingWhitespace(out) + ' {', idt) + '\n';
         } else {
-          out = normalizeIndent(out.replace(/\s+$/, '') + ';', idt);
+          out = normalizeIndent(trimAtRuleTrailingWhitespace(out) + ';', idt);
         }
         return out;
       }
-      const preludeStartsWithSpace = /^\s/.test(preludeOut);
+      const preludeStartsWithSpace = startsWithAtRuleWhitespace(preludeOut);
 
       out += nameOut;
       // If name ends with space AND prelude starts with space, trim the prelude's leading space
       // Otherwise, add a space only if neither has spacing
       let finalPreludeOut = preludeOut;
       if (preludeStartsWithSpace) {
-        finalPreludeOut = preludeOut.replace(/^\s+/, nameEndsWithSpace ? '' : ' ');
+        finalPreludeOut = trimAtRuleLeadingWhitespace(preludeOut, nameEndsWithSpace ? '' : ' ');
       } else if (!nameEndsWithSpace && !preludeStartsWithSpace) {
         out += ' ';
       }
       out += finalPreludeOut;
       const preludePost = withoutComments
         ? ''
-        : printHeaderFragment(options, nextOptions => emitCommentTriviaAfterNode(prelude, nextOptions));
+        : renderAtRulePostPreludeTrivia(prelude, options);
       out += preludePost;
       if (rules) {
-        const preludeEndsWithSpace = /\s$/.test(preludeOut + preludePost);
+        const preludeEndsWithSpace = preludePost
+          ? endsWithAtRuleWhitespace(preludePost)
+          : endsWithAtRuleWhitespace(preludeOut);
         if (!preludeEndsWithSpace) {
           out += ' ';
         }
@@ -1179,7 +1225,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     } else {
       out += nameOut;
       if (rules) {
-        out = normalizeIndent(out.replace(/\s+$/, '') + ' {', idt) + '\n';
+        out = normalizeIndent(trimAtRuleTrailingWhitespace(out) + ' {', idt) + '\n';
       } else {
         out = normalizeIndent(out + ';', idt);
       }
@@ -1207,23 +1253,13 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         output: hasHoistedRulesetParent ? { hoistToRoot: true } : undefined
       })
     };
-    let out: MaybePromise<AtRule | Nil>;
-    try {
-      out = this.evalBodyNode(context, record);
-    } catch (error) {
-      throw error;
-    }
+    const out = this.evalBodyNode(context, record);
     if (isThenable(out)) {
-      return (out as Promise<AtRule | Nil>).then(
-        (value) => {
-          return value instanceof AtRule
-            ? createAtRuleEvalResultNode(this, record)
-            : value;
-        },
-        (error) => {
-          throw error;
-        }
-      );
+      return (out as Promise<AtRule | Nil>).then((value) => {
+        return value instanceof AtRule
+          ? createAtRuleEvalResultNode(this, record)
+          : value;
+      });
     }
     return out instanceof AtRule
       ? createAtRuleEvalResultNode(this, record)

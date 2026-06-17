@@ -537,11 +537,11 @@ export class Call extends Node<CallValue, CallOptions> {
           };
           if (isThenable(rendered)) {
             return rendered.then((value) => {
-              value.toTrimmedString(printOptions);
+              value.writeSyntax(printOptions);
               return finishParen();
             });
           }
-          (rendered as Node).toTrimmedString(printOptions);
+          (rendered as Node).writeSyntax(printOptions);
           return finishParen();
         }
         w.add(')', arg);
@@ -552,11 +552,11 @@ export class Call extends Node<CallValue, CallOptions> {
         const rendered = arg.eval(context);
         if (isThenable(rendered)) {
           return rendered.then((value) => {
-            value.toTrimmedString(printOptions);
+            value.writeSyntax(printOptions);
             return finishArg(argMark);
           });
         }
-        (rendered as Node).toTrimmedString(printOptions);
+        (rendered as Node).writeSyntax(printOptions);
         return finishArg(argMark);
       }
     };
@@ -568,13 +568,14 @@ export class Call extends Node<CallValue, CallOptions> {
     context: Context,
     prepared: PrintOptions
   ): MaybePromise<string> {
-    const w = getPrintOptions(prepared).writer!;
+    const printOptions = getPrintOptions(prepared);
+    const w = printOptions.writer!;
     const mark = w.mark();
     const { name, contentNode } = callNode.value;
     if (typeof name === 'string') {
       w.add(name, callNode);
     } else {
-      name.toTrimmedString(prepared);
+      name.writeSyntax(printOptions);
     }
     if (callNode.options?.silentFail) {
       w.add('?');
@@ -597,11 +598,11 @@ export class Call extends Node<CallValue, CallOptions> {
         const renderedContent = contentNode.eval(context);
         if (isThenable(renderedContent)) {
           return renderedContent.then((value) => {
-            value.toTrimmedString(prepared);
+            value.writeSyntax(printOptions);
             return w.getSince(mark);
           });
         }
-        (renderedContent as Node).toTrimmedString(prepared);
+        (renderedContent as Node).writeSyntax(printOptions);
         return w.getSince(mark);
       }
       return w.getSince(mark);
@@ -633,14 +634,15 @@ export class Call extends Node<CallValue, CallOptions> {
     prepared: PrintOptions,
     syntax?: { args?: List<Node>; contentNode?: Node }
   ): MaybePromise<string> {
-    const w = getPrintOptions(prepared).writer!;
+    const printOptions = getPrintOptions(prepared);
+    const w = printOptions.writer!;
     const mark = w.mark();
     const args = syntax && 'args' in syntax ? syntax.args : state.args;
     const contentNode = syntax && 'contentNode' in syntax ? syntax.contentNode : state.contentNode;
     if (typeof name === 'string') {
       w.add(name, state.source);
     } else if (name instanceof Node) {
-      name.toTrimmedString(prepared);
+      name.writeSyntax(printOptions);
     } else {
       w.add(stringifyValueOf(name), state.source);
     }
@@ -655,11 +657,11 @@ export class Call extends Node<CallValue, CallOptions> {
         const renderedContent = contentNode.eval(context);
         if (isThenable(renderedContent)) {
           return renderedContent.then((value) => {
-            value.toTrimmedString(prepared);
+            value.writeSyntax(printOptions);
             return w.getSince(mark);
           });
         }
-        (renderedContent as Node).toTrimmedString(prepared);
+        (renderedContent as Node).writeSyntax(printOptions);
         return w.getSince(mark);
       }
       return w.getSince(mark);
