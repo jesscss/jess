@@ -103,44 +103,78 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Declaration narrowed-thenable continuation cleanup in
-  `packages/core/src/tree/declaration.ts`.
-- Verdict: accepted as a localized promise-wrapper cut. No speed claim.
-- New traversal: none.
-- New node/materialization: none.
-- Render path: declaration render-assignment and custom-interpolated
-  replacement eval now call already-narrowed thenables directly with
-  `.then(...)` instead of wrapping them with `Promise.resolve(...)`.
-- Helper/API surface: none.
-- Metadata mutations: none.
-- Allocation changes: removes five `Promise.resolve(...)` wrapper allocations
-  from declaration render-state async continuations while preserving the
-  custom-property `context.inCustom` restoration branch.
-- Rejected/observed in this pass: the surrounding declaration merge-state and
-  custom-property mark/replace boundaries remain semantic/output-normalization
-  work and were not loosened.
-- Merge-carried binding review: merging `origin/dev` also brought the
-  namespaced reference-import crawl deletion in `rules.ts` plus focused
-  import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
-  and direct-child-entry state to prove covered namespace uncertainty; the
-  `Parser` construction, `try/finally`, and small spy arrays are test-only
-  proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
-  production render/string transport.
-- Evidence: full `declaration.test.ts` passed and targeted ESLint for
-  `declaration.ts` passed. Full gates are required before commit.
-- Merge-carried binding review: merging `origin/dev` also brought declaration
-  lookup wrapper deletion plus a callable namespace reference-import
-  modeled-miss bridge cut. It deletes `Rules.findVariable`, `findProperty`,
-  `findDeclaration`, and `findAnyDeclaration` without changing
-  render/stringification. `findMixinsFastForUncoveredCallable(...)` reports
-  covered uncovered-surface misses from its existing child-entry loop so the
-  caller avoids reopening broad namespace fallbacks; the `[]` covered-miss
-  sentinel is private lookup state, not output materialization. The flagged
-  `UncoveredCallableCoverage` object is a short-lived private fact carrier used
-  to avoid a broader fallback call; the `broadFastHits` array and `try` block
-  are test-only spy/restoration scaffolding, and the `for (const token of ...)`
-  loop is verifier-script coverage. Incoming proof included
-  `verify:binding-lookup-hot-paths`, focused reference/rules/import
-  style/detached-rulesets/function/selector-attr tests, the SCSS parser
-  `@function` baseline, callable namespace modeled-miss tests, and existing
-  ScopeFrame callable bucket coverage. No speed claim.
+- Latest pass: source-static reference handle early read plus stale
+  declaration-wrapper design cleanup.
+- Verdict: accepted as a narrow binding/lookup hot-path preparation cut with
+  behavior proof. No speed claim.
+- New traversal: no new runtime traversal, recursion, sort, map/filter, parent
+  walk, or child scan. The review-flagged `for (const read of reads)` loop is
+  test-only coverage over four source-static reference families. The new helper
+  reads the already-stored `_rulesLookupHandle` and delegates freshness to the
+  existing handle reader.
+- New node/materialization: no runtime node materialization. The review-flagged
+  function constructor call is a test fixture for the function reference family;
+  the focused test also builds ordinary variable/property/mixin fixtures only
+  to prove the stored handle path. No render-only or eval-to-string nodes were
+  added.
+- Render path: no render/stringification path change. The new path returns the
+  same handle values as the existing reader and falls through to normal lookup
+  whenever the source-static shape is not trivial.
+- Helper/API surface: added one private
+  `tryReadSourceStaticRulesLookupHandle(...)` helper. It is deliberately
+  narrower than a public plan/cache API: it accepts only existing handle state
+  with `start === undefined`, `local === false`, no parent-start ignore, stable
+  terminal-mixin bit, no target/filter/read mode/interpolation/leaky/search
+  scope, and a string key equal to the normalized lookup key. It lets repeated
+  source-static references skip `_lookupStrategy` rebuild and rules lookup
+  shape preparation; it does not introduce a registry or exported facade.
+- Metadata mutations: none beyond the existing `_lookupStrategy` test reset
+  used to prove the helper does not rewrite it. No source/parent/frozen
+  metadata changed.
+- Allocation changes: the review-flagged `RulesLookupHandleShape` object is
+  created only after an existing handle passes the source-static guards, so the
+  normal first lookup path is unchanged. Declaration constraints are read only
+  for declaration/property/variable handle families, then validated by the
+  existing reader.
+- Rejected/observed in this pass: moving the read before reference env prep was
+  rejected because `inCall`, target/filter/read-mode/interpolation, leaky, and
+  search-scope facts are part of the handle safety boundary. Stale design
+  references to the deleted declaration facades were updated; remaining grep
+  hits are occurrence helper names or explicit deletion notes.
+- Evidence: focused `reference.test.ts` source-static handle test passed.
+  Final gates are required before commit. No speed claim.
+- Merge note: the branch also incorporates the latest serialization transport
+  work from `origin/dev`; keep that progress tracked in
+  `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.
+- Merge-carried serialization review: `origin/dev` also includes the AtRule
+  no-op eval rethrow deletion in `packages/core/src/tree/at-rule.ts` plus
+  serialization tracker updates. That removes catch/rethrow scaffolding and is
+  tracked in `NODE-REWRITE-TRACKER.md`; it is not new binding logic. The
+  review-flagged AtRule loops and `slice(...)` calls are direct whitespace
+  scans replacing regex trim/probe work, the `OutputWriter` constructions are
+  isolated header-fragment writers for source syntax capture, and the `try` is
+  paired with trivia restoration around that cold header capture. No speed
+  claim.
+- Merge-carried serialization review: `origin/dev` also includes the
+  QueryCondition nested static direct-child cut in
+  `packages/core/src/tree/query-condition.ts` plus serialization tracker
+  updates. Exact nested query-condition children now write directly instead of
+  entering the unknown-child fallback mark/readback path; custom/subclassed
+  children keep the fallback. The review-flagged `CountingWriter` construction
+  is test-only instrumentation for mark/readback assertions. This is tracked in
+  `NODE-REWRITE-TRACKER.md` and is not new binding logic. No speed claim.
+- Merge-carried serialization review: `origin/dev` also includes the
+  QueryCondition exact `Condition` source/static child cut. Exact condition
+  children now write directly on the query source/static syntax path; exact
+  `Operation` remains out because it does not own a direct syntax writer, and
+  custom/subclassed children still use fallback readback. The review-flagged
+  `CountingWriter` and custom condition constructions are test-only proof
+  instrumentation. This is tracked in `NODE-REWRITE-TRACKER.md` and is not new
+  binding logic. No speed claim.
+- Merge-carried serialization review: `origin/dev` also includes declaration
+  narrowed-thenable continuation cleanup in
+  `packages/core/src/tree/declaration.ts`. Declaration render-assignment and
+  custom-interpolated replacement eval now call already-narrowed thenables
+  directly instead of adding promise wrapper allocations, while preserving the
+  custom-property restoration branch. This is tracked in
+  `NODE-REWRITE-TRACKER.md` and is not new binding logic. No speed claim.
