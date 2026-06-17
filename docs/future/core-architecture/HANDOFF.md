@@ -103,25 +103,34 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: scalar `Any.writeSyntax(...)` and `AtRule.renderLeafValue(...)`
-  public string transport cut in `packages/core/src/tree/any.ts` and
-  `packages/core/src/tree/at-rule.ts`.
+- Latest pass: `Interpolated` public string transport cut in
+  `packages/core/src/tree/interpolated.ts`.
 - Verdict: accepted as a focused serialization transport cut. No speed claim.
-- New traversal: none.
-- New node/materialization: none in runtime. The only node-construction pattern
-  flagged by the review script is a test-only CountingWriter proof instance in
-  `any.test.ts`. The incoming merge diff also contains
-  `DirectDeclarationLookupResult`, a type-only binding alias from `origin/dev`,
-  not runtime materialization.
-- Render path: dynamic leaf at-rule render still evaluates the name/prelude and
-  uses the existing local mark/getSince string boundary for spacing and final
-  `;` assembly, but the captured fragments now call `node.writeSyntax(...)`
-  instead of public `node.toString(...)`. Focused tests prove overriding public
-  `toString()` on the at-rule name and evaluated prelude is not observed.
-- Helper/API surface: no helpers or public APIs added. `Any.writeSyntax(...)`
-  adds the concrete scalar writer the tracker already expected and bypasses the
-  inherited public `toTrimmedString(...)` wrapper.
+- New traversal: two bounded string scans: `replace(...)` now uses a
+  placeholder `while` loop instead of regex callback replacement, and
+  `createSimpleInterpolatedSelector(...)` uses a straight character scan
+  instead of regex `match(...)` plus a token array for compound selector
+  interpolation. Both scans operate on the already-owned source/output strings.
+- New node/materialization: no new render-path node materialization. The
+  `BasicSelector`/`CompoundSelector` constructions remain the existing public
+  `createSelector(...)` materialization boundary, now reached without public
+  replacement string transport. Cold public string boundaries still allocate
+  detached `OutputWriter` instances when a string is the result. Test-only
+  `Error` throws, empty replacement arrays, and `try/finally` restoration in
+  `interpolated.test.ts` are proof scaffolding, not runtime control flow.
+- Render path: replacement emission now calls `replacement.writeSyntax(...)`
+  instead of public `replacement.toTrimmedString(...)`; resolved render keeps
+  direct replacement evaluation and writes to the prepared writer/buffer.
+- Helper/API surface: no public APIs added. New local helpers
+  `writeReplacementSyntax(...)` and `createSimpleInterpolatedSelector(...)`
+  replace repeated public string transport and regex/token-array selector
+  assembly.
 - Metadata mutations: none.
-- Allocation changes: none.
-- Evidence: focused `any.test.ts` and `at-rule.test.ts` transport tests passed
-  before doc closeout. Full gates are recorded in the final response.
+- Allocation changes: removed the regex callback/token-array paths for public
+  `replace(...)` and compound selector assembly. Retained string `slice(...)`
+  fragments because the public result is string text and the selector
+  materialization boundary needs token text for `BasicSelector` construction.
+  Retained required cold writer allocation where a public string is returned.
+- Evidence: focused `interpolated.test.ts` and `selector-interpolated.test.ts`
+  transport tests passed before doc closeout. Full gates are recorded in the
+  final response.

@@ -7,7 +7,7 @@ import type { Selector } from './selector.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { OutputWriter, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -20,7 +20,6 @@ import { copyWithReusableLeaves } from './util/cloning.js';
 // Placeholder that's very unlikely to appear in user strings
 // but is also easily typeable for tests
 export const INTERPOLATION_PLACEHOLDER = '%%';
-const INTERPOLATION_PLACEHOLDER_REGEXP = /%%/g;
 
 function shouldWrapSelectorInIs(replacement: Node): boolean {
   if (isNode(replacement, N.SelectorList)) {
@@ -51,19 +50,92 @@ function serializeGeneratedIsWrapper(replacement: Node): string {
   const arg = getIsWrapperArg(replacement);
   const pseudo = PseudoSelector.create({ name: ':is', arg });
   pseudo.generated = true;
-  return pseudo.toTrimmedString().replace(/\n\s*/g, ' ');
+  const writer = new OutputWriter();
+  pseudo.writeSyntax(getPrintOptions({ writer }));
+  return writer.toString().replace(/\n\s*/g, ' ');
 }
 
 function stringifyReplacement(replacement: Node, options: PrintOptions, preserveQuotedSyntax?: boolean): string {
-  if (isNode(replacement, N.Quoted) && !preserveQuotedSyntax) {
-    return String(replacement.valueOf());
-  }
   const printOpts = getPrintOptions(options);
-  const result = replacement.toTrimmedString({
+  const writer = new OutputWriter();
+  const mark = writer.mark();
+  writeReplacementSyntax(replacement, {
     ...printOpts,
-    writer: new OutputWriter()
-  });
+    writer
+  }, preserveQuotedSyntax);
+  const result = writer.getSince(mark);
   return isNode(replacement, N.Reference) ? result : result.trim();
+}
+
+function writeReplacementSyntax(replacement: Node, options: FinalPrintOptions, preserveQuotedSyntax?: boolean): void {
+  const w = options.writer;
+  if (isNode(replacement, N.Quoted) && !preserveQuotedSyntax) {
+    // Interpolated string slots merge raw string content.
+    // Using valueOf() avoids re-emitting inner quote delimiters.
+    w.add(String(replacement.valueOf()), replacement);
+    return;
+  }
+  replacement.writeSyntax(options);
+}
+
+function createSimpleInterpolatedSelector(output: string, source: Node): BasicSelector | CompoundSelector {
+  if (output.includes(':') || output.includes('[') || output.includes('&')) {
+    return new BasicSelector(output).inherit(source);
+  }
+  let firstToken: string | undefined;
+  let selectors: BasicSelector[] | undefined;
+  let tokenStart = -1;
+  for (let i = 0; i < output.length; i++) {
+    const code = output.charCodeAt(i);
+    if (
+      code === 0x20
+      || code === 0x09
+      || code === 0x0a
+      || code === 0x0c
+      || code === 0x0d
+    ) {
+      if (tokenStart >= 0 && i > tokenStart) {
+        const token = output.slice(tokenStart, i);
+        if (firstToken === undefined) {
+          firstToken = token;
+        } else {
+          selectors ??= [new BasicSelector(firstToken)];
+          selectors.push(new BasicSelector(token));
+        }
+      }
+      tokenStart = -1;
+      continue;
+    }
+    if (code === 0x23 || code === 0x2e) {
+      if (tokenStart >= 0 && i > tokenStart) {
+        const token = output.slice(tokenStart, i);
+        if (firstToken === undefined) {
+          firstToken = token;
+        } else {
+          selectors ??= [new BasicSelector(firstToken)];
+          selectors.push(new BasicSelector(token));
+        }
+      }
+      tokenStart = i;
+      continue;
+    }
+    if (tokenStart < 0) {
+      tokenStart = i;
+    }
+  }
+  if (tokenStart >= 0 && output.length > tokenStart) {
+    const token = output.slice(tokenStart);
+    if (firstToken === undefined) {
+      firstToken = token;
+    } else {
+      selectors ??= [new BasicSelector(firstToken)];
+      selectors.push(new BasicSelector(token));
+    }
+  }
+  if (selectors) {
+    return new CompoundSelector(selectors).inherit(source);
+  }
+  return new BasicSelector(firstToken ?? output).inherit(source);
 }
 
 export type InterpolatedValue = {
@@ -131,38 +203,32 @@ export class Interpolated<
   }
 
   replace(replacements: Node[], options?: PrintOptions): string {
-    let { source } = this;
-    let output = source;
+    const { source } = this;
+    let output = '';
+    let sourceOffset = 0;
     let i = 0;
     let printOpts = getPrintOptions(options);
-    INTERPOLATION_PLACEHOLDER_REGEXP.lastIndex = 0;
-    output = output.replace(INTERPOLATION_PLACEHOLDER_REGEXP, () => {
-      let replacement: Node | undefined;
-      try {
-        replacement = replacements[i++];
-      } catch (error: unknown) {
-        throw error;
+    while (sourceOffset < source.length) {
+      const next = source.indexOf(INTERPOLATION_PLACEHOLDER, sourceOffset);
+      if (next < 0) {
+        output += source.slice(sourceOffset);
+        break;
       }
-      let result = '';
+      output += source.slice(sourceOffset, next);
+      const replacement = replacements[i++];
       if (replacement) {
-        result = stringifyReplacement(replacement, printOpts, this.options.preserveQuotedSyntax);
+        output += stringifyReplacement(replacement, printOpts, this.options.preserveQuotedSyntax);
       }
-      return result;
-    });
+      sourceOffset = next + INTERPOLATION_PLACEHOLDER.length;
+    }
 
     return output;
   }
 
   private writeReplacement(replacement: Node, options: PrintOptions): void {
     const w = getPrintOptions(options).writer!;
-    if (isNode(replacement, N.Quoted) && !this.options.preserveQuotedSyntax) {
-      // Interpolated string slots merge raw string content.
-      // Using valueOf() avoids re-emitting inner quote delimiters.
-      w.add(String(replacement.valueOf()), replacement);
-      return;
-    }
     const mark = w.mark();
-    replacement.toTrimmedString(options);
+    writeReplacementSyntax(replacement, getPrintOptions(options), this.options.preserveQuotedSyntax);
     if (!isNode(replacement, N.Reference)) {
       w.trimStartSince(mark);
       w.trimEndSince(mark);
@@ -192,8 +258,12 @@ export class Interpolated<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    this.writeInterpolated(this.replacements, options);
+    this.writeSyntax(options);
     return w.getSince(mark);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    this.writeInterpolated(this.replacements, options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -241,7 +311,7 @@ export class Interpolated<
         }
         return copied.inherit(this);
       }
-      return new BasicSelector(replacement.toTrimmedString().trim()).inherit(this);
+      return new BasicSelector(stringifyReplacement(replacement, {}, this.options.preserveQuotedSyntax).trim()).inherit(this);
     }
     let output = '';
     let sourceOffset = 0;
@@ -251,10 +321,9 @@ export class Interpolated<
       if (mode === 'eval' && !replacement.evaluated) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
-      let part = replacement.toTrimmedString();
-      if (shouldWrapSelectorInIs(replacement)) {
-        part = serializeGeneratedIsWrapper(replacement);
-      }
+      const part = shouldWrapSelectorInIs(replacement)
+        ? serializeGeneratedIsWrapper(replacement)
+        : stringifyReplacement(replacement, {}, this.options.preserveQuotedSyntax).trim();
       if (nextPlaceholder < 0) {
         output += source.slice(sourceOffset) + part;
         sourceOffset = source.length;
@@ -269,24 +338,14 @@ export class Interpolated<
     }
     // Interpolated selector output can produce compound selectors (e.g. ".a#b").
     // Preserve token boundaries so direct callable lookup can match correctly.
-    const simpleTokens = output.match(/[#.][^#.\s]+|[^#.\s]+/g) ?? [output];
-    if (
-      simpleTokens.length > 1
-      && !output.includes(':')
-      && !output.includes('[')
-      && !output.includes('&')
-    ) {
-      const selectors = new Array<BasicSelector>(simpleTokens.length);
-      for (let i = 0; i < simpleTokens.length; i++) {
-        selectors[i] = new BasicSelector(simpleTokens[i]!);
-      }
-      return new CompoundSelector(selectors).inherit(this);
-    }
-    return new BasicSelector(output).inherit(this);
+    return createSimpleInterpolatedSelector(output, this);
   }
 
   createGeneric() {
-    const trimmedString = this.toTrimmedString();
+    const writer = new OutputWriter();
+    const options = getPrintOptions({ writer });
+    this.writeInterpolated(this.replacements, options);
+    const trimmedString = writer.toString();
     return new Any<Role>(trimmedString, { role: this.role }).inherit(this);
   }
 

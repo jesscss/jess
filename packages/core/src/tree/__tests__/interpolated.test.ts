@@ -66,6 +66,32 @@ describe('Interpolated', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('replaces scalar slots without public replacement string transport', () => {
+    const replacement = any(' world ');
+    replacement.toTrimmedString = () => {
+      throw new Error('Interpolated.replace should write scalar replacements directly');
+    };
+    const node = interpolated({
+      source: `hello-${INTERPOLATION_PLACEHOLDER}`,
+      replacements: []
+    });
+
+    expect(node.replace([replacement])).toBe('hello-world');
+  });
+
+  it('creates selector text without public replacement string transport', () => {
+    const replacement = any('button');
+    replacement.toTrimmedString = () => {
+      throw new Error('Interpolated.createSelector should write scalar replacements directly');
+    };
+    const node = interpolated({
+      source: `.${INTERPOLATION_PLACEHOLDER}`,
+      replacements: [replacement]
+    });
+
+    expect(node.createSelector('resolve').toTrimmedString()).toBe('.button');
+  });
+
   it('renders resolved interpolated values through render(context)', async () => {
     const root = rules([
       vardecl({
@@ -191,6 +217,40 @@ describe('Interpolated', () => {
     expect(interpolatedNode.evaluated).toBe(false);
     expect(interpolatedNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('materializes generic resolved text without public interpolated string transport', async () => {
+    const root = rules([
+      vardecl({
+        name: any('name'),
+        value: any('world')
+      })
+    ]);
+    await setEvaluatedRoot(context, root);
+
+    const descriptor = Object.getOwnPropertyDescriptor(Interpolated.prototype, 'toTrimmedString');
+    if (!descriptor) {
+      throw new Error('Expected Interpolated.toTrimmedString for generic materialization proof');
+    }
+    Object.defineProperty(Interpolated.prototype, 'toTrimmedString', {
+      ...descriptor,
+      value: () => {
+        throw new Error('Interpolated generic materialization should write replacements directly');
+      }
+    });
+    try {
+      const interpolatedNode = interpolated({
+        source: `hello-${INTERPOLATION_PLACEHOLDER}`,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      });
+      const resolved = await interpolatedNode.resolve(context);
+
+      expect(resolved.valueOf()).toBe('hello-world');
+      expect(interpolatedNode.evaluated).toBe(false);
+      expect(interpolatedNode.registrationPrepared).toBe(false);
+    } finally {
+      Object.defineProperty(Interpolated.prototype, 'toTrimmedString', descriptor);
+    }
   });
 
   it('keeps source interpolated child containers canonical after resolve(context)', async () => {
