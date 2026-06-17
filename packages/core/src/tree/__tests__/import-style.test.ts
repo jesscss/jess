@@ -3557,6 +3557,40 @@ describe('Style import', () => {
       }
     });
 
+    it('callable child-surface namespace misses stay off broad start crawl', () => {
+      const node = rules([
+        rules([
+          mixin({
+            name: any('#ImportedNamespace'),
+            rules: rules([
+              mixin({
+                name: any('.other'),
+                rules: rules([
+                  decl({ name: any('was'), value: any('not-used') })
+                ])
+              })
+            ])
+          })
+        ])
+      ]);
+      const directCrawlHits: string[] = [];
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (this === node && key === '#MissingNamespace') {
+          directCrawlHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        expect(node.findMixin(['#MissingNamespace', '.leaf'], undefined, { searchParents: false })).toBeUndefined();
+        expect(directCrawlHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('import-remote: mapped remote package paths can be resolved as module-like imports', async () => {
       const remoteContext = new Context({}, [{
         name: 'remote-map',

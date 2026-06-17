@@ -103,32 +103,35 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: namespaced reference-import array-path direct-crawl deletion.
-- Verdict: accepted as a frame/direct-crawl cut plus helper-shape cleanup with
-  behavior proof. No speed claim.
-- New traversal: `findRulesetNamespacePathFast(...)` now prepares the visible
-  callable frame chain for the namespace segment and checks visible child
-  entries to prove uncovered child/reference-import uncertainty is limited to
-  the ruleset-prefix body already being descended into. This replaces broad
-  `findMixinsFast(...)` scans for the targeted `#Namespace` / `.mixin`
-  reference-import array-path cases, including selector-list imported
-  namespaces.
+- Latest pass: callable namespace child-surface bridge narrowing.
+- Verdict: accepted as a frame/direct-crawl cut with behavior proof. No speed
+  claim.
+- New traversal: no new recursive surface. The changed paths reuse existing
+  scope-frame lookup and the existing `findMixinsFastForUncoveredCallable(...)`
+  child-entry narrowing. Array-path namespace starts now ask the narrow helper
+  before using broad `findMixinsFast(...)`; two-segment callable namespace
+  descendants use direct child-frame hit/miss results before nested
+  `findMixin(...)`.
 - New node/materialization: none.
 - Render path: no committed render/stringification path change.
-- Helper/API surface: no exported helper or public API added. The new helper
-  logic was moved into private `Rules` methods so it is not recreated as local
-  closures for each namespace lookup.
+- Helper/API surface: no helper or public API added.
 - Metadata mutations: none.
-- Allocation changes: the new prefix proof walks existing child-entry/frame
-  state and does not allocate production result arrays on the targeted miss
-  path. Moving helper closures to private methods also avoids per-call helper
-  function allocation. Tests allocate small spy arrays only for proof.
-- Evidence: focused import-style tests for namespaced reference-import
-  array-path hit/miss, selector-list namespace array paths, and
-  guarded/reference-import callable miss fixtures passed. Focused mixin
-  namespace tests prove stable namespaces still avoid fallback and a ruleset
-  namespace/callable namespace union still returns all candidates. Final gates
-  are required before commit. No speed claim.
+- Allocation changes: targeted child-surface namespace misses avoid broad start
+  crawl and targeted two-segment namespace descendant misses avoid nested
+  `findMixin(...)`. Existing result arrays from callable bucket collection are
+  unchanged. Tests allocate small spy arrays/counters only for proof.
+- Rejected/observed in this pass: reference-import namespace starts and
+  reference-import descendant positives inside namespace mixin bodies are not
+  fully modeled yet. The cut preserves fallback for unresolved reference-import
+  starts unless the narrow helper returns candidates.
+- Evidence: focused import-style tests for callable child-surface namespace
+  misses, reference-import namespace array paths, selector-list namespace array
+  paths, and guarded/reference-import callable fixtures passed. Focused mixin
+  tests prove callable namespace child-surface covered misses skip nested
+  `findMixin(...)`, fallback-frame hits still resolve, covered misses still
+  avoid direct bridge, stable namespaces avoid fallback, and ruleset/callable
+  namespace unions still return all candidates. Final gates are required before
+  commit. No speed claim.
 - Merge note: the branch also incorporates the latest serialization transport
   work from `origin/dev`; keep that progress tracked in
   `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.
