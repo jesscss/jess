@@ -136,3 +136,14 @@ with `--no-verify` after the explicit gates pass.
   `less-parser/test/selectors.test.ts` selector fixture is red on current
   serializeTypes field names (`value` versus direct fields), unrelated to this
   Ruleset count change. Full gates are required before commit.
+- Merge-carried binding review: `findRulesetNamespacePathFast(...)` now
+  prepares the visible
+  callable frame chain for the namespace segment and checks visible child
+  entries to prove uncovered child/reference-import uncertainty is limited to
+  the ruleset-prefix body already being descended into. This replaces broad
+  `findMixinsFast(...)` scans for the targeted `#Namespace` / `.mixin`
+  reference-import array-path cases, including selector-list imported
+  namespaces.
+  No exported helper/API was added; helper logic lives in private `Rules`
+  methods. It does not change render/stringification, and its focused
+  import-style/mixin evidence passed before the merge. No speed claim.
