@@ -159,6 +159,44 @@ describe('Ampersand', () => {
     }
   });
 
+  it('derives appended selector-list ampersands without callback array mapping', async () => {
+    const parentSelector = sellist([
+      sel([el('.one')]),
+      sel([el('.two')])
+    ]);
+    const frame = ruleset({
+      selector: parentSelector,
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+    const originalMap = parentSelector.selectors.map;
+    Object.defineProperty(parentSelector.selectors, 'map', {
+      configurable: true,
+      value: () => {
+        throw new Error('Ampersand selector-list append should not map source selectors');
+      }
+    });
+
+    try {
+      const resolved = await amp('-bar').resolve(context);
+
+      expect(resolved.toTrimmedString()).toBeString(`
+        .one-bar,
+        .two-bar
+      `);
+      expect(parentSelector.toTrimmedString()).toBeString(`
+        .one,
+        .two
+      `);
+    } finally {
+      Object.defineProperty(parentSelector.selectors, 'map', {
+        configurable: true,
+        writable: true,
+        value: originalMap
+      });
+    }
+  });
+
   it('derives appended framed complex selectors without reparenting source selector children', async () => {
     const frame = ruleset({
       selector: sel([el('.foo'), co(' '), el('.bar')]),

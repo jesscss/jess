@@ -35,11 +35,24 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  marks = 0;
   previews = 0;
+  reads = 0;
+  restores = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
   }
 
   override preview(fn: () => string | void, preserveSegments?: boolean): string;
@@ -47,6 +60,11 @@ class CountingWriter extends OutputWriter {
   override preview(fn: () => MaybePromise<string | void>, preserveSegments?: boolean): MaybePromise<string> {
     this.previews++;
     return super.preview(fn, preserveSegments);
+  }
+
+  override restore(mark: number): void {
+    this.restores++;
+    super.restore(mark);
   }
 }
 
@@ -1635,7 +1653,10 @@ describe('AtRule', () => {
       expect(node.getHeaderString(options)).toBe('@media screen {\n');
       expect(writer.toString()).toBe('');
       expect(writer.captures).toBe(0);
+      expect(writer.marks).toBe(0);
       expect(writer.previews).toBe(0);
+      expect(writer.reads).toBe(0);
+      expect(writer.restores).toBe(0);
       expect(nameToStringCalls).toBe(0);
       expect(preludeToStringCalls).toBe(0);
     } finally {

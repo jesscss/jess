@@ -141,7 +141,12 @@ type AmpersandAppendPlacementState = {
 
 function getSelectorItemTexts(selector: Selector | Nil): string[] {
   if (isNode(selector, N.SelectorList)) {
-    return selector.value.map(item => item.toTrimmedString());
+    const items = selector.value;
+    const texts = new Array<string>(items.length);
+    for (let i = 0; i < items.length; i++) {
+      texts[i] = items[i]!.toTrimmedString();
+    }
+    return texts;
   }
   if (isNode(selector, N.Nil)) {
     return [];
@@ -207,10 +212,10 @@ function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
     && baseSelector.arg
     && isNode(baseSelector.arg, N.SelectorList)
   ) {
-    return baseSelector.arg.selectors.map(item => item as Selector);
+    return baseSelector.arg.selectors;
   }
   if (isNode(baseSelector, N.SelectorList)) {
-    return baseSelector.selectors.map(item => item as Selector);
+    return baseSelector.selectors;
   }
   if (isNode(baseSelector, N.SimpleSelector)) {
     const selectorText = baseSelector.toTrimmedString();
@@ -232,17 +237,20 @@ function mergeAmpersandTemplateSelector(
     return baseSelector;
   }
   const replacements = getAmpersandTemplateReplacements(baseSelector);
-  const merged = replacements.map((item) => {
+  const merged = new Array<Selector>(replacements.length);
+  for (let i = 0; i < replacements.length; i++) {
+    const item = replacements[i]!;
     const value = item.toTrimmedString();
     assertValidAmpersandTemplateJoin(appendValue, value);
     if (templateParts?.length === 2 && templateParts[0] === '' && templateParts[1]) {
       const result = appendSelector(item, templateParts[1]);
       if (result.appended) {
-        return result.selector;
+        merged[i] = result.selector;
+        continue;
       }
     }
-    return new BasicSelector((templateParts ?? [appendValue]).join(value)).inherit(baseSelector);
-  });
+    merged[i] = new BasicSelector((templateParts ?? [appendValue]).join(value)).inherit(baseSelector);
+  }
   if (merged.length === 1) {
     return merged[0]!;
   }
@@ -341,13 +349,16 @@ function appendSimpleSelector(selector: SimpleSelector, appendValue: string): Ap
 
 function appendSelector(selector: Selector, appendValue: string): AppendSelectorResult {
   if (isNode(selector, N.SelectorList)) {
-    const items = selector.selectors.map((item) => {
+    const sourceItems = selector.selectors;
+    const items = new Array<Selector>(sourceItems.length);
+    for (let i = 0; i < sourceItems.length; i++) {
+      const item = sourceItems[i]!;
       const result = appendSelector(item as Selector, appendValue);
       if (!result.appended) {
         throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
       }
-      return result.selector;
-    });
+      items[i] = result.selector;
+    }
     return {
       selector: SelectorList.create(items).inherit(selector),
       appended: true
@@ -364,11 +375,13 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
       if (!result.appended) {
         continue;
       }
-      const components = selector.components.map((item, idx) => (
-        idx === i
+      const sourceComponents = selector.components;
+      const components = new Array<ComplexSelectorComponent>(sourceComponents.length);
+      for (let j = 0; j < sourceComponents.length; j++) {
+        components[j] = j === i
           ? expectComplexAppendResult(result.selector)
-          : ownComplexComponentForAppend(item)
-      ));
+          : ownComplexComponentForAppend(sourceComponents[j]!);
+      }
       return {
         selector: ComplexSelector.create(components).inherit(selector),
         appended: true
@@ -381,9 +394,11 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
     for (let i = selector.components.length - 1; i >= 0; i--) {
       const part = selector.components[i]!;
       const result = appendSimpleSelector(part, appendValue);
-      const parts = selector.components.map((item, idx) => (
-        idx === i ? result.selector : ownSelectorForAppend(item)
-      ));
+      const sourceParts = selector.components;
+      const parts = new Array<SimpleSelector>(sourceParts.length);
+      for (let j = 0; j < sourceParts.length; j++) {
+        parts[j] = j === i ? result.selector : ownSelectorForAppend(sourceParts[j]!);
+      }
       return {
         selector: CompoundSelector.create(parts).inherit(selector),
         appended: true
