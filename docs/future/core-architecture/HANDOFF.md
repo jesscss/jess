@@ -405,7 +405,10 @@ shape current before commit.
    carries the unused stale `value` field; the selected render value remains on
    the outer declaration render state. Assignment normalization and eval value
    state now mutate the existing state object directly instead of allocating
-   local setter closures and shadow state variables.
+   local setter closures and shadow state variables. Custom-property fallback
+   function call assembly now reads scalar `Any` fallback names/args directly
+   instead of opening detached writer/stringification paths for those parts;
+   non-scalar fallback parts stay on the existing detached cold boundary.
 6. [ ] Finish `Rules` root/body render, imports, placement state, merge output,
    and duplicate declaration materialization.
 
@@ -666,28 +669,30 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Interpolated scalar replacement render marks.
+Current pass: Declaration scalar custom fallback call parts.
 
-- New traversal: none. The existing replacement loops remain; scalar
-  replacements now write owned text directly and `render(...)` reuses its outer
-  mark for returned text.
-- New node/materialization: none. No node creation, copy, inherit, adoption, or
-  evaluated replacement ownership changed.
-- Render path: rendered `Any`/`Anonymous`/`Keyword` replacements now write owned
-  trimmed token text directly instead of calling scalar `writeSyntax(...)` under
-  a local mark only to trim it. `render(...)` now passes its existing mark into
-  `renderEvaluatedReplacementText(...)`, so shared flat-buffer rendering uses
-  one mark/readback while preserving the public string return contract.
-- Helper/API surface: no helper or public API was added.
+- New traversal: none. Existing fallback name/arg loops remain; scalar `Any`
+  parts now return owned text directly before the detached writer path.
+- New node/materialization: no production materialization. The test-only
+  `new List(...)` fixture builds a custom fallback call arg list for the focused
+  regression.
+- Render path: custom-property fallback function call assembly now reads
+  scalar `Any` fallback names/args directly instead of writing each scalar
+  through detached `writeSyntax(...)` just to trim/read it back. Non-scalar
+  fallback parts remain on the existing detached cold boundary.
+- Helper/API surface: one private helper (`stringifyCustomFallbackPart`) was
+  added to centralize the scalar fast path and keep complex fallback parts on
+  `stringifyDetached(...)`; no public API changed.
 - Metadata mutations: no production parent/source/frozen/location/options/
-  context mutation was added. The `CountingWriter` construction is test-only
-  scaffolding for the shared flat-buffer mark/readback assertion.
-- Evidence: `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/interpolated.test.ts`
-  passed. Further eslint/build/aggressive-review gates still need to run before
-  commit.
+  context mutation was added. The test temporarily overrides scalar arg
+  `writeSyntax(...)` and restores it in `finally`; this is test-only cleanup.
+- Evidence: the Declaration worker reported the focused red test failed before
+  the production change, then `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/declaration.test.ts -t "renders scalar custom fallback call args without detached arg stringification"`
+  passed, full `declaration.test.ts` passed, eslint passed, and diff whitespace
+  passed. These gates will be rerun in the main workspace before commit.
 - Review noise: `verify:aggressive-cutting-review` may report unrelated dirty
   worktree tokens from JS/runtime/docs work outside this slice.
-- Verdict: accepted as a bounded partial cut if final gates pass. Semantic
-  selector ownership boundaries and broader replacement materialization remain
-  open. No performance claim; performance remains shelved because this was not
-  a measured benchmark pass.
+- Verdict: accepted as a bounded partial cut if final gates pass. Broader
+  Declaration raw-source custom property branches, merge state, internal
+  mark/replace, and materialization remain open. No performance claim;
+  performance remains shelved because this was not a measured benchmark pass.

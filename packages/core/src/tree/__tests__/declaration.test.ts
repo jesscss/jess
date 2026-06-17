@@ -684,6 +684,45 @@ describe('Declaration', () => {
     expect(node.render(context)).toBe('--custom:rgba(0, 30, 0, 238)');
   });
 
+  it('renders scalar custom fallback call args without detached arg stringification', () => {
+    const firstArg = any('0');
+    const secondArg = any('30');
+    const thirdArg = any('238');
+    let argSyntaxWrites = 0;
+    const countArgSyntax = <T extends Any>(arg: T): T['writeSyntax'] => {
+      const originalWriteSyntax = arg.writeSyntax;
+      return function writeSyntaxForCounting(
+        this: typeof arg,
+        ...writeArgs: Parameters<typeof originalWriteSyntax>
+      ): ReturnType<typeof originalWriteSyntax> {
+        argSyntaxWrites++;
+        return originalWriteSyntax.apply(this, writeArgs);
+      };
+    };
+    const originalFirstArgWriteSyntax = firstArg.writeSyntax;
+    const originalSecondArgWriteSyntax = secondArg.writeSyntax;
+    const originalThirdArgWriteSyntax = thirdArg.writeSyntax;
+    firstArg.writeSyntax = countArgSyntax(firstArg);
+    secondArg.writeSyntax = countArgSyntax(secondArg);
+    thirdArg.writeSyntax = countArgSyntax(thirdArg);
+    const node = decl({
+      name: any('--custom'),
+      value: call({
+        name: ref('rgba', { type: 'function', fallbackValue: true }),
+        args: new List([firstArg, secondArg, thirdArg])
+      }, { silentFail: true })
+    });
+
+    try {
+      expect(node.render(context)).toBe('--custom:rgba(0, 30, 238)');
+      expect(argSyntaxWrites).toBe(3);
+    } finally {
+      firstArg.writeSyntax = originalFirstArgWriteSyntax;
+      secondArg.writeSyntax = originalSecondArgWriteSyntax;
+      thirdArg.writeSyntax = originalThirdArgWriteSyntax;
+    }
+  });
+
   it('streams custom declaration values without capture scaffolding', () => {
     const writer = new CountingWriter();
     const node = decl({

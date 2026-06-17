@@ -379,6 +379,12 @@ const stringifyDetached = (node: Node, options: PrintOptions): string => {
   return writer.toString();
 };
 
+const stringifyCustomFallbackPart = (node: Node, options: PrintOptions): string => (
+  node instanceof Any
+    ? node.value
+    : stringifyDetached(node, options)
+);
+
 const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions): string | undefined => {
   const atomicValue = unwrapAtomicCustomValue(node);
   if (!isLessFunctionFallbackCall(atomicValue)) {
@@ -395,8 +401,10 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
     for (let i = 0; i < printableKey.length; i++) {
       nameText += String(printableKey[i]);
     }
+  } else if (printableKey instanceof Any) {
+    nameText = printableKey.value.trim();
   } else {
-    nameText = stringifyDetached(printableKey, options).trim();
+    nameText = stringifyCustomFallbackPart(printableKey, options).trim();
   }
 
   let out = `${nameText}(`;
@@ -411,7 +419,7 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
       if (emitted) {
         out += ', ';
       }
-      out += stringifyDetached(arg, options).trim();
+      out += stringifyCustomFallbackPart(arg, options).trim();
       emitted = true;
     }
   }
