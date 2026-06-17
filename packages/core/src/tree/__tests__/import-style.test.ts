@@ -2725,6 +2725,8 @@ describe('Style import', () => {
     });
 
     it('import-reference: reference-imported mixin guards read caller scope while params stay live-bound', async () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const directCrawlHits: string[] = [];
       const referencedPath = resolve(process.cwd(), 'reference-mixin-guarded.jess');
       context.sourceTrees.set(referencedPath, rules([
         mixin({
@@ -2770,19 +2772,42 @@ describe('Style import', () => {
             call({
               name: ref({ key: '.guarded-ref' }, { type: 'mixin-ruleset' }),
               args: list([any('red')])
+            }),
+            decl({
+              name: any('missing'),
+              value: ref({ key: '.guarded-ref' }, {
+                type: 'mixin',
+                fallbackValue: true
+              })
             })
           ])
         })
       ]);
 
-      const css = await renderNodeToString(node, context, { context });
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.guarded-ref') {
+          directCrawlHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
 
-      expect(css).toContain('.dark {');
-      expect(css).toContain('color: red;');
-      expect(css).not.toContain('.light {\n  color: red;');
+      try {
+        const css = await renderNodeToString(node, context, { context });
+
+        expect(css).toContain('.dark {');
+        expect(css).toContain('color: red;');
+        expect(css).not.toContain('.light {\n  color: red;');
+        expect(css).toContain('missing: .guarded-ref(color)');
+        expect(directCrawlHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
     });
 
     it('import-reference: reference-imported default guards read caller scope without leaking param bindings', async () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const directCrawlHits: string[] = [];
       const referencedPath = resolve(process.cwd(), 'reference-mixin-default-guarded.jess');
       context.sourceTrees.set(referencedPath, rules([
         mixin({
@@ -2846,21 +2871,42 @@ describe('Style import', () => {
               name: ref({ key: '.guarded-default-ref' }, { type: 'mixin-ruleset' }),
               args: list([any('blue')])
             }),
+            decl({
+              name: any('missing'),
+              value: ref({ key: '.guarded-default-ref' }, {
+                type: 'mixin',
+                fallbackValue: true
+              })
+            }),
             decl({ name: any('value'), value: ref({ key: 'color' }, { type: 'variable' }) })
           ])
         })
       ]);
 
-      const css = await renderNodeToString(node, context, { context });
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.guarded-default-ref') {
+          directCrawlHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
 
-      expect(css).toContain('.dark {');
-      expect(css).toContain('color: red;');
-      expect(css).toContain('value: outer-dark;');
-      expect(css).toContain('.light {');
-      expect(css).toContain('background: blue;');
-      expect(css).toContain('value: outer-light;');
-      expect(css).not.toContain('value: red;');
-      expect(css).not.toContain('value: blue;');
+      try {
+        const css = await renderNodeToString(node, context, { context });
+
+        expect(css).toContain('.dark {');
+        expect(css).toContain('color: red;');
+        expect(css).toContain('value: outer-dark;');
+        expect(css).toContain('.light {');
+        expect(css).toContain('background: blue;');
+        expect(css).toContain('value: outer-light;');
+        expect(css).not.toContain('value: red;');
+        expect(css).not.toContain('value: blue;');
+        expect(css).toContain('missing: .guarded-default-ref(color)');
+        expect(directCrawlHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
     });
 
     it('import-reference: directive-bearing reference-imported mixins remain callable', async () => {

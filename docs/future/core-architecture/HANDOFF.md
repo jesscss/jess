@@ -102,41 +102,31 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding/lookup pass that proved configured guarded import
-  positives do not use the direct child-surface callable bridge, deleted the
-  exported setDefined assignment lookup wrappers, routed assignment through
-  readonly occurrence overloads, removed the extra occurrence forwarding helper,
-  and cut a redundant flag from the narrowed uncovered-child callable bridge.
-- Verdict: accepted as binding-surface slimming plus proof expansion. No
+- Latest pass: binding/lookup pass that proved simple reference-import
+  guarded/default-guarded callable hits and misses avoid broad
+  `findMixinsFast(...)`, and stopped parent/fallback retry after a current
+  uncovered child/reference miss when `searchParents:false`.
+- Verdict: accepted as callable bridge proof plus a retry-frame cut. No
   wall-clock speed claim.
-- New traversal: no new runtime traversal. The configured guarded import tests
-  add prototype-spy recording around `findMixinsFast(...)`; that is test-only.
-  Runtime traversal is reduced slightly because `findMixinsFastForUncoveredCallable(...)`
-  no longer carries a redundant `canSearchChildSurface` flag after entry filters
-  have already proven an uncovered child.
+- New traversal: no new runtime traversal. Runtime traversal is reduced for
+  `Rules.findMixin(..., { searchParents: false })`: after current-frame
+  child/reference/candidate handling marks the miss covered, lookup returns
+  instead of walking parent/fallback retry frames. The new import/mixin tests add
+  prototype-spy recording around `findMixinsFast(...)`; that is test-only.
 - New node/materialization: no AST nodes, copied nodes, wrapper `Rules`, render
   materialization, side map, or hot result array was added. The new
-  `directChildSurfaceBridges` arrays are test-only proof buffers. The
-  `directLookup.match(...) ?? []` array is verifier-only scan fallback, not
-  runtime lookup state.
+  `directCrawlHits` and `parentRetryHits` arrays are test-only proof buffers.
 - Render path: no render/stringification path changed. The touched runtime
   paths are callable lookup before candidate eval/render and declaration
   lookup for `setDefined` assignment.
 - Helper/API surface: removed exported
-  `findVariableDeclarationAssignmentLookup` /
-  `findPropertyDeclarationAssignmentLookup` and removed the internal
-  `findDeclarationOccurrenceWithStrategy(...)` forwarding helper. Added a typed
-  `DirectDeclarationReadonlyFindOptions` overload on existing occurrence
-  helpers so `setDefined` can request readonly provenance without a separate
-  wrapper lane. Tightened `verify:binding-lookup-hot-paths` to reject assignment
-  wrapper exports.
+  no helpers or APIs added. The pass uses existing `findMixin(...)` and
+  `findMixinsFast(...)` spy surfaces in tests.
 - Metadata mutations: none. Test `try`/`finally` blocks only restore prototype
   spies.
-- Allocation changes: no new runtime allocation. Assignment wrapper result
-  allocation is no worse than before, but it now comes from the existing lookup
-  engine instead of wrapper-only exports.
-- Evidence: focused callable/import/setDefined/live-binding matrix passed
-  (`57` tests), `pnpm exec eslint ...` passed, `git diff --check` passed,
-  `pnpm run verify:binding-lookup-hot-paths` passed, `pnpm run
+- Allocation changes: no new runtime allocation. The new arrays are test-only.
+- Evidence: focused callable/import matrix passed (`51` tests), `pnpm exec
+  eslint ...` passed, `git diff --check` passed, `pnpm run
+  verify:binding-lookup-hot-paths` passed, `pnpm run
   verify:aggressive-cutting-review` passed with the danger tokens prosecuted
   above, and `pnpm --filter @jesscss/core build` passed. No speed claim.

@@ -2181,6 +2181,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (frameHit.kind === 'uncovered' && frameHit.reason === 'candidate') {
           frameMissCovered = true;
         }
+        if (frameMissCovered && options.searchParents === false) {
+          const pathKeys = splitStaticCallablePathKey(keys);
+          if (pathKeys) {
+            return this.findMixin(pathKeys, filterType, options);
+          }
+          return undefined;
+        }
         if (frameHit.kind === 'miss' || frameHit.kind === 'uncovered') {
           let retryFrame = callableFrame.parent;
           let fallbackFrame = callableFrame.fallbackFrame;

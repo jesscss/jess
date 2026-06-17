@@ -43,30 +43,30 @@ Complete every item in this queue before committing the next binding/lookup
 pass unless a semantic blocker, rejected approach, or unsafe test failure
 forces a focused stop.
 
-1. [ ] Extend bridge-spy proof from configured guarded positives to
-configured guarded misses and reference-import guarded positives/misses. Scope:
-imported guarded mixins, configured import child surfaces, `options.context`,
-replacement/additive import config, reference imports, and
-`findMixinsFastForUncoveredCallable`. Goal: prove which dynamic surfaces still
-need an uncovered bridge before cutting more. Acceptance: guarded/config and
-reference-import matrices stay green and record whether direct fallback is
-required.
+1. [ ] Extend bridge-spy proof from simple reference-import guarded calls to
+namespace/reference-import child-surface combinations. Scope: namespaced
+reference-import guarded mixins, selector-list reference imports, configured
+import child surfaces, `options.context`, and `findMixinsFastForUncoveredCallable`.
+Goal: prove which dynamic surfaces still need an uncovered bridge before
+cutting more. Acceptance: guarded/config and reference-import matrices stay
+green and record whether direct fallback is required.
 
 2. [ ] Finish callable retry-frame bridge deletion where retry frames are
 covered. Scope: parent/fallback frame loops in `Rules.findMixin`, fallback
 frame `prepareCallableLookupFrame`, recursive namespace starts, and
 reference-import fallback frames. Goal: covered retry-frame misses do not keep
-walking into broad direct crawls. Acceptance: parent/fallback callable miss spy
-tests plus existing fallback hit tests.
+walking into broad direct crawls, and disabled parent search does not retry
+parent/fallback frames after a narrowed current-frame miss. Acceptance:
+parent/fallback callable miss spy tests plus existing fallback hit tests.
 
-3. [ ] Extend narrow uncovered-child fallback proof to configured guarded
-misses and reference-import child surfaces. Scope: the uncovered child-only
-fallback in `findMixinsFastForUncoveredCallable`, configured guarded imports,
-reference-import siblings, and rendered reference imports. Goal: keep broad
-search limited to child entries that actually reported `uncovered`, without
-losing dynamic positives. Acceptance: covered sibling child surfaces are not
-reopened; configured guarded positives stay zero-bridge; remaining dynamic
-positives still resolve.
+3. [ ] Extend narrow uncovered-child fallback proof to namespaced
+reference-import child surfaces. Scope: the uncovered child-only fallback in
+`findMixinsFastForUncoveredCallable`, reference-import siblings, rendered
+reference imports, and namespace offsets. Goal: keep broad search limited to
+child entries that actually reported `uncovered`, without losing dynamic
+positives. Acceptance: covered sibling child surfaces are not reopened;
+configured guarded and simple reference-import guarded calls stay zero-bridge;
+remaining dynamic positives still resolve.
 
 4. [ ] Delete any remaining simple exact callable child scans that are
 provably covered by frame facts. Scope: current-frame miss, child-entry family
@@ -193,8 +193,16 @@ evidence current without claiming speed. Acceptance: profile recorded with old
 - Configured guarded import positives for both replacement `set` and additive
   `with` child surfaces now have bridge-spy proof: they resolve without calling
   `findMixinsFast(..., searchParents: false)` for their guarded callable keys.
-  Miss/reference-import surfaces still need the same proof before more bridge
-  deletion.
+  The same fixtures include nonmatching guarded calls, so configured guarded
+  misses also stay off the direct child-surface bridge for those keys.
+- Reference-import guarded and default-guarded callable hits/misses now have
+  bridge-spy proof: rendered reference-import callable misses and guarded
+  reference-import hit/miss pairs avoid broad `Rules.findMixinsFast(...)`
+  lookup for their callable keys.
+- `Rules.findMixin(..., { searchParents: false })` now stops after the current
+  narrowed child/reference bridge when that bridge proves no result. It no
+  longer retries parent/fallback frames after a current-frame uncovered miss
+  when parent search is explicitly disabled.
 - `setDefined` assignment no longer imports or calls exported
   `findVariableDeclarationAssignmentLookup` /
   `findPropertyDeclarationAssignmentLookup` wrappers. It uses the existing

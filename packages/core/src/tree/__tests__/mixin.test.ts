@@ -2898,6 +2898,41 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: uncovered child miss respects searchParents false after narrow bridge', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const parentRetryHits: string[] = [];
+      const missingKey = '.parent-only-after-child-miss';
+      const parentMixin = mixin({
+        name: any(missingKey),
+        rules: rules([decl({ name: 'color', value: any('red') })])
+      });
+      const childSurface = rules([
+        mixin({
+          name: any('.child-other'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        })
+      ]);
+      const childRules = rules([childSurface]);
+      const root = rules([parentMixin, childRules]);
+      root.getScopeFrame();
+      childRules.getScopeFrame(root._scopeFrame);
+
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (this === root && key === missingKey) {
+          parentRetryHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        expect(childRules.findMixin(missingKey, 'Mixin', { searchParents: false })).toBeUndefined();
+        expect(parentRetryHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when child surfaces cannot contain exact callables', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];
