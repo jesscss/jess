@@ -1,6 +1,6 @@
 import type { IToken } from 'chevrotain';
 import * as treeIndex from '../index.js';
-import { Any, Call, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, fn, list, mixin, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Any, Call, Color, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, fn, list, mixin, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import {
   getCallRawArgDiagnosticMessageSource,
   getCallRawArgDiagnosticSource,
@@ -1055,6 +1055,19 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('var(--brand, red)');
     expect(writer.toString()).toBe('var(--brand, red)');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders color CSS call arguments without per-arg trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'mix',
+      args: list([new Color('#ff0000'), new Color('#0000ff')])
+    });
+
+    expect(rule.render(context, { writer })).toBe('mix(#ff0000, #0000ff)');
+    expect(writer.toString()).toBe('mix(#ff0000, #0000ff)');
     expect(writer.marks).toBe(1);
     expect(writer.readbacks).toBe(0);
   });

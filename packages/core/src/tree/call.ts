@@ -689,6 +689,7 @@ export class Call extends Node<CallValue, CallOptions> {
       || !(
         node.type === 'Num'
         || node.type === 'Dimension'
+        || node.type === 'Color'
         || node.type === 'Bool'
         || node.type === 'Any'
         || node.type === 'Anonymous'

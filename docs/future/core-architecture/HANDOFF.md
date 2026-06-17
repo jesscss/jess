@@ -317,7 +317,10 @@ shape current before commit.
    skip the inner arg-list trim mark when no trivia is active; plain/finalized
    call render now carries a string-only text state for known scalar/no-trivia
    args and content, including async scalar resolutions, so those paths return
-   known text without whole-call writer readback. `evalArgNodes(...)` now runs a
+   known text without whole-call writer readback. Color args are now also
+   covered by the known evaluated scalar writer, matching the earlier
+   `serializeRenderedArgs(...)` scalar classification and avoiding the
+   fallback per-arg trim mark/readback. `evalArgNodes(...)` now runs a
    sync-first loop, evaluates non-`F_MAY_ASYNC` args through
    `evalImmediateSync(...)` instead of public `eval(...)`, and only enters an
    async continuation after an evaluated arg is actually thenable. Focused tests
@@ -669,30 +672,34 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Declaration scalar custom fallback call parts.
+Current pass: Call color scalar evaluated-arg render.
 
-- New traversal: none. Existing fallback name/arg loops remain; scalar `Any`
-  parts now return owned text directly before the detached writer path.
-- New node/materialization: no production materialization. The test-only
-  `new List(...)` fixture builds a custom fallback call arg list for the focused
-  regression.
-- Render path: custom-property fallback function call assembly now reads
-  scalar `Any` fallback names/args directly instead of writing each scalar
-  through detached `writeSyntax(...)` just to trim/read it back. Non-scalar
-  fallback parts remain on the existing detached cold boundary.
-- Helper/API surface: one private helper (`stringifyCustomFallbackPart`) was
-  added to centralize the scalar fast path and keep complex fallback parts on
-  `stringifyDetached(...)`; no public API changed.
-- Metadata mutations: no production parent/source/frozen/location/options/
-  context mutation was added. The test temporarily overrides scalar arg
-  `writeSyntax(...)` and restores it in `finally`; this is test-only cleanup.
-- Evidence: the Declaration worker reported the focused red test failed before
-  the production change, then `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/declaration.test.ts -t "renders scalar custom fallback call args without detached arg stringification"`
-  passed, full `declaration.test.ts` passed, eslint passed, and diff whitespace
-  passed. These gates will be rerun in the main workspace before commit.
-- Review noise: `verify:aggressive-cutting-review` may report unrelated dirty
-  worktree tokens from JS/runtime/docs work outside this slice.
-- Verdict: accepted as a bounded partial cut if final gates pass. Broader
-  Declaration raw-source custom property branches, merge state, internal
-  mark/replace, and materialization remain open. No performance claim;
-  performance remains shelved because this was not a measured benchmark pass.
+- New traversal: none. This reuses the existing `serializeRenderedArgs(...)`
+  loop and the existing scalar render writer.
+- New node/materialization: none in production. The focused test constructs
+  two `Color` fixtures so the scalar color branch is covered.
+- Render path: `writeKnownEvaluatedSyntax(...)` now includes `Color`, matching
+  the caller's existing scalar-contract branch. No-trivia color CSS-call args
+  write their known render text directly instead of falling through to
+  `writeSyntax(...)` behind a per-arg trim mark/readback.
+- Helper/API surface: no public API or helper surface changed.
+- Metadata mutations: none.
+- Rejected cut: removing the remaining non-buffer whole-call mark from
+  `renderPlainFunctionCall(...)` is not a safe mechanical step yet. That mark
+  is the fallback boundary when string-only text state is disabled by a
+  non-scalar/custom/trivia child; deleting it would require either a second
+  pre-scan or a larger fallback-state redesign.
+- Evidence: focused Call tests passed with
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/call.test.ts --testNamePattern "color CSS call arguments|token CSS call arguments|async scalar CSS call arguments|streams rendered CSS call arguments"`;
+  full `call.test.ts` passed; changed-file eslint passed with
+  `pnpm exec eslint packages/core/src/tree/call.ts packages/core/src/tree/__tests__/call.test.ts`;
+  `pnpm --filter @jesscss/core build` passed; and
+  `pnpm run verify:aggressive-cutting-review` exited 0 while flagging the
+  expected test-only `new Color(...)` fixture plus unrelated dirty-tree danger
+  tokens outside this slice. Core-wide `pnpm --filter @jesscss/core lint`
+  remains blocked by unrelated existing lint errors across tests/util files.
+- Verdict: accepted as a bounded partial Call serialization cut if final gates
+  pass. Broader callable output, copy ownership, custom/trivia arg trim marks,
+  async helper ladders, repeated eval, and the remaining whole-call fallback
+  boundary stay open. No performance claim; this was not a measured benchmark
+  pass.
