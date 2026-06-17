@@ -128,12 +128,15 @@ Acceptance: existing semantic tests for mutable `excludedNodes` and
 `requiredNormalizedFromAssign` stay green, and any renamed/internalized fields
 are guarded by `verify:binding-lookup-hot-paths`.
 
-12. [ ] Audit readonly occurrence overload shape after assignment-wrapper
-deletion. Scope: `DirectDeclarationReadonlyFindOptions`,
-`find*DeclarationOccurrence(... includeReadonly: true)`, `setDefined`, and
-readonly propagation. Goal: make sure the overload is the smallest shape that
-serves assignment without becoming a new public/hot wrapper lane. Acceptance:
-setDefined/live binding tests, build, and hot-path guard stay green.
+12. [ ] Decide whether the remaining readonly assignment helpers should
+collapse into one setDefined-only internal helper. Scope:
+`findVariableDeclarationReadonlyOccurrence`,
+`findPropertyDeclarationReadonlyOccurrence`, `setDefined`, readonly
+propagation, and family-specific branch placement. Goal: keep ordinary
+occurrence helpers branch-free while avoiding a new broad public wrapper lane.
+Acceptance: setDefined/live binding tests, build, and hot-path guard stay
+green; either one internal assignment helper replaces both family helpers or
+the tracker records why the two-helper shape is the smallest no-branch option.
 
 13. [ ] Re-audit public `Rules.find*` materialization wrappers after the
 `findDeclaration` string-branch and assignment-wrapper removals. Scope:
@@ -199,9 +202,9 @@ evidence current without claiming speed. Acceptance: profile recorded with old
 - `pnpm run verify:binding-lookup-hot-paths` now guards that reference reads,
   selector attribute interpolation, and stylesheet function return lookup use
   occurrence helpers instead of public `Rules.find*` materialization wrappers;
-  assignment lookup wrappers stay isolated to `setDefined`, old string-filter
-  `Rules.findDeclaration(...)` calls stay gone, and scalar exclusion fields
-  stay out of exported `ReferenceOptions`.
+  readonly assignment lookup stays isolated to explicit setDefined helper
+  calls, old string-filter `Rules.findDeclaration(...)` calls stay gone, and
+  scalar exclusion fields stay out of exported `ReferenceOptions`.
 - Configured guarded import positives for both replacement `set` and additive
   `with` child surfaces now have bridge-spy proof: they resolve without calling
   `findMixinsFast(..., searchParents: false)` for their guarded callable keys.
@@ -238,15 +241,18 @@ evidence current without claiming speed. Acceptance: profile recorded with old
   the uncovered-child helper hit the same union blocker and was reverted.
 - `setDefined` assignment no longer imports or calls exported
   `findVariableDeclarationAssignmentLookup` /
-  `findPropertyDeclarationAssignmentLookup` wrappers. It uses the existing
-  occurrence helpers with `includeReadonly: true`; the wrapper exports and the
-  extra `findDeclarationOccurrenceWithStrategy(...)` forwarding helper are
-  gone.
+  `findPropertyDeclarationAssignmentLookup` wrappers. The old
+  `includeReadonly: true` overload on ordinary occurrence helpers is gone too:
+  `setDefined` now calls explicit readonly occurrence helpers, and ordinary
+  `findVariableDeclarationOccurrence(...)` /
+  `findPropertyDeclarationOccurrence(...)` stay branch-free occurrence-only
+  APIs.
 - A read-only audit found hot declaration reference callers already use
   occurrence helpers directly. The remaining assignment wrapper shape is
-  limited to `setDefined` readonly fallback: `includeReadonly: true` still
-  returns `{ occurrence, readonly }` from direct declaration lookup and should
-  be handled in the assignment-overload pass.
+  limited to `setDefined` readonly fallback: the `{ occurrence, readonly }`
+  result is returned only from explicit readonly helpers and should be
+  collapsed further only if that removes surface without putting family
+  branching back into ordinary reads.
 - `pnpm run verify:baseline -- --changed` is usable again but not green on this
   branch: the latest run reached broad render/call/cloning failures in
   `@jesscss/core` and then hung in Vitest workers until interrupted. The
@@ -288,10 +294,10 @@ evidence current without claiming speed. Acceptance: profile recorded with old
 4. **Direct declaration result flattening.**
    `DeclarationLookupStrategy` now carries preselected family predicates.
    Hot occurrence callers now return `DirectDeclarationOccurrence | undefined`
-   without allocating the `{ occurrence, readonly }` wrapper. Remaining work is
-   isolating the readonly wrapper to cold setDefined assignment and proving
-   simple reads do not allocate public materialization wrappers or fallback-only
-   details.
+   without allocating the `{ occurrence, readonly }` wrapper, and the old
+   readonly overload option is gone. Remaining work is deciding whether the
+   two explicit setDefined readonly helpers should collapse further without
+   adding family branching back to ordinary reads.
 
 ### B. ScopeFrame, Current Cells, And Assignment
 

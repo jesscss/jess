@@ -103,17 +103,46 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `AtRule.valueOf()` name public-string transport cut in
-  `packages/core/src/tree/at-rule.ts`.
-- Verdict: accepted as a focused value-key serialization cut. No speed claim.
+- Latest pass: binding/lookup readonly occurrence overload removal.
+- Verdict: accepted. Ordinary variable/property occurrence helpers no longer
+  branch on `includeReadonly`; `setDefined` now calls explicit readonly
+  occurrence helpers, and the old readonly overload option is guarded against
+  returning to direct lookup.
 - New traversal: none.
-- New node/materialization: none.
-- Render path: no render path changed. At-rule equality/header-key comparison
-  now reads `this.name.valueOf()` instead of public `this.name.toString()`;
-  prelude keying remains on `prelude.valueOf()`.
-- Helper/API surface: no helpers or APIs added.
+- New node/materialization: none. `DirectDeclarationLookupResult` is a
+  type-only alias for the pre-existing setDefined readonly fallback object; it
+  was made internal and removed from the hot helper overload surface, not added
+  as new runtime materialization.
+- Render path: no committed render/stringification path change.
+- Helper/API surface: the old overload option was deleted from ordinary
+  occurrence helpers. Two explicit readonly helpers remain for the
+  setDefined-only fallback path; the binding tracker now carries the follow-up
+  question of whether those collapse into one colder assignment helper.
 - Metadata mutations: none.
-- Allocation changes: none.
-- Evidence: focused `at-rule.test.ts` coverage proves overriding
-  `name.toString()` is not observed by `AtRule.valueOf()`. Full gates are
-  recorded in the final response.
+- Allocation changes: ordinary occurrence reads cannot allocate the
+  `{ occurrence, readonly }` wrapper through an option branch; wrapper
+  allocation remains limited to explicit setDefined readonly helper calls.
+  `VarDeclaration.copy` appears only in a focused test name proving the
+  assignment path avoids that copy machinery.
+- Evidence: `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/rules.test.ts --run --testNamePattern "fails to set if
+  existing variable is readonly|derives setDefined declarations without calling
+  VarDeclaration.copy|updates static setDefined variables without deriving
+  placement declarations|updates modeled setDefined live binding cells without
+  direct occurrence crawl|does not build a scope frame just to try setDefined
+  live binding writes" --reporter=dot`,
+  `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/reference.test.ts --run --testNamePattern "setDefined
+  variable assignment uses occurrence lookup without Rules.findVariable|
+  setDefined current-cell probes do not use historical declaration buckets"
+  --reporter=dot`, `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/mixin.test.ts --run --testNamePattern "routes mixin
+  setDefined writes through the resolved caller binding|evaluates mixin
+  setDefined writes from live parameter bindings" --reporter=dot`,
+  `pnpm --filter @jesscss/core exec vitest
+  src/tree/__tests__/control.test.ts --run --testNamePattern "setDefined
+  writes" --reporter=dot`, `pnpm run verify:binding-lookup-hot-paths`,
+  `pnpm exec eslint scripts/verify-binding-lookup-hot-paths.mjs
+  packages/core/src/tree/util/direct-rules-lookup.ts
+  packages/core/src/tree/rules.ts`, and `pnpm --filter @jesscss/core build`
+  passed. No speed claim.
