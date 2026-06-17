@@ -632,16 +632,14 @@ Becomes a cold compatibility/fallback surface. Ordinary variable/property
 lookup should not call it. Its remaining responsibilities should be narrowed to
 complex search modes that the binding frame does not yet model.
 
-Production status: `VarDeclaration` lookup through
-`Rules.findVariable(...)` and `Rules.findDeclaration(..., 'VarDeclaration', ...)`
-uses the typed variable declaration operation by default. `Rules.findVariable(...)`
-is not a wrapper over string-discriminator declaration lookup. The remaining
-selector-attribute interpolation caller assigns the variable declaration
-operation first and calls `Rules.findVariable(...)` only as the `UNCOVERED`
-fallback. Unfiltered `Declaration`/property lookup also uses the selected
-property declaration operation by default for covered exact hits and misses.
-These paths fall back to `DeclarationRegistry` only when the direct path returns
-explicit `UNCOVERED` for unsupported option shapes.
+Production status: the public-looking `Rules.findVariable(...)`,
+`Rules.findProperty(...)`, `Rules.findDeclaration(...)`, and
+`Rules.findAnyDeclaration(...)` declaration facades are deleted. Covered
+`VarDeclaration` lookup, selector-attribute interpolation, and unfiltered
+`Declaration`/property lookup use occurrence helpers, scope-frame cells, and
+reference handles directly. These paths fall back to the remaining cold
+declaration bridge only when the direct path returns explicit `UNCOVERED` for
+unsupported option shapes.
 
 Production follow-up: direct declaration lookup no longer rediscover-scans
 child rule surfaces on every recursive lookup. `Rules` carries declaration
@@ -736,7 +734,7 @@ fallback must appear here or in `HANDOFF.md` before it is accepted.
 | Bridge | Allowed Scope | Deletion Condition |
 | --- | --- | --- |
 | `Reference.lookupVariableReference(...)` facade miss to `findVarDeclarationFast(...)` | explicit targets, interpolated keys, still-dynamic names, and other declaration modes not yet represented by binding handles/slots. The fallback now reads carried declaration child entries instead of `_rulesSet`. | delete per covered mode once static declaration records cover the mode and tests prove hits/misses do not enter the helper ladder |
-| `Rules.findDeclaration(...)` / `Rules.findProperty(...)` fallback to `DeclarationRegistry` | semantic filtered `Declaration`/property merge-chain modes, dynamic names, import/reference visibility, complex source-order modes not yet encoded in frame lookup. `VarDeclaration` plus unfiltered/default-filter exact `Declaration`/property lookup are direct-first for covered option shapes, and covered static declaration/property `Reference` reads reuse binding handles keyed by contextual lookup shape. Covered static `Reference` declaration/property/index-declaration/direct-rules-target reads now assign a typed direct declaration operation before the typed `Rules.find*` method layer, so covered hits and misses do not pay the public method bridge. Direct declaration lookup and the registry fallback both read live declaration-shaped cells through `currentBindingsByName`; `liveSlotsByName` is no longer queried as a parallel declaration lookup surface. Direct declaration child-surface traversal now uses carried `Rules` child entries instead of a private rediscovery scan, and empty registry `searchedRules`/candidate bookkeeping no longer forces covered direct lookup to return `UNCOVERED`. The generic `Rules.find('declaration', ...)` wrapper, stale direct-declaration env switch, and leftover `findDeclarationDirect(...)` string adapter are deleted. | delete per mode as soon as frame lookup encodes that mode and tests prove covered hits/misses do not enter registry search |
+| Direct declaration occurrence bridge after declaration facade deletion | semantic filtered `Declaration`/property merge-chain modes, dynamic names, import/reference visibility, complex source-order modes not yet encoded in frame lookup. `VarDeclaration` plus unfiltered/default-filter exact `Declaration`/property lookup are direct-first for covered option shapes, and covered static declaration/property `Reference` reads reuse binding handles keyed by contextual lookup shape. Covered static `Reference` declaration/property/index-declaration/direct-rules-target reads call typed occurrence helpers or frame cells directly, so covered hits and misses do not pay a public `Rules.find*` method bridge. Direct declaration lookup and the remaining fallback both read live declaration-shaped cells through `currentBindingsByName`; `liveSlotsByName` is no longer queried as a parallel declaration lookup surface. Direct declaration child-surface traversal now uses carried `Rules` child entries instead of a private rediscovery scan, and empty registry `searchedRules`/candidate bookkeeping no longer forces covered direct lookup to return `UNCOVERED`. The generic `Rules.find('declaration', ...)` wrapper, stale direct-declaration env switch, and leftover `findDeclarationDirect(...)` string adapter are deleted. | delete per mode as soon as frame lookup encodes that mode and tests prove covered hits/misses do not enter fallback search |
 | Callable direct-crawl bridge after registryless mixin deletion | guard/candidate matching, import visibility, and namespace cases not yet encoded in frame/handle state. Exact simple misses now distinguish ruleset-capable child surfaces from mixin-capable child surfaces in both frame and no-frame direct lookup. Ruleset-path lookup also uses a carried ruleset-capable child-surface fact, so mixin-only child surfaces no longer keep ruleset-path recursion alive. Parameterized terminal lookups skip exact ruleset terminal scans. | delete per modeled path once binding state can return callable hit/miss or explicit `UNCOVERED`; do not restore `MixinRegistry` or stringly `Rules.find('mixin', ...)` |
 | Public materialization from source declaration nodes | cold public `eval/resolve` API compatibility and unmodeled ownership boundaries | delete from render/eval hot paths once binding values can render directly and public materialization is isolated |
 
@@ -895,10 +893,11 @@ callable/function/declaration output, merge-chain output, or public
 materialized nodes. Focused reference tests prove the second evaluation of the
 same static array-path callable reference skips `Rules.findMixin(...)`, the
 second evaluation of the same static function reference skips
-`Rules.findFunction(...)`, the second evaluation of the same static property
-reference skips `Rules.findProperty(...)`, the second evaluation of the same
-static declaration reference skips `Rules.findDeclaration(...)`, and a later
-target `Rules.registerNode(...)` bump invalidates the handle.
+`Rules.findFunction(...)`, the second evaluation of the same static
+variable/property/function/callable reference can read the stored source-static
+handle before rebuilding the lookup strategy, covered declaration/property
+references avoid the deleted declaration facades, and a later target
+`Rules.registerNode(...)` bump invalidates the handle.
 
 Remaining production work: live/static slot unification, semantic filtered
 property merge-chain occurrence slots, complex declaration modes, and callable

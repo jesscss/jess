@@ -1447,7 +1447,7 @@ describe('reference', () => {
       expect(variableRef.eval(context).valueOf()).toBe('blue');
     });
 
-    it('explicit target variable refs use occurrence fallback without Rules.findVariable', async () => {
+    it('explicit target variable refs use occurrence fallback without public Rules variable facade', async () => {
       const targetRules = rules([
         vardecl({ name: 'toneVar', value: any('purple') })
       ]);
@@ -4853,6 +4853,73 @@ describe('reference', () => {
       node.push(decl({ name: 'unrelated', value: any('1') }));
       expect(lookupRef.eval(context).valueOf()).toBe('blue');
       expect(lookupRef._rulesLookupHandle).toBe(handle);
+    });
+
+    it('source-static handles read before rebuilding lookup strategy', async () => {
+      const node = rules([
+        vardecl({ name: 'tone-var', value: any('purple') }),
+        decl({ name: 'tone-prop', value: any('orange') }),
+        mixin({
+          name: any('.tone-mixin'),
+          rules: rules([decl({ name: 'color', value: any('blue') })])
+        })
+      ]);
+      node.setFunctionBinding('tone-fn', new JsFunction({
+        name: 'tone-fn',
+        fn: () => any('green')
+      }));
+      setRulesContext(await node.eval(context));
+      const reads = [
+        {
+          lookupRef: ref({ key: 'tone-var' }, { type: 'variable' }),
+          expectValue: 'purple'
+        },
+        {
+          lookupRef: ref({ key: 'tone-prop' }, { type: 'property' }),
+          expectValue: 'orange'
+        },
+        {
+          lookupRef: ref({ key: 'tone-fn' }, { type: 'function' }),
+          expectType: 'JsFunction'
+        },
+        {
+          lookupRef: ref({ key: '.tone-mixin' }, { type: 'mixin' }),
+          expectType: 'MixinCollection'
+        }
+      ];
+
+      for (const read of reads) {
+        const first = read.lookupRef.eval(context);
+        if (read.expectValue) {
+          expect(first.valueOf()).toBe(read.expectValue);
+        } else if (read.expectType) {
+          expect(isNode(first)).toBe(true);
+          if (isNode(first)) {
+            expect(first.type).toBe(read.expectType);
+          }
+        } else if ('expectArray' in read) {
+          expect(Array.isArray(first)).toBe(read.expectArray);
+        }
+        const handle = read.lookupRef._rulesLookupHandle;
+        expect(handle).toBeDefined();
+        expect(read.lookupRef._lookupStrategy).toBeDefined();
+
+        read.lookupRef._lookupStrategy = undefined;
+        const second = read.lookupRef.eval(context);
+
+        if (read.expectValue) {
+          expect(second.valueOf()).toBe(read.expectValue);
+        } else if (read.expectType) {
+          expect(isNode(second)).toBe(true);
+          if (isNode(second)) {
+            expect(second.type).toBe(read.expectType);
+          }
+        } else if ('expectArray' in read) {
+          expect(Array.isArray(second)).toBe(read.expectArray);
+        }
+        expect(read.lookupRef._rulesLookupHandle).toBe(handle);
+        expect(read.lookupRef._lookupStrategy).toBeUndefined();
+      }
     });
 
     it('static property occurrence handles invalidate when owner rules changes', async () => {

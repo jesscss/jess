@@ -131,19 +131,14 @@ with `--no-verify` after the explicit gates pass.
   charset sees the active writer while public `toTrimmedString(...)` and
   import public `toString(...)` stay unused. Targeted ESLint for `rules.ts`
   and `rules.test.ts` passed. Full gates are required before commit.
-- Merge-carried binding review: merging `origin/dev` also brought declaration
-  lookup wrapper deletion plus a callable namespace reference-import
-  modeled-miss bridge cut. It deletes `Rules.findVariable`, `findProperty`,
-  `findDeclaration`, and `findAnyDeclaration` without changing
-  render/stringification. `findMixinsFastForUncoveredCallable(...)` reports
-  covered uncovered-surface misses from its existing child-entry loop so the
-  caller avoids reopening broad namespace fallbacks; the `[]` covered-miss
-  sentinel is private lookup state, not output materialization. The flagged
-  `UncoveredCallableCoverage` object is a short-lived private fact carrier used
-  to avoid a broader fallback call; the `broadFastHits` array and `try` block
-  are test-only spy/restoration scaffolding, and the `for (const token of ...)`
-  loop is verifier-script coverage. Incoming proof included
-  `verify:binding-lookup-hot-paths`, focused reference/rules/import
-  style/detached-rulesets/function/selector-attr tests, the SCSS parser
-  `@function` baseline, callable namespace modeled-miss tests, and existing
-  ScopeFrame callable bucket coverage. No speed claim.
+- Merge-carried binding review: merging `origin/dev` also brought the
+  source-static reference handle early-read pass and binding tracker updates.
+  It is lookup-only: no render/stringification path changed, no runtime node
+  materialization was added, and its new helper reads already-stored lookup
+  handle state under narrow guards. The review-flagged
+  `for (const read of reads)` loop and JS-function fixture construction are
+  test-only coverage for source-static reference handle families. The flagged
+  `RulesLookupHandleShape` object is incoming private lookup state created
+  only after an existing handle passes those guards; it is not render/string
+  transport. Detailed binding status remains in `BINDING-LOOKUP-REMAINING.md`;
+  this serialization pass keeps `NODE-REWRITE-TRACKER.md` as the active queue.
