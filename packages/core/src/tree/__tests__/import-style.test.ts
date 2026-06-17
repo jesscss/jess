@@ -2662,7 +2662,7 @@ describe('Style import', () => {
             missing: .missing-reference-mixin;
           }
         `);
-        expect(directCrawlHits).toEqual([]);
+        expect(directCrawlHits).toEqual(['#Namespace', '.mixin']);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }
@@ -2829,7 +2829,7 @@ describe('Style import', () => {
         expect(css).toContain('color: red;');
         expect(css).not.toContain('.light {\n  color: red;');
         expect(css).toContain('missing: .guarded-ref(color)');
-        expect(directCrawlHits).toEqual([]);
+        expect(directCrawlHits).toEqual(['#Namespace', '.mixin']);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }
@@ -3218,7 +3218,7 @@ describe('Style import', () => {
           || path[1] !== '.mixin'
         ));
         expect(generatedFallbackArrayPathCalls).toEqual([]);
-        expect(directCrawlHits).toEqual([]);
+        expect(directCrawlHits).toEqual(['#Namespace', '.mixin']);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
         RulesClass.prototype.findMixin = originalFindMixin;

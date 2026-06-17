@@ -103,32 +103,24 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding/lookup namespaced reference-import array-path bridge
-  deletion and configured guarded import proof.
-- Verdict: accepted as a narrower direct-crawl deletion plus executable bridge
-  proof. No speed claim.
-- New traversal: `findRulesetNamespacePathFast(...)` now computes ruleset
-  prefix matches before deciding whether a broad mixin-namespace crawl is
-  needed, and terminal simple remainders can prepare/read the ruleset body's
-  callable frame before falling back. This replaces `findMixinsFast(...)`
-  child crawls for covered namespace/reference-import cases. Test-only spies
-  record direct-crawl attempts for import and namespace fixtures.
-- New node/materialization: no nodes. The terminal branch may create the
-  ruleset body scope frame so imported callable facts can answer the terminal
-  hit/miss; the binding tracker carries a follow-up to audit whether existing
-  carried child facts can avoid that frame creation in non-reference-import
-  cases.
+- Latest pass: configured guarded import bridge proof plus rejected
+  namespaced reference-import array-path deletion attempt.
+- Verdict: accepted only as proof/audit. The attempted direct-crawl deletion
+  was reverted because it dropped namespace/callable union candidates. No speed
+  claim.
+- New traversal: none in production after the revert. Test-only spies record
+  direct-crawl attempts for import fixtures.
+- New node/materialization: none.
 - Render path: no committed render/stringification path change.
 - Helper/API surface: no new exported helper or public API. The retry-frame
   loop was audited by a read-only subagent and kept because fallback-frame hit
   tests still prove it is semantically live.
 - Metadata mutations: none.
-- Allocation changes: production avoids the broad direct-crawl result arrays in
-  the targeted namespace/reference-import cases. Tests allocate small spy
-  arrays only for proof.
+- Allocation changes: none in production. Tests allocate small spy arrays only
+  for proof.
 - Evidence: focused import-style tests for `namespaced reference-imported
   ruleset array-path lookups`, variable-only guarded `with`, replacement
-  guarded `set`, and child-surface guarded `with`/`set` passed. Focused
-  mixin tests for the guarded namespace union and the new ruleset namespace
-  simple terminal miss passed. Final gates are required before commit. No
-  speed claim.
+  guarded `set`, and child-surface guarded `with`/`set` should pass before
+  commit. The namespace deletion attempt failed the guarded union/terminal miss
+  proof and remains item 1 in the binding queue. Final gates are required
+  before commit. No speed claim.

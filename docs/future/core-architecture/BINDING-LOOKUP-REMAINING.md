@@ -44,7 +44,16 @@ Complete every item in this queue before committing the next binding/lookup
 pass unless a semantic blocker, rejected approach, or unsafe test failure
 forces a focused stop.
 
-1. [ ] Finish callable retry-frame bridge deletion where retry frames are
+1. [ ] Delete the remaining namespaced reference-import array-path direct
+crawl without breaking namespace/callable unions. Scope:
+`findRulesetNamespacePathFast(...)`, `findMixinNamespacePathFast(...)`,
+`findMixinsFastForUncoveredCallable(...)`, and the imported `#Namespace` /
+`.mixin` array-path fixture. Goal: move the current `#Namespace` and `.mixin`
+`findMixinsFast(...)` hits onto covered offset/child-frame facts. Acceptance:
+the import-reference array-path spy has zero generated fallback arrays and zero
+direct-crawl hits, while existing namespace positives still resolve.
+
+2. [ ] Finish callable retry-frame bridge deletion where retry frames are
 covered. Scope: parent/fallback frame loops in `Rules.findMixin`, fallback
 frame `prepareCallableLookupFrame`, recursive namespace starts, and
 reference-import fallback frames. Goal: covered retry-frame misses do not keep
@@ -52,7 +61,7 @@ walking into broad direct crawls, and disabled parent search does not retry
 parent/fallback frames after a narrowed current-frame miss. Acceptance:
 parent/fallback callable miss spy tests plus existing fallback hit tests.
 
-2. [ ] Extend narrow uncovered-child fallback proof to namespaced
+3. [ ] Extend narrow uncovered-child fallback proof to namespaced
 reference-import child surfaces. Scope: the uncovered child-only fallback in
 `findMixinsFastForUncoveredCallable`, reference-import siblings, rendered
 reference imports, selector-list reference imports, and namespace offsets.
@@ -62,20 +71,20 @@ child surfaces are not reopened; configured guarded and simple
 reference-import guarded calls stay zero-bridge; remaining dynamic positives
 still resolve.
 
-3. [ ] Delete any remaining simple exact callable child scans that are
+4. [ ] Delete any remaining simple exact callable child scans that are
 provably covered by frame facts. Scope: current-frame miss, child-entry family
 skip, child-frame covered miss, and terminal mixin-only mode. Goal: avoid
 child-surface crawl when the frame already says the family/key cannot hit.
 Acceptance: `findMixinsFast` spy tests for simple mixin and mixin-ruleset
 misses.
 
-4. [ ] Retry `ReferencePlan` only for source-static facts. Scope:
+5. [ ] Retry `ReferencePlan` only for source-static facts. Scope:
 `_lookupStrategy`, key node identity, read mode, target presence, `inCall`, and
 static parent/start shape. Goal: cache repeated preparation only when generated
 control/mixin surfaces cannot change the facts. Acceptance: control loop matrix
 plus variable/property/function/callable handle tests.
 
-5. [ ] Finish reference-import namespace offset coverage. Scope:
+6. [ ] Finish reference-import namespace offset coverage. Scope:
 namespaced reference-import rulesets, reference-import child surfaces reached
 through array-path keys, selector-list reference-import namespaces,
 `findMixinNamespacePathFast(...)` unsupported returns, and
@@ -85,27 +94,27 @@ crawl once placement facts prove the surface. Acceptance: reference-import
 namespace array-path spies show zero generated remainder-array fallback and
 record/eliminate any remaining `findMixinsFast(...)` bridge hits.
 
-6. [ ] Extend stable namespace no-fallback proof to imported namespace
+7. [ ] Extend stable namespace no-fallback proof to imported namespace
 surfaces. Scope: namespace path offsets, reference imports, terminal
 mixin-only mode, and parameterized terminals. Goal: stable positives stay on
 offset paths without breaking Less semantics. Acceptance: Less fixture,
 reference-import namespace tests, and bridge spies. Guarded namespace positives
 already have zero broad-crawl and zero array-fallback proof.
 
-7. [ ] Confirm scalar excluded-node handle invalidation after output binding.
+8. [ ] Confirm scalar excluded-node handle invalidation after output binding.
 Scope: merge normalization scalar getters, handle shape before/after
 `bindOutput`, and stale occurrence invalidation. Goal: prove scalar exclusion
 identity changes exactly when the output declaration is bound. Acceptance:
 lower-level/materialization-aware handle test; do not use the rejected
 render-level `Reference.eval` spy shape.
 
-8. [ ] Prove reference-import declaration/callable misses stay on modeled
+9. [ ] Prove reference-import declaration/callable misses stay on modeled
 frames after retry-frame cleanup. Scope: reference import roots, rendered
 reference imports, parent/fallback frames, and optional callable misses. Goal:
 no regression to frame-less broad crawl. Acceptance: real reference-import
 fixtures plus broad-bridge spies.
 
-9. [ ] Move remaining declaration-constraint reference options toward
+10. [ ] Move remaining declaration-constraint reference options toward
 semantic names or internal constraint construction. Scope:
 `ReferenceOptions.requiredNormalizedFromAssign`, `excludedNodes`, merge
 normalization, and tests that construct filtered references. Goal: keep
@@ -114,14 +123,14 @@ Acceptance: existing semantic tests for mutable `excludedNodes` and
 `requiredNormalizedFromAssign` stay green, and any renamed/internalized fields
 are guarded by `verify:binding-lookup-hot-paths`.
 
-10. [ ] Reduce or justify the remaining setDefined readonly result object.
+11. [ ] Reduce or justify the remaining setDefined readonly result object.
 Scope: `findSetDefinedDeclarationReadonlyOccurrence`, readonly propagation,
 `setDefined`, and the `{ occurrence, readonly }` allocation. Goal: avoid a
 general wrapper-looking result shape if setDefined can write through a tighter
 cold helper without reintroducing ordinary-read branching. Acceptance:
 setDefined/live binding tests, build, and hot-path guard stay green.
 
-11. [ ] Delete or further isolate cold `Rules.find*` declaration wrappers that
+12. [ ] Delete or further isolate cold `Rules.find*` declaration wrappers that
 only tests use. Scope: `findVariable`, `findProperty`, `findDeclaration`,
 `findAnyDeclaration`, and remaining test helper call sites. Goal: keep public
 materialization wrappers out of hot runtime and avoid preserving unreleased
@@ -129,31 +138,23 @@ surfaces solely because tests call them. Acceptance: either wrappers are
 deleted with tests moved to occurrence helpers, or the tracker records the
 specific cold utility reason they remain.
 
-12. [ ] Run changed-baseline and fix any lookup-owned fallout now that the
+13. [ ] Run changed-baseline and fix any lookup-owned fallout now that the
 ruleset header streaming blocker is repaired. Scope: changed Less/Jess
 fixtures, ruleset render interaction with lookup work, and branch-local
 failures. Goal: use baseline evidence as a gate again. Acceptance:
 `pnpm run verify:baseline -- --changed` either passes or has a lookup-owned
 failure recorded with a fix.
 
-13. [ ] Refresh lookup profile and one-iteration hotpath smoke after the next
+14. [ ] Refresh lookup profile and one-iteration hotpath smoke after the next
 bridge deletion batch. Scope: `scope-lookup-stress.less`, direct lookup
 counters, old registry counters, and smoke timings. Goal: keep counter
 evidence current without claiming speed. Acceptance: profile recorded with old
 `Rules.find`/registry counters empty and smoke values labeled smoke-only.
 
-14. [ ] Audit ruleset namespace terminal frame creation after the
-reference-import array-path cut. Scope: the new `ruleset.rules.getScopeFrame()`
-terminal branch in `findRulesetNamespacePathFast`, existing prepared child
-facts, and cases without reference imports. Goal: avoid constructing a scope
-frame when carried child facts already prove a terminal hit/miss. Acceptance:
-focused namespace tests show no regression and the tracker records whether the
-frame creation is necessary for reference-import positives.
-
 15. [ ] Add namespaced reference-import miss proof for array-path lookups.
 Scope: imported `#Namespace` positives and misses, terminal `.missing`, and
 selector-list reference-import namespaces. Goal: prove misses stay off
-generated fallback arrays and broad direct crawl after the positive path cut.
+generated fallback arrays and broad direct crawl during the namespace cut.
 Acceptance: focused import-style/reference tests cover both hit and miss with
 bridge spies.
 
@@ -226,16 +227,14 @@ bridge spies.
   bridge-spy proof: `#guarded > #deeper > .mixin` resolves the plain ruleset,
   silent callable namespace mixin, and defaulted guarded callable namespace
   mixin without `findMixinsFast(...)` broad crawl or nested array fallback.
-- Namespaced reference-import array-path lookup no longer calls
-  `findMixinsFast(...)` for `#Namespace` or `.mixin` in the positive
-  import-style fixture. The ruleset-namespace precheck now avoids broad mixin
-  ambiguity crawl when a direct ruleset prefix is already found and no current
-  mixin namespace is proven, and terminal simple remainders use the ruleset
-  body's callable frame/uncovered-child bridge before falling back. The
-  guarded namespace union fixture still resolves all three required entries,
-  preserving the plain-ruleset namespace plus callable namespace mixin union.
-  A focused mixin test also proves a ruleset namespace simple terminal miss
-  skips child `findMixinsFast(...)` when the child frame covers the miss.
+- Namespaced reference-import array-path lookup still reports direct
+  `findMixinsFast(...)` bridge hits for `#Namespace` / `.mixin` when probed.
+  The import-style array-path fixture proves the nested array-path replay is
+  the authored `['#Namespace', '.mixin']` lookup rather than a generated
+  fallback remainder array. A follow-up attempt to delete those hits by routing
+  terminal reference-import child surfaces through covered child-frame facts
+  was rejected because it dropped namespace/callable union candidates. The
+  remaining direct-crawl hits are the next deletion target.
 - `setDefined` assignment no longer imports or calls exported
   `findVariableDeclarationAssignmentLookup` /
   `findPropertyDeclarationAssignmentLookup` wrappers. The old
