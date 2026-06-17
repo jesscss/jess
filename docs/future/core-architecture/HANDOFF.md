@@ -103,45 +103,28 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `Declaration` direct writer / buffer render transport cut in
-  `packages/core/src/tree/declaration.ts`.
+- Latest pass: `Ampersand` direct source writer / collapse parent transport
+  cut in `packages/core/src/tree/ampersand.ts`.
 - Verdict: accepted as a focused serialization transport cut. No speed claim.
-- New traversal: whitespace scans in `needsCustomTrailingNewlineTrim(...)`,
-  `leadingHorizontalWhitespace(...)`, `hasTrailingWhitespace(...)`, and
-  `trimCustomTrailingNewline(...)` replace regex match/replace boundaries while
-  staying on the already-materialized output text; one indexed loop replaces
-  `replacements.entries()` in custom interpolated render replacement
-  evaluation; fallback function assembly now uses indexed loops over
-  `printableKey` and existing `args.value` instead of `map/filter/join` arrays.
-- New node/materialization: no AST nodes. Two `new OutputWriter()` calls are
-  detached string boundaries: one cold custom fallback child stringifier and
-  one declaration buffer-render bridge. The bridge is still a known boundary,
-  not a direct-to-buffer scalar fast path.
-- Render path: declaration buffer render now calls a declaration-local writer
-  through a detached prepared writer instead of the cold
-  `declValueTrimmedString(...)` wrapper. Source/public string callers still use
-  the cold wrapper only to return the string they requested.
-- Helper/API surface: added private `writeDeclarationValueSyntax(...)` as the
-  direct writer that `writeSyntax(...)`, public string output, and buffer render
-  share. This replaces repeated public child string calls and exposes the
-  existing merge-adapter proof hook used by declaration tests; no public API was
-  added. The `renderState` object in `renderDeclarationRenderState(...)` is a
-  hoisted existing argument shape so buffer and string branches pass identical
-  state without duplicating object literals.
+- New traversal: none.
+- New node/materialization: none in runtime. The `throw new Error` token in
+  `ampersand.test.ts` is test-only proof that collapse-mode parent selector
+  emission does not call public `toString(...)`; the test-local
+  `new OutputWriter()` only captures direct `writeSyntax(...)` output.
+- Render path: source/public output now goes through `Ampersand.writeSyntax(...)`
+  and public `toTrimmedString(...)` is the cold wrapper. Collapse-mode parent
+  selector emission calls parent `writeSyntax(...)` directly instead of public
+  `toString(...)`.
+- Helper/API surface: added one concrete `writeSyntax(...)` override on
+  `Ampersand`, matching the existing selector-family direct writer contract; no
+  public API was added.
 - Metadata mutations: none.
-- Allocation changes: removed fallback call arg `filter/map/join` arrays and
-  the stale `mergeAdapter.value` state field. The `values = args?.value ?? []`
-  fallback reads the existing argument array or the shared empty literal path;
-  the two `slice(...)` calls return normalized whitespace substrings at cold
-  custom formatting boundaries. Buffer render still uses a detached writer
-  boundary for declaration text and does not claim a scalar direct-to-buffer
-  fast path.
-- Evidence: full `declaration.test.ts` passed. Build passed. ESLint passed for
-  `declaration.ts`; linting the whole declaration test file still reports
-  pre-existing unsafe reflection assertions in the test file.
-- Merge-carried test-only review: the `origin/dev` merge also includes
-  guarded import proof tests that use `try/finally` to restore
-  `Rules.findMixinsFast` prototype spies and allocate small
-  `directChildSurfaceBridges` arrays for assertions. These are test-only
-  evidence collectors, not production render/eval control flow or runtime
-  allocation changes.
+- Generic defensive reads: none in runtime; the `leaf childKeys = null` text in
+  the tracker is pre-existing row context carried in this diff.
+- Allocation changes: none.
+- Rejected in this pass: a naive `Call` render-helper swap from evaluated
+  `toTrimmedString(...)` to `writeSyntax(...)` was tried and reverted because
+  focused call tests showed extra child readbacks and a missing custom content
+  output. Do not retry without a scalar/direct child contract split.
+- Evidence: full `ampersand.test.ts` passed. Full gates are required before
+  commit.
