@@ -21,10 +21,22 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  marks = 0;
+  reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
   }
 }
 
@@ -116,6 +128,32 @@ describe('Interpolated', () => {
     expect(await interpolatedNode.render(context, buffer)).toBe('hello-world');
     expect(buffer.parts).toEqual(['hello-world']);
     expect(resolveCalls).toBe(0);
+    expect(interpolatedNode.evaluated).toBe(false);
+    expect(interpolatedNode.registrationPrepared).toBe(false);
+  });
+
+  it('writes resolved interpolated output into shared flat buffers with one mark', async () => {
+    const root = rules([
+      vardecl({
+        name: any('name'),
+        value: any('world')
+      })
+    ]);
+    await setEvaluatedRoot(context, root);
+
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const interpolatedNode = interpolated({
+      source: `hello-${INTERPOLATION_PLACEHOLDER}`,
+      replacements: [ref({ key: 'name' }, { type: 'variable' })]
+    });
+
+    expect(await interpolatedNode.render(context, buffer)).toBe('hello-world');
+    expect(buffer.parts).toEqual(['hello-', 'world']);
+    expect(writer.marks).toBe(1);
+    expect(writer.reads).toBe(1);
     expect(interpolatedNode.evaluated).toBe(false);
     expect(interpolatedNode.registrationPrepared).toBe(false);
   });

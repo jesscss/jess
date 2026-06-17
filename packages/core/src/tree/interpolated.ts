@@ -268,6 +268,10 @@ export class Interpolated<
       w.add(String(replacement.valueOf()), replacement);
       return;
     }
+    if (replacement.type === 'Any' || replacement.type === 'Anonymous' || replacement.type === 'Keyword') {
+      w.add(String(replacement.value).trim(), replacement);
+      return;
+    }
     const mark = w.mark();
     replacement.writeSyntax(printOptions);
     if (!isNode(replacement, N.Reference)) {
@@ -315,8 +319,8 @@ export class Interpolated<
     const prepared = buffer
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const mark = buffer ? prepared.writer.mark() : 0;
-    const out = this.renderEvaluatedReplacementText(context, prepared);
+    const mark = prepared.writer.mark();
+    const out = this.renderEvaluatedReplacementText(context, prepared, mark);
     return buffer
       ? writePreparedRenderTextResult(buffer, prepared, mark, out)
       : out;
@@ -435,9 +439,8 @@ export class Interpolated<
     return result;
   }
 
-  private renderEvaluatedReplacementText(context: Context, options: PrintOptions): MaybePromise<string> {
+  private renderEvaluatedReplacementText(context: Context, options: PrintOptions, mark: number): MaybePromise<string> {
     const w = getPrintOptions(options).writer!;
-    const mark = w.mark();
     const { source, replacements } = this.value;
     let sourceOffset = 0;
     for (let i = 0; i < replacements.length; i++) {

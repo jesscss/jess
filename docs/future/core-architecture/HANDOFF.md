@@ -482,7 +482,11 @@ shape current before commit.
    resolve replacement arrays are now allocated lazily only after a replacement
    changes. Compound selector interpolation now scans simple selector tokens
    directly instead of using regex `match(...)`, a token array, and a pre-sized
-   selector array. Semantic selector ownership boundaries remain.
+   selector array. Rendered scalar replacements now write owned token text
+   directly instead of opening a trim mark around scalar `writeSyntax(...)`, and
+   render buffer output reuses the outer render mark instead of taking a second
+   inner mark just to return emitted text. Semantic selector ownership
+   boundaries remain.
 10. [x] Finish `StyleImport` first-use placement copies by replacing them with
    canonical source placement state, or document the exact semantic blocker.
 
@@ -662,32 +666,28 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Call `evalArgNodes(...)` immediate sync argument evaluation.
+Current pass: Interpolated scalar replacement render marks.
 
-- New traversal: none. The existing argument loops remain; each iteration now
-  chooses `evalImmediateSync(...)` for non-`F_MAY_ASYNC` args and public
-  `eval(...)` only for async-capable args.
-- New node/materialization: no new materialization. The existing
-  `copyWithReusableLeaves(...)` ownership boundary for unchanged evaluated args
-  remains; this pass changes only the sync evaluation entrypoint. The
-  `SyncOverrideAny` construction is test-only scaffolding for the custom eval
-  override contract.
-- Render path: no render/string transport was added. The change is in CSS-call
-  eval argument preparation, and calc-frame cleanup remains on the existing
-  sync/async paths.
+- New traversal: none. The existing replacement loops remain; scalar
+  replacements now write owned text directly and `render(...)` reuses its outer
+  mark for returned text.
+- New node/materialization: none. No node creation, copy, inherit, adoption, or
+  evaluated replacement ownership changed.
+- Render path: rendered `Any`/`Anonymous`/`Keyword` replacements now write owned
+  trimmed token text directly instead of calling scalar `writeSyntax(...)` under
+  a local mark only to trim it. `render(...)` now passes its existing mark into
+  `renderEvaluatedReplacementText(...)`, so shared flat-buffer rendering uses
+  one mark/readback while preserving the public string return contract.
 - Helper/API surface: no helper or public API was added.
 - Metadata mutations: no production parent/source/frozen/location/options/
-  context mutation was added. Tests temporarily override `Node.prototype.eval`
-  and restore it in `finally` to prove base non-async args bypass public eval;
-  this is test-only cleanup.
-- Evidence: `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/call.test.ts -t "evaluates non-async CSS call args through the immediate sync boundary"`
-  passed, and `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/call.test.ts src/tree/__tests__/operation.test.ts`
+  context mutation was added. The `CountingWriter` construction is test-only
+  scaffolding for the shared flat-buffer mark/readback assertion.
+- Evidence: `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/interpolated.test.ts`
   passed. Further eslint/build/aggressive-review gates still need to run before
   commit.
 - Review noise: `verify:aggressive-cutting-review` may report unrelated dirty
   worktree tokens from JS/runtime/docs work outside this slice.
-- Verdict: accepted as a bounded partial cut if final gates pass. Call copy
-  ownership in eval/finalized fallback paths, non-scalar/custom/trivia arg trim
-  marks, async helper ladders, and callable output remain open. No performance
-  claim; performance remains shelved because this was not a measured benchmark
-  pass.
+- Verdict: accepted as a bounded partial cut if final gates pass. Semantic
+  selector ownership boundaries and broader replacement materialization remain
+  open. No performance claim; performance remains shelved because this was not
+  a measured benchmark pass.
