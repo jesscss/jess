@@ -191,3 +191,10 @@ with `--no-verify` after the explicit gates pass.
   loop, selector construction/inheritance, result array, cleanup block, and
   test exception are serialization proof/placement machinery from that merge,
   not binding lookup logic. No speed claim.
+- Merge-carried serialization review: `origin/dev` also includes AtRule
+  narrowed thenable continuation cleanup in
+  `packages/core/src/tree/at-rule.ts`. Async at-rule name/prelude/body
+  continuations now call the already-thenable value directly instead of adding
+  promise wrapper calls; the pre-existing at-rule comment-trivia failure remains
+  tracked outside this binding pass. This is not new binding logic. No speed
+  claim.

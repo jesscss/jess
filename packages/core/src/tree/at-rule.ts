@@ -711,7 +711,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
       const resolvedPrelude = this.evalPreludeValue(prelude, context);
       if (isThenable(resolvedPrelude)) {
-        return Promise.resolve(resolvedPrelude).then(resolved => ({ name, prelude: resolved }));
+        return resolvedPrelude.then(resolved => ({ name, prelude: resolved }));
       }
       return {
         name,
@@ -928,7 +928,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
     const maybeKey = node.name.eval(context);
     if (isThenable(maybeKey)) {
-      return Promise.resolve(maybeKey).then(finish);
+      return maybeKey.then(finish);
     }
 
     return finish(maybeKey);
@@ -1346,7 +1346,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       // This matches Less behavior for mixin parameters referenced from nested @media preludes.
       const out = source.evalPreludeValue(prelude, context);
       if (isThenable(out)) {
-        return Promise.resolve(out).then((n) => {
+        return out.then((n) => {
           setAtRuleBodyEvalPrelude(bodyEvalRecord, n);
           return finishBodyEval();
         });
