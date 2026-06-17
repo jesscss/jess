@@ -103,21 +103,27 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `Rules` root charset/comment/import detached public string
-  transport cut in `packages/core/src/tree/rules.ts`.
-- Verdict: accepted as a focused serialization transport cut. No speed claim.
-- New traversal: none.
-- New node/materialization: none in runtime. The `throw new Error` tokens in
-  `rules.test.ts` are test-only proof that public child string methods are not
-  used by root charset/import source serialization.
-- Render path: no render-path change. Root CSS source serialization still uses
-  a detached writer for hoisted charset/comment/import text, but that detached
-  writer now calls child `writeSyntax(...)` directly instead of public
-  `toString(...)` / `toTrimmedString(...)`.
-- Helper/API surface: replaced the string-returning `printDetached(...)` helper
-  with `writeDetached(...)`, a void writer callback helper for detached syntax
-  capture; no public APIs added.
+- Latest pass: configured guarded import bridge proof plus rejected
+  namespaced reference-import array-path deletion attempt.
+- Verdict: accepted only as proof/audit. The attempted direct-crawl deletion
+  was reverted because it dropped namespace/callable union candidates. No speed
+  claim.
+- New traversal: none in production after the revert. Test-only spies record
+  direct-crawl attempts for import fixtures.
+- New node/materialization: none.
+- Render path: no committed render/stringification path change.
+- Helper/API surface: no new exported helper or public API. The retry-frame
+  loop was audited by a read-only subagent and kept because fallback-frame hit
+  tests still prove it is semantically live.
 - Metadata mutations: none.
-- Allocation changes: none.
-- Evidence: focused `rules.test.ts` root serializer tests passed before doc
-  closeout. Full gates are recorded in the final response.
+- Allocation changes: none in production. Tests allocate small spy arrays only
+  for proof.
+- Evidence: focused import-style tests for `namespaced reference-imported
+  ruleset array-path lookups`, variable-only guarded `with`, replacement
+  guarded `set`, and child-surface guarded `with`/`set` should pass before
+  commit. The namespace deletion attempt failed the guarded union/terminal miss
+  proof and remains item 1 in the binding queue. Final gates are required
+  before commit. No speed claim.
+- Merge note: the branch also incorporates the latest serialization transport
+  work from `origin/dev`; keep that progress tracked in
+  `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.
