@@ -103,23 +103,17 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `Ruleset.getHeaderString(...)` selector fallback removal in
-  `packages/core/src/tree/ruleset.ts`.
-- Verdict: accepted as a focused serialization branch cut. No speed claim.
+- Latest pass: `AtRule.valueOf()` name public-string transport cut in
+  `packages/core/src/tree/at-rule.ts`.
+- Verdict: accepted as a focused value-key serialization cut. No speed claim.
 - New traversal: none.
 - New node/materialization: none.
-- Render path: header rendering still writes selector syntax to the prepared
-  writer and reads that local header string for indentation/normalization. The
-  defensive fallback to public `renderSelector.toTrimmedString(options)` is
-  gone because `renderSelector` is already a concrete `Selector` after the Nil
-  and reference-filter guards.
-- Helper/API surface: no helpers or APIs added. One structural probe branch and
-  one public string fallback call were deleted.
-- Metadata mutations: no parent/source/frozen/location mutation. Existing
-  print-state save/restore and trivia restore boundaries are unchanged.
-- Allocation changes: no replacement allocations. This removes the fallback
-  branch object/type probe and avoids public string wrapper transport for
-  ruleset headers.
-- Evidence: focused `ruleset.test.ts` header tests and `nesting-collapse.test.ts`
-  collapse/header tests passed before doc closeout. Full gates are recorded in
-  the final response.
+- Render path: no render path changed. At-rule equality/header-key comparison
+  now reads `this.name.valueOf()` instead of public `this.name.toString()`;
+  prelude keying remains on `prelude.valueOf()`.
+- Helper/API surface: no helpers or APIs added.
+- Metadata mutations: none.
+- Allocation changes: none.
+- Evidence: focused `at-rule.test.ts` coverage proves overriding
+  `name.toString()` is not observed by `AtRule.valueOf()`. Full gates are
+  recorded in the final response.

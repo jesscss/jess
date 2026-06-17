@@ -82,6 +82,22 @@ describe('AtRule', () => {
     expect(prepared).toBe(node);
   });
 
+  it('compares at-rule names without public string transport', () => {
+    const name = any('@media', { role: 'atkeyword' });
+    let toStringCalls = 0;
+    name.toString = () => {
+      toStringCalls++;
+      return '@wrong';
+    };
+    const node = atrule({
+      name,
+      prelude: seq([any('screen', { role: 'keyword' })])
+    });
+
+    expect(node.valueOf()).toBe('@media screen');
+    expect(toStringCalls).toBe(0);
+  });
+
   it('keeps interpolated at-rule registration prep wrappers self-owned instead of back-pointing to the canonical at-rule', async () => {
     const prelude = seq([any('screen', { role: 'keyword' })]);
     const node = atrule({
