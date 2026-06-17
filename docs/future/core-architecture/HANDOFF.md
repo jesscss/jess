@@ -103,60 +103,56 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Call evaluated CSS syntax direct writer in
-  `packages/core/src/tree/call.ts`.
-- Verdict: accepted as a red-to-green public string transport cut. No speed
-  claim.
-- New traversal: none.
-- New node/materialization: none.
-- Render path: evaluated CSS call names, args, escaped args, and content now
-  write the evaluated node syntax directly through the active print writer
-  instead of calling public `toTrimmedString(...)`.
-- Helper/API surface: none.
-- Metadata mutations: none.
-- Allocation changes: none beyond deleting public string wrapper transport.
-- Rejected/observed in this pass: broader Call callable output selection,
-  calc/finalized fallback copy pressure, and remaining branch ladders stay open
-  in the Call row.
-- Merge-carried binding review: merging `origin/dev` also brought the
-  namespaced reference-import crawl deletion in `rules.ts` plus focused
-  import/mixin tests. Its new loops walk existing scope-frame, prefix-match,
-  and direct-child-entry state to prove covered namespace uncertainty; the
-  `Parser` construction, `try/finally`, and small spy arrays are test-only
-  proof scaffolding from `import-style.test.ts` / `mixin.test.ts`, not
-  production render/string transport.
-- Evidence: focused `call.test.ts` selection was red before the patch and now
-  passes for dynamic CSS call names, evaluated args, escaped evaluated args,
-  and evaluated content without public `toTrimmedString(...)` transport.
-  Targeted ESLint passed. Full `call.test.ts` remains red in the same ten
-  cases on clean `origin/dev` (`/tmp/jess-origin-dev-call-check` comparison),
-  so the focused slice is the proof for this batch. Full gates are required
-  before commit.
-- Merge-carried binding review: `findRulesetNamespacePathFast(...)` now
-  prepares the visible
-  callable frame chain for the namespace segment and checks visible child
-  entries to prove uncovered child/reference-import uncertainty is limited to
-  the ruleset-prefix body already being descended into. This replaces broad
-  `findMixinsFast(...)` scans for the targeted `#Namespace` / `.mixin`
-  reference-import array-path cases, including selector-list imported
-  namespaces.
-  No exported helper/API was added; helper logic lives in private `Rules`
-  methods. It does not change render/stringification, and its focused
-  import-style/mixin evidence passed before the merge. No speed claim.
-- Merge-carried binding review: callable namespace child-surface bridge
-  narrowing reuses existing scope-frame lookup and
-  `findMixinsFastForUncoveredCallable(...)` child-entry narrowing. It does not
-  change render/stringification or add public API; focused import-style/mixin
-  evidence passed on the incoming branch. The flagged `try` blocks,
-  `directCrawlHits` spy array, and optional `MixinEntry[]` collection are
-  binding proof/bridge state, not serialization transport. No speed claim.
-- Merge-carried binding review: setDefined readonly result-object deletion
-  replaces the old internal readonly occurrence result wrapper with
-  `applySetDefinedDeclarationReadonlyOccurrence(...)`. It does not change
-  render/stringification; existing cold adoption fallback remains limited to
-  non-variable setDefined insertion. The flagged `ReferenceError`, parent
-  `Error`, and `foundRules.adopt(...)` are existing cold setDefined failure /
-  insertion semantics carried by the incoming merge, not routine render or
-  lookup miss control flow. Focused setDefined tests and
-  `verify:binding-lookup-hot-paths` passed on the incoming branch. No speed
-  claim.
+- Latest pass: declaration wrapper deletion plus callable namespace
+  reference-import modeled-miss bridge cut.
+- Verdict: accepted as binding/lookup machinery deletion with behavior proof.
+  No speed claim.
+- New traversal: no new runtime traversal. `findMixinsFastForUncoveredCallable`
+  now optionally reports whether its existing child-entry loop inspected a
+  modeled uncovered surface. The new `for (const token of ...)` loop is in the
+  verifier script only. `findCallableDescendantsWithinMixinNamespaces` returns
+  `[]` for covered descendant misses so the caller does not reopen the older
+  namespace fallback after the direct frame/child-surface proof.
+- New node/materialization: no runtime node materialization. Core tests now
+  import occurrence helpers directly, and the SCSS parser baseline asserts the
+  parsed `VarDeclaration` in the function body instead of materializing through
+  runtime lookup. The new `[]` value is a private covered-miss sentinel in the
+  callable namespace path, not an output array to stringify; test-only arrays
+  record spy hits.
+- Render path: no render/stringification path change. Function return and
+  selector-attribute tests keep output assertions while deleting obsolete
+  monkey-patches of removed declaration wrappers.
+- Helper/API surface: deleted `Rules.findVariable`, `findProperty`,
+  `findDeclaration`, and `findAnyDeclaration` declaration wrappers. Added no
+  replacement public facade. Added one private `UncoveredCallableCoverage`
+  shape to carry a fact out of an existing helper; it prevents a broader
+  fallback call and is not exported.
+- Metadata mutations: none. The `try` flagged by aggressive review is in a
+  test-only spy restoration block.
+- Allocation changes: removed cold wrapper method calls and deleted test
+  monkey-patch closures around those wrappers. Added one small coverage object
+  only inside the namespace descendant uncovered branch; the object is used to
+  avoid nested `findMixin(...)` and namespace `findMixinsFast(...)` fallback
+  after a modeled miss. No speed claim is made from that shape.
+- Rejected/observed in this pass: the broad `tsc --noEmit` signal remains
+  unusable because unrelated repo-wide type debt dominates it. Focused tests,
+  eslint, and the binding hot-path verifier are the decision evidence for this
+  pass. Reference-import descendant positives inside namespace mixin bodies
+  remain open; only modeled misses were cut.
+- Evidence: `verify:binding-lookup-hot-paths` passed. Focused core tests for
+  reference/rules/import-style/detached-rulesets/function/selector-attr wrapper
+  deletion passed, the SCSS parser `@function` baseline passed, callable
+  namespace reference-import modeled-miss and existing ScopeFrame callable
+  bucket tests passed, and import-style namespace positives stayed green. Final
+  gates are required before commit. No speed claim.
+- Merge note: the branch also incorporates the latest serialization transport
+  work from `origin/dev`; keep that progress tracked in
+  `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.
+- Merge-carried serialization review: aggressive-review danger tokens from
+  `origin/dev` are serialization/node-row work, not new binding logic. The
+  flagged loops are direct syntax/frame traversal in `ampersand.ts`,
+  `at-rule.ts`, `reference.ts`, and `serialize-helper.ts`; the flagged
+  `OutputWriter`, `BasicSelector(...).inherit(...)`, test `throw new Error`,
+  `try/finally`, and spy arrays belong to that serialization merge. They are
+  accepted as incoming dev state for this binding merge, with detailed
+  ownership remaining in `NODE-REWRITE-TRACKER.md`. No speed claim.

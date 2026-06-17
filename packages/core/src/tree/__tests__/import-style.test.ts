@@ -42,6 +42,7 @@ import { OutputWriter, getPrintOptions } from '../util/print.js';
 import { buildSourceMap } from '../util/sourcemap.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
+import { findVariableDeclarationOccurrence } from '../util/direct-rules-lookup.js';
 
 let context: Context;
 
@@ -58,11 +59,11 @@ describe('Style import construction', () => {
 
 function getVarWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
-  return n.findVariable(key, {
+  return findVariableDeclarationOccurrence(n, key, {
     ...opts,
     context: opts.context ?? context,
     searchParents: true
-  });
+  })?.node;
 }
 
 function getMixinWithContext(context: Context, n: Rules, key: string, opts: CallableFindOptions = {}) {
@@ -2550,17 +2551,8 @@ describe('Style import', () => {
           ])
         })
       ]);
-      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
       const originalCopy = Any.prototype.copy;
-      const declarationBridgeHits: string[] = [];
       let scalarCopies = 0;
-      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
-        const [key] = args;
-        if (key === 'fromRef' || key === 'missingFromRef') {
-          declarationBridgeHits.push(key);
-        }
-        return originalFindDeclaration.apply(this, args);
-      };
       Any.prototype.copy = function(...args: Parameters<typeof originalCopy>) {
         if (this === sourceValue || this === fallbackValue) {
           scalarCopies++;
@@ -2577,10 +2569,8 @@ describe('Style import', () => {
             miss: fallback;
           }
         `);
-        expect(declarationBridgeHits).toEqual([]);
         expect(scalarCopies).toBe(0);
       } finally {
-        RulesClass.prototype.findDeclaration = originalFindDeclaration;
         Any.prototype.copy = originalCopy;
       }
     });

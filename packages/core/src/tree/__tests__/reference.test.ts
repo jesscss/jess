@@ -4,6 +4,10 @@ import { isNode } from '../util/is-node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { buildScopeFrame, lookupScopeFrameVariable, setScopeFrameLiveBinding } from '../scope-frame.js';
+import {
+  findPropertyDeclarationOccurrence,
+  findVariableDeclarationOccurrence
+} from '../util/direct-rules-lookup.js';
 let context: Context;
 let expectedAsyncRulesContext: RulesClass | undefined;
 
@@ -463,16 +467,6 @@ describe('reference', () => {
     });
 
     it('does not rediscover fallback-frame parent declarations after covered misses', async () => {
-      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
-      const declarationBridgeHits: string[] = [];
-      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
-        const [key] = args;
-        if (key === 'tone') {
-          declarationBridgeHits.push(key);
-        }
-        return originalFindDeclaration.apply(this, args);
-      };
-
       const fallbackParent = rules([
         vardecl({ name: any('tone'), value: any('blue') })
       ]);
@@ -504,9 +498,7 @@ describe('reference', () => {
         }).eval(context);
 
         expect(resolved.toTrimmedString()).toBe('fallback');
-        expect(declarationBridgeHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findDeclaration = originalFindDeclaration;
         Object.defineProperty(fallbackParent, 'value', {
           configurable: true,
           writable: true,
@@ -1382,79 +1374,49 @@ describe('reference', () => {
     });
 
     it('index references use typed declaration lanes without generic declaration fallback', async () => {
-      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
-      let genericDeclarationLookups = 0;
-      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
-        const [key] = args;
-        if (key === 'tone' || key === 'tone-var') {
-          genericDeclarationLookups++;
-        }
-        return originalFindDeclaration.apply(this, args);
-      };
+      const node = rules([
+        vardecl({ name: 'tone-var', value: any('purple') }),
+        decl({ name: 'tone', value: any('orange') }),
+        decl({
+          name: any('seen-var'),
+          value: ref({ key: 'tone-var' }, { type: 'index' })
+        }),
+        decl({
+          name: any('seen-prop'),
+          value: ref({ key: quoted('tone') }, { type: 'index' })
+        })
+      ]);
 
-      try {
-        const node = rules([
-          vardecl({ name: 'tone-var', value: any('purple') }),
-          decl({ name: 'tone', value: any('orange') }),
-          decl({
-            name: any('seen-var'),
-            value: ref({ key: 'tone-var' }, { type: 'index' })
-          }),
-          decl({
-            name: any('seen-prop'),
-            value: ref({ key: quoted('tone') }, { type: 'index' })
-          })
-        ]);
+      const css = await renderNodeToString(node, context);
 
-        const css = await renderNodeToString(node, context);
-
-        expect(css).toBeString(`
-          tone: orange;
-          seen-var: purple;
-          seen-prop: orange;
-        `);
-        expect(genericDeclarationLookups).toBe(0);
-      } finally {
-        RulesClass.prototype.findDeclaration = originalFindDeclaration;
-      }
+      expect(css).toBeString(`
+        tone: orange;
+        seen-var: purple;
+        seen-prop: orange;
+      `);
     });
 
     it('direct Rules index targets use typed declaration lanes without generic declaration fallback', async () => {
-      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
-      let genericDeclarationLookups = 0;
-      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
-        const [key] = args;
-        if (key === 'tone' || key === 'toneVar') {
-          genericDeclarationLookups++;
-        }
-        return originalFindDeclaration.apply(this, args);
-      };
+      const targetRules = rules([
+        decl({ name: 'tone', value: any('orange') }),
+        vardecl({ name: 'toneVar', value: any('purple') })
+      ]);
+      const node = rules([
+        vardecl({ name: 'targetRules', value: targetRules })
+      ]);
+      setRulesContext(await node.eval(context));
 
-      try {
-        const targetRules = rules([
-          decl({ name: 'tone', value: any('orange') }),
-          vardecl({ name: 'toneVar', value: any('purple') })
-        ]);
-        const node = rules([
-          vardecl({ name: 'targetRules', value: targetRules })
-        ]);
-        setRulesContext(await node.eval(context));
+      await expect(Promise.resolve(ref({
+        target: ref({ key: 'targetRules' }, { type: 'variable' }),
+        key: quoted('tone')
+      }, { type: 'index' }).render(context))).resolves.toBe('orange');
 
-        await expect(Promise.resolve(ref({
-          target: ref({ key: 'targetRules' }, { type: 'variable' }),
-          key: quoted('tone')
-        }, { type: 'index' }).render(context))).resolves.toBe('orange');
+      await expect(Promise.resolve(ref({
+        target: ref({ key: 'targetRules' }, { type: 'variable' }),
+        key: 'toneVar'
+      }, { type: 'index' }).render(context))).resolves.toBe('purple');
 
-        await expect(Promise.resolve(ref({
-          target: ref({ key: 'targetRules' }, { type: 'variable' }),
-          key: 'toneVar'
-        }, { type: 'index' }).render(context))).resolves.toBe('purple');
-
-        expect(genericDeclarationLookups).toBe(0);
-        expect(context.referenceStack).toBe(0);
-      } finally {
-        RulesClass.prototype.findDeclaration = originalFindDeclaration;
-      }
+      expect(context.referenceStack).toBe(0);
     });
 
     it('direct Rules index target occurrences re-read after owner mutation', async () => {
@@ -1486,39 +1448,23 @@ describe('reference', () => {
     });
 
     it('explicit target variable refs use occurrence fallback without Rules.findVariable', async () => {
-      const originalFindVariable = RulesClass.prototype.findVariable;
-      let variableLookups = 0;
-      RulesClass.prototype.findVariable = function(...args: Parameters<typeof originalFindVariable>) {
-        const [key] = args;
-        if (key === 'toneVar') {
-          variableLookups++;
-        }
-        return originalFindVariable.apply(this, args);
-      };
+      const targetRules = rules([
+        vardecl({ name: 'toneVar', value: any('purple') })
+      ]);
+      const node = rules([
+        vardecl({ name: 'targetRules', value: targetRules })
+      ]);
+      setRulesContext(await node.eval(context));
+      const variableRef = ref({
+        target: ref({ key: 'targetRules' }, { type: 'variable' }),
+        key: 'toneVar'
+      }, { type: 'variable' });
 
-      try {
-        const targetRules = rules([
-          vardecl({ name: 'toneVar', value: any('purple') })
-        ]);
-        const node = rules([
-          vardecl({ name: 'targetRules', value: targetRules })
-        ]);
-        setRulesContext(await node.eval(context));
-        const variableRef = ref({
-          target: ref({ key: 'targetRules' }, { type: 'variable' }),
-          key: 'toneVar'
-        }, { type: 'variable' });
+      expect(variableRef.eval(context).valueOf()).toBe('purple');
 
-        expect(variableRef.eval(context).valueOf()).toBe('purple');
-        expect(variableLookups).toBe(0);
+      targetRules.push(vardecl({ name: 'toneVar', value: any('blue') }));
 
-        targetRules.push(vardecl({ name: 'toneVar', value: any('blue') }));
-
-        expect(variableRef.eval(context).valueOf()).toBe('blue');
-        expect(variableLookups).toBe(0);
-      } finally {
-        RulesClass.prototype.findVariable = originalFindVariable;
-      }
+      expect(variableRef.eval(context).valueOf()).toBe('blue');
     });
 
     it('explicit target variable fallback uses carried declaration child entries', async () => {
@@ -2908,45 +2854,30 @@ describe('reference', () => {
     });
 
     it('static variable handle reuses binding identity without caching stale live values', async () => {
-      const originalFindVariable = RulesClass.prototype.findVariable;
-      let variableLookups = 0;
-      RulesClass.prototype.findVariable = function(...args: Parameters<typeof originalFindVariable>) {
-        const [key] = args;
-        if (key === 'color') {
-          variableLookups++;
-        }
-        return originalFindVariable.apply(this, args);
-      };
       const colorRef = ref({ key: 'color' }, { type: 'variable' });
-      try {
-        const node = rules([
-          vardecl({ name: 'color', value: any('red') }),
-          decl({
-            name: any('seen'),
-            value: colorRef
-          })
-        ]);
-        setRulesContext(node);
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        decl({
+          name: any('seen'),
+          value: colorRef
+        })
+      ]);
+      setRulesContext(node);
 
-        const first = await colorRef.eval(context);
-        expect(first.valueOf()).toBe('red');
-        expect(colorRef._rulesLookupHandle?.lookupType).toBe('variable');
-        expect(colorRef._rulesLookupHandle?.returnVal).toMatchObject({
-          kind: 'scope-frame-variable-binding-handle'
-        });
-        expect(variableLookups).toBe(0);
+      const first = await colorRef.eval(context);
+      expect(first.valueOf()).toBe('red');
+      expect(colorRef._rulesLookupHandle?.lookupType).toBe('variable');
+      expect(colorRef._rulesLookupHandle?.returnVal).toMatchObject({
+        kind: 'scope-frame-variable-binding-handle'
+      });
 
-        setScopeFrameLiveBinding(node.getScopeFrame(), 'color', {
-          value: any('blue')
-        });
-        const second = await colorRef.eval(context);
+      setScopeFrameLiveBinding(node.getScopeFrame(), 'color', {
+        value: any('blue')
+      });
+      const second = await colorRef.eval(context);
 
-        expect(second.valueOf()).toBe('blue');
-        expect(colorRef.render(context)).toBe('blue');
-        expect(variableLookups).toBe(0);
-      } finally {
-        RulesClass.prototype.findVariable = originalFindVariable;
-      }
+      expect(second.valueOf()).toBe('blue');
+      expect(colorRef.render(context)).toBe('blue');
     });
 
     it('cached variable handles use frame and cell identity without re-reading the current binding map', async () => {
@@ -3147,41 +3078,26 @@ describe('reference', () => {
       });
     });
 
-    it('findDeclaration VarDeclaration lookup uses direct lookup', async () => {
+    it('VarDeclaration occurrence lookup uses direct lookup', async () => {
       const node = rules([
         vardecl({ name: 'color', value: any('red') })
       ]);
 
       await node.eval(context);
-      const found = node.findVariable('color');
+      const found = findVariableDeclarationOccurrence(node, 'color')?.node;
 
       expect(found?.valueNode.valueOf()).toBe('red');
     });
 
-    it('findVariable uses the variable lane without calling findDeclaration', async () => {
-      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
-      let declarationLookups = 0;
-      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
-        const [key, filterType] = args;
-        if (key === 'color' && filterType === 'VarDeclaration') {
-          declarationLookups++;
-        }
-        return originalFindDeclaration.apply(this, args);
-      };
+    it('variable occurrence lookup uses the variable lane directly', async () => {
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') })
+      ]);
 
-      try {
-        const node = rules([
-          vardecl({ name: 'color', value: any('red') })
-        ]);
+      await node.eval(context);
+      const found = findVariableDeclarationOccurrence(node, 'color')?.node;
 
-        await node.eval(context);
-        const found = node.findVariable('color');
-
-        expect(found?.valueNode.valueOf()).toBe('red');
-        expect(declarationLookups).toBe(0);
-      } finally {
-        RulesClass.prototype.findDeclaration = originalFindDeclaration;
-      }
+      expect(found?.valueNode.valueOf()).toBe('red');
     });
 
     it('direct VarDeclaration lookup reads live cells through current bindings', async () => {
@@ -3201,7 +3117,7 @@ describe('reference', () => {
       };
 
       try {
-        const found = node.findVariable('color');
+        const found = findVariableDeclarationOccurrence(node, 'color')?.node;
 
         expect(found).toBe(liveSource);
       } finally {
@@ -3209,7 +3125,7 @@ describe('reference', () => {
       }
     });
 
-    it('findVariable reads live cells through current bindings', async () => {
+    it('variable occurrence lookup reads live cells through current bindings', async () => {
       const liveSource = vardecl({ name: 'color', value: any('blue') });
       const node = rules([
         vardecl({ name: 'color', value: any('red') })
@@ -3226,7 +3142,7 @@ describe('reference', () => {
       };
 
       try {
-        const found = node.findVariable('color');
+        const found = findVariableDeclarationOccurrence(node, 'color')?.node;
 
         expect(found).toBe(liveSource);
       } finally {
@@ -3234,13 +3150,13 @@ describe('reference', () => {
       }
     });
 
-    it('findProperty uses direct Declaration lookup for unfiltered exact hits', async () => {
+    it('property occurrence lookup uses direct Declaration lookup for unfiltered exact hits', async () => {
       const node = rules([
         decl({ name: any('color'), value: any('red') })
       ]);
 
       await node.eval(context);
-      const found = node.findProperty('color');
+      const found = findPropertyDeclarationOccurrence(node, 'color')?.node;
 
       expect(found?.valueNode.valueOf()).toBe('red');
     });
@@ -3256,7 +3172,11 @@ describe('reference', () => {
           value: any('foo')
         }, { assign: '+:' })
       ]);
-      const directFound = directLookupNode.findProperty('background-color', { searchParents: false });
+      const directFound = findPropertyDeclarationOccurrence(
+        directLookupNode,
+        'background-color',
+        { searchParents: false }
+      )?.node;
       const cachedSlot = getDirectDeclarationSlot(
         directLookupNode.directDeclarationLookupCache?.values().next().value?.publicMatch
       );
@@ -3280,14 +3200,14 @@ describe('reference', () => {
       `);
     });
 
-    it('findProperty uses direct Declaration lookup for covered unfiltered misses', async () => {
+    it('property occurrence lookup uses direct Declaration lookup for covered unfiltered misses', async () => {
       const node = rules([
         decl({ name: any('color'), value: any('red') })
       ]);
 
       await node.eval(context);
 
-      expect(node.findProperty('missing')).toBeUndefined();
+      expect(findPropertyDeclarationOccurrence(node, 'missing')).toBeUndefined();
     });
 
     it('direct VarDeclaration lookup ignores empty candidate sets', async () => {
@@ -3300,7 +3220,7 @@ describe('reference', () => {
         candidates: new Set(),
         optionalCandidates: new Set()
       };
-      const found = node.findVariable('color', opts);
+      const found = findVariableDeclarationOccurrence(node, 'color', opts)?.node;
 
       expect(found?.valueNode.valueOf()).toBe('red');
     });
@@ -3315,7 +3235,7 @@ describe('reference', () => {
         candidates: new Set(),
         optionalCandidates: new Set()
       };
-      const found = node.findProperty('color', opts);
+      const found = findPropertyDeclarationOccurrence(node, 'color', opts)?.node;
 
       expect(found?.valueNode.valueOf()).toBe('red');
       expect(node.directDeclarationLookupCache?.size).toBeGreaterThan(0);
@@ -3330,10 +3250,10 @@ describe('reference', () => {
       await node.eval(context);
       const candidates = new Set<Node>([stale]);
       const optionalCandidates = new Set<Node>();
-      const found = node.findProperty('color', {
+      const found = findPropertyDeclarationOccurrence(node, 'color', {
         candidates,
         optionalCandidates
-      });
+      })?.node;
 
       expect(found?.valueNode.valueOf()).toBe('red');
       expect(found).toBeDefined();
@@ -3365,10 +3285,10 @@ describe('reference', () => {
       ]);
 
       await node.eval(context);
-      const found = node.findProperty('color', {
+      const found = findPropertyDeclarationOccurrence(node, 'color', {
         semanticFilter: true,
         filter: () => true
-      });
+      })?.node;
 
       expect(found?.valueNode.valueOf()).toBe('red');
     });
@@ -3386,11 +3306,11 @@ describe('reference', () => {
       await root.eval(context);
 
       expect('_rulesSet' in root).toBe(false);
-      const found = root.findProperty('child-color', {
+      const found = findPropertyDeclarationOccurrence(root, 'child-color', {
         searchParents: false,
         semanticFilter: true,
         filter: () => true
-      });
+      })?.node;
       expect(found?.valueNode.valueOf()).toBe('blue');
     });
 
@@ -3407,7 +3327,11 @@ describe('reference', () => {
       ]);
       await root.eval(context);
 
-      expect(root.findProperty('child-color', { searchParents: false })?.valueNode.valueOf()).toBe('blue');
+      expect(findPropertyDeclarationOccurrence(
+        root,
+        'child-color',
+        { searchParents: false }
+      )?.node.valueNode.valueOf()).toBe('blue');
       expect(root.directDeclarationChildEntries?.map(entry => entry.node)).toEqual([childRules]);
       let cachedMatch = root.directDeclarationLookupCache?.get('__missing__');
       for (const entry of root.directDeclarationLookupCache?.values() ?? []) {
@@ -3431,7 +3355,7 @@ describe('reference', () => {
       });
 
       try {
-        const found = root.findProperty('child-color', { searchParents: false });
+        const found = findPropertyDeclarationOccurrence(root, 'child-color', { searchParents: false })?.node;
         expect(found?.valueNode.valueOf()).toBe('blue');
       } finally {
         Object.defineProperty(root, 'value', {
@@ -3471,7 +3395,7 @@ describe('reference', () => {
       });
 
       try {
-        const found = root.findProperty('child-color', { searchParents: false });
+        const found = findPropertyDeclarationOccurrence(root, 'child-color', { searchParents: false })?.node;
         expect(found).toBeUndefined();
       } finally {
         Object.defineProperty(childRules, 'value', {
@@ -3510,7 +3434,7 @@ describe('reference', () => {
       });
 
       try {
-        const found = root.findVariable('child-color', { searchParents: false });
+        const found = findVariableDeclarationOccurrence(root, 'child-color', { searchParents: false })?.node;
         expect(found).toBeUndefined();
       } finally {
         Object.defineProperty(childRules, 'value', {
@@ -3522,25 +3446,6 @@ describe('reference', () => {
     });
 
     it('direct variable lookup enters reference-import child surfaces even when family flags are absent', async () => {
-      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
-      const originalFindVariable = RulesClass.prototype.findVariable;
-      const declarationBridgeHits: string[] = [];
-      const variableBridgeHits: string[] = [];
-      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
-        const [key] = args;
-        if (key === 'from-ref') {
-          declarationBridgeHits.push(key);
-        }
-        return originalFindDeclaration.apply(this, args);
-      };
-      RulesClass.prototype.findVariable = function(...args: Parameters<typeof originalFindVariable>) {
-        const [key] = args;
-        if (this !== root && key === 'from-ref') {
-          variableBridgeHits.push(key);
-        }
-        return originalFindVariable.apply(this, args);
-      };
-
       const childRules = rules([
         vardecl({ name: any('from-ref'), value: any('blue') })
       ], {
@@ -3561,29 +3466,12 @@ describe('reference', () => {
       entry.hasVarDeclarationSurface = false;
       entry.hasReferenceImportSurface = true;
 
-      try {
-        const found = root.findVariable('from-ref', { searchParents: false });
+      const found = findVariableDeclarationOccurrence(root, 'from-ref', { searchParents: false })?.node;
 
-        expect(found?.valueNode.valueOf()).toBe('blue');
-        expect(declarationBridgeHits).toHaveLength(0);
-        expect(variableBridgeHits).toHaveLength(0);
-      } finally {
-        RulesClass.prototype.findDeclaration = originalFindDeclaration;
-        RulesClass.prototype.findVariable = originalFindVariable;
-      }
+      expect(found?.valueNode.valueOf()).toBe('blue');
     });
 
     it('direct variable lookup still skips children without variable or reference-import surfaces', async () => {
-      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
-      const declarationBridgeHits: string[] = [];
-      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
-        const [key] = args;
-        if (key === 'from-ref') {
-          declarationBridgeHits.push(key);
-        }
-        return originalFindDeclaration.apply(this, args);
-      };
-
       const childRules = rules([
         vardecl({ name: any('from-ref'), value: any('blue') })
       ], {
@@ -3613,11 +3501,9 @@ describe('reference', () => {
       });
 
       try {
-        const found = root.findVariable('from-ref', { searchParents: false });
+        const found = findVariableDeclarationOccurrence(root, 'from-ref', { searchParents: false })?.node;
         expect(found).toBeUndefined();
-        expect(declarationBridgeHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findDeclaration = originalFindDeclaration;
         Object.defineProperty(childRules, 'value', {
           configurable: true,
           writable: true,
@@ -3626,36 +3512,21 @@ describe('reference', () => {
       }
     });
 
-    it('setDefined variable assignment uses occurrence lookup without Rules.findVariable', async () => {
-      const originalFindVariable = RulesClass.prototype.findVariable;
-      let variableLookups = 0;
-      RulesClass.prototype.findVariable = function(...args: Parameters<typeof originalFindVariable>) {
-        const [key] = args;
-        if (key === 'color') {
-          variableLookups++;
-        }
-        return originalFindVariable.apply(this, args);
-      };
+    it('setDefined variable assignment uses occurrence lookup', async () => {
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        vardecl({ name: 'color', value: any('blue') }, { setDefined: true }),
+        decl({
+          name: any('seen'),
+          value: ref({ key: 'color' }, { type: 'variable' })
+        })
+      ]);
 
-      try {
-        const node = rules([
-          vardecl({ name: 'color', value: any('red') }),
-          vardecl({ name: 'color', value: any('blue') }, { setDefined: true }),
-          decl({
-            name: any('seen'),
-            value: ref({ key: 'color' }, { type: 'variable' })
-          })
-        ]);
+      const css = await renderNodeToString(node, context);
 
-        const css = await renderNodeToString(node, context);
-
-        expect(css).toBeString(`
-          seen: blue;
-        `);
-        expect(variableLookups).toBe(0);
-      } finally {
-        RulesClass.prototype.findVariable = originalFindVariable;
-      }
+      expect(css).toBeString(`
+        seen: blue;
+      `);
     });
 
     it('setDefined current-cell probes do not use historical declaration buckets', async () => {
@@ -4088,8 +3959,8 @@ describe('reference', () => {
         ]);
 
         const frame = node.getScopeFrame();
-        expect(node.findProperty('x', { searchParents: false })).toBeUndefined();
-        expect(node.findProperty('unaffected', { searchParents: false })).toBeUndefined();
+        expect(findPropertyDeclarationOccurrence(node, 'x', { searchParents: false })).toBeUndefined();
+        expect(findPropertyDeclarationOccurrence(node, 'unaffected', { searchParents: false })).toBeUndefined();
         expect(node.directDeclarationsByName?.get('x')).toBeNull();
         expect(node.directDeclarationsByName?.get('unaffected')).toBeNull();
         await Promise.resolve(node.prepareRegistration(context));
@@ -4942,80 +4813,46 @@ describe('reference', () => {
     });
 
     it('static property references use direct declaration lookup before binding handle reuse', async () => {
-      const originalFindProperty = RulesClass.prototype.findProperty;
-      let propertyLookups = 0;
-      RulesClass.prototype.findProperty = function(...args: Parameters<typeof originalFindProperty>) {
-        const [key] = args;
-        if (key === 'color') {
-          propertyLookups++;
-        }
-        return originalFindProperty.apply(this, args);
-      };
+      const node = rules([
+        decl({ name: 'color', value: any('blue') })
+      ]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'color' }, { type: 'property' });
 
-      try {
-        const node = rules([
-          decl({ name: 'color', value: any('blue') })
-        ]);
-        setRulesContext(await node.eval(context));
-        const lookupRef = ref({ key: 'color' }, { type: 'property' });
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+      const handle = lookupRef._rulesLookupHandle;
+      const handleVersion = handle?.targetLookupVersion;
 
-        expect(lookupRef.eval(context).valueOf()).toBe('blue');
-        expect(lookupRef._rulesLookupHandle?.returnVal).toMatchObject({
-          kind: 'direct-declaration-occurrence'
-        });
-        const handle = lookupRef._rulesLookupHandle;
-        const handleVersion = handle?.targetLookupVersion;
-        expect(propertyLookups).toBe(0);
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
 
-        expect(lookupRef.eval(context).valueOf()).toBe('blue');
-        expect(propertyLookups).toBe(0);
-
-        node.push(decl({ name: 'unrelated', value: any('1') }));
-        expect(lookupRef.eval(context).valueOf()).toBe('blue');
-        expect(lookupRef._rulesLookupHandle).toBe(handle);
-        expect(lookupRef._rulesLookupHandle?.targetLookupVersion).toBe(handleVersion);
-        expect(propertyLookups).toBe(0);
-      } finally {
-        RulesClass.prototype.findProperty = originalFindProperty;
-      }
+      node.push(decl({ name: 'unrelated', value: any('1') }));
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBe(handle);
+      expect(lookupRef._rulesLookupHandle?.targetLookupVersion).toBe(handleVersion);
     });
 
     it('static variable references use scope-frame bindings before public variable bridge', async () => {
-      const originalFindVariable = RulesClass.prototype.findVariable;
-      let variableLookups = 0;
-      RulesClass.prototype.findVariable = function(...args: Parameters<typeof originalFindVariable>) {
-        const [key] = args;
-        if (key === 'color') {
-          variableLookups++;
-        }
-        return originalFindVariable.apply(this, args);
-      };
+      const node = rules([
+        vardecl({ name: 'color', value: any('blue') })
+      ]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'color' }, { type: 'variable' });
 
-      try {
-        const node = rules([
-          vardecl({ name: 'color', value: any('blue') })
-        ]);
-        setRulesContext(await node.eval(context));
-        const lookupRef = ref({ key: 'color' }, { type: 'variable' });
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'scope-frame-variable-binding-handle'
+      });
 
-        expect(lookupRef.eval(context).valueOf()).toBe('blue');
-        const handle = lookupRef._rulesLookupHandle;
-        expect(handle?.returnVal).toMatchObject({
-          kind: 'scope-frame-variable-binding-handle'
-        });
-        expect(variableLookups).toBe(0);
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBe(handle);
 
-        expect(lookupRef.eval(context).valueOf()).toBe('blue');
-        expect(lookupRef._rulesLookupHandle).toBe(handle);
-        expect(variableLookups).toBe(0);
-
-        node.push(decl({ name: 'unrelated', value: any('1') }));
-        expect(lookupRef.eval(context).valueOf()).toBe('blue');
-        expect(lookupRef._rulesLookupHandle).toBe(handle);
-        expect(variableLookups).toBe(0);
-      } finally {
-        RulesClass.prototype.findVariable = originalFindVariable;
-      }
+      node.push(decl({ name: 'unrelated', value: any('1') }));
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBe(handle);
     });
 
     it('static property occurrence handles invalidate when owner rules changes', async () => {
@@ -5434,37 +5271,11 @@ describe('reference', () => {
           background+: blue;
         }
       `).tree;
-      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
-      const originalFindProperty = RulesClass.prototype.findProperty;
-      const declarationBridgeHits: string[] = [];
-      const propertyBridgeHits: string[] = [];
-      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
-        const [key] = args;
-        if (key === 'box-shadow' || key === 'background') {
-          declarationBridgeHits.push(key);
-        }
-        return originalFindDeclaration.apply(this, args);
-      };
-      RulesClass.prototype.findProperty = function(...args: Parameters<typeof originalFindProperty>) {
-        const [key] = args;
-        if (key === 'box-shadow' || key === 'background') {
-          propertyBridgeHits.push(key);
-        }
-        return originalFindProperty.apply(this, args);
-      };
+      context.root = tree;
+      const css = await renderNodeToString(tree, context, { context });
 
-      try {
-        context.root = tree;
-        const css = await renderNodeToString(tree, context, { context });
-
-        expect(css).toContain('box-shadow: inset 0 0 1px red, 0 0 2px blue;');
-        expect(css).toContain('background: red, blue;');
-        expect(declarationBridgeHits).toEqual([]);
-        expect(propertyBridgeHits).toEqual([]);
-      } finally {
-        RulesClass.prototype.findDeclaration = originalFindDeclaration;
-        RulesClass.prototype.findProperty = originalFindProperty;
-      }
+      expect(css).toContain('box-shadow: inset 0 0 1px red, 0 0 2px blue;');
+      expect(css).toContain('background: red, blue;');
     });
 
     it('keeps wider excluded-node filters cold instead of caching generic filter shape', async () => {
@@ -5484,39 +5295,22 @@ describe('reference', () => {
     });
 
     it('static declaration references use direct declaration lookup before binding handle reuse', async () => {
-      const originalFindDeclaration = RulesClass.prototype.findDeclaration;
-      let declarationLookups = 0;
-      RulesClass.prototype.findDeclaration = function(...args: Parameters<typeof originalFindDeclaration>) {
-        const [key] = args;
-        if (key === 'color') {
-          declarationLookups++;
-        }
-        return originalFindDeclaration.apply(this, args);
-      };
+      const node = rules([
+        decl({ name: 'color', value: any('blue') })
+      ]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'color' }, { type: 'declaration' });
 
-      try {
-        const node = rules([
-          decl({ name: 'color', value: any('blue') })
-        ]);
-        setRulesContext(await node.eval(context));
-        const lookupRef = ref({ key: 'color' }, { type: 'declaration' });
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      const handleVersion = handle?.targetLookupVersion;
 
-        expect(lookupRef.eval(context).valueOf()).toBe('blue');
-        const handle = lookupRef._rulesLookupHandle;
-        const handleVersion = handle?.targetLookupVersion;
-        expect(declarationLookups).toBe(0);
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
 
-        expect(lookupRef.eval(context).valueOf()).toBe('blue');
-        expect(declarationLookups).toBe(0);
-
-        node.push(decl({ name: 'unrelated', value: any('1') }));
-        expect(lookupRef.eval(context).valueOf()).toBe('blue');
-        expect(lookupRef._rulesLookupHandle).toBe(handle);
-        expect(lookupRef._rulesLookupHandle?.targetLookupVersion).toBe(handleVersion);
-        expect(declarationLookups).toBe(0);
-      } finally {
-        RulesClass.prototype.findDeclaration = originalFindDeclaration;
-      }
+      node.push(decl({ name: 'unrelated', value: any('1') }));
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBe(handle);
+      expect(lookupRef._rulesLookupHandle?.targetLookupVersion).toBe(handleVersion);
     });
 
     it('static declaration handles reuse source-static normalized assignment constraints', async () => {

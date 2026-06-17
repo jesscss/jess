@@ -2803,6 +2803,62 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: callable namespace reference-import modeled miss skips nested findMixin', () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const missingKey = '.missing-reference-child';
+      let namespaceRulesFindMixinCount = 0;
+      const broadFastHits: string[] = [];
+      let namespaceRules: RulesClass;
+      let root: RulesClass;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this === namespaceRules) {
+          namespaceRulesFindMixinCount++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if ((this === namespaceRules || this === root) && key === missingKey) {
+          broadFastHits.push(this === namespaceRules ? 'namespace' : 'root');
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      const referenceChild = rules([
+        style({
+          path: quoted(any('reference-import.jess'))
+        }, {
+          type: 'import',
+          importOptions: { reference: true }
+        })
+      ]);
+      namespaceRules = rules([referenceChild]);
+      root = rules([
+        mixin({
+          name: any('#parent-namespace'),
+          rules: namespaceRules
+        })
+      ]);
+
+      try {
+        root.getScopeFrame();
+        namespaceRules.getScopeFrame();
+        referenceChild.getScopeFrame();
+        namespaceRules.collectDirectChildRulesEntries();
+        expect(namespaceRules.directChildRuleEntries?.[0]).toMatchObject({
+          hasReferenceImportSurface: true
+        });
+
+        expect(root.findMixin(['#parent-namespace', missingKey], undefined)).toBeUndefined();
+        expect(namespaceRulesFindMixinCount).toBe(0);
+        expect(broadFastHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('ScopeFrame callable buckets: recursive namespace hit reaches fallback frame before child direct crawl', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];

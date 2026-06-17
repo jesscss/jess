@@ -1,4 +1,4 @@
-import { attr, any, quoted, mixin, rules, ruleset, decl, call, ref, list, el, vardecl, Rules as RulesClass } from '../index.js';
+import { attr, any, quoted, mixin, rules, ruleset, decl, call, ref, list, el, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
@@ -167,42 +167,27 @@ describe('Attribute Selector', () => {
     expect(attrNode.toTrimmedString()).toBe('[data=$attr-data]');
   });
 
-  test('interpolated attribute values use occurrence lookup without Rules.findVariable', async () => {
-    const originalFindVariable = RulesClass.prototype.findVariable;
-    let fallbackLookups = 0;
-    RulesClass.prototype.findVariable = function(...args: Parameters<typeof originalFindVariable>) {
-      const [key] = args;
-      if (key === 'attr-data') {
-        fallbackLookups++;
-      }
-      return originalFindVariable.apply(this, args);
-    };
-
-    try {
-      const node = rules([
-        vardecl({
-          name: 'attr-data',
-          value: any('foo')
+  test('interpolated attribute values use occurrence lookup', async () => {
+    const node = rules([
+      vardecl({
+        name: 'attr-data',
+        value: any('foo')
+      }),
+      ruleset({
+        selector: attr({
+          name: 'data',
+          op: '=',
+          value: any('@{attr-data}')
         }),
-        ruleset({
-          selector: attr({
-            name: 'data',
-            op: '=',
-            value: any('@{attr-data}')
-          }),
-          rules: rules([
-            decl({ name: 'color', value: any('red') })
-          ])
-        })
-      ]);
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      })
+    ]);
 
-      const css = await renderNodeToString(node, context);
+    const css = await renderNodeToString(node, context);
 
-      expect(css).toContain('[data="foo"]');
-      expect(fallbackLookups).toBe(0);
-    } finally {
-      RulesClass.prototype.findVariable = originalFindVariable;
-    }
+    expect(css).toContain('[data="foo"]');
   });
 
   test('keeps interpolated attribute selector values isolated across repeated mixin calls', async () => {

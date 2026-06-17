@@ -30,6 +30,11 @@ import { N } from '../node-type.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { setScopeFrameLiveBinding } from '../scope-frame.js';
+import {
+  findAnyDeclarationOccurrence,
+  findPropertyDeclarationOccurrence,
+  findVariableDeclarationOccurrence
+} from '../util/direct-rules-lookup.js';
 
 let context: Context;
 
@@ -49,18 +54,18 @@ function expectDeclarationNode(node: Node | undefined): Declaration {
 
 function getPropWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
-  return n.findProperty(key, { ...opts, searchParents: true });
+  return findPropertyDeclarationOccurrence(n, key, { ...opts, searchParents: true })?.node;
 }
 
 function getVarWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
-  let decl = n.findVariable(key, { ...opts, searchParents: true });
+  let decl = findVariableDeclarationOccurrence(n, key, { ...opts, searchParents: true })?.node;
   return decl;
 }
 
 function getDeclEitherWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
-  return n.findAnyDeclaration(key, { ...opts, searchParents: true });
+  return findAnyDeclarationOccurrence(n, key, { ...opts, searchParents: true })?.node;
 }
 
 class WholeBufferCountingWriter extends OutputWriter {
@@ -1106,13 +1111,13 @@ describe('Rules', () => {
         }
         const scope3Rules = scope3.rules;
         expect(getVar(scope3Rules, 'z', { start: 0 })?.toTrimmedString()).toBe('$z: black');
-        const scope3Found = scope3Rules.findVariable('z', {
+        const scope3Found = findVariableDeclarationOccurrence(scope3Rules, 'z', {
           filter: () => true,
           context,
           hasTarget: false,
           searchParents: true,
           start: 0
-        });
+        })?.node;
         expect(scope3Found?.toTrimmedString()).toBe('$z: black');
         const border = expectDeclarationNode(scope3Rules.at(0));
         context.rulesContext = scope3Rules;
