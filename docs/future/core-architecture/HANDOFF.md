@@ -103,43 +103,48 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: setDefined readonly result-object deletion.
-- Verdict: accepted as a cold fallback API-shape cut with behavior proof. No
-  speed claim.
-- New traversal: none. The setDefined fallback still uses the existing direct
-  declaration lookup traversal; it now applies the matched occurrence through a
-  setDefined-only callback instead of returning a general
-  `{ occurrence, readonly }` result object. Ordinary occurrence helpers remain
-  branch-free and return `DirectDeclarationOccurrence | undefined`.
-- New node/materialization: none. The diff re-indents the existing
-  non-variable setDefined fallback that derives/adopts a declaration after a
-  found property declaration; that cold fallback behavior is unchanged and is
-  not used by ordinary reference reads.
-- Render path: no committed render/stringification path change.
-- Helper/API surface: replaced `findSetDefinedDeclarationReadonlyOccurrence`
-  with `applySetDefinedDeclarationReadonlyOccurrence(...)` and removed the
-  internal readonly-result overload/type. No exported/public `Rules.find*`
-  surface was preserved for hot-path compatibility; production callers still
-  use occurrence helpers directly.
-- Metadata mutations: no new metadata mutation. The existing
-  `foundRules.adopt(newDeclaration)` fallback remains only in the non-variable
-  setDefined insertion path.
-- Allocation changes: setDefined fallback no longer allocates or returns the
-  `{ occurrence, readonly }` wrapper. It still allocates a cold callback closure
-  at the assignment call site; the tracker records that as a follow-up only if
-  the helper can own the full mutation without moving assignment semantics into
-  ordinary lookup.
-- Rejected/observed in this pass: public `Rules.findVariable` /
-  `findProperty` / `findDeclaration` / `findAnyDeclaration` wrappers are now
-  test/cold-only by repo search, but not deleted in this batch because parser
-  and test helper call sites still need conversion or an explicit cold-facade
-  decision.
-- Evidence: focused setDefined tests in `reference.test.ts`, `rules.test.ts`,
-  `mixin.test.ts`, and `control.test.ts` passed. `verify:binding-lookup-hot-paths`
-  now requires the apply helper, forbids the old readonly occurrence helper and
-  `DirectDeclarationLookupResult`, and still guards production runtime against
-  public `Rules.find*` declaration wrappers. Final gates are required before
-  commit. No speed claim.
+- Latest pass: declaration wrapper deletion plus callable namespace
+  reference-import modeled-miss bridge cut.
+- Verdict: accepted as binding/lookup machinery deletion with behavior proof.
+  No speed claim.
+- New traversal: no new runtime traversal. `findMixinsFastForUncoveredCallable`
+  now optionally reports whether its existing child-entry loop inspected a
+  modeled uncovered surface. The new `for (const token of ...)` loop is in the
+  verifier script only. `findCallableDescendantsWithinMixinNamespaces` returns
+  `[]` for covered descendant misses so the caller does not reopen the older
+  namespace fallback after the direct frame/child-surface proof.
+- New node/materialization: no runtime node materialization. Core tests now
+  import occurrence helpers directly, and the SCSS parser baseline asserts the
+  parsed `VarDeclaration` in the function body instead of materializing through
+  runtime lookup. The new `[]` value is a private covered-miss sentinel in the
+  callable namespace path, not an output array to stringify; test-only arrays
+  record spy hits.
+- Render path: no render/stringification path change. Function return and
+  selector-attribute tests keep output assertions while deleting obsolete
+  monkey-patches of removed declaration wrappers.
+- Helper/API surface: deleted `Rules.findVariable`, `findProperty`,
+  `findDeclaration`, and `findAnyDeclaration` declaration wrappers. Added no
+  replacement public facade. Added one private `UncoveredCallableCoverage`
+  shape to carry a fact out of an existing helper; it prevents a broader
+  fallback call and is not exported.
+- Metadata mutations: none. The `try` flagged by aggressive review is in a
+  test-only spy restoration block.
+- Allocation changes: removed cold wrapper method calls and deleted test
+  monkey-patch closures around those wrappers. Added one small coverage object
+  only inside the namespace descendant uncovered branch; the object is used to
+  avoid nested `findMixin(...)` and namespace `findMixinsFast(...)` fallback
+  after a modeled miss. No speed claim is made from that shape.
+- Rejected/observed in this pass: the broad `tsc --noEmit` signal remains
+  unusable because unrelated repo-wide type debt dominates it. Focused tests,
+  eslint, and the binding hot-path verifier are the decision evidence for this
+  pass. Reference-import descendant positives inside namespace mixin bodies
+  remain open; only modeled misses were cut.
+- Evidence: `verify:binding-lookup-hot-paths` passed. Focused core tests for
+  reference/rules/import-style/detached-rulesets/function/selector-attr wrapper
+  deletion passed, the SCSS parser `@function` baseline passed, callable
+  namespace reference-import modeled-miss and existing ScopeFrame callable
+  bucket tests passed, and import-style namespace positives stayed green. Final
+  gates are required before commit. No speed claim.
 - Merge note: the branch also incorporates the latest serialization transport
   work from `origin/dev`; keep that progress tracked in
   `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.

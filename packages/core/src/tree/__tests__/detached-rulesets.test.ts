@@ -10,11 +10,12 @@ import {
 } from '../index.js';
 import { Context } from '../../context.js';
 import type { DeclarationFindOptions } from '../util/lookup-utils.js';
+import { findVariableDeclarationOccurrence } from '../util/direct-rules-lookup.js';
 
 function getVar(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
-  return n.findVariable(key, opts);
+  return findVariableDeclarationOccurrence(n, key, opts)?.node;
 }
 
 describe('Detached Rulesets - Variable Lookups', () => {

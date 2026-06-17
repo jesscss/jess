@@ -77,10 +77,7 @@ import { isIndexedRuleChild } from './util/callable-surface.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
   applySetDefinedDeclarationReadonlyOccurrence,
-  findAnyDeclarationOccurrence,
-  type DirectDeclarationOccurrence,
-  findPropertyDeclarationOccurrence,
-  findVariableDeclarationOccurrence
+  type DirectDeclarationOccurrence
 } from './util/direct-rules-lookup.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
@@ -121,6 +118,9 @@ type CallableRulesetPathResult = {
 };
 const DEFINITE_MIXIN_NAMESPACE_MISS = Symbol('definite-mixin-namespace-miss');
 type CallableNamespaceFastResult = CallableRulesetPathResult | typeof DEFINITE_MIXIN_NAMESPACE_MISS | undefined;
+type UncoveredCallableCoverage = {
+  modeled: boolean;
+};
 
 function syncDeclarationValueNode(declaration: Declaration, value: Node): void {
   declaration.value.value = value;
@@ -1148,7 +1148,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     key: string,
     reason: Extract<ScopeFrameCallableLookupResult, { kind: 'uncovered' }>['reason'],
     includeRulesets: boolean,
-    options: CallableFindOptions
+    options: CallableFindOptions,
+    coverage?: UncoveredCallableCoverage
   ): MixinEntry[] | undefined {
     if (reason !== 'child-surface' && reason !== 'reference-import') {
       return undefined;
@@ -1185,6 +1186,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       if (options.local && entry.node.options?.local) {
         continue;
+      }
+      if (coverage) {
+        if (reason === 'child-surface' || entry.hasReferenceImportSurface === true) {
+          coverage.modeled = true;
+        }
       }
       const childFrame = entry.node.getScopeFrame();
       entry.node.prepareCallableLookupFrame(childFrame, key, includeRulesets);
@@ -2269,6 +2275,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const existingNoParentOptions = options.searchParents === false ? options : undefined;
     let resolved: MixinEntry[] | undefined;
     let resolvedOwned = false;
+    let descendantMissCovered = false;
     for (let i = 0; i < namespaceMixins.length; i++) {
       const entry = namespaceMixins[i]!;
       if (!isNode(entry, N.Mixin)) {
@@ -2291,19 +2298,29 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (firstRemainderHit.kind === 'hit' && keys.length === 2) {
           nested = collectCallableBucketResults(firstRemainderHit.bucket, firstRemainderIncludesRulesets);
         } else if (firstRemainderHit.kind === 'miss') {
+          descendantMissCovered = true;
           continue;
         } else if (
           firstRemainderHit.kind === 'uncovered'
           && keys.length === 2
           && (firstRemainderHit.reason === 'child-surface' || firstRemainderHit.reason === 'reference-import')
         ) {
+          const uncoveredCoverage: UncoveredCallableCoverage = { modeled: false };
           nested = entryRules.findMixinsFastForUncoveredCallable(
             firstRemainder,
             firstRemainderHit.reason,
             firstRemainderIncludesRulesets,
-            options
+            options,
+            uncoveredCoverage
           );
-          if (firstRemainderHit.reason === 'child-surface' && nested === undefined) {
+          if (
+            nested === undefined
+            && (
+              firstRemainderHit.reason === 'child-surface'
+              || (firstRemainderHit.reason === 'reference-import' && uncoveredCoverage.modeled)
+            )
+          ) {
+            descendantMissCovered = true;
             continue;
           }
         }
@@ -2341,7 +2358,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     }
 
-    return resolved;
+    return resolved ?? (descendantMissCovered ? [] : undefined);
   }
 
   findMixin(
@@ -2571,34 +2588,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return undefined;
     }
     return undefined;
-  }
-
-  findDeclaration(
-    keys: string,
-    options?: DeclarationFindOptions
-  ): Declaration | undefined {
-    return findPropertyDeclarationOccurrence(this, keys, options)?.node;
-  }
-
-  findAnyDeclaration(
-    keys: string,
-    options?: DeclarationFindOptions
-  ): Declaration | VarDeclaration | undefined {
-    return findAnyDeclarationOccurrence(this, keys, options)?.node;
-  }
-
-  findVariable(
-    keys: string,
-    options?: DeclarationFindOptions
-  ): VarDeclaration | undefined {
-    return findVariableDeclarationOccurrence(this, keys, options)?.node;
-  }
-
-  findProperty(
-    keys: string,
-    options?: DeclarationFindOptions
-  ): Declaration | undefined {
-    return findPropertyDeclarationOccurrence(this, keys, options)?.node;
   }
 
   findFunction(
