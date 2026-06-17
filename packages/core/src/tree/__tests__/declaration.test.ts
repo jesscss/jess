@@ -135,6 +135,8 @@ describe('Declaration', () => {
     context.root = evald;
     context.rulesContext = evald;
     const buffer = createRenderBuffer('segmented');
+    const writer = new CountingWriter();
+    context.printState.writer = writer;
     const node = decl({
       name: any('color'),
       value: ref({ key: 'tone' }, { type: 'variable' })
@@ -151,6 +153,8 @@ describe('Declaration', () => {
 
     expect(node.render(context, buffer)).toBe('color: red');
     expect(buffer.segments).toEqual(['color: red']);
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
     expect(resolveCalls).toBe(0);
   });
 

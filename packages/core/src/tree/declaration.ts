@@ -28,6 +28,7 @@ import {
   isRenderBuffer,
   prepareBufferPrintState,
   writePreparedRenderText,
+  writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -669,6 +670,58 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return w.getSince(mark);
   }
 
+  private directBufferDeclarationText(
+    valueParts: DeclarationValue,
+    options?: PrintOptions,
+    renderState?: {
+      customInterpolatedValue?: DeclarationRenderState['customInterpolatedValue'];
+      mergeAdapter?: DeclarationMergeAdapterState;
+      importantText?: string;
+      normalizedFromAssign?: AssignmentType;
+    }
+  ): string | undefined {
+    const { name, value, important } = valueParts;
+    if (
+      !(name instanceof Any)
+      || !(value instanceof Any)
+      || renderState?.customInterpolatedValue
+      || renderState?.mergeAdapter
+      || renderState?.normalizedFromAssign
+      || this._options?.normalizedFromAssign
+      || (this._options?.assign && this._options.assign !== AssignmentType.Default)
+      || this._options?.setDefined
+    ) {
+      return undefined;
+    }
+    const nameTrivia = options?.trivia ?? name.sourceRoot?._treeContext?.opts?.trivia;
+    const valueTrivia = options?.trivia ?? value.sourceRoot?._treeContext?.opts?.trivia;
+    const importantTrivia = important
+      ? options?.trivia ?? important.sourceRoot?._treeContext?.opts?.trivia
+      : undefined;
+    if (
+      nameTrivia
+      || valueTrivia
+      || importantTrivia
+      || hasEdgeHorizontalWhitespace(name.value)
+      || (important && hasEdgeHorizontalWhitespace(important.value))
+    ) {
+      return undefined;
+    }
+    if (name.value.startsWith('--')) {
+      if (hasTrailingDeclarationTerminatorLineBreak(value.value)) {
+        return undefined;
+      }
+      return `${name.value}:${value.value}`;
+    }
+    const formattedValue = this.formatNonCustomValue(value.value, options ?? {});
+    const importantOut = important
+      ? ` ${important.value}`
+      : renderState?.importantText
+        ? ` ${renderState.importantText}`
+        : '';
+    return `${name.value}:${formattedValue}${importantOut}`;
+  }
+
   private renderSpaceValueSyntax(value: Node[], options: PrintOptions): void {
     const printOptions = getPrintOptions(options);
     for (let index = 0; index < value.length; index++) {
@@ -722,6 +775,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         : node.render(context, bufferOrOptions);
     }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const direct = buffer
+      ? this.directBufferDeclarationText({
+          name: state.name ?? state.output.value.name,
+          value: state.value ?? state.output.value.value,
+          important: state.important ?? state.output.value.important
+        }, options)
+      : undefined;
+    if (direct !== undefined) {
+      return writeRenderText(buffer!, direct);
+    }
     const prepared = buffer
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);
@@ -762,6 +825,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         : output.render(context, bufferOrOptions);
     }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const direct = buffer
+      ? this.directBufferDeclarationText({
+          name: state.name,
+          value: state.value,
+          important: state.important
+        }, options, state)
+      : undefined;
+    if (direct !== undefined) {
+      return writeRenderText(buffer!, direct);
+    }
     const prepared = buffer
       ? prepareBufferPrintState(context, options, buffer)
       : prepareRenderPrintState(context, bufferOrOptions);

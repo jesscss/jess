@@ -407,7 +407,11 @@ shape current before commit.
    a character scan instead of regex replacement to detect/drop the terminal
    declaration newline. Buffer renders now write declaration syntax directly
    under their existing outer buffer mark instead of nesting the cold
-   `declValueTrimmedString(...)` mark/readback helper. Render-assignment and
+   `declValueTrimmedString(...)` mark/readback helper. Known no-trivia
+   `Any` name/value declaration buffer renders with default assignment and no
+   merge/custom/interpolated state now write the final declaration text directly
+   to the requested buffer without prepared-writer mark/readback setup.
+   Render-assignment and
    custom-interpolated replacement chains now call `.then(...)` directly after
    `isThenable(...)` narrowing instead of wrapping already-thenable values with
    `Promise.resolve(...)`. Render-assignment merge adapter state no longer
@@ -683,30 +687,37 @@ append pass history here. Durable status belongs in the active queue/tracker,
 performance evidence belongs in `PERFORMANCE-HANDOFF.md`, and old prose stays
 recoverable from git history.
 
-Current pass: Rest scalar render-buffer direct write.
+Current pass: Declaration scalar render-buffer direct write.
 
 - New traversal: none.
-- New node/materialization: none. Scalar rest render already knows the exact
-  output token before writing.
-- Render path: `Rest.render(..., buffer)` now writes known string/empty/`Any`
-  rest output directly to the requested render buffer instead of preparing a
-  writer, opening a mark, writing the same known token, and reading it back.
-  Non-buffer render still writes the same token to the caller writer, and
-  arbitrary node-valued rest still uses the existing child source-render
-  fallback boundary.
+- New node/materialization: none. The fast path only serializes existing
+  `Any` name/value/important nodes to text.
+- Render path: `Declaration.render(..., buffer)` now writes known no-trivia
+  `Any` name/value declaration output directly to the requested render buffer
+  when assignment is default and there is no merge adapter, custom interpolated
+  state, assignment normalization, source trivia, or non-`Any` value. The
+  broader declaration formatter remains responsible for custom properties with
+  declaration-terminator newlines, merge rendering, interpolated values, trivia,
+  non-default assignment surfaces, and non-buffer public string output.
 - Helper/API surface: no public API or helper surface changed.
 - Metadata mutations: none.
-- Rejected cut: broader scalar wrapper unknown-child buffer capture remains a
-  separate design slice. `Block`, `Paren`, `Url`, and `Quoted` still have
-  non-scalar or trivia-sensitive paths that need a string boundary unless their
-  child emission is split to a detached direct writer contract.
-- Evidence: focused Rest test passed with
-  `pnpm vitest run packages/core/src/tree/__tests__/rest.test.ts`;
+- Rejected cut: the remaining `Declaration` mark/replace boundaries are not
+  mechanical. Name trimming, non-custom value formatting, raw custom-property
+  newline normalization, merge adapters, contextual important, and interpolated
+  custom replacement output still need the existing formatter boundary until a
+  direct writer contract covers those semantics.
+- Evidence: focused Declaration segmented-buffer test passed with
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/declaration.test.ts --testNamePattern "writes resolved declaration output into segmented buffers"`;
+  full `declaration.test.ts` passed with
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/declaration.test.ts`;
   changed-file eslint passed with
-  `pnpm exec eslint packages/core/src/tree/rest.ts packages/core/src/tree/__tests__/rest.test.ts`;
+  `pnpm exec eslint packages/core/src/tree/declaration.ts packages/core/src/tree/__tests__/declaration.test.ts`;
   `pnpm --filter @jesscss/core build` passed; and
-  `pnpm run verify:aggressive-cutting-review` exited 0 while flagging one
-  expected test-only `new CountingWriter()` plus unrelated dirty-tree danger
-  tokens outside this slice.
-- Verdict: accepted as a bounded scalar-wrapper correction if final gates pass.
+  `pnpm run verify:aggressive-cutting-review` exited 0 while flagging expected
+  read-only `sourceRoot` probes for trivia detection, one test-only
+  `new CountingWriter()`, and unrelated dirty-tree danger tokens outside this
+  slice.
+- Verdict: accepted as a bounded partial Declaration render-buffer cut if final
+  gates pass. Raw custom-property branches, merge state, internal mark/replace,
+  and materialization remain open.
   No performance claim; this was not a measured benchmark pass.
