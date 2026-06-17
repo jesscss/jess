@@ -103,21 +103,39 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `Rules` root charset/comment/import detached public string
-  transport cut in `packages/core/src/tree/rules.ts`.
+- Latest pass: `Declaration` direct writer / buffer render transport cut in
+  `packages/core/src/tree/declaration.ts`.
 - Verdict: accepted as a focused serialization transport cut. No speed claim.
-- New traversal: none.
-- New node/materialization: none in runtime. The `throw new Error` tokens in
-  `rules.test.ts` are test-only proof that public child string methods are not
-  used by root charset/import source serialization.
-- Render path: no render-path change. Root CSS source serialization still uses
-  a detached writer for hoisted charset/comment/import text, but that detached
-  writer now calls child `writeSyntax(...)` directly instead of public
-  `toString(...)` / `toTrimmedString(...)`.
-- Helper/API surface: replaced the string-returning `printDetached(...)` helper
-  with `writeDetached(...)`, a void writer callback helper for detached syntax
-  capture; no public APIs added.
+- New traversal: whitespace scans in `needsCustomTrailingNewlineTrim(...)`,
+  `leadingHorizontalWhitespace(...)`, `hasTrailingWhitespace(...)`, and
+  `trimCustomTrailingNewline(...)` replace regex match/replace boundaries while
+  staying on the already-materialized output text; one indexed loop replaces
+  `replacements.entries()` in custom interpolated render replacement
+  evaluation; fallback function assembly now uses indexed loops over
+  `printableKey` and existing `args.value` instead of `map/filter/join` arrays.
+- New node/materialization: no AST nodes. Two `new OutputWriter()` calls are
+  detached string boundaries: one cold custom fallback child stringifier and
+  one declaration buffer-render bridge. The bridge is still a known boundary,
+  not a direct-to-buffer scalar fast path.
+- Render path: declaration buffer render now calls a declaration-local writer
+  through a detached prepared writer instead of the cold
+  `declValueTrimmedString(...)` wrapper. Source/public string callers still use
+  the cold wrapper only to return the string they requested.
+- Helper/API surface: added private `writeDeclarationValueSyntax(...)` as the
+  direct writer that `writeSyntax(...)`, public string output, and buffer render
+  share. This replaces repeated public child string calls and exposes the
+  existing merge-adapter proof hook used by declaration tests; no public API was
+  added. The `renderState` object in `renderDeclarationRenderState(...)` is a
+  hoisted existing argument shape so buffer and string branches pass identical
+  state without duplicating object literals.
 - Metadata mutations: none.
-- Allocation changes: none.
-- Evidence: focused `rules.test.ts` root serializer tests passed before doc
-  closeout. Full gates are recorded in the final response.
+- Allocation changes: removed fallback call arg `filter/map/join` arrays and
+  the stale `mergeAdapter.value` state field. The `values = args?.value ?? []`
+  fallback reads the existing argument array or the shared empty literal path;
+  the two `slice(...)` calls return normalized whitespace substrings at cold
+  custom formatting boundaries. Buffer render still uses a detached writer
+  boundary for declaration text and does not claim a scalar direct-to-buffer
+  fast path.
+- Evidence: full `declaration.test.ts` passed. Build passed. ESLint passed for
+  `declaration.ts`; linting the whole declaration test file still reports
+  pre-existing unsafe reflection assertions in the test file.
