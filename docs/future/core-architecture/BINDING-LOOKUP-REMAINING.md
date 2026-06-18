@@ -1076,14 +1076,20 @@ smoke/profile paths for this local fixture are currently blocked by
 `measure:less:hotpath -- --iterations 1 --warmup 0 --fixture ...`), so no
 wall-clock smoke value is recorded.
 
-67. [ ] Prove explicit declaration visibility/import coverage without widening
+67. [x] Prove explicit declaration visibility/import coverage without widening
 ordinary child scans. Scope: `findWithinScopeSurface(...)`,
 `directDeclarationChildEntries`, reference-import declaration surfaces,
 rendered reference imports, and visibility modes. Goal: covered import/reference
 declaration hits and misses stay on carried frame/child-entry facts instead of
 rediscovering child visibility through fallback scans. Acceptance: focused
 variable/property/declaration tests with child-entry scan counters or spies,
-plus at least one real reference-import declaration fixture.
+plus at least one real reference-import declaration fixture. Current evidence:
+focused reference tests now prove property lookup enters reference-import child
+surfaces even when exact declaration-family flags are absent, and variable
+reference-import misses do not widen into ordinary property-only child scans.
+Existing variable/property visibility skip tests and the real
+`import-reference: reference imports remain discoverable for lookups` fixture
+stayed green.
 
 68. [ ] Finish property merge-chain no-public-bridge proof. Scope:
 property/declaration occurrence helpers, merge assignment exclusions,

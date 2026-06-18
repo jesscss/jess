@@ -103,20 +103,18 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding docs/evidence closeout for namespace fallback
-  duplication and callable namespace counters.
-- Verdict: accepted as a no-code binding pass. The namespace-offset helper
-  collapse was rejected because the three branch ladders have different
-  control-flow contracts and a shared utility would add callback/result-object
-  tax around hot lookup calls. The callable namespace profile was refreshed
-  through the Less facade and old `Rules.find`/registry/search-child counters
-  remain empty. Direct compiler smoke/profile paths for the repo-local stress
-  fixture are blocked by `args.set is not a function`, so no wall-clock smoke
-  value or speed claim is recorded. The binding queue was reseeded back to 15
-  sizable unchecked tasks.
+- Latest pass: binding proof pass for declaration reference-import child
+  surfaces.
+- Verdict: accepted as direct declaration lookup coverage. Property lookup now
+  has explicit proof that reference-import child surfaces are entered even
+  when exact declaration-family flags are absent, and variable misses have
+  proof that ordinary property-only child surfaces are still skipped instead
+  of widened. Real reference-import variable lookup behavior stayed green. No
+  speed claim.
 - New traversal: none in production for this pass. No source code changed.
 - Review-flagged allocations: no new production arrays, nodes, wrapper
-  `Rules`, side maps, or result objects.
+  `Rules`, side maps, or result objects. Tests add synthetic `Rules` fixtures
+  and one counter variable around a getter spy.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production materialization were added.
 - Render path: no render/stringification path changed.
@@ -127,16 +125,13 @@ with `--no-verify` after the explicit gates pass.
 - Allocation changes: no new production allocation. Existing fallback-frame
   records, prefix match arrays, and direct result arrays are reused. No public
   materialization changed.
-- Evidence: code audit across `findMixinNamespacePathFast(...)`,
-  `findRulesetNamespacePathFast(...)`, and
-  `findCallableDescendantsWithinMixinNamespaces(...)` rejected helper
-  extraction as extra hot-path machinery. `node scripts/profile-less-benchmark.mjs
-  --fixture=scripts/fixtures/less-hotpath/scope-lookup-stress.less` reported
-  empty old `Rules.find`, registry, and `_searchRulesChildren` counters with
-  direct declaration counters still at the current baseline. The
-  `--compat=false` profile and bounded `measure:less:hotpath` smoke both fail
-  before render with `args.set is not a function`; this is recorded as a
-  smoke/protocol blocker rather than a speed result.
+- Evidence: focused `reference.test.ts` tests prove property lookup enters
+  reference-import child surfaces when exact family flags are absent, variable
+  lookup still skips property-only child surfaces, and a variable
+  reference-import miss enters only the reference-import child while avoiding
+  the ordinary property-only child getter. The real
+  `import-reference: reference imports remain discoverable for lookups`
+  fixture stayed green.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification

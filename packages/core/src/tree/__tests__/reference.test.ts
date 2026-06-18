@@ -3622,6 +3622,92 @@ describe('reference', () => {
       expect(found?.valueNode.valueOf()).toBe('blue');
     });
 
+    it('direct property lookup enters reference-import child surfaces even when family flags are absent', async () => {
+      const childRules = rules([
+        decl({ name: any('from-ref'), value: any('blue') })
+      ], {
+        rulesVisibility: {
+          Declaration: 'public'
+        }
+      });
+      const root = rules([childRules]);
+      await root.eval(context);
+      root.collectDirectDeclarationChildEntries();
+      const entry = root.directDeclarationChildEntries?.[0];
+      expect(entry).toBeDefined();
+      if (!entry) {
+        throw new Error('expected carried child entry');
+      }
+      root.hasDeclarationChildSurface = false;
+      root.hasReferenceImportChildSurface = true;
+      entry.hasDeclarationSurface = false;
+      entry.hasReferenceImportSurface = true;
+
+      const found = findPropertyDeclarationOccurrence(root, 'from-ref', { searchParents: false })?.node;
+
+      expect(found?.valueNode.valueOf()).toBe('blue');
+    });
+
+    it('direct variable reference-import miss does not widen ordinary property child scans', async () => {
+      const ordinaryChild = rules([
+        decl({ name: any('from-ref'), value: any('ordinary') })
+      ], {
+        rulesVisibility: {
+          Declaration: 'public',
+          VarDeclaration: 'private'
+        }
+      });
+      const referenceChild = rules([], { referenceMode: true });
+      const root = rules([ordinaryChild, referenceChild]);
+      await root.eval(context);
+      root.collectDirectDeclarationChildEntries();
+      expect(root.directDeclarationChildEntries).toHaveLength(2);
+      expect(root.directDeclarationChildEntries?.[0]).toMatchObject({
+        hasDeclarationSurface: true,
+        hasVarDeclarationSurface: false,
+        hasReferenceImportSurface: false
+      });
+      expect(root.directDeclarationChildEntries?.[1]).toMatchObject({
+        hasDeclarationSurface: false,
+        hasVarDeclarationSurface: false,
+        hasReferenceImportSurface: true
+      });
+
+      const ordinaryValue = ordinaryChild.value;
+      const referenceValue = referenceChild.value;
+      let referenceReads = 0;
+      Object.defineProperty(ordinaryChild, 'value', {
+        configurable: true,
+        get() {
+          throw new Error('variable lookup should not widen property-only child scans');
+        }
+      });
+      Object.defineProperty(referenceChild, 'value', {
+        configurable: true,
+        get() {
+          referenceReads++;
+          return referenceValue;
+        }
+      });
+
+      try {
+        const found = findVariableDeclarationOccurrence(root, 'missing-from-ref', { searchParents: false })?.node;
+        expect(found).toBeUndefined();
+        expect(referenceReads).toBeGreaterThan(0);
+      } finally {
+        Object.defineProperty(ordinaryChild, 'value', {
+          configurable: true,
+          writable: true,
+          value: ordinaryValue
+        });
+        Object.defineProperty(referenceChild, 'value', {
+          configurable: true,
+          writable: true,
+          value: referenceValue
+        });
+      }
+    });
+
     it('direct variable lookup still skips children without variable or reference-import surfaces', async () => {
       const childRules = rules([
         vardecl({ name: any('from-ref'), value: any('blue') })
