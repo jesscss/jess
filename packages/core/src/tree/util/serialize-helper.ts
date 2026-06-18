@@ -114,7 +114,12 @@ function renderNodeText(
       writer
     }));
   }
-  return options.writer.preview(() => node.toTrimmedString(options));
+  const writer = new OutputWriter();
+  node.writeSyntax(getPrintOptions({
+    ...options,
+    writer
+  }));
+  return writer.toString();
 }
 
 type RenderRuleEntry = {

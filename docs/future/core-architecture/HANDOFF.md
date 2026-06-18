@@ -103,42 +103,41 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: declaration-only rules lookup handle read/write constraints.
-- Verdict: accepted as a binding handle-policy cut. The old generic
-  `lookupTypeUsesDeclarationConstraints(...)` predicate is deleted, declaration
-  handle freshness is checked through declaration-handle guards, and
-  declaration/property/variable handle writers now use declaration-only args.
-  Function/callable writer bodies no longer receive declaration constraint
-  plumbing. No speed claim.
-- New traversal: no new production traversal. This pass adds no tree walk,
-  parent walk, child scan, map/filter/sort, or side-map lookup. The only
-  review-flagged loops are verifier token scans that reject the deleted generic
-  helper names, require declaration-only writer signatures, and inspect the
-  function/callable writer bodies for forbidden declaration-constraint reads.
-- New node/materialization: no runtime nodes, wrappers, copied rules, inherited
-  metadata, frozen state, or production arrays were added. Review-flagged
-  `WriteRulesLookupHandleArgsBase` and `string[]` entries are type-only handle
-  writer/key annotations, not materialized runtime arrays or objects.
-- Render path: no render/stringification path changed.
-- Helper/API surface: removes one private generic predicate and adds private
-  declaration-handle guard/read helpers plus a private strategy write
-  dispatcher. The dispatcher keeps sync/async writeback in one place while
-  omitting declaration constraints for non-declaration strategies. The next
-  binding tasks are to split the remaining generic handle reader and move
-  declaration constraints off generic lookup context state.
+- Latest pass: generic leaf container preview-transport cut plus leaf
+  `AtRule.writeSyntax(...)` ownership.
+- Verdict: accepted as a localized serialization transport deletion. Generic
+  container leaves in `serialize-helper.ts` no longer preview public
+  `toTrimmedString(...)` on the caller writer, and source leaf at-rules no
+  longer fall through the base `writeSyntax(...) -> toTrimmedString(...)`
+  wrapper when container serialization asks for direct syntax. No speed claim.
+- New traversal: none. No new tree walk, parent walk, callback scan, side-map
+  lookup, or array materialization was added.
+- New node/materialization: none. The only new `OutputWriter` remains the
+  detached syntax boundary used to replace caller-writer preview transport; no
+  runtime node copies, wrappers, inherited metadata, or frozen state were
+  added.
+- Render path: generic leaf container serialization now writes detached child
+  syntax through `writeSyntax(...)` instead of `writer.preview(() =>
+  node.toTrimmedString(...))`. Leaf at-rules now satisfy that contract
+  directly via `AtRule.writeSyntax(...)` for source leaf headers, so the cut is
+  no longer masked by the base node fallback.
+- Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: no new runtime node/materialization allocation is
-  introduced. Function/callable handle write argument objects no longer carry
-  declaration constraints; declaration constraints remain computed for
-  declaration-capable paths.
-- Evidence: focused reference tests prove source-static handle reuse, cold
-  handle disqualification under searchScope/leaky contexts, reference strategy
-  cache type changes, terminal mixin-only invalidation, function/callable
-  ignored declaration options, mixin-ruleset cached lookup reuse, source-static
-  declaration assignment constraints, and declaration exclusion/output-binding
-  invalidation. `@jesscss/core` build passed. `verify:binding-lookup-hot-paths`
-  passed with guards against the deleted generic predicate and against
-  function/callable writers reading declaration constraints.
+- Routine error control: the review-flagged thrown error and `try/finally`
+  remain focused `ruleset.test.ts` proof scaffolding around temporarily swapped
+  public wrappers; no production error/control flow changed.
+- Allocation changes: deletes one caller-writer preview/readback boundary per
+  generic container leaf emission. Detached writer output still remains as the
+  bounded string boundary consumed by container serialization.
+- Rejected/observed in this pass: non-leaf `AtRule.writeSyntax(...)` still
+  falls back to public `toTrimmedString(...)`, `Rules` preview transport
+  remains on its dedicated row, and broader AtRule body-state/import/render
+  branch cleanup is still queued.
+- Evidence: focused `ruleset.test.ts` leaf at-rule proof, focused
+  `nesting-collapse.test.ts` collapsed leaf at-rule proof, focused
+  `at-rule.test.ts` leaf/header slices, targeted ESLint, `git diff --check`,
+  `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` passed.
 - Merge-carried serialization review: latest `origin/dev` also carries the
   declaration fallback preview-transport cut in
   `packages/core/src/tree/util/serialize-helper.ts`. Review-flagged

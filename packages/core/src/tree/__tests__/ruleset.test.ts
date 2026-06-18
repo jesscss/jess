@@ -326,6 +326,32 @@ describe('Rule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('renders ruleset leaf at-rules without public string preview transport', () => {
+    const writer = new CountingWriter();
+    const leaf = atrule({
+      name: any('@property', { role: 'atkeyword' }),
+      prelude: any('--brand-color')
+    });
+    leaf.toTrimmedString = () => {
+      throw new Error('ruleset leaf serialization should write at-rule syntax directly');
+    };
+    const node = ruleset({
+      selector: sellist([sel([el('.box')])]),
+      rules: rules([leaf])
+    });
+
+    try {
+      expect(node.toTrimmedString({ writer })).toBeString(`
+        .box {
+          @property --brand-color;
+        }
+      `);
+      expect(writer.previews).toBe(0);
+    } finally {
+      delete leaf.toTrimmedString;
+    }
+  });
+
   it('source-direct renders static rulesets with invisible variable declarations from source', async () => {
     const selector = sellist([sel([el('foo')])]);
     const variable = vardecl({ name: 'brand', value: any('red') });
