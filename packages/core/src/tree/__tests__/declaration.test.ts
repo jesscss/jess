@@ -996,8 +996,8 @@ describe('Declaration', () => {
 
     expect(node.render(context, { writer })).toBe('background-color: red foo');
     expect(writer.toString()).toBe('background-color: red foo');
-    expect(writer.marks).toBe(2);
-    expect(writer.readbacks).toBe(2);
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(1);
   });
 
   it('renders assignment merges without evaluating temporary sequence containers', async () => {

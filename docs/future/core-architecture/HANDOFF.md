@@ -103,6 +103,32 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: declaration merge-sequence active-writer spacing split.
+- Verdict: accepted as a bounded `Declaration` serializer cut. Non-custom
+  merge-sequence value output no longer opens an inner declaration value
+  mark/readback window just to normalize leading spacing; the covered path now
+  streams directly through the active declaration writer and lets the existing
+  outer public render/string boundary keep ownership of returned text. No speed
+  claim.
+- New traversal: none added.
+- Review-flagged allocations: none added on the covered production path.
+- New node/materialization: none.
+- Render path: declaration render still stringifies directly. The pass deletes
+  one inner writer readback boundary for merge-sequence spacing; it does not
+  materialize temporary nodes, arrays, or wrapper declarations to recover text.
+- Helper/API surface: none added. The change stays inside
+  `packages/core/src/tree/declaration.ts` and reuses the existing declaration
+  writer path.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: deletes the inner non-custom merge-sequence
+  mark/getSince/replaceSince boundary previously used only to normalize the
+  leading spacer for rendered sequence-merge values.
+- Evidence: focused `declaration.test.ts` cases for merged declaration list
+  render, merged declaration sequence render, merged declaration sequence
+  active-writer counts, merge adapter state, and authored multiline values all
+  passed. Full `declaration.test.ts` and `@jesscss/core` build passed.
+
 - Latest pass: nested `Rules` preview-string deletion in container serialization.
 - Verdict: accepted as a bounded `Rules`/`Ruleset` serializer cut. Leaf
   `Rules` wrappers inside `serializeRulesContainer(...)` no longer preview
@@ -131,7 +157,7 @@ with `--no-verify` after the explicit gates pass.
   `serializeRulesContainer(...)`.
 - Evidence: the focused `ruleset.test.ts` cases for no-trivia header transport,
   repeated comparable headers, child `Rules` body transport on the caller
-  writer, and declaration fallback transport all passed. Full
+  writer, and declaration merge-sequence writer transport all passed. Full
   `ruleset.test.ts`, full `rules.test.ts`, and `@jesscss/core` build passed.
 
 - Latest pass: `Call` active-writer custom render text split.

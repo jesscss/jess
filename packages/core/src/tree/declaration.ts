@@ -686,15 +686,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       restorePrintState(options, saved);
     } else {
-      const valueMark = w.mark();
-      if (mergeAdapter?.kind === 'list') {
-        renderListValueSyntax(mergeAdapter.items, options);
-      } else if (mergeAdapter?.kind === 'space') {
+      if (mergeAdapter?.kind === 'space') {
         this.renderSpaceValueSyntax(mergeAdapter.items, options);
       } else {
-        value.writeSyntax(options);
+        const valueMark = w.mark();
+        if (mergeAdapter?.kind === 'list') {
+          renderListValueSyntax(mergeAdapter.items, options);
+        } else {
+          value.writeSyntax(options);
+        }
+        w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
       }
-      w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
       if (!isNode(value, N.Collection)) {
         if (important || importantText) {
           w.add(' ');
@@ -723,10 +725,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
     for (let index = 0; index < value.length; index++) {
-      if (index !== 0) {
-        w.queueSpacer(' ');
-      }
       const item = value[index]!;
+      w.queueSpacer(' ');
       item.writeSyntax(printOptions);
     }
   }
