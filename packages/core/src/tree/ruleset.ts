@@ -1152,9 +1152,8 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     return cached;
   }
 
-  getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
+  private renderHeaderSelectorString(options: FinalPrintOptions, withoutComments: boolean): string {
     const { selector } = this;
-    const idt = indent(options.depth);
 
     // Should never be called for Nil selectors (serializeRulesContainer guards this),
     // but keep it safe for TypeScript and invariants.
@@ -1218,8 +1217,17 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     } finally {
       options.trivia = savedTrivia;
     }
-    const selOut = writer.toString();
     restorePrintState(options, saved);
+    return writer.toString();
+  }
+
+  getComparableHeaderString(options: FinalPrintOptions): string {
+    return this.renderHeaderSelectorString(options, true);
+  }
+
+  getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
+    const idt = indent(options.depth);
+    const selOut = this.renderHeaderSelectorString(options, withoutComments === true);
     const header = selOut + ' {';
     return (/^\s*\/\*/u.test(header)
       ? normalizeLeadingBlockTrivia(header, idt)

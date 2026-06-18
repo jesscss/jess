@@ -1150,6 +1150,44 @@ describe('Rule', () => {
     }
   });
 
+  it('getComparableHeaderString keeps selector capture off the caller writer', () => {
+    const writer = new CountingWriter();
+    const selector = sellist([sel([el('.foo')])]);
+    const node = ruleset({
+      selector,
+      rules: rules([])
+    });
+    const options = getPrintOptions({ writer });
+    const selectorPrototypeCandidate = Object.getPrototypeOf(selector);
+    if (
+      !selectorPrototypeCandidate
+      || typeof selectorPrototypeCandidate !== 'object'
+      || !('writeSyntax' in selectorPrototypeCandidate)
+      || typeof selectorPrototypeCandidate.writeSyntax !== 'function'
+    ) {
+      throw new TypeError('Expected selector prototype with writeSyntax');
+    }
+    const selectorPrototype: { writeSyntax: typeof selector.writeSyntax } = selectorPrototypeCandidate;
+    const originalWriteSyntax = selectorPrototype.writeSyntax;
+    let selectorUsedDetachedWriter = false;
+    selectorPrototype.writeSyntax = function writeSyntaxWithWriterCheck(
+      this: typeof selector,
+      nextOptions: Parameters<typeof originalWriteSyntax>[0]
+    ): void {
+      selectorUsedDetachedWriter = nextOptions.writer !== writer;
+      originalWriteSyntax.call(this, nextOptions);
+      nextOptions.writer.add('   ');
+    };
+
+    try {
+      expect(node.getComparableHeaderString(options)).toBe('.foo');
+      expect(writer.toString()).toBe('');
+      expect(selectorUsedDetachedWriter).toBe(true);
+    } finally {
+      selectorPrototype.writeSyntax = originalWriteSyntax;
+    }
+  });
+
   it('getHeaderString keeps selector visibility forcing render-local', () => {
     const selector = el('.foo');
     selector.removeFlag(F_VISIBLE);
@@ -1255,6 +1293,75 @@ describe('Rule', () => {
       expect(composeHeaderSelectorCalls).toBeGreaterThan(0);
     } finally {
       node.composeHeaderSelector = originalComposeHeaderSelector;
+    }
+  });
+
+  it('serializeRulesContainer compares repeated ruleset headers through comparable header keys', async () => {
+    const first = ruleset({
+      selector: sel([el('.same')]),
+      rules: rules([
+        decl({ name: 'case', value: any('1') })
+      ])
+    });
+    const second = ruleset({
+      selector: sel([el('.same')]),
+      rules: rules([
+        decl({ name: 'case', value: any('2') })
+      ])
+    });
+    const node = rules([first, second]);
+    let withoutCommentsHeaderCalls = 0;
+    let comparableHeaderCalls = 0;
+    const rulesetPrototypeCandidate = Object.getPrototypeOf(first);
+    if (
+      !rulesetPrototypeCandidate
+      || typeof rulesetPrototypeCandidate !== 'object'
+      || !('getHeaderString' in rulesetPrototypeCandidate)
+      || typeof rulesetPrototypeCandidate.getHeaderString !== 'function'
+      || !('getComparableHeaderString' in rulesetPrototypeCandidate)
+      || typeof rulesetPrototypeCandidate.getComparableHeaderString !== 'function'
+    ) {
+      throw new TypeError('Expected ruleset prototype with header helpers');
+    }
+    const rulesetPrototype: {
+      getHeaderString: typeof first.getHeaderString;
+      getComparableHeaderString: typeof first.getComparableHeaderString;
+    } = rulesetPrototypeCandidate;
+    const originalGetHeaderString = rulesetPrototype.getHeaderString;
+    const originalGetComparableHeaderString = rulesetPrototype.getComparableHeaderString;
+    rulesetPrototype.getHeaderString = function countWithoutCommentsCalls(
+      this: typeof first,
+      ...args: Parameters<typeof originalGetHeaderString>
+    ): ReturnType<typeof originalGetHeaderString> {
+      if (args[1] === true) {
+        withoutCommentsHeaderCalls++;
+      }
+      return originalGetHeaderString.apply(this, args);
+    };
+    rulesetPrototype.getComparableHeaderString = function countComparableCalls(
+      this: typeof first,
+      ...args: Parameters<typeof originalGetComparableHeaderString>
+    ): ReturnType<typeof originalGetComparableHeaderString> {
+      comparableHeaderCalls++;
+      return originalGetComparableHeaderString.apply(this, args);
+    };
+
+    try {
+      const out = await renderNodeToString(node, context, { collapseNesting: true });
+
+      expect(out).toBeString(`
+        .same {
+          case: 1;
+        }
+        .same {
+          case: 2;
+        }`
+      );
+      expect(withoutCommentsHeaderCalls).toBe(0);
+      expect(comparableHeaderCalls).toBeGreaterThan(0);
+    } finally {
+      rulesetPrototype.getHeaderString = originalGetHeaderString;
+      rulesetPrototype.getComparableHeaderString = originalGetComparableHeaderString;
     }
   });
 
