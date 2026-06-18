@@ -93,7 +93,7 @@ describe('Rules streaming', () => {
     ]);
 
     expect(node.toString({ context, writer })).toBe('.a {\n  color: red;\n}\nbackground: blue;\n');
-    expect(writer.marks).toBe(6);
+    expect(writer.marks).toBe(4);
   });
 
   it('does not inspect root output for each emitted child boundary', () => {

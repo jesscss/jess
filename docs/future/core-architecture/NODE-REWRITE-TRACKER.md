@@ -157,9 +157,9 @@ when choosing among unfinished serialization rows. Hot unfinished rows include
   duplicate-comparison/materialization, and merge-state boundaries remain.
 - [x] `Any` / `Keyword` / `Anonymous`: scalar token emission is owned by
   concrete `writeSyntax(...)`; compare-time `Any` coercion uses the shared
-  compare normalizer instead of a per-call local closure, and fallback
-  comparison reads the owned scalar `Any.value` instead of serializing the left
-  token through public `toString(...)`.
+  compare normalizer instead of a per-call local closure, and the remaining
+  compare branch reads the owned scalar `Any.value` instead of serializing the
+  left token through public `toString(...)`.
 - [x] `Dimension` / `Num`: numeric/unit emission uses one scalar serializer
   shared by `writeSyntax(...)` and public string output; audit regex/unit
   formatting and operation paths.

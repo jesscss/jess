@@ -103,6 +103,38 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Any.compare(...)` owned-text compare branch and `Rules`
+  streaming proof sync.
+- Verdict: accepted as a tiny serializer truth-sync pass. `Any.compare(...)`
+  now uses the shared compare normalizer while reading the left operand from
+  owned scalar text, so the remaining compare branch no longer serializes the
+  left token through public `toString(...)`. The `Rules` streaming mark-count
+  proof was also synchronized to the already-landed child-container mark
+  reduction. No speed claim.
+- New traversal: none.
+- Review-flagged allocations: none.
+- New node/materialization: none.
+- Render path: no runtime render path changed beyond the compare branch above.
+  `Any.compare(...)` now normalizes `this.value` directly instead of formatting
+  the left operand through the public string transport, and the `Rules`
+  streaming test now expects the current four-mark behavior already produced by
+  the serializer.
+- Helper/API surface: no new helpers beyond reusing the existing shared
+  compare normalizer.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: removed the per-call local compare normalizer closure in
+  `Any.compare(...)`; no node copies, wrappers, or carried caches added.
+- Evidence: focused `any.test.ts`, focused `rules-streaming.test.ts`, combined
+  `any.test.ts` + `rules-streaming.test.ts`, `git diff --check`,
+  `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` passed. An attached
+  `pnpm run verify:baseline -- --changed` rerun still surfaces the existing
+  branch-red `Sequence` / render-alignment cluster (`sequence.test.ts`,
+  `node-render-buffer.test.ts`, `nesting-collapse.test.ts`, plus downstream
+  follow-on suites) outside this diff; that broader lane still needs separate
+  repair before the changed baseline will go green again.
+
 - Latest pass: `If` / `For` / `While` outer source-capture readback split.
 - Verdict: accepted as a bounded control-node serializer cut. Public source
   capture for `If`, `For`, and `While` no longer wraps `writeSyntax(...)` in
