@@ -103,6 +103,31 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `ComplexSelector` leading-combinator spacing truth-sync.
+- Verdict: accepted as a small serializer truth-sync inside the already-closed
+  `ComplexSelector` row. Relative selectors that start with a combinator now
+  emit their final `> .child` / `+ .child` shape directly instead of borrowing
+  the interior-combinator spacing rule and shifting nested ruleset indentation
+  by one column. No speed claim.
+- New traversal: none.
+- Review-flagged allocations: none.
+- New node/materialization: none.
+- Render path: no new render branch was added. The pass only corrects the
+  direct combinator token emitted by `ComplexSelector.writeSyntax(...)` when
+  the combinator is the first component.
+- Helper/API surface: none added.
+- Metadata mutations: none.
+- Routine error control: none added.
+- Allocation changes: none.
+- Evidence: focused `selector-complex.test.ts` now proves the leading
+  combinator shape directly, and the combined
+  `selector-complex.test.ts + reference.test.ts` suite passed. This clears the
+  `reference.test.ts` complex-selector render regression that had been adding
+  a stray leading space before nested `>` selectors. Remaining red tests in
+  `import-style.test.ts` and `mixin.test.ts` are now confined to child-surface
+  / namespace lookup and placement ownership lanes outside this serializer
+  truth-sync.
+
 - Latest pass: `Sequence` direct syntax/render alignment plus collapsed
   reference-wrapper rollback.
 - Verdict: accepted as a bounded serializer cut inside the active
