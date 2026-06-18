@@ -10,7 +10,7 @@ import type { Context } from '../context.js';
 import { Interpolated } from './interpolated.js';
 import { Any, any, type AnyRole } from './any.js';
 import { Reference } from './reference.js';
-import { List, renderListValueSyntax } from './list.js';
+import { List } from './list.js';
 import { spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { N } from './node-type.js';
@@ -688,13 +688,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     } else {
       if (mergeAdapter?.kind === 'space') {
         this.renderSpaceValueSyntax(mergeAdapter.items, options);
+      } else if (mergeAdapter?.kind === 'list') {
+        this.renderCommaValueSyntax(mergeAdapter.items, options);
       } else {
         const valueMark = w.mark();
-        if (mergeAdapter?.kind === 'list') {
-          renderListValueSyntax(mergeAdapter.items, options);
-        } else {
-          value.writeSyntax(options);
-        }
+        value.writeSyntax(options);
         w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
       }
       if (!isNode(value, N.Collection)) {
@@ -725,6 +723,19 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
     for (let index = 0; index < value.length; index++) {
+      const item = value[index]!;
+      w.queueSpacer(' ');
+      item.writeSyntax(printOptions);
+    }
+  }
+
+  private renderCommaValueSyntax(value: Node[], options: PrintOptions): void {
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer!;
+    for (let index = 0; index < value.length; index++) {
+      if (index !== 0) {
+        w.add(',');
+      }
       const item = value[index]!;
       w.queueSpacer(' ');
       item.writeSyntax(printOptions);

@@ -983,6 +983,23 @@ describe('Declaration', () => {
     }
   });
 
+  it('renders merged declaration lists without an extra list-value readback window', () => {
+    const writer = new CountingWriter();
+    const node = decl({
+      name: any('background-color'),
+      value: new List([
+        new Nil(),
+        any('red'),
+        any('foo')
+      ])
+    }, { normalizedFromAssign: AssignmentType.Add });
+
+    expect(node.render(context, { writer })).toBe('background-color: red, foo');
+    expect(writer.toString()).toBe('background-color: red, foo');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(1);
+  });
+
   it('renders merged declaration sequences without an extra space-value readback window', () => {
     const writer = new CountingWriter();
     const node = decl({

@@ -103,6 +103,41 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: declaration merge-list active-writer spacing split.
+- Verdict: accepted as a bounded `Declaration` serializer cut. Non-custom
+  merge-list value output no longer opens an inner declaration value
+  mark/readback window or per-item public list-string lane just to normalize
+  comma spacing; the covered path now streams directly through the active
+  declaration writer and lets the existing outer public render/string boundary
+  keep ownership of returned text. No speed claim.
+- New traversal: one straight indexed loop over the already-owned merge-list
+  items inside `renderCommaValueSyntax(...)`. This replaces the covered
+  `List.renderListValueSyntax(...)` public-string lane plus its inner writer
+  mark/readback instead of adding a new scan over unrelated declaration state.
+- Review-flagged allocations: none added on the covered production path.
+- New node/materialization: none.
+- Render path: declaration render still stringifies directly. The pass deletes
+  one inner writer readback boundary plus the covered public list-item string
+  lane for merge-list spacing; it does not materialize temporary nodes, arrays,
+  or wrapper declarations to recover text.
+- Helper/API surface: one node-local helper,
+  `renderCommaValueSyntax(...)`, was added in
+  `packages/core/src/tree/declaration.ts`. It replaces the covered
+  `renderListValueSyntax(...)` public-string lane for merge-list output and
+  keeps the list merge path on the same direct declaration-writer shape as the
+  adjacent space-merge path; no public API changed.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: deletes the inner non-custom merge-list
+  mark/getSince/replaceSince boundary and covered per-item public list-string
+  transport previously used only to normalize the leading spacer and commas
+  for rendered list-merge values.
+- Evidence: focused `declaration.test.ts` cases for merged declaration list
+  render, merged declaration list active-writer counts, merged declaration
+  sequence render, merged declaration sequence active-writer counts, merge
+  adapter state, and authored multiline values all passed. Full
+  `declaration.test.ts` and `@jesscss/core` build passed.
+
 - Latest pass: declaration merge-sequence active-writer spacing split.
 - Verdict: accepted as a bounded `Declaration` serializer cut. Non-custom
   merge-sequence value output no longer opens an inner declaration value
