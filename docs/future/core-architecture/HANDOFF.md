@@ -500,6 +500,35 @@ with `--no-verify` after the explicit gates pass.
   Full `at-rule.test.ts`, `git diff --check`,
   `pnpm --filter @jesscss/core build`, and
   `pnpm run verify:aggressive-cutting-review` also passed.
+- Latest pass: `Ruleset` empty-header position rollback split.
+- Verdict: accepted as a bounded serializer cut inside the active `Ruleset`
+  row. `writeHeader(...)` no longer spends a real `mark()` only so it can
+  roll back indentation when `writeHeaderSelector(...)` returns false for an
+  empty header. That branch now snapshots plain writer position and restores to
+  that position on the cold empty-header path. No speed claim.
+- New traversal: none.
+- Review-flagged allocations: none added on the ruleset header path.
+- Review-flagged diff tokens: the current
+  `verify:aggressive-cutting-review` run still reports only the focused
+  test-side `new CountingWriter()` plus `rules([])`/`new Nil()` fixture setup.
+  This pass adds no new production node construction or materialized arrays.
+- New node/materialization: none.
+- Render path: ruleset header emission still writes indent, selector, and
+  block-open directly on the success path. The only change is that the cold
+  empty-header rollback now uses `writer.position()` instead of a real mark.
+- Helper/API surface: none added.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: deleted the `writer.mark()` call in
+  `Ruleset.writeHeader(...)`; rollback now restores from a plain position
+  snapshot.
+- Evidence: focused red-to-green proof came from
+  `ruleset.test.ts` case
+  `does not spend a real mark to roll back empty ruleset headers`.
+  Full `ruleset.test.ts`, `git diff --check`, and
+  `pnpm --filter @jesscss/core build` also passed. The current
+  `verify:aggressive-cutting-review` run still reports only the cold test-side
+  fixture constructions listed above, which are prosecuted here.
 - Latest pass: `AtRule` no-trivia frame-header direct write split.
 - Verdict: accepted as a bounded serializer cut inside the active `AtRule`
   row. No-trivia at-rule frame opens in `serializeRulesContainer(...)` no

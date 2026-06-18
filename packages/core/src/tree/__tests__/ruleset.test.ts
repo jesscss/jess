@@ -1293,6 +1293,20 @@ describe('Rule', () => {
     }
   });
 
+  it('does not spend a real mark to roll back empty ruleset headers', () => {
+    const writer = new CountingWriter();
+    const node = ruleset({
+      selector: new Nil(),
+      rules: rules([])
+    });
+    const options = getPrintOptions({ writer });
+
+    expect(node.writeHeader(options)).toBe(false);
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.restores).toBe(1);
+  });
+
   it('getComparableHeaderString keeps selector capture off the caller writer', () => {
     const writer = new CountingWriter();
     const selector = sellist([sel([el('.foo')])]);

@@ -1240,13 +1240,13 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
 
   writeHeader(options: FinalPrintOptions, withoutComments?: boolean): boolean {
     const w = options.writer;
-    const mark = w.mark();
+    const position = w.position();
     const idt = indent(options.depth);
     if (idt) {
       w.add(idt);
     }
     if (!this.writeHeaderSelector(options, withoutComments === true)) {
-      w.restore(mark);
+      w.restore(position);
       return false;
     }
     w.add(' {\n');
