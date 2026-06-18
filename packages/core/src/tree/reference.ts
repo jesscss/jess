@@ -1211,6 +1211,16 @@ function getCallableRulesLookupHandleValueKey(valueKey: NormalizedLookupKey): st
   return typeof valueKey === 'string' || Array.isArray(valueKey) ? valueKey : undefined;
 }
 
+function getStaticReferenceValueKey(valueKey: ReferenceValue['key']): NormalizedLookupKey | undefined {
+  if (typeof valueKey === 'string' || typeof valueKey === 'number') {
+    return valueKey;
+  }
+  if (Array.isArray(valueKey) && isStringArray(valueKey)) {
+    return valueKey;
+  }
+  return undefined;
+}
+
 function getHandleableDeclarationConstraints(
   referenceNode: Reference
 ): ReferenceRulesLookupDeclarationConstraints | undefined {
@@ -2151,6 +2161,66 @@ function lookupResolvedReference(args: {
   return { returnVal, valueKey };
 }
 
+function tryReadInitialSourceStaticRulesLookupHandle(args: {
+  referenceNode: Reference;
+  lookupType: LookupType;
+  key: ReferenceValue['key'];
+  target: ReferenceValue['target'];
+  originalFilter: ReferenceOptions['filter'] | undefined;
+  context: Context;
+}): {
+  returnVal: ReferenceLookupReturnValue;
+  valueKey: NormalizedLookupKey;
+} | undefined {
+  const {
+    referenceNode,
+    lookupType,
+    key,
+    target,
+    originalFilter,
+    context
+  } = args;
+  if (target !== undefined || referenceNode._rulesLookupHandle === undefined) {
+    return undefined;
+  }
+  const valueKey = getStaticReferenceValueKey(key);
+  if (valueKey === undefined) {
+    return undefined;
+  }
+  const targetRules = context.rulesContext ?? referenceNode.rulesParent;
+  if (!isNode(targetRules, N.Rules)) {
+    return undefined;
+  }
+  const strategy = getReferenceLookupStrategy(lookupType);
+  const handleStrategy = isReferenceHandleLookupStrategy(strategy)
+    ? strategy
+    : undefined;
+  if (!handleStrategy) {
+    return undefined;
+  }
+  const { env } = prepareReferenceLookup({
+    referenceNode,
+    lookupType,
+    keyNode: referenceNode.key,
+    target,
+    originalFilter,
+    context
+  });
+  const handleResult = handleStrategy.tryReadSourceStaticHandle(
+    referenceNode,
+    targetRules,
+    valueKey,
+    env
+  );
+  if (handleResult === undefined) {
+    return undefined;
+  }
+  return {
+    returnVal: handleResult === CACHED_RULES_LOOKUP_MISS ? undefined : handleResult,
+    valueKey
+  };
+}
+
 function lookupDirectTarget(
   targetNode: Node | undefined,
   lookupType: LookupType,
@@ -3087,6 +3157,32 @@ function evaluateReferenceNode(args: {
   } = args;
   const renderTextOnly = textOnly === true;
   context.pushReference();
+  const initialHandleLookup = tryReadInitialSourceStaticRulesLookupHandle({
+    referenceNode,
+    lookupType,
+    key,
+    target,
+    originalFilter,
+    context
+  });
+  if (initialHandleLookup !== undefined) {
+    const { returnVal, valueKey } = initialHandleLookup;
+    const directRenderValue = directStaticRender === true
+      ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
+      : undefined;
+    if (directRenderValue) {
+      return directRenderValue;
+    }
+    return finalizeReferenceLookupResult(
+      referenceNode,
+      returnVal,
+      valueKey,
+      lookupType,
+      fallbackValue,
+      context,
+      renderTextOnly
+    );
+  }
   const initialTarget = resolveInitialReferenceTarget(referenceNode, context);
   if (isThenable(initialTarget)) {
     return Promise.resolve(initialTarget)

@@ -1106,13 +1106,21 @@ tests for required assignment constraints, source/output exclusions, first-two
 exclusion identities, bindOutput invalidation, and wider cold filters stayed
 green.
 
-69. [ ] Audit simple current-cell read object materialization. Scope:
+69. [x] Audit simple current-cell read object materialization. Scope:
 `BindingCell.lookupIdentity`, `ScopeFrame.currentBindingsVersion`, variable
 handle freshness, ancestor current-binding handles, rest/@arguments slots, and
 reference handle snapshots. Goal: simple variable/property/declaration reads
 reuse live cells without allocating cold handle/read argument objects on the
 hot path. Acceptance: focused reference tests plus a direct lookup profile or
-counter note showing any remaining object-heavy read surface.
+counter note showing any remaining object-heavy read surface. Current evidence:
+source-static cached handle reads now run before initial reference target
+resolution, so ordinary cached static reads skip the runtime live-slot target
+probe and avoid preparing the full `RulesLookupHandleShape`. The cached
+variable-handle test now asserts zero `currentBindingsByName.get` reads on
+reuse, while parent-frame and child-frame current-binding invalidation tests
+still pass. The existing source-static handle matrix proves variable,
+property, function, and callable handles read before rebuilding `_lookupStrategy`;
+unstable reference facts still rebuild normally.
 
 70. [ ] Delete terminal namespace fallback proved redundant by the final
 mixin-only matrix. Scope: `terminalMixinOnly`, parameterized mixin-ruleset

@@ -2960,7 +2960,7 @@ describe('reference', () => {
       try {
         const second = await colorRef.eval(context);
         expect(second.valueOf()).toBe('red');
-        expect(currentBindingReads).toBe(1);
+        expect(currentBindingReads).toBe(0);
       } finally {
         frame.currentBindingsByName.get = originalGet;
       }
