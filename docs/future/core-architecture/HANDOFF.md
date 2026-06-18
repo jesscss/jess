@@ -104,8 +104,8 @@ with `--no-verify` after the explicit gates pass.
 ## Aggressive Cutting Self-Prosecution
 
 - Latest pass: binding implementation pass moving static variable binding-cell
-  ownership into registration/indexing and rejecting assignment-map entry-shape
-  churn.
+  ownership into registration/indexing, sharing that constructor with dynamic
+  declaration-name promotion, and rejecting assignment-map entry-shape churn.
 - Verdict: accepted as an allocation cleanup on the registryless
   assignment-target path. `RulesEntryLike` now carries canonical
   `assignmentBindingsByName` plus an `assignmentReadonlyByName` overlay when an
@@ -118,13 +118,14 @@ with `--no-verify` after the explicit gates pass.
   of bare `VarDeclaration`s, so static registration/indexing owns the canonical
   cell before frame construction. Assignment maps keep the simpler
   `BindingCell` value shape and reuse those cells instead of switching to
-  `BindingEntry` values. No speed claim.
+  `BindingEntry` values. Dynamic declaration-name promotion now uses the same
+  `createVarDeclarationBindingEntry(...)` primitive. No speed claim.
 - New traversal: no new ordinary lookup traversal was added. Static
   assignment-target collection now iterates `varsByName` binding entries rather
   than rescanning `Rules.value`, so the existing static registration index
-  feeds both frame buckets and assignment targets. `buildScopeFrame(...)`
-  clones the entry array but reuses each entry/cell; follow-up item 58 checks
-  whether that array clone is still needed for snapshot isolation.
+  feeds both frame buckets and assignment targets. `buildScopeFrame(...)` now
+  reuses the `varsByName` entry arrays directly instead of cloning them; late
+  registration still updates the current binding explicitly after appending.
 - Review-flagged allocations: the previous cloned readonly assignment map was
   deleted. Production still lazily allocates `assignmentBindingsByName` only
   for `ScopeFrame`s that have modeled public child/import variable assignment
@@ -162,9 +163,8 @@ with `--no-verify` after the explicit gates pass.
   static declarations. Late static registration now reuses that same entry for
   an already-built `ScopeFrame` bucket instead of creating a second cell.
   Assignment maps still allocate lazily when consulted, and
-  `buildScopeFrame(...)` currently clones entry arrays while reusing cells;
-  items 57 and 58 track the remaining dynamic-promotion constructor and array
-  allocation tightening. Ordinary reads still do not consult assignment cells.
+  `buildScopeFrame(...)` no longer clones entry arrays. Ordinary reads still do
+  not consult assignment cells.
 - Evidence: focused `import-style.test.ts` slices prove configured `with`/`set`
   child-surface property hits and reference-import selector-list/nested
   property hits stay off `Rules.find(...)`; focused `reference.test.ts` slices

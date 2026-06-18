@@ -23,11 +23,11 @@ import { List } from './list.js';
 import { Nil } from './nil.js';
 import {
   getBindingCellValue,
+  createVarDeclarationBindingEntry,
   ensureBindingCellLookupIdentity,
   lookupScopeFrameVariable,
   setScopeFrameDeclarationBinding,
   type BindingCell,
-  type BindingEntry,
   type ScopeFrame
 } from './scope-frame.js';
 import type { VarDeclaration } from './declaration-var.js';
@@ -202,14 +202,7 @@ function promoteResolvedPendingVarDecls(
       }
     }
     if (!hasEntry) {
-      const entry: BindingEntry = {
-        cell: {
-          value: decl.valueNode,
-          sourceNode: decl,
-          readonly: decl.options?.readonly
-        },
-        sourceNode: decl
-      };
+      const entry = createVarDeclarationBindingEntry(decl);
       bucket.push(entry);
       setScopeFrameDeclarationBinding(frame, resolvedName, entry);
     } else {

@@ -898,7 +898,7 @@ the same canonical cell. Focused reference handle tests prove static variable
 binding handle identity/freshness still holds, and setDefined tests prove
 assignment-target identity reuse.
 
-57. [ ] Collapse duplicate static binding entry creation between
+57. [x] Collapse duplicate static binding entry creation between
 `createVarDeclarationBindingEntry(...)` and pending dynamic promotion. Scope:
 `createVarDeclarationBindingEntry(...)`, `promoteResolvedPendingVarDecls(...)`
 in `reference.ts`, static registration, and dynamic-name promotion tests.
@@ -909,16 +909,22 @@ tests stay green, aggressive review accounts for any remaining object creation
 as semantic binding state. Current evidence: late static registration now
 pushes the same `BindingEntry` into `Rules.varsByName` and the already-built
 `ScopeFrame` bucket, so that path no longer creates a parallel cell. Dynamic
-pending promotion still needs the shared-constructor audit.
+pending promotion now uses the same `scope-frame.ts`
+`createVarDeclarationBindingEntry(...)` primitive as static registration, with
+focused pending-dynamic promotion and setDefined tests green.
 
-58. [ ] Revisit `varsByName` array cloning during `buildScopeFrame(...)` after
+58. [x] Revisit `varsByName` array cloning during `buildScopeFrame(...)` after
 entries own cells. Scope: `buildScopeFrame(...)`, `Rules.varsByName` mutation
 after frame creation, late static registration, and declaration bucket
 source-order tests. Goal: prove whether `declarationBucketsByName` can reuse
 the `varsByName` entry arrays directly, or document why cloning the array is
 needed to keep frame snapshots stable. Acceptance: focused source-order,
 late-registration, and reference handle tests stay green; aggressive review
-records clone retention or deletion.
+records clone retention or deletion. Current evidence: clone deleted.
+`declarationBucketsByName` reuses the `varsByName` entry arrays directly;
+late registration updates the current binding explicitly after pushing, and
+new names after frame creation still allocate their frame bucket. Focused
+source-order, pending-dynamic, setDefined, and scope-frame tests are green.
 
 ## Latest Binding Baseline
 

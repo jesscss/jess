@@ -50,6 +50,7 @@ import {
   assignScopeFrameVariable,
   buildScopeFrame,
   copyScopeFrameLiveBindingSlots,
+  createVarDeclarationBindingEntry,
   lookupScopeFrameCallable,
   lookupScopeFrameVariable,
   setScopeFrameDeclarationBinding,
@@ -763,17 +764,6 @@ function setAssignmentTargetBinding(
   } else {
     target.assignmentReadonlyByName?.delete(name);
   }
-}
-
-function createVarDeclarationBindingEntry(decl: VarDeclaration): BindingEntry {
-  return {
-    cell: {
-      value: decl.valueNode,
-      sourceNode: decl,
-      readonly: decl.options?.readonly
-    },
-    sourceNode: decl
-  };
 }
 
 /**

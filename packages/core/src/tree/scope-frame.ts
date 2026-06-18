@@ -61,6 +61,17 @@ export interface BindingEntry {
   sourceNode: Node;
 }
 
+export function createVarDeclarationBindingEntry(decl: VarDeclaration): BindingEntry {
+  return {
+    cell: {
+      value: decl.valueNode,
+      sourceNode: decl,
+      readonly: decl.options?.readonly
+    },
+    sourceNode: decl
+  };
+}
+
 export type ScopeFrameVariableLookupResult =
   | {
     kind: 'live';
@@ -298,8 +309,7 @@ export function buildScopeFrame(
   const currentBindingsByName = new Map<string, BindingCell>();
 
   if (varsByName) {
-    for (const [name, sourceEntries] of varsByName) {
-      const entries = sourceEntries.slice();
+    for (const [name, entries] of varsByName) {
       for (let i = 0; i < entries.length; i++) {
         ensureBindingCellLookupIdentity(entries[i]!.cell);
       }
