@@ -33,10 +33,6 @@ const getDefaultGuardBool = (node: Node | undefined, context: Context): Bool | u
   return value === undefined ? undefined : createPublicBool(value);
 };
 
-function normalizeEscapedList(value: List): List {
-  return new List([...value.items], { ...value.options, sep: ',' }).inherit(value);
-}
-
 function writeParenValue(value: Node, options: FinalPrintOptions): void {
   if (options.trivia) {
     emitTriviaTokens(
@@ -340,7 +336,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         }
         if (this._options?.escaped && value instanceof Node) {
           if (value instanceof List && value.options?.sep === ';') {
-            return normalizeEscapedList(value);
+            return new Any(renderListValueSyntax(value.items, {}, ','));
           }
           return value;
         }

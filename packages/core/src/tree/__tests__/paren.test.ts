@@ -462,8 +462,33 @@ describe('Paren', () => {
       { escaped: true }
     ).resolve(context);
 
+    expect(resolved).toBeInstanceOf(Any);
     expect(resolved.toTrimmedString()).toBe('7, 8, 9');
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('normalizes escaped semicolon lists without replacement list inheritance on resolve', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(Node.prototype, 'inherit');
+    if (!descriptor) {
+      throw new Error('Expected Node.inherit for resolve materialization proof');
+    }
+    Object.defineProperty(Node.prototype, 'inherit', {
+      ...descriptor,
+      value: () => {
+        throw new Error('escaped list resolve should not materialize a replacement List');
+      }
+    });
+    try {
+      const resolved = await paren(
+        list([num(7), num(8), num(9)], { sep: ';' }),
+        { escaped: true }
+      ).resolve(context);
+
+      expect(resolved).toBeInstanceOf(Any);
+      expect(resolved.toTrimmedString()).toBe('7, 8, 9');
+    } finally {
+      Object.defineProperty(Node.prototype, 'inherit', descriptor);
+    }
   });
 
   it('renders escaped semicolon lists as commas without replacement list inheritance', () => {

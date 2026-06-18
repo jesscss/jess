@@ -103,6 +103,45 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: escaped `Paren` semicolon-list public normalization to direct
+  comma text.
+- Verdict: accepted as a localized public normalization cut. Escaped
+  semicolon-list `evalNode(...)` / `resolve(...)` no longer materialize a
+  replacement `List` with inherited source state just to surface comma output;
+  they now return direct comma text as `Any`. No speed claim.
+- New traversal: none. No new tree walk, parent walk, callback scan, side-map
+  lookup, or array materialization was added. The remaining comma join is the
+  existing `renderListValueSyntax(...)` string boundary already called from the
+  old replacement-list path.
+- New node/materialization: one scalar `Any` output node remains on the public
+  `evalNode(...)` / `resolve(...)` boundary for escaped semicolon lists.
+  Rejected render-only/public replacement `List` materialization was deleted.
+- Review-flagged node construction: `new Any(renderListValueSyntax(...))` is
+  the deliberate remaining public normalization boundary for escaped
+  semicolon-list `evalNode(...)` / `resolve(...)`. It replaces a heavier
+  replacement `List(...).inherit(...)` surface and is not used on render.
+- Render path: render already avoided replacement-list materialization before
+  this pass, and it stays on the existing direct comma-text path.
+- Helper/API surface: deletes private `normalizeEscapedList(...)`; no new
+  helper or public API surface was added.
+- Metadata mutations: none. The deleted path no longer calls `.inherit(...)`
+  on a replacement list during public normalization.
+- Routine error control: the review-flagged thrown test errors are focused
+  `paren.test.ts` proof scaffolding around temporary `inherit(...)` guards; no
+  production error/control flow changed.
+- Review-flagged inherit token: the danger-token hit is this handoff prose
+  describing the deleted `.inherit(...)` path, not a new production metadata
+  mutation.
+- Allocation changes: deletes one replacement `List([...items], { sep: ',' })`
+  plus inherited-source-state path and replaces it with one scalar `Any`
+  output surface on the public normalization boundary.
+- Rejected/observed in this pass: the shared `renderListValueSyntax(...)`
+  mark/readback boundary, guard/string conversion, segmented/async non-scalar
+  child render, and remaining capture audit stay queued.
+- Evidence: focused `paren.test.ts` resolve/render normalization proof plus
+  escaped call argument sanity checks in `call.test.ts`, targeted ESLint,
+  `git diff --check`, `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` passed.
 - Latest pass: reference handle/no-handle strategy split plus callable reader
   freshness cleanup.
 - Verdict: accepted as a binding handle-access cut. Index lookup is now an
