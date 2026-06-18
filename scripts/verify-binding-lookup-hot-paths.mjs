@@ -150,6 +150,28 @@ if (referenceSource.includes('getRulesLookupHandleDeclarationConstraintShape')) 
   console.error('declaration constraints should not be modeled as generic RulesLookupHandleShape fields');
   failed = true;
 }
+if (referenceSource.includes('function isRulesLookupHandleEligible(')) {
+  console.error('rules lookup handle eligibility should live on lookup strategies, not a generic type ladder');
+  failed = true;
+}
+if (referenceSource.includes('function tryReadSourceStaticRulesLookupHandle(')) {
+  console.error('source-static rules lookup handle reads should be split by lookup strategy');
+  failed = true;
+}
+for (const token of [
+  'tryReadSourceStaticPropertyRulesLookupHandle',
+  'tryReadSourceStaticVariableRulesLookupHandle',
+  'tryReadSourceStaticFunctionRulesLookupHandle',
+  'tryReadSourceStaticMixinRulesLookupHandle',
+  'tryReadSourceStaticMixinRulesetRulesLookupHandle',
+  'getHandleValueKey',
+  'handleLookupType'
+]) {
+  if (!referenceSource.includes(token)) {
+    console.error(`reference lookup strategy handle policy is missing ${token}`);
+    failed = true;
+  }
+}
 const referenceOptionsMatch = referenceSource.match(/export type ReferenceOptions = \{[\s\S]*?\n\};/);
 if (!referenceOptionsMatch) {
   console.error('could not find exported ReferenceOptions block');

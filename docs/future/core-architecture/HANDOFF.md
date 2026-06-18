@@ -139,6 +139,18 @@ with `--no-verify` after the explicit gates pass.
   `git diff --check`,
   `pnpm run verify:aggressive-cutting-review`, and
   `pnpm --filter @jesscss/core build` passed.
+- Merge-carried binding review: latest `origin/dev` also carries
+  strategy-owned rules lookup handle policy in
+  `packages/core/src/tree/reference.ts` and the binding verifier. It is
+  binding handle-policy only: the old generic
+  `isRulesLookupHandleEligible(...)` and
+  `tryReadSourceStaticRulesLookupHandle(...)` helpers are gone, each
+  `ReferenceLookupStrategy` now owns its lookup type/key/declaration-constraint
+  policy and source-static reader, and `verify:binding-lookup-hot-paths`
+  guards that strategy-owned handle policy does not collapse back into generic
+  helpers. No render/stringification path changed, no runtime node
+  materialization was added, and detailed status remains in
+  `BINDING-LOOKUP-REMAINING.md`.
 - Merge-carried binding review: latest `origin/dev` also carries generic rules
   lookup handle shape split in `packages/core/src/tree/reference.ts` and the
   binding verifier script. It is binding handle-shape only:
