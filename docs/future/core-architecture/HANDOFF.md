@@ -134,6 +134,17 @@ with `--no-verify` after the explicit gates pass.
   the real Less merge-chain fixture avoiding public property/declaration lookup
   bridges. Focused declaration merge/assignment tests and
   `verify:binding-lookup-hot-paths` passed.
+- Merge-carried binding review: latest `origin/dev` also carries
+  declaration-constraint option cleanup and merge-chain output-binding proof
+  in `packages/core/src/tree/reference.ts` and related lookup helpers. It is
+  binding/API-shape only: direct declaration lookup no longer accepts scalar
+  exclusion fields, `ReferenceOptions` uses semantic
+  `excludedDeclarations` / `requiredDeclarationAssignments` names, and merge
+  assignment keeps one mutable semantic exclusion list instead of hidden scalar
+  getter fields. No render/stringification path changed. Review-flagged loops,
+  arrays, and option objects belong to verifier/test/public-shape proof
+  scaffolding. Detailed status remains in
+  `BINDING-LOOKUP-REMAINING.md`.
 - Merge-carried binding review: latest `origin/dev` also carries binding/lookup
   queue cleanup plus two rejected namespace-prefix shortcut audits. It is
   lookup-only: no render/stringification path changed, no runtime node
@@ -160,12 +171,18 @@ with `--no-verify` after the explicit gates pass.
   syntax readback cuts, plus Ruleset/Ampersand serialization cuts from the
   latest merge and the child `Rules` wrapper preview-transport cut; keep that
   progress in `NODE-REWRITE-TRACKER.md` while this worktree continues
-  binding/lookup. Review-flagged `CountingWriter`
+  serialization. Review-flagged `CountingWriter`
   constructions, detached `OutputWriter` header string boundaries, custom
   syntax subclass constructions, scalar `any(...)` fixtures, explicit
   `new Anonymous('html')`, and empty-arg `call(...)` test fixtures are
   serialization proof scaffolding from merges; they are not new binding runtime
   machinery.
+- Merge-carried serialization review: latest `origin/dev` also carries
+  declaration merge-sequence inner readback deletion in
+  `packages/core/src/tree/declaration.ts`. Review-flagged `CountingWriter`,
+  `Nil`, `Node[]`, and `Reflect.get(...)` findings belong to focused
+  serialization fixtures or existing helper signatures in the serialization
+  tracker; they are not new binding lookup runtime machinery.
 - Merge-carried serialization review: latest `origin/dev` also carries `For`
   source writer work in `control.ts`, including the existing pattern/range
   child loop plus focused `If`/`For`/`While` construction fixtures and

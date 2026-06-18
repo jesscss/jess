@@ -229,7 +229,7 @@ describe('Declaration', () => {
       name: any('color'),
       value: ref({ key: 'brand' }, { type: 'variable' })
     });
-    const originalWithParts = (node as unknown as { withParts?: unknown }).withParts;
+    const originalWithParts = Reflect.get(node, 'withParts');
     if (typeof originalWithParts !== 'function') {
       throw new TypeError('Expected declaration withParts method');
     }
@@ -415,7 +415,7 @@ describe('Declaration', () => {
       name: sourceName,
       value: sourceValue
     });
-    const originalDerive = (node as unknown as { derive?: unknown }).derive;
+    const originalDerive = Reflect.get(node, 'derive');
     if (typeof originalDerive !== 'function') {
       throw new TypeError('Expected declaration derive method');
     }
@@ -460,7 +460,7 @@ describe('Declaration', () => {
       name: any('src'),
       value: any('one')
     }, { assign: AssignmentType.MergeSequence });
-    const originalDerive = (node as unknown as { derive?: unknown }).derive;
+    const originalDerive = Reflect.get(node, 'derive');
     if (typeof originalDerive !== 'function') {
       throw new TypeError('Expected declaration derive method');
     }
@@ -983,6 +983,23 @@ describe('Declaration', () => {
     }
   });
 
+  it('renders merged declaration sequences without an extra space-value readback window', () => {
+    const writer = new CountingWriter();
+    const node = decl({
+      name: any('background-color'),
+      value: spaced([
+        new Nil(),
+        any('red'),
+        any('foo')
+      ])
+    }, { normalizedFromAssign: AssignmentType.MergeSequence });
+
+    expect(node.render(context, { writer })).toBe('background-color: red foo');
+    expect(writer.toString()).toBe('background-color: red foo');
+    expect(writer.marks).toBe(2);
+    expect(writer.readbacks).toBe(2);
+  });
+
   it('renders assignment merges without evaluating temporary sequence containers', async () => {
     const root = rules([
       decl({
@@ -1060,9 +1077,7 @@ describe('Declaration', () => {
       options: unknown,
       renderState?: { mergeAdapter?: Record<string, unknown> }
     ) => unknown;
-    const originalWriteDeclarationValueSyntax: unknown = (
-      node as unknown as { writeDeclarationValueSyntax?: unknown }
-    ).writeDeclarationValueSyntax;
+    const originalWriteDeclarationValueSyntax = Reflect.get(node, 'writeDeclarationValueSyntax');
     const isWriteDeclarationValueSyntax = (value: unknown): value is WriteDeclarationValueSyntax => (
       typeof value === 'function'
     );
