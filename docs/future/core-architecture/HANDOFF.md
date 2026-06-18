@@ -148,12 +148,25 @@ with `--no-verify` after the explicit gates pass.
   Ruleset frame-header compare-key split in
   `packages/core/src/tree/ruleset.ts` and
   `packages/core/src/tree/util/serialize-helper.ts`.
-  Review-flagged `new OutputWriter()` boundaries are detached selector/header
-  comparison writers; `new CountingWriter()`, `try/finally`, and
-  `TypeError(...)` throws are focused `ruleset.test.ts` monkeypatch/restore
-  proof scaffolding. The flagged `composedSelectorStack: []` reset is semantic
-  print-state isolation for hoisted comparable headers, and `rules: rules([])`
-  is focused test fixture construction. No binding lookup runtime path changed.
+  `packages/core/src/tree/util/serialize-helper.ts`.
+- Merge-carried serialization review: latest `origin/dev` also carries the
+  duplicate declaration comparison writer cut in
+  `packages/core/src/tree/util/serialize-helper.ts`. Review-flagged
+  `new OutputWriter()` is the existing detached duplicate-comparison string
+  boundary, and `new WholeBufferCountingWriter()` / thrown test errors are
+  focused rules/ruleset proof scaffolding. No binding lookup runtime path
+  changed.
+- Merge-carried binding review: latest `origin/dev` also carries generic rules
+  lookup handle shape split in `packages/core/src/tree/reference.ts` and the
+  binding verifier script. It is binding handle-shape only:
+  `RulesLookupHandleShape` now keeps only common start/local/parent/terminal
+  facts, while declaration-specific freshness data is carried through a
+  separate `ReferenceRulesLookupDeclarationConstraints` object only on
+  declaration-capable read/write paths. No render/stringification path
+  changed, no runtime node materialization was added, and
+  `verify:binding-lookup-hot-paths` now guards that declaration-constraint
+  fields do not flow back into the generic shape. Detailed status remains in
+  `BINDING-LOOKUP-REMAINING.md`.
 - Merge-carried binding review: latest `origin/dev` also carries
   declaration-constraint handle snapshot slimming and proof in
   `packages/core/src/tree/reference.ts` and related lookup helpers. It is

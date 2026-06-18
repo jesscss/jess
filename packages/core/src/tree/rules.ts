@@ -3031,9 +3031,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       options.referenceMode = referenceMode;
       options.referenceRenderEnabled = referenceRenderEnabled;
       w.markSource(n);
-      const output = mode === 'render' && context
-        ? n.render(context, options)
-        : n.toTrimmedString(options);
+      if (mode === 'source') {
+        n.writeSyntax(options);
+        restorePrintState(options, leafSaved);
+        if (!w.hasContentSince(leafMark)) {
+          w.restore(leafMark);
+          return;
+        }
+        if (n.requiredSemi && n.options.semi !== false) {
+          w.add(';', n);
+        }
+        markEmitted(n);
+        return;
+      }
+      const output = n.render(context, options);
       const finishOutput = (resolvedOutput: string): void => {
         restorePrintState(options, leafSaved);
         if (!w.hasContentSince(leafMark)) {

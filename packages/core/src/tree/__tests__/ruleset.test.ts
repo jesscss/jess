@@ -73,7 +73,7 @@ describe('Rule', () => {
     `);
   });
 
-  it('renders unique declarations at emission time instead of duplicate-cache pre-render', () => {
+  it('renders unique declarations at emission time without duplicate-cache pre-render or public string transport', () => {
     const writer = new CountingWriter();
     const colorDecl = decl({ name: 'color', value: any('red') });
     const sizeDecl = decl({ name: 'font-size', value: any('12px') });
@@ -103,10 +103,35 @@ describe('Rule', () => {
           font-size: 12px;
         }
       `);
-      expect(colorUsedCallerWriter).toBe(true);
+      expect(colorUsedCallerWriter).toBe(false);
     } finally {
       colorDecl.toTrimmedString = originalToTrimmedString;
     }
+  });
+
+  it('renders duplicate declarations without public string transport during duplicate comparison', () => {
+    const firstDecl = decl({ name: 'color', value: any('red') });
+    const secondDecl = decl({ name: 'color', value: any('blue') });
+    firstDecl.toTrimmedString = () => {
+      throw new Error('Duplicate declaration comparison should write syntax directly');
+    };
+    secondDecl.toTrimmedString = () => {
+      throw new Error('Duplicate declaration comparison should write syntax directly');
+    };
+    const node = ruleset({
+      selector: sel([el('.box')]),
+      rules: rules([
+        firstDecl,
+        secondDecl
+      ])
+    });
+
+    expect(node.toTrimmedString()).toBeString(`
+      .box {
+        color: red;
+        color: blue;
+      }
+    `);
   });
 
   it('keeps authored literal and interpolated sibling rulesets separate without collapse', async () => {

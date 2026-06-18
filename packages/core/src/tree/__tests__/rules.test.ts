@@ -605,6 +605,19 @@ describe('Rules', () => {
     expect(charsetSawActiveWriter).toBe(true);
   });
 
+  it('streams source leaf rules without public string transport', () => {
+    const writer = new WholeBufferCountingWriter();
+    const declaration = decl({ name: 'color', value: any('red') });
+    declaration.toTrimmedString = () => {
+      throw new Error('Rules source leaf serializer should write declaration syntax directly');
+    };
+    const node = rules([
+      declaration
+    ]);
+
+    expect(node.toString({ writer })).toBe('color: red;\n');
+  });
+
   it('streams child Rules wrappers without previewing public source strings', () => {
     const writer = new WholeBufferCountingWriter();
     const childRules = rules([
