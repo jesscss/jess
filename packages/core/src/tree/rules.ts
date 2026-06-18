@@ -309,7 +309,11 @@ function writeRulesRenderOutput(
 ): MaybePromise<string> {
   const prepared = prepareBufferPrintState(context, options);
   const text = node.type === 'Rules' && !directSourceRender
-    ? node.toString(prepared)
+    ? (
+        node === context.root || source === context.root
+          ? node._toDocumentString(prepared)
+          : node.toString(prepared)
+      )
     : renderRulesToPreparedString(source, node, context, prepared, directSourceRender);
   return isThenable(text)
     ? text.then(resolved => writeRenderText(buffer, resolved))
@@ -345,7 +349,7 @@ function renderRulesToPreparedString(
       (node === context.root || source === context.root)
       && (context.currentCharset || context.topImports?.length)
     ) {
-      return node.toString(prepared);
+      return node._toDocumentString(prepared);
     }
     const rendered = node.toRenderString(prepared);
     const finish = (text: string): string => text === '' || text.endsWith('\n') ? text : `${text}\n`;
@@ -357,7 +361,7 @@ function renderRulesToPreparedString(
     isNode(node, N.Rules)
     && (node === context.root || source === context.root)
   ) {
-    return node.toString(prepared);
+    return node._toDocumentString(prepared);
   }
   return isNode(node, N.Rules)
     ? node.toRenderString(prepared)
@@ -3246,6 +3250,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   override toString(options?: PrintOptions): string {
+    if (!this.visible && !this.fullRender) {
+      return '';
+    }
+    return this._toDocumentString(options);
+  }
+
+  _toDocumentString(options?: PrintOptions): string {
     if (!this.visible && !this.fullRender) {
       return '';
     }
