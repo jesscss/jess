@@ -495,7 +495,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
       // Leaf at-rules (no body) are not "frame headers". Always emit them with comments
       // preserved; comment-stripping should only apply to repeated *frame* headers.
-      w.add(node.getHeaderString(options, false));
+      node.writeSyntax(options);
       return w.getSince(mark);
     }
     const rulesToRender = flattenVisibleRulesForRender(

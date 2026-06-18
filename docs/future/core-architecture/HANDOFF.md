@@ -103,6 +103,35 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `AtRule` scalar leaf direct-write path.
+- Verdict: accepted as a bounded leaf-header transport cut. Scalar no-trivia
+  leaf at-rules now write their own header directly in `AtRule.writeSyntax(...)`
+  instead of routing through `getHeaderString(...)`, and
+  `serializeRulesContainer(...)` now trusts `node.writeSyntax(...)` for leaf
+  output instead of calling `getHeaderString(...)` itself. Comment-bearing and
+  non-scalar leaf headers stay on the detached string path. No speed claim.
+- New traversal: none.
+- New node/materialization: none.
+- Render path: serializer leaf at-rule output now goes through the node-owned
+  `writeSyntax(...)` boundary, so the active writer sees the leaf syntax
+  directly when the node can emit it directly. Non-scalar/comment-bearing leaf
+  headers still fall back inside `AtRule.writeSyntax(...)` to `getHeaderString(...)`.
+- Helper/API surface: one node-local helper,
+  `writeDirectLeafAtRuleHeader(...)`, to keep the direct scalar/no-trivia leaf
+  contract narrow and let the existing detached header helper own the rest.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: none new on the direct scalar/no-trivia leaf path; this
+  pass deletes direct serializer dependence on `getHeaderString(...)` for leaf
+  output and keeps detached string allocation only for the remaining non-scalar
+  or comment-bearing leaf header cases.
+- Rejected/observed in this pass: this does not yet rewrite non-scalar header
+  fragment capture, post-prelude comment trivia, or body/header string assembly.
+- Evidence: focused `at-rule.test.ts` and `ruleset.test.ts` coverage now proves
+  scalar leaf at-rules write with zero marks/reads/restores and avoid
+  `getHeaderString(...)`, while static ruleset source/render paths with leaf
+  at-rules still succeed even when `leaf.getHeaderString(...)` is poisoned.
+  Full commit-boundary gates still need to run after this handoff update.
 - Latest pass: `Call` no-trivia source arg direct-write fallback.
 - Verdict: accepted as a localized source-writer cut. `Call.writeSyntax(...)`
   now writes no-trivia source args directly item-by-item even when they fall

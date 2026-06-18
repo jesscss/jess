@@ -383,6 +383,9 @@ describe('Rule', () => {
     leaf.toTrimmedString = () => {
       throw new Error('ruleset leaf serialization should write at-rule syntax directly');
     };
+    leaf.getHeaderString = () => {
+      throw new Error('ruleset leaf serialization should not use at-rule header string transport');
+    };
     const node = ruleset({
       selector: sellist([sel([el('.box')])]),
       rules: rules([leaf])
@@ -397,6 +400,7 @@ describe('Rule', () => {
       expect(writer.previews).toBe(0);
     } finally {
       delete leaf.toTrimmedString;
+      delete leaf.getHeaderString;
     }
   });
 

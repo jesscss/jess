@@ -125,6 +125,40 @@ function renderAtRuleLeafNodeSyntax(
   }
 }
 
+function writeDirectLeafAtRuleHeader(
+  options: FinalPrintOptions,
+  parts: Pick<AtRuleValue, 'name' | 'prelude'>
+): boolean {
+  if (options.trivia) {
+    return false;
+  }
+  const nameText = atRuleScalarTokenText(parts.name);
+  if (nameText === undefined) {
+    return false;
+  }
+  const prelude = parts.prelude;
+  const preludeText = prelude ? atRuleScalarTokenText(prelude) : '';
+  if (prelude && preludeText === undefined) {
+    return false;
+  }
+  const w = options.writer;
+  const idt = indent(options.depth);
+  if (idt) {
+    w.add(idt);
+  }
+  w.add(nameText, parts.name);
+  if (preludeText) {
+    if (hasNonAtRuleWhitespace(preludeText)) {
+      if (!(endsWithAtRuleWhitespace(nameText) || startsWithAtRuleWhitespace(preludeText))) {
+        w.add(' ');
+      }
+      w.add(trimAtRuleLeadingWhitespace(preludeText), prelude!);
+    }
+  }
+  w.add(';');
+  return true;
+}
+
 function renderAtRuleHeaderNodeSyntax(
   node: Node,
   printOptions: FinalPrintOptions,
@@ -619,6 +653,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   override writeSyntax(options: FinalPrintOptions): void {
     if (!this.rules) {
+      if (writeDirectLeafAtRuleHeader(options, this.value)) {
+        return;
+      }
       options.writer.add(this.getHeaderString(options));
       return;
     }
