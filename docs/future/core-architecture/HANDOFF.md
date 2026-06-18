@@ -103,6 +103,39 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Ampersand` outer source-capture readback split.
+- Verdict: accepted as a bounded `Ampersand` serializer cut. Public ampersand
+  source capture no longer wraps `writeSyntax(...)` in an outer whole-buffer
+  `mark()/getSince()` readback window just to return the emitted selector
+  text; it now recovers the local ampersand text from the active writer tail
+  while preserving the existing append/collapse selector ownership. No speed
+  claim.
+- New traversal: one straight chunk join over the active writer tail in a new
+  node-local helper inside `packages/core/src/tree/ampersand.ts`. This
+  replaces the outer ampersand capture window; it does not add a new scan over
+  unrelated selector-placement state.
+- Review-flagged allocations: no production node allocations. Focused proof
+  adds one `WholeBufferCountingWriter` in `ampersand.test.ts` to confirm the
+  outer whole-buffer readback is gone.
+- New node/materialization: none.
+- Render path: ampersand render/collapse behavior is unchanged. The pass
+  changes only public source capture and does not materialize selector wrappers
+  or placement nodes to recover text.
+- Helper/API surface: one node-local helper,
+  `getWriterTextSincePosition(...)`, was added in
+  `packages/core/src/tree/ampersand.ts`. It replaces the outer
+  `Ampersand.toTrimmedString(...)` readback wrapper; no public API changed.
+- Metadata mutations: one localized generic read,
+  `Reflect.get(writer, 'chunks')`, is boxed inside the node-local helper
+  because `OutputWriter` still exposes `position()` but not a cold/internal
+  tail-text reader.
+- Routine error control: none added.
+- Allocation changes: deletes the outer `mark()/getSince()` whole-buffer
+  capture from `Ampersand.toTrimmedString(...)`.
+- Evidence: focused `ampersand.test.ts` cases for bare stack-local
+  serialization, direct source syntax, and source capture without outer
+  whole-buffer readback passed, and full `ampersand.test.ts` passed.
+
 - Latest pass: `Call` outer source-capture readback split.
 - Verdict: accepted as a bounded `Call` serializer cut. Public call source
   capture no longer wraps `writeSyntax(...)` in an outer whole-call
