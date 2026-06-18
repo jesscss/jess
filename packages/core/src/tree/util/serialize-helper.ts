@@ -561,7 +561,8 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       if (serializeProfileCounters) {
         incrementSerializeProfileCounter('duplicateDeclarationPrerenderedDeclarations');
       }
-      const declOut = node.toTrimmedString(options);
+      node.writeSyntax(options);
+      const declOut = declWriter.toString();
       options.emittedTrivia = previousEmittedTrivia;
       restorePrintState(options, declSaved);
       declarationOutputCache.set(i, declOut);

@@ -103,32 +103,35 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: source-mode leaf `Rules` writer cut in
-  `packages/core/src/tree/rules.ts`.
+- Latest pass: duplicate declaration comparison writer cut in
+  `packages/core/src/tree/util/serialize-helper.ts`.
 - Verdict: accepted as localized serialization transport deletion. No speed
   claim.
 - New traversal: none.
-- New node/materialization: none. The review-flagged `new WholeBufferCountingWriter()`
-  in `rules.test.ts` is focused proof scaffolding only.
-- Render path: source-mode non-container leaf emission in `Rules._emitRulesBody(...)`
-  now calls `writeSyntax(...)` directly and checks the active writer for output
-  instead of routing through public `toTrimmedString(...)`. Render-mode leaf
-  emission is unchanged.
+- New node/materialization: none. The review-flagged `new OutputWriter()` is
+  the existing detached duplicate-comparison string boundary, and the focused
+  `new WholeBufferCountingWriter()` / thrown test errors are rules/ruleset
+  proof scaffolding only.
+- Render path: duplicate declaration comparison still captures repeated
+  declaration text into a detached writer for exact Less-style equality, but
+  it now does so through direct `writeSyntax(...)` instead of public
+  `toTrimmedString(...)`. Emission/materialization policy is otherwise
+  unchanged.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Routine error control: the review-flagged thrown error is the focused
-  `rules.test.ts` assertion scaffold proving source-mode leaf emission no
-  longer calls public `toTrimmedString(...)`; no production control flow
+- Routine error control: the review-flagged thrown errors are focused test
+  scaffolding proving duplicate comparison and related leaf serialization no
+  longer call public `toTrimmedString(...)`; no production control flow
   changed.
 - Allocation changes: deletes one public string-return wrapper call per
-  source-mode leaf emission. The writer mark/restore boundary remains the
-  existing `Rules` body emission ownership surface.
-- Rejected/observed in this pass: duplicate declaration materialization,
-  broader render-mode leaf/body transport, remaining Ruleset header emit/cache
-  capture, and deeper Declaration seams stay open in the Declaration / Rules /
-  Ruleset rows.
-- Evidence: focused `rules.test.ts` slices for source-leaf, root charset/import,
-  and child `Rules` wrapper transport plus targeted ESLint,
+  repeated declaration comparison. The detached string boundary itself remains
+  because exact duplicate-policy comparison still consumes a string key.
+- Rejected/observed in this pass: duplicate declaration skip/cache
+  materialization still remains, along with broader render-mode leaf/body
+  transport, remaining Ruleset header emit/cache capture, and deeper
+  Declaration seams.
+- Evidence: focused `ruleset.test.ts` duplicate-comparison slices plus targeted
+  ESLint,
   `git diff --check`,
   `pnpm run verify:aggressive-cutting-review`, and
   `pnpm --filter @jesscss/core build` passed.
