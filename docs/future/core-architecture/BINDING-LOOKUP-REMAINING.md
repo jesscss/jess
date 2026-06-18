@@ -617,16 +617,23 @@ is the `setDefined` node itself and the guard correctly rejects it; that case
 must keep using occurrence fallback until declaration-current slots model
 assignment targets without treating the assignment as the target.
 
-40. [ ] Model same-scope `setDefined` assignment targets without occurrence
+40. [x] Model same-scope `setDefined` assignment targets without occurrence
 fallback. Scope: `ScopeFrame.currentBindingsByName`, declaration buckets that
 contain a same-scope `setDefined` node, `blockedSource` handling, and
 assignment-target cells. Goal: let ordinary same-scope `$x: ...; $x := ...`
 write the prior current declaration cell through frame state instead of
 falling back to direct occurrence search. Acceptance: a no-crawl test that
 poisons `Rules.value` after frame prep passes for same-scope declarations, and
-source-order snapshot reads still see the pre-assignment occurrence.
+source-order snapshot reads still see the pre-assignment occurrence. Current
+evidence: `prepareScopeFrameDeclarationIndex(...)` now skips static
+`VarDeclaration` nodes with `setDefined`, so prebuilt frames keep the prior
+declaration cell as current instead of treating the assignment as a declaration
+target. Focused `rules.test.ts` proof poisons `Rules.value` after frame prep
+and shows same-scope `setDefined` writes the prior declaration cell directly.
+Focused `reference.test.ts` proof shows current-cell probes skip assignment
+declarations and source-order reads still see the pre-assignment declaration.
 
-41. [ ] Split `setDefined` fallback proof by variable/property family after
+41. [x] Split `setDefined` fallback proof by variable/property family after
 same-scope assignment targets are modeled. Scope:
 `findWritableSetDefinedDeclarationOccurrence(...)`, variable vs property
 strategies, readonly imported child surfaces, and non-variable declaration
@@ -634,7 +641,30 @@ insertion. Goal: keep occurrence fallback only for property/non-variable or
 uncovered dynamic cases, not for modeled variable assignments. Acceptance:
 focused tests prove variable covered writes avoid fallback while property
 `setDefined` still inserts/reuses declarations with correct readonly and
-visibility semantics.
+visibility semantics. Current evidence: variable same-scope `setDefined`
+covered by a modeled frame avoids direct occurrence crawl; property
+`setDefined` remains on declaration occurrence insertion fallback and a focused
+test proves it inserts the concrete property declaration while preserving the
+assignment source node.
+
+42. [ ] Delete same-scope variable `setDefined` occurrence fallback for covered
+frame paths. Scope: `Rules.registerNode(...)`, the post-frame
+`findWritableSetDefinedDeclarationOccurrence(...)` fallback, dynamic names, and
+uncovered frames. Goal: once a static variable assignment is covered by
+declaration frame state, prove the occurrence fallback is unreachable and make
+the branch explicit for only uncovered/dynamic variable cases. Acceptance:
+focused tests spy/poison the direct occurrence helper path for same-scope and
+parent-frame variable writes, while dynamic/uncovered assignments still fall
+back correctly.
+
+43. [ ] Carry readonly imported variable assignment facts into modeled
+`setDefined` frame writes. Scope: readonly child/imported Rules entries,
+`ScopeFrame.currentBindingsByName`, `findWritableSetDefinedDeclarationOccurrence(...)`,
+and import visibility. Goal: reject variable `setDefined` writes against
+readonly imported/current cells through frame state instead of relying on
+occurrence fallback inheritance. Acceptance: focused import/child rules tests
+prove readonly variable assignments fail before occurrence crawl, while
+non-readonly imported variables still update through the modeled cell.
 
 ## Latest Binding Baseline
 

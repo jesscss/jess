@@ -103,26 +103,29 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding implementation/audit pass closing modeled `setDefined`
-  live-cell writes and uncovered-callable result-state branching.
-- Verdict: accepted as a bounded lookup-order cut plus no-op callable audit.
-  `Rules.registerNode(...)` now checks a modeled variable live/current binding
-  cell for readonly before evaluating the `setDefined` RHS, so readonly live
-  cells reject without value evaluation or occurrence fallback. The ordinary
-  same-scope declaration-current no-crawl probe was rejected and recorded as
-  follow-up: the current frame cell is the `setDefined` node itself, so the
-  guard correctly falls back to occurrence lookup until assignment-target
-  slots are modeled. The uncovered-callable audit kept local
-  `UNCOVERED_CALLABLE_UNSUPPORTED` checks because a wrapper helper/object would
-  add hot-path machinery, while reverting to `undefined` would undo the
-  explicit unsupported state from the prior queue item. No speed claim.
-- New traversal: no production traversal was added. The `setDefined` change
-  only moves existing RHS evaluation below an existing frame lookup and
-  readonly check. The callable pass added no traversal or helper wrapper.
+- Latest pass: binding implementation pass closing same-scope `setDefined`
+  assignment-target modeling and variable/property fallback split proof.
+- Verdict: accepted as a frame-index correction. `prepareScopeFrameDeclarationIndex(...)`
+  now skips static `VarDeclaration` nodes with `setDefined`, so prebuilt
+  frames keep the prior declaration cell as current instead of registering the
+  assignment as a declaration target. `Rules.registerNode(...)` can now update
+  same-scope modeled variable assignments through the frame cell without direct
+  occurrence crawl. Property `setDefined` remains deliberately on the
+  declaration occurrence insertion fallback. No speed claim.
+- New traversal: no production traversal was added. The implementation adds
+  one existing-loop branch in `prepareScopeFrameDeclarationIndex(...)` to skip
+  assignment nodes before bucket insertion; it removes later occurrence
+  traversal for the covered same-scope variable assignment path.
 - Review-flagged allocations: no production allocation was added. New
-  `rules.test.ts` scaffolding uses a throwing value override and temporary
-  `Rules.value` accessor to prove the modeled live-cell path avoids RHS
-  evaluation and direct occurrence crawl on readonly failure.
+  `rules.test.ts` scaffolding uses temporary `Rules.value` accessors and
+  `reference.test.ts` frame probes to prove same-scope variable assignments
+  skip occurrence crawl while property assignments stay on insertion fallback.
+  Review-flagged `map(...)`, thrown errors, `try/finally`, and `sourceNode`
+  assertions are test-only: `map(...)` snapshots the final property insertion
+  order, the throwing accessor proves the variable path does not crawl
+  `Rules.value`, `try/finally` restores that accessor, and the `sourceNode`
+  assertion proves the frame selected the prior declaration instead of the
+  assignment node.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production arrays were added.
 - Render path: no render/stringification path changed.

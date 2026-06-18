@@ -1602,6 +1602,61 @@ describe('Rules', () => {
         expect(frame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
       });
 
+      it('updates same-scope modeled setDefined declaration cells without direct occurrence crawl', () => {
+        const original = vardecl({ name: 'one', value: any('one') });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const node = rules([
+          original,
+          assignment
+        ]);
+        const frame = node.getScopeFrame(undefined, false);
+        const originalValue = node.value;
+
+        Object.defineProperty(node, 'value', {
+          configurable: true,
+          get() {
+            throw new Error('same-scope setDefined declaration-cell path should not crawl Rules.value');
+          }
+        });
+
+        try {
+          node.registerNode(assignment, undefined, context);
+        } finally {
+          Object.defineProperty(node, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalValue
+          });
+        }
+
+        expect(frame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
+        expect(original.valueNode.toString()).toBe('three');
+      });
+
+      it('keeps property setDefined on declaration occurrence insertion fallback', () => {
+        const assignment = decl(
+          { name: any('color'), value: any('blue') },
+          { setDefined: true }
+        );
+        const node = rules([
+          decl({ name: any('color'), value: any('red') }),
+          assignment
+        ]);
+
+        node.getScopeFrame(undefined, false);
+        node.registerNode(assignment, undefined, context);
+
+        expect(node.value.map(child => child.toTrimmedString())).toEqual([
+          'color: red',
+          'color: blue',
+          'color := blue'
+        ]);
+        expect(findPropertyDeclarationOccurrence(node, 'color')?.node.valueNode.valueOf()).toBe('blue');
+      });
+
       it('rejects readonly modeled setDefined live cells before evaluating assignment values', () => {
         const assignedValue = any('three');
         assignedValue.eval = () => {

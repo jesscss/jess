@@ -973,6 +973,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!isNode(node, N.VarDeclaration)) {
         continue;
       }
+      if (node.options?.setDefined) {
+        continue;
+      }
       if (!this._hasStaticName(node)) {
         (pendingDeclarationNames ??= []).push(node);
         continue;

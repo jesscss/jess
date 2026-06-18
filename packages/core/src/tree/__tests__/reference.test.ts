@@ -3663,7 +3663,7 @@ describe('reference', () => {
       }
     });
 
-    it('setDefined variable assignment uses occurrence lookup', async () => {
+    it('setDefined variable assignment updates same-scope current binding cells', async () => {
       const node = rules([
         vardecl({ name: 'color', value: any('red') }),
         vardecl({ name: 'color', value: any('blue') }, { setDefined: true }),
@@ -3680,27 +3680,29 @@ describe('reference', () => {
       `);
     });
 
-    it('setDefined current-cell probes do not use historical declaration buckets', async () => {
+    it('setDefined current-cell probes skip assignment declarations', async () => {
       const latest = vardecl({ name: 'color', value: any('green') });
+      const assignment = vardecl({ name: 'color', value: any('blue') }, { setDefined: true });
       const node = rules([
         vardecl({ name: 'color', value: any('red') }),
-        latest
+        latest,
+        assignment
       ]);
 
-      await node.eval(context);
       const frame = node.getScopeFrame();
       const assignmentProbe = lookupScopeFrameVariable(frame, 'color', {
         bailOnPendingDeclarations: true,
-        blockedSource: source => source === latest,
-        filter: source => source !== latest
+        blockedSource: source => source === assignment,
+        filter: source => source !== assignment
       });
       const sourceOrderRead = lookupScopeFrameVariable(frame, 'color', {
-        start: latest.index
+        start: assignment.index
       });
 
-      expect(assignmentProbe.kind).toBe('miss');
+      expect(assignmentProbe.kind).toBe('declaration');
+      expect(assignmentProbe.kind === 'declaration' && assignmentProbe.sourceNode).toBe(latest);
       expect(sourceOrderRead.kind).toBe('declaration');
-      expect(sourceOrderRead.kind === 'declaration' && sourceOrderRead.cell.value?.valueOf()).toBe('red');
+      expect(sourceOrderRead.kind === 'declaration' && sourceOrderRead.cell.value?.valueOf()).toBe('green');
     });
 
     it('nested static variable hits build parent scope frames without Rules.find fallback', async () => {
