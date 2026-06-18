@@ -266,10 +266,53 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const source = nodes.items;
     const out = new Array<Node>(source.length);
+    const evalImmediate = (node: Node): Node => {
+      const evald = node.evaluated ? node : node.evalNode(context);
+      if (!(evald instanceof Node)) {
+        throw new TypeError('Expected sync node result.');
+      }
+      evald.evaluated = true;
+      if (node !== evald) {
+        evald.inherit(node);
+      }
+      return evald;
+    };
+    const continueAsync = async (startIndex: number, first: Promise<Node>): Promise<List<Node>> => {
+      let evald = await first;
+      out[startIndex] = evald === source[startIndex]!
+        ? copyWithReusableLeaves(evald)
+        : evald;
+      for (let i = startIndex + 1; i < source.length; i++) {
+        const next = source[i]!;
+        let nextEvald: Node;
+        if (
+          !next.hasFlag(F_MAY_ASYNC)
+          && next.eval === Node.prototype.eval
+        ) {
+          nextEvald = evalImmediate(next);
+        } else {
+          nextEvald = await next.eval(context) as Node;
+        }
+        out[i] = nextEvald === next ? copyWithReusableLeaves(nextEvald) : nextEvald;
+      }
+      return list(out, nodes.options);
+    };
     for (let i = 0; i < source.length; i++) {
       const node = source[i]!;
-      const evald = await node.eval(context) as Node;
-      out[i] = evald === node ? copyWithReusableLeaves(evald) : evald;
+      if (
+        !node.hasFlag(F_MAY_ASYNC)
+        && node.eval === Node.prototype.eval
+      ) {
+        const evald = evalImmediate(node);
+        out[i] = evald === node ? copyWithReusableLeaves(evald) : evald;
+        continue;
+      }
+      const evald = node.eval(context);
+      if (isThenable(evald)) {
+        return continueAsync(i, evald as Promise<Node>);
+      }
+      const resolved = evald as Node;
+      out[i] = resolved === node ? copyWithReusableLeaves(resolved) : resolved;
     }
     return list(out, nodes.options);
   }

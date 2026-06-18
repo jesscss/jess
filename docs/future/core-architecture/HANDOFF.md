@@ -103,6 +103,53 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` sync arg eval boundary`.
+- Verdict: accepted as a localized eval transport cut. `evalArgNodes(...)` now
+  takes a direct sync `evalNode(...)` path for non-async args when the base
+  `Node.eval` contract is intact, preserves custom sync eval overrides on their
+  existing public path, and only switches to an async rest continuation after
+  the first thenable appears. No speed claim.
+- New traversal: one indexed async-rest loop inside `evalArgNodes(...)` after
+  the first thenable appears. This replaces unconditional `await node.eval(...)`
+  on every arg and keeps the sync prefix on direct `evalNode(...)` / direct
+  return paths instead of paying promise scheduling for the whole list.
+- New node/materialization: none beyond the existing returned arg `List` and
+  the existing `copyWithReusableLeaves(...)` path when an evaluated arg reuses
+  the same node identity. No new node wrapper or replacement arg container was
+  introduced by this pass.
+  The local `evalImmediate(...)` helper is a type/runtime assertion around the
+  direct sync path, not a new ownership boundary.
+- Render path: render is unchanged except for the covered call paths now
+  receiving arg lists from the tighter sync/async split. This pass does not
+  resolve extra nodes or arrays just to stringify.
+- Helper/API surface: one node-local `evalImmediate(...)` helper inside
+  `evalArgNodes(...)`. It replaces duplicated direct-sync `evalNode(...)` /
+  `evaluated` / `inherit(...)` scaffolding across the sync prefix and async
+  rest loop, and it does not widen the public/API surface.
+- Metadata mutations: no new parent/source mutations beyond the existing
+  `inherit(...)` on direct `evalNode(...)` replacements and the pre-existing
+  returned-list adoption path.
+- Routine error control: none added. Existing calc-frame cleanup still wraps
+  sync throws and async rejections, and custom sync eval overrides still run
+  through their own public `eval(...)` path.
+- Allocation changes: deletes unconditional promise/await traffic for covered
+  non-async arg evaluation and defers the async continuation until the first
+  real thenable instead of treating every arg as async upfront.
+- Rejected/observed in this pass: a focused repo-truth run showed the existing
+  `evaluates non-async CSS call args through the immediate sync boundary` test
+  was genuinely red on `origin/dev` with one public `Node.eval` call, so this
+  pass fixed live code to match the queue contract rather than rewriting the
+  proof. Remaining `Call` work is still callable output value selection,
+  `evalArgNodes(...)` copy ownership in calc/finalized CSS fallback paths,
+  non-scalar/custom/trivia arg trim marks, async path outside exact scalar
+  carry, helper ladders, and repeated eval.
+- Evidence: focused `call.test.ts` calc/eval subset covering nested calc
+  reduction, sync calc-frame cleanup, the non-async immediate sync boundary,
+  and custom sync override behavior passed; a second focused subset covering
+  async arg/content buffer render, direct async render, async calc await, and
+  async calc-frame rejection cleanup also passed; `pnpm --filter @jesscss/core build`
+  was rerun after the code change, with full commit-boundary gates rerun after
+  the handoff update.
 - Latest pass: `Call` direct callable-eval wrapper deletion.
 - Verdict: accepted as a localized callable-eval transport cut. Detached
   `Rules`/`Collection` call render/eval paths in `call.ts` and stylesheet
