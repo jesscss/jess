@@ -103,35 +103,69 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `AtRule` layer-name identity transport split.
-- Verdict: accepted as a bounded serializer cut inside the active `AtRule`
-  row. Nested `@layer` registration no longer routes name/prelude identity
-  checks through public `toTrimmedString(...)` / `toString(...)`; it now reads
-  owned syntax text and composes `parent.child` layer names directly from the
-  invocation-record path. No speed claim.
+- Latest pass: binding merge/version proof, source-static handle slimming, and
+  namespace/profile closeout.
+- Verdict: accepted as a focused registryless binding pass. Property
+  merge-chain handles now have same-key invalidation and unrelated-key reuse
+  proof, setDefined variable occurrence fallback no longer allocates an
+  options-spread shape to disable live bindings, and declaration-family
+  source-static handle reads validate the cheap common handle shape before
+  computing declaration constraint snapshots. Namespace terminal/remainder
+  items were closed from existing focused proof, and the stale wording/profile
+  audit leaves callable direct-crawl bridges as the main remaining binding
+  target. No speed claim.
 - New traversal: none.
-- Review-flagged allocations: one cold detached writer boundary for non-scalar
-  layer identity text. It replaces public string transport and stays off the
-  main render path.
 - New node/materialization: none.
-- Render path: no render/body output formatting changed. The cut only removes
-  public string transport from nested layer-name extraction during at-rule body
-  registration/eval bookkeeping.
-- Helper/API surface: two small node-local helpers,
-  `getAtRuleSourceIdentityText(...)` and `normalizeAtRuleIdentityText(...)`,
-  which isolate owned syntax-text reads for `@layer` identity without adding a
-  public API.
+- Render path: no render path changed.
+- Helper/API surface: one private strategy constant,
+  `VARIABLE_OCCURRENCE_LOOKUP`, replaces a per-call options object for the
+  setDefined occurrence fallback. It does not add public API.
 - Metadata mutations: none added.
 - Routine error control: none added.
-- Allocation changes: no new nodes, wrappers, or carried caches; only the cold
-  detached writer for non-scalar identity text.
-- Evidence: focused and full `at-rule.test.ts` coverage now prove nested layer
-  registration still records `parent` and `parent.child`, async nested layer
-  registration still works, and a new transport guard throws if public
-  `toTrimmedString(...)` / `toString(...)` are touched for layer-name
-  extraction. `git diff --check`,
-  `pnpm run verify:aggressive-cutting-review`, and
-  `pnpm --filter @jesscss/core build` passed after this handoff update.
+- Allocation changes: deleted the setDefined variable fallback options-spread
+  allocation and delayed declaration constraint snapshot allocation until
+  source-static declaration-family handle reads have a plausible common handle.
+- Evidence: focused setDefined tests, merge-chain/property handle tests,
+  style-import/dynamic promotion tests, source-static handle tests,
+  terminal namespace/remainder tests, and `verify:binding-lookup-hot-paths`
+  passed. `scope-lookup-stress.less` profile reported empty old
+  `Rules.find`/registry/search-children counters with direct counters
+  explained in `BINDING-LOOKUP-REMAINING.md`. Full batch gates still need to
+  run after this handoff update.
+- Latest pass: `AtRule` no-trivia frame-header direct write split.
+- Verdict: accepted as a bounded serializer cut inside the active `AtRule`
+  row. No-trivia at-rule frame opens in `serializeRulesContainer(...)` no
+  longer route through `getHeaderString(...)`; they now write directly through
+  `AtRule.writeHeader(...)` and leave detached header-string assembly for
+  comparable-header and comment/trivia paths only. No speed claim.
+- New traversal: none.
+- Review-flagged allocations: none on the new no-trivia frame-open path. The
+  existing detached writer boundaries remain isolated to comparable-header and
+  comment-bearing header formatting.
+- New node/materialization: none.
+- Render path: container frame-open emission now writes name/prelude/block-open
+  syntax directly into the active writer when trivia is off, matching the
+  existing `Ruleset.writeHeader(...)` fast path. Full header-string assembly
+  still owns comparable-header and trivia/comment formatting paths.
+- Helper/API surface: one node-local helper method, `AtRule.writeHeader(...)`.
+  It removes a hot serializer call back through `getHeaderString(...)` and
+  mirrors the existing ruleset frame-open contract instead of adding a new
+  public wrapper.
+- Metadata mutations: none added.
+- Routine error control: none on the production path. The focused test uses a
+  `try/finally` wrapper only to restore the temporary `getHeaderString(...)`
+  override.
+- Allocation changes: no new nodes, wrappers, or carried caches.
+- Evidence: focused `at-rule.test.ts` coverage now proves
+  `serializeRulesContainer` opens no-trivia at-rule frames without touching
+  `getHeaderString(...)`, while the existing repeated comparable-header and
+  comment-trivia tests still pass. Full `at-rule.test.ts`, `git diff --check`,
+  and `pnpm --filter @jesscss/core build` also passed. The current
+  `verify:aggressive-cutting-review` run still reports unrelated existing
+  binding/lookup worktree tokens plus the focused test's cold `new
+  OutputWriter()` allocation; this pass adds no new hot-path node creation or
+  metadata mutation beyond the pre-existing trivia-source probe reused from
+  `getHeaderString(...)`.
 - Latest pass: binding declaration visibility plus compound callable remainder
   proof.
 - Verdict: accepted as a focused registryless binding pass. Declaration lookup

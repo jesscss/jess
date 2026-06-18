@@ -1988,6 +1988,42 @@ describe('AtRule', () => {
     }
   });
 
+  it('serializeRulesContainer writes no-trivia at-rule headers without header string transport', () => {
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([any('screen', { role: 'keyword' })]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const options = getPrintOptions({
+      writer: new OutputWriter(),
+      collapseNesting: true
+    });
+    const originalGetHeaderString = node.getHeaderString;
+    let headerStringCalls = 0;
+    node.getHeaderString = function countHeaderStringCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalGetHeaderString>
+    ): ReturnType<typeof originalGetHeaderString> {
+      headerStringCalls++;
+      return originalGetHeaderString.apply(this, args);
+    };
+
+    try {
+      const out = node.toTrimmedString(options);
+
+      expect(out).toBeString(`
+        @media screen {
+          color: red;
+        }
+      `);
+      expect(headerStringCalls).toBe(0);
+    } finally {
+      node.getHeaderString = originalGetHeaderString;
+    }
+  });
+
   it('normalizes leading prelude whitespace at the at-rule name boundary', () => {
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),

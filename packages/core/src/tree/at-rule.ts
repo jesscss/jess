@@ -1315,6 +1315,57 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return buildComparableAtRuleHeader(nameOut, preludeOut);
   }
 
+  writeHeader(options: FinalPrintOptions, withoutComments?: boolean): boolean {
+    let { name } = this;
+    let prelude = options.atRuleHeaderNode === this
+      ? (options.atRuleHeaderPrelude ?? this.prelude)
+      : this.prelude;
+
+    if (withoutComments && (hasCommentChild(name) || hasCommentChild(prelude))) {
+      name = this.ownName(name);
+      if (prelude) {
+        prelude = this.ownNode(prelude);
+      }
+    }
+
+    const w = options.writer;
+    const idt = indent(options.depth);
+    if (idt) {
+      w.add(idt);
+    }
+
+    const nameOut = renderAtRuleHeaderNodeSyntax(name, options, withoutComments);
+    w.add(nameOut, name);
+    if (prelude) {
+      const preludeTrivia = withoutComments
+        ? createTriviaMap()
+        : options.trivia ?? prelude.sourceRoot?._treeContext?.opts?.trivia;
+      const preludePrintOptions: FinalPrintOptions = options.context && preludeTrivia
+        ? {
+            ...options,
+            context: undefined,
+            trivia: preludeTrivia,
+            emittedTrivia: options.emittedTrivia
+          }
+        : options;
+      const preludeOut = renderAtRuleHeaderNodeSyntax(prelude, preludePrintOptions, withoutComments);
+      if (hasNonAtRuleWhitespace(preludeOut)) {
+        const nameEndsWithSpace = endsWithAtRuleWhitespace(nameOut);
+        const preludeStartsWithSpace = startsWithAtRuleWhitespace(preludeOut);
+        let finalPreludeOut = preludeOut;
+        if (preludeStartsWithSpace) {
+          finalPreludeOut = trimAtRuleLeadingWhitespace(preludeOut, nameEndsWithSpace ? '' : ' ');
+        } else if (!nameEndsWithSpace) {
+          w.add(' ');
+        }
+        w.add(finalPreludeOut, prelude);
+      }
+    }
+
+    w.add(' {\n');
+    return true;
+  }
+
   /** Render the opening of this at-rule (name and prelude) */
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     let { name } = this;

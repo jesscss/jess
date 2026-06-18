@@ -677,7 +677,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
               hoistedParent && i === leafFrames.length - 1 && f === hoistedParent.frame
             )
               ? renderHoistedParentHeader(hoistedParent, options, i)
-              : isNode(f, N.Ruleset) && !options.trivia
+              : (isNode(f, N.Ruleset) || isNode(f, N.AtRule)) && !options.trivia
                 ? (f.writeHeader(options) ? DIRECT_RULESET_HEADER : '')
                 : leafFrames[i]!.getHeaderString(options);
             frameHeaders[i] = s;
@@ -686,7 +686,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
               hoistedParent && i === leafFrames.length - 1 && f === hoistedParent.frame
             )
               ? renderHoistedParentHeader(hoistedParent, options, i)
-              : isNode(f, N.Ruleset) && !options.trivia
+              : (isNode(f, N.Ruleset) || isNode(f, N.AtRule)) && !options.trivia
                 ? (f.writeHeader(options, true) ? DIRECT_RULESET_HEADER : '')
                 : leafFrames[i]!.getHeaderString(options, true);
             frameHeaders[i] = s;
