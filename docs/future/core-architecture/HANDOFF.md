@@ -141,6 +141,35 @@ with `--no-verify` after the explicit gates pass.
   `verify:aggressive-cutting-review` run still flags the restoration
   `try/finally` and the carried `runtimeFrames` parameter for prosecution, but
   no new node/materialization path was introduced.
+- Latest pass: `Rules` child-wrapper position probe split.
+- Verdict: accepted as a bounded serializer cut inside the active `Rules`
+  row. Child `Rules` wrappers inside `_emitRulesBody(...)` no longer spend a
+  writer mark plus `hasContentSince(...)` scan just to detect whether the child
+  body emitted anything; that path never needed restore semantics, so it now
+  uses a plain writer-position snapshot instead. No speed claim.
+- New traversal: none.
+- Review-flagged allocations: none added on the render/source path.
+- Review-flagged diff tokens: the current diff still contains test-only
+  context/writer scaffolding in `rules-streaming.test.ts` for the focused
+  wrapper-mark regression proof. No new production node or writer
+  construction was added by this pass.
+- New node/materialization: none.
+- Render path: child `Rules` wrappers still emit their owned source/render
+  body directly and still skip public wrapper transport. The change only
+  removes the wrapper-local emission probe scaffolding.
+- Helper/API surface: none added.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: deleted the child-wrapper `mark()` plus
+  `hasContentSince(...)` / `restore(...)` probe in `Rules._emitRulesBody(...)`
+  and replaced it with a writer-position comparison.
+- Evidence: focused red-to-green proof came from
+  `rules-streaming.test.ts` case
+  `does not spend an extra wrapper mark to detect child Rules source emission`.
+  Targeted `rules.test.ts` coverage for
+  `streams child Rules wrappers without previewing public source strings` and
+  `streams child Rules wrappers without previewing public render output`
+  also passed. Full batch gates still need to run after this handoff update.
 - Latest pass: `Call` dynamic target/emit ladder split.
 - Verdict: accepted as a bounded serializer cut inside the active `Call`
   row. Dynamic call render no longer re-spells the same mixin-ruleset target

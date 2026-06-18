@@ -3602,7 +3602,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         closeRenderedFramesToBaseline();
         const childSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
         const childEmittedTrivia = options.emittedTrivia;
-        const childMark = w.mark();
+        const childPosition = w.position();
         options.depth = depth;
         options.referenceMode = childReferenceMode;
         options.referenceRenderEnabled = childReferenceRenderEnabled;
@@ -3613,8 +3613,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const finishChildRule = (): void => {
           options.emittedTrivia = childEmittedTrivia;
           restorePrintState(options, childSaved);
-          if (!w.hasContentSince(childMark)) {
-            w.restore(childMark);
+          if (w.position() === childPosition) {
             return;
           }
           markEmitted(n);
