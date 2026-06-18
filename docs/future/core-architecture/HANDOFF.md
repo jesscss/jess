@@ -103,6 +103,42 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Condition` child public-string transport split.
+- Verdict: accepted as a bounded `Condition` serializer cut. Public
+  `Condition.toTrimmedString(...)` no longer rebuilds syntax through child
+  `toTrimmedString()` calls after already writing direct condition syntax; it
+  now recovers the emitted local condition text from the active writer tail so
+  custom child `writeSyntax(...)` stays authoritative. No speed claim.
+- New traversal: one straight chunk join over the active writer tail in a new
+  node-local helper inside `packages/core/src/tree/condition.ts`. This
+  replaces child public string transport during condition string capture; it
+  does not add a new scan over unrelated condition state.
+- Review-flagged allocations: no production node allocations. Focused test
+  proof adds one `WriteOnlyNode`, one `CountingWriter`, and a thrown assertion
+  only inside `condition.test.ts` to prove child public string transport stays
+  dead.
+- New node/materialization: none.
+- Render path: condition rendering still evaluates to boolean text directly.
+  The pass changes only public syntax capture and does not resolve condition
+  children into nodes or arrays just to stringify.
+- Helper/API surface: one node-local helper,
+  `getWriterTextSincePosition(...)`, was added in
+  `packages/core/src/tree/condition.ts`. It replaces duplicate child
+  public-string rebuilding inside `Condition.toTrimmedString(...)`; no public
+  API changed.
+- Metadata mutations: one localized generic read,
+  `Reflect.get(writer, 'chunks')`, is boxed inside the node-local helper
+  because `OutputWriter` still exposes `position()` but not a cold/internal
+  tail-text reader.
+- Routine error control: none added on the production path. The only new
+  thrown error is the focused test assertion in `condition.test.ts`.
+- Allocation changes: deletes the child `toTrimmedString()` rebuilding path
+  from `Condition.toTrimmedString(...)`.
+- Evidence: focused `condition.test.ts` cases for boolean-only syntax without
+  writer readback, boolean comparison syntax without writer readback, negated
+  boolean comparison syntax without writer readback, and custom child syntax
+  without child public string transport all passed.
+
 - Latest pass: `QueryCondition` static-async writer-tail recovery split.
 - Verdict: accepted as a bounded `QueryCondition` serializer cut. Static async
   custom query children that write different text than they return no longer
