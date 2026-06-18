@@ -649,6 +649,27 @@ describe('Rules', () => {
     expect(writer.toString()).toBe('color: red;');
   });
 
+  it('serializes Rules source syntax through writeSyntax ownership', () => {
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const originalWriteSyntax = node.writeSyntax;
+    let writeSyntaxCalls = 0;
+    node.writeSyntax = function countWriteSyntax(
+      ...args: Parameters<typeof originalWriteSyntax>
+    ): ReturnType<typeof originalWriteSyntax> {
+      writeSyntaxCalls++;
+      return originalWriteSyntax.apply(this, args);
+    };
+
+    try {
+      expect(node.toTrimmedString()).toBe('color: red;');
+      expect(writeSyntaxCalls).toBe(1);
+    } finally {
+      node.writeSyntax = originalWriteSyntax;
+    }
+  });
+
   it('keeps sibling ruleset braces intact when declarations render values through active context output', async () => {
     const root = rules([
       ruleset({
