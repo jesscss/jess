@@ -103,6 +103,43 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `SelectorList.toTrimmedString(...)` direct writer ownership.
+- Verdict: accepted as a localized serialization transport deletion. Public
+  selector-list source stringification no longer duplicates source assembly;
+  the non-fast-path wrapper now delegates to `writeSyntax(...)` and keeps the
+  same caller-writer mark/readback boundary. No speed claim.
+- New traversal: none. No new tree walk, parent walk, callback scan, side-map
+  lookup, or array materialization was added.
+- New node/materialization: none. No runtime node copies, wrappers, inherited
+  metadata, frozen state, or new hot-path arrays were added.
+- Review-flagged inherit/materialized-array tokens: the diff touches the
+  existing private `withSelectors(...)` / `createEvaluatedSelectorListSurface(...)`
+  materialization helpers only because the unsafe `as this` cast was removed
+  while fixing touched-file lint. Their owned selector-array allocation and
+  `inherit(this)` call are pre-existing public evaluated-surface behavior, not
+  new render/source transport machinery from this pass.
+- Render path: no render path changed. This pass only removes duplicated public
+  source-string assembly inside `SelectorList.toTrimmedString(...)`.
+- Helper/API surface: deletes private `renderSelectorListSyntax(...)`; no new
+  helper or public API surface was added.
+- Metadata mutations: none.
+- Routine error control: the review-flagged thrown test error is focused
+  `selector-list.test.ts` proof scaffolding around a temporary prototype swap
+  used to assert `toTrimmedString(...)` now goes through `writeSyntax(...)`; no
+  production error/control flow changed.
+- Review-flagged generic defensive read: the danger-token hit comes from the
+  tracker prose phrase "public `toTrimmedString(...)` now reuses
+  `writeSyntax(...)` directly" in `NODE-REWRITE-TRACKER.md`; no production
+  defensive read, structural probe, or fallback runtime branch was added.
+- Allocation changes: deletes one duplicated source-assembly path and reuses
+  the existing selector-list writer implementation for non-fast-path public
+  source capture.
+- Rejected/observed in this pass: broader `SelectorList` value flattening and
+  `valueOf()` work remain queued.
+- Evidence: focused `selector-list.test.ts` direct top-level item proof plus
+  the new `writeSyntax(...)` ownership proof, targeted ESLint,
+  `git diff --check`, `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` passed.
 - Latest pass: `Reference.toTrimmedString(...)` direct writer ownership.
 - Verdict: accepted as a localized serialization transport deletion. Public
   reference source stringification no longer duplicates source assembly; the
