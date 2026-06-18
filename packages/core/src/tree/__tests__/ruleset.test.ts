@@ -210,6 +210,34 @@ describe('Rule', () => {
     `);
   });
 
+  it('serializes ruleset source syntax through writeSyntax ownership', () => {
+    const node = ruleset({
+      selector: sellist([sel([el('.box')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const originalWriteSyntax = node.writeSyntax;
+    let writeSyntaxCalls = 0;
+    node.writeSyntax = function countWriteSyntax(
+      ...args: Parameters<typeof originalWriteSyntax>
+    ): ReturnType<typeof originalWriteSyntax> {
+      writeSyntaxCalls++;
+      return originalWriteSyntax.apply(this, args);
+    };
+
+    try {
+      expect(node.toTrimmedString()).toBeString(`
+        .box {
+          color: red;
+        }
+      `);
+      expect(writeSyntaxCalls).toBe(1);
+    } finally {
+      node.writeSyntax = originalWriteSyntax;
+    }
+  });
+
   it('writes finalized ruleset output into segmented buffers', async () => {
     const buffer = createRenderBuffer('segmented');
     const node = ruleset({
