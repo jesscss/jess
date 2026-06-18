@@ -156,6 +156,35 @@ describe('Control Nodes', () => {
     `);
   });
 
+  it('writes $if branch conditions without public toString transport', () => {
+    const conditionNode = bool(true);
+    const elseIfCondition = bool(false);
+    let conditionStringCalls = 0;
+    conditionNode.toString = () => {
+      conditionStringCalls++;
+      return '';
+    };
+    elseIfCondition.toString = () => {
+      conditionStringCalls++;
+      return '';
+    };
+    const node = new If({
+      branches: [
+        {
+          condition: conditionNode,
+          rules: rules([decl({ name: 'color', value: any('red') })])
+        },
+        {
+          condition: elseIfCondition,
+          rules: rules([decl({ name: 'color', value: any('blue') })])
+        }
+      ]
+    });
+
+    expect(node.toTrimmedString()).toContain('$else if (false)');
+    expect(conditionStringCalls).toBe(0);
+  });
+
   it('renders selected $if branch through direct render(context)', async () => {
     const context = new Context();
     const node = new If({
@@ -370,6 +399,36 @@ describe('Control Nodes', () => {
     `);
   });
 
+  it('writes $for source header children without public toString transport', () => {
+    const firstPattern = vardecl({ name: any('first'), value: new Nil() }, { paramVar: true });
+    const secondPattern = vardecl({ name: any('second'), value: new Nil() }, { paramVar: true });
+    const start = any('1');
+    const end = any('5');
+    const step = any('2');
+    let stringCalls = 0;
+    for (const child of [firstPattern, secondPattern, start, end, step]) {
+      child.toString = () => {
+        stringCalls++;
+        return '';
+      };
+    }
+    const node = new For({
+      pattern: { kind: 'tuple', values: [firstPattern, secondPattern] },
+      iterable: {
+        kind: 'range',
+        start,
+        end,
+        step,
+        includeStart: true,
+        includeEnd: false
+      },
+      rules: rules([])
+    });
+
+    expect(node.toTrimmedString()).toContain('$for ([$first, $second] of 1 to <5 step 2)');
+    expect(stringCalls).toBe(0);
+  });
+
   it('streams $for range bounds without capture scaffolding', () => {
     const singlePattern = makePattern(['value'], 'single');
     if (!(singlePattern instanceof VarDeclaration)) {
@@ -466,6 +525,22 @@ describe('Control Nodes', () => {
         color: red;
       }
     `);
+  });
+
+  it('writes $while condition syntax without public toString transport', () => {
+    const conditionNode = bool(true);
+    let conditionStringCalls = 0;
+    conditionNode.toString = () => {
+      conditionStringCalls++;
+      return '';
+    };
+    const node = new While({
+      condition: conditionNode,
+      rules: rules([decl({ name: 'color', value: any('red') })])
+    });
+
+    expect(node.toTrimmedString()).toContain('$while (true)');
+    expect(conditionStringCalls).toBe(0);
   });
 
   it('renders false $while output through direct render(context)', async () => {

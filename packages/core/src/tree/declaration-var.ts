@@ -7,7 +7,7 @@ import { Any, type AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
 import { defineType, F_VISIBLE, type Node, type NodeLocation } from './node.js';
 import { Nil } from './nil.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
 
 export type VarDeclarationOptions = DeclarationOptions & {
@@ -49,17 +49,39 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    // Vars always print with `$` prefix; setDefined affects the assignment token.
-    //
-    // Special-case parameter vars (used in mixin signatures) that have no default value:
-    // print `$name` (no `: <value>`).
     if (this._options?.paramVar && this.valueNode instanceof Nil) {
-      w.add('$', this);
-      const normalizedName = String(this.name).replace(/\s+$/, '');
-      w.add(normalizedName, this.name);
+      if (this.name instanceof Any) {
+        const nameText = this.name.value.replace(/\s+$/u, '');
+        w.add('$', this);
+        w.add(nameText, this.name);
+        return `$${nameText}`;
+      }
+      this.writeBareParameterSyntax(options);
       return w.getSince(mark);
     }
+    this.writeSyntax(options);
+    return w.getSince(mark);
+  }
 
+  private writeBareParameterSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
+    w.add('$', this);
+    if (this.name instanceof Any) {
+      w.add(this.name.value.replace(/\s+$/u, ''), this.name);
+      return;
+    }
+    const nameMark = w.mark();
+    this.name.writeSyntax(options);
+    w.trimEndSince(nameMark);
+  }
+
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    if (this._options?.paramVar && this.valueNode instanceof Nil) {
+      this.writeBareParameterSyntax(options);
+      return;
+    }
+    const w = options.writer;
     w.add('$', this);
     const before = w.mark();
     const s = this.declTrimmedString(options);
@@ -67,7 +89,6 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     if (!emitted && s) {
       w.add(s);
     }
-    return w.getSince(mark);
   }
 }
 defineType<DeclarationValue>(VarDeclaration, 'VarDeclaration', 'vardecl');
