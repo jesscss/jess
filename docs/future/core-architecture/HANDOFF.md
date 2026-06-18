@@ -150,3 +150,23 @@ with `--no-verify` after the explicit gates pass.
   snapshots/maps used to prove unrelated direct declaration entries survive.
   Detailed status remains in `BINDING-LOOKUP-REMAINING.md`. The serialization
   pass keeps `NODE-REWRITE-TRACKER.md` as the active queue.
+- Merge-carried binding review: latest `origin/dev` also carries
+  declaration/import key-version proof and dynamic promotion invalidation in
+  `packages/core/src/tree/reference.ts`. It is binding/cache-state only:
+  dynamic declarations queued on a scope frame that resolve to static names now
+  bump the resolved key's declaration lookup version and invalidate only that
+  key's direct declaration bucket/cache entries; no render/stringification path
+  changed. Review-flagged loops/maps/arrays are the existing per-key cache
+  invalidation walk and focused cache-key snapshots. Detailed status remains in
+  `BINDING-LOOKUP-REMAINING.md`; the serialization pass keeps
+  `NODE-REWRITE-TRACKER.md` as the active queue.
+- Merge note: latest `origin/dev` also carries serialization work for
+  `Operation`, `QueryCondition`, and scalar token-family at-rule header/leaf
+  syntax readback cuts, plus Ruleset/Ampersand serialization cuts from the
+  latest merge; keep that progress in `NODE-REWRITE-TRACKER.md` while this
+  worktree continues serialization. Review-flagged `CountingWriter`
+  constructions, detached `OutputWriter` header string boundaries, custom
+  syntax subclass constructions, scalar `any(...)` fixtures, explicit
+  `new Anonymous('html')`, and empty-arg `call(...)` test fixtures are
+  serialization proof scaffolding from merges; they are not new binding runtime
+  machinery.

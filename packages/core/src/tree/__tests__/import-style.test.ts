@@ -42,7 +42,7 @@ import { OutputWriter, getPrintOptions } from '../util/print.js';
 import { buildSourceMap } from '../util/sourcemap.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
-import { findVariableDeclarationOccurrence } from '../util/direct-rules-lookup.js';
+import { findPropertyDeclarationOccurrence, findVariableDeclarationOccurrence } from '../util/direct-rules-lookup.js';
 
 let context: Context;
 
@@ -2534,9 +2534,11 @@ describe('Style import', () => {
     it('import-reference: real hit and miss refs avoid public declaration bridges', async () => {
       const referencedPath = resolve(process.cwd(), 'reference-hit-miss.jess');
       const sourceValue = any('42');
+      const propertySourceValue = any('24');
       const fallbackValue = any('fallback');
       context.sourceTrees.set(referencedPath, rules([
-        vardecl({ name: 'fromRef', value: sourceValue })
+        vardecl({ name: 'fromRef', value: sourceValue }),
+        decl({ name: any('fromRefProp'), value: propertySourceValue })
       ]));
       const node = rules([
         style({ path: quoted(any('reference-hit-miss.jess')) }, { type: 'import', importOptions: { reference: true } }),
@@ -2552,15 +2554,45 @@ describe('Style import', () => {
         })
       ]);
       const originalCopy = Any.prototype.copy;
+      const originalFind = RulesClass.prototype.find;
       let scalarCopies = 0;
+      const declarationBridgeHits: string[] = [];
       Any.prototype.copy = function(...args: Parameters<typeof originalCopy>) {
-        if (this === sourceValue || this === fallbackValue) {
+        if (
+          this === sourceValue
+          || this === propertySourceValue
+          || this === fallbackValue
+        ) {
           scalarCopies++;
         }
         return originalCopy.apply(this, args);
       };
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (
+          type === 'declaration'
+          && (
+            key === 'fromRef'
+            || key === 'fromRefProp'
+            || key === 'missingFromRef'
+            || key === 'missingFromRefProp'
+          )
+        ) {
+          declarationBridgeHits.push(`${filterType}:${key}`);
+        }
+        return originalFind.apply(this, args);
+      };
 
       try {
+        const evald = await node.eval(context);
+        expect(findPropertyDeclarationOccurrence(evald, 'fromRefProp', {
+          context,
+          searchParents: false
+        })?.node.valueNode.valueOf()).toBe('24');
+        expect(findPropertyDeclarationOccurrence(evald, 'missingFromRefProp', {
+          context,
+          searchParents: false
+        })).toBeUndefined();
         const css = await renderNodeToString(node, context);
 
         expect(css).toBeString(`
@@ -2570,8 +2602,10 @@ describe('Style import', () => {
           }
         `);
         expect(scalarCopies).toBe(0);
+        expect(declarationBridgeHits).toEqual([]);
       } finally {
         Any.prototype.copy = originalCopy;
+        RulesClass.prototype.find = originalFind;
       }
     });
 

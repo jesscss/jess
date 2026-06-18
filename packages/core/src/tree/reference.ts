@@ -150,6 +150,8 @@ const REF_EVAL_REUSE_SOURCE_FREE = 1 << 1;
 const DIRECT_DECLARATION_LOOKUP_CACHE_KEY_SEPARATOR = '\u001f';
 
 function invalidateDirectDeclarationLookupKey(scope: Rules, key: string): void {
+  const versions = scope.declarationLookupVersionsByName ??= new Map<string, number>();
+  versions.set(key, scope.getDeclarationLookupVersion(key) + 1);
   scope.directDeclarationsByName?.delete(key);
   const cache = scope.directDeclarationLookupCache;
   if (!cache?.size) {

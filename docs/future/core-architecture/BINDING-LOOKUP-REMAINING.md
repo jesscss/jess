@@ -171,7 +171,14 @@ visibility, and covered declaration/property hits and misses. Goal: ordinary
 declaration/property lookup does not widen to child scans or public bridge
 behavior when visibility facts are modeled. Acceptance: synthetic import
 covered-hit/miss tests plus at least one real reference-import declaration
-fixture with bridge spies.
+fixture with bridge spies. Current evidence: the real `@import(reference)`
+hit/miss fixture now includes an imported property declaration. Direct property
+occurrence lookup finds the imported property and misses a missing imported
+property through the direct helper, while the same fixture spies on
+`Rules.find(...)` and proves rendered variable hit/miss references do not enter
+the public declaration bridge. Property references inside later nested rulesets
+do not share the same visibility semantics as direct imported property
+occurrence lookup, so broader rendered property-reference proof remains open.
 
 14. [ ] Finish property merge-chain output-binding handle identity proof.
 Scope: merge normalization, source/output exclusions, same-parent source
@@ -189,8 +196,12 @@ evidence: static declaration registration now invalidates only the affected
 direct declaration bucket/cache entries. A focused reference test proves
 unrelated `color`/`missing` direct lookup cache entries and the `color` bucket
 survive an `unrelated` static declaration write while the stale `unrelated`
-miss is removed. Dynamic names, style imports, nested `Rules`, and child
-declaration surfaces still promote to global invalidation.
+miss is removed. Pending dynamic declarations that become static now bump the
+resolved key's declaration lookup version, clear only the resolved key's bucket
+and lookup-cache entries, and preserve unrelated miss cache entries. Nested
+`Rules` child declaration surfaces still clear the whole direct declaration
+bucket/cache and bump the global declaration lookup version. Style import
+promotion remains open.
 
 ## Latest Binding Baseline
 
