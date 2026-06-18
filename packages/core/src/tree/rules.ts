@@ -3227,16 +3227,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   registerNode(node: Node, options?: Record<string, any>, context?: Context) {
     this.lookupVersion++;
+    let directDeclarationInvalidationKey: string | undefined;
+    let directDeclarationInvalidationIsGlobal = false;
     if (isNode(node, N.Declaration)) {
       if (this._hasStaticName(node)) {
-        this.bumpDeclarationLookupVersion(String(node.name.valueOf()));
+        directDeclarationInvalidationKey = String(node.name.valueOf());
+        this.bumpDeclarationLookupVersion(directDeclarationInvalidationKey);
       } else {
+        directDeclarationInvalidationIsGlobal = true;
         this.bumpDeclarationLookupVersion();
       }
     } else if (isNode(node, N.VarDeclaration)) {
       if (this._hasStaticName(node)) {
-        this.bumpDeclarationLookupVersion(String(node.name.valueOf()));
+        directDeclarationInvalidationKey = String(node.name.valueOf());
+        this.bumpDeclarationLookupVersion(directDeclarationInvalidationKey);
       } else {
+        directDeclarationInvalidationIsGlobal = true;
         this.bumpDeclarationLookupVersion();
       }
     }
@@ -3262,12 +3268,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this._scopeFrame.mixinCallableMissCoverageKnown = false;
       }
     }
-    this.directDeclarationsByName = undefined;
-    this.directDeclarationLookupCache = undefined;
     if (directChildRules && !isNode(node, N.Rules)) {
       this.addDirectChildRuleEntry(directChildRules);
     }
     const declarationChildRules = childRulesOf(node);
+    if (declarationChildRules || isStyleImportRegistrationNode(node) || isNode(node, N.Rules)) {
+      directDeclarationInvalidationIsGlobal = true;
+    }
+    if (directDeclarationInvalidationIsGlobal) {
+      this.invalidateDirectDeclarationLookup();
+    } else if (directDeclarationInvalidationKey !== undefined) {
+      this.invalidateDirectDeclarationLookup(directDeclarationInvalidationKey);
+    }
     if (declarationChildRules && !isNode(node, N.Rules)) {
       this.addDirectDeclarationChildRuleEntry(declarationChildRules);
     }
@@ -3514,6 +3526,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     const versions = this.declarationLookupVersionsByName ??= new Map<string, number>();
     versions.set(key, this.getDeclarationLookupVersion(key) + 1);
+  }
+
+  private invalidateDirectDeclarationLookup(key?: string): void {
+    if (key === undefined) {
+      this.directDeclarationsByName = undefined;
+      this.directDeclarationLookupCache = undefined;
+      return;
+    }
+    this.directDeclarationsByName?.delete(key);
+    if (!this.directDeclarationLookupCache?.size) {
+      return;
+    }
+    const prefix = `${key}\u001f`;
+    for (const cacheKey of this.directDeclarationLookupCache.keys()) {
+      if (cacheKey.startsWith(prefix)) {
+        this.directDeclarationLookupCache.delete(cacheKey);
+      }
+    }
   }
 
   push(...nodes: Node[]) {

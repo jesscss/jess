@@ -184,7 +184,13 @@ Scope: `Rules.getDeclarationLookupVersion(key)`, dynamic names, import/rules
 promotions, and per-name invalidation. Goal: per-name versions remain freshness
 state, not a second registry, and ordinary static reads avoid broad version
 invalidation. Acceptance: focused version invalidation tests for dynamic-name
-promotion, late import/reference additions, and rules promotion.
+promotion, late import/reference additions, and rules promotion. Current
+evidence: static declaration registration now invalidates only the affected
+direct declaration bucket/cache entries. A focused reference test proves
+unrelated `color`/`missing` direct lookup cache entries and the `color` bucket
+survive an `unrelated` static declaration write while the stale `unrelated`
+miss is removed. Dynamic names, style imports, nested `Rules`, and child
+declaration surfaces still promote to global invalidation.
 
 ## Latest Binding Baseline
 

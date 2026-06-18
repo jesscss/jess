@@ -3211,6 +3211,44 @@ describe('reference', () => {
       expect(findPropertyDeclarationOccurrence(node, 'missing')).toBeUndefined();
     });
 
+    it('direct declaration cache survives unrelated static declaration writes', async () => {
+      const node = rules([
+        decl({ name: any('color'), value: any('blue') })
+      ]);
+
+      await node.eval(context);
+
+      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.valueNode.valueOf()).toBe('blue');
+      expect(findPropertyDeclarationOccurrence(node, 'missing')).toBeUndefined();
+      expect(findPropertyDeclarationOccurrence(node, 'unrelated')).toBeUndefined();
+      const buckets = node.directDeclarationsByName;
+      const colorBucket = buckets?.get('color');
+      const cache = node.directDeclarationLookupCache;
+      const colorCacheKeys = [...(cache?.keys() ?? [])].filter(key => key.startsWith('color\u001f'));
+      const missingCacheKeys = [...(cache?.keys() ?? [])].filter(key => key.startsWith('missing\u001f'));
+      const unrelatedCacheKeys = [...(cache?.keys() ?? [])].filter(key => key.startsWith('unrelated\u001f'));
+      expect(colorBucket).toBeDefined();
+      expect(colorCacheKeys.length).toBeGreaterThan(0);
+      expect(missingCacheKeys.length).toBeGreaterThan(0);
+      expect(unrelatedCacheKeys.length).toBeGreaterThan(0);
+
+      node.push(decl({ name: 'unrelated', value: any('1') }));
+
+      expect(node.directDeclarationsByName).toBe(buckets);
+      expect(node.directDeclarationsByName?.get('color')).toBe(colorBucket);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
+        key => key.startsWith('color\u001f')
+      )).toEqual(colorCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
+        key => key.startsWith('missing\u001f')
+      )).toEqual(missingCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
+        key => key.startsWith('unrelated\u001f')
+      )).toEqual([]);
+      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.valueNode.valueOf()).toBe('blue');
+      expect(findPropertyDeclarationOccurrence(node, 'unrelated')?.node.valueNode.valueOf()).toBe('1');
+    });
+
     it('direct VarDeclaration lookup ignores empty candidate sets', async () => {
       const node = rules([
         vardecl({ name: 'color', value: any('red') })

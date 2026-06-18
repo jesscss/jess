@@ -103,32 +103,34 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding/lookup queue cleanup plus rejected namespace-prefix
-  shortcut audit.
-- Verdict: no runtime cut accepted in this pass. Two namespace shortcuts were
-  rejected by focused mixin tests: frame-first covered-miss prefix-crawl
-  deletion and replacing `getScopeFrame()` with `_scopeFrame` in ruleset
-  namespace ambiguity checks. No speed claim.
-- New traversal: none. No runtime code change remains in the scoped diff.
-- New node/materialization: none. No nodes, wrappers, copied rules, inherited
-  metadata, or materialized arrays were added.
-- Render path: no render/stringification path changed. Positive namespace
-  lookup and imported/guarded namespace behavior still use the existing
-  namespace resolution paths.
-- Helper/API surface: none. No public or private helper was added.
+- Latest pass: direct declaration per-key cache invalidation.
+- Verdict: accepted as a binding/cache-state cut. Static declaration writes now
+  invalidate only the affected direct declaration bucket/cache entries instead
+  of discarding unrelated direct declaration state. Dynamic names, imports,
+  nested rules, and child declaration surfaces still promote to global
+  invalidation. No speed claim.
+- New traversal: `invalidateDirectDeclarationLookup(key)` iterates the current
+  `directDeclarationLookupCache.keys()` only when registering a static
+  declaration/key. The traversal is bounded to existing cache entries and
+  replaces the previous broader work of discarding every direct declaration
+  bucket/cache entry for unrelated names. Test-only cache-key snapshots iterate
+  and filter cache keys to prove unrelated entries survive the write.
+- New node/materialization: none in runtime. No nodes, wrappers, copied rules,
+  inherited metadata, or runtime materialized arrays were added. The focused
+  test builds arrays/new empty maps only to snapshot and compare cache keys.
+- Render path: no render/stringification path changed.
+- Helper/API surface: one private helper,
+  `Rules.invalidateDirectDeclarationLookup(key?)`, replaces inline global cache
+  clearing in `registerNode(...)`. It is not exported or public API.
 - Metadata mutations: none.
-- Allocation changes: none accepted. The active queue was reseeded to 15
-  sizable unchecked binding tasks after removing already-proven scalar
-  exclusion, setDefined callback, and variable-facade items from the active
-  list.
-- Rejected/observed in this pass: `lookupScopeFrameCallable` misses do not yet
-  model nested/owned selector-body prefixes, so prefix-crawl deletion is unsafe.
-  `getScopeFrame()` in ruleset namespace ambiguity checks is currently part of
-  namespace correctness, not just a shortcut allocation. These rejected cuts are
-  recorded in `BINDING-LOOKUP-REMAINING.md`.
-- Evidence: focused `mixin.test.ts` namespace slices exposed the unsafe cuts;
-  after reverting runtime changes, the remaining diff is tracker/router docs.
-  Full docs gates are required before commit.
+- Allocation changes: no new runtime object shape. Static declaration
+  registration now preserves unrelated `directDeclarationsByName` map/buckets
+  and unrelated direct lookup cache entries instead of forcing them to be
+  rebuilt on the next read.
+- Evidence: focused reference tests prove `color`/`missing` cache entries and
+  the `color` bucket survive an unrelated static declaration write while the
+  stale `unrelated` miss is cleared; focused setDefined tests still pass.
+  Full gates are required before commit.
 - Merge note: latest `origin/dev` also carries serialization work for
   `Operation` and `QueryCondition`; keep that progress in
   `NODE-REWRITE-TRACKER.md` while this worktree continues binding/lookup.
