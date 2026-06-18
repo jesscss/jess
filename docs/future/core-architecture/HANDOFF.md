@@ -103,51 +103,40 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: item 38 selector-body callable prefix facts from frame buckets.
-- Verdict: accepted as a lookup hot-path replacement. Ruleset namespace lookup
-  now collects selector-prefix matches from prepared callable frame buckets and
-  reference-import child frames before using the old recursive prefix crawl.
-  The recursive `findVisibleCallableRulesetPrefixMatches(...)` path remains
-  only when frame facts cannot cover a child prefix/ruleset surface. No speed
-  claim.
-- New traversal: three private frame/bucket walks in `Rules`: one scans an
-  already-prepared callable bucket for ruleset prefix entries, one scans direct
-  child entries to prepare child frames and collect their prefix entries, and
-  one walks the visible frame chain with the existing non-classic import
-  boundary rule. These replace the covered-case recursive child prefix crawl;
-  uncovered child surfaces still fall back to the old recursive helper.
-- Review-flagged allocations: production allocates consumed prefix arrays only
-  for actual ruleset prefix matches, replacing the old recursive key-path
-  discovery path for covered frames. The review-flagged `path: string[]` and
-  `results: CallableRulesetPrefixMatch[]` lines are helper signatures that
-  thread the caller's existing path/result arrays; they are not new side
-  stores. No side maps, wrapper `Rules`, copied nodes, or registry/index
-  objects were added. Review-flagged `try`/`finally`, fixture nodes, and the
-  `recursivePrefixCrawls` counter are focused test scaffolding for restoring
-  the spied private prefix helper.
-- New node/materialization: no runtime nodes, wrapper Rules, copied rules,
-  inherited metadata, frozen state, or production node materialization were
-  added. The only production array materialization is the existing
-  `CallableRulesetPrefixMatch.consumed` shape for actual prefix matches.
+- Latest pass: binding gate cleanup after rows 11/12 drained.
+- Verdict: accepted as a non-lookup gate cleanup. The pass removes the
+  selector-pseudo ordinary child `.clone(...)` frontier by delegating the cold
+  public clone path through the same `super.clone(...)` form already used by
+  selector classes, preserves pseudo generated-placement/tree-context state,
+  and fixes cloning helpers so copy paths read raw `_options` without
+  allocating empty source options. No lookup runtime change. No speed claim.
+- New traversal: none.
+- Review-flagged allocations: no new production arrays, side maps, wrapper
+  `Rules`, copied eval trees, or registry/index objects were added. The raw
+  `_options` helper avoids a lazy empty-options allocation on source nodes.
+- New node/materialization: no new hot-path materialization. The only touched
+  materialization path is cold public clone/copy helper behavior; it replaces a
+  generic child `.clone(...)` call with the existing base `super.clone(...)`
+  materialization boundary.
 - Render path: no render/stringification path changed.
-- Helper/API surface: three private helpers were added inside `Rules`; no public
-  API was added. They are accepted because they move the covered selector-body
-  prefix path onto existing callable frame/cache state and leave the broader
-  recursive helper as the uncovered fallback.
-- Metadata mutations: none.
-- Allocation changes: no production allocation change.
-- Evidence: focused mixin tests pass for selector-list frame-covered prefix
-  hit/miss without recursive prefix crawl, reference-import compound prefixes,
-  reference-import selector-list prefixes, compound-prefix ruleset lookup,
-  definite namespace misses, terminal mixin-only filtering,
-  mixin-ruleset-with-args filtering, namespace fast paths, and simple misses on
-  compound-prefix candidates. Rows 11 and 12 are closed in
-  `BINDING-LOOKUP-REMAINING.md`; only gate rows 9 and 10 remain open. Changed
-  baseline is still blocked before fixtures by non-lookup
-  `selector-pseudo.ts` node-copy frontier fallout. Lookup profile still reports
-  empty old `Rules.find`/registry counters, and one-iteration hotpath smoke is
-  still blocked by parser `args.set is not a function`. No wall-clock
-  performance claim.
+- Helper/API surface: one private raw-options helper was added inside
+  `util/cloning.ts`; it deletes a source-node options allocation rather than
+  adding a new runtime lookup/helper layer. `verify-node-copy-frontier` now
+  allows `PseudoSelector` only for explicit `super.clone(...)`, matching the
+  existing selector-class allowance.
+- Metadata mutations: `PseudoSelector.clone(...)` preserves the existing
+  `_treeContext` and generated pseudo placement override on the cloned cold
+  surface; no parent/source restoration or lookup metadata mutation was added.
+- Allocation changes: cold copy helpers no longer allocate empty source
+  options objects when copying optionless nodes.
+- Evidence: focused pseudo/cloning tests pass, `verify:node-copy-frontier`
+  passes, lookup profile still reports empty old `Rules.find`/registry
+  counters, and one-iteration hotpath smoke is usable again after rebuilding
+  the parser/Jess/plugin-js libs. `verify:baseline -- --changed` reaches the
+  full affected baseline but is blocked by 11 pre-existing `call.test.ts`
+  serialization/render failures that reproduce with this diff reversed on
+  clean `53ffb2baf`; row 9 remains open for that non-lookup blocker. No
+  wall-clock performance claim.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification

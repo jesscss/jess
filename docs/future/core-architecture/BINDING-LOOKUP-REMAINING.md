@@ -190,15 +190,17 @@ ruleset header streaming blocker is repaired. Scope: changed Less/Jess
 fixtures, ruleset render interaction with lookup work, and branch-local
 failures. Goal: use baseline evidence as a gate again. Acceptance:
 `pnpm run verify:baseline -- --changed` either passes or has a lookup-owned
-failure recorded with a fix. Current evidence: the changed baseline was rerun
-after the selector-prefix frame-bucket pass. No baseline packages were changed
-or affected, so the verifier ran frontier checks only, then failed
-`verify:node-copy-frontier` on an unexpected ordinary production `.clone()` in
-`packages/core/src/tree/selector-pseudo.ts`. No lookup-owned fixture failure was
-observed. Keep this item open until that non-lookup frontier failure is handled
-or separated upstream and the changed-baseline gate can finish.
+failure recorded with a fix. Current evidence: the selector-pseudo frontier
+blocker is fixed: `PseudoSelector.clone(...)` now delegates through the same
+cold `super.clone(...)` shape used by selector classes, the frontier verifier
+allows that specific form, and `pnpm run verify:node-copy-frontier` passes.
+`pnpm run verify:baseline -- --changed` now reaches the full affected baseline,
+but `@jesscss/core` is blocked by pre-existing `call.test.ts` render/
+serialization failures. The same 11 `call.test.ts` failures reproduce with the
+current diff reversed on clean `53ffb2baf`, so they are not lookup-owned and
+not introduced by the selector-pseudo frontier fix.
 
-10. [ ] Refresh lookup profile and one-iteration hotpath smoke after the next
+10. [x] Refresh lookup profile and one-iteration hotpath smoke after the next
 bridge deletion batch. Scope: `scope-lookup-stress.less`, direct lookup
 counters, old registry counters, and smoke timings. Goal: keep counter
 evidence current without claiming speed. Acceptance: profile recorded with old
@@ -208,11 +210,12 @@ Current evidence: `node scripts/profile-less-benchmark.mjs
 old `rulesFindByType` / `registryFindByType` counters, direct declaration
 counters at `declaration.cacheMiss: 7560`, `declaration.childEntriesScanned:
 1575`, `declaration.childEntryEntered: 1575`, and `declaration.framePrep: 1`,
-and profiler elapsed `462ms`. This is counter/profiler evidence only. The
-one-iteration smoke is blocked: both stress-fixture and default
-`node scripts/measure-less-hotpath.mjs --iterations 1 --warmup 0` fail during
-parse with `JessError: args.set is not a function`, including default
-`functions.less`, so no smoke timing was recorded.
+and profiler elapsed `375.5ms`. This is counter/profiler evidence only. After
+rebuilding the Less parser/Jess/plugin-js lib outputs, the one-iteration smoke
+is usable again: `scope-lookup-stress.less` reports smoke median `156.44ms`;
+the default smoke reports `functions.less` `65.49ms`, `import-reference.less`
+`52.00ms`, `mixins-guards.less` `35.25ms`, `extend-chaining.less` `13.84ms`,
+and `media.less` `9.08ms`. These are smoke values only, not speed proof.
 
 11. [x] Extend namespace frame-chain proof to callable mixin namespaces with
 reference-import descendants. Scope: no-param namespace mixins, nested

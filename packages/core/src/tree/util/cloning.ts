@@ -91,6 +91,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
 
+function rawNodeOptions(node: Node): Record<string, unknown> | undefined {
+  const options = (node as unknown as { _options?: unknown })._options;
+  return isRecord(options) ? options : undefined;
+}
+
 type FrameMetadataNode = Node & {
   frames?: unknown;
 };
@@ -116,12 +121,12 @@ function copyRenderMetadata(source: Node, target: Node): void {
 }
 
 function constructCopy(node: Node, value: unknown): Node {
-  const options = node.options;
+  const options = rawNodeOptions(node);
   const copy = Reflect.construct(
     node.constructor,
     [
       value,
-      isRecord(options) ? { ...options } : undefined,
+      options ? { ...options } : undefined,
       node.location
     ]
   );
@@ -140,6 +145,7 @@ function constructPseudoCopy(node: Node, preserveComments: boolean): Node | unde
   const arg = node.arg
     ? (preserveComments ? copyChildPreservingComments(node.arg) : copyChild(node.arg))
     : undefined;
+  const options = rawNodeOptions(node);
   const copy = new PseudoSelector(
     {
       name: node.name,
@@ -148,7 +154,7 @@ function constructPseudoCopy(node: Node, preserveComments: boolean): Node | unde
         generatedPseudoPlacementOverride: node.generatedPseudoPlacementOverride
       })
     },
-    isRecord(node.options) ? { ...node.options } : undefined,
+    options ? { ...options } : undefined,
     node.location,
     node.sourceRoot?._treeContext
   ).inherit(node);

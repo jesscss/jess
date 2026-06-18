@@ -191,25 +191,10 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   }
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    let arg = this.arg;
-    if (deep && arg) {
-      cloneFn ??= n => n.clone(deep);
-      arg = cloneFn(arg);
-    }
-    const cloned = new PseudoSelector(
-      {
-        name: this.name,
-        ...(arg !== undefined && { arg }),
-        ...(this.generatedPseudoPlacementOverride !== undefined && {
-          generatedPseudoPlacementOverride: this.generatedPseudoPlacementOverride
-        })
-      },
-      this._options ? { ...this._options } : undefined,
-      this.location,
-      this.sourceRoot?._treeContext
-    ) as this;
-    cloned.inherit(this);
+    const cloned = super.clone(deep, cloneFn) as this;
     cloned.keySetLibrary = this.keySetLibrary;
+    cloned._treeContext = this._treeContext;
+    cloned.generatedPseudoPlacementOverride = this.generatedPseudoPlacementOverride;
     return cloned;
   }
 
