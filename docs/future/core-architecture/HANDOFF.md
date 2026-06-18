@@ -103,6 +103,44 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` exact scalar render-text carry.
+- Verdict: accepted as a localized render transport cut. Covered plain and
+  finalized CSS-call render paths now keep exact no-trivia scalar args/content
+  on direct known-text output, including async scalar resolutions, so those
+  paths no longer pay per-arg trim marks or the whole-call `getSince(...)`
+  readback just to return text that was already known. No speed claim.
+- New traversal: none. This pass reuses the existing writer-owned arg loop and
+  adds no new tree walk, callback scan, side-map lookup, or array
+  materialization.
+- New node/materialization: none. No new node copies, inherited wrappers, or
+  arg containers were added.
+- Render path: exact `Any`/`Keyword`/`Anonymous`, `Bool`, `Num`, and
+  string-backed `Color` arg/content results now write known text directly into
+  the active writer and carry that same text through the render return when the
+  whole call stayed on that exact contract.
+- Helper/API surface: one node-local `getKnownRenderedCallText(...)` helper and
+  one tiny `CallRenderTextState` record were added inside `call.ts` to keep the
+  direct-text render contract local. They replace repeated ad hoc scalar checks
+  in plain/finalized render and delete whole-call readback on the covered path.
+- Metadata mutations: none.
+- Routine error control: none added. Existing calc-frame cleanup and async
+  rejection handling stay where they were.
+- Allocation changes: deletes per-arg trim marks for covered exact scalar args
+  and deletes whole-call readback for covered exact scalar arg/content render
+  returns. Async scalar cases still allocate only the existing promise
+  continuation after thenable detection.
+- Rejected/observed in this pass: non-scalar/custom/trivia arg trim-mark
+  cleanup, shared-buffer call output splitting, and broader async/dynamic call
+  output work stay queued in `Call`.
+- Evidence: focused `call.test.ts` render-count subset covering rendered CSS
+  call args without capture scaffolding, token/color scalar arg no-trim paths,
+  async scalar arg no-readback, and async scalar content no-readback passed;
+  the prior focused render subset covering direct CSS-call render, flat-buffer
+  output, direct arg rendering without public resolve, evaluated/escaped arg
+  syntax, dynamic arg streaming, async arg buffer/render paths, calc-frame
+  rejection cleanup, and escaped rendered args also passed; targeted ESLint,
+  `git diff --check`, `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` remain the commit-boundary gates.
 - Latest pass: `Call` writer-owned rendered-arg transport.
 - Verdict: accepted as a localized serialization transport cut. Plain and
   finalized CSS-call render paths no longer bounce through a recursive

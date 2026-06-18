@@ -107,6 +107,24 @@ export type CallRawArgDiagnosticSource = {
 };
 
 type OptionalFallbackRenderOutput = Node | string;
+type CallRenderTextState = { text: string | undefined };
+
+function getKnownRenderedCallText(node: Node): string | undefined {
+  switch (node.type) {
+    case 'Any':
+    case 'Keyword':
+    case 'Anonymous':
+      return typeof node.value === 'string' ? node.value : undefined;
+    case 'Bool':
+      return node.value ? 'true' : 'false';
+    case 'Num':
+      return typeof node.number === 'number' ? `${node.number}` : undefined;
+    case 'Color':
+      return typeof node.node === 'string' ? node.node : undefined;
+    default:
+      return undefined;
+  }
+}
 
 export function getCallRawArgsPlacement(rawArgs: List<Node>): CallRawArgsPlacementState | undefined {
   const placement = getRawArgsPlacement(rawArgs);
@@ -486,7 +504,8 @@ export class Call extends Node<CallValue, CallOptions> {
   private writeRenderedArgs(
     args: List<Node> | undefined,
     context: Context,
-    options: PrintOptions
+    options: PrintOptions,
+    textState?: CallRenderTextState
   ): MaybePromise<void> {
     if (!args || args.items.length === 0) {
       return;
@@ -508,6 +527,9 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
       w.add(', ');
+      if (textState?.text !== undefined) {
+        textState.text += ', ';
+      }
     };
     const finishArg = (arg: Node, argMark: number, next: number): void => {
       w.trimHorizontalStartSince(argMark);
@@ -518,15 +540,35 @@ export class Call extends Node<CallValue, CallOptions> {
       w.trimHorizontalStartSince(innerMark);
       w.trimHorizontalEndSince(innerMark);
       w.add(')', arg);
+      if (textState?.text !== undefined) {
+        textState.text += ')';
+      }
       writeArgSeparator(arg, next);
+    };
+    const appendKnownRenderedText = (node: Node): boolean => {
+      const text = getKnownRenderedCallText(node);
+      if (text === undefined) {
+        return false;
+      }
+      w.add(text, node);
+      if (textState?.text !== undefined) {
+        textState.text += text;
+      }
+      return true;
     };
     const writeArgAt = (i: number): MaybePromise<void> => {
       const arg = rawArgs[i]!;
       const next = findNextArgIndex(i + 1);
       if (arg instanceof Paren && arg.options?.escaped) {
         w.add('(', arg);
+        if (textState?.text !== undefined) {
+          textState.text += '(';
+        }
         if (!arg.value) {
           w.add(')', arg);
+          if (textState?.text !== undefined) {
+            textState.text += ')';
+          }
           writeArgSeparator(arg, next);
           return;
         }
@@ -534,24 +576,56 @@ export class Call extends Node<CallValue, CallOptions> {
         const rendered = arg.value.eval(context);
         if (isThenable(rendered)) {
           return rendered.then((value) => {
-            value.writeSyntax(printOptions);
+            if (!appendKnownRenderedText(value)) {
+              if (textState) {
+                textState.text = undefined;
+              }
+              value.writeSyntax(printOptions);
+            }
             finishEscapedParenArg(arg, innerMark, next);
           });
         }
-        (rendered as Node).writeSyntax(printOptions);
+        if (!appendKnownRenderedText(rendered as Node)) {
+          if (textState) {
+            textState.text = undefined;
+          }
+          (rendered as Node).writeSyntax(printOptions);
+        }
         finishEscapedParenArg(arg, innerMark, next);
         return;
       }
-      const argMark = w.mark();
+      if (
+        arg.eval === Node.prototype.eval
+        && appendKnownRenderedText(arg)
+      ) {
+        writeArgSeparator(arg, next);
+        return;
+      }
       const rendered = arg.eval(context);
       if (isThenable(rendered)) {
         return rendered.then((value) => {
-          value.writeSyntax(printOptions);
-          finishArg(arg, argMark, next);
+          if (!appendKnownRenderedText(value)) {
+            const argMark = w.mark();
+            if (textState) {
+              textState.text = undefined;
+            }
+            value.writeSyntax(printOptions);
+            finishArg(arg, argMark, next);
+            return;
+          }
+          writeArgSeparator(arg, next);
         });
       }
-      (rendered as Node).writeSyntax(printOptions);
-      finishArg(arg, argMark, next);
+      if (!appendKnownRenderedText(rendered as Node)) {
+        const argMark = w.mark();
+        if (textState) {
+          textState.text = undefined;
+        }
+        (rendered as Node).writeSyntax(printOptions);
+        finishArg(arg, argMark, next);
+        return;
+      }
+      writeArgSeparator(arg, next);
       return;
     };
     const writeArgsAsync = async (start: number): Promise<void> => {
@@ -592,6 +666,7 @@ export class Call extends Node<CallValue, CallOptions> {
       return out;
     }
     const mark = w.mark();
+    const textState: CallRenderTextState = { text: typeof name === 'string' ? name : undefined };
     if (typeof name === 'string') {
       w.add(name, callNode);
     } else {
@@ -599,8 +674,14 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     if (callNode.options?.silentFail) {
       w.add('?');
+      if (textState.text !== undefined) {
+        textState.text += '?';
+      }
     }
     w.add('(');
+    if (textState.text !== undefined) {
+      textState.text += '(';
+    }
     const isCalc = name === 'calc';
     if (isCalc) {
       context.calcFrames++;
@@ -610,26 +691,55 @@ export class Call extends Node<CallValue, CallOptions> {
         context.calcFrames--;
       }
       w.add(')');
+      if (textState.text !== undefined) {
+        textState.text += ')';
+      }
       if (callNode.options?.markImportant) {
         w.add(' !important');
+        if (textState.text !== undefined) {
+          textState.text += ' !important';
+        }
       }
       if (contentNode) {
         w.add(': ');
+        if (textState.text !== undefined) {
+          textState.text += ': ';
+        }
         const renderedContent = contentNode.eval(context);
         if (isThenable(renderedContent)) {
           return renderedContent.then((value) => {
-            value.writeSyntax(printOptions);
+            const contentText = getKnownRenderedCallText(value);
+            if (contentText !== undefined) {
+              w.add(contentText, value);
+              if (textState.text !== undefined) {
+                textState.text += contentText;
+                return textState.text;
+              }
+            } else {
+              textState.text = undefined;
+              value.writeSyntax(printOptions);
+            }
             return w.getSince(mark);
           });
         }
-        (renderedContent as Node).writeSyntax(printOptions);
+        const contentText = getKnownRenderedCallText(renderedContent as Node);
+        if (contentText !== undefined) {
+          w.add(contentText, renderedContent as Node);
+          if (textState.text !== undefined) {
+            textState.text += contentText;
+            return textState.text;
+          }
+        } else {
+          textState.text = undefined;
+          (renderedContent as Node).writeSyntax(printOptions);
+        }
         return w.getSince(mark);
       }
-      return w.getSince(mark);
+      return textState.text ?? w.getSince(mark);
     };
     let renderedArgs: MaybePromise<void>;
     try {
-      renderedArgs = this.writeRenderedArgs(callNode.args, context, prepared);
+      renderedArgs = this.writeRenderedArgs(callNode.args, context, prepared, textState);
     } catch (error) {
       if (isCalc) {
         context.calcFrames--;
@@ -657,36 +767,71 @@ export class Call extends Node<CallValue, CallOptions> {
     const printOptions = getPrintOptions(prepared);
     const w = printOptions.writer!;
     const mark = w.mark();
+    const textState: CallRenderTextState = { text: typeof name === 'string' ? name : undefined };
     const args = syntax && 'args' in syntax ? syntax.args : state.args;
     const contentNode = syntax && 'contentNode' in syntax ? syntax.contentNode : state.contentNode;
     if (typeof name === 'string') {
       w.add(name, state.source);
     } else if (name instanceof Node) {
+      textState.text = undefined;
       name.writeSyntax(printOptions);
     } else {
+      textState.text = undefined;
       w.add(stringifyValueOf(name), state.source);
     }
     w.add('(');
+    if (textState.text !== undefined) {
+      textState.text += '(';
+    }
     const finishCall = (): MaybePromise<string> => {
       w.add(')');
+      if (textState.text !== undefined) {
+        textState.text += ')';
+      }
       if (this._options?.markImportant) {
         w.add(' !important');
+        if (textState.text !== undefined) {
+          textState.text += ' !important';
+        }
       }
       if (contentNode) {
         w.add(': ');
+        if (textState.text !== undefined) {
+          textState.text += ': ';
+        }
         const renderedContent = contentNode.eval(context);
         if (isThenable(renderedContent)) {
           return renderedContent.then((value) => {
-            value.writeSyntax(printOptions);
+            const contentText = getKnownRenderedCallText(value);
+            if (contentText !== undefined) {
+              w.add(contentText, value);
+              if (textState.text !== undefined) {
+                textState.text += contentText;
+                return textState.text;
+              }
+            } else {
+              textState.text = undefined;
+              value.writeSyntax(printOptions);
+            }
             return w.getSince(mark);
           });
         }
-        (renderedContent as Node).writeSyntax(printOptions);
+        const contentText = getKnownRenderedCallText(renderedContent as Node);
+        if (contentText !== undefined) {
+          w.add(contentText, renderedContent as Node);
+          if (textState.text !== undefined) {
+            textState.text += contentText;
+            return textState.text;
+          }
+        } else {
+          textState.text = undefined;
+          (renderedContent as Node).writeSyntax(printOptions);
+        }
         return w.getSince(mark);
       }
-      return w.getSince(mark);
+      return textState.text ?? w.getSince(mark);
     };
-    const renderedArgs = this.writeRenderedArgs(args, context, prepared);
+    const renderedArgs = this.writeRenderedArgs(args, context, prepared, textState);
     return isThenable(renderedArgs)
       ? renderedArgs.then(finishCall)
       : finishCall();
