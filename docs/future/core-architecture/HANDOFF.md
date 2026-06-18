@@ -103,6 +103,34 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `QueryCondition` exact source child text carry.
+- Verdict: accepted as a localized source-text carry cut. Exact no-trivia query
+  conditions now return direct source text for covered scalar, `Condition`,
+  `Operation`, base `Paren`, and nested `QueryCondition` children instead of
+  always paying the outer `mark()/getSince()` wrapper in
+  `QueryCondition.toTrimmedString(...)`. No speed claim.
+- New traversal: one recursive exact-source walk in
+  `getKnownQueryConditionSourceText(...)` across covered child families. It
+  runs only on the no-trivia direct-source branch.
+- New node/materialization: none.
+- Render path: unchanged.
+- Helper/API surface: one node-local `getKnownQueryConditionSourceText(...)`
+  helper in `query-condition.ts`. It deletes more whole-condition readback than
+  it adds and keeps custom/subclass override surfaces on the existing fallback
+  path.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: adds short-lived string-part arrays for covered nested
+  `QueryCondition` assembly, but deletes the covered outer source
+  `mark()/getSince()` boundary for exact query conditions.
+- Rejected/observed in this pass: custom `Operation`/`Condition`/`Paren`
+  subclasses still deliberately stay on the fallback path, and render-side
+  probing/work remains where it was.
+- Evidence: focused `query-condition.test.ts` coverage now proves simple query
+  parts, exact `Condition` children, exact `Operation` children, and exact base
+  `Paren` children all serialize with zero marks/reads on the covered path,
+  while custom override tests still hold the fallback mark/read behavior. Full
+  commit-boundary gates still need to run after this handoff update.
 - Latest pass: `Call` exact quoted text carry.
 - Verdict: accepted as a localized source/render text carry cut. Exact
   `Quoted` values now participate in `Call`'s known source/render text paths,

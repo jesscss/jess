@@ -125,6 +125,8 @@ describe('QueryCondition', () => {
 
     expect(node.toTrimmedString({ writer })).toBe('screen and (color)');
     expect(writer.captures).toBe(0);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('writes query-condition source children without public toString transport', () => {
@@ -420,8 +422,8 @@ describe('QueryCondition', () => {
 
     expect(node.toTrimmedString({ writer })).toBe('screen and (10px > 1px)');
     expect(writer.toString()).toBe('screen and (10px > 1px)');
-    expect(writer.marks).toBe(1);
-    expect(writer.reads).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
     expect(writer.hasContentReads).toBe(0);
   });
 
@@ -435,8 +437,23 @@ describe('QueryCondition', () => {
 
     expect(node.toTrimmedString({ writer })).toBe('screen and 10px > 1px');
     expect(writer.toString()).toBe('screen and 10px > 1px');
-    expect(writer.marks).toBe(2);
-    expect(writer.reads).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(writer.hasContentReads).toBe(0);
+  });
+
+  it('writes exact paren children through the direct source child contract', () => {
+    const writer = new CountingWriter();
+    const node = query([
+      any('screen'),
+      any('and'),
+      paren(any('color', { role: 'keyword' }))
+    ]);
+
+    expect(node.toTrimmedString({ writer })).toBe('screen and (color)');
+    expect(writer.toString()).toBe('screen and (color)');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
     expect(writer.hasContentReads).toBe(0);
   });
 
