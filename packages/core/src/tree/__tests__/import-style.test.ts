@@ -1014,6 +1014,8 @@ describe('Style import', () => {
     });
 
     it('keeps additive non-variable "with" configs on a child rules surface', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationBridgeHits: string[] = [];
       const libraryPath = resolve(process.cwd(), 'library.jess');
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'baseColor', value: any('black') }),
@@ -1034,7 +1036,8 @@ describe('Style import', () => {
               ruleset({
                 selector: sellist([sel([el('.addon')])]),
                 rules: rules([
-                  decl({ name: any('color'), value: any('red') })
+                  decl({ name: any('color'), value: any('red') }),
+                  decl({ name: any('configuredProp'), value: any('configured') })
                 ])
               })
             ]),
@@ -1043,20 +1046,39 @@ describe('Style import', () => {
         }, {
           type: 'compose',
           namespace: '*'
+        }),
+        ruleset({
+          selector: sellist([sel([el('.use-configured')])]),
+          rules: rules([
+            decl({ name: any('prop-hit'), value: ref('configuredProp', { type: 'property' }) })
+          ])
         })
       ]);
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && key === 'configuredProp') {
+          declarationBridgeHits.push(`${filterType}:${key}`);
+        }
+        return originalFind.apply(this, args);
+      };
 
-      const evald = await node.eval(context);
-      const composedRules = evald.at(0) as Rules;
-      const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
-      const css = await renderNodeToString(node, context, { context });
+      try {
+        const evald = await node.eval(context);
+        const composedRules = evald.at(0) as Rules;
+        const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
+        const css = await renderNodeToString(node, context, { context });
 
-      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
-      expect(composedRules.options.importBoundary).toBe(true);
-      expect(importedChildSurface?.options.importBoundary).toBeUndefined();
-      expect(css).toContain('.base');
-      expect(css).toContain('.addon');
-      expect(css).toContain('color: black');
+        expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
+        expect(composedRules.options.importBoundary).toBe(true);
+        expect(importedChildSurface?.options.importBoundary).toBeUndefined();
+        expect(css).toContain('.base');
+        expect(css).toContain('.addon');
+        expect(css).toContain('color: black');
+        expect(css).toContain('prop-hit: configured;');
+        expect(declarationBridgeHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
     });
 
     it('keeps variable-only additive "with" configs on the imported rules surface', async () => {
@@ -1390,6 +1412,8 @@ describe('Style import', () => {
     });
 
     it('keeps replacement "set" configs on an imported child rules surface for detached ruleset variable closures', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationBridgeHits: string[] = [];
       const libraryPath = resolve(process.cwd(), 'library-detached-closure-set-child-surface.jess');
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'accentColor', value: any('red') }),
@@ -1424,7 +1448,8 @@ describe('Style import', () => {
               ruleset({
                 selector: sellist([sel([el('.addon')])]),
                 rules: rules([
-                  decl({ name: any('visibility'), value: any('visible') })
+                  decl({ name: any('visibility'), value: any('visible') }),
+                  decl({ name: any('setConfiguredProp'), value: any('set-configured') })
                 ])
               })
             ]),
@@ -1438,6 +1463,7 @@ describe('Style import', () => {
         ruleset({
           selector: el('.consumer'),
           rules: rules([
+            decl({ name: any('prop-hit'), value: ref('setConfiguredProp', { type: 'property' }) }),
             call({
               name: ref({ key: '.use-accent' }, { type: 'mixin-ruleset' }),
               args: list([])
@@ -1445,20 +1471,33 @@ describe('Style import', () => {
           ])
         })
       ]);
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && key === 'setConfiguredProp') {
+          declarationBridgeHits.push(`${filterType}:${key}`);
+        }
+        return originalFind.apply(this, args);
+      };
 
-      const evald = await node.eval(context);
-      const composedRules = evald.at(0) as Rules;
-      const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
-      const css = await renderNodeToString(node, context, { context });
+      try {
+        const evald = await node.eval(context);
+        const composedRules = evald.at(0) as Rules;
+        const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
+        const css = await renderNodeToString(node, context, { context });
 
-      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
-      expect(composedRules.options.importBoundary).toBe(true);
-      expect(importedChildSurface?.options.importBoundary).toBeUndefined();
-      expect(css).toContain('.base');
-      expect(css).toContain('.addon');
-      expect(css).toContain('.consumer {');
-      expect(css).toContain('border-color: purple;');
-      expect(css).not.toContain('border-color: red;');
+        expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
+        expect(composedRules.options.importBoundary).toBe(true);
+        expect(importedChildSurface?.options.importBoundary).toBeUndefined();
+        expect(css).toContain('.base');
+        expect(css).toContain('.addon');
+        expect(css).toContain('.consumer {');
+        expect(css).toContain('prop-hit: set-configured;');
+        expect(css).toContain('border-color: purple;');
+        expect(css).not.toContain('border-color: red;');
+        expect(declarationBridgeHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
     });
 
     it('keeps replacement "set" configs on an imported child rules surface for guarded mixins', async () => {
@@ -2538,7 +2577,19 @@ describe('Style import', () => {
       const fallbackValue = any('fallback');
       context.sourceTrees.set(referencedPath, rules([
         vardecl({ name: 'fromRef', value: sourceValue }),
-        decl({ name: any('fromRefProp'), value: propertySourceValue })
+        decl({ name: any('fromRefProp'), value: propertySourceValue }),
+        ruleset({
+          selector: sellist([sel([el('.ref-prop-a')]), sel([el('.ref-prop-b')])]),
+          rules: rules([
+            decl({ name: any('fromSelectorListProp'), value: any('36') }),
+            ruleset({
+              selector: sellist([sel([el('.nested-ref-prop')])]),
+              rules: rules([
+                decl({ name: any('fromNestedImportedProp'), value: any('48') })
+              ])
+            })
+          ])
+        })
       ]));
       const node = rules([
         style({ path: quoted(any('reference-hit-miss.jess')) }, { type: 'import', importOptions: { reference: true } }),
@@ -2551,6 +2602,8 @@ describe('Style import', () => {
               fallbackValue
             }) }),
             decl({ name: any('prop-hit'), value: ref('fromRefProp', { type: 'property' }) }),
+            decl({ name: any('selector-list-prop-hit'), value: ref('fromSelectorListProp', { type: 'property' }) }),
+            decl({ name: any('nested-imported-prop-hit'), value: ref('fromNestedImportedProp', { type: 'property' }) }),
             decl({ name: any('prop-miss'), value: ref('missingFromRefProp', {
               type: 'property',
               fallbackValue
@@ -2579,6 +2632,8 @@ describe('Style import', () => {
           && (
             key === 'fromRef'
             || key === 'fromRefProp'
+            || key === 'fromSelectorListProp'
+            || key === 'fromNestedImportedProp'
             || key === 'missingFromRef'
             || key === 'missingFromRefProp'
           )
@@ -2605,6 +2660,8 @@ describe('Style import', () => {
             hit: 42;
             miss: fallback;
             prop-hit: 24;
+            selector-list-prop-hit: 36;
+            nested-imported-prop-hit: 48;
             prop-miss: fallback;
           }
         `);

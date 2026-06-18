@@ -69,12 +69,18 @@ still resolve. Current evidence: array-path namespace starts now use the
 narrow helper for child-surface misses; unresolved reference-import namespace
 starts still fall back when the helper cannot produce candidates.
 
-3. [ ] Delete any remaining simple exact callable child scans that are
+3. [x] Delete any remaining simple exact callable child scans that are
 provably covered by frame facts. Scope: current-frame miss, child-entry family
 skip, child-frame covered miss, and terminal mixin-only mode. Goal: avoid
 child-surface crawl when the frame already says the family/key cannot hit.
 Acceptance: `findMixinsFast` spy tests for simple mixin and mixin-ruleset
-misses.
+misses. Current evidence: focused callable bucket tests prove simple misses
+skip `findMixinsFast(...)` when no child surfaces exist, when child frames
+cover exact misses, when child surfaces cannot contain exact callables, and
+when terminal mixin-only lookup sees ruleset-only child surfaces. Direct
+no-frame mixin-only misses skip ruleset-only child surface bridges, prepared
+null child entries prevent recursive rediscovery, and ruleset path misses skip
+mixin-only child surfaces.
 
 4. [ ] Retry `ReferencePlan` only for source-static facts. Scope:
 `_lookupStrategy`, key node identity, read mode, target presence, `inCall`, and
@@ -543,7 +549,7 @@ another hot-path function call. Focused callable/reference-import tests stayed
 green. Keep this open until the remaining unsupported checks are either proven
 minimal or assigned to a cheaper caller-specific path.
 
-36. [ ] Extend imported declaration source-order proof beyond the real
+36. [x] Extend imported declaration source-order proof beyond the real
 reference fixture. Scope: selector-list reference imports, configured
 `with`/`set` child declaration surfaces, nested imported child rules, and
 same-parent later child misses. Goal: prove the direct child-entry start gate
@@ -552,9 +558,35 @@ covers imported declaration/property hits without reopening public
 reference/import tests with `Rules.find(...)` spies for selector-list and
 configured import declaration hits/misses, plus the same-parent later-child
 miss guard staying green. Current evidence: the real reference-import fixture
-now covers rendered property hit/miss inside a later nested ruleset, and
-focused reference tests cover ordinary carried child-entry reuse and later
-child misses. Broader imported declaration surfaces are still unproven.
+now covers rendered property hit/miss inside a later nested ruleset plus
+selector-list and nested imported child property hits while spying on
+`Rules.find(...)`. Configured additive `with` child surfaces and replacement
+`set` child surfaces now each render property hits from imported/configured
+child declarations without entering the public declaration bridge. Focused
+reference tests cover ordinary carried child-entry reuse and same-parent later
+child misses.
+
+37. [ ] Design and prove a reference-import preparation edge for never-evaluated
+namespace mixin bodies. Scope: style imports inside uncalled no-param namespace
+mixins, async import path resolution, registration prep boundaries, and
+`findCallableDescendantsWithinMixinNamespaces(...)`. Goal: let callable
+namespace lookup see reference-import descendants without evaluating the whole
+mixin body or blocking synchronous lookup on unresolved async imports.
+Acceptance: a real import-in-uncalled-mixin namespace positive either resolves
+without nested `findMixin(...)`/broad `findMixinsFast(...)`, or the tracker
+records the semantic reason it must remain a cold async/materialization path.
+Current evidence: evaluated namespace mixin bodies now use frame facts, but
+never-evaluated bodies remain open because sync lookup cannot see unresolved
+import content.
+
+38. [ ] Split selector-body callable prefix facts from recursive prefix crawls.
+Scope: selector-list/compound ruleset bodies, reference-import child surfaces,
+`findVisibleCallableRulesetPrefixMatches(...)`, and callable frame facts.
+Goal: carry enough ruleset-prefix facts on scope frames to skip recursive child
+prefix walks where no prefix can exist, without losing selector-list and
+compound-prefix positives. Acceptance: focused namespace/import positives and
+misses prove prefix lookup avoids child recursion when frame facts cover the
+family, and rejected shortcuts from item 12 stay guarded.
 
 ## Latest Binding Baseline
 

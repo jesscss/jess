@@ -103,36 +103,35 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: callable namespace reference-import descendant proof for
-  evaluated namespace mixin bodies.
-- Verdict: accepted as a narrow frame-read cut. Evaluated namespace mixin
-  bodies with reference-import callable descendants now build/read the child
-  frame on the descendant path and avoid nested `findMixin(...)` plus broad
-  `findMixinsFast(...)` fallback. The never-evaluated import-in-uncalled-mixin
-  case was tested first and remains open because synchronous lookup cannot see
-  unresolved async import content without a separate reference-import
-  preparation edge. No speed claim.
-- New traversal: no new tree traversal. The existing descendant namespace loop
-  now calls `getScopeFrame()` only when the namespace body `Rules` is already
-  evaluated and has no `_scopeFrame`; an existing guard proves ordinary
-  callable lookup still does not build a frame merely to try the shortcut.
-  Review-flagged `try/finally` and test spy arrays are proof scaffolding only
-  for restoring prototype spies and proving no broad callable crawl.
+- Latest pass: binding proof pass closing simple callable child-scan coverage
+  and broader imported declaration source-order coverage.
+- Verdict: accepted as proof-only queue closure. Existing callable tests prove
+  simple exact misses do not enter broad `findMixinsFast(...)` child scans when
+  frame/child-entry facts cover no-child, covered-child, no-callable-child,
+  terminal mixin-only, and no-frame ruleset-only cases. Import/reference tests
+  now prove selector-list, nested imported child, configured `with`, and
+  configured `set` property hits avoid public `Rules.find(...)`. No speed
+  claim.
+- New traversal: no production traversal was added. Added tests exercise
+  existing direct declaration child-entry lookup, existing same-parent
+  source-order guards, and existing callable spy paths only. Review-flagged
+  `try/finally` blocks and `declarationBridgeHits` spy arrays are test
+  scaffolding for restoring prototypes and proving no public declaration
+  bridge.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production arrays were added.
 - Render path: no render/stringification path changed.
 - Helper/API surface: no helper or public API was added.
-- Metadata mutations: evaluated namespace body lookup may create the existing
-  `ScopeFrame` state that `getScopeFrame()` owns; it is gated by
-  `entryRules.evaluated` and does not prepare never-evaluated mixin bodies.
+- Metadata mutations: none.
 - Allocation changes: no production allocation changes.
-- Evidence: focused import fixture proves evaluated namespace mixin bodies
-  expose reference-import callable descendants without nested `findMixin(...)`
-  or namespace/root `findMixinsFast(...)`. Focused mixin tests prove modeled
-  reference-import hits/misses, namespace-start misses, fallback-frame
-  recursion, and the no-frame-shortcut guard stay green. Full `mixin.test.ts`
-  remains outside the clean gate for this branch; keep using focused slices
-  until the known complex compound-selector failures are separated.
+- Evidence: focused `import-style.test.ts` slices prove configured `with`/`set`
+  child-surface property hits and reference-import selector-list/nested
+  property hits stay off `Rules.find(...)`; focused `reference.test.ts` slices
+  prove carried child-entry reuse and same-parent later-child misses stay
+  green. Existing focused `mixin.test.ts` slices cover simple callable child
+  scan skips. Full `mixin.test.ts` remains outside the clean gate for this
+  branch; keep using focused slices until the known complex compound-selector
+  failures are separated.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification
