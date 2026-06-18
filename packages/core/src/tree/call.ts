@@ -209,33 +209,37 @@ function getKnownRenderedCallText(node: Node): string | undefined {
     case 'Color':
       return typeof node.node === 'string' ? node.node : undefined;
     case 'List': {
-      const parts = new Array<string>(node.items.length);
+      const sep = node.options?.sep ?? ',';
+      const joiner = sep === '/' ? ' / ' : `${sep} `;
+      let out = '';
       for (let i = 0; i < node.items.length; i++) {
         const text = getKnownRenderedCallText(node.items[i]!);
         if (text === undefined) {
           return undefined;
         }
-        parts[i] = text;
+        if (i > 0) {
+          out += joiner;
+        }
+        out += text;
       }
-      const sep = node.options?.sep ?? ',';
-      if (sep === '/') {
-        return parts.join(' / ');
-      }
-      return parts.join(`${sep} `);
+      return out;
     }
     case 'Sequence': {
       if (node.preserveWhitespace) {
         return undefined;
       }
-      const parts = new Array<string>(node.items.length);
+      let out = '';
       for (let i = 0; i < node.items.length; i++) {
         const text = getKnownRenderedCallText(node.items[i]!);
         if (text === undefined) {
           return undefined;
         }
-        parts[i] = text;
+        if (i > 0) {
+          out += ' ';
+        }
+        out += text;
       }
-      return parts.join(' ');
+      return out;
     }
     case 'Paren': {
       const open = node.options?.delimiter === 'square' ? '[' : '(';
@@ -262,15 +266,18 @@ function getKnownRenderedCallText(node: Node): string | undefined {
     }
     default:
       if (node.constructor === QueryCondition) {
-        const parts = new Array<string>(node.items.length);
+        let out = '';
         for (let i = 0; i < node.items.length; i++) {
           const text = getKnownRenderedCallText(node.items[i]!);
           if (text === undefined) {
             return undefined;
           }
-          parts[i] = text;
+          if (i > 0) {
+            out += ' ';
+          }
+          out += text;
         }
-        return parts.join(' ');
+        return out;
       }
       if (node.constructor === Condition) {
         const left = getKnownRenderedCallText(node.left);
@@ -328,33 +335,37 @@ function getKnownSourceCallText(node: Node): string | undefined {
     case 'Color':
       return typeof node.node === 'string' ? node.node : undefined;
     case 'List': {
-      const parts = new Array<string>(node.items.length);
+      const sep = node.options?.sep ?? ',';
+      const joiner = sep === '/' ? ' / ' : `${sep} `;
+      let out = '';
       for (let i = 0; i < node.items.length; i++) {
         const text = getKnownSourceCallText(node.items[i]!);
         if (text === undefined) {
           return undefined;
         }
-        parts[i] = text;
+        if (i > 0) {
+          out += joiner;
+        }
+        out += text;
       }
-      const sep = node.options?.sep ?? ',';
-      if (sep === '/') {
-        return parts.join(' / ');
-      }
-      return parts.join(`${sep} `);
+      return out;
     }
     case 'Sequence': {
       if (node.preserveWhitespace) {
         return undefined;
       }
-      const parts = new Array<string>(node.items.length);
+      let out = '';
       for (let i = 0; i < node.items.length; i++) {
         const text = getKnownSourceCallText(node.items[i]!);
         if (text === undefined) {
           return undefined;
         }
-        parts[i] = text;
+        if (i > 0) {
+          out += ' ';
+        }
+        out += text;
       }
-      return parts.join(' ');
+      return out;
     }
     case 'Paren': {
       const open = node.options?.delimiter === 'square' ? '[' : '(';
@@ -381,15 +392,18 @@ function getKnownSourceCallText(node: Node): string | undefined {
     }
     default:
       if (node.constructor === QueryCondition) {
-        const parts = new Array<string>(node.items.length);
+        let out = '';
         for (let i = 0; i < node.items.length; i++) {
           const text = getKnownSourceCallText(node.items[i]!);
           if (text === undefined) {
             return undefined;
           }
-          parts[i] = text;
+          if (i > 0) {
+            out += ' ';
+          }
+          out += text;
         }
-        return parts.join(' ');
+        return out;
       }
       if (node.constructor === Condition) {
         const left = getKnownSourceCallText(node.left);

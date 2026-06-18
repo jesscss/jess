@@ -103,6 +103,36 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` known-text staging loop split.
+- Verdict: accepted as a bounded serializer cut inside the active `Call`
+  row. The exact source/render fast-path helpers no longer allocate temporary
+  string arrays for `List`, `Sequence`, and exact `QueryCondition` children
+  just to decide whether call names/args/content can emit directly. They now
+  build known text through straight loops and joiner writes while preserving
+  the existing cold non-exact path when any child is not exact. No speed
+  claim.
+- New traversal: none. The helpers still walk the same children once; they now
+  append into one local string instead of materializing a sibling string array
+  and joining it afterward.
+- Review-flagged allocations: none beyond the existing local strings already
+  required to return exact known text.
+- New node/materialization: none.
+- Render path: no semantic optional-call or non-exact render behavior changed.
+  Covered call source/render exact text paths still return direct known text
+  for list, sequence, operation, and query-condition cases; only the temporary
+  array staging inside the exact-text helper was removed.
+- Helper/API surface: none added.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: deleted the temporary `parts` arrays and `join(...)`
+  staging from both `getKnownSourceCallText(...)` and
+  `getKnownRenderedCallText(...)` for `List`, `Sequence`, and exact
+  `QueryCondition` nodes.
+- Evidence: focused `call.test.ts` coverage passed for scalar list source args,
+  escaped scalar list source args, exact operation source args, exact
+  query-condition call content, scalar list render args, scalar sequence render
+  args, and exact query-condition render args. Full `call.test.ts` plus batch
+  gates still need to run after this handoff update.
 - Latest pass: binding merge/version proof, source-static handle slimming, and
   namespace/profile closeout.
 - Verdict: accepted as a focused registryless binding pass. Property
