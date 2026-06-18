@@ -101,26 +101,13 @@ offset paths without breaking Less semantics. Acceptance: Less fixture,
 reference-import namespace tests, and bridge spies. Guarded namespace positives
 already have zero broad-crawl and zero array-fallback proof.
 
-7. [ ] Confirm scalar excluded-node handle invalidation after output binding.
-Scope: merge normalization scalar getters, handle shape before/after
-`bindOutput`, and stale occurrence invalidation. Goal: prove scalar exclusion
-identity changes exactly when the output declaration is bound. Acceptance:
-lower-level/materialization-aware handle test; do not use the rejected
-render-level `Reference.eval` spy shape. Current evidence: a lower-level
-source/static property handle test now models the `bindOutput` scalar getter:
-the first lookup caches the direct occurrence, then the output identity appears
-through `excludedNode1`/`excludedNodesLength` and the stale handle is rejected.
-That proof exposed and fixed a direct declaration lookup cache bug: constrained
-lookups using scalar exclusions, `excludedNodes`, filters, or normalized
-assignment constraints no longer write/read the recursive key/family cache.
-
-8. [ ] Prove reference-import declaration/callable misses stay on modeled
+7. [ ] Prove reference-import declaration/callable misses stay on modeled
 frames after retry-frame cleanup. Scope: reference import roots, rendered
 reference imports, parent/fallback frames, and optional callable misses. Goal:
 no regression to frame-less broad crawl. Acceptance: real reference-import
 fixtures plus broad-bridge spies.
 
-9. [ ] Move remaining declaration-constraint reference options toward
+8. [ ] Move remaining declaration-constraint reference options toward
 semantic names or internal constraint construction. Scope:
 `ReferenceOptions.requiredNormalizedFromAssign`, `excludedNodes`, merge
 normalization, and tests that construct filtered references. Goal: keep
@@ -129,37 +116,7 @@ Acceptance: existing semantic tests for mutable `excludedNodes` and
 `requiredNormalizedFromAssign` stay green, and any renamed/internalized fields
 are guarded by `verify:binding-lookup-hot-paths`.
 
-10. [ ] Delete or isolate the remaining setDefined callback closure.
-Scope: `applySetDefinedDeclarationReadonlyOccurrence`, readonly propagation,
-`setDefined`, and callback allocation in the cold fallback path. Goal: keep the
-deleted `{ occurrence, readonly }` result object from coming back, and decide
-whether setDefined can write through a tighter helper without putting family
-branching back into ordinary reads. Acceptance: setDefined/live binding tests,
-build, and hot-path guard stay green. Current evidence:
-`applySetDefinedDeclarationReadonlyOccurrence(...)`,
-`SetDefinedDeclarationMatchHandler`, and the `onSetDefinedMatch` callback are
-deleted. `Rules.registerNode(...)` now receives a single writable setDefined
-occurrence from `findWritableSetDefinedDeclarationOccurrence(...)`; readonly is
-checked only when the final chosen match is returned, and mutation/splice logic
-stays in `Rules`. The hot-path verifier now forbids the old callback helper
-tokens.
-
-11. [ ] Collapse remaining `Reference.lookupVariableReference(...)` facade miss
-lane where covered source-static variable reads already have frame/handle
-coverage. Scope: explicit-target fallback, selector-attribute interpolation,
-`findVarDeclarationFast(...)`, and any public-looking variable lookup helper
-that remains only to route covered misses. Goal: ordinary covered variable hits
-and misses stay on the source-static handle/frame path and never call the
-facade miss helper. Acceptance: focused spies for covered explicit/static
-variable miss and hit paths, plus existing interpolation positives. Current
-evidence: the private `lookupVariableReference(...)` facade helper is deleted;
-`performVariableRulesLookup(...)` now tries the scope-frame lane before
-building declaration fallback options, returns covered frame misses directly,
-and only constructs the occurrence-fallback options when the frame lane is
-unavailable or uncovered. `verify:binding-lookup-hot-paths` guards against
-reintroducing the helper.
-
-12. [ ] Run changed-baseline and fix any lookup-owned fallout now that the
+9. [ ] Run changed-baseline and fix any lookup-owned fallout now that the
 ruleset header streaming blocker is repaired. Scope: changed Less/Jess
 fixtures, ruleset render interaction with lookup work, and branch-local
 failures. Goal: use baseline evidence as a gate again. Acceptance:
@@ -171,16 +128,16 @@ transport failures (`node-render-buffer.test.ts`, `call.test.ts`, `any.test.ts`,
 `cloning.test.ts` in the visible output), and then stopped producing output
 while Vitest workers remained active. It was interrupted rather than left
 running. No failure in the visible output pointed at the binding lookup files
-touched in this pass; keep item 12 open until the baseline can finish or the
+touched in this pass; keep this item open until the baseline can finish or the
 non-lookup failures are separated upstream.
 
-13. [ ] Refresh lookup profile and one-iteration hotpath smoke after the next
+10. [ ] Refresh lookup profile and one-iteration hotpath smoke after the next
 bridge deletion batch. Scope: `scope-lookup-stress.less`, direct lookup
 counters, old registry counters, and smoke timings. Goal: keep counter
 evidence current without claiming speed. Acceptance: profile recorded with old
 `Rules.find`/registry counters empty and smoke values labeled smoke-only.
 
-14. [ ] Extend namespace frame-chain proof to callable mixin namespaces with
+11. [ ] Extend namespace frame-chain proof to callable mixin namespaces with
 reference-import descendants. Scope: no-param namespace mixins, nested
 reference imports inside mixin namespace bodies, fallback frames, and
 `findCallableDescendantsWithinMixinNamespaces(...)`. Goal: prevent callable
@@ -195,13 +152,39 @@ the older namespace `findMixinsFast(...)` fallback. Reference-import descendant
 positives inside namespace mixin bodies are still open and must not be claimed
 covered.
 
-15. [ ] Revisit `findVisibleCallableRulesetPrefixMatches(...)` recursive child
+12. [ ] Revisit `findVisibleCallableRulesetPrefixMatches(...)` recursive child
 walk after selector-list coverage. Scope: direct child-entry flags,
 reference-import child surfaces, selector-list prefix matches, and visited-set
 allocation. Goal: skip child recursion when carried flags prove no ruleset
 prefix can exist, without losing imported selector-list positives. Acceptance:
 focused namespace/import tests plus aggressive review explaining any remaining
-visited-set allocation.
+visited-set allocation. Current evidence: attempted frame-first
+covered-miss/prefix-crawl shortcuts were rejected. `lookupScopeFrameCallable`
+misses do not yet model nested/owned selector-body prefixes, and replacing
+`getScopeFrame()` with `_scopeFrame` in ruleset namespace ambiguity checks
+breaks existing nested compound selector lookups. Do not retry either cut until
+selector-body prefix candidates are explicitly carried by callable frame facts.
+
+13. [ ] Finish explicit declaration visibility/import no-fallback proof.
+Scope: `DeclarationLookupStrategy`, reference-import child entries, import
+visibility, and covered declaration/property hits and misses. Goal: ordinary
+declaration/property lookup does not widen to child scans or public bridge
+behavior when visibility facts are modeled. Acceptance: synthetic import
+covered-hit/miss tests plus at least one real reference-import declaration
+fixture with bridge spies.
+
+14. [ ] Finish property merge-chain output-binding handle identity proof.
+Scope: merge normalization, source/output exclusions, same-parent source
+ordering slots, and pre/post `bindOutput` identity. Goal: merge-chain property
+reads keep using direct occurrences and reject only stale constrained handles.
+Acceptance: lower-level handle tests plus real Less merge-chain fixture proof.
+
+15. [ ] Finish declaration/property key-versioning dynamic promotion proof.
+Scope: `Rules.getDeclarationLookupVersion(key)`, dynamic names, import/rules
+promotions, and per-name invalidation. Goal: per-name versions remain freshness
+state, not a second registry, and ordinary static reads avoid broad version
+invalidation. Acceptance: focused version invalidation tests for dynamic-name
+promotion, late import/reference additions, and rules promotion.
 
 ## Latest Binding Baseline
 

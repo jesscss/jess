@@ -103,45 +103,29 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Declaration source-free assignment child predicate cleanup in
-  `packages/core/src/tree/declaration.ts`.
-- Verdict: accepted as a localized callback-allocation cut matching the
-  Declaration tracker row. No speed claim.
-- New traversal: one indexed loop over the existing source-free
-  `List`/`Sequence` child array, replacing the prior `.every(...)` callback
-  scan in `canReuseSourceFreeAssignmentInput(...)`. No new parent/source walk
-  or additional collection is introduced; the loop carries the same boolean
-  predicate result without callback allocation.
-- New node/materialization: none.
-- Render path: source-free static assignment input reuse keeps the same
-  `reuseLeaf(...)`/copy decision, but checks reusable child leaves directly
-  instead of allocating a predicate callback. No declaration output,
-  merge-adapter state, or custom-property text path changed.
-- Helper/API surface: none.
+- Latest pass: binding/lookup queue cleanup plus rejected namespace-prefix
+  shortcut audit.
+- Verdict: no runtime cut accepted in this pass. Two namespace shortcuts were
+  rejected by focused mixin tests: frame-first covered-miss prefix-crawl
+  deletion and replacing `getScopeFrame()` with `_scopeFrame` in ruleset
+  namespace ambiguity checks. No speed claim.
+- New traversal: none. No runtime code change remains in the scoped diff.
+- New node/materialization: none. No nodes, wrappers, copied rules, inherited
+  metadata, or materialized arrays were added.
+- Render path: no render/stringification path changed. Positive namespace
+  lookup and imported/guarded namespace behavior still use the existing
+  namespace resolution paths.
+- Helper/API surface: none. No public or private helper was added.
 - Metadata mutations: none.
-- Allocation changes: removes one `.every(...)` callback allocation from the
-  source-free assignment input reuse predicate.
-- Rejected/observed in this pass: custom-property raw source,
-  duplicate-comparison/materialization, and merge-state boundaries remain open
-  in the Declaration row.
-- Merge-carried binding review: merging `origin/dev` also brought the variable
-  reference facade collapse and source-static handle read allocation trim in
-  `packages/core/src/tree/reference.ts`, plus binding tracker/verifier
-  updates. It is lookup-only: no render/stringification path changed, no
-  runtime node materialization was added, and detailed status remains in
-  `BINDING-LOOKUP-REMAINING.md`. The serialization pass keeps
-  `NODE-REWRITE-TRACKER.md` as the active queue.
-- Evidence: focused `declaration.test.ts` custom-property/source-free reuse
-  slices and `reference.test.ts` declaration-container/source-static slices
-  passed. Full gates are required before commit.
-- Merge-carried binding review: merging `origin/dev` also brought setDefined
-  callback closure deletion plus constrained direct declaration cache guards in
-  `packages/core/src/tree/rules.ts` and `util/direct-rules-lookup.ts`, with
-  focused reference tests and binding verifier updates. It is lookup-only: no
-  render/stringification path changed, no runtime node materialization was
-  added, and detailed status remains in `BINDING-LOOKUP-REMAINING.md`. The
-  serialization pass keeps `NODE-REWRITE-TRACKER.md` as the active queue.
-  Review-flagged `throw new Error`, `ReferenceError`, and
-  `foundRules.adopt(newDeclaration)` are the incoming setDefined semantic
-  mutation/error path, not serialization transport; the flagged object literal
-  is test scaffolding for the existing bind-output scalar getter shape.
+- Allocation changes: none accepted. The active queue was reseeded to 15
+  sizable unchecked binding tasks after removing already-proven scalar
+  exclusion, setDefined callback, and variable-facade items from the active
+  list.
+- Rejected/observed in this pass: `lookupScopeFrameCallable` misses do not yet
+  model nested/owned selector-body prefixes, so prefix-crawl deletion is unsafe.
+  `getScopeFrame()` in ruleset namespace ambiguity checks is currently part of
+  namespace correctness, not just a shortcut allocation. These rejected cuts are
+  recorded in `BINDING-LOOKUP-REMAINING.md`.
+- Evidence: focused `mixin.test.ts` namespace slices exposed the unsafe cuts;
+  after reverting runtime changes, the remaining diff is tracker/router docs.
+  Full docs gates are required before commit.
