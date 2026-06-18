@@ -107,27 +107,25 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: rejected declaration child-entry/filter-cache prototypes.
+- Latest pass: rejected structured merge-exclusion handle prototype.
 - Verdict: rejected as a performance implementation pass; accepted only as
-  evidence. Runtime code is back to clean. The shared
-  `directDeclarationChildEntries` list cannot be filtered for lookup without
-  breaking reference-import/callable placement semantics, and skipping the
-  synthetic no-op property filter did not move broad counters or produce a
-  usable wall-clock win.
+  evidence. Runtime code is back to clean. Turning merge-reference
+  self-exclusion into structured source/location handle constraints preserved
+  focused behavior but did not reduce broad `benchmark.less` or
+  `scope-lookup-stress.less` lookup counters.
 - New traversal: none kept.
 - New node/materialization: none kept.
 - Render path: no render/stringification path changed.
 - Helper/API surface: none kept.
 - Metadata mutations: none kept.
-- Evidence: focused property/reference tests passed for the no-op-filter
-  prototype, but broad `benchmark.less` counters stayed at
+- Evidence: ordered package rebuilds passed; focused reference/property merge
+  and live-binding/setDefined slices passed. Broad `benchmark.less` stayed at
   `declaration.cacheMiss` `54780`, `declaration.scope.p` `50318`,
-  `childEntryEntered` `51551`, and `childEntriesScanned` `18527`. Temporary
-  cache-bypass counters showed the broad property hotspot is merge-shaped:
-  real `filter`, `excludedDeclarations`, and `requiredDeclarationAssignments`.
-  See `PERFORMANCE-HANDOFF.md` for the next target:
-  specialize `Declaration._normalizeAssignmentValue(...)` merge-reference
-  lookup without losing copied/output self-exclusion semantics.
+  `childEntryEntered` `51551`, and `childEntriesScanned` `18527`; lookup
+  stress stayed at `cacheMiss` `7560` and `scope.v` `7560`. See
+  `PERFORMANCE-HANDOFF.md` for the next target: replace synthetic merge
+  `Reference` reads with a direct typed occurrence path instead of adding more
+  declaration-handle constraint state.
 
 - Latest pass: property-merge typed lookup.
 - Verdict: accepted as a semantic lookup-family narrowing and counter cut, not

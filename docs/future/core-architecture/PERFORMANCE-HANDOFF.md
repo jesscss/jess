@@ -566,14 +566,62 @@ Diagnostic result from temporary cache-bypass counters:
   and filter requirements (`cacheBypass.liveBindings` `7560`,
   `cacheBypass.filter` `7560`).
 
-Next implementation target: specialize or replace merge-reference lookup in
-`Declaration._normalizeAssignmentValue(...)`. The current merge path fabricates
-a `Reference` with `filter`, `excludedDeclarations`, and
-`requiredDeclarationAssignments`, so the generic direct lookup cache cannot
-help the broad `benchmark.less` property hotspot. A worthwhile next patch must
-preserve the copied/output self-exclusion semantics currently implemented by
-the merge filter while avoiding the generic recursive declaration lookup for
-every merge item.
+Next implementation target: replace merge-reference reads in
+`Declaration._normalizeAssignmentValue(...)` with a direct typed occurrence
+read, or otherwise delete the need to fabricate a generic `Reference` for each
+merge read. The current merge path creates a `Reference` with `filter`,
+`excludedDeclarations`, and `requiredDeclarationAssignments`, so the generic
+direct lookup cache cannot help the broad `benchmark.less` property hotspot.
+A worthwhile next patch must preserve copied/output self-exclusion semantics
+while avoiding the generic recursive declaration lookup for every merge item.
+
+### 2026-06-18 Rejected Structured Merge Exclusion Handle Prototype
+
+Focus: test whether the merge-reference hotspot can be made handle/cacheable by
+turning the opaque self-exclusion filter into structured source/location
+constraints and by using a string key for merge references.
+
+Patch shape tested and reverted:
+
+- `ReferenceOptions` gained structured `excludedDeclarationSources` and
+  `excludedDeclarationLocations` constraints alongside `excludedDeclarations`;
+- declaration lookup handle freshness stored the first two structured
+  source/location exclusions;
+- `passesDeclarationFilter(...)` rejected declarations by source identity and
+  concrete source-location tuple before calling the remaining filter;
+- merge normalization used `String(key.valueOf())` as the synthetic reference
+  key, so source-static declaration handles could potentially engage.
+
+Behavior proof before rejection:
+
+- ordered package rebuild passed for `@jesscss/core`, `@jesscss/css-parser`,
+  `@jesscss/less-parser`, and `jess`;
+- focused property/merge/reference slice passed:
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/reference.test.ts -t "property handles|merge-chain|property refs|direct property lookup|static property|Less property merges"`
+  (`17` passed, `189` skipped);
+- focused live-binding/setDefined slice passed:
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/rules.test.ts -t "setDefined|ScopeFrame|direct"`
+  (`24` passed, `67` skipped).
+
+Counter result:
+
+- broad `benchmark.less` counters were unchanged from the pre-patch baseline:
+  `declaration.cacheMiss` `54780`, `declaration.childEntryEntered` `51551`,
+  `declaration.scope.p` `50318`, `declaration.childEntryFamilySkip` `18826`,
+  `declaration.childEntriesScanned` `18527`, `declaration.scopeBindingHit`
+  `893`;
+- `scope-lookup-stress.less --compat=false` counters were also unchanged:
+  `declaration.cacheMiss` `7560`, `declaration.scope.v` `7560`,
+  `declaration.childEntriesFamilySkip` `5400`, `declaration.localMatch`
+  `2385`, `declaration.childEntriesScanned` `1575`,
+  `declaration.scopeBindingHit` `1575`, `declaration.framePrep` `1`.
+
+Verdict: reverted. Structured exclusions preserve semantics but add handle and
+filter-shape plumbing without reducing actual lookup work. Do not retry this
+as more declaration-handle constraint state. The next merge-performance patch
+should delete the generic synthetic-`Reference` merge read or make it a direct
+typed occurrence read that can share live binding/cache state without freezing
+values.
 
 ### 2026-06-06 ScopeFrame Callable Hit/Miss Prototype
 
