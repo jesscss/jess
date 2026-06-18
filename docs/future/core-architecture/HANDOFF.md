@@ -103,18 +103,18 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding proof pass for declaration reference-import child
-  surfaces.
-- Verdict: accepted as direct declaration lookup coverage. Property lookup now
-  has explicit proof that reference-import child surfaces are entered even
-  when exact declaration-family flags are absent, and variable misses have
-  proof that ordinary property-only child surfaces are still skipped instead
-  of widened. Real reference-import variable lookup behavior stayed green. No
+- Latest pass: binding proof pass for property merge-chain public bridge
+  avoidance.
+- Verdict: accepted as direct property/declaration lookup coverage. The real
+  Less merge-chain property reference fixture now spies on
+  `Rules.find('declaration', ...)` and proves render stays off the public
+  declaration bridge while preserving comma and space merge output. Adjacent
+  source-static property handle constraint/exclusion tests stayed green. No
   speed claim.
 - New traversal: none in production for this pass. No source code changed.
 - Review-flagged allocations: no new production arrays, nodes, wrapper
-  `Rules`, side maps, or result objects. Tests add synthetic `Rules` fixtures
-  and one counter variable around a getter spy.
+  `Rules`, side maps, or result objects. Tests add one spy array for bridge
+  proof around an existing parser fixture.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production materialization were added.
 - Render path: no render/stringification path changed.
@@ -125,13 +125,10 @@ with `--no-verify` after the explicit gates pass.
 - Allocation changes: no new production allocation. Existing fallback-frame
   records, prefix match arrays, and direct result arrays are reused. No public
   materialization changed.
-- Evidence: focused `reference.test.ts` tests prove property lookup enters
-  reference-import child surfaces when exact family flags are absent, variable
-  lookup still skips property-only child surfaces, and a variable
-  reference-import miss enters only the reference-import child while avoiding
-  the ordinary property-only child getter. The real
-  `import-reference: reference imports remain discoverable for lookups`
-  fixture stayed green.
+- Evidence: focused `reference.test.ts` merge-chain slice passed, including
+  source-static required assignment constraints, source/output exclusions,
+  first-two exclusion identity invalidation, bindOutput invalidation, wider
+  cold-filter rejection, and the real Less merge-chain public-bridge spy.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification

@@ -5682,11 +5682,26 @@ describe('reference', () => {
           background+: blue;
         }
       `).tree;
-      context.root = tree;
-      const css = await renderNodeToString(tree, context, { context });
+      const originalFind = RulesClass.prototype.find;
+      const declarationFindHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key] = args;
+        if (type === 'declaration') {
+          declarationFindHits.push(String(key));
+        }
+        return originalFind.apply(this, args);
+      };
 
-      expect(css).toContain('box-shadow: inset 0 0 1px red, 0 0 2px blue;');
-      expect(css).toContain('background: red, blue;');
+      try {
+        context.root = tree;
+        const css = await renderNodeToString(tree, context, { context });
+
+        expect(css).toContain('box-shadow: inset 0 0 1px red, 0 0 2px blue;');
+        expect(css).toContain('background: red, blue;');
+        expect(declarationFindHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
     });
 
     it('keeps wider declaration-exclusion filters cold instead of caching generic filter shape', async () => {

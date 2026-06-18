@@ -1091,14 +1091,20 @@ Existing variable/property visibility skip tests and the real
 `import-reference: reference imports remain discoverable for lookups` fixture
 stayed green.
 
-68. [ ] Finish property merge-chain no-public-bridge proof. Scope:
+68. [x] Finish property merge-chain no-public-bridge proof. Scope:
 property/declaration occurrence helpers, merge assignment exclusions,
 `requiredDeclarationAssignments`, same-parent source ordering slots, and
 source-static handles. Goal: stable property/declaration merge-chain reads and
 writes do not enter deleted public `Rules.find*` wrapper shapes or broad
 fallback materialization. Acceptance: focused property merge-chain fixtures
 prove read/write handle identity and `verify:binding-lookup-hot-paths` keeps
-wrapper-returning lookup APIs out of production runtime code.
+wrapper-returning lookup APIs out of production runtime code. Current evidence:
+the real Less merge-chain property reference fixture now spies on
+`Rules.find('declaration', ...)` and asserts zero public bridge hits while
+rendering comma and space merge outputs. Adjacent source-static property handle
+tests for required assignment constraints, source/output exclusions, first-two
+exclusion identities, bindOutput invalidation, and wider cold filters stayed
+green.
 
 69. [ ] Audit simple current-cell read object materialization. Scope:
 `BindingCell.lookupIdentity`, `ScopeFrame.currentBindingsVersion`, variable
