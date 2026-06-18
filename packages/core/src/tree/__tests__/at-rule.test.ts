@@ -1848,7 +1848,10 @@ describe('AtRule', () => {
     expect(() => node.writeSyntax(getPrintOptions({ writer }))).not.toThrow();
     expect(writer.toString()).toBe('@custom-media --narrow (max-width: 30em);');
     expect(writer.captures).toBe(0);
+    expect(writer.marks).toBe(0);
     expect(writer.previews).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(writer.restores).toBe(0);
   });
 
   it('renders keyword and anonymous leaf at-rule preludes without syntax rollback', () => {

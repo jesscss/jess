@@ -155,13 +155,7 @@ function writeDirectLeafAtRuleHeader(
     if (scalarText !== undefined) {
       return scalarText;
     }
-    const mark = w.mark();
-    try {
-      node.writeSyntax(options);
-      return w.getSince(mark);
-    } finally {
-      w.restore(mark);
-    }
+    return renderAtRuleLeafNodeSyntax(node, options);
   };
   const nameText = readNodeText(parts.name);
   if (nameText === undefined) {

@@ -468,6 +468,38 @@ with `--no-verify` after the explicit gates pass.
   `pnpm --filter @jesscss/core build` also passed. The current
   `verify:aggressive-cutting-review` run still reports only this pass's cold
   test-side `new CountingWriter()` token, which is prosecuted here.
+- Latest pass: `AtRule` non-scalar leaf detached syntax split.
+- Verdict: accepted as a bounded serializer cut inside the active `AtRule`
+  row. No-trivia non-scalar leaf header emission no longer borrows the caller
+  writer with inner `mark()/getSince()/restore()` probes just to recover child
+  name/prelude syntax before writing the final leaf header. That path now
+  captures non-scalar child syntax through detached leaf writers and keeps the
+  caller writer on direct final output only. No speed claim.
+- New traversal: none.
+- Review-flagged allocations: one detached `OutputWriter` remains on the
+  covered non-scalar leaf helper path, but this pass deletes the caller-writer
+  rollback probes it previously depended on.
+- Review-flagged diff tokens: none. `verify:aggressive-cutting-review`
+  reported no danger tokens in the scoped diff.
+- New node/materialization: none.
+- Render path: no-trivia non-scalar leaf at-rules still stay off
+  `getHeaderString(...)` and still serialize through `AtRule.writeSyntax(...)`,
+  but the child text capture now lives entirely in detached leaf writers rather
+  than staging text through the caller writer and rewinding it. Scalar leaf
+  fast paths remain unchanged.
+- Helper/API surface: none added.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: deleted the inner caller-writer
+  `mark()/getSince()/restore()` readback in `writeDirectLeafAtRuleHeader(...)`
+  and switched non-scalar child text capture to the existing detached leaf
+  syntax helper.
+- Evidence: focused red-to-green proof came from
+  `at-rule.test.ts` case
+  `writes non-scalar no-trivia leaf at-rules without header string transport`.
+  Full `at-rule.test.ts`, `git diff --check`,
+  `pnpm --filter @jesscss/core build`, and
+  `pnpm run verify:aggressive-cutting-review` also passed.
 - Latest pass: `AtRule` no-trivia frame-header direct write split.
 - Verdict: accepted as a bounded serializer cut inside the active `AtRule`
   row. No-trivia at-rule frame opens in `serializeRulesContainer(...)` no
