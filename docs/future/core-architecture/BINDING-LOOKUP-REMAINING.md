@@ -1226,6 +1226,143 @@ guarded namespace unions, real Less stable namespaces, and reference-import
 prefix hit/miss paths with nested array-path spies empty. No production edit was
 needed for this item.
 
+72. [x] Finish explicit declaration visibility/import no-fallback proof.
+Scope: `direct-rules-lookup.ts`, declaration child entries,
+`hasReferenceImportSurface`, reference-import roots, rendered reference
+imports, and public declaration lookup bridge spies. Goal: covered imported
+declaration hits and misses must use carried child-entry/frame facts without
+rediscovering visibility through public `Rules.find*` wrappers or broad child
+scans. Acceptance: focused synthetic and real Less fixtures prove imported
+declaration hit/miss paths stay zero-bridge, and any remaining dynamic
+visibility fallback has a named unsupported reason. Current evidence: direct
+property reference-import misses now mirror the existing variable proof: they
+enter only the carried reference-import child surface and do not read ordinary
+variable-only child rules. Direct property lookup also now proves children
+without property or reference-import surface facts are skipped without reading
+the child value. The existing real `import-reference: real hit and miss refs
+avoid public declaration bridges` fixture stayed green, proving reference
+imported variable/property/selector-list/nested property hits and misses keep
+`Rules.find('declaration', ...)` bridge hits at zero.
+
+73. [ ] Close property merge-chain occurrence/versioning proof. Scope:
+property merge-chain reads/writes, same-parent source-order slots,
+`requiredDeclarationAssignments`, output/source exclusions, and per-key
+declaration lookup versions. Goal: stable merge-chain property/declaration
+reads and writes reuse direct occurrences and key versions without broad
+fallback materialization. Acceptance: focused merge-chain fixtures prove
+handle identity, key-version invalidation, and zero public declaration bridge
+hits across pre/post output-binding cases.
+
+74. [ ] Prove declaration/property dynamic promotion keeps per-key versions as
+freshness only. Scope: dynamic declaration names, late child/static
+registration, reference imports, rules promotion, and
+`Rules.getDeclarationLookupVersion(key)`. Goal: per-name versions invalidate
+only affected declaration/property keys and never become a second registry.
+Acceptance: tests prove affected-key invalidation, unaffected-key reuse, and
+no extra broad lookup/version bump for unrelated keys.
+
+75. [ ] Flatten direct declaration fallback result shape further or close it as
+rejected. Scope: `DeclarationLookupStrategy`, `DirectDeclarationOccurrence`,
+setDefined fallback helpers, readonly handling, and family predicates. Goal:
+ordinary declaration/property reads should return the flat occurrence/miss
+shape without wrapper objects or closure allocation; any setDefined-only
+callback helper must be proven cold or deleted. Acceptance: code audit plus
+focused setDefined/read tests prove no ordinary read wrapper allocation.
+
+76. [ ] Keep simple current-cell reads free of cold materialization. Scope:
+`BindingCell.lookupIdentity`, `ScopeFrame.currentBindingsVersion`, ancestor
+current-binding handles, rest/@arguments cells, and source-static handle reuse.
+Goal: simple variable/property/declaration cached reads do not allocate
+handle/read argument objects, live-slot probes, or duplicated rest state.
+Acceptance: focused reference tests and a direct lookup counter/profile note
+identify remaining allocations or prove none on covered simple reads.
+
+77. [ ] Decide evaluated-value cache prerequisites after live-current coverage.
+Scope: live-current shadowing, dynamic promotion, parent occurrence freshness,
+cell value versions, and evaluated-value reuse. Goal: either define the narrow
+cacheable evaluated-value lane or explicitly keep it out of scope until a
+named missing binding fact exists. Acceptance: tracker records the decision
+with tests/counter evidence; no speculative cache is added.
+
+78. [ ] Delete callable direct-crawl bridges where child/frame facts are
+complete. Scope: `lookupScopeFrameCallable(...)`, child-entry hit/miss/
+uncovered reasons, prepared-null entries, reference-import child surfaces,
+guarded/configured surfaces, and `findMixinsFast(...)` bridges. Goal:
+covered callable misses/positives skip broad direct crawl, while only named
+dynamic uncertainty enters a bridge. Acceptance: synthetic and real Less
+guard/import fixtures prove zero broad crawl for covered cases and preserve
+dynamic positives.
+
+79. [ ] Close parameterized terminal namespace fallback audit. Scope:
+terminal mixin-only lookup, parameterized mixin-ruleset calls, ruleset
+namespace containers, exact ruleset terminal rejection, imported namespace
+containers, and callable/ruleset namespace unions. Goal: terminal lookup with
+params should search mixins only after namespace resolution unless a named Less
+error path requires a second pass. Acceptance: focused namespace tests prove
+no ruleset-terminal fallback and no generated nested array fallback for
+covered terminal misses/hits.
+
+80. [ ] Keep namespace remainder arrays cold for guarded/imported namespaces.
+Scope: `collectKeyRemainder(...)`, namespace path offsets, fallback
+unsupported states, guarded namespace positives, reference-import namespaces,
+and compound-prefix namespaces. Goal: positive namespace paths use offsets
+end-to-end; arrays appear only in cold unsupported fallback. Acceptance: spies
+prove guarded/imported positive paths stay zero remainder-array materialization.
+
+81. [ ] Slim reference handle shape and prep for source-static reads. Scope:
+`_lookupStrategy`, source-static key normalization, target/filter facts,
+handle readers/writers by family, and repeated handle access. Goal: repeated
+source-static reads use assigned strategy functions and minimal fields without
+per-lookup shape objects. Acceptance: focused variable/property/function/
+callable handle tests prove reuse before prep and verifier guards against
+generic wrapper-returning handle APIs.
+
+82. [ ] Finish leaky/searchScope fallback bridge deletion or unsupported-state
+modeling. Scope: declaration fallback frames, callable child/reference-import
+bridges, property filtered fallback, leaky rules, `searchScope`
+disqualification, and stale handle clearing. Goal: every remaining bridge has
+a deletion condition or explicit unsupported reason, with ordinary lookup
+rebuilding later only when facts changed. Acceptance: focused tests prove
+stale handles clear and ordinary variable/property/declaration/function/
+callable reads rebuild without entering deleted public bridges.
+
+83. [ ] Complete final simple-read proof matrix. Scope: ordinary static
+variable, property, declaration, index, merge-chain, stable namespace,
+function, simple mixin, and simple mixin-ruleset reads. Goal: covered simple
+reads do not enter fallback ladders, public materialization wrappers, old
+registry-shaped search, broad invalidation, or unnecessary child scans.
+Acceptance: focused tests/profile counters cover every simple-read family and
+explain any remaining direct lookup counters. Current evidence: compound
+selector callable ruleset paths now consume exact remainder matches directly
+from existing callable bucket entries. The focused direct lookup test proves
+`['#foo-foo', '.bar', '.baz']` resolves the nested `>.bar.baz` ruleset without
+falling back to a missing callable result; render-based complex-selector tests
+still expose serialization whitespace drift in current `origin/dev`, so this
+item remains open until the full simple-read matrix and non-lookup render
+baseline are clean or isolated.
+
+84. [ ] Run stale registry/lookup wording grep and classify hot-path hits.
+Scope: production runtime code, tests, verifiers, and docs. Goal: remaining
+`registry`, `Rules.find*`, `findMixinsFast`, fallback, and materialization
+wording either names cold/public compatibility, test spies, docs, or a real
+hot-path cleanup task. Acceptance: tracker records the grep command, hot-path
+findings, and follow-up/deletion status.
+
+85. [ ] Refresh scope-lookup stress profile after bridge/proof closure. Scope:
+`scope-lookup-stress.less`, old `Rules.find`/registry counters, direct
+declaration/callable counters, frame prep, child-entry scans, and smoke timing.
+Goal: old registry counters stay empty, direct counters are explained, and no
+unsupported speed claim is made. Acceptance: profile output and smoke notes are
+recorded in Latest Binding Baseline.
+
+86. [ ] Run final binding completion gate and changed-baseline audit. Scope:
+focused lookup tests, `verify:binding-lookup-hot-paths`,
+`verify:aggressive-cutting-review`, core build, changed baseline, and any
+known non-lookup serialization blockers. Goal: prove the binding lane is
+complete against the Completion Criteria or record exact remaining blockers.
+Acceptance: all binding-owned gates pass; non-binding failures are reproduced
+or isolated with evidence.
+
 ## Latest Binding Baseline
 
 - `scope-lookup-stress.less` counter evidence improved from

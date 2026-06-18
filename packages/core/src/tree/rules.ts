@@ -726,6 +726,41 @@ function collectCallableBucketResults(
   return results;
 }
 
+function collectCallableBucketRemainderResults(
+  bucket: CallableLookupEntry[],
+  includeRulesets: boolean,
+  path: readonly string[],
+  offset: number
+): MixinEntry[] | undefined {
+  const restLength = path.length - offset - 1;
+  if (restLength <= 0) {
+    return undefined;
+  }
+  let results: MixinEntry[] | undefined;
+  for (let i = bucket.length - 1; i >= 0; i--) {
+    const entry = bucket[i]!;
+    if (entry.match.length !== restLength) {
+      continue;
+    }
+    let matchesRemainder = true;
+    for (let matchIndex = 0; matchIndex < entry.match.length; matchIndex++) {
+      if (entry.match[matchIndex] !== path[offset + 1 + matchIndex]) {
+        matchesRemainder = false;
+        break;
+      }
+    }
+    if (!matchesRemainder) {
+      continue;
+    }
+    const candidate = entry.value;
+    if (!includeRulesets && isNode(candidate, N.Ruleset)) {
+      continue;
+    }
+    (results ??= []).push(candidate);
+  }
+  return results;
+}
+
 type AssignmentTargetBindingTarget = {
   assignmentBindingsByName?: Map<string, BindingCell>;
   assignmentReadonlyByName?: Set<string>;
@@ -2084,6 +2119,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         });
         let frameMissCovered = false;
         if (frameHit.kind === 'hit') {
+          const remainderMatches = collectCallableBucketRemainderResults(
+            frameHit.bucket,
+            includeRulesets,
+            path,
+            offset
+          );
+          if (remainderMatches) {
+            return {
+              entries: remainderMatches,
+              owned: true
+            };
+          }
           matches = collectCallableBucketResults(frameHit.bucket, includeRulesets);
         } else if (frameHit.kind === 'miss') {
           frameMissCovered = true;
@@ -2115,6 +2162,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               searchParents: false
             });
             if (fallbackHit.kind === 'hit') {
+              const remainderMatches = collectCallableBucketRemainderResults(
+                fallbackHit.bucket,
+                includeRulesets,
+                path,
+                offset
+              );
+              if (remainderMatches) {
+                matches = remainderMatches;
+                break;
+              }
               matches = collectCallableBucketResults(fallbackHit.bucket, includeRulesets);
               break;
             }
@@ -2141,6 +2198,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (matches === undefined) {
             return DEFINITE_MIXIN_NAMESPACE_MISS;
           }
+        }
+      }
+      if (matches === undefined && restLength > 0) {
+        const remainderMatches = collectCallableBucketRemainderResults(
+          scope.getCallableEntriesForKey(segment),
+          includeRulesets,
+          path,
+          offset
+        );
+        if (remainderMatches) {
+          return {
+            entries: remainderMatches,
+            owned: true
+          };
         }
       }
       matches ??= scope.findMixinsFast(segment, {

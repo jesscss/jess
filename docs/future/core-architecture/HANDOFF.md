@@ -103,6 +103,38 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: binding declaration visibility plus compound callable remainder
+  proof.
+- Verdict: accepted as a focused registryless binding pass. Declaration lookup
+  gained property-side reference-import child-surface proof, and callable
+  namespace lookup now consumes exact compound-selector remainder entries from
+  existing callable buckets instead of falling through to a missing callable
+  result or cold remainder-array fallback. No speed claim.
+- New traversal: one small bucket scan helper,
+  `collectCallableBucketRemainderResults(...)`, plus an inner match loop over
+  the already-carried `CallableLookupEntry.match` array. This is bounded to the
+  bucket the lookup already read and replaces rediscovery through broader
+  namespace fallback.
+- New node/materialization: none in production. Test fixtures construct small
+  `Rules`/declaration/ruleset trees only as behavior probes.
+- Render path: no production render path changed. Existing render-based complex
+  selector tests now reach rendering instead of throwing missing-mixin lookup
+  errors; current `origin/dev` still has unrelated whitespace drift there.
+- Helper/API surface: one private module helper,
+  `collectCallableBucketRemainderResults(...)`, reusing the existing callable
+  entry model and avoiding a public wrapper or generated remainder array.
+- Metadata mutations: none in production. Tests temporarily replace child
+  `value` accessors and restore them in `finally` blocks to prove direct
+  declaration lookup does or does not read a child surface.
+- Evidence: focused `reference.test.ts` cases
+  `direct property reference-import miss does not widen ordinary variable child
+  scans`, `direct property lookup still skips children without property or
+  reference-import surfaces`, and
+  `direct complex selector callable lookup consumes compound selector remainder
+  entries` passed. The real import fixture
+  `import-reference: real hit and miss refs avoid public declaration bridges`
+  also passed and kept public `Rules.find('declaration', ...)` bridge hits at
+  zero. `verify:binding-lookup-hot-paths` passed.
 - Latest pass: `AtRule` comparable-header and boundary-trivia split.
 - Verdict: accepted as a bounded serializer cut inside the active `AtRule`
   row. Frame comparison in `serializeRulesContainer(...)` no longer routes the

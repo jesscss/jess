@@ -3849,6 +3849,69 @@ describe('reference', () => {
       }
     });
 
+    it('direct property reference-import miss does not widen ordinary variable child scans', async () => {
+      const ordinaryChild = rules([
+        vardecl({ name: any('from-ref'), value: any('ordinary') })
+      ], {
+        rulesVisibility: {
+          Declaration: 'private',
+          VarDeclaration: 'public'
+        }
+      });
+      const referenceChild = rules([], { referenceMode: true });
+      const root = rules([ordinaryChild, referenceChild]);
+      await root.eval(context);
+      root.collectDirectDeclarationChildEntries();
+      expect(root.directDeclarationChildEntries).toHaveLength(2);
+      expect(root.directDeclarationChildEntries?.[0]).toMatchObject({
+        hasDeclarationSurface: false,
+        hasVarDeclarationSurface: true,
+        hasReferenceImportSurface: false
+      });
+      expect(root.directDeclarationChildEntries?.[1]).toMatchObject({
+        hasDeclarationSurface: false,
+        hasVarDeclarationSurface: false,
+        hasReferenceImportSurface: true
+      });
+
+      const ordinaryValue = ordinaryChild.value;
+      const referenceValue = referenceChild.value;
+      let ordinaryReads = 0;
+      let referenceReads = 0;
+      Object.defineProperty(ordinaryChild, 'value', {
+        configurable: true,
+        get() {
+          ordinaryReads++;
+          return ordinaryValue;
+        }
+      });
+      Object.defineProperty(referenceChild, 'value', {
+        configurable: true,
+        get() {
+          referenceReads++;
+          return referenceValue;
+        }
+      });
+
+      try {
+        const found = findPropertyDeclarationOccurrence(root, 'missing-from-ref', { searchParents: false })?.node;
+        expect(found).toBeUndefined();
+        expect(ordinaryReads).toBe(0);
+        expect(referenceReads).toBeGreaterThan(0);
+      } finally {
+        Object.defineProperty(ordinaryChild, 'value', {
+          configurable: true,
+          writable: true,
+          value: ordinaryValue
+        });
+        Object.defineProperty(referenceChild, 'value', {
+          configurable: true,
+          writable: true,
+          value: referenceValue
+        });
+      }
+    });
+
     it('direct variable lookup still skips children without variable or reference-import surfaces', async () => {
       const childRules = rules([
         vardecl({ name: any('from-ref'), value: any('blue') })
@@ -3881,6 +3944,47 @@ describe('reference', () => {
       try {
         const found = findVariableDeclarationOccurrence(root, 'from-ref', { searchParents: false })?.node;
         expect(found).toBeUndefined();
+      } finally {
+        Object.defineProperty(childRules, 'value', {
+          configurable: true,
+          writable: true,
+          value: originalValue
+        });
+      }
+    });
+
+    it('direct property lookup still skips children without property or reference-import surfaces', async () => {
+      const childRules = rules([
+        decl({ name: any('from-ref'), value: any('blue') })
+      ], {
+        rulesVisibility: {
+          Declaration: 'public'
+        }
+      });
+      const root = rules([childRules]);
+      await root.eval(context);
+      root.collectDirectDeclarationChildEntries();
+      const entry = root.directDeclarationChildEntries?.[0];
+      expect(entry).toBeDefined();
+      root.hasDeclarationChildSurface = false;
+      root.hasReferenceImportChildSurface = false;
+      entry!.hasDeclarationSurface = false;
+      entry!.hasReferenceImportSurface = false;
+
+      const originalValue = childRules.value;
+      let reads = 0;
+      Object.defineProperty(childRules, 'value', {
+        configurable: true,
+        get() {
+          reads++;
+          return originalValue;
+        }
+      });
+
+      try {
+        const found = findPropertyDeclarationOccurrence(root, 'from-ref', { searchParents: false })?.node;
+        expect(found).toBeUndefined();
+        expect(reads).toBe(0);
       } finally {
         Object.defineProperty(childRules, 'value', {
           configurable: true,
@@ -6162,6 +6266,30 @@ describe('reference', () => {
           c: c;
         }
       `);
+    });
+
+    it('direct complex selector callable lookup consumes compound selector remainder entries', async () => {
+      const nestedRuleset = ruleset({
+        selector: sel([co('>'), compound([el('.bar'), el('.baz')])]),
+        rules: rules([
+          decl({ name: 'c', value: any('c') })
+        ])
+      });
+      const node = rules([
+        ruleset({
+          selector: sel([el('#foo-foo')]),
+          rules: rules([nestedRuleset])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const found = evald.findMixin(['#foo-foo', '.bar', '.baz'], undefined, {
+        searchParents: false
+      });
+
+      expect(found).toHaveLength(1);
+      expect(found?.[0]?.type).toBe('Ruleset');
+      expect(found?.[0]?.selector.valueOf()).toBe('>.bar.baz');
     });
 
     it('fast-paths complex selector callable ruleset paths under a ruleset namespace prefix', async () => {
