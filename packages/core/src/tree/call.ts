@@ -812,6 +812,9 @@ export class Call extends Node<CallValue, CallOptions> {
     const finishArg = (arg: Node, argMark: number, next: number): void => {
       w.trimHorizontalStartSince(argMark);
       w.trimHorizontalEndSince(argMark);
+      if (textState?.text !== undefined) {
+        textState.text += w.getSince(argMark);
+      }
       writeArgSeparator(arg, next);
     };
     const finishEscapedParenArg = (arg: Paren, innerMark: number, next: number): void => {
@@ -819,7 +822,7 @@ export class Call extends Node<CallValue, CallOptions> {
       w.trimHorizontalEndSince(innerMark);
       w.add(')', arg);
       if (textState?.text !== undefined) {
-        textState.text += ')';
+        textState.text += w.getSince(innerMark);
       }
       writeArgSeparator(arg, next);
     };
@@ -955,7 +958,6 @@ export class Call extends Node<CallValue, CallOptions> {
       w.add(out, callNode);
       return out;
     }
-    const mark = w.mark();
     const textState: CallRenderTextState = {
       text: typeof name === 'string'
         ? name
@@ -966,7 +968,9 @@ export class Call extends Node<CallValue, CallOptions> {
     } else if (textState.text !== undefined) {
       w.add(textState.text, name);
     } else {
+      const nameMark = w.mark();
       name.writeSyntax(printOptions);
+      textState.text = w.getSince(nameMark);
     }
     if (callNode.options?.silentFail) {
       w.add('?');
@@ -1012,10 +1016,13 @@ export class Call extends Node<CallValue, CallOptions> {
                 return textState.text;
               }
             } else {
-              textState.text = undefined;
+              const contentMark = w.mark();
               value.writeSyntax(printOptions);
+              if (textState.text !== undefined) {
+                textState.text += w.getSince(contentMark);
+              }
             }
-            return w.getSince(mark);
+            return textState.text ?? '';
           });
         }
         const contentText = getKnownRenderedCallText(renderedContent as Node);
@@ -1026,12 +1033,15 @@ export class Call extends Node<CallValue, CallOptions> {
             return textState.text;
           }
         } else {
-          textState.text = undefined;
+          const contentMark = w.mark();
           (renderedContent as Node).writeSyntax(printOptions);
+          if (textState.text !== undefined) {
+            textState.text += w.getSince(contentMark);
+          }
         }
-        return w.getSince(mark);
+        return textState.text ?? '';
       }
-      return textState.text ?? w.getSince(mark);
+      return textState.text ?? '';
     };
     let renderedArgs: MaybePromise<void>;
     try {
@@ -1073,7 +1083,6 @@ export class Call extends Node<CallValue, CallOptions> {
       w.add(out, state.source);
       return out;
     }
-    const mark = w.mark();
     const textState: CallRenderTextState = {
       text: typeof name === 'string'
         ? name
@@ -1087,11 +1096,14 @@ export class Call extends Node<CallValue, CallOptions> {
       if (textState.text !== undefined) {
         w.add(textState.text, name);
       } else {
+        const nameMark = w.mark();
         name.writeSyntax(printOptions);
+        textState.text = w.getSince(nameMark);
       }
     } else {
-      textState.text = undefined;
-      w.add(stringifyValueOf(name), state.source);
+      const text = stringifyValueOf(name);
+      textState.text = text;
+      w.add(text, state.source);
     }
     w.add('(');
     if (textState.text !== undefined) {
@@ -1124,10 +1136,13 @@ export class Call extends Node<CallValue, CallOptions> {
                 return textState.text;
               }
             } else {
-              textState.text = undefined;
+              const contentMark = w.mark();
               value.writeSyntax(printOptions);
+              if (textState.text !== undefined) {
+                textState.text += w.getSince(contentMark);
+              }
             }
-            return w.getSince(mark);
+            return textState.text ?? '';
           });
         }
         const contentText = getKnownRenderedCallText(renderedContent as Node);
@@ -1138,12 +1153,15 @@ export class Call extends Node<CallValue, CallOptions> {
             return textState.text;
           }
         } else {
-          textState.text = undefined;
+          const contentMark = w.mark();
           (renderedContent as Node).writeSyntax(printOptions);
+          if (textState.text !== undefined) {
+            textState.text += w.getSince(contentMark);
+          }
         }
-        return w.getSince(mark);
+        return textState.text ?? '';
       }
-      return textState.text ?? w.getSince(mark);
+      return textState.text ?? '';
     };
     const renderedArgs = this.writeRenderedArgs(args, context, prepared, textState);
     return isThenable(renderedArgs)

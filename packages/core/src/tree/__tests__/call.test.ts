@@ -424,7 +424,7 @@ describe('Call', () => {
 
     expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
     expect(buffer.parts).toEqual(['rgb', '(', '100', ', ', '100', ', ', '100', ')']);
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -623,7 +623,7 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('fn((red 10), 30)');
     expect(writer.toString()).toBe('fn((red 10), 30)');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -636,7 +636,7 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('say("hello", "world")');
     expect(writer.toString()).toBe('say("hello", "world")');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -649,7 +649,7 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('calc(10px + 5px)');
     expect(writer.toString()).toBe('calc(10px + 5px)');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -684,7 +684,7 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('wrap(): (raw content)');
     expect(writer.toString()).toBe('wrap(): (raw content)');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -697,7 +697,7 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('wrap(): "raw content"');
     expect(writer.toString()).toBe('wrap(): "raw content"');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -714,7 +714,7 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('fn(screen and (color))');
     expect(writer.toString()).toBe('fn(screen and (color))');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -1432,7 +1432,7 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('var(--brand, red)');
     expect(writer.toString()).toBe('var(--brand, red)');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -1445,7 +1445,7 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('mix(#ff0000, #0000ff)');
     expect(writer.toString()).toBe('mix(#ff0000, #0000ff)');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -1458,7 +1458,7 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('fn(10, 20, 30)');
     expect(writer.toString()).toBe('fn(10, 20, 30)');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -1471,7 +1471,7 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('fn(red 10, 30)');
     expect(writer.toString()).toBe('fn(red 10, 30)');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -1485,7 +1485,7 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('rgb(10, 20)');
     expect(writer.toString()).toBe('rgb(10, 20)');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -1499,7 +1499,7 @@ describe('Call', () => {
 
     await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('rgb(10, 20, 30)');
     expect(writer.toString()).toBe('rgb(10, 20, 30)');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -1513,7 +1513,7 @@ describe('Call', () => {
 
     await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('wrap(): body-output');
     expect(writer.toString()).toBe('wrap(): body-output');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 

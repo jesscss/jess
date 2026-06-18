@@ -103,6 +103,35 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` local render return carry after text-state fallback.
+- Verdict: accepted as a localized render-return cut. Plain/finalized `Call`
+  render now keeps a local return string alive even after exact-text coverage
+  falls cold, by appending child-local emitted slices as args/content are
+  written instead of returning `w.getSince(mark)` for the whole call at the
+  end. Covered exact call render paths also drop the old outer call-level mark.
+  No speed claim.
+- New traversal: none.
+- New node/materialization: none.
+- Render path: exact/plain/finalized call render still writes to the active
+  writer directly, but returned text now comes from carried local state rather
+  than a whole-call writer readback. Fallback arg/content branches still use
+  local child mark windows where they need the exact emitted slice after trim.
+- Helper/API surface: no new helper.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: none new beyond the existing child-local mark windows;
+  this pass deletes the outer call-level readback boundary and the exact-path
+  outer call-level mark on covered render paths.
+- Rejected/observed in this pass: custom/non-scalar child surfaces still keep
+  their localized child readback where the exact emitted slice must be recovered
+  after trimming or fallback syntax writes. This cut does not yet change the
+  broader callable-output or metadata-function lanes.
+- Evidence: focused `call.test.ts` coverage now proves shared flat-buffer plain
+  CSS calls, exact paren/quoted/operation/query-condition render args, exact
+  paren/quoted content, scalar list/sequence/color args, evaluated scalar names,
+  and async scalar arg/content renders all return correct text with zero
+  readbacks and now zero outer call marks on the covered render path. Full
+  commit-boundary gates still need to run after this handoff update.
 - Latest pass: `Call` exact operation/query-condition text carry.
 - Verdict: accepted as a localized exact-text carry cut. `Call`'s known source
   and render text helpers now cover exact `Dimension`, `Operation`, and
