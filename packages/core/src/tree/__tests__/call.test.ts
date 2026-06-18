@@ -279,7 +279,7 @@ describe('Call', () => {
     expect(rule.toTrimmedString()).toBe('$rgb?(100, 100, 100) !important: raw body');
   });
 
-  it('serializes call source syntax through writeSyntax ownership', () => {
+  it('serializes exact call source syntax without falling through writeSyntax', () => {
     const originalWriteSyntax = Call.prototype.writeSyntax;
     let writeSyntaxCalls = 0;
     Call.prototype.writeSyntax = function countWriteSyntax(
@@ -296,7 +296,7 @@ describe('Call', () => {
 
     try {
       expect(rule.toTrimmedString()).toBe('rgb(100, 100, 100)');
-      expect(writeSyntaxCalls).toBe(1);
+      expect(writeSyntaxCalls).toBe(0);
     } finally {
       Call.prototype.writeSyntax = originalWriteSyntax;
     }
@@ -353,6 +353,20 @@ describe('Call', () => {
     rule.writeSyntax(getPrintOptions({ writer }));
 
     expect(writer.toString()).toBe('fn(10, 20, 30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('writes custom source call args without arg trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([new CustomSyntaxNode('arg'), num(30)])
+    });
+
+    rule.writeSyntax(getPrintOptions({ writer }));
+
+    expect(writer.toString()).toBe('fn(custom-arg, 30)');
     expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });

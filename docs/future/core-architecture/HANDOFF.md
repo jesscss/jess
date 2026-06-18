@@ -103,6 +103,32 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` no-trivia source arg direct-write fallback.
+- Verdict: accepted as a localized source-writer cut. `Call.writeSyntax(...)`
+  now writes no-trivia source args directly item-by-item even when they fall
+  off the exact known-text path, instead of routing non-exact/custom args
+  through `args.writeSyntax(...)` plus an inner arg-list mark/trim window. The
+  trivia-bearing path still keeps the localized list writer boundary. No speed
+  claim.
+- New traversal: none beyond the existing indexed no-trivia arg loop now owning
+  both exact and fallback source arg emission.
+- New node/materialization: none.
+- Render path: none changed; this pass is source serialization only.
+- Helper/API surface: no new helper.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: none new; this pass deletes the no-trivia inner arg-list
+  mark/trim fallback from `Call.writeSyntax(...)` for custom/non-exact source
+  args while leaving the trivia path untouched.
+- Rejected/observed in this pass: public `toTrimmedString(...)` still uses its
+  cold whole-call mark/readback boundary after the exact-source fast path, and
+  trivia-bearing source args still route through the localized list writer path.
+- Evidence: focused `call.test.ts` coverage now proves explicit-empty source
+  args, exact scalar/list source args, exact content, and custom no-trivia
+  source args all write with zero marks/readbacks, while the exact-source
+  `toTrimmedString(...)` fast path is explicitly pinned as no longer falling
+  through `writeSyntax(...)`. Full commit-boundary gates still need to run
+  after this handoff update.
 - Latest pass: `Ruleset` no-trivia header direct-write reopen path.
 - Verdict: accepted as a bounded header transport cut. `serializeRulesContainer(...)`
   now lets no-trivia `Ruleset` frame opens write the header directly into the

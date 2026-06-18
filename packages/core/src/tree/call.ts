@@ -1459,23 +1459,17 @@ export class Call extends Node<CallValue, CallOptions> {
       if (directSource) {
         const sep = args.options?.sep ?? ',';
         const joiner = sep === '/' ? ' / ' : `${sep} `;
-        let directArgs = true;
         for (let i = 0; i < args.items.length; i++) {
-          const argText = getKnownSourceCallText(args.items[i]!);
-          if (argText === undefined) {
-            directArgs = false;
-            break;
-          }
+          const arg = args.items[i]!;
           if (i > 0) {
             w.add(joiner);
           }
-          w.add(argText, args.items[i]!);
-        }
-        if (!directArgs) {
-          const argsMark = w.mark();
-          args.writeSyntax(options);
-          w.trimHorizontalStartSince(argsMark);
-          w.trimHorizontalEndSince(argsMark);
+          const argText = getKnownSourceCallText(arg);
+          if (argText !== undefined) {
+            w.add(argText, arg);
+            continue;
+          }
+          arg.writeSyntax(options);
         }
       } else {
         const argsMark = w.mark();
