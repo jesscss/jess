@@ -132,7 +132,7 @@ with `--no-verify` after the explicit gates pass.
   stale `unrelated` miss is cleared; focused setDefined tests still pass.
   Full gates are required before commit.
 - Merge note: latest `origin/dev` also carries serialization work for
-  `Operation`, `QueryCondition`, and scalar token-family dynamic leaf at-rule
+  `Operation`, `QueryCondition`, and scalar token-family at-rule header/leaf
   syntax readback cuts; keep that progress in `NODE-REWRITE-TRACKER.md` while
   this worktree continues binding/lookup. Review-flagged `CountingWriter`
   constructions, custom syntax subclass constructions, scalar `any(...)`
