@@ -103,38 +103,36 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding declaration/import source-order proof for rendered
-  reference-import property hits.
-- Verdict: accepted as a declaration lookup correctness/no-bridge fix. The
-  previously failing rendered `fromRefProp` hit now resolves through direct
-  child-entry declaration lookup, and the fixture spies prove rendered
-  variable/property hits and misses avoid public `Rules.find(...)`. A broader
-  `reference.ts` runtime-target preference helper was tested and rejected
-  because the leaner direct lookup start fix passes without it. No speed claim.
-- New traversal: one private containing-node start walk was added in
-  `direct-rules-lookup.ts`. It only runs when preserving a linear source-order
-  start across parent/child lookup surfaces or checking child-entry start
-  order, and it replaces a false miss caused by wrapper nodes without `index`.
-  The child-entry recursion no longer reuses the later parent `start` after an
-  earlier child entry has already passed the parent-level gate, so it avoids
-  reopening fallback bridges for that case. Review-flagged test spy arrays are
-  proof scaffolding only.
+- Latest pass: callable namespace reference-import descendant proof for
+  evaluated namespace mixin bodies.
+- Verdict: accepted as a narrow frame-read cut. Evaluated namespace mixin
+  bodies with reference-import callable descendants now build/read the child
+  frame on the descendant path and avoid nested `findMixin(...)` plus broad
+  `findMixinsFast(...)` fallback. The never-evaluated import-in-uncalled-mixin
+  case was tested first and remains open because synchronous lookup cannot see
+  unresolved async import content without a separate reference-import
+  preparation edge. No speed claim.
+- New traversal: no new tree traversal. The existing descendant namespace loop
+  now calls `getScopeFrame()` only when the namespace body `Rules` is already
+  evaluated and has no `_scopeFrame`; an existing guard proves ordinary
+  callable lookup still does not build a frame merely to try the shortcut.
+  Review-flagged `try/finally` and test spy arrays are proof scaffolding only
+  for restoring prototype spies and proving no broad callable crawl.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production arrays were added.
 - Render path: no render/stringification path changed.
-- Helper/API surface: added one private helper,
-  `getContainingNodeStart(...)`, and rejected and removed the broader
-  `reference.ts` target-preference helper surface before commit. No public API
-  was added.
-- Metadata mutations: none.
+- Helper/API surface: no helper or public API was added.
+- Metadata mutations: evaluated namespace body lookup may create the existing
+  `ScopeFrame` state that `getScopeFrame()` owns; it is gated by
+  `entryRules.evaluated` and does not prepare never-evaluated mixin bodies.
 - Allocation changes: no production allocation changes.
-- Evidence: the real `@import(reference)` hit/miss fixture proves direct
-  imported property occurrence hit/miss plus rendered variable/property
-  hit/miss references avoid `Rules.find(...)`. Focused reference tests prove
-  carried child-entry property lookup still works and same-parent later child
-  misses do not widen. Full `mixin.test.ts` remains outside the clean gate for
-  this branch; keep using focused slices until the known complex
-  compound-selector failures are separated.
+- Evidence: focused import fixture proves evaluated namespace mixin bodies
+  expose reference-import callable descendants without nested `findMixin(...)`
+  or namespace/root `findMixinsFast(...)`. Focused mixin tests prove modeled
+  reference-import hits/misses, namespace-start misses, fallback-frame
+  recursion, and the no-frame-shortcut guard stay green. Full `mixin.test.ts`
+  remains outside the clean gate for this branch; keep using focused slices
+  until the known complex compound-selector failures are separated.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification

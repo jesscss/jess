@@ -3436,6 +3436,60 @@ describe('Style import', () => {
       expect(out).not.toContain('call-mixin-with-import-by-reference-inside ruleset');
     });
 
+    it('import-reference: evaluated namespace mixin bodies expose reference-import callable descendants without broad crawl', async () => {
+      const localContext = createTestContext();
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const referencedPath = resolve(process.cwd(), 'reference-namespace-mixin-callable.jess');
+      const leaf = mixin({
+        name: any('.reference-leaf'),
+        rules: rules([decl({ name: any('color'), value: any('green') })])
+      });
+      localContext.sourceTrees.set(referencedPath, rules([leaf]));
+      const namespaceBody = rules([
+        style({
+          path: quoted(any('reference-namespace-mixin-callable.jess'))
+        }, {
+          type: 'import',
+          importOptions: { reference: true }
+        })
+      ]);
+      const node = rules([
+        mixin({
+          name: any('#parent-namespace'),
+          rules: namespaceBody
+        })
+      ]);
+      const broadFastHits: string[] = [];
+      let namespaceBodyFindMixinCount = 0;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this === namespaceBody) {
+          namespaceBodyFindMixinCount++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if ((this === namespaceBody || this === node) && key === '.reference-leaf') {
+          broadFastHits.push(this === namespaceBody ? 'namespace' : 'root');
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        await node.prepareRegistration(localContext);
+        await namespaceBody.eval(localContext);
+        const found = node.findMixin(['#parent-namespace', '.reference-leaf'], undefined);
+        expect(found).toHaveLength(1);
+        expect(found?.[0]?.name?.valueOf()).toBe('.reference-leaf');
+        expect(namespaceBodyFindMixinCount).toBe(0);
+        expect(broadFastHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('import-reference: reference-imported selector-list rulesets remain callable as mixins', async () => {
       const localContext = createTestContext();
       localContext.opts.collapseNesting = true;

@@ -171,8 +171,14 @@ definitive empty descendant result and skip both nested `findMixin(...)` and
 the older namespace `findMixinsFast(...)` fallback. Reference-import descendant
 modeled positives inside namespace mixin bodies now return the direct
 child-frame hit and skip both nested `findMixin(...)` and namespace/root
-`findMixinsFast(...)` broad crawl. Real import-in-uncalled-mixin namespace
-positives are still open and must not be claimed covered.
+`findMixinsFast(...)` broad crawl. Real evaluated reference-import namespace
+mixin bodies now build/read the child frame on the descendant path and skip
+both nested `findMixin(...)` and broad `findMixinsFast(...)`; the existing
+guard proves ordinary callable lookup still does not build a scope frame merely
+to try the shortcut. Never-evaluated import-in-uncalled-mixin namespace
+positives are still open and must not be claimed covered, because sync lookup
+cannot see async import content until a reference-import preparation edge
+exists.
 
 12. [ ] Revisit `findVisibleCallableRulesetPrefixMatches(...)` recursive child
 walk after selector-list coverage. Scope: direct child-entry flags,
