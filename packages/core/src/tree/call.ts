@@ -156,6 +156,64 @@ function getKnownRenderedCallText(node: Node): string | undefined {
   }
 }
 
+function getKnownSourceCallText(node: Node): string | undefined {
+  switch (node.type) {
+    case 'Any':
+    case 'Keyword':
+    case 'Anonymous':
+      return typeof node.value === 'string' ? node.value : undefined;
+    case 'Bool':
+      return node.value ? 'true' : 'false';
+    case 'Num':
+      return typeof node.number === 'number' ? `${node.number}` : undefined;
+    case 'Color':
+      return typeof node.node === 'string' ? node.node : undefined;
+    case 'List': {
+      const parts = new Array<string>(node.items.length);
+      for (let i = 0; i < node.items.length; i++) {
+        const text = getKnownSourceCallText(node.items[i]!);
+        if (text === undefined) {
+          return undefined;
+        }
+        parts[i] = text;
+      }
+      const sep = node.options?.sep ?? ',';
+      if (sep === '/') {
+        return parts.join(' / ');
+      }
+      return parts.join(`${sep} `);
+    }
+    case 'Sequence': {
+      if (node.preserveWhitespace) {
+        return undefined;
+      }
+      const parts = new Array<string>(node.items.length);
+      for (let i = 0; i < node.items.length; i++) {
+        const text = getKnownSourceCallText(node.items[i]!);
+        if (text === undefined) {
+          return undefined;
+        }
+        parts[i] = text;
+      }
+      return parts.join(' ');
+    }
+    case 'Paren': {
+      const open = node.options?.delimiter === 'square' ? '[' : '(';
+      const close = node.options?.delimiter === 'square' ? ']' : ')';
+      if (!node.value) {
+        return `${node.options?.escaped ? '~' : ''}${open}${close}`;
+      }
+      const value = getKnownSourceCallText(node.value);
+      if (value === undefined) {
+        return undefined;
+      }
+      return `${node.options?.escaped ? '~' : ''}${open}${value}${close}`;
+    }
+    default:
+      return undefined;
+  }
+}
+
 function callRenderSharesWriter(bufferOrOptions?: RenderBuffer | PrintOptions): bufferOrOptions is RenderBuffer & { shareWriter: true } {
   return Boolean(isRenderBuffer(bufferOrOptions) && 'shareWriter' in bufferOrOptions && bufferOrOptions.shareWriter);
 }
@@ -1197,6 +1255,47 @@ export class Call extends Node<CallValue, CallOptions> {
       const out = `${this.name}${this._options?.silentFail ? '?' : ''}()${this._options?.markImportant ? ' !important' : ''}`;
       w.add(out, this);
       return out;
+    }
+    if (!options.trivia) {
+      const nameText = typeof this.name === 'string'
+        ? this.name
+        : getKnownSourceCallText(this.name);
+      if (nameText !== undefined) {
+        let out = `${nameText}${this._options?.silentFail ? '?' : ''}(`;
+        if (this.args?.items.length) {
+          const sep = this.args.options?.sep ?? ',';
+          const joiner = sep === '/' ? ' / ' : `${sep} `;
+          for (let i = 0; i < this.args.items.length; i++) {
+            const text = getKnownSourceCallText(this.args.items[i]!);
+            if (text === undefined) {
+              out = '';
+              break;
+            }
+            if (i > 0) {
+              out += joiner;
+            }
+            out += text;
+          }
+        }
+        if (out) {
+          out += ')';
+          if (this._options?.markImportant) {
+            out += ' !important';
+          }
+          if (this.contentNode) {
+            const contentText = getKnownSourceCallText(this.contentNode);
+            if (contentText === undefined) {
+              out = '';
+            } else {
+              out += `: ${contentText}`;
+            }
+          }
+          if (out) {
+            w.add(out, this);
+            return out;
+          }
+        }
+      }
     }
     const mark = w.mark();
     this.writeSyntax(options);

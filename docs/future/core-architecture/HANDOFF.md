@@ -103,6 +103,40 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` exact source text carry.
+- Verdict: accepted as a localized source-text carry cut. `Call.toTrimmedString(...)`
+  now returns exact scalar/list/sequence/escaped-paren source syntax directly
+  for covered no-trivia calls instead of routing the whole call through
+  `writeSyntax(...)` plus `mark()/getSince()`. No speed claim.
+- New traversal: one recursive exact-source-text walk inside
+  `getKnownSourceCallText(...)` for covered `List`/`Sequence`/`Paren`
+  descendants, plus one direct arg loop in `Call.toTrimmedString(...)` to
+  assemble the covered call source text. These replace the old whole-call
+  readback boundary on the exact-source path.
+- New node/materialization: none. This pass only derives string text from
+  existing source nodes and does not add wrapper calls, copied nodes, or
+  detached writer state.
+- Render path: unchanged.
+- Helper/API surface: one node-local `getKnownSourceCallText(...)` helper in
+  `call.ts`. It mirrors the existing render-text carry helper for the covered
+  source-only contract and deletes more whole-call readback than it adds.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: adds short-lived string-part arrays for covered exact
+  `List`/`Sequence` source text assembly, but deletes the covered whole-call
+  source `mark()/getSince()` boundary and the associated writer rollback on
+  those paths.
+- Rejected/observed in this pass: this cut stays no-trivia and exact-source
+  only. Non-scalar/custom/trivia-bearing source args or content still fall back
+  to the existing `writeSyntax(...)` path, and source-map granularity on the
+  covered fast path remains the coarse call-owned text write rather than
+  child-by-child writer ownership.
+- Evidence: focused `call.test.ts` coverage now proves canonical function args,
+  token args, scalar list args, and escaped scalar list args serialize with
+  zero source readbacks, while the canonical source/render split for
+  `func(~(a, b); c)` still holds and the adjacent evaluated-name/render direct
+  text path remains green. Full commit-boundary gates still need to run after
+  this handoff update.
 - Latest pass: `Call` evaluated scalar name text carry.
 - Verdict: accepted as a localized render-text carry cut. Plain evaluated
   calls whose `name` node is already an exact scalar-text surface now stay on

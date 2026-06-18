@@ -176,8 +176,8 @@ describe('Call', () => {
 
     expect(rule.toTrimmedString({ writer })).toBe('rgb(100, 100, 100)');
     expect(writer.captures).toBe(0);
-    expect(writer.marks).toBe(1);
-    expect(writer.readbacks).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('serializes token CSS call arguments without source arg-list trim marks', () => {
@@ -189,8 +189,37 @@ describe('Call', () => {
 
     expect(rule.toTrimmedString({ writer })).toBe('var(--brand, red)');
     expect(writer.toString()).toBe('var(--brand, red)');
-    expect(writer.marks).toBe(1);
-    expect(writer.readbacks).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes scalar list call source args without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([list([num(10), num(20)]), num(30)])
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('fn(10, 20, 30)');
+    expect(writer.toString()).toBe('fn(10, 20, 30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes escaped scalar list call source args without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'func',
+      args: list([
+        paren(list([any('a'), any('b')]), { escaped: true }),
+        any('c')
+      ], { sep: ';' })
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('func(~(a, b); c)');
+    expect(writer.toString()).toBe('func(~(a, b); c)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('serializes call source syntax through direct child writers', () => {
