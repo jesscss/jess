@@ -103,6 +103,44 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `AtRule` render-dispatch helper split.
+- Verdict: accepted as a bounded serializer cut inside the active `AtRule`
+  row. `AtRule.render(...)` no longer allocates per-call local closures to
+  serialize evaluated at-rules, body-eval records, and leaf-render records; it
+  now dispatches through node-private methods that own the render-state
+  override boundary and the evaluated-value shape directly. No speed claim.
+- New traversal: none.
+- Review-flagged allocations: none added on the render path. The existing
+  print-state override fields are still used, but the per-call helper closure
+  ladder is gone.
+- New node/materialization: none.
+- Render path: evaluated at-rules, owned body-state records, and leaf render
+  records still render through the same direct serializer and render-buffer
+  paths; only the dispatch shape changed from local closures to node-private
+  methods.
+- Helper/API surface: three node-private methods,
+  `renderSerializedAtRule(...)`, `renderBodyRecord(...)`, and
+  `renderEvaluatedValue(...)`, replace the open-coded local render closures in
+  `render(...)` without adding public API.
+- Metadata mutations: none added.
+- Routine error control: one existing-style `try/finally` render-state restore
+  boundary remains in `renderSerializedAtRule(...)` so temporary print-state
+  overrides are always restored if container serialization throws. It is not a
+  semantic branch ladder.
+- Allocation changes: deleted the local `renderEvaluatedAtRule(...)`,
+  `renderBodyResult(...)`, and `renderEvaluated(...)` closures that `render()`
+  rebuilt on each call. The remaining `runtimeFrames?: (Ruleset | AtRule)[]`
+  parameter is the already-carried frame override itself, not a newly
+  materialized frame array.
+- Evidence: focused `at-rule.test.ts` coverage passed for resolved direct
+  render, owned body-state render, root-only hoist render, owned
+  collapse-nesting render without temporary derivation, and owned
+  collapse-nesting serialization without source frame getters. Full
+  `at-rule.test.ts`, `git diff --check`, and
+  `pnpm --filter @jesscss/core build` also passed. The current
+  `verify:aggressive-cutting-review` run still flags the restoration
+  `try/finally` and the carried `runtimeFrames` parameter for prosecution, but
+  no new node/materialization path was introduced.
 - Latest pass: `Call` known-text staging loop split.
 - Verdict: accepted as a bounded serializer cut inside the active `Call`
   row. The exact source/render fast-path helpers no longer allocate temporary

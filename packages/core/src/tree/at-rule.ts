@@ -915,108 +915,127 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     );
   }
 
+  private renderSerializedAtRule(
+    node: AtRule,
+    context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions,
+    evaluatedPrelude?: Node,
+    evaluatedBody?: Rules,
+    runtimeHoist?: boolean,
+    runtimeFrames?: (Ruleset | AtRule)[]
+  ): string {
+    const printState = isRenderBuffer(bufferOrOptions)
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const priorHeaderNode = printState.atRuleHeaderNode;
+    const priorHeaderPrelude = printState.atRuleHeaderPrelude;
+    const priorBodyNode = printState.atRuleBodyNode;
+    const priorBodyOverride = printState.atRuleBodyOverride;
+    const priorHoistNode = printState.atRuleHoistNode;
+    const priorHoistOverride = printState.atRuleHoistOverride;
+    const priorFrameNode = printState.atRuleFrameNode;
+    const priorFrameOverride = printState.atRuleFrameOverride;
+    if (evaluatedPrelude) {
+      printState.atRuleHeaderNode = node;
+      printState.atRuleHeaderPrelude = evaluatedPrelude;
+    }
+    if (evaluatedBody !== undefined) {
+      printState.atRuleBodyNode = node;
+      printState.atRuleBodyOverride = evaluatedBody;
+    }
+    if (runtimeHoist !== undefined) {
+      printState.atRuleHoistNode = node;
+      printState.atRuleHoistOverride = runtimeHoist;
+    }
+    if (runtimeFrames !== undefined) {
+      printState.atRuleFrameNode = node;
+      printState.atRuleFrameOverride = runtimeFrames;
+    }
+    try {
+      const rendered = serializeRulesContainer(node, printState);
+      return isRenderBuffer(bufferOrOptions)
+        ? writeRenderText(bufferOrOptions, rendered)
+        : rendered;
+    } finally {
+      printState.atRuleHeaderNode = priorHeaderNode;
+      printState.atRuleHeaderPrelude = priorHeaderPrelude;
+      printState.atRuleBodyNode = priorBodyNode;
+      printState.atRuleBodyOverride = priorBodyOverride;
+      printState.atRuleHoistNode = priorHoistNode;
+      printState.atRuleHoistOverride = priorHoistOverride;
+      printState.atRuleFrameNode = priorFrameNode;
+      printState.atRuleFrameOverride = priorFrameOverride;
+    }
+  }
+
+  private renderBodyRecord(
+    record: AtRuleBodyEvalRecord,
+    context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
+    const resultNode = record.resultNode;
+    const evaluatedBody = resultNode instanceof Nil
+      ? undefined
+      : (record.evaluatedBody ?? resultNode?.rules);
+    const runtimeHoist = record.output?.hoistToRoot !== this.hoistToRoot
+      ? record.output?.hoistToRoot
+      : undefined;
+    const runtimeFrames = record.output?.frames !== this.frames
+      ? record.output?.frames
+      : undefined;
+    return this.renderSerializedAtRule(
+      this,
+      context,
+      bufferOrOptions,
+      options,
+      record.evaluatedPrelude,
+      evaluatedBody !== this.rules ? evaluatedBody : undefined,
+      runtimeHoist,
+      runtimeFrames
+    );
+  }
+
+  private renderEvaluatedValue(
+    node: Node | AtRuleLeafState | AtRuleBodyEvalRecord,
+    context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string | MaybePromise<string> {
+    if (node instanceof Nil) {
+      return '';
+    }
+    if (node instanceof AtRule) {
+      return this.renderSerializedAtRule(
+        node,
+        context,
+        bufferOrOptions,
+        options,
+        undefined,
+        undefined,
+        undefined,
+        node === this ? node.getRenderFrames() : undefined
+      );
+    }
+    if (isAtRuleBodyEvalRecordResult(node)) {
+      return this.renderBodyRecord(node, context, bufferOrOptions, options);
+    }
+    if (isAtRuleLeafState(node)) {
+      return node.source.renderLeafValue(node.parts, context, bufferOrOptions, options);
+    }
+    return isRenderBuffer(bufferOrOptions)
+      ? node.render(context, bufferOrOptions, options)
+      : node.render(context, bufferOrOptions);
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    const renderEvaluatedAtRule = (
-      node: AtRule,
-      evaluatedPrelude?: Node,
-      evaluatedBody?: Rules,
-      runtimeHoist?: boolean,
-      runtimeFrames?: (Ruleset | AtRule)[]
-    ): string => {
-      const printState = isRenderBuffer(bufferOrOptions)
-        ? prepareBufferPrintState(context, options)
-        : prepareRenderPrintState(context, bufferOrOptions);
-      const priorHeaderNode = printState.atRuleHeaderNode;
-      const priorHeaderPrelude = printState.atRuleHeaderPrelude;
-      const priorBodyNode = printState.atRuleBodyNode;
-      const priorBodyOverride = printState.atRuleBodyOverride;
-      const priorHoistNode = printState.atRuleHoistNode;
-      const priorHoistOverride = printState.atRuleHoistOverride;
-      const priorFrameNode = printState.atRuleFrameNode;
-      const priorFrameOverride = printState.atRuleFrameOverride;
-      if (evaluatedPrelude) {
-        printState.atRuleHeaderNode = node;
-        printState.atRuleHeaderPrelude = evaluatedPrelude;
-      }
-      if (evaluatedBody !== undefined) {
-        printState.atRuleBodyNode = node;
-        printState.atRuleBodyOverride = evaluatedBody;
-      }
-      if (runtimeHoist !== undefined) {
-        printState.atRuleHoistNode = node;
-        printState.atRuleHoistOverride = runtimeHoist;
-      }
-      if (runtimeFrames !== undefined) {
-        printState.atRuleFrameNode = node;
-        printState.atRuleFrameOverride = runtimeFrames;
-      }
-      try {
-        const rendered = serializeRulesContainer(node, printState);
-        return isRenderBuffer(bufferOrOptions)
-          ? writeRenderText(bufferOrOptions, rendered)
-          : rendered;
-      } finally {
-        printState.atRuleHeaderNode = priorHeaderNode;
-        printState.atRuleHeaderPrelude = priorHeaderPrelude;
-        printState.atRuleBodyNode = priorBodyNode;
-        printState.atRuleBodyOverride = priorBodyOverride;
-        printState.atRuleHoistNode = priorHoistNode;
-        printState.atRuleHoistOverride = priorHoistOverride;
-        printState.atRuleFrameNode = priorFrameNode;
-        printState.atRuleFrameOverride = priorFrameOverride;
-      }
-    };
-    const renderBodyResult = (record: AtRuleBodyEvalRecord): string => {
-      const resultNode = record.resultNode;
-      if (!(resultNode instanceof AtRule) && !(resultNode instanceof Nil)) {
-        throw new TypeError('Expected at-rule body eval record to carry a result node');
-      }
-      const evaluatedBody = resultNode instanceof Nil
-        ? undefined
-        : (record.evaluatedBody ?? resultNode.rules);
-      const runtimeHoist = record.output?.hoistToRoot !== this.hoistToRoot
-        ? record.output?.hoistToRoot
-        : undefined;
-      const runtimeFrames = record.output?.frames !== this.frames
-        ? record.output?.frames
-        : undefined;
-      return renderEvaluatedAtRule(
-        this,
-        record.evaluatedPrelude,
-        evaluatedBody !== this.rules ? evaluatedBody : undefined,
-        runtimeHoist,
-        runtimeFrames
-      );
-    };
-    const renderEvaluated = (node: Node | AtRuleLeafState | AtRuleBodyEvalRecord): string | MaybePromise<string> => {
-      if (node instanceof Nil) {
-        return '';
-      }
-      if (node instanceof AtRule) {
-        return renderEvaluatedAtRule(
-          node,
-          undefined,
-          undefined,
-          undefined,
-          node === this ? node.getRenderFrames() : undefined
-        );
-      }
-      if (isAtRuleBodyEvalRecordResult(node)) {
-        return renderBodyResult(node);
-      }
-      if (isAtRuleLeafState(node)) {
-        return node.source.renderLeafValue(node.parts, context, bufferOrOptions, options);
-      }
-      return isRenderBuffer(bufferOrOptions)
-        ? node.render(context, bufferOrOptions, options)
-        : node.render(context, bufferOrOptions);
-    };
     const node = this.evalForRender(context);
     return isThenable(node)
-      ? node.then(renderEvaluated)
-      : renderEvaluated(node);
+      ? node.then(resolved => this.renderEvaluatedValue(resolved, context, bufferOrOptions, options))
+      : this.renderEvaluatedValue(node, context, bufferOrOptions, options);
   }
 
   /**
