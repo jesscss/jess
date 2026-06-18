@@ -11,7 +11,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
-import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 import { WARN, toDiagnostic } from '../jess-error.js';
 export type AmpersandValue = {
@@ -188,6 +188,16 @@ function getExactBasicSelectorText(selector: Selector): string | undefined {
     : undefined;
 }
 
+function getSelectorSyntaxText(selector: Selector): string {
+  const exactBasicText = getExactBasicSelectorText(selector);
+  if (exactBasicText !== undefined) {
+    return exactBasicText;
+  }
+  const writer = new OutputWriter(false);
+  selector.writeSyntax(getPrintOptions({ writer }));
+  return writer.toString();
+}
+
 function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
   if (
     isNode(baseSelector, N.PseudoSelector)
@@ -239,7 +249,7 @@ function mergeAmpersandTemplateSelector(
   const merged = new Array<Selector>(replacements.length);
   for (let i = 0; i < replacements.length; i++) {
     const item = replacements[i]!;
-    const value = getExactBasicSelectorText(item) ?? item.toTrimmedString();
+    const value = getSelectorSyntaxText(item);
     assertValidAmpersandTemplateJoin(appendValue, value);
     if (templateParts?.length === 2 && templateParts[0] === '' && templateParts[1]) {
       const result = appendSelector(item, templateParts[1]);

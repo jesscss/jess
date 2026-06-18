@@ -143,9 +143,11 @@ with `--no-verify` after the explicit gates pass.
   references. Full gates are required before commit.
 - Merge note: latest `origin/dev` also carries serialization work for
   `Operation`, `QueryCondition`, and scalar token-family at-rule header/leaf
-  syntax readback cuts; keep that progress in `NODE-REWRITE-TRACKER.md` while
-  this worktree continues binding/lookup. Review-flagged `CountingWriter`
-  constructions, custom syntax subclass constructions, scalar `any(...)`
-  fixtures, explicit `new Anonymous('html')`, and empty-arg `call(...)` test
-  fixtures are test-only proof scaffolding from serialization merges; they are
-  not new binding runtime machinery.
+  syntax readback cuts, plus Ruleset/Ampersand serialization cuts from the
+  latest merge; keep that progress in `NODE-REWRITE-TRACKER.md` while this
+  worktree continues binding/lookup. Review-flagged `CountingWriter`
+  constructions, detached `OutputWriter` header string boundaries, custom
+  syntax subclass constructions, scalar `any(...)` fixtures, explicit
+  `new Anonymous('html')`, and empty-arg `call(...)` test fixtures are
+  serialization proof scaffolding from merges; they are not new binding runtime
+  machinery.

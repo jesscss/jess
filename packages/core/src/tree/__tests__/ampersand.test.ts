@@ -538,13 +538,30 @@ describe('Ampersand', () => {
       rules: rules([])
     });
     context.rulesetFrames.push(frame);
+    let publicStringCalls = 0;
+    const originals = new Array<(typeof sourceSelector.selectors)[number]['toTrimmedString']>(sourceSelector.selectors.length);
+    for (let index = 0; index < sourceSelector.selectors.length; index++) {
+      const selector = sourceSelector.selectors[index]!;
+      originals[index] = selector.toTrimmedString;
+      selector.toTrimmedString = function countPublicStringTransport(
+        this: typeof selector,
+        ...args: Parameters<typeof selector.toTrimmedString>
+      ): ReturnType<typeof selector.toTrimmedString> {
+        publicStringCalls++;
+        return originals[index]!.apply(this, args);
+      };
+    }
 
     const resolved = await amp('&-theme').resolve(context);
+    for (let index = 0; index < sourceSelector.selectors.length; index++) {
+      sourceSelector.selectors[index]!.toTrimmedString = originals[index]!;
+    }
 
     expect(resolved).toBeInstanceOf(Selector);
     if (!(resolved instanceof Selector)) {
       throw new Error(`Expected Selector, got ${resolved.type}`);
     }
+    expect(publicStringCalls).toBe(0);
     expect(resolved.toTrimmedString()).toBe('.one > .child-theme,\n.two .child-theme');
     expect(resolved.hoistToRoot).toBe(true);
     const keySet = resolved.getKeySet(context);
