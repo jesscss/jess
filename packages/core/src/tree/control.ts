@@ -9,7 +9,7 @@ import { Condition } from './condition.js';
 import { VarDeclaration } from './declaration-var.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Range } from './range.js';
 import {
@@ -51,6 +51,16 @@ function makeDirectiveRulesPublic(rules: Rules) {
 
 function renderControlToString(render: (buffer: RenderBuffer) => MaybePromise<string>): MaybePromise<string> {
   return render(createRenderBuffer('flat'));
+}
+
+function writeControlChildSyntax(node: Node, options: FinalPrintOptions): void {
+  const saved = options.suppressBoundaryTrivia;
+  options.suppressBoundaryTrivia = 'pre';
+  try {
+    node.writeSyntax(options);
+  } finally {
+    options.suppressBoundaryTrivia = saved;
+  }
 }
 
 function trimControlTrailingNewline(buffer: RenderBuffer, out: string): string {
@@ -459,26 +469,30 @@ export class If extends Node<IfValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    this.writeSyntax(options);
+    return w.getSince(mark);
+  }
 
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     const [first, ...rest] = this.branches;
     w.add('$if', this);
     w.add(' (');
-    first?.condition?.toString(options);
+    first?.condition?.writeSyntax(options);
     w.add(') ');
     first?.rules.writeBraced(options);
 
     for (const br of rest) {
       if (br.condition) {
         w.add(' $else if (');
-        br.condition.toString(options);
+        br.condition.writeSyntax(options);
         w.add(') ');
       } else {
         w.add(' $else ');
       }
       br.rules.writeBraced(options);
     }
-
-    return w.getSince(mark);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
@@ -631,25 +645,22 @@ export class For extends Node<StructuredLoopValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const emitTrimmed = (node: Node) => {
-      const saved = options.suppressBoundaryTrivia;
-      options.suppressBoundaryTrivia = 'pre';
-      try {
-        node.toString(options);
-      } finally {
-        options.suppressBoundaryTrivia = saved;
-      }
-    };
+    this.writeSyntax(options);
+    return w.getSince(mark);
+  }
 
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     w.add('$for ', this);
     w.add('(');
     if (this.pattern.kind === 'single') {
-      this.pattern.value.toString(options);
+      this.pattern.value.writeSyntax(options);
     } else {
       w.add('[');
       const values = this.pattern.values;
       for (let i = 0; i < values.length; i++) {
-        values[i]!.toString(options);
+        values[i]!.writeSyntax(options);
         if (i < values.length - 1) {
           w.add(', ');
         }
@@ -658,9 +669,9 @@ export class For extends Node<StructuredLoopValue> {
     }
     w.add(' of ');
     if (this.iterable.kind === 'node') {
-      this.iterable.value.toString(options);
+      this.iterable.value.writeSyntax(options);
     } else {
-      emitTrimmed(this.iterable.start);
+      writeControlChildSyntax(this.iterable.start, options);
       if (!this.iterable.includeStart) {
         w.add('>');
       }
@@ -668,16 +679,15 @@ export class For extends Node<StructuredLoopValue> {
       if (!this.iterable.includeEnd) {
         w.add('<');
       }
-      emitTrimmed(this.iterable.end);
+      writeControlChildSyntax(this.iterable.end, options);
       if (this.iterable.step) {
         w.add(' step ');
-        emitTrimmed(this.iterable.step);
+        writeControlChildSyntax(this.iterable.step, options);
       }
     }
     w.add(')');
     w.add(' ');
     this.rules.writeBraced(options);
-    return w.getSince(mark);
   }
 
   private async renderIterations(
@@ -748,11 +758,17 @@ export class While extends Node<WhileValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    this.writeSyntax(options);
+    return w.getSince(mark);
+  }
+
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     w.add('$while (', this);
-    this.condition.toString(options);
+    this.condition.writeSyntax(options);
     w.add(') ');
     this.rules.writeBraced(options);
-    return w.getSince(mark);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {

@@ -103,31 +103,39 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Ruleset header caller-writer rollback cut in
-  `packages/core/src/tree/ruleset.ts`.
-- Verdict: accepted as a localized source/writeSyntax writer-readback cut. No
-  speed claim.
-- New traversal: none.
-- New node/materialization: no nodes or semantic materialization. Header string
-  capture now uses a detached `OutputWriter` instead of the caller writer
-  mark/get/restore window.
-- Render path: no render output path changed. `Ruleset.getHeaderString(...)`
-  still writes selector syntax directly; it just isolates the string boundary
-  from the caller writer.
-- Helper/API surface: none.
-- Metadata mutations: none.
-- Allocation changes: replaces caller-writer mark/get/restore traffic with a
-  detached writer allocation for the existing header string boundary. This is a
-  transport/isolation cut, not an allocation win.
-- Rejected/observed in this pass: deeper selector composition, body prep,
-  direct container writer splitting, wrappers, and render branches remain open
-  in the Ruleset row.
-- Evidence: focused `ruleset.test.ts` header slices, targeted ESLint,
-  `git diff --check`,
+- Latest pass: control source syntax writer cut in
+  `packages/core/src/tree/control.ts`, with the required bare parameter
+  `VarDeclaration.writeSyntax(...)` support and stale Paren helper deletion.
+- Verdict: accepted as localized source/writeSyntax string-transport cleanup.
+  No speed claim.
+- New traversal: no new production traversal; existing If branch and For tuple
+  loops moved from public string wrappers into `writeSyntax(...)`. The
+  review-flagged loop is test-only monkeypatch setup for source-header
+  children.
+- New node/materialization: no production nodes. Review-flagged `new If`,
+  `new For`, `new While`, `new Nil`, and `rules([])` are focused test fixtures.
+- Render path: no render output path changed. `$if`, `$for`, and `$while`
+  source serialization now writes child syntax through `writeSyntax(...)`;
+  runtime render/eval paths are untouched.
+- Helper/API surface: added `writeControlChildSyntax(...)` to replace the old
+  per-call range-bound closure and added private
+  `VarDeclaration.writeBareParameterSyntax(...)` so public wrappers and
+  control patterns share the same direct writer path.
+- Metadata mutations: no node metadata changes. `writeControlChildSyntax(...)`
+  temporarily saves/restores `suppressBoundaryTrivia`, preserving the old
+  range-bound closure behavior; the review-flagged `try` is that restoration,
+  not routine error control.
+- Allocation changes: removes the `$for` range-bound closure allocation and
+  deletes Paren's dead pre-writer child `toString(...)` helper. The remaining
+  public wrapper mark/readback boundaries are cold public string APIs.
+- Rejected/observed in this pass: control loop state/body surfaces and async
+  branch audit remain open; Paren's shared escaped-list string boundary remains
+  tied to `renderListValueSyntax(...)`. The review-flagged array-helper hit is
+  tracker-row wording, not production code.
+- Evidence: focused `control.test.ts`, `paren.test.ts`, and
+  `var-declaration.test.ts`, targeted ESLint, `git diff --check`, and
   `pnpm run verify:aggressive-cutting-review`, and
-  `pnpm --filter @jesscss/core build` passed. The aggressive verifier flags
-  only the intentional detached `OutputWriter` header string boundary covered
-  above.
+  `pnpm --filter @jesscss/core build` passed.
 - Merge-carried binding review: latest `origin/dev` also carries binding/lookup
   queue cleanup plus two rejected namespace-prefix shortcut audits. It is
   lookup-only: no render/stringification path changed, no runtime node

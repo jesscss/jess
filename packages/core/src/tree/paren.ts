@@ -37,23 +37,6 @@ function normalizeEscapedList(value: List): List {
   return new List([...value.items], { ...value.options, sep: ',' }).inherit(value);
 }
 
-function emitParenValue(value: Node, options: ReturnType<typeof getPrintOptions>): void {
-  if (options.trivia) {
-    emitTriviaTokens(
-      consumeTrivia(options.trivia, value.location[0], 'before', options),
-      options,
-      { skipLeadingWhitespace: true }
-    );
-  }
-  const saved = options.suppressBoundaryTrivia;
-  options.suppressBoundaryTrivia = 'pre';
-  try {
-    value.toString(options);
-  } finally {
-    options.suppressBoundaryTrivia = saved;
-  }
-}
-
 function writeParenValue(value: Node, options: FinalPrintOptions): void {
   if (options.trivia) {
     emitTriviaTokens(
