@@ -53,6 +53,7 @@ import {
   lookupScopeFrameCallable,
   lookupScopeFrameVariable,
   setScopeFrameDeclarationBinding,
+  type BindingCell,
   type ScopeFrame,
   type ScopeFrameCallableLookupResult
 } from './scope-frame.js';
@@ -67,7 +68,9 @@ import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
 import {
   blocksAmbientMixinOutputLookup,
+  canEnterMixinOutputForLookup,
   canEnterRulesEntryForLookup,
+  isPublicRulesEntry,
   type RulesEntryLike
 } from './util/mixin-output-slot.js';
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
@@ -925,6 +928,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         prepareCallableCoverage,
         this._hasReferenceImports
       );
+      this.prepareScopeFrameAssignmentBindings(this._scopeFrame);
     }
     return this._scopeFrame;
   }
@@ -988,6 +992,92 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       bucket.push(node);
     }
     return pendingDeclarationNames;
+  }
+
+  private prepareScopeFrameAssignmentBindings(frame: ScopeFrame): void {
+    const childBindings = this.collectPublicChildVariableAssignmentBindings(false);
+    if (!childBindings?.size) {
+      return;
+    }
+    for (const [name, cell] of childBindings) {
+      if (!frame.currentBindingsByName.has(name)) {
+        (frame.assignmentBindingsByName ??= new Map()).set(name, cell);
+      }
+    }
+  }
+
+  private collectPublicVariableAssignmentBindings(inheritedReadonly: boolean): Map<string, BindingCell> | undefined {
+    let out: Map<string, BindingCell> | undefined;
+    const localReadonly = inheritedReadonly || Boolean(this.options.readonly);
+    if (this.options.rulesVisibility?.VarDeclaration === 'public') {
+      const value = this.rules;
+      for (let i = 0; i < value.length; i++) {
+        const node = value[i]!;
+        if (
+          !isNode(node, N.VarDeclaration)
+          || node.options?.setDefined
+          || !this._hasStaticName(node)
+        ) {
+          continue;
+        }
+        (out ??= new Map()).set(String(node.name.valueOf()), {
+          value: node.valueNode,
+          sourceNode: node,
+          readonly: localReadonly || Boolean(node.options?.readonly)
+        });
+      }
+    }
+
+    const childBindings = this.collectPublicChildVariableAssignmentBindings(localReadonly);
+    if (!childBindings?.size) {
+      return out;
+    }
+    out ??= new Map();
+    for (const [name, cell] of childBindings) {
+      if (!out.has(name)) {
+        out.set(name, cell);
+      }
+    }
+    return out;
+  }
+
+  private collectPublicChildVariableAssignmentBindings(inheritedReadonly: boolean): Map<string, BindingCell> | undefined {
+    const childEntries = this.collectDirectDeclarationChildEntries();
+    if (!childEntries?.length) {
+      return undefined;
+    }
+    let out: Map<string, BindingCell> | undefined;
+    for (let i = childEntries.length - 1; i >= 0; i--) {
+      const entry = childEntries[i]!;
+      if (
+        entry.hasVarDeclarationSurface === false
+        && entry.hasReferenceImportSurface !== true
+      ) {
+        continue;
+      }
+      if (!canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration' })) {
+        continue;
+      }
+      if (!canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration' })) {
+        continue;
+      }
+      if (!isPublicRulesEntry(entry, 'VarDeclaration')) {
+        continue;
+      }
+      const entryBindings = entry.node.collectPublicVariableAssignmentBindings(
+        inheritedReadonly || Boolean(entry.readonly)
+      );
+      if (!entryBindings?.size) {
+        continue;
+      }
+      out ??= new Map();
+      for (const [name, cell] of entryBindings) {
+        if (!out.has(name)) {
+          out.set(name, cell);
+        }
+      }
+    }
+    return out;
   }
 
   private hasReferenceImportLookupSurface(): boolean {
@@ -3408,7 +3498,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           const variableHit = lookupScopeFrameVariable(this._scopeFrame, key, {
             bailOnPendingDeclarations: true,
             blockedSource: source => source === node,
-            filter: source => source !== node
+            filter: source => source !== node,
+            includeAssignmentTargets: true
           });
           if (variableHit.kind === 'live' || variableHit.kind === 'declaration') {
             if (variableHit.cell.readonly) {

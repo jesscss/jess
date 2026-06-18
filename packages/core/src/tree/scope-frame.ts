@@ -132,6 +132,14 @@ export interface ScopeFrame {
   currentBindingsByName: Map<string, BindingCell>;
 
   /**
+   * Assignment-only binding cells contributed by public child/import surfaces.
+   * Ordinary reads do not consult this map; it exists so `setDefined` can
+   * update or reject imported/current assignment targets without reopening the
+   * recursive child declaration crawl.
+   */
+  assignmentBindingsByName?: Map<string, BindingCell>;
+
+  /**
    * Bumped when a current binding pointer changes. In-place cell value writes
    * keep cached handles valid because reference reads still dereference the
    * live cell.
@@ -401,6 +409,7 @@ export function lookupScopeFrameVariable(
     blockedSource?: (node: Node) => boolean;
     includeLive?: boolean;
     includeDeclarations?: boolean;
+    includeAssignmentTargets?: boolean;
     bailOnPendingDeclarations?: boolean;
   }
 ): ScopeFrameVariableLookupResult {
@@ -446,6 +455,28 @@ export function lookupScopeFrameVariable(
             };
           }
           currentCellRejectedByGuard = true;
+        }
+      }
+
+      if (
+        start === undefined
+        && options?.includeAssignmentTargets === true
+        && options?.includeDeclarations !== false
+      ) {
+        const assignmentCell = f.assignmentBindingsByName?.get(name);
+        const sourceNode = assignmentCell?.sourceNode;
+        if (
+          assignmentCell
+          && sourceNode
+          && !options?.blockedSource?.(sourceNode)
+          && (!options?.filter || options.filter(sourceNode))
+        ) {
+          return {
+            kind: 'declaration',
+            cell: assignmentCell,
+            sourceNode,
+            frame: f
+          };
         }
       }
 

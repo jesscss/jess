@@ -29,7 +29,7 @@ import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
-import { setScopeFrameLiveBinding } from '../scope-frame.js';
+import { lookupScopeFrameVariable, setScopeFrameLiveBinding } from '../scope-frame.js';
 import {
   findAnyDeclarationOccurrence,
   findPropertyDeclarationOccurrence,
@@ -1716,6 +1716,161 @@ describe('Rules', () => {
         }
       });
 
+      it('keeps imported setDefined assignment targets out of ordinary current variable reads', () => {
+        const imported = rules([
+          vardecl({ name: 'one', value: any('one') })
+        ], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const node = rules([imported]);
+        const frame = node.getScopeFrame(undefined, false);
+
+        expect(lookupScopeFrameVariable(frame, 'one').kind).toBe('miss');
+        expect(lookupScopeFrameVariable(frame, 'one', { includeAssignmentTargets: true }).kind).toBe('declaration');
+      });
+
+      it('rejects readonly imported setDefined assignment cells without direct occurrence crawl', () => {
+        const importedDecl = vardecl({ name: 'one', value: any('one') });
+        const imported = rules([importedDecl], {
+          readonly: true,
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const assignedValue = any('three');
+        assignedValue.eval = () => {
+          throw new Error('readonly imported setDefined path should not evaluate assignment value');
+        };
+        const assignment = vardecl(
+          { name: 'one', value: assignedValue },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          imported,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        child.scopeFrame = child.getScopeFrame(parentFrame, false);
+        const originalParentValue = node.value;
+        const originalImportedValue = imported.value;
+        const originalChildValue = child.value;
+
+        Object.defineProperties(node, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('readonly imported setDefined path should not crawl parent Rules.value');
+            }
+          }
+        });
+        Object.defineProperties(imported, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('readonly imported setDefined path should not crawl imported Rules.value');
+            }
+          }
+        });
+        Object.defineProperties(child, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('readonly imported setDefined path should not crawl child Rules.value');
+            }
+          }
+        });
+
+        try {
+          expect(() => child.registerNode(assignment, undefined, context)).toThrowError('"one" is readonly');
+        } finally {
+          Object.defineProperty(child, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalChildValue
+          });
+          Object.defineProperty(imported, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalImportedValue
+          });
+          Object.defineProperty(node, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalParentValue
+          });
+        }
+
+        expect(importedDecl.valueNode.toString()).toBe('one');
+      });
+
+      it('updates writable imported setDefined assignment cells without direct occurrence crawl', () => {
+        const importedDecl = vardecl({ name: 'one', value: any('one') });
+        const imported = rules([importedDecl], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          imported,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        child.scopeFrame = child.getScopeFrame(parentFrame, false);
+        const originalParentValue = node.value;
+        const originalImportedValue = imported.value;
+        const originalChildValue = child.value;
+
+        Object.defineProperties(node, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('writable imported setDefined path should not crawl parent Rules.value');
+            }
+          }
+        });
+        Object.defineProperties(imported, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('writable imported setDefined path should not crawl imported Rules.value');
+            }
+          }
+        });
+        Object.defineProperties(child, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('writable imported setDefined path should not crawl child Rules.value');
+            }
+          }
+        });
+
+        try {
+          child.registerNode(assignment, undefined, context);
+        } finally {
+          Object.defineProperty(child, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalChildValue
+          });
+          Object.defineProperty(imported, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalImportedValue
+          });
+          Object.defineProperty(node, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalParentValue
+          });
+        }
+
+        expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
+        expect(importedDecl.valueNode.toString()).toBe('three');
+      });
+
       it('keeps property setDefined on declaration occurrence insertion fallback', () => {
         const assignment = decl(
           { name: any('color'), value: any('blue') },
@@ -1791,8 +1946,7 @@ describe('Rules', () => {
         expect(getVarWithContext(context, node, 'one')?.toTrimmedString()).toBe('$one: three');
       });
 
-      // @todo: Fix nested readonly rules inheritance - variables in nested readonly Rules aren't being found
-      it.skip('fails to set if existing variable is in readonly rules', async () => {
+      it('fails to set if existing variable is in readonly rules', async () => {
         let node = rules([
           rules([
             vardecl({ name: 'one', value: any('one') })
@@ -1810,8 +1964,7 @@ describe('Rules', () => {
         }).rejects.toThrowError('"one" is readonly');
       });
 
-      // @todo: Fix nested readonly rules inheritance - variables in nested readonly Rules aren't being found
-      it.skip('fails to set if existing variable is in nested readonly rules #1', async () => {
+      it('fails to set if existing variable is in nested readonly rules #1', async () => {
         let node = rules([
           rules([
             rules([
@@ -1833,8 +1986,7 @@ describe('Rules', () => {
         }).rejects.toThrowError('"one" is readonly');
       });
 
-      // @todo: Fix nested readonly rules inheritance - variables in nested readonly Rules aren't being found
-      it.skip('fails to set if existing variable is in nested readonly rules #2', async () => {
+      it('fails to set if existing variable is in nested readonly rules #2', async () => {
         let node = rules([
           rules([
             rules([

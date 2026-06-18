@@ -103,36 +103,46 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding implementation pass closing covered static variable
-  `setDefined` fallback deletion after same-scope assignment-target modeling.
-- Verdict: accepted as a tighter frame authority boundary.
-  `Rules.registerNode(...)` now treats a covered
-  `lookupScopeFrameVariable(...)` miss as authoritative for static
-  `VarDeclaration` `setDefined` writes, so covered same-scope, parent-frame,
-  and missing variable assignments no longer fall through to
-  `findWritableSetDefinedDeclarationOccurrence(...)`. Property `setDefined`
-  and dynamic/uncovered variable assignments remain deliberately on the old
-  fallback. No speed claim.
-- New traversal: no production traversal was added. The implementation removes
-  later occurrence traversal for covered variable hit/miss paths by letting the
-  modeled frame hit/readonly/miss result decide the branch before fallback.
-- Review-flagged allocations: no production allocation was added. New
-  `rules.test.ts` scaffolding uses temporary `Rules.value` accessors and
-  thrown errors to prove same-scope writes, parent-frame writes, and covered
-  misses do not crawl `Rules.value`; `try/finally` is test-only restoration
-  for those hostile accessors. The production `ReferenceError` is not a new
-  routine miss allocation path: static covered `setDefined` variable misses
-  already failed with the same message after direct occurrence fallback, and
-  this pass moves that exceptional failure to the frame-authoritative branch
-  only after coverage proves there is no reachable binding. Existing property
-  insertion scaffolding still proves property assignments stay on insertion
-  fallback.
+- Latest pass: binding implementation pass closing modeled imported
+  `setDefined` assignment targets and deleting the variable fallback for those
+  covered import facts.
+- Verdict: accepted as an assignment-specific frame-state step.
+  `ScopeFrame.assignmentBindingsByName` carries public child/import variable
+  cells for `setDefined` only; ordinary `lookupScopeFrameVariable(...)` reads
+  still ignore imported assignment cells unless the caller opts in with
+  `includeAssignmentTargets`. `Rules.registerNode(...)` now handles modeled
+  live/current, same-scope, parent-frame, writable import, readonly import,
+  and covered-miss static variable assignments before the old occurrence
+  fallback. Property `setDefined` and dynamic/uncovered variable assignments
+  remain deliberately on the old fallback. No speed claim.
+- New traversal: this pass adds frame-prep recursion over public child
+  variable surfaces in `collectPublicChildVariableAssignmentBindings(...)`.
+  That traversal is accepted only because it moves repeated assignment-time
+  child lookup into one frame-prep fact and unblocks deletion of the variable
+  occurrence fallback for modeled imports. It is recorded as follow-up item 46:
+  replace the prep recursion with carried child surface summaries from
+  registration once the needed facts are already known.
+- Review-flagged allocations: production now lazily allocates
+  `assignmentBindingsByName` only for `ScopeFrame`s that have modeled public
+  child/import variable assignment facts, and creates assignment-only
+  `BindingCell` objects for those declarations.
+  Those cells are semantic placement state for assignment targets, not ordinary
+  read cache entries, and focused tests prove ordinary current reads do not see
+  them. New `rules.test.ts` scaffolding uses temporary `Rules.value` accessors,
+  thrown errors, and `try/finally` restoration to prove writable/readonly
+  imported assignments do not crawl parent, imported, or assignment child
+  `Rules.value`, and readonly assignment rejects before RHS eval.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production arrays were added.
 - Render path: no render/stringification path changed.
-- Helper/API surface: no helper or public API was added.
+- Helper/API surface: `ScopeFrame` gained assignment-target frame state and
+  `lookupScopeFrameVariable(...)` gained the internal `includeAssignmentTargets`
+  option used by `setDefined`; no public Jess API was added.
 - Metadata mutations: none.
-- Allocation changes: no production allocation changes.
+- Allocation changes: one lazy frame-owned Map plus assignment `BindingCell`
+  entries only when public child/import variable assignment facts are modeled.
+  Follow-up item 46 exists specifically to remove the recursive rediscovery
+  and keep this from becoming a broader child-surface cache.
 - Evidence: focused `import-style.test.ts` slices prove configured `with`/`set`
   child-surface property hits and reference-import selector-list/nested
   property hits stay off `Rules.find(...)`; focused `reference.test.ts` slices

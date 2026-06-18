@@ -664,7 +664,7 @@ parent-frame writes, and covered misses; dynamic/uncovered variable writes
 still retain the old fallback branch because `uncovered` is the only modeled
 non-hit state allowed to continue.
 
-43. [ ] Carry readonly imported variable assignment facts into modeled
+43. [x] Carry readonly imported variable assignment facts into modeled
 `setDefined` frame writes. Scope: readonly child/imported Rules entries,
 `ScopeFrame.currentBindingsByName`, `findWritableSetDefinedDeclarationOccurrence(...)`,
 and import visibility. Goal: reject variable `setDefined` writes against
@@ -672,12 +672,16 @@ readonly imported/current cells through frame state instead of relying on
 occurrence fallback inheritance. Acceptance: focused import/child rules tests
 prove readonly variable assignments fail before occurrence crawl, while
 non-readonly imported variables still update through the modeled cell. Current
-note: imported variables currently sit on child-rule lookup surfaces rather
-than `ScopeFrame.currentBindingsByName`; solve this by carrying the assignment
-fact into frame state without creating a new by-name child-surface registry or
-changing ordinary read order.
+evidence: `ScopeFrame.assignmentBindingsByName` now carries assignment-only
+public child/import variable cells prepared from direct child-entry visibility
+facts. Ordinary `lookupScopeFrameVariable(...)` reads do not consult those
+cells; the `setDefined` path opts in with `includeAssignmentTargets`. Focused
+`rules.test.ts` proofs poison parent/imported/child `Rules.value`, reject
+readonly imported assignments before RHS eval, update writable imported
+assignments through the modeled source cell, and prove ordinary current reads
+still miss assignment-only import cells.
 
-44. [ ] Delete variable `setDefined` fallback entry for modeled readonly
+44. [x] Delete variable `setDefined` fallback entry for modeled readonly
 import facts after item 43 lands. Scope: the static `VarDeclaration`
 `setDefined` branch in `Rules.registerNode(...)`, readonly import/current
 cells, and the variable arm of
@@ -688,6 +692,36 @@ property/non-variable fallback. Acceptance: tests prove readonly imported
 variables reject through the frame without occurrence crawl, writable imported
 variables update through the modeled cell, covered misses throw directly, and
 only uncovered dynamic names reach the old variable occurrence fallback.
+Current evidence: static `VarDeclaration` `setDefined` now reaches the old
+variable occurrence fallback only when `lookupScopeFrameVariable(...)` returns
+`uncovered`; modeled live/current, same-scope declaration, parent-frame
+declaration, imported writable, imported readonly, and covered miss cases all
+return or throw before fallback. The formerly skipped readonly nested child
+rules tests are active and green, while the later writable child countercase
+still proves readonly is not preserved past a newer writable public variable
+surface.
+
+45. [ ] Split optional child variable assignment targets from public imported
+assignment targets. Scope: optional `VarDeclaration` child visibility,
+`ScopeFrame.assignmentBindingsByName`, direct lookup optional match
+precedence, and `setDefined` fallback. Goal: carry optional assignment facts
+only when direct lookup would use the optional target, without changing
+ordinary reads or making public imports wait for optional scans. Acceptance:
+focused public-vs-optional child tests prove public wins stay modeled,
+optional-only positives either model or explicitly remain uncovered, and
+mixed optional/public source-order cases match direct lookup behavior without
+recursive fallback on covered public hits.
+
+46. [ ] Replace assignment-target frame prep recursion with carried child
+surface summaries where registration already knows the facts. Scope:
+`collectPublicChildVariableAssignmentBindings(...)`,
+`addDirectDeclarationChildRuleEntry(...)`, late imported Rules registration,
+and readonly/current cell reuse. Goal: avoid recursive child surface scans
+during frame prep when child entries can carry whether public static variable
+assignment cells exist. Acceptance: no behavior change in readonly/import
+tests, aggressive review accounts for the removed prep recursion, and focused
+counter tests prove dynamic/uncovered children still route to fallback instead
+of becoming false covered misses.
 
 ## Latest Binding Baseline
 
