@@ -103,6 +103,39 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Declaration` outer source-capture readback split.
+- Verdict: accepted as a bounded `Declaration` serializer cut. Public
+  declaration source capture no longer wraps `writeDeclarationValueSyntax(...)`
+  in a second declaration-level `mark()/getSince()` readback window just to
+  return the text it already emitted; it now recovers the local declaration
+  text from the active writer tail while preserving the still-needed inner
+  value-formatting replacement window. No speed claim.
+- New traversal: one straight chunk join over the active writer tail in a new
+  node-local helper inside `packages/core/src/tree/declaration.ts`. This
+  replaces the outer declaration capture window; it does not add a new scan
+  over unrelated declaration state.
+- Review-flagged allocations: none added on the production path.
+- New node/materialization: none.
+- Render path: declaration render still stringifies directly through the owned
+  declaration writer. The pass changes only public source capture and does not
+  materialize temporary declarations, nodes, or arrays to recover text.
+- Helper/API surface: one node-local helper,
+  `getWriterTextSincePosition(...)`, was added in
+  `packages/core/src/tree/declaration.ts`. It replaces the outer
+  `declValueTrimmedString(...)` readback wrapper; no public API changed.
+- Metadata mutations: one localized generic read,
+  `Reflect.get(writer, 'chunks')`, is boxed inside the node-local helper
+  because `OutputWriter` still exposes `position()` but not a cold/internal
+  tail-text reader.
+- Routine error control: none added.
+- Allocation changes: deletes the outer declaration-level `mark()/getSince()`
+  capture from `declValueTrimmedString(...)`. The remaining single readback on
+  the covered simple path belongs to the still-live non-custom value
+  formatting `replaceSince(...)` window.
+- Evidence: focused `declaration.test.ts` cases for non-custom declaration
+  syntax without outer string readback and declaration source capture without
+  the outer declaration readback both passed.
+
 - Latest pass: `Block` child public-string transport split.
 - Verdict: accepted as a bounded `Block` serializer cut. Block source/render
   syntax no longer routes child output through public `toString(...)` before

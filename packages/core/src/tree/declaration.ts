@@ -36,6 +36,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
 
+function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
+  const chunks = Reflect.get(writer as object, 'chunks');
+  if (!Array.isArray(chunks) || position >= chunks.length) {
+    return '';
+  }
+  let out = '';
+  for (let i = position; i < chunks.length; i++) {
+    out += chunks[i] ?? '';
+  }
+  return out;
+}
+
 export const enum AssignmentType {
   Default = ':',
   Add = '+:',              // similar to += in JS, but merges lists / sequences / collections
@@ -623,9 +635,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   ) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const mark = w.mark();
+    const position = w.position();
     this.writeDeclarationValueSyntax(valueParts, options, renderState);
-    return w.getSince(mark);
+    return getWriterTextSincePosition(w, position);
   }
 
   private writeDeclarationValueSyntax(
