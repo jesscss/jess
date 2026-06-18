@@ -158,6 +158,14 @@ with `--no-verify` after the explicit gates pass.
   boundary, and `new WholeBufferCountingWriter()` / thrown test errors are
   focused rules/ruleset proof scaffolding. No binding lookup runtime path
   changed.
+- Merge-carried serialization review: latest `origin/dev` also carries the
+  duplicate declaration scratch-trivia cut in
+  `packages/core/src/tree/util/serialize-helper.ts`. Duplicate comparison
+  reuses `withScratchEmittedTrivia(...)` instead of allocating a bespoke
+  emitted-trivia side set per repeated declaration. Review-flagged detached
+  writers, `WholeBufferCountingWriter`, thrown test errors, and `try/finally`
+  are serialization proof scaffolding or existing string-boundary comparison
+  state. No binding lookup runtime path changed.
 - Merge-carried binding review: latest `origin/dev` also carries
   strategy-owned rules lookup handle policy in
   `packages/core/src/tree/reference.ts` and the binding verifier. It is
