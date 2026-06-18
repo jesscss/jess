@@ -103,33 +103,39 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `AtRule` scalar leaf direct-write path.
-- Verdict: accepted as a bounded leaf-header transport cut. Scalar no-trivia
-  leaf at-rules now write their own header directly in `AtRule.writeSyntax(...)`
-  instead of routing through `getHeaderString(...)`, and
-  `serializeRulesContainer(...)` now trusts `node.writeSyntax(...)` for leaf
-  output instead of calling `getHeaderString(...)` itself. Comment-bearing and
-  non-scalar leaf headers stay on the detached string path. No speed claim.
+- Latest pass: `AtRule` no-trivia leaf direct-write widening.
+- Verdict: accepted as a bounded leaf-header transport cut. No-trivia leaf
+  at-rules now keep both scalar and non-scalar comment-free headers off
+  `getHeaderString(...)`: `AtRule.writeSyntax(...)` owns the leaf header
+  directly, and `serializeRulesContainer(...)` trusts `node.writeSyntax(...)`
+  for leaf output instead of calling `getHeaderString(...)` itself.
+  Comment-bearing leaf headers still stay on the detached string path. No speed
+  claim.
 - New traversal: none.
 - New node/materialization: none.
 - Render path: serializer leaf at-rule output now goes through the node-owned
   `writeSyntax(...)` boundary, so the active writer sees the leaf syntax
-  directly when the node can emit it directly. Non-scalar/comment-bearing leaf
-  headers still fall back inside `AtRule.writeSyntax(...)` to `getHeaderString(...)`.
+  directly when the node can emit it directly. Comment-free no-trivia non-scalar
+  leaf headers now use localized caller-writer capture instead of detached
+  header-string transport; comment-bearing leaf headers still fall back inside
+  `AtRule.writeSyntax(...)` to `getHeaderString(...)`.
 - Helper/API surface: one node-local helper,
-  `writeDirectLeafAtRuleHeader(...)`, to keep the direct scalar/no-trivia leaf
-  contract narrow and let the existing detached header helper own the rest.
+  `writeDirectLeafAtRuleHeader(...)`, widened to cover comment-free no-trivia
+  non-scalar leaf headers while keeping the detached header helper for the
+  remaining comment-bearing cases.
 - Metadata mutations: none added.
 - Routine error control: none added.
-- Allocation changes: none new on the direct scalar/no-trivia leaf path; this
-  pass deletes direct serializer dependence on `getHeaderString(...)` for leaf
-  output and keeps detached string allocation only for the remaining non-scalar
-  or comment-bearing leaf header cases.
-- Rejected/observed in this pass: this does not yet rewrite non-scalar header
-  fragment capture, post-prelude comment trivia, or body/header string assembly.
+- Allocation changes: none new on the direct leaf path beyond localized
+  caller-writer mark/read/restore for comment-free no-trivia non-scalar header
+  fragments; this pass keeps detached string allocation only for the remaining
+  comment-bearing leaf header cases.
+- Rejected/observed in this pass: this does not yet rewrite comment-bearing
+  header fragment capture, post-prelude comment trivia, or body/header string
+  assembly.
 - Evidence: focused `at-rule.test.ts` and `ruleset.test.ts` coverage now proves
   scalar leaf at-rules write with zero marks/reads/restores and avoid
-  `getHeaderString(...)`, while static ruleset source/render paths with leaf
+  `getHeaderString(...)`, no-trivia non-scalar leaf at-rules also avoid
+  `getHeaderString(...)`, and static ruleset source/render paths with leaf
   at-rules still succeed even when `leaf.getHeaderString(...)` is poisoned.
   Full commit-boundary gates still need to run after this handoff update.
 - Latest pass: `Call` no-trivia source arg direct-write fallback.

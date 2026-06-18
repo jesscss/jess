@@ -132,16 +132,32 @@ function writeDirectLeafAtRuleHeader(
   if (options.trivia) {
     return false;
   }
-  const nameText = atRuleScalarTokenText(parts.name);
+  if (hasCommentChild(parts.name) || hasCommentChild(parts.prelude)) {
+    return false;
+  }
+  const w = options.writer;
+  const readNodeText = (node: Node): string | undefined => {
+    const scalarText = atRuleScalarTokenText(node);
+    if (scalarText !== undefined) {
+      return scalarText;
+    }
+    const mark = w.mark();
+    try {
+      node.writeSyntax(options);
+      return w.getSince(mark);
+    } finally {
+      w.restore(mark);
+    }
+  };
+  const nameText = readNodeText(parts.name);
   if (nameText === undefined) {
     return false;
   }
   const prelude = parts.prelude;
-  const preludeText = prelude ? atRuleScalarTokenText(prelude) : '';
+  const preludeText = prelude ? readNodeText(prelude) : '';
   if (prelude && preludeText === undefined) {
     return false;
   }
-  const w = options.writer;
   const idt = indent(options.depth);
   if (idt) {
     w.add(idt);
