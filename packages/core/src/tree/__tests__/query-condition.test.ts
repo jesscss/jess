@@ -77,6 +77,24 @@ class WritingNode extends ReturnOnlyNode {
   }
 }
 
+class AsyncWritingStaticNode extends Node<string> {
+  constructor(value: string) {
+    super(value);
+    this.addFlag(F_MAY_ASYNC);
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    const text = `source-${this.value}`;
+    getPrintOptions(options).writer.add(text);
+    return text;
+  }
+
+  override async render(_context: Context, options?: PrintOptions): Promise<string> {
+    getPrintOptions(options).writer.add(this.value);
+    return `returned-${this.value}`;
+  }
+}
+
 async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
   const evald = await node.eval(context);
   expect(evald).toBeInstanceOf(RulesClass);
@@ -534,7 +552,7 @@ describe('QueryCondition', () => {
     expect(writer.hasContentReads).toBe(0);
   });
 
-  it('keeps custom operation syntax overrides on the static fallback path', () => {
+  it('keeps custom operation syntax overrides on the static compatibility lane', () => {
     class CustomOperation extends Operation {
       override writeSyntax(options: Parameters<Operation['writeSyntax']>[0]): void {
         options.writer.add('custom-operation');
@@ -555,7 +573,7 @@ describe('QueryCondition', () => {
     expect(writer.hasContentReads).toBe(0);
   });
 
-  it('keeps custom condition syntax overrides on the static fallback path', () => {
+  it('keeps custom condition syntax overrides on the static compatibility lane', () => {
     class CustomCondition extends Condition {
       override writeSyntax(options: Parameters<Condition['writeSyntax']>[0]): void {
         options.writer.add('(custom-condition)');
@@ -576,7 +594,7 @@ describe('QueryCondition', () => {
     expect(writer.hasContentReads).toBe(0);
   });
 
-  it('keeps custom paren syntax overrides on the static fallback path', () => {
+  it('keeps custom paren syntax overrides on the static compatibility lane', () => {
     class CustomParen extends Paren {
       override writeSyntax(options: Parameters<Paren['writeSyntax']>[0]): void {
         options.writer.add('(custom)');
@@ -597,7 +615,7 @@ describe('QueryCondition', () => {
     expect(writer.hasContentReads).toBe(0);
   });
 
-  it('keeps static fallback query returns local when the writer already has content', () => {
+  it('keeps static compatibility-lane query returns local when the writer already has content', () => {
     class CustomParen extends Paren {
       override writeSyntax(options: Parameters<Paren['writeSyntax']>[0]): void {
         options.writer.add('(custom)');
@@ -665,6 +683,47 @@ describe('QueryCondition', () => {
     ]);
 
     const rendered = node.render(context, { writer });
+
+    expect(rendered).toBe('screen and written');
+    expect(writer.toString()).toBe('prefix|screen and written');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(writer.hasContentReads).toBe(0);
+    expect(writer.captures).toBe(0);
+  });
+
+  it('preserves async static custom children that write different text than they return', async () => {
+    const writer = new CountingWriter();
+    const node = query([
+      any('screen'),
+      any('and'),
+      new AsyncWritingStaticNode('written')
+    ]);
+    node.addFlag(F_MAY_ASYNC);
+    node.removeFlag(F_STATIC);
+
+    const rendered = await Promise.resolve(node.render(context, { writer }));
+
+    expect(rendered).toBe('screen and written');
+    expect(writer.toString()).toBe(rendered);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(writer.hasContentReads).toBe(0);
+    expect(writer.captures).toBe(0);
+  });
+
+  it('keeps async static custom child recovery local when the writer already has content', async () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const node = query([
+      any('screen'),
+      any('and'),
+      new AsyncWritingStaticNode('written')
+    ]);
+    node.addFlag(F_MAY_ASYNC);
+    node.removeFlag(F_STATIC);
+
+    const rendered = await Promise.resolve(node.render(context, { writer }));
 
     expect(rendered).toBe('screen and written');
     expect(writer.toString()).toBe('prefix|screen and written');

@@ -103,6 +103,69 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `QueryCondition` static-async writer-tail recovery split.
+- Verdict: accepted as a bounded `QueryCondition` serializer cut. Static async
+  custom query children that write different text than they return no longer
+  recover that local text through `hasContentSince(before)` plus
+  `getSince(before)`; the static child branch now uses plain writer-position
+  checks and active-writer tail recovery while preserving the same
+  custom-versus-direct child contract. No speed claim.
+- New traversal: none beyond the already-prosecuted straight chunk join in the
+  existing `getWriterTextSincePosition(...)` helper.
+- Review-flagged allocations: none added on the production path.
+- New node/materialization: none.
+- Render path: query-condition render still stringifies directly. The pass
+  deletes the remaining static-async custom child readback boundary; it does
+  not materialize intermediate nodes, arrays, or wrapper queries to recover
+  text.
+- Helper/API surface: none added. The pass reuses the existing
+  `getWriterTextSincePosition(...)` helper inside
+  `packages/core/src/tree/query-condition.ts`.
+- Metadata mutations: none added beyond the previously-prosecuted localized
+  `Reflect.get(writer, 'chunks')` read already boxed inside that helper.
+- Routine error control: none added.
+- Allocation changes: deletes the static-async custom child
+  `hasContentSince(before)` plus `getSince(before)` recovery in
+  `renderQueryConditionChild(...)`.
+- Evidence: focused `query-condition.test.ts` cases for custom dynamic
+  return-only recovery, custom dynamic differing-text recovery, prefixed-writer
+  dynamic recovery, async static custom differing-text recovery, and
+  prefixed-writer async static recovery all passed.
+
+- Latest pass: `QueryCondition` localized dynamic writer-tail recovery split.
+- Verdict: accepted as a bounded `QueryCondition` serializer cut. Dynamic
+  custom query children that write different text than they return no longer
+  recover that local text through `getSince(before)`; the localized ownership
+  branch now reads the active writer tail directly while preserving the same
+  custom-versus-trusted child contract. No speed claim.
+- New traversal: one straight chunk join over the active writer tail in the
+  existing `getWriterTextSincePosition(...)` helper. This replaces the
+  previous localized `getSince(before)` recovery in custom dynamic child
+  branches and does not add a new scan over unrelated query state.
+- Review-flagged allocations: none added on the production path.
+- New node/materialization: none.
+- Render path: query-condition render still stringifies directly. The pass
+  deletes the localized dynamic-child readback boundary for custom children
+  that write different text than they return; it does not materialize
+  intermediate nodes, arrays, or wrapper queries to recover text.
+- Helper/API surface: none added. The pass reuses the existing
+  `getWriterTextSincePosition(...)` helper inside
+  `packages/core/src/tree/query-condition.ts`.
+- Metadata mutations: no new metadata mutations. The previously-prosecuted
+  localized `Reflect.get(writer, 'chunks')` read remains boxed inside the
+  existing helper for lack of a cold/internal tail-text reader on
+  `OutputWriter`.
+- Routine error control: none added.
+- Allocation changes: deletes the localized `getSince(before)` recovery from
+  the sync and async custom dynamic child branches in
+  `renderQueryConditionChild(...)`.
+- Evidence: focused `query-condition.test.ts` cases for custom operation,
+  custom condition, custom paren, prefixed-writer static compatibility-lane
+  recovery,
+  custom dynamic children that return-only, custom dynamic children that write
+  different text than they return, and prefixed-writer dynamic recovery all
+  passed.
+
 - Latest pass: Less ruleset-mixin merge reference correctness.
 - Verdict: accepted as a correctness fix for existing merge/reference paths.
   Prepared registration replacements now propagate child flags to their owning

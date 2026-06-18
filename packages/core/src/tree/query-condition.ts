@@ -129,8 +129,8 @@ export class QueryCondition extends Sequence {
    * Remove this whitelist when every node type that can appear in parser-owned
    * query conditions has a direct `writeSyntax` contract. At that point
    * `writeStaticChild` can call `node.writeSyntax(options)` unconditionally and
-   * the fallback tests below should be deleted or moved to a cold extension
-   * compatibility path.
+   * the compatibility-lane tests below should be deleted or moved to a cold
+   * extension compatibility path.
    */
   private canWriteStaticChildDirect(node: Node): boolean {
     return (
@@ -149,19 +149,20 @@ export class QueryCondition extends Sequence {
   }
 
   /**
-   * Static query syntax writer with a temporary fallback for custom/subclassed
-   * nodes that may not yet participate in the direct writer contract.
+   * Static query syntax writer with a temporary compatibility lane for
+   * custom/subclassed nodes that may not yet participate in the direct writer
+   * contract.
    *
-   * The fallback exists only to keep custom overrides, such as a subclassed
-   * `Paren.writeSyntax`, correct while the node family migration is incomplete.
-   * It intentionally keeps a localized ownership check for unknown static
-   * children, so those children must not be normalized into the fast path until
-   * their concrete class owns direct syntax output.
+   * This compatibility lane exists only to keep custom overrides, such as a
+   * subclassed `Paren.writeSyntax`, correct while the node family migration is
+   * incomplete. It intentionally keeps a localized ownership check for unknown
+   * static children, so those children must not be normalized into the fast
+   * path until their concrete class owns direct syntax output.
    *
    * Expected deletion condition: once query-condition child types no longer use
    * inherited/default `Node.writeSyntax` for real source syntax, delete
-   * `canWriteStaticChildDirect`, delete this fallback branch, and make this
-   * method a straight `node.writeSyntax(options)` call.
+   * `canWriteStaticChildDirect`, delete this compatibility branch, and make
+   * this method a straight `node.writeSyntax(options)` call.
    */
   private writeStaticChild(node: Node, options: FinalPrintOptions): void {
     if (this.canWriteStaticChildDirect(node)) {
@@ -180,8 +181,8 @@ export class QueryCondition extends Sequence {
    * their concrete render contract is known to return the same text they emit.
    *
    * Keep this exact-constructor whitelist narrow so custom subclasses and
-   * instance-owned render overrides continue to use the readback fallback when
-   * they write different text than they return.
+   * instance-owned render overrides continue to use localized active-writer
+   * recovery when they write different text than they return.
    */
   private canTrustDynamicChildRenderText(node: Node): boolean {
     return (
@@ -268,10 +269,10 @@ export class QueryCondition extends Sequence {
           const before = w.position();
           return rendered.then(
             (out) => {
-              if (!w.hasContentSince(before)) {
+              if (w.position() === before) {
                 w.add(out);
               } else {
-                return w.getSince(before);
+                return getWriterTextSincePosition(w, before);
               }
               options.suppressBoundaryTrivia = saved;
               return out;
