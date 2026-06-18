@@ -4,6 +4,7 @@ import { defineType, F_STATIC, type Node } from './node.js';
 import { Sequence } from './sequence.js';
 import { Paren } from './paren.js';
 import { Condition } from './condition.js';
+import { Operation } from './operation.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -52,6 +53,7 @@ export class QueryCondition extends Sequence {
       || node.constructor === QueryCondition
       || node.constructor === Paren
       || node.constructor === Condition
+      || node.constructor === Operation
     );
   }
 

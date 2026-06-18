@@ -129,3 +129,10 @@ with `--no-verify` after the explicit gates pass.
 - Evidence: focused `mixin.test.ts` namespace slices exposed the unsafe cuts;
   after reverting runtime changes, the remaining diff is tracker/router docs.
   Full docs gates are required before commit.
+- Merge note: latest `origin/dev` also carries serialization work for
+  `Operation` and `QueryCondition`; keep that progress in
+  `NODE-REWRITE-TRACKER.md` while this worktree continues binding/lookup.
+  Review-flagged `CountingWriter` constructions, the custom `Operation`
+  subclass construction, and empty-arg `call(...)` test fixtures are test-only
+  proof scaffolding from that merge for no-readback/custom-fallback behavior;
+  they are not new binding runtime machinery.
