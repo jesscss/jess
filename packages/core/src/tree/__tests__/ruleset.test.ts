@@ -210,6 +210,34 @@ describe('Rule', () => {
     `);
   });
 
+  it('serializes ruleset source syntax through writeSyntax ownership', () => {
+    const node = ruleset({
+      selector: sellist([sel([el('.box')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const originalWriteSyntax = node.writeSyntax;
+    let writeSyntaxCalls = 0;
+    node.writeSyntax = function countWriteSyntax(
+      ...args: Parameters<typeof originalWriteSyntax>
+    ): ReturnType<typeof originalWriteSyntax> {
+      writeSyntaxCalls++;
+      return originalWriteSyntax.apply(this, args);
+    };
+
+    try {
+      expect(node.toTrimmedString()).toBeString(`
+        .box {
+          color: red;
+        }
+      `);
+      expect(writeSyntaxCalls).toBe(1);
+    } finally {
+      node.writeSyntax = originalWriteSyntax;
+    }
+  });
+
   it('writes finalized ruleset output into segmented buffers', async () => {
     const buffer = createRenderBuffer('segmented');
     const node = ruleset({
@@ -1482,13 +1510,18 @@ describe('Rule', () => {
   it('serializeRulesContainer keeps declaration fallback transport off the caller writer', () => {
     const writer = new CountingWriter();
     const colorDecl = decl({ name: 'color', value: any('red') });
+    const originalWriteSyntax = colorDecl.writeSyntax;
     const originalToTrimmedString = colorDecl.toTrimmedString;
     let declarationSawDetachedWriter = false;
-    colorDecl.toTrimmedString = function countDetachedWriter(
-      ...args: Parameters<typeof originalToTrimmedString>
-    ): ReturnType<typeof originalToTrimmedString> {
-      declarationSawDetachedWriter = args[0]?.writer !== writer;
-      return originalToTrimmedString.apply(this, args);
+    colorDecl.writeSyntax = function countDetachedWriter(
+      this: typeof colorDecl,
+      nextOptions: Parameters<typeof originalWriteSyntax>[0]
+    ): void {
+      declarationSawDetachedWriter = nextOptions.writer !== writer;
+      originalWriteSyntax.call(this, nextOptions);
+    };
+    colorDecl.toTrimmedString = () => {
+      throw new Error('declaration fallback transport should not use public string wrappers');
     };
     const node = ruleset({
       selector: sel([el('.box')]),
@@ -1508,6 +1541,7 @@ describe('Rule', () => {
       `);
       expect(declarationSawDetachedWriter).toBe(true);
     } finally {
+      colorDecl.writeSyntax = originalWriteSyntax;
       colorDecl.toTrimmedString = originalToTrimmedString;
     }
   });

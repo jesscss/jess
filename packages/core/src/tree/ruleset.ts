@@ -572,17 +572,10 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
 
   override toTrimmedString(options?: PrintOptions): string {
     const opts = getPrintOptions(options);
-    if (
-      opts.referenceMode === true
-      && opts.referenceRenderEnabled !== false
-      && this.hoistToRoot
-    ) {
-      const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
-      if (ownSelector && Ruleset.isBareAmpersandSelector(ownSelector)) {
-        return '';
-      }
-    }
-    return serializeRulesContainer(this, opts);
+    const w = opts.writer!;
+    const mark = w.mark();
+    this.writeSyntax(opts);
+    return w.getSince(mark);
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
