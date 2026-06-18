@@ -103,6 +103,39 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Rules` outer source-capture readback split.
+- Verdict: accepted as a bounded `Rules` serializer cut. Public `Rules`
+  source capture no longer wraps `writeSyntax(...)` in an outer
+  `mark()/getSince()` whole-buffer readback window just to return the emitted
+  rules text; it now recovers the local rules text from the active writer tail
+  while preserving the still-live inner rules serializer capture points. No
+  speed claim.
+- New traversal: one straight chunk join over the active writer tail in a new
+  node-local helper inside `packages/core/src/tree/rules.ts`. This replaces
+  the outer rules capture window; it does not add a new scan over unrelated
+  rule/body state.
+- Review-flagged allocations: no production node allocations. Focused proof
+  adds one `WholeBufferCountingWriter` in `rules.test.ts` to confirm the outer
+  whole-buffer readback is gone.
+- New node/materialization: none.
+- Render path: rules render behavior is unchanged. The pass changes only
+  public source capture and does not materialize wrapper roots, rulesets, or
+  declarations to recover text.
+- Helper/API surface: one node-local helper,
+  `getWriterTextSincePosition(...)`, was added in
+  `packages/core/src/tree/rules.ts`. It replaces the outer
+  `Rules.toTrimmedString(...)` readback wrapper; no public API changed.
+- Metadata mutations: one localized generic read,
+  `Reflect.get(writer, 'chunks')`, is boxed inside the node-local helper
+  because `OutputWriter` still exposes `position()` but not a cold/internal
+  tail-text reader.
+- Routine error control: none added.
+- Allocation changes: deletes the outer `mark()/getSince()` whole-buffer
+  capture from `Rules.toTrimmedString(...)`.
+- Evidence: focused `rules.test.ts` cases for source syntax through
+  `writeSyntax(...)` ownership and source capture without outer readback both
+  passed.
+
 - Latest pass: `Ruleset` outer source-capture readback split.
 - Verdict: accepted as a bounded `Ruleset` serializer cut. Public ruleset
   source capture no longer wraps `writeSyntax(...)` in an outer
@@ -329,39 +362,39 @@ with `--no-verify` after the explicit gates pass.
   `ruleset-merge-regression.test.ts`, `test:less:custom`, and the real Less
   alpha `benchmark.less` harness all completed.
 
-- Latest pass: `QueryCondition` whole-query static fallback recovery split.
+- Latest pass: `QueryCondition` whole-query static compatibility-lane recovery split.
 - Verdict: accepted as a bounded `QueryCondition` serializer cut. Static
-  fallback queries with custom/subclass source children no longer open a
+  compatibility-lane queries with custom/subclass source children no longer open a
   whole-query `mark()/getSince()` boundary just to recover the text already
   written into the active writer; they now read the active writer tail
   directly after emission while preserving the existing localized child
-  fallback ownership checks. No speed claim.
+  compatibility-lane ownership checks. No speed claim.
 - New traversal: one straight chunk join over the active writer tail in
   `getWriterTextSincePosition(...)`. This replaces the previous whole-query
-  `mark()/getSince()` recovery boundary for static fallback queries and does
+  `mark()/getSince()` recovery boundary for static compatibility-lane queries and does
   not add a new scan over unrelated query state.
 - Review-flagged allocations: none added on the production path.
 - New node/materialization: none.
 - Render path: query-condition render still stringifies directly. The pass
-  deletes the whole-query recovery boundary for static fallback queries; it
+  deletes the whole-query recovery boundary for static compatibility-lane queries; it
   does not materialize intermediate nodes, arrays, or wrapper queries to
   recover text.
 - Helper/API surface: one node-local helper,
   `getWriterTextSincePosition(...)`, was added in
   `packages/core/src/tree/query-condition.ts`. It replaces repeated
-  whole-query `mark()/getSince()` recovery in static fallback source/render
+  whole-query `mark()/getSince()` recovery in static compatibility-lane source/render
   paths; no public API changed.
 - Metadata mutations: one localized generic read,
   `Reflect.get(writer, 'chunks')`, stays boxed inside the node-local helper
   because `OutputWriter` still exposes `position()` but not a cold/internal
   tail-text reader. This pass rejected reopening whole-query marks or public
-  string wrappers just to recover already-emitted fallback text.
+  string wrappers just to recover already-emitted compatibility-lane text.
 - Routine error control: none added.
-- Allocation changes: deletes the whole-query static fallback
+- Allocation changes: deletes the whole-query static compatibility-lane
   `mark()/getSince()` recovery boundary from `QueryCondition.toTrimmedString`
   and static `render(...)` when direct known text is unavailable.
 - Evidence: focused `query-condition.test.ts` cases for custom operation,
-  custom condition, custom paren, prefixed-writer static fallback recovery,
+  custom condition, custom paren, prefixed-writer static compatibility-lane recovery,
   shared-flat-buffer static output, and prefixed shared-buffer static output
   all passed.
 
@@ -917,35 +950,35 @@ with `--no-verify` after the explicit gates pass.
   `pnpm --filter @jesscss/core build` also passed. The current
   `verify:aggressive-cutting-review` run still reports only this pass's cold
   test-side `new CountingWriter()` token, which is prosecuted here.
-- Latest pass: `QueryCondition` static fallback position probe split.
+- Latest pass: `QueryCondition` static compatibility-lane position probe split.
 - Verdict: accepted as a bounded serializer cut inside the active
   `QueryCondition` row. Custom/subclass static children that stay on
   `writeStaticChild(...)` no longer pay an inner child `mark()/getSince()`
   readback just to detect whether `writeSyntax(...)` emitted anything; that
-  fallback now snapshots plain writer position and only drops to
+  compatibility lane now snapshots plain writer position and only drops to
   `toTrimmedString(...)` when the child wrote nothing. The outer public
   query-condition wrapper still owns its normal whole-query mark/readback
   boundary. No speed claim.
 - New traversal: none.
-- Review-flagged allocations: none added on the static query fallback path.
+- Review-flagged allocations: none added on the static query compatibility lane.
 - Review-flagged diff tokens: the focused test still contributes cold
   `new CountingWriter()` construction and assertion arrays, but this pass adds
-  no new production nodes, helper arrays, or fallback wrappers.
+  no new production nodes, helper arrays, or compatibility wrappers.
 - New node/materialization: none.
 - Render path: static custom `Operation`/`Condition`/`Paren` overrides still
-  stay correct on the localized fallback path, but they now rely on a writer
+  stay correct on the localized compatibility lane, but they now rely on a writer
   position ownership check instead of child readback when the override already
   emitted its final syntax. The remaining readback on those tests is the outer
   public query-condition wrapper boundary, not a second inner child probe.
 - Helper/API surface: none added.
 - Metadata mutations: none added.
 - Routine error control: none added.
-- Allocation changes: deleted the inner child `mark()/getSince()` fallback in
+- Allocation changes: deleted the inner child `mark()/getSince()` compatibility probe in
   `QueryCondition.writeStaticChild(...)` and replaced it with
   `writer.position()` ownership detection.
 - Evidence: focused red-to-green proof came from
   `query-condition.test.ts` case
-  `keeps custom operation syntax overrides on the static fallback path`.
+  `keeps custom operation syntax overrides on the static compatibility lane`.
   Full `query-condition.test.ts`, `git diff --check`, and
   `pnpm --filter @jesscss/core build` also passed. The current
   `verify:aggressive-cutting-review` run still reports only this pass's cold

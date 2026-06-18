@@ -709,6 +709,16 @@ describe('Rules', () => {
     }
   });
 
+  it('captures Rules source syntax without outer readback', () => {
+    const writer = new WholeBufferCountingWriter();
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+
+    expect(node.toTrimmedString({ writer })).toBe('color: red;');
+    expect(writer.wholeBufferReads).toBe(0);
+  });
+
   it('keeps sibling ruleset braces intact when declarations render values through active context output', async () => {
     const root = rules([
       ruleset({
