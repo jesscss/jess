@@ -750,6 +750,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         if (hoistedParent) {
           leafFrames = [...inFrames, hoistedParent.frame];
         }
+        const renderedFrameBaseline = lastRenderedFrames.length;
+        const frameHeaderBaseline = frameHeaders.length;
+        const renderedPositionBaseline = w.position();
         if (isNode(nn, N.Rules)) {
           const hasRenderableChild = nn.rules.some(child =>
             child.visible || child.fullRender || hasPrintableTrivia(child, options)
@@ -778,28 +781,31 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
                 : true
             )
           : renderEnabled;
-        const leafSaved = savePrintState(options, [
-          'depth',
-          'referenceMode',
-          'referenceRenderEnabled'
-        ]);
+          const leafSaved = savePrintState(options, [
+            'depth',
+            'referenceMode',
+            'referenceRenderEnabled'
+          ]);
         options.depth = leafDepth;
         options.referenceMode = childReferenceMode;
         options.referenceRenderEnabled = childReferenceRenderEnabled;
         const isHiddenStructuralNode = !nn.visible && !nn.fullRender;
         const leading = captureNodeTrivia(nn, 'before', options);
-        if (isNode(nn, N.Rules)) {
-          if (!/^\s*$/.test(leading)) {
-            w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
-          }
-          const before = w.position();
-          nn.writeSyntax(getPrintOptions(options));
-          const wrote = w.position() !== before;
-          restorePrintState(options, leafSaved);
-          if (!wrote && !leading.trim() && !hasPrintableTrivia(nn, options)) {
-            continue;
-          }
-          w.add('\n');
+          if (isNode(nn, N.Rules)) {
+            if (!/^\s*$/.test(leading)) {
+              w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
+            }
+            const before = w.position();
+            nn.writeSyntax(getPrintOptions(options));
+            const wrote = w.position() !== before;
+            restorePrintState(options, leafSaved);
+            if (!wrote && !leading.trim() && !hasPrintableTrivia(nn, options)) {
+              w.restore(renderedPositionBaseline);
+              lastRenderedFrames.length = renderedFrameBaseline;
+              frameHeaders.length = frameHeaderBaseline;
+              continue;
+            }
+            w.add('\n');
           const trailing = captureNodeTrivia(nn, 'after', options);
           if (!/^\s*$/.test(trailing)) {
             w.add(/\/\*/u.test(trailing) ? normalizeBlockTrivia(trailing, idt) : normalizeIndent(trailing, idt));

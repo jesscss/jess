@@ -103,6 +103,64 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Sequence` direct syntax/render alignment plus collapsed
+  reference-wrapper rollback.
+- Verdict: accepted as a bounded serializer cut inside the active
+  `Sequence` lane. `Sequence` now owns source syntax through `writeSyntax(...)`,
+  compares against `Any` via direct sequence syntax plus the shared whitespace
+  normalizer, keeps static/dynamic flat-buffer render aligned with the live
+  shared-writer contract, and no longer leaks explicit-writer buffer text back
+  into the caller writer. Collapsed container serialization also rolls back
+  just-opened frame headers when a reference-only child `Rules` wrapper emits
+  nothing, so collapse mode stops leaving empty wrapper shells behind. No speed
+  claim.
+- New traversal: the new sequence loops are the direct item walks that replace
+  broader whole-sequence string transport and filtered replacement-array
+  staging. No new recursive tree walk was added.
+- Review-flagged allocations: one shared-writer `OutputWriter` is created only
+  when a shared flat render buffer needs a live writer bound directly to the
+  target `parts` array; this replaces whole-string writeback on that path.
+- New node/materialization: none. No new AST nodes, wrapper `Rules`, or copied
+  sequence replacement arrays were added on the render path.
+- Render path: static sequence render now uses the owned sequence syntax writer
+  for source-backed output, while shared flat-buffer render reuses the active
+  writer and returns the local emitted slice from that same stream. Dynamic
+  direct render still stringifies through the sequence-owned mark/readback
+  boundary, but it no longer nests an outer buffer writeback boundary. The
+  collapsed reference-wrapper fix lives in `serialize-helper.ts`: if a child
+  `Rules` wrapper writes nothing under reference suppression, the serializer now
+  restores the just-opened frame/header state instead of leaving an empty
+  container shell in the caller output.
+- Helper/API surface: two node-local helpers were added in
+  `sequence.ts` (`sequenceNodeTrivia(...)` and
+  `sequenceRenderSharesWriter(...)`) plus one internal direct-render helper
+  that lets static render, dynamic render, and buffer render stay on the same
+  owned sequence path. No public API changed.
+- Metadata mutations: none added on nodes. The row now reads node-local
+  `_treeContext` trivia when a sequence has not yet been rooted, because the
+  focused source/render whitespace tests carry trivia directly on the leaf
+  nodes rather than through a source root.
+- Routine error control: none added.
+- Allocation changes: deleted the old per-call compare normalizer closure in
+  `Sequence.compare(...)`, deleted the static render nil-filter replacement
+  array path, and deleted the empty collapsed wrapper output in the reference
+  suppression case. One shared-writer `OutputWriter` remains on the shared flat
+  buffer path as the owned output target instead of whole-string writeback.
+- Evidence: focused `sequence.test.ts`, focused
+  `nesting-collapse.test.ts -t "streams reference rule wrappers in collapsed containers without capture scaffolding"`,
+  and the combined focused bundle
+  `sequence.test.ts + node-render-buffer.test.ts + nesting-collapse.test.ts + any.test.ts + rules-streaming.test.ts`
+  passed, along with `pnpm --filter @jesscss/core build` and `git diff --check`.
+  `pnpm run verify:aggressive-cutting-review` now flags the intentional new
+  direct loops/shared-writer helper so this handoff block prosecutes them
+  explicitly. An attached `pnpm run verify:baseline -- --changed` rerun no
+  longer fails in the old `Sequence` / `node-render-buffer` /
+  `nesting-collapse` serializer cluster, but the broader branch baseline still
+  stops at `6 failed | 125 passed | 2 skipped` / `21 failed | 2576 passed`
+  before hanging in the late `extend-less-fixtures.test.ts` and
+  `extend-serialized-target.test.ts` tail, so the changed baseline is still
+  red outside this diff.
+
 - Latest pass: `Any.compare(...)` owned-text compare branch and `Rules`
   streaming proof sync.
 - Verdict: accepted as a tiny serializer truth-sync pass. `Any.compare(...)`
