@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Node, any, decl, rules } from '../index.js';
+import { Node, any, decl, el, rules, ruleset, sel, sellist } from '../index.js';
 import { Context } from '../../context.js';
 import { getPrintOptions, OutputWriter, type PrintOptions } from '../util/print.js';
 
@@ -77,6 +77,23 @@ describe('Rules streaming', () => {
 
     expect(node.toString({ context, writer })).toBe('color: red;\nbackground: blue;\n');
     expect(writer.marks).toBe(5);
+  });
+
+  it('does not spend an extra container mark to detect child Ruleset source emission', () => {
+    const context = new Context();
+    const writer = new CountingWriter();
+    const node = rules([
+      ruleset({
+        selector: sellist([sel([el('.a')])]),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      }),
+      decl({ name: 'background', value: any('blue') })
+    ]);
+
+    expect(node.toString({ context, writer })).toBe('.a {\n  color: red;\n}\nbackground: blue;\n');
+    expect(writer.marks).toBe(6);
   });
 
   it('does not inspect root output for each emitted child boundary', () => {

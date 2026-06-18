@@ -141,6 +141,44 @@ with `--no-verify` after the explicit gates pass.
   `verify:aggressive-cutting-review` run still flags the restoration
   `try/finally` and the carried `runtimeFrames` parameter for prosecution, but
   no new node/materialization path was introduced.
+- Latest pass: `Rules` child-container position probe split.
+- Verdict: accepted as a bounded serializer cut inside the active `Rules`
+  row. Child `Ruleset`/`AtRule` container emission inside `_emitRulesBody(...)`
+  no longer spends a wrapper-local mark plus `hasContentSince(...)` scan to
+  detect whether the child wrote anything; that branch now uses a plain
+  writer-position snapshot and still only falls back to the returned string
+  when the child wrote nothing. No speed claim.
+- New traversal: none.
+- Review-flagged allocations: none added on the render/source path.
+- Review-flagged diff tokens: the current diff still contains test-only
+  context/writer scaffolding in `rules-streaming.test.ts` for the focused
+  child-container regression proof. No new production node or writer
+  construction was added by this pass.
+- Review-flagged carried tokens: the current
+  `verify:aggressive-cutting-review` run also still reports unrelated existing
+  `while (fallbackFrame)` lookup loops plus `broadCallableLookups` test arrays
+  from older binding/reference surfaces outside this serializer cut. This pass
+  does not add a new traversal or materialized array on the `Rules`
+  source/render path.
+- New node/materialization: none.
+- Render path: child `Ruleset`/`AtRule` containers still render and serialize
+  through their owned container paths, preserve sibling block separation, and
+  keep the existing resolved-string append fallback only when the child wrote
+  nothing. The change only deletes the container-local emission probe
+  scaffolding.
+- Helper/API surface: none added.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: deleted the child-container `mark()` plus
+  `hasContentSince(...)` probe in the `Rules._emitRulesBody(...)`
+  `Ruleset`/`AtRule` branch and replaced it with a writer-position comparison.
+- Evidence: focused red-to-green proof came from
+  `rules-streaming.test.ts` case
+  `does not spend an extra container mark to detect child Ruleset source emission`.
+  Targeted `rules.test.ts` coverage for
+  `keeps sibling ruleset braces intact when declarations render values through active context output`
+  and `keeps separate sibling rulesets with the same selector in separate blocks`
+  also passed. Full batch gates still need to run after this handoff update.
 - Latest pass: `Rules` child-wrapper position probe split.
 - Verdict: accepted as a bounded serializer cut inside the active `Rules`
   row. Child `Rules` wrappers inside `_emitRulesBody(...)` no longer spend a

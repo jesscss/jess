@@ -2917,7 +2917,36 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (firstRemainderHit.kind === 'hit' && keys.length === 2) {
           nested = collectCallableBucketResults(firstRemainderHit.bucket, firstRemainderIncludesRulesets);
         } else if (firstRemainderHit.kind === 'miss') {
-          if (!childFrame.fallbackFrame) {
+          if (keys.length === 2 && childFrame.fallbackFrame) {
+            let fallbackFrame = childFrame.fallbackFrame;
+            let fallbackMissCovered = true;
+            while (fallbackFrame) {
+              if (isNode(fallbackFrame.rulesNode, N.Rules)) {
+                fallbackFrame.rulesNode.prepareCallableLookupFrame(
+                  fallbackFrame,
+                  firstRemainder,
+                  firstRemainderIncludesRulesets
+                );
+              }
+              const fallbackHit = lookupScopeFrameCallable(fallbackFrame, firstRemainder, {
+                includeRulesets: firstRemainderIncludesRulesets,
+                searchParents: false
+              });
+              if (fallbackHit.kind === 'hit') {
+                nested = collectCallableBucketResults(fallbackHit.bucket, firstRemainderIncludesRulesets);
+                break;
+              }
+              if (fallbackHit.kind === 'uncovered') {
+                fallbackMissCovered = false;
+                break;
+              }
+              fallbackFrame = fallbackFrame.fallbackFrame;
+            }
+            if (nested === undefined && fallbackMissCovered) {
+              descendantMissCovered = true;
+              continue;
+            }
+          } else if (!childFrame.fallbackFrame) {
             descendantMissCovered = true;
             continue;
           }
@@ -3625,7 +3654,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isRulesetOrAtRule) {
         emitLeadingBlockCommentForNode(n);
         emitBoundaryIfNeeded(n);
-        const mark = w.mark();
+        const position = w.position();
         const containerSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
         options.depth = depth;
         options.referenceMode = referenceMode;
@@ -3634,11 +3663,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           ? n.render(context, getPrintOptions(options))
           : serializeRulesContainerInline(n, getPrintOptions(options));
         const finishRule = (resolvedRule: string): void => {
-          if (!w.hasContentSince(mark) && resolvedRule) {
+          if (w.position() === position && resolvedRule) {
             w.add(resolvedRule, n);
           }
           restorePrintState(options, containerSaved);
-          if (!w.hasContentSince(mark)) {
+          if (w.position() === position) {
             return;
           }
           markEmitted(n);
