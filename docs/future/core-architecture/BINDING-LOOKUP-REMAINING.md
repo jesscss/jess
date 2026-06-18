@@ -436,7 +436,7 @@ rebuilding `_lookupStrategy`, while the new unstable-facts test proves
 read-mode and semantic-filter changes still rebuild the lookup strategy rather
 than reusing stale plan facts.
 
-31. [ ] Split or prove handle-prep eligibility by strategy so no-handle and
+31. [x] Split or prove handle-prep eligibility by strategy so no-handle and
 index paths skip generic handle plumbing. Scope:
 `getStrategyRulesLookupHandleValueKey(...)`, `prepareRulesLookupShape(...)`,
 index strategy, no-source-static strategy, and callers that only need lookup
@@ -445,9 +445,17 @@ actually cache a handle, without running common shape/key/declaration
 eligibility work for paths that will always clear or ignore the handle.
 Acceptance: verifier guards against reintroducing generic handle eligibility,
 focused index/no-handle tests, and aggressive review of any retained common
-helper.
+helper. Current evidence: `ReferenceLookupStrategy` is now split into
+handle-capable and no-handle strategy shapes. The index strategy no longer
+exposes `readHandle`, `writeHandle`, `getHandleValueKey`,
+`tryReadSourceStaticHandle`, or `handleLookupType`; index target reads clear
+stale handles directly and skip handle shape/value-key/source-static prep. A
+focused test seeds an index reference with a stale variable handle and proves
+the index read resolves through typed Rules lookup, clears the handle, and
+keeps the index strategy. The verifier now rejects the deleted no-op handle
+helpers and any index strategy handle hooks.
 
-32. [ ] Audit callable/source-static handle freshness after positional
+32. [x] Audit callable/source-static handle freshness after positional
 strategy APIs. Scope: callable version reads, terminal mixin-only mode,
 callable value keys, source-static callable/mixin-ruleset readers, and async
 writeback. Goal: keep callable handles as one callable entry model while
@@ -455,7 +463,31 @@ ensuring the positional call shape did not leave duplicated freshness logic or
 generic branching around mixin vs mixin-ruleset. Acceptance: terminal
 mixin-only, callable version invalidation, mixin-ruleset cached-reuse, and
 source-static callable tests plus verifier coverage for stale split callable
-arg shapes.
+arg shapes. Current evidence: normal function/callable readers and
+source-static function/mixin/mixin-ruleset readers now rely on the shared
+exact lookup-type/version/shape freshness check instead of repeating local
+`handle.lookupType` branches. The verifier rejects those duplicate reader
+checks. Existing terminal mixin-only, callable version/cached-reuse,
+source-static, and searchScope cold-path tests stayed green.
+
+33. [ ] Revisit callable retry-frame loop after current-frame handle/no-handle
+cleanup. Scope: `Rules.findMixin(string)`, retry parent frames, fallback
+frames, `searchParents: false`, and `uncovered` reasons `frame`/`key` after
+`prepareCallableLookupFrame(...)`. Goal: either prove those uncovered states
+cannot survive preparation or delete any parent/fallback retry after the caller
+has requested no parent search. Acceptance: focused spy tests for
+`searchParents: false` simple callable misses, fallback-frame hits/misses, and
+no direct `findMixinsFast(...)` bridge after a covered current-frame miss.
+
+34. [ ] Convert callable uncovered direct-crawl bridge to explicit child-entry
+result states. Scope: `findMixinsFastForUncoveredCallable(...)`,
+`UncoveredCallableCoverage`, child `lookupScopeFrameCallable(...)` results,
+and reference-import child entries. Goal: distinguish `modeled-miss`,
+`unmodeled-reference-import`, and `hit` without using `undefined` as both
+"no hit" and "must try another bridge". Acceptance: existing
+reference-import guarded positives, namespaced reference-import misses,
+covered sibling child-surface tests, and verifier/aggressive review proving no
+new broad fallback state object is added to the hot simple path.
 
 ## Latest Binding Baseline
 

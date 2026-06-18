@@ -216,7 +216,10 @@ if (!referenceSource.includes('function writeStrategyRulesLookupHandle(')) {
 }
 for (const token of [
   'type ReferenceDeclarationLookupStrategy',
-  'type ReferencePlainLookupStrategy',
+  'type ReferencePlainHandleLookupStrategy',
+  'type ReferenceNoHandleLookupStrategy',
+  'type ReferenceHandleLookupStrategy',
+  'function isReferenceHandleLookupStrategy(',
   'function isReferenceDeclarationLookupStrategy(',
   'readHandle',
   'function readDeclarationRulesLookupHandle(',
@@ -228,6 +231,17 @@ for (const token of [
 ]) {
   if (!referenceSource.includes(token)) {
     console.error(`declaration handle writer is missing declaration-only args: ${token}`);
+    failed = true;
+  }
+}
+for (const token of [
+  'readNoRulesLookupHandle',
+  'tryReadNoSourceStaticRulesLookupHandle',
+  'getNoRulesLookupHandleValueKey',
+  'clearRulesLookupHandle'
+]) {
+  if (referenceSource.includes(token)) {
+    console.error(`index/no-handle lookup should not keep no-op handle plumbing: ${token}`);
     failed = true;
   }
 }
@@ -246,6 +260,17 @@ for (const name of [
     failed = true;
   }
 }
+{
+  const body = getConstObjectSource(referenceSource, 'INDEX_REFERENCE_LOOKUP_STRATEGY');
+  if (body !== undefined) {
+    for (const token of ['readHandle', 'writeHandle', 'getHandleValueKey', 'tryReadSourceStaticHandle', 'handleLookupType']) {
+      if (body.includes(token)) {
+        console.error(`index lookup strategy should not expose handle plumbing: ${token}`);
+        failed = true;
+      }
+    }
+  }
+}
 for (const name of [
   'readFunctionRulesLookupHandle',
   'readCallableRulesLookupHandle',
@@ -258,6 +283,22 @@ for (const name of [
     failed = true;
   } else if (body.includes('declarationConstraints')) {
     console.error(`${name} should not receive or read declaration constraint plumbing`);
+    failed = true;
+  }
+}
+for (const [name, token] of [
+  ['readFunctionRulesLookupHandle', "handle.lookupType !== 'function'"],
+  ['readCallableRulesLookupHandle', "handle.lookupType !== 'mixin'"],
+  ['tryReadSourceStaticFunctionRulesLookupHandle', "handle.lookupType !== 'function'"],
+  ['tryReadSourceStaticMixinRulesLookupHandle', "handle.lookupType !== 'mixin'"],
+  ['tryReadSourceStaticMixinRulesetRulesLookupHandle', "handle.lookupType !== 'mixin-ruleset'"]
+]) {
+  const body = getFunctionSource(referenceSource, name);
+  if (body === undefined) {
+    console.error(`could not find ${name}`);
+    failed = true;
+  } else if (body.includes(token)) {
+    console.error(`${name} should rely on common exact lookup-type freshness instead of duplicate checks`);
     failed = true;
   }
 }

@@ -1420,6 +1420,33 @@ describe('reference', () => {
       expect(context.referenceStack).toBe(0);
     });
 
+    it('direct Rules index target reads clear stale handles without handle strategy prep', async () => {
+      const targetRules = rules([
+        decl({ name: 'tone', value: any('orange') }),
+        vardecl({ name: 'toneVar', value: any('purple') })
+      ]);
+      const node = rules([
+        vardecl({ name: 'targetRules', value: targetRules }),
+        vardecl({ name: 'seed', value: any('blue') })
+      ]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'seed' }, { type: 'variable' });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle?.lookupType).toBe('variable');
+
+      const indexRef = ref({
+        target: ref({ key: 'targetRules' }, { type: 'variable' }),
+        key: quoted('tone')
+      }, { type: 'index' });
+      indexRef._rulesLookupHandle = lookupRef._rulesLookupHandle;
+
+      expect(indexRef.eval(context).valueOf()).toBe('orange');
+      expect(indexRef._rulesLookupHandle).toBeUndefined();
+      expect(indexRef._lookupStrategy?.lookupType).toBe('index');
+      expect(context.referenceStack).toBe(0);
+    });
+
     it('direct Rules index target occurrences re-read after owner mutation', async () => {
       const targetRules = rules([
         decl({ name: 'tone', value: any('orange') }),
