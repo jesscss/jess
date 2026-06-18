@@ -10,6 +10,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Rules } from './rules.js';
 import { callableRulesEntry } from './util/callable-entry.js';
 import { MixinCollection } from './util/callable-collection.js';
+import { evaluateCallableCollection } from './util/callable-eval.js';
 import { Any } from './any.js';
 import { List, list } from './list.js';
 import { Reference } from './reference.js';
@@ -984,15 +985,18 @@ export class Call extends Node<CallValue, CallOptions> {
           if (state.args && state.args.items.length > 0) {
             throw new ReferenceError(`Cannot call ${evaluatedName.type} with arguments`);
           }
-          const collection = new MixinCollection([
-            callableRulesEntry(
-              { rules: evaluatedName },
-              evaluatedName.parent,
-              evaluatedName.index
-            )
-          ]);
           const output = await this.runInCallFrame(context, { caller: true }, async () => {
-            const result = await collection.evalCall(context, state.args);
+            const result = await evaluateCallableCollection({
+              context,
+              mixinEntries: [
+                callableRulesEntry(
+                  { rules: evaluatedName },
+                  evaluatedName.parent,
+                  evaluatedName.index
+                )
+              ],
+              args: state.args?.value ?? []
+            });
             if (isNode(result)) {
               let evald = result.eval(context);
               if (isThenable(evald)) {
@@ -1303,13 +1307,27 @@ export class Call extends Node<CallValue, CallOptions> {
       if (args && args.items.length > 0) {
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
-      n = new MixinCollection([
-        callableRulesEntry(
-          { rules: n },
-          n.parent,
-          n.index
-        )
-      ]);
+      return this.runAsCaller(context, async () => {
+        const result = await evaluateCallableCollection({
+          context,
+          mixinEntries: [
+            callableRulesEntry(
+              { rules: n },
+              n.parent,
+              n.index
+            )
+          ],
+          args: args?.value ?? []
+        });
+        let evald = result.eval(context);
+        if (isThenable(evald)) {
+          evald = await evald;
+        }
+        if (markImportant && isNode(evald, N.Rules)) {
+          this.makeImportant(evald);
+        }
+        return this.markCallOutput(evald);
+      });
     }
 
     if (n instanceof MixinCollection) {

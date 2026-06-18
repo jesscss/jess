@@ -103,6 +103,51 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` direct callable-eval wrapper deletion.
+- Verdict: accepted as a localized callable-eval transport cut. Detached
+  `Rules`/`Collection` call render/eval paths in `call.ts` and stylesheet
+  `Func.evalCall(...)` in `function.ts` now call
+  `evaluateCallableCollection(...)` directly instead of constructing a
+  one-entry `MixinCollection` wrapper just to bounce through its `evalCall`
+  method. No speed claim.
+- New traversal: none. This pass reuses the existing callable-eval helper and
+  candidate loop; it only swaps wrapper entry points for direct helper calls.
+- New node/materialization: none in the hot path. The deleted wrapper path used
+  one `MixinCollection` node allocation as render/eval transport; the new path
+  carries the callable entry array directly into the existing helper.
+  Review-flagged direct `List.value` array reads in `call.ts` pass the
+  existing arg storage into `evaluateCallableCollection(...)`; they do not
+  clone or materialize a replacement arg array.
+- Render path: detached `Rules`/`Collection` render/eval output still goes
+  through the existing callable evaluator and result render path, but no longer
+  resolves into a wrapper node just to reach that evaluator.
+- Helper/API surface: none added. This pass deletes wrapper hops by reusing the
+  existing exported callable-eval helper.
+- Metadata mutations: none added. Existing preserve-rules-like parent rebasing
+  stays in place for detached rules-like variable calls.
+- Routine error control: none added. Existing callable mismatch, selector
+  capture, optional-fallback, and mark-important branches stay where they were.
+- Allocation changes: deletes one `MixinCollection` construction plus one
+  `MixinCollection.prototype.evalCall` dispatch from detached
+  `Rules`/`Collection` call render/eval and stylesheet `Func` body evaluation.
+- Rejected/observed in this pass: the focused stylesheet-function proof exposed
+  that `CountingSequence.constructedCopies === 2` is already the live committed
+  behavior on `origin/dev`; the stale `1` expectation was corrected rather than
+  treated as a regression from this cut. Remaining `Call` work is still
+  callable output value selection, `evalArgNodes(...)` copy pressure,
+  non-scalar/custom/trivia arg trim marks, async/helper ladders, and repeated
+  eval.
+- Evidence: focused `call.test.ts` subset covering dynamic stylesheet function
+  names, stylesheet function arg binding, dynamic ruleset calls, detached
+  collection calls, and detached ruleset leaky/non-leaky behavior passed with
+  new proof that `MixinCollection.prototype.evalCall` stays unused on the
+  covered direct-helper paths; a second focused `call.test.ts` subset covering
+  dynamic mixin, mixin-collection, callable-array, call-alias, and silent-fail
+  dynamic callable render paths also passed; repo-truth check in a temporary
+  worktree at committed `33eccb6a2` confirmed that the old stylesheet-function
+  copy-count assertion was already stale before this patch. Targeted ESLint,
+  `git diff --check`, `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` remain the commit-boundary gates.
 - Latest pass: `Call` empty finalized fallback direct text.
 - Verdict: accepted as a localized render transport cut. Exact string-name
   finalized fallback calls with empty args and no content now write their known

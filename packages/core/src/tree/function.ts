@@ -6,7 +6,7 @@ import { Rules } from './rules.js';
 import { type List, list } from './list.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { callableRulesEntry } from './util/callable-entry.js';
-import { MixinCollection } from './util/callable-collection.js';
+import { evaluateCallableCollection } from './util/callable-eval.js';
 import { findPropertyDeclarationOccurrence } from './util/direct-rules-lookup.js';
 
 /**
@@ -96,16 +96,17 @@ export class Func extends Node<FuncValue, FuncOptions> {
   async evalCall(context: Context, args: List<Node> = list([])): Promise<Node> {
     const returnName = this._options?.returnName ?? 'return';
 
-    const bodyRules = this.body;
-
-    const coll = new MixinCollection([
-      callableRulesEntry(
-        { rules: bodyRules, params: this.params },
-        this.parent,
-        this.index
-      )
-    ]);
-    const evaluated = await coll.evalCall(context, args);
+    const evaluated = await evaluateCallableCollection({
+      context,
+      mixinEntries: [
+        callableRulesEntry(
+          { rules: this.body, params: this.params },
+          this.parent,
+          this.index
+        )
+      ],
+      args: args.value
+    });
 
     if (!(evaluated instanceof Rules)) {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must evaluate to rules`);

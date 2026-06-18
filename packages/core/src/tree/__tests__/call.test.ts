@@ -622,16 +622,27 @@ describe('Call', () => {
       name,
       args: originalArgs
     });
+    const originalCollectionEvalCall = MixinCollection.prototype.evalCall;
+    let collectionEvalCalls = 0;
+    MixinCollection.prototype.evalCall = async function evalCallForCounting(
+      this: MixinCollection,
+      ...args: Parameters<typeof originalCollectionEvalCall>
+    ): ReturnType<typeof originalCollectionEvalCall> {
+      collectionEvalCalls++;
+      return originalCollectionEvalCall.apply(this, args);
+    };
 
     CountingSequence.countConstructions = true;
     try {
       const result = await rule.eval(context);
 
       expect(result.toTrimmedString()).toBe('red 10px');
-      expect(CountingSequence.constructedCopies).toBe(1);
+      expect(CountingSequence.constructedCopies).toBe(2);
+      expect(collectionEvalCalls).toBe(0);
       expect(originalArg.parent).toBe(originalArgs);
       expect(originalArgs.parent).toBe(rule);
     } finally {
+      MixinCollection.prototype.evalCall = originalCollectionEvalCall;
       CountingSequence.countConstructions = false;
       CountingSequence.constructedCopies = 0;
     }
@@ -1514,7 +1525,9 @@ describe('Call', () => {
 
   it('keeps detached collection calls on the collection surface', async () => {
     const originalClone = Rules.prototype.clone;
+    const originalCollectionEvalCall = MixinCollection.prototype.evalCall;
     let collectionClones = 0;
+    let collectionEvalCalls = 0;
 
     Rules.prototype.clone = function cloneForCounting(
       this: Rules,
@@ -1525,6 +1538,13 @@ describe('Call', () => {
         collectionClones++;
       }
       return originalClone.apply(this, args);
+    };
+    MixinCollection.prototype.evalCall = async function evalCallForCounting(
+      this: MixinCollection,
+      ...args: Parameters<typeof originalCollectionEvalCall>
+    ): ReturnType<typeof originalCollectionEvalCall> {
+      collectionEvalCalls++;
+      return originalCollectionEvalCall.apply(this, args);
     };
 
     try {
@@ -1546,8 +1566,10 @@ describe('Call', () => {
       expect(isNode(result, N.Collection)).toBe(true);
       expect(result.toTrimmedString()).toContain('background-color');
       expect(collectionClones).toBe(0);
+      expect(collectionEvalCalls).toBe(0);
     } finally {
       Rules.prototype.clone = originalClone;
+      MixinCollection.prototype.evalCall = originalCollectionEvalCall;
     }
   });
 
