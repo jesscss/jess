@@ -103,47 +103,37 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: declaration-constraint option cleanup and merge-chain
-  output-binding proof.
-- Verdict: accepted as a binding/API-shape and handle-proof cut. The direct
-  declaration lookup option surface no longer accepts scalar exclusion fields,
-  and `ReferenceOptions` now uses semantic `excludedDeclarations` /
-  `requiredDeclarationAssignments` names instead of the old
-  `excludedNodes` / `requiredNormalizedFromAssign` reference-option names.
-  Production merge assignment carries source/output exclusions as one mutable
-  semantic list. No speed claim.
-- New traversal: no new production traversal. Direct declaration filtering
-  still checks the existing exclusion list with `includes(...)`; this pass
-  deletes the separate scalar option checks from direct lookup. The new loops
-  are verifier-only forbidden-token scans in
-  `verify:binding-lookup-hot-paths`, not runtime lookup work.
-- New node/materialization: no nodes, wrappers, copied rules, inherited
-  metadata, or runtime materialized arrays were added. Merge assignment already
-  needed an exclusion carrier; it is now one array allocated with the reference
-  and mutated at `bindOutput`, replacing hidden scalar getter fields. Focused
-  tests allocate semantic exclusion arrays and an options object to exercise
-  the public shape; those are test-only proof scaffolding.
-- Render path: declaration merge rendering still resolves through the existing
-  reference lookup path and writes the same output; no render-to-string readback
-  or public materialization path was added.
-- Helper/API surface: removed `ReferenceDeclarationConstraintOptions` and
-  `getReferenceDeclarationConstraintOptions(...)`. No new runtime helper was
-  added. `verify:binding-lookup-hot-paths` gained guard checks for the deleted
-  direct/public option fields.
+- Latest pass: declaration-constraint handle snapshot slimming and proof.
+- Verdict: accepted as a binding handle-shape cut. The private
+  `excludedDeclarationCount` field is removed from
+  `ReferenceRulesLookupDeclarationConstraints`, `RulesLookupHandleShape`, and
+  declaration/property/variable handle read/write paths. Handle freshness now
+  keeps the declaration-assignment key plus the first two excluded declaration
+  identities after the existing handleability gate proves longer exclusion
+  lists stay cold. No speed claim.
+- New traversal: no new production traversal. Declaration filtering still uses
+  the existing semantic `excludedDeclarations.includes(...)`; this pass removes
+  one scalar handle comparison from cached handle reads.
+- New node/materialization: no runtime nodes, wrappers, copied rules, inherited
+  metadata, or production materialized arrays were added. The new focused test
+  constructs a small semantic exclusion array to mutate first/second slots and
+  prove the removed count field is unnecessary.
+- Render path: no render/stringification path changed.
+- Helper/API surface: no helper or public method added. Existing focused test
+  names were clarified from old normalized/excluded-node wording to declaration
+  assignment/exclusion wording.
 - Metadata mutations: none.
-- Allocation changes: the merge-assignment reference now keeps one semantic
-  exclusion array instead of scalar getter properties. Private reference handle
-  snapshots still store the first two excluded declaration identities and count
-  for freshness comparison; slimming or proving those internals is queued in
-  `BINDING-LOOKUP-REMAINING.md`.
-- Evidence: focused reference tests prove mutable assignment constraints,
-  mutable source/output declaration exclusions, output-binding handle
-  invalidation, wider exclusion lists staying cold, and the real Less
-  merge-chain fixture avoiding public property/declaration lookup bridges.
-  Focused declaration merge/assignment tests and
-  `verify:binding-lookup-hot-paths` passed. The full reference file still has
-  pre-existing complex-selector callable failures outside this declaration
-  constraint slice, so it is not used as this pass's completion gate.
+- Allocation changes: removes one numeric field from declaration/property/
+  variable rules lookup handles and from temporary handle shape objects.
+  Test-only arrays exercise mutation edges; no new runtime allocation replaces
+  the deleted field.
+- Evidence: focused reference tests prove declaration assignment constraints,
+  source/output declaration exclusions, zero/one/two-slot exclusion mutation
+  without count state, `bindOutput` invalidation, wider exclusion lists staying
+  cold, function/callable handles ignoring declaration-only constraints, and
+  the real Less merge-chain fixture avoiding public property/declaration lookup
+  bridges. Focused declaration merge/assignment tests and
+  `verify:binding-lookup-hot-paths` passed.
 - Merge-carried binding review: latest `origin/dev` also carries binding/lookup
   queue cleanup plus two rejected namespace-prefix shortcut audits. It is
   lookup-only: no render/stringification path changed, no runtime node
