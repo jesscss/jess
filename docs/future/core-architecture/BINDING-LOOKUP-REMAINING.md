@@ -647,7 +647,7 @@ covered by a modeled frame avoids direct occurrence crawl; property
 test proves it inserts the concrete property declaration while preserving the
 assignment source node.
 
-42. [ ] Delete same-scope variable `setDefined` occurrence fallback for covered
+42. [x] Delete same-scope variable `setDefined` occurrence fallback for covered
 frame paths. Scope: `Rules.registerNode(...)`, the post-frame
 `findWritableSetDefinedDeclarationOccurrence(...)` fallback, dynamic names, and
 uncovered frames. Goal: once a static variable assignment is covered by
@@ -655,7 +655,14 @@ declaration frame state, prove the occurrence fallback is unreachable and make
 the branch explicit for only uncovered/dynamic variable cases. Acceptance:
 focused tests spy/poison the direct occurrence helper path for same-scope and
 parent-frame variable writes, while dynamic/uncovered assignments still fall
-back correctly.
+back correctly. Current evidence: `Rules.registerNode(...)` now treats a
+`lookupScopeFrameVariable(...)` covered `miss` as authoritative for static
+`VarDeclaration` `setDefined` writes instead of falling through to
+`findWritableSetDefinedDeclarationOccurrence(...)`. Focused `rules.test.ts`
+proof poisons `Rules.value` and covers modeled same-scope writes,
+parent-frame writes, and covered misses; dynamic/uncovered variable writes
+still retain the old fallback branch because `uncovered` is the only modeled
+non-hit state allowed to continue.
 
 43. [ ] Carry readonly imported variable assignment facts into modeled
 `setDefined` frame writes. Scope: readonly child/imported Rules entries,
@@ -664,7 +671,23 @@ and import visibility. Goal: reject variable `setDefined` writes against
 readonly imported/current cells through frame state instead of relying on
 occurrence fallback inheritance. Acceptance: focused import/child rules tests
 prove readonly variable assignments fail before occurrence crawl, while
-non-readonly imported variables still update through the modeled cell.
+non-readonly imported variables still update through the modeled cell. Current
+note: imported variables currently sit on child-rule lookup surfaces rather
+than `ScopeFrame.currentBindingsByName`; solve this by carrying the assignment
+fact into frame state without creating a new by-name child-surface registry or
+changing ordinary read order.
+
+44. [ ] Delete variable `setDefined` fallback entry for modeled readonly
+import facts after item 43 lands. Scope: the static `VarDeclaration`
+`setDefined` branch in `Rules.registerNode(...)`, readonly import/current
+cells, and the variable arm of
+`findWritableSetDefinedDeclarationOccurrence(...)`. Goal: once readonly
+import facts are represented in the frame, the static variable assignment path
+should have only modeled hit/readonly/miss/uncovered outcomes before the
+property/non-variable fallback. Acceptance: tests prove readonly imported
+variables reject through the frame without occurrence crawl, writable imported
+variables update through the modeled cell, covered misses throw directly, and
+only uncovered dynamic names reach the old variable occurrence fallback.
 
 ## Latest Binding Baseline
 

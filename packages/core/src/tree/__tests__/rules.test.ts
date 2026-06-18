@@ -1636,6 +1636,86 @@ describe('Rules', () => {
         expect(original.valueNode.toString()).toBe('three');
       });
 
+      it('updates parent-frame modeled setDefined declaration cells without direct occurrence crawl', () => {
+        const original = vardecl({ name: 'one', value: any('one') });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          original,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        const childFrame = child.getScopeFrame(parentFrame, false);
+        child.scopeFrame = childFrame;
+        const originalParentValue = node.value;
+        const originalChildValue = child.value;
+
+        Object.defineProperties(node, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('parent-frame setDefined declaration-cell path should not crawl parent Rules.value');
+            }
+          }
+        });
+        Object.defineProperties(child, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('parent-frame setDefined declaration-cell path should not crawl child Rules.value');
+            }
+          }
+        });
+
+        try {
+          child.registerNode(assignment, undefined, context);
+        } finally {
+          Object.defineProperty(child, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalChildValue
+          });
+          Object.defineProperty(node, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalParentValue
+          });
+        }
+
+        expect(parentFrame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
+        expect(original.valueNode.toString()).toBe('three');
+      });
+
+      it('treats covered setDefined variable misses as authoritative without direct occurrence crawl', () => {
+        const assignment = vardecl(
+          { name: 'missing', value: any('three') },
+          { setDefined: true }
+        );
+        const node = rules([assignment]);
+        node.getScopeFrame(undefined, false);
+        const originalValue = node.value;
+
+        Object.defineProperty(node, 'value', {
+          configurable: true,
+          get() {
+            throw new Error('covered setDefined variable miss should not crawl Rules.value');
+          }
+        });
+
+        try {
+          expect(() => node.registerNode(assignment, undefined, context)).toThrowError('"missing" is not defined');
+        } finally {
+          Object.defineProperty(node, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalValue
+          });
+        }
+      });
+
       it('keeps property setDefined on declaration occurrence insertion fallback', () => {
         const assignment = decl(
           { name: any('color'), value: any('blue') },

@@ -103,29 +103,30 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding implementation pass closing same-scope `setDefined`
-  assignment-target modeling and variable/property fallback split proof.
-- Verdict: accepted as a frame-index correction. `prepareScopeFrameDeclarationIndex(...)`
-  now skips static `VarDeclaration` nodes with `setDefined`, so prebuilt
-  frames keep the prior declaration cell as current instead of registering the
-  assignment as a declaration target. `Rules.registerNode(...)` can now update
-  same-scope modeled variable assignments through the frame cell without direct
-  occurrence crawl. Property `setDefined` remains deliberately on the
-  declaration occurrence insertion fallback. No speed claim.
-- New traversal: no production traversal was added. The implementation adds
-  one existing-loop branch in `prepareScopeFrameDeclarationIndex(...)` to skip
-  assignment nodes before bucket insertion; it removes later occurrence
-  traversal for the covered same-scope variable assignment path.
+- Latest pass: binding implementation pass closing covered static variable
+  `setDefined` fallback deletion after same-scope assignment-target modeling.
+- Verdict: accepted as a tighter frame authority boundary.
+  `Rules.registerNode(...)` now treats a covered
+  `lookupScopeFrameVariable(...)` miss as authoritative for static
+  `VarDeclaration` `setDefined` writes, so covered same-scope, parent-frame,
+  and missing variable assignments no longer fall through to
+  `findWritableSetDefinedDeclarationOccurrence(...)`. Property `setDefined`
+  and dynamic/uncovered variable assignments remain deliberately on the old
+  fallback. No speed claim.
+- New traversal: no production traversal was added. The implementation removes
+  later occurrence traversal for covered variable hit/miss paths by letting the
+  modeled frame hit/readonly/miss result decide the branch before fallback.
 - Review-flagged allocations: no production allocation was added. New
   `rules.test.ts` scaffolding uses temporary `Rules.value` accessors and
-  `reference.test.ts` frame probes to prove same-scope variable assignments
-  skip occurrence crawl while property assignments stay on insertion fallback.
-  Review-flagged `map(...)`, thrown errors, `try/finally`, and `sourceNode`
-  assertions are test-only: `map(...)` snapshots the final property insertion
-  order, the throwing accessor proves the variable path does not crawl
-  `Rules.value`, `try/finally` restores that accessor, and the `sourceNode`
-  assertion proves the frame selected the prior declaration instead of the
-  assignment node.
+  thrown errors to prove same-scope writes, parent-frame writes, and covered
+  misses do not crawl `Rules.value`; `try/finally` is test-only restoration
+  for those hostile accessors. The production `ReferenceError` is not a new
+  routine miss allocation path: static covered `setDefined` variable misses
+  already failed with the same message after direct occurrence fallback, and
+  this pass moves that exceptional failure to the frame-authoritative branch
+  only after coverage proves there is no reachable binding. Existing property
+  insertion scaffolding still proves property assignments stay on insertion
+  fallback.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production arrays were added.
 - Render path: no render/stringification path changed.

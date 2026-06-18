@@ -3428,6 +3428,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
             return;
           }
+          if (variableHit.kind === 'miss') {
+            throw new ReferenceError(`"${key}" is not defined`);
+          }
         }
         const lookupOptions: DeclarationFindOptions = { searchParents: true };
         const resultOccurrence = findWritableSetDefinedDeclarationOccurrence(
