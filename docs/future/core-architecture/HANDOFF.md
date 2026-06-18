@@ -103,6 +103,43 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` escaped paren direct list/sequence arg write.
+- Verdict: accepted as a localized render-mark cut. Escaped paren CSS-call
+  args that evaluate to direct `List`/`Sequence` syntax no longer open an
+  inner trim-mark/readback window just to normalize text before re-closing the
+  paren. No speed claim.
+- New traversal: none.
+- New node/materialization: none. This pass keeps the existing evaluated arg
+  node and writes it directly; it does not add a replacement arg node, copied
+  list, or detached writer boundary.
+- Render path: `Call.writeRenderedArgs(...)` still evaluates escaped paren arg
+  values once, but exact scalar results use the known-text fast path and direct
+  `List`/`Sequence` results now write syntax straight to the active writer.
+  The old trim-mark path remains only for non-scalar/custom/trivia-bearing
+  escaped results that still need whitespace cleanup.
+- Helper/API surface: one tiny node-local predicate
+  `canWriteEscapedParenInnerDirect(...)` and one direct-close helper
+  `finishDirectEscapedParenArg(...)` inside `call.ts`. They replace repeated
+  branch shape in the covered escaped render path and do not widen public API.
+- Metadata mutations: none added. This pass only changes how already-evaluated
+  arg output is written.
+- Routine error control: none added. Existing sync/async arg evaluation and
+  calc cleanup stay in place.
+- Allocation changes: deletes one inner writer mark/trim/readback boundary for
+  escaped paren args when the evaluated inner node is an exact direct
+  `List`/`Sequence` syntax surface or a known scalar text surface.
+- Rejected/observed in this pass: the whole-call render return still pays the
+  existing outer `getSince(mark)` when a provided writer forces `textState`
+  cold after direct child syntax emission; this pass does not claim to remove
+  that broader return-string compatibility boundary. Non-scalar/custom/trivia
+  escaped arg transport and broader `Call` helper ladders remain queued.
+- Evidence: focused `call.test.ts` coverage now proves canonical source syntax
+  still renders as `func(~(a, b); c)`, escaped rendered args still stream
+  without capture scaffolding, and escaped list args now hold at one writer
+  mark instead of the previous nested inner trim mark while preserving direct
+  output. The adjacent focused subset covering evaluated escaped arg transport,
+  rendered CSS arg streaming, and exact scalar arg trim-mark cuts also passed.
+  Full commit-boundary gates still need to run after this handoff update.
 - Latest pass: `Call` finalized fallback arg ownership skip.
 - Verdict: accepted as a localized ownership cut. The render-only finalized
   fallback path in `Call.evalFromStateInFrame(...)` now tells

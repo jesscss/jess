@@ -1514,6 +1514,22 @@ describe('Call', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('renders escaped list call arguments without inner trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'func',
+      args: list([
+        paren(list([any('a'), any('b')]), { escaped: true }),
+        any('c')
+      ], { sep: ';' })
+    });
+
+    expect(rule.render(context, { writer })).toBe('func((a, b), c)');
+    expect(writer.toString()).toBe('func((a, b), c)');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(1);
+  });
+
   /** @todo */
   it('should serialize a mixin call', () => {
     let rule = call({

@@ -607,6 +607,13 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       writeArgSeparator(arg, next);
     };
+    const finishDirectEscapedParenArg = (arg: Paren, next: number): void => {
+      w.add(')', arg);
+      if (textState?.text !== undefined) {
+        textState.text += ')';
+      }
+      writeArgSeparator(arg, next);
+    };
     const appendKnownRenderedText = (node: Node): boolean => {
       const text = getKnownRenderedCallText(node);
       if (text === undefined) {
@@ -618,6 +625,8 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       return true;
     };
+    const canWriteEscapedParenInnerDirect = (node: Node): boolean =>
+      isNode(node, N.List | N.Sequence);
     const writeArgAt = (i: number): MaybePromise<void> => {
       const arg = rawArgs[i]!;
       const next = findNextArgIndex(i + 1);
@@ -634,25 +643,46 @@ export class Call extends Node<CallValue, CallOptions> {
           writeArgSeparator(arg, next);
           return;
         }
-        const innerMark = w.mark();
         const rendered = arg.value.eval(context);
         if (isThenable(rendered)) {
           return rendered.then((value) => {
-            if (!appendKnownRenderedText(value)) {
+            if (appendKnownRenderedText(value)) {
+              finishDirectEscapedParenArg(arg, next);
+              return;
+            }
+            if (canWriteEscapedParenInnerDirect(value)) {
               if (textState) {
                 textState.text = undefined;
               }
               value.writeSyntax(printOptions);
+              finishDirectEscapedParenArg(arg, next);
+              return;
             }
+            const innerMark = w.mark();
+            if (textState) {
+              textState.text = undefined;
+            }
+            value.writeSyntax(printOptions);
             finishEscapedParenArg(arg, innerMark, next);
           });
         }
-        if (!appendKnownRenderedText(rendered as Node)) {
+        if (appendKnownRenderedText(rendered as Node)) {
+          finishDirectEscapedParenArg(arg, next);
+          return;
+        }
+        if (canWriteEscapedParenInnerDirect(rendered as Node)) {
           if (textState) {
             textState.text = undefined;
           }
           (rendered as Node).writeSyntax(printOptions);
+          finishDirectEscapedParenArg(arg, next);
+          return;
         }
+        const innerMark = w.mark();
+        if (textState) {
+          textState.text = undefined;
+        }
+        (rendered as Node).writeSyntax(printOptions);
         finishEscapedParenArg(arg, innerMark, next);
         return;
       }
