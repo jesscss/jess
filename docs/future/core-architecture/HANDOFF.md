@@ -103,53 +103,43 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: strategy-owned rules lookup handle readers, typed strategy
-  policy, and slimmer handle dispatch.
-- Verdict: accepted as a binding handle-policy cut. The old generic
-  `readRulesLookupHandle(...)` function and generic
-  `preparedDeclarationConstraints` context field are deleted. Each
-  `ReferenceLookupStrategy` now owns its handle reader; declaration/property/
-  variable readers receive declaration constraints, while function/callable/
-  index readers do not. The old declaration-policy boolean flag is gone in
-  favor of declaration-capable/plain strategy types. No speed claim.
+- Latest pass: positional reference handle reader/writer/source-static strategy
+  APIs.
+- Verdict: accepted as a binding handle-access cut. The private
+  `ReadRulesLookupHandleArgs*`, `WriteRulesLookupHandleArgs*`, and
+  `SourceStaticRulesLookupHandleArgs` object shapes are deleted. Strategy
+  read/write methods, family read/write helpers, source-static readers, and
+  sync/async writeback now pass positional facts directly. No speed claim.
 - New traversal: no new production traversal. This pass adds no tree walk,
-  parent walk, child scan, map/filter/sort, or side-map lookup. The only
-  review-flagged loops are verifier token scans that reject deleted generic
-  helper/context names, require family reader/writer signatures, and inspect
-  function/callable reader/writer bodies for forbidden declaration-constraint
-  reads. The review-flagged `slice(...)` calls are verifier-only source-block
+  parent walk, child scan, map/filter/sort, or side-map lookup. The
+  review-flagged loops remain verifier token scans and function/constant source
+  checks. The review-flagged `slice(...)` calls are verifier-only source-block
   extraction for those private-function/constant checks.
 - New node/materialization: no runtime nodes, wrappers, copied rules, inherited
   metadata, frozen state, or production arrays were added. Review-flagged
-  `ReferenceLookupStrategyBase`, read/write handle arg types, and `string[]`
-  entries are type-only strategy/key annotations, not materialized runtime
-  arrays or objects.
+  `ReferenceLookupStrategyBase` and `string[]` entries are type-only
+  strategy/key annotations, not materialized runtime arrays or objects.
 - Render path: no render/stringification path changed.
-- Helper/API surface: removes one private generic reader and one generic
-  context field, and adds private family read helpers assigned on lookup
-  strategies. It also removes the private `requiresHandleDeclarationConstraints`
-  flag and replaces spread-heavy write dispatch with a positional private
-  dispatcher. This is still private strategy machinery; the next binding task
-  is to decide whether the family reader/writer method signatures themselves
-  should become positional or keep private object args.
+- Helper/API surface: removes private handle arg type aliases and object-call
+  shapes. It keeps the private strategy/family helper split from the previous
+  pass and makes those helpers positional, so the hot handle path no longer
+  constructs dispatch argument objects.
 - Metadata mutations: none.
 - Allocation changes: no new runtime node/materialization allocation is
-  introduced. Generic lookup context no longer stores declaration-constraint
-  scratch state. Function/callable handle read/write paths no longer receive
-  declaration constraints; declaration constraints remain computed for
-  declaration-capable paths. The temporary `readArgs` object and
-  `...readArgs` / `...baseArgs` spread dispatch are deleted, but remaining
-  family reader/writer arg objects are retained for the next explicit audit.
-- Evidence: focused reference tests prove source-static handle reuse, cold
-  handle disqualification under searchScope/leaky contexts, reference strategy
-  cache type changes, terminal mixin-only invalidation, function/callable
-  ignored declaration options, mixin-ruleset cached lookup reuse, source-static
-  declaration assignment constraints, and declaration exclusion/output-binding
-  invalidation. `@jesscss/core` build passed. `verify:binding-lookup-hot-paths`
-  passed with guards against the deleted generic reader/context field, the
-  removed declaration-policy boolean, non-declaration strategy declaration
-  hooks, stale temp/spread dispatch, and function/callable readers or writers
-  reading declaration constraints.
+  introduced. Generic handle read/write/source-static dispatch no longer
+  allocates argument objects. Remaining objects are actual handle values,
+  reference context, semantic declaration constraints, and test/verifier
+  scaffolding. Source-static stable reads can reuse a written handle before
+  rebuilding `_lookupStrategy`, while read-mode/filter changes rebuild the
+  lookup strategy instead of reusing stale plan facts.
+- Evidence: focused reference tests prove source-static stable-handle reuse,
+  unstable read-mode/filter fall-through, cold handle disqualification under
+  searchScope/leaky contexts, reference strategy cache type changes, terminal
+  mixin-only invalidation, function/callable ignored declaration options,
+  mixin-ruleset cached lookup reuse, source-static declaration assignment
+  constraints, and declaration exclusion/output-binding invalidation.
+  `@jesscss/core` build passed. `verify:binding-lookup-hot-paths` passed with
+  guards against stale object-call shapes and deleted handle arg type names.
 - Merge-carried serialization review: latest `origin/dev` also carries the
   declaration fallback preview-transport cut in
   `packages/core/src/tree/util/serialize-helper.ts`. Review-flagged

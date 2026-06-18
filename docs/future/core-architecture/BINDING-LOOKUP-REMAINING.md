@@ -407,7 +407,7 @@ arg object it actually calls. The verifier rejects the removed temp/spread
 shapes. This is code-path/object-shape evidence only, not a measured speed
 claim.
 
-29. [ ] Decide whether strategy handle reader/writer methods should become
+29. [x] Decide whether strategy handle reader/writer methods should become
 positional instead of object-argument APIs. Scope: `ReadRulesLookupHandleArgs*`,
 `WriteRulesLookupHandleArgs*`, family read/write helpers, sync/async
 writeback, and source-static readers. Goal: remove the remaining per-read/
@@ -415,15 +415,47 @@ per-write argument object allocation if the resulting call shape is simpler
 and still type-safe, or document why the current private object boundary is
 the cheapest maintainable shape. Acceptance: focused handle tests plus
 aggressive review; use a lookup smoke/profile note if the implementation keeps
-or removes measured handle-access allocation.
+or removes measured handle-access allocation. Current evidence: the private
+`ReadRulesLookupHandleArgs*`, `WriteRulesLookupHandleArgs*`, and
+`SourceStaticRulesLookupHandleArgs` object shapes are gone. Strategy
+read/write methods, family read/write helpers, source-static readers, and
+sync/async writeback now pass positional facts directly. The verifier rejects
+the stale object-call and arg-type names. This is handle-allocation
+code-path evidence only, not a measured speed claim.
 
-30. [ ] Finish source-static `ReferencePlan` retry only for stable facts after
+30. [x] Finish source-static `ReferencePlan` retry only for stable facts after
 the strategy read/write split. Scope: `_lookupStrategy`, source-static key
 identity, target/filter/read-mode/leaky/search-scope disqualifiers, handle
 shape, and source-static strategy readers. Goal: prove repeated source-static
 references can reuse only stable plan facts without caching generated or live
 surface state. Acceptance: control/mixin loop matrix plus variable/property/
 function/callable handle tests showing dynamic surfaces still fall through.
+Current evidence: source-static readers are strategy-owned positional calls;
+the existing stable source-static test proves a written handle can read before
+rebuilding `_lookupStrategy`, while the new unstable-facts test proves
+read-mode and semantic-filter changes still rebuild the lookup strategy rather
+than reusing stale plan facts.
+
+31. [ ] Split or prove handle-prep eligibility by strategy so no-handle and
+index paths skip generic handle plumbing. Scope:
+`getStrategyRulesLookupHandleValueKey(...)`, `prepareRulesLookupShape(...)`,
+index strategy, no-source-static strategy, and callers that only need lookup
+result preparation. Goal: keep handle access assigned to families that can
+actually cache a handle, without running common shape/key/declaration
+eligibility work for paths that will always clear or ignore the handle.
+Acceptance: verifier guards against reintroducing generic handle eligibility,
+focused index/no-handle tests, and aggressive review of any retained common
+helper.
+
+32. [ ] Audit callable/source-static handle freshness after positional
+strategy APIs. Scope: callable version reads, terminal mixin-only mode,
+callable value keys, source-static callable/mixin-ruleset readers, and async
+writeback. Goal: keep callable handles as one callable entry model while
+ensuring the positional call shape did not leave duplicated freshness logic or
+generic branching around mixin vs mixin-ruleset. Acceptance: terminal
+mixin-only, callable version invalidation, mixin-ruleset cached-reuse, and
+source-static callable tests plus verifier coverage for stale split callable
+arg shapes.
 
 ## Latest Binding Baseline
 
