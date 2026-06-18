@@ -724,6 +724,22 @@ function collectCallableBucketResults(
   return results;
 }
 
+function cloneReadonlyAssignmentBindings(
+  bindings: Map<string, BindingCell> | undefined
+): Map<string, BindingCell> | undefined {
+  if (!bindings?.size) {
+    return undefined;
+  }
+  const out = new Map<string, BindingCell>();
+  for (const [name, cell] of bindings) {
+    out.set(name, {
+      ...cell,
+      readonly: true
+    });
+  }
+  return out;
+}
+
 /**
  * The class representing a "declaration list".
  * CSS calls it this even though CSS Nesting
@@ -1004,7 +1020,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
     }
-    frame.hasOptionalAssignmentTargetSurface = this.hasOptionalChildVariableAssignmentSurface();
+    frame.hasUncoveredAssignmentTargetSurface = this.hasUncoveredChildVariableAssignmentSurface();
+  }
+
+  private getAssignmentTargetEntryBindings(inheritedReadonly: boolean): Map<string, BindingCell> | undefined {
+    const bindings = this.collectPublicVariableAssignmentBindings(inheritedReadonly);
+    if (!bindings?.size) {
+      return undefined;
+    }
+    return bindings;
+  }
+
+  private getHasUncoveredAssignmentTargetEntrySurface(): boolean {
+    return this.hasUncoveredVariableAssignmentSurface();
   }
 
   private collectPublicVariableAssignmentBindings(inheritedReadonly: boolean): Map<string, BindingCell> | undefined {
@@ -1065,9 +1093,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!isPublicRulesEntry(entry, 'VarDeclaration')) {
         continue;
       }
-      const entryBindings = entry.node.collectPublicVariableAssignmentBindings(
-        inheritedReadonly || Boolean(entry.readonly)
-      );
+      const entryBindings = inheritedReadonly
+        ? cloneReadonlyAssignmentBindings(entry.assignmentBindingsByName)
+        : entry.assignmentBindingsByName;
       if (!entryBindings?.size) {
         continue;
       }
@@ -1081,7 +1109,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return out;
   }
 
-  private hasOptionalChildVariableAssignmentSurface(): boolean {
+  private hasUncoveredVariableAssignmentSurface(): boolean {
+    if (this.options.rulesVisibility?.VarDeclaration === 'public') {
+      const value = this.rules;
+      for (let i = 0; i < value.length; i++) {
+        const node = value[i]!;
+        if (
+          isNode(node, N.VarDeclaration)
+          && !node.options?.setDefined
+          && !this._hasStaticName(node)
+        ) {
+          return true;
+        }
+      }
+    }
+    return this.hasUncoveredChildVariableAssignmentSurface();
+  }
+
+  private hasUncoveredChildVariableAssignmentSurface(): boolean {
     const childEntries = this.collectDirectDeclarationChildEntries();
     if (!childEntries?.length) {
       return false;
@@ -1103,7 +1148,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isOptionalRulesEntry(entry, 'VarDeclaration')) {
         return true;
       }
-      if (entry.node.hasOptionalChildVariableAssignmentSurface()) {
+      if (entry.hasUncoveredAssignmentTargetSurface) {
         return true;
       }
     }
@@ -1594,7 +1639,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         readonly: Boolean(child.options.readonly),
         hasDeclarationSurface,
         hasVarDeclarationSurface,
-        hasReferenceImportSurface
+        hasReferenceImportSurface,
+        assignmentBindingsByName: child.getAssignmentTargetEntryBindings(Boolean(child.options.readonly)),
+        hasUncoveredAssignmentTargetSurface: child.getHasUncoveredAssignmentTargetEntrySurface()
       });
     }
     this.directDeclarationChildEntries = out ?? null;
@@ -1628,8 +1675,39 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       readonly,
       hasDeclarationSurface,
       hasVarDeclarationSurface,
-      hasReferenceImportSurface
+      hasReferenceImportSurface,
+      assignmentBindingsByName: child.getAssignmentTargetEntryBindings(readonly),
+      hasUncoveredAssignmentTargetSurface: child.getHasUncoveredAssignmentTargetEntrySurface()
     });
+  }
+
+  private refreshDirectDeclarationChildEntryAssignmentSummary(child: Rules): void {
+    const entries = this.directDeclarationChildEntries;
+    if (!entries?.length) {
+      return;
+    }
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i]!;
+      if (entry.node !== child) {
+        continue;
+      }
+      entry.hasDeclarationSurface = rulesMayContainDeclarationSurface(child);
+      entry.hasVarDeclarationSurface = rulesMayContainVarDeclarationSurface(child);
+      entry.hasReferenceImportSurface = rulesMayContainReferenceImports(child);
+      entry.assignmentBindingsByName = child.getAssignmentTargetEntryBindings(Boolean(entry.readonly));
+      entry.hasUncoveredAssignmentTargetSurface = child.getHasUncoveredAssignmentTargetEntrySurface();
+    }
+    if (this._scopeFrame) {
+      this._scopeFrame.assignmentBindingsByName = undefined;
+      this._scopeFrame.hasUncoveredAssignmentTargetSurface = false;
+      this.prepareScopeFrameAssignmentBindings(this._scopeFrame);
+    }
+  }
+
+  private refreshParentDeclarationChildEntryAssignmentSummary(): void {
+    if (isNode(this.parent, N.Rules)) {
+      this.parent.refreshDirectDeclarationChildEntryAssignmentSummary(this);
+    }
   }
 
   private addDirectChildRuleEntry(
@@ -3666,6 +3744,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               }
             }
           }
+          this.refreshParentDeclarationChildEntryAssignmentSummary();
         } else if (this._scopeFrame) {
           let hasPendingDeclaration = false;
           for (let i = 0; i < this._scopeFrame.pendingDeclarationNames.length; i++) {

@@ -19,6 +19,7 @@ import {
   VarDeclaration,
   style,
   quoted,
+  interpolated,
   type Declaration,
   type Selector,
   atrule
@@ -1895,6 +1896,24 @@ describe('Rules', () => {
         expect(optionalDecl.valueNode.toString()).toBe('three');
       });
 
+      it('leaves dynamic public imported setDefined assignment targets uncovered', () => {
+        const imported = rules([
+          vardecl({
+            name: interpolated({
+              source: '$@{suffix}',
+              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+            }),
+            value: any('one')
+          })
+        ], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const node = rules([imported]);
+        const frame = node.getScopeFrame(undefined, false);
+
+        expect(lookupScopeFrameVariable(frame, 'one', { includeAssignmentTargets: true }).kind).toBe('uncovered');
+      });
+
       it('keeps public imported setDefined assignment targets modeled when optional targets also exist', () => {
         const optionalDecl = vardecl({ name: 'one', value: any('one') });
         const optional = rules([optionalDecl], {
@@ -1982,6 +2001,78 @@ describe('Rules', () => {
         expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
         expect(publicDecl.valueNode.toString()).toBe('three');
         expect(optionalDecl.valueNode.toString()).toBe('one');
+      });
+
+      it('refreshes carried imported setDefined assignment summaries after late child registration', () => {
+        const publicRules = rules([], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          publicRules,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        const publicDecl = vardecl({ name: 'one', value: any('one') });
+        publicRules.adopt(publicDecl);
+        publicRules.rules.push(publicDecl);
+        publicRules.registerNode(publicDecl);
+        child.scopeFrame = child.getScopeFrame(parentFrame, false);
+        const originalParentValue = node.value;
+        const originalPublicValue = publicRules.value;
+        const originalChildValue = child.value;
+
+        Object.defineProperties(node, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('late carried setDefined path should not crawl parent Rules.value');
+            }
+          }
+        });
+        Object.defineProperties(publicRules, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('late carried setDefined path should not crawl public Rules.value');
+            }
+          }
+        });
+        Object.defineProperties(child, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('late carried setDefined path should not crawl child Rules.value');
+            }
+          }
+        });
+
+        try {
+          child.registerNode(assignment, undefined, context);
+        } finally {
+          Object.defineProperty(child, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalChildValue
+          });
+          Object.defineProperty(publicRules, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalPublicValue
+          });
+          Object.defineProperty(node, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalParentValue
+          });
+        }
+
+        expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
+        expect(publicDecl.valueNode.toString()).toBe('three');
       });
 
       it('keeps property setDefined on declaration occurrence insertion fallback', () => {

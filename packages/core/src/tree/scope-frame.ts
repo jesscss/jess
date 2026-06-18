@@ -140,11 +140,11 @@ export interface ScopeFrame {
   assignmentBindingsByName?: Map<string, BindingCell>;
 
   /**
-   * True when an optional child/import variable assignment surface exists but
-   * is not modeled in assignmentBindingsByName. This keeps `setDefined` from
-   * treating optional-only targets as covered misses.
+   * True when a child/import variable assignment surface exists but is not
+   * modeled in assignmentBindingsByName. This keeps `setDefined` from treating
+   * optional-only or dynamic targets as covered misses.
    */
-  hasOptionalAssignmentTargetSurface: boolean;
+  hasUncoveredAssignmentTargetSurface: boolean;
 
   /**
    * Bumped when a current binding pointer changes. In-place cell value writes
@@ -325,7 +325,7 @@ export function buildScopeFrame(
     fallbackFrame: undefined,
     liveSlotsByName,
     currentBindingsByName,
-    hasOptionalAssignmentTargetSurface: false,
+    hasUncoveredAssignmentTargetSurface: false,
     currentBindingsVersion: 0,
     hasLiveBindings,
     declarationBucketsByName,
@@ -491,7 +491,7 @@ export function lookupScopeFrameVariable(
       if (
         start === undefined
         && options?.includeAssignmentTargets === true
-        && f.hasOptionalAssignmentTargetSurface
+        && f.hasUncoveredAssignmentTargetSurface
       ) {
         return { kind: 'uncovered' };
       }

@@ -1,5 +1,6 @@
 import type { Node } from '../node.js';
 import type { Rules, RulesOptions } from '../rules.js';
+import type { BindingCell } from '../scope-frame.js';
 import { createPlacementChildSegment, type PlacementChildSegment, type PlacementRecord } from './placement-state.js';
 
 export type LookupVisibility = keyof NonNullable<RulesOptions['rulesVisibility']>;
@@ -11,6 +12,8 @@ export type RulesEntryLike = {
   hasDeclarationSurface?: boolean;
   hasVarDeclarationSurface?: boolean;
   hasReferenceImportSurface?: boolean;
+  assignmentBindingsByName?: Map<string, BindingCell>;
+  hasUncoveredAssignmentTargetSurface?: boolean;
   hasExactCallableSurface?: boolean;
   hasExactMixinSurface?: boolean;
   hasExactRulesetSurface?: boolean;

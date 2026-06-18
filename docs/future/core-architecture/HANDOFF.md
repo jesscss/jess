@@ -103,23 +103,24 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding implementation pass splitting optional child variable
-  assignment targets from modeled public/imported `setDefined` targets.
-- Verdict: accepted as an explicit coverage boundary.
-  `ScopeFrame.hasOptionalAssignmentTargetSurface` marks optional child variable
-  assignment surfaces as uncovered for `includeAssignmentTargets` lookup, so
-  optional-only `setDefined` writes keep the old direct fallback instead of
-  becoming false covered misses. Public assignment cells still win over
-  optional surfaces and stay on the modeled no-crawl path. Property
-  `setDefined` and dynamic/uncovered variable assignments remain deliberately
-  on the old fallback. No speed claim.
-- New traversal: this pass adds an optional-surface frame-prep recursion in
-  `hasOptionalChildVariableAssignmentSurface(...)`, in addition to the existing
-  public assignment-target recursion from the prior pass. It is accepted only
-  as a correctness boundary that prevents optional-only targets from being
-  misclassified as covered misses. Follow-up items 46 and 47 require carrying
-  both public and optional assignment facts on child entries so these prep
-  recursions are removed.
+- Latest pass: binding implementation pass moving assignment-target public and
+  uncovered child facts onto direct declaration child entries.
+- Verdict: accepted as a removal of assignment-specific frame-prep
+  rediscovery. `RulesEntryLike` now carries modeled public
+  `assignmentBindingsByName` plus a coarse
+  `hasUncoveredAssignmentTargetSurface` bit for optional, dynamic, or otherwise
+  unmodeled child assignment targets. `prepareScopeFrameAssignmentBindings(...)`
+  consumes those carried entry facts instead of recursively walking child
+  Rules to rediscover them. Public assignment cells still win over uncovered
+  surfaces; optional-only and dynamic public child targets stay uncovered so
+  `setDefined` can use the existing direct fallback. No speed claim.
+- New traversal: no new production traversal was added. This pass deletes the
+  assignment-target recursive calls from frame prep and moves summary refresh
+  to child-entry construction/refresh. Existing child entry collection still
+  scans children, and child summary construction can recurse while building
+  entry facts; that remaining allocation/traversal is now isolated away from
+  `ScopeFrame` prep and is tracked by follow-up item 49 for readonly clone
+  allocation and future summary tightening.
 - Review-flagged allocations: production now lazily allocates
   `assignmentBindingsByName` only for `ScopeFrame`s that have modeled public
   child/import variable assignment facts, and creates assignment-only
@@ -133,16 +134,15 @@ with `--no-verify` after the explicit gates pass.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production arrays were added.
 - Render path: no render/stringification path changed.
-- Helper/API surface: `ScopeFrame` gained assignment-target frame state and
-  `lookupScopeFrameVariable(...)` gained the internal `includeAssignmentTargets`
-  option used by `setDefined`; this pass adds the internal optional-target
-  coverage bit. No public Jess API was added.
+- Helper/API surface: no public Jess API was added. Internal child-entry
+  summary fields now carry assignment target facts, and the frame coverage bit
+  was widened from optional-only to uncovered assignment target surfaces.
 - Metadata mutations: none.
-- Allocation changes: one lazy frame-owned Map plus assignment `BindingCell`
-  entries only when public child/import variable assignment facts are modeled.
-  The optional coverage bit adds no per-name storage. Follow-up items 46 and
-  47 exist specifically to remove recursive rediscovery and keep this from
-  becoming a broader child-surface cache.
+- Allocation changes: no new runtime nodes or public materialization. Entry
+  summaries may clone readonly assignment binding maps when inherited readonly
+  is applied; follow-up item 49 exists specifically to remove or isolate that
+  clone allocation. The frame-owned assignment map remains lazy and ordinary
+  reads still do not consult assignment cells.
 - Evidence: focused `import-style.test.ts` slices prove configured `with`/`set`
   child-surface property hits and reference-import selector-list/nested
   property hits stay off `Rules.find(...)`; focused `reference.test.ts` slices

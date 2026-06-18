@@ -720,7 +720,7 @@ fallback for optional semantics instead of throwing a covered miss. Focused
 declaration, and mixed optional/public children updating the modeled public
 cell without crawling any parent/optional/public/child `Rules.value` surface.
 
-46. [ ] Replace assignment-target frame prep recursion with carried child
+46. [x] Replace assignment-target frame prep recursion with carried child
 surface summaries where registration already knows the facts. Scope:
 `collectPublicChildVariableAssignmentBindings(...)`,
 `addDirectDeclarationChildRuleEntry(...)`, late imported Rules registration,
@@ -729,9 +729,17 @@ during frame prep when child entries can carry whether public static variable
 assignment cells exist. Acceptance: no behavior change in readonly/import
 tests, aggressive review accounts for the removed prep recursion, and focused
 counter tests prove dynamic/uncovered children still route to fallback instead
-of becoming false covered misses.
+of becoming false covered misses. Current evidence: `RulesEntryLike` now
+carries `assignmentBindingsByName` and
+`hasUncoveredAssignmentTargetSurface`; direct declaration child entries fill
+those facts when entries are collected or added. `prepareScopeFrameAssignmentBindings(...)`
+now reads carried entry summaries instead of recursively calling into child
+Rules to rediscover public assignment cells. A focused late-registration test
+prepares the parent frame before adding a child variable, then proves the
+refreshed child-entry summary updates the modeled assignment cell without
+crawling parent/public/child `Rules.value`.
 
-47. [ ] Collapse optional assignment-target uncertainty into carried child
+47. [x] Collapse optional assignment-target uncertainty into carried child
 surface summaries after item 46. Scope:
 `ScopeFrame.hasOptionalAssignmentTargetSurface`, optional child/import
 `VarDeclaration` visibility, late child registration, and direct lookup
@@ -740,7 +748,32 @@ fact rather than another frame-prep recursive rediscovery step, while still
 leaving optional-only targets uncovered until/if a modeled optional assignment
 cell exists. Acceptance: item 45 focused tests stay green, aggressive review
 shows the optional recursive scan is removed, and mixed optional/public cases
-still avoid direct fallback when a public modeled target exists.
+still avoid direct fallback when a public modeled target exists. Current
+evidence: the optional bit was widened to carried
+`hasUncoveredAssignmentTargetSurface`, so optional-only and dynamic public
+child variable assignment targets both return `uncovered` before authoritative
+miss. Focused `rules.test.ts` proofs cover optional-only fallback, dynamic
+public child variables staying uncovered, and public modeled targets still
+winning without fallback when optional siblings exist.
+
+48. [ ] Rename assignment-target uncovered frame state away from optional
+legacy wording everywhere in docs/tests. Scope:
+`ScopeFrame.hasUncoveredAssignmentTargetSurface`, tests that describe optional
+coverage, and binding tracker wording. Goal: keep the code/document vocabulary
+aligned with the widened semantic fact: unmodeled assignment surfaces, not only
+optional surfaces. Acceptance: no production behavior change, focused
+setDefined tests stay green, and tracker/handoff no longer imply only optional
+surfaces can force assignment fallback.
+
+49. [ ] Carry assignment target summaries without allocating cloned readonly
+maps when only inherited readonly changes. Scope:
+`cloneReadonlyAssignmentBindings(...)`, `RulesEntryLike.assignmentBindingsByName`,
+readonly import/compose entries, and `setDefined` readonly tests. Goal: avoid
+extra Map/cell clones for readonly edge inheritance by carrying effective
+readonly at entry construction or by a cheaper readonly-overlay fact.
+Acceptance: readonly imported assignments still reject before RHS eval, writable
+imports still update modeled cells, aggressive review shows clone allocation is
+removed or isolated, and no ordinary read path consults assignment cells.
 
 ## Latest Binding Baseline
 
