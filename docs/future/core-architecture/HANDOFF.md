@@ -103,15 +103,18 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding proof/queue closeout pass after the terminal namespace
-  fallback cut.
-- Verdict: accepted as documentation/proof cleanup only. The pass closed
-  completed binding queue rows whose implementation and focused tests already
-  existed, refreshed profile/baseline evidence, and kept genuinely blocked rows
-  open. No speed claim.
+- Latest pass: binding proof/queue closeout pass plus parent retry-frame proof.
+- Verdict: accepted as documentation/proof cleanup plus one focused test. The
+  pass closed completed binding queue rows, refreshed profile/baseline evidence,
+  proved the remaining parent retry-frame loop is semantic parent search rather
+  than a direct-crawl bridge, and kept genuinely blocked rows open. No speed
+  claim.
 - New traversal: none. No production code changed in this pass.
 - Review-flagged allocations: no new production arrays, nodes, wrapper `Rules`,
-  side maps, or result objects. The changed files are documentation only.
+  side maps, or result objects. The review-flagged `try`, `fastPathHits` array,
+  and empty `childRules` fixture are focused test scaffolding for method-spy
+  restoration and a minimal parent/child frame chain; production lookup is
+  unchanged.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production materialization were added.
 - Render path: no render/stringification path changed.
@@ -122,11 +125,13 @@ with `--no-verify` after the explicit gates pass.
   narrow reference-import child fallback, source-static reference handles,
   reference-import namespace offsets, stable imported namespaces,
   reference-import declaration/callable misses, namespace remainder offsets, and
-  evaluated namespace mixin descendants. `verify:baseline -- --changed` is
-  blocked by non-lookup `verify:node-copy-frontier` failure in
-  `selector-pseudo.ts`; hotpath smoke is blocked by parser `args.set is not a
-  function`. The refreshed lookup profile reports empty old `Rules.find` and
-  registry counters. No wall-clock performance claim.
+  evaluated namespace mixin descendants. A new parent retry-frame test proves an
+  unprepared parent frame can be prepared and hit without entering
+  `findMixinsFast(...)`. `verify:baseline -- --changed` is blocked by non-lookup
+  `verify:node-copy-frontier` failure in `selector-pseudo.ts`; hotpath smoke is
+  blocked by parser `args.set is not a function`. The refreshed lookup profile
+  reports empty old `Rules.find` and registry counters. No wall-clock
+  performance claim.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification

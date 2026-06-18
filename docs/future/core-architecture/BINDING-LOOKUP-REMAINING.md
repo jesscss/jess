@@ -556,7 +556,7 @@ exact lookup-type/version/shape freshness check instead of repeating local
 checks. Existing terminal mixin-only, callable version/cached-reuse,
 source-static, and searchScope cold-path tests stayed green.
 
-33. [ ] Revisit callable retry-frame loop after current-frame handle/no-handle
+33. [x] Revisit callable retry-frame loop after current-frame handle/no-handle
 cleanup. Scope: `Rules.findMixin(string)`, retry parent frames, fallback
 frames, `searchParents: false`, and `uncovered` reasons `frame`/`key` after
 `prepareCallableLookupFrame(...)`. Goal: either prove those uncovered states
@@ -567,8 +567,11 @@ no direct `findMixinsFast(...)` bridge after a covered current-frame miss.
 Current evidence: the no-parent retry cut is in place for current-frame
 miss/uncovered states, including candidate uncertainty, and focused callable
 bucket tests cover fallback hits, fallback misses, and the new no-parent
-candidate case. Keep this open for the remaining parent/fallback retry loop
-when parent search is enabled.
+candidate case. The remaining parent/fallback retry loop is retained as
+semantic parent search, not a direct-crawl bridge: a focused parent retry-frame
+test starts from an uncovered parent frame, prepares it, resolves the parent hit,
+and proves `findMixinsFast(...)` is not entered. Existing fallback hit/miss and
+reference-import miss tests stay green.
 
 34. [x] Convert callable uncovered direct-crawl bridge to explicit child-entry
 result states. Scope: `findMixinsFastForUncoveredCallable(...)`,

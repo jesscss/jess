@@ -2458,6 +2458,41 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: unprepared parent retry frame hit stays off direct bridge', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.parent-retry-frame-hit') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const parentMixin = mixin({
+          name: any('.parent-retry-frame-hit'),
+          rules: rules([decl({ name: 'color', value: any('blue') })])
+        });
+        const parentRules = rules([parentMixin]);
+        const childRules = rules([]);
+        const parentFrame = parentRules.getScopeFrame();
+        childRules.getScopeFrame(parentFrame);
+        expect(lookupScopeFrameCallable(parentFrame, '.parent-retry-frame-hit', {
+          includeRulesets: false,
+          searchParents: false
+        })).toEqual({
+          kind: 'uncovered',
+          reason: 'frame'
+        });
+
+        expect(childRules.findMixin('.parent-retry-frame-hit', 'Mixin')).toEqual([parentMixin]);
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('ScopeFrame callable buckets: parent and fallback covered miss skips direct bridge', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];
