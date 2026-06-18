@@ -1,4 +1,4 @@
-import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, F_STATIC, type LocationInfo } from './node.js';
+import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, F_STATIC } from './node.js';
 import type { Context } from '../context.js';
 import { cast } from './util/cast.js';
 import type { DeclarationFindOptions } from './util/lookup-utils.js';
@@ -124,15 +124,6 @@ export type ReferenceOptions = {
 // `sourceNode` stays on the public shallow-owned surface for compatibility and
 // now carries the canonical source directly.
 type PreservedRulesLikeValue = Node & { sourceNode?: Node };
-type NodeValueConstructor = new (
-  value: unknown,
-  options?: unknown,
-  location?: LocationInfo
-) => Node;
-
-function isNodeValueConstructor(value: unknown): value is NodeValueConstructor {
-  return typeof value === 'function';
-}
 
 const REF_EVAL_PRESERVE_RULES_LIKE = 1;
 const REF_EVAL_REUSE_SOURCE_FREE = 1 << 1;
@@ -2262,6 +2253,31 @@ function getReferenceNotFoundError(type: LookupType, keyDisplay: string): Refere
   return new ReferenceError(`'${keyDisplay}' is not defined`);
 }
 
+function normalizeReferenceKeyValue(value: unknown): NormalizedLookupKey {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return value;
+  }
+  if (isNode(value, N.Any | N.Keyword)) {
+    return value.value;
+  }
+  if (isNode(value, N.Quoted) && typeof value.value === 'string') {
+    return value.value;
+  }
+  if (isNode(value, N.Num | N.Dimension)) {
+    return value.unit ? `${value.number}${value.unit}` : value.number;
+  }
+  if (isNode(value, N.Color) && typeof value.node === 'string') {
+    return value.node;
+  }
+  if (isNode(value)) {
+    const normalizedKey = value.valueOf();
+    return typeof normalizedKey === 'string' || typeof normalizedKey === 'number'
+      ? normalizedKey
+      : String(normalizedKey);
+  }
+  return String(value);
+}
+
 function evaluateReferenceKey(
   key: ReferenceValue['key'],
   resolvedTarget: unknown,
@@ -2279,15 +2295,14 @@ function evaluateReferenceKey(
       }
       const normalized = new Array<string>(resolvedKey.length);
       for (let i = 0; i < resolvedKey.length; i++) {
-        normalized[i] = String(resolvedKey[i]);
+        const normalizedPart = normalizeReferenceKeyValue(resolvedKey[i]);
+        normalized[i] = typeof normalizedPart === 'number'
+          ? `${normalizedPart}`
+          : normalizedPart;
       }
       return [resolvedTarget, normalized];
     }
-    const normalizedKey = isNode(resolvedKey) ? resolvedKey.valueOf() : resolvedKey;
-    if (typeof normalizedKey === 'string' || typeof normalizedKey === 'number') {
-      return [resolvedTarget, normalizedKey];
-    }
-    return [resolvedTarget, String(normalizedKey)];
+    return [resolvedTarget, normalizeReferenceKeyValue(resolvedKey)];
   };
 
   if (isThenable(out)) {
@@ -2465,6 +2480,35 @@ function canReturnReferenceValue(node: Node): boolean {
   return node.hasFlag(F_STATIC) && !isRulesLikeReferenceValue(node);
 }
 
+function isEmptyMergedAssignPlaceholder(node: Node): boolean {
+  if (node instanceof Nil) {
+    return true;
+  }
+  if (isNode(node, N.Any | N.Keyword)) {
+    return node.value === '';
+  }
+  if (isNode(node, N.Quoted) && typeof node.value === 'string') {
+    return node.value === '';
+  }
+  return String(node.valueOf?.() ?? '') === '';
+}
+
+function canReturnMergedAssignReferenceValue(node: Node): boolean {
+  if (!canReturnReferenceValue(node)) {
+    return false;
+  }
+  if (!(node instanceof List)) {
+    return true;
+  }
+  for (let i = 0; i < node.items.length; i++) {
+    const child = node.items[i]!;
+    if (child instanceof List || isEmptyMergedAssignPlaceholder(child)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function isRulesLikeReferenceValue(node: Node): boolean {
   return isNode(node, N.Rules | N.Collection | N.Mixin | N.Ruleset);
 }
@@ -2478,24 +2522,47 @@ function isRulesLikeReferenceValue(node: Node): boolean {
 function createRulesLikeReferenceSurface(directValue: MixinEntry): MixinEntry;
 function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeValue;
 function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeValue {
-  const options = directValue.options;
-  const nodeConstructor = directValue.constructor;
-  if (!isNodeValueConstructor(nodeConstructor)) {
-    throw new TypeError('Preserved rules-like value must have a constructable node type');
+  const descriptors = Object.getOwnPropertyDescriptors(directValue);
+  const optionsDescriptor = descriptors._options;
+  if (
+    optionsDescriptor
+    && 'value' in optionsDescriptor
+    && optionsDescriptor.value
+    && typeof optionsDescriptor.value === 'object'
+  ) {
+    optionsDescriptor.value = { ...optionsDescriptor.value };
   }
-  const constructed = new nodeConstructor(
-    directValue.value,
-    options && typeof options === 'object' ? { ...options } : undefined,
-    directValue.location.length === 0 ? undefined : directValue.location
+  delete descriptors.sourceNode;
+  delete descriptors.parent;
+  delete descriptors.index;
+  const preservedValue = Object.create(
+    Object.getPrototypeOf(directValue)
   );
-  if (!(constructed instanceof Node)) {
+  if (!(preservedValue instanceof Node)) {
     throw new TypeError('Preserved rules-like value must remain a Node');
   }
-  const preservedValue: PreservedRulesLikeValue = constructed;
+  Object.defineProperties(preservedValue, descriptors);
   const sourceNode = directValue.sourceNode instanceof Node ? directValue.sourceNode : directValue;
-  preservedValue.parent = directValue.parent ?? sourceNode.parent;
-  preservedValue.index = directValue.index ?? sourceNode.index;
-  preservedValue.sourceNode = directValue;
+  Object.defineProperties(preservedValue, {
+    sourceNode: {
+      value: directValue,
+      writable: true,
+      enumerable: false,
+      configurable: false
+    },
+    parent: {
+      value: directValue.parent ?? sourceNode.parent,
+      writable: true,
+      enumerable: false,
+      configurable: true
+    },
+    index: {
+      value: directValue.index ?? sourceNode.index,
+      writable: true,
+      enumerable: true,
+      configurable: true
+    }
+  });
   return preservedValue;
 }
 
@@ -2722,8 +2789,10 @@ function finalizeDeclarationReferenceResult(
   if (
     context.calcFrames === 0
     && !hasImportant
-    && !isMergedAssign
-    && canReturnReferenceValue(declarationValue)
+    && (
+      (!isMergedAssign && canReturnReferenceValue(declarationValue))
+      || (isMergedAssign && canReturnMergedAssignReferenceValue(declarationValue))
+    )
   ) {
     context.popReference();
     return declarationValue;
@@ -2753,6 +2822,10 @@ function finalizeDeclarationReferenceResult(
     const evaluated = evaluateReferenceValueNode(declarationValue, context);
     const finalize = (evaluatedNode: Node): Node => {
       if (!isMergedAssign) {
+        popReference();
+        return evaluatedNode;
+      }
+      if (canReturnMergedAssignReferenceValue(evaluatedNode)) {
         popReference();
         return evaluatedNode;
       }

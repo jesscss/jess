@@ -4,12 +4,13 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { cast } from './util/cast.js';
 import { callWithContext, getRawArgsPlacement, setRawArgsPlacement } from '../define-function.js';
-import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Rules } from './rules.js';
 import { callableRulesEntry } from './util/callable-entry.js';
 import { MixinCollection } from './util/callable-collection.js';
+import { evaluateCallableCollection } from './util/callable-eval.js';
 import { Any } from './any.js';
 import { List, list } from './list.js';
 import { Reference } from './reference.js';
@@ -19,8 +20,12 @@ import {
   type RenderBuffer,
   writeRenderTextResult
 } from './util/render-buffer.js';
-import { emitCommentTriviaBetweenNodes } from './util/trivia.js';
+import { consumeTrivia, emitCommentTriviaBetweenNodes, emitTriviaTokens } from './util/trivia.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
+import { Condition } from './condition.js';
+import { Operation } from './operation.js';
+import { QueryCondition } from './query-condition.js';
+import { Negative } from './negative.js';
 
 function stringifyValueOf(value: unknown): string {
   if (value && typeof value === 'object' && 'valueOf' in value) {
@@ -35,6 +40,48 @@ function isExtendedFn(value: unknown): value is ExtendedFn {
 
 function createImportantFlag(): Any<'flag'> {
   return new Any<'flag'>('!important', { role: 'flag' });
+}
+
+function emitCallArgSyntax(
+  arg: Node,
+  options: FinalPrintOptions,
+  suppressPre = false
+): void {
+  const saved = options.suppressBoundaryTrivia;
+  options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
+  try {
+    arg.writeSyntax(options);
+  } finally {
+    options.suppressBoundaryTrivia = saved;
+  }
+}
+
+function emitCallArgSeparator(
+  prev: Node,
+  arg: Node,
+  options: FinalPrintOptions,
+  sep: List<Node>['options']['sep']
+): void {
+  emitCommentTriviaBetweenNodes(prev, arg, options);
+  const leadingTrivia = options.trivia
+    ? consumeTrivia(options.trivia, arg.location[0], 'before', options)
+    : undefined;
+  const leadingWhitespace = leadingTrivia?.[0]?.tokenType.name === 'WS'
+    ? leadingTrivia[0].image
+    : '';
+  const preserveLeadingWhitespace = /[\r\n]/.test(leadingWhitespace);
+  if (sep === '/') {
+    options.writer.add(preserveLeadingWhitespace ? ' /' : ' / ');
+  } else {
+    options.writer.add(preserveLeadingWhitespace ? sep : `${sep} `);
+  }
+  if (leadingTrivia) {
+    emitTriviaTokens(
+      leadingTrivia,
+      options,
+      { skipLeadingWhitespace: !preserveLeadingWhitespace }
+    );
+  }
 }
 
 function withMixinRulesetCallArgsHint(name: string | Node, args?: List<Node>): string | Node;
@@ -107,6 +154,274 @@ export type CallRawArgDiagnosticSource = {
 };
 
 type OptionalFallbackRenderOutput = Node | string;
+type CallRenderTextState = { text: string | undefined };
+
+function renderDetachedCallNodeText(node: Node, printOptions: FinalPrintOptions): string {
+  const writer = new OutputWriter(printOptions.compress);
+  node.writeSyntax({
+    ...printOptions,
+    writer
+  });
+  return writer.toString();
+}
+
+function isHorizontalWhitespace(code: number): boolean {
+  return code === 9 || code === 12 || code === 13 || code === 32;
+}
+
+function trimHorizontalCallText(text: string): string {
+  let start = 0;
+  while (start < text.length && isHorizontalWhitespace(text.charCodeAt(start))) {
+    start++;
+  }
+  let end = text.length;
+  while (end > start && isHorizontalWhitespace(text.charCodeAt(end - 1))) {
+    end--;
+  }
+  return start === 0 && end === text.length ? text : text.slice(start, end);
+}
+
+function getKnownRenderedCallText(node: Node): string | undefined {
+  switch (node.type) {
+    case 'Any':
+    case 'Keyword':
+    case 'Anonymous':
+      return typeof node.value === 'string' ? node.value : undefined;
+    case 'Bool':
+      return node.value ? 'true' : 'false';
+    case 'Dimension':
+      return typeof node.number === 'number'
+        ? `${node.number}${node.unit ?? ''}`
+        : undefined;
+    case 'Num':
+      return typeof node.number === 'number' ? `${node.number}` : undefined;
+    case 'Color':
+      return typeof node.node === 'string' ? node.node : undefined;
+    case 'List': {
+      const parts = new Array<string>(node.items.length);
+      for (let i = 0; i < node.items.length; i++) {
+        const text = getKnownRenderedCallText(node.items[i]!);
+        if (text === undefined) {
+          return undefined;
+        }
+        parts[i] = text;
+      }
+      const sep = node.options?.sep ?? ',';
+      if (sep === '/') {
+        return parts.join(' / ');
+      }
+      return parts.join(`${sep} `);
+    }
+    case 'Sequence': {
+      if (node.preserveWhitespace) {
+        return undefined;
+      }
+      const parts = new Array<string>(node.items.length);
+      for (let i = 0; i < node.items.length; i++) {
+        const text = getKnownRenderedCallText(node.items[i]!);
+        if (text === undefined) {
+          return undefined;
+        }
+        parts[i] = text;
+      }
+      return parts.join(' ');
+    }
+    case 'Paren': {
+      const open = node.options?.delimiter === 'square' ? '[' : '(';
+      const close = node.options?.delimiter === 'square' ? ']' : ')';
+      if (!node.value) {
+        return `${open}${close}`;
+      }
+      const value = getKnownRenderedCallText(node.value);
+      if (value === undefined) {
+        return undefined;
+      }
+      return `${open}${value}${close}`;
+    }
+    case 'Quoted': {
+      const quote = node.quote ?? '"';
+      if (typeof node.value === 'string') {
+        return node.escaped ? node.value : `${quote}${node.value}${quote}`;
+      }
+      const value = getKnownRenderedCallText(node.value);
+      if (value === undefined) {
+        return undefined;
+      }
+      return node.escaped ? value : `${quote}${value}${quote}`;
+    }
+    default:
+      if (node.constructor === QueryCondition) {
+        const parts = new Array<string>(node.items.length);
+        for (let i = 0; i < node.items.length; i++) {
+          const text = getKnownRenderedCallText(node.items[i]!);
+          if (text === undefined) {
+            return undefined;
+          }
+          parts[i] = text;
+        }
+        return parts.join(' ');
+      }
+      if (node.constructor === Condition) {
+        const left = getKnownRenderedCallText(node.left);
+        if (left === undefined) {
+          return undefined;
+        }
+        const needsParens = Boolean(node.right || node.negate);
+        let out = node.negate ? 'not ' : '';
+        if (needsParens) {
+          out += '(';
+        }
+        out += left;
+        if (node.operator && node.right) {
+          const right = getKnownRenderedCallText(node.right);
+          if (right === undefined) {
+            return undefined;
+          }
+          out += ` ${node.operator} ${right}`;
+        }
+        if (needsParens) {
+          out += ')';
+        }
+        return out;
+      }
+      if (node.constructor === Operation) {
+        const left = getKnownRenderedCallText(node.left);
+        const right = getKnownRenderedCallText(node.right);
+        if (left === undefined || right === undefined) {
+          return undefined;
+        }
+        return `${left} ${node.operator} ${right}`;
+      }
+      if (node.constructor === Negative) {
+        const value = getKnownRenderedCallText(node.node);
+        return value === undefined ? undefined : `-${value}`;
+      }
+      return undefined;
+  }
+}
+
+function getKnownSourceCallText(node: Node): string | undefined {
+  switch (node.type) {
+    case 'Any':
+    case 'Keyword':
+    case 'Anonymous':
+      return typeof node.value === 'string' ? node.value : undefined;
+    case 'Bool':
+      return node.value ? 'true' : 'false';
+    case 'Dimension':
+      return typeof node.number === 'number'
+        ? `${node.number}${node.unit ?? ''}`
+        : undefined;
+    case 'Num':
+      return typeof node.number === 'number' ? `${node.number}` : undefined;
+    case 'Color':
+      return typeof node.node === 'string' ? node.node : undefined;
+    case 'List': {
+      const parts = new Array<string>(node.items.length);
+      for (let i = 0; i < node.items.length; i++) {
+        const text = getKnownSourceCallText(node.items[i]!);
+        if (text === undefined) {
+          return undefined;
+        }
+        parts[i] = text;
+      }
+      const sep = node.options?.sep ?? ',';
+      if (sep === '/') {
+        return parts.join(' / ');
+      }
+      return parts.join(`${sep} `);
+    }
+    case 'Sequence': {
+      if (node.preserveWhitespace) {
+        return undefined;
+      }
+      const parts = new Array<string>(node.items.length);
+      for (let i = 0; i < node.items.length; i++) {
+        const text = getKnownSourceCallText(node.items[i]!);
+        if (text === undefined) {
+          return undefined;
+        }
+        parts[i] = text;
+      }
+      return parts.join(' ');
+    }
+    case 'Paren': {
+      const open = node.options?.delimiter === 'square' ? '[' : '(';
+      const close = node.options?.delimiter === 'square' ? ']' : ')';
+      if (!node.value) {
+        return `${node.options?.escaped ? '~' : ''}${open}${close}`;
+      }
+      const value = getKnownSourceCallText(node.value);
+      if (value === undefined) {
+        return undefined;
+      }
+      return `${node.options?.escaped ? '~' : ''}${open}${value}${close}`;
+    }
+    case 'Quoted': {
+      const quote = node.quote ?? '"';
+      if (typeof node.value === 'string') {
+        return node.escaped ? `~${quote}${node.value}${quote}` : `${quote}${node.value}${quote}`;
+      }
+      const value = getKnownSourceCallText(node.value);
+      if (value === undefined) {
+        return undefined;
+      }
+      return node.escaped ? `~${quote}${value}${quote}` : `${quote}${value}${quote}`;
+    }
+    default:
+      if (node.constructor === QueryCondition) {
+        const parts = new Array<string>(node.items.length);
+        for (let i = 0; i < node.items.length; i++) {
+          const text = getKnownSourceCallText(node.items[i]!);
+          if (text === undefined) {
+            return undefined;
+          }
+          parts[i] = text;
+        }
+        return parts.join(' ');
+      }
+      if (node.constructor === Condition) {
+        const left = getKnownSourceCallText(node.left);
+        if (left === undefined) {
+          return undefined;
+        }
+        const needsParens = Boolean(node.right || node.negate);
+        let out = node.negate ? 'not ' : '';
+        if (needsParens) {
+          out += '(';
+        }
+        out += left;
+        if (node.operator && node.right) {
+          const right = getKnownSourceCallText(node.right);
+          if (right === undefined) {
+            return undefined;
+          }
+          out += ` ${node.operator} ${right}`;
+        }
+        if (needsParens) {
+          out += ')';
+        }
+        return out;
+      }
+      if (node.constructor === Operation) {
+        const left = getKnownSourceCallText(node.left);
+        const right = getKnownSourceCallText(node.right);
+        if (left === undefined || right === undefined) {
+          return undefined;
+        }
+        return `${left} ${node.operator} ${right}`;
+      }
+      if (node.constructor === Negative) {
+        const value = getKnownSourceCallText(node.node);
+        return value === undefined ? undefined : `-${value}`;
+      }
+      return undefined;
+  }
+}
+
+function callRenderSharesWriter(bufferOrOptions?: RenderBuffer | PrintOptions): bufferOrOptions is RenderBuffer & { shareWriter: true } {
+  return Boolean(isRenderBuffer(bufferOrOptions) && 'shareWriter' in bufferOrOptions && bufferOrOptions.shareWriter);
+}
 
 export function getCallRawArgsPlacement(rawArgs: List<Node>): CallRawArgsPlacementState | undefined {
   const placement = getRawArgsPlacement(rawArgs);
@@ -236,19 +551,75 @@ export class Call extends Node<CallValue, CallOptions> {
 
   private async evalArgNodes(
     context: Context,
-    nodes?: List<Node>
+    nodes?: List<Node>,
+    options?: { ownResults?: boolean }
   ): Promise<List<Node> | undefined> {
     if (!nodes) {
       return undefined;
     }
+    const ownResults = options?.ownResults ?? true;
     const source = nodes.items;
     const out = new Array<Node>(source.length);
+    let changed = false;
+    const evalImmediate = (node: Node): Node => {
+      const evald = node.evaluated ? node : node.evalNode(context);
+      if (!(evald instanceof Node)) {
+        throw new TypeError('Expected sync node result.');
+      }
+      evald.evaluated = true;
+      if (node !== evald) {
+        evald.inherit(node);
+      }
+      return evald;
+    };
+    const continueAsync = async (startIndex: number, first: Promise<Node>): Promise<List<Node>> => {
+      let evald = await first;
+      out[startIndex] = evald === source[startIndex]!
+        ? ownResults ? copyWithReusableLeaves(evald) : evald
+        : evald;
+      changed ||= evald !== source[startIndex]!;
+      for (let i = startIndex + 1; i < source.length; i++) {
+        const next = source[i]!;
+        let nextEvald: Node;
+        if (
+          !next.hasFlag(F_MAY_ASYNC)
+          && next.eval === Node.prototype.eval
+        ) {
+          nextEvald = evalImmediate(next);
+        } else {
+          nextEvald = await next.eval(context) as Node;
+        }
+        out[i] = nextEvald === next
+          ? ownResults ? copyWithReusableLeaves(nextEvald) : nextEvald
+          : nextEvald;
+        changed ||= nextEvald !== next;
+      }
+      return !ownResults && !changed ? nodes : list(out, nodes.options);
+    };
     for (let i = 0; i < source.length; i++) {
       const node = source[i]!;
-      const evald = await node.eval(context) as Node;
-      out[i] = evald === node ? copyWithReusableLeaves(evald) : evald;
+      if (
+        !node.hasFlag(F_MAY_ASYNC)
+        && node.eval === Node.prototype.eval
+      ) {
+        const evald = evalImmediate(node);
+        out[i] = evald === node
+          ? ownResults ? copyWithReusableLeaves(evald) : evald
+          : evald;
+        changed ||= evald !== node;
+        continue;
+      }
+      const evald = node.eval(context);
+      if (isThenable(evald)) {
+        return continueAsync(i, evald as Promise<Node>);
+      }
+      const resolved = evald as Node;
+      out[i] = resolved === node
+        ? ownResults ? copyWithReusableLeaves(resolved) : resolved
+        : resolved;
+      changed ||= resolved !== node;
     }
-    return list(out, nodes.options);
+    return !ownResults && !changed ? nodes : list(out, nodes.options);
   }
 
   private markCallOutput<T extends Node>(node: T, ownOutput = true): T {
@@ -276,6 +647,32 @@ export class Call extends Node<CallValue, CallOptions> {
       node.options.callDeclarationOutput = true;
     }
     return node;
+  }
+
+  private async finalizeCallResult(
+    context: Context,
+    result: unknown,
+    options?: {
+      ownOutput?: boolean;
+      markImportant?: boolean;
+    }
+  ): Promise<Node> {
+    const ownOutput = options?.ownOutput ?? true;
+    if (isNode(result)) {
+      let evald = result.eval(context);
+      if (isThenable(evald)) {
+        evald = await evald;
+      }
+      if (options?.markImportant && isNode(evald, N.Rules)) {
+        this.makeImportant(evald);
+      }
+      return this.markCallOutput(evald, ownOutput);
+    }
+    const castResult = cast(result);
+    if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
+      return this.markCallOutput(castResult.rules[0]!, ownOutput);
+    }
+    return this.markCallOutput(castResult, ownOutput);
   }
 
   private async runInCallFrame<T>(
@@ -350,14 +747,7 @@ export class Call extends Node<CallValue, CallOptions> {
             const result = state.args
               ? await callWithContext(context, fn, ...state.args.items)
               : await callWithContext(context, fn);
-            if (isNode(result)) {
-              return this.markCallOutput(await result.eval(context), ownOutput);
-            }
-            const castResult = cast(result);
-            if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
-              return this.markCallOutput(castResult.rules[0]!, ownOutput);
-            }
-            return this.markCallOutput(castResult, ownOutput);
+            return this.finalizeCallResult(context, result, { ownOutput });
           } catch (error) {
             const unitMode = context?.opts?.unitMode ?? 'loose';
             if (unitMode === 'strict') {
@@ -426,14 +816,7 @@ export class Call extends Node<CallValue, CallOptions> {
       const result = state.args
         ? await callWithContext(context, fn, ...state.args.items)
         : await callWithContext(context, fn);
-      if (isNode(result)) {
-        return this.markCallOutput(await result.eval(context), ownOutput);
-      }
-      const castResult = cast(result);
-      if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
-        return this.markCallOutput(castResult.rules[0]!, ownOutput);
-      }
-      return this.markCallOutput(castResult, ownOutput);
+      return this.finalizeCallResult(context, result, { ownOutput });
     });
   }
 
@@ -465,102 +848,157 @@ export class Call extends Node<CallValue, CallOptions> {
       const result = state.args
         ? await callWithContext(context, fn, state.args)
         : await callWithContext(context, fn);
-      if (isNode(result)) {
-        let evald = result.eval(context);
-        if (isThenable(evald)) {
-          evald = await evald;
-        }
-        if (this._options?.markImportant && isNode(evald, N.Rules)) {
-          this.makeImportant(evald);
-        }
-        return this.markCallOutput(evald, ownOutput);
-      }
-      const castResult = cast(result);
-      if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
-        return this.markCallOutput(castResult.rules[0]!, ownOutput);
-      }
-      return this.markCallOutput(castResult, ownOutput);
+      return this.finalizeCallResult(context, result, {
+        ownOutput,
+        markImportant: this._options?.markImportant
+      });
     });
   }
 
-  private serializeRenderedArgs(
+  private writeRenderedArgs(
     args: List<Node> | undefined,
     context: Context,
-    options: PrintOptions
-  ): MaybePromise<string> {
+    options: PrintOptions,
+    textState?: CallRenderTextState
+  ): MaybePromise<void> {
     if (!args || args.items.length === 0) {
-      return '';
+      return;
     }
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
-    const mark = w.mark();
     const rawArgs = args.items;
     const last = rawArgs.length - 1;
-    const serializeArgAt = (start: number): MaybePromise<string> => {
+    const findNextArgIndex = (start: number): number => {
       let i = start;
       while (i <= last && !rawArgs[i]) {
         i++;
       }
-      if (i > last) {
-        return w.getSince(mark);
+      return i;
+    };
+    const writeArgSeparator = (arg: Node, next: number): void => {
+      if (next > last) {
+        return;
       }
-      const arg = rawArgs[i]!;
-      let next = i + 1;
-      while (next <= last && !rawArgs[next]) {
-        next++;
-      }
-      const hasNext = next <= last;
-      const writeArgSeparator = (): void => {
-        if (!hasNext) {
-          return;
-        }
-        emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
-        w.add(', ');
-      };
-      const finishArg = (argMark: number): MaybePromise<string> => {
-        w.trimHorizontalStartSince(argMark);
-        w.trimHorizontalEndSince(argMark);
-        writeArgSeparator();
-        return serializeArgAt(next);
-      };
-      if (arg instanceof Paren && arg.options?.escaped) {
-        w.add('(', arg);
-        if (arg.value) {
-          const innerMark = w.mark();
-          const rendered = arg.value.eval(context);
-          const finishParen = (): MaybePromise<string> => {
-            w.trimHorizontalStartSince(innerMark);
-            w.trimHorizontalEndSince(innerMark);
-            w.add(')', arg);
-            writeArgSeparator();
-            return serializeArgAt(next);
-          };
-          if (isThenable(rendered)) {
-            return rendered.then((value) => {
-              value.writeSyntax(printOptions);
-              return finishParen();
-            });
-          }
-          (rendered as Node).writeSyntax(printOptions);
-          return finishParen();
-        }
-        w.add(')', arg);
-        writeArgSeparator();
-        return serializeArgAt(next);
-      } else {
-        const argMark = w.mark();
-        const rendered = arg.eval(context);
-        if (isThenable(rendered)) {
-          return rendered.then((value) => {
-            value.writeSyntax(printOptions);
-            return finishArg(argMark);
-          });
-        }
-        (rendered as Node).writeSyntax(printOptions);
-        return finishArg(argMark);
+      emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
+      w.add(', ');
+      if (textState?.text !== undefined) {
+        textState.text += ', ';
       }
     };
-    return serializeArgAt(0);
+    const finishArg = (arg: Node, argText: string, next: number): void => {
+      const trimmed = trimHorizontalCallText(argText);
+      w.add(trimmed, arg);
+      if (textState?.text !== undefined) {
+        textState.text += trimmed;
+      }
+      writeArgSeparator(arg, next);
+    };
+    const finishEscapedParenArg = (arg: Paren, innerText: string, next: number): void => {
+      const trimmed = trimHorizontalCallText(innerText);
+      w.add(trimmed, arg);
+      w.add(')', arg);
+      if (textState?.text !== undefined) {
+        textState.text += `${trimmed})`;
+      }
+      writeArgSeparator(arg, next);
+    };
+    const finishDirectEscapedParenArg = (arg: Paren, next: number): void => {
+      w.add(')', arg);
+      if (textState?.text !== undefined) {
+        textState.text += ')';
+      }
+      writeArgSeparator(arg, next);
+    };
+    const appendKnownRenderedText = (node: Node): boolean => {
+      const text = getKnownRenderedCallText(node);
+      if (text === undefined) {
+        return false;
+      }
+      w.add(text, node);
+      if (textState?.text !== undefined) {
+        textState.text += text;
+      }
+      return true;
+    };
+    const writeArgAt = (i: number): MaybePromise<void> => {
+      const arg = rawArgs[i]!;
+      const next = findNextArgIndex(i + 1);
+      if (arg instanceof Paren && arg.options?.escaped) {
+        w.add('(', arg);
+        if (textState?.text !== undefined) {
+          textState.text += '(';
+        }
+        if (!arg.value) {
+          w.add(')', arg);
+          if (textState?.text !== undefined) {
+            textState.text += ')';
+          }
+          writeArgSeparator(arg, next);
+          return;
+        }
+        const rendered = arg.value.eval(context);
+        if (isThenable(rendered)) {
+          return rendered.then((value) => {
+            if (appendKnownRenderedText(value)) {
+              finishDirectEscapedParenArg(arg, next);
+              return;
+            }
+            finishEscapedParenArg(arg, renderDetachedCallNodeText(value, printOptions), next);
+          });
+        }
+        if (appendKnownRenderedText(rendered as Node)) {
+          finishDirectEscapedParenArg(arg, next);
+          return;
+        }
+        finishEscapedParenArg(arg, renderDetachedCallNodeText(rendered as Node, printOptions), next);
+        return;
+      }
+      if (
+        arg.eval === Node.prototype.eval
+        && appendKnownRenderedText(arg)
+      ) {
+        writeArgSeparator(arg, next);
+        return;
+      }
+      const rendered = arg.eval(context);
+      if (isThenable(rendered)) {
+        return rendered.then((value) => {
+          if (!appendKnownRenderedText(value)) {
+            finishArg(arg, renderDetachedCallNodeText(value, printOptions), next);
+            return;
+          }
+          writeArgSeparator(arg, next);
+        });
+      }
+      if (!appendKnownRenderedText(rendered as Node)) {
+        finishArg(arg, renderDetachedCallNodeText(rendered as Node, printOptions), next);
+        return;
+      }
+      writeArgSeparator(arg, next);
+      return;
+    };
+    const writeArgsAsync = async (start: number): Promise<void> => {
+      for (let i = start; i <= last;) {
+        const nextIndex = findNextArgIndex(i);
+        if (nextIndex > last) {
+          return;
+        }
+        await writeArgAt(nextIndex);
+        i = nextIndex + 1;
+      }
+    };
+
+    for (let i = 0; i <= last;) {
+      const nextIndex = findNextArgIndex(i);
+      if (nextIndex > last) {
+        return;
+      }
+      const rendered = writeArgAt(nextIndex);
+      if (isThenable(rendered)) {
+        return rendered.then(() => writeArgsAsync(nextIndex + 1));
+      }
+      i = nextIndex + 1;
+    }
   }
 
   private renderPlainFunctionCall(
@@ -576,16 +1014,30 @@ export class Call extends Node<CallValue, CallOptions> {
       w.add(out, callNode);
       return out;
     }
-    const mark = w.mark();
+    const textState: CallRenderTextState = {
+      text: typeof name === 'string'
+        ? name
+        : getKnownRenderedCallText(name)
+    };
     if (typeof name === 'string') {
       w.add(name, callNode);
+    } else if (textState.text !== undefined) {
+      w.add(textState.text, name);
     } else {
-      name.writeSyntax(printOptions);
+      const nameText = renderDetachedCallNodeText(name, printOptions);
+      textState.text = nameText;
+      w.add(nameText, name);
     }
     if (callNode.options?.silentFail) {
       w.add('?');
+      if (textState.text !== undefined) {
+        textState.text += '?';
+      }
     }
     w.add('(');
+    if (textState.text !== undefined) {
+      textState.text += '(';
+    }
     const isCalc = name === 'calc';
     if (isCalc) {
       context.calcFrames++;
@@ -595,26 +1047,61 @@ export class Call extends Node<CallValue, CallOptions> {
         context.calcFrames--;
       }
       w.add(')');
+      if (textState.text !== undefined) {
+        textState.text += ')';
+      }
       if (callNode.options?.markImportant) {
         w.add(' !important');
+        if (textState.text !== undefined) {
+          textState.text += ' !important';
+        }
       }
       if (contentNode) {
         w.add(': ');
+        if (textState.text !== undefined) {
+          textState.text += ': ';
+        }
         const renderedContent = contentNode.eval(context);
         if (isThenable(renderedContent)) {
           return renderedContent.then((value) => {
-            value.writeSyntax(printOptions);
-            return w.getSince(mark);
+            const contentText = getKnownRenderedCallText(value);
+            if (contentText !== undefined) {
+              w.add(contentText, value);
+              if (textState.text !== undefined) {
+                textState.text += contentText;
+                return textState.text;
+              }
+            } else {
+              const contentText = renderDetachedCallNodeText(value, printOptions);
+              w.add(contentText, value);
+              if (textState.text !== undefined) {
+                textState.text += contentText;
+              }
+            }
+            return textState.text ?? '';
           });
         }
-        (renderedContent as Node).writeSyntax(printOptions);
-        return w.getSince(mark);
+        const contentText = getKnownRenderedCallText(renderedContent as Node);
+        if (contentText !== undefined) {
+          w.add(contentText, renderedContent as Node);
+          if (textState.text !== undefined) {
+            textState.text += contentText;
+            return textState.text;
+          }
+        } else {
+          const contentText = renderDetachedCallNodeText(renderedContent as Node, printOptions);
+          w.add(contentText, renderedContent as Node);
+          if (textState.text !== undefined) {
+            textState.text += contentText;
+          }
+        }
+        return textState.text ?? '';
       }
-      return w.getSince(mark);
+      return textState.text ?? '';
     };
-    let renderedArgs: MaybePromise<string>;
+    let renderedArgs: MaybePromise<void>;
     try {
-      renderedArgs = this.serializeRenderedArgs(callNode.args, context, prepared);
+      renderedArgs = this.writeRenderedArgs(callNode.args, context, prepared, textState);
     } catch (error) {
       if (isCalc) {
         context.calcFrames--;
@@ -641,37 +1128,98 @@ export class Call extends Node<CallValue, CallOptions> {
   ): MaybePromise<string> {
     const printOptions = getPrintOptions(prepared);
     const w = printOptions.writer!;
-    const mark = w.mark();
     const args = syntax && 'args' in syntax ? syntax.args : state.args;
     const contentNode = syntax && 'contentNode' in syntax ? syntax.contentNode : state.contentNode;
+    if (
+      typeof name === 'string'
+      && (!args || args.items.length === 0)
+      && !contentNode
+    ) {
+      const out = `${name}()${this._options?.markImportant ? ' !important' : ''}`;
+      w.add(out, state.source);
+      return out;
+    }
+    const textState: CallRenderTextState = {
+      text: typeof name === 'string'
+        ? name
+        : name instanceof Node
+          ? getKnownRenderedCallText(name)
+          : undefined
+    };
     if (typeof name === 'string') {
       w.add(name, state.source);
     } else if (name instanceof Node) {
-      name.writeSyntax(printOptions);
+      if (textState.text !== undefined) {
+        w.add(textState.text, name);
+      } else {
+        const nameText = renderDetachedCallNodeText(name, printOptions);
+        textState.text = nameText;
+        w.add(nameText, name);
+      }
     } else {
-      w.add(stringifyValueOf(name), state.source);
+      const text = stringifyValueOf(name);
+      textState.text = text;
+      w.add(text, state.source);
     }
     w.add('(');
+    if (textState.text !== undefined) {
+      textState.text += '(';
+    }
     const finishCall = (): MaybePromise<string> => {
       w.add(')');
+      if (textState.text !== undefined) {
+        textState.text += ')';
+      }
       if (this._options?.markImportant) {
         w.add(' !important');
+        if (textState.text !== undefined) {
+          textState.text += ' !important';
+        }
       }
       if (contentNode) {
         w.add(': ');
+        if (textState.text !== undefined) {
+          textState.text += ': ';
+        }
         const renderedContent = contentNode.eval(context);
         if (isThenable(renderedContent)) {
           return renderedContent.then((value) => {
-            value.writeSyntax(printOptions);
-            return w.getSince(mark);
+            const contentText = getKnownRenderedCallText(value);
+            if (contentText !== undefined) {
+              w.add(contentText, value);
+              if (textState.text !== undefined) {
+                textState.text += contentText;
+                return textState.text;
+              }
+            } else {
+              const contentText = renderDetachedCallNodeText(value, printOptions);
+              w.add(contentText, value);
+              if (textState.text !== undefined) {
+                textState.text += contentText;
+              }
+            }
+            return textState.text ?? '';
           });
         }
-        (renderedContent as Node).writeSyntax(printOptions);
-        return w.getSince(mark);
+        const contentText = getKnownRenderedCallText(renderedContent as Node);
+        if (contentText !== undefined) {
+          w.add(contentText, renderedContent as Node);
+          if (textState.text !== undefined) {
+            textState.text += contentText;
+            return textState.text;
+          }
+        } else {
+          const contentText = renderDetachedCallNodeText(renderedContent as Node, printOptions);
+          w.add(contentText, renderedContent as Node);
+          if (textState.text !== undefined) {
+            textState.text += contentText;
+          }
+        }
+        return textState.text ?? '';
       }
-      return w.getSince(mark);
+      return textState.text ?? '';
     };
-    const renderedArgs = this.serializeRenderedArgs(args, context, prepared);
+    const renderedArgs = this.writeRenderedArgs(args, context, prepared, textState);
     return isThenable(renderedArgs)
       ? renderedArgs.then(finishCall)
       : finishCall();
@@ -720,6 +1268,7 @@ export class Call extends Node<CallValue, CallOptions> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): Promise<string> {
+    const sharesWriter = callRenderSharesWriter(bufferOrOptions);
     if (typeof this.name !== 'string') {
       const state = this.createEvalState();
       const { name } = state;
@@ -756,25 +1305,14 @@ export class Call extends Node<CallValue, CallOptions> {
                   : stringifyValueOf(fn);
                 return this.renderFinalizedCallSyntax(fallbackName, state, context, prepared);
               }
-              if (isNode(result)) {
-                let evald = result.eval(context);
-                if (isThenable(evald)) {
-                  evald = await evald;
-                }
-                if (isMetadataFunction && this._options?.markImportant && isNode(evald, N.Rules)) {
-                  this.makeImportant(evald);
-                }
-                return this.markCallOutput(evald, false);
-              }
-              const castResult = cast(result);
-              if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
-                return this.markCallOutput(castResult.rules[0]!, false);
-              }
-              return this.markCallOutput(castResult, false);
+              return this.finalizeCallResult(context, result, {
+                ownOutput: false,
+                markImportant: isMetadataFunction && this._options?.markImportant
+              });
             });
             if (typeof output === 'string') {
               return isRenderBuffer(bufferOrOptions)
-                ? writeRenderTextResult(bufferOrOptions, output)
+                ? sharesWriter ? output : writeRenderTextResult(bufferOrOptions, output)
                 : output;
             }
             return this.renderOutput(context, output, bufferOrOptions, options);
@@ -801,26 +1339,22 @@ export class Call extends Node<CallValue, CallOptions> {
           if (state.args && state.args.items.length > 0) {
             throw new ReferenceError(`Cannot call ${evaluatedName.type} with arguments`);
           }
-          const collection = new MixinCollection([
-            callableRulesEntry(
-              { rules: evaluatedName },
-              evaluatedName.parent,
-              evaluatedName.index
-            )
-          ]);
           const output = await this.runInCallFrame(context, { caller: true }, async () => {
-            const result = await collection.evalCall(context, state.args);
-            if (isNode(result)) {
-              let evald = result.eval(context);
-              if (isThenable(evald)) {
-                evald = await evald;
-              }
-              if (this._options?.markImportant && isNode(evald, N.Rules)) {
-                this.makeImportant(evald);
-              }
-              return this.markCallOutput(evald, false);
-            }
-            return this.markCallOutput(cast(result), false);
+            const result = await evaluateCallableCollection({
+              context,
+              mixinEntries: [
+                callableRulesEntry(
+                  { rules: evaluatedName },
+                  evaluatedName.parent,
+                  evaluatedName.index
+                )
+              ],
+              args: state.args?.value ?? []
+            });
+            return this.finalizeCallResult(context, result, {
+              ownOutput: false,
+              markImportant: this._options?.markImportant
+            });
           });
           return this.renderOutput(context, output, bufferOrOptions, options);
         } else if (
@@ -834,17 +1368,10 @@ export class Call extends Node<CallValue, CallOptions> {
           const output = await this.runInCallFrame(context, { caller: true }, async () => {
             try {
               const result = await collection.evalCall(context, state.args);
-              if (isNode(result)) {
-                let evald = result.eval(context);
-                if (isThenable(evald)) {
-                  evald = await evald;
-                }
-                if (this._options?.markImportant && isNode(evald, N.Rules)) {
-                  this.makeImportant(evald);
-                }
-                return this.markCallOutput(evald, false);
-              }
-              return this.markCallOutput(cast(result), false);
+              return this.finalizeCallResult(context, result, {
+                ownOutput: false,
+                markImportant: this._options?.markImportant
+              });
             } catch (error) {
               if (error instanceof ReferenceError && error.message.includes('No matching mixins')) {
                 if (this.parent?.type === 'SelectorCapture') {
@@ -863,7 +1390,7 @@ export class Call extends Node<CallValue, CallOptions> {
           });
           if (typeof output === 'string') {
             return isRenderBuffer(bufferOrOptions)
-              ? writeRenderTextResult(bufferOrOptions, output)
+              ? sharesWriter ? output : writeRenderTextResult(bufferOrOptions, output)
               : output;
           }
           return this.renderOutput(context, output, bufferOrOptions, options);
@@ -877,7 +1404,7 @@ export class Call extends Node<CallValue, CallOptions> {
         ) {
           const fallbackText = await this.renderFinalizedCallSyntax(evaluatedName, state, context, prepared);
           return isRenderBuffer(bufferOrOptions)
-            ? writeRenderTextResult(bufferOrOptions, fallbackText)
+            ? sharesWriter ? fallbackText : writeRenderTextResult(bufferOrOptions, fallbackText)
             : fallbackText;
         }
       }
@@ -889,14 +1416,14 @@ export class Call extends Node<CallValue, CallOptions> {
     const fallbackText = await this.renderOptionalFallbackCallSyntax(context, prepared);
     if (fallbackText) {
       return isRenderBuffer(bufferOrOptions)
-        ? writeRenderTextResult(bufferOrOptions, fallbackText)
+        ? sharesWriter ? fallbackText : writeRenderTextResult(bufferOrOptions, fallbackText)
         : fallbackText;
     }
     const fallback = await this.evalOptionalFallbackOutput(context, prepared);
     if (fallback) {
       if (typeof fallback === 'string') {
         return isRenderBuffer(bufferOrOptions)
-          ? writeRenderTextResult(bufferOrOptions, fallback)
+          ? sharesWriter ? fallback : writeRenderTextResult(bufferOrOptions, fallback)
           : fallback;
       }
       return this.renderOutput(context, fallback, bufferOrOptions, options);
@@ -932,6 +1459,47 @@ export class Call extends Node<CallValue, CallOptions> {
       w.add(out, this);
       return out;
     }
+    if (!options.trivia) {
+      const nameText = typeof this.name === 'string'
+        ? this.name
+        : getKnownSourceCallText(this.name);
+      if (nameText !== undefined) {
+        let out = `${nameText}${this._options?.silentFail ? '?' : ''}(`;
+        if (this.args?.items.length) {
+          const sep = this.args.options?.sep ?? ',';
+          const joiner = sep === '/' ? ' / ' : `${sep} `;
+          for (let i = 0; i < this.args.items.length; i++) {
+            const text = getKnownSourceCallText(this.args.items[i]!);
+            if (text === undefined) {
+              out = '';
+              break;
+            }
+            if (i > 0) {
+              out += joiner;
+            }
+            out += text;
+          }
+        }
+        if (out) {
+          out += ')';
+          if (this._options?.markImportant) {
+            out += ' !important';
+          }
+          if (this.contentNode) {
+            const contentText = getKnownSourceCallText(this.contentNode);
+            if (contentText === undefined) {
+              out = '';
+            } else {
+              out += `: ${contentText}`;
+            }
+          }
+          if (out) {
+            w.add(out, this);
+            return out;
+          }
+        }
+      }
+    }
     const mark = w.mark();
     this.writeSyntax(options);
     return w.getSince(mark);
@@ -942,8 +1510,12 @@ export class Call extends Node<CallValue, CallOptions> {
     const silentFail = this._options?.silentFail;
     const w = options.writer;
     const { name, contentNode, args } = this;
-    if (typeof name === 'string') {
-      w.add(name, this);
+    const directSource = !options.trivia;
+    const nameText = typeof name === 'string'
+      ? name
+      : directSource ? getKnownSourceCallText(name) : undefined;
+    if (nameText !== undefined) {
+      w.add(nameText, typeof name === 'string' ? this : name);
     } else {
       name.writeSyntax(options);
     }
@@ -952,10 +1524,31 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     w.add('(');
     if (args && args.items.length > 0) {
-      const argsMark = w.mark();
-      args.writeSyntax(options);
-      w.trimHorizontalStartSince(argsMark);
-      w.trimHorizontalEndSince(argsMark);
+      if (directSource) {
+        const sep = args.options?.sep ?? ',';
+        const joiner = sep === '/' ? ' / ' : `${sep} `;
+        for (let i = 0; i < args.items.length; i++) {
+          const arg = args.items[i]!;
+          if (i > 0) {
+            w.add(joiner);
+          }
+          const argText = getKnownSourceCallText(arg);
+          if (argText !== undefined) {
+            w.add(argText, arg);
+            continue;
+          }
+          arg.writeSyntax(options);
+        }
+      } else {
+        let arg = args.items[0]!;
+        emitCallArgSyntax(arg, options);
+        for (let i = 1; i < args.items.length; i++) {
+          const prev = arg;
+          arg = args.items[i]!;
+          emitCallArgSeparator(prev, arg, options, args.options?.sep ?? ',');
+          emitCallArgSyntax(arg, options, true);
+        }
+      }
     }
     w.add(')');
     if (this._options?.markImportant) {
@@ -963,7 +1556,12 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     if (contentNode) {
       w.add(': ');
-      contentNode.writeSyntax(options);
+      const contentText = directSource ? getKnownSourceCallText(contentNode) : undefined;
+      if (contentText !== undefined) {
+        w.add(contentText, contentNode);
+      } else {
+        contentNode.writeSyntax(options);
+      }
     }
   }
 
@@ -971,24 +1569,30 @@ export class Call extends Node<CallValue, CallOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
+      const sharesWriter = callRenderSharesWriter(bufferOrOptions);
+      const prepared = sharesWriter
+        ? prepareRenderPrintState(context, {
+            ...options,
+            writer: bufferOrOptions.kind === 'flat' && context.printState.writer?.writesTo(bufferOrOptions.parts)
+              ? context.printState.writer
+              : new OutputWriter(false, bufferOrOptions.kind === 'flat' ? bufferOrOptions.parts : undefined)
+          })
+        : prepareBufferPrintState(context, options);
       if (this.evaluated) {
-        const prepared = prepareBufferPrintState(context, options);
-        return writeRenderTextResult(
-          bufferOrOptions,
-          this.renderPlainFunctionCall(this, context, prepared)
-        );
+        const rendered = this.renderPlainFunctionCall(this, context, prepared);
+        return sharesWriter
+          ? rendered
+          : writeRenderTextResult(bufferOrOptions, rendered);
       }
       if (typeof this.name !== 'string') {
-        const prepared = prepareBufferPrintState(context, options);
         return this.renderDynamicFunctionOutput(context, prepared, bufferOrOptions, options);
       }
       // Plain CSS calls render args/content explicitly so async child failures
       // keep calc-frame cleanup instead of falling back to source text.
-      const prepared = prepareBufferPrintState(context, options);
-      return writeRenderTextResult(
-        bufferOrOptions,
-        this.renderPlainFunctionCall(this, context, prepared)
-      );
+      const rendered = this.renderPlainFunctionCall(this, context, prepared);
+      return sharesWriter
+        ? rendered
+        : writeRenderTextResult(bufferOrOptions, rendered);
     }
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
     if (this.evaluated) {
@@ -1114,30 +1718,31 @@ export class Call extends Node<CallValue, CallOptions> {
       if (args && args.items.length > 0) {
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
-      n = new MixinCollection([
-        callableRulesEntry(
-          { rules: n },
-          n.parent,
-          n.index
-        )
-      ]);
+      return this.runAsCaller(context, async () => {
+        const result = await evaluateCallableCollection({
+          context,
+          mixinEntries: [
+            callableRulesEntry(
+              { rules: n },
+              n.parent,
+              n.index
+            )
+          ],
+          args: args?.value ?? []
+        });
+        return this.finalizeCallResult(context, result, {
+          markImportant
+        });
+      });
     }
 
     if (n instanceof MixinCollection) {
       return this.runAsCaller(context, async () => {
         try {
           const result = await n.evalCall(context, args);
-          if (isNode(result)) {
-            let evald = result.eval(context);
-            if (isThenable(evald)) {
-              evald = await evald;
-            }
-            if (markImportant && isNode(evald, N.Rules)) {
-              this.makeImportant(evald);
-            }
-            return this.markCallOutput(evald);
-          }
-          return this.markCallOutput(cast(result));
+          return this.finalizeCallResult(context, result, {
+            markImportant
+          });
         } catch (e) {
           if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
             if (this.parent?.type === 'SelectorCapture') {
@@ -1178,25 +1783,9 @@ export class Call extends Node<CallValue, CallOptions> {
                 )
               : callWithContext(context, callable)
           );
-          if (isNode(result)) {
-            let evald = result.eval(context);
-            if (isThenable(evald)) {
-              evald = await evald;
-              if (markImportant && isNode(evald, N.Rules)) {
-                this.makeImportant(evald);
-              }
-              return this.markCallOutput(evald);
-            }
-            if (markImportant && isNode(evald, N.Rules)) {
-              this.makeImportant(evald);
-            }
-            return this.markCallOutput(evald);
-          }
-          let castResult = cast(result);
-          if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
-            return this.markCallOutput(castResult.rules[0]!);
-          }
-          return this.markCallOutput(castResult);
+          return this.finalizeCallResult(context, result, {
+            markImportant
+          });
         } catch (e) {
           const unitMode = context?.opts?.unitMode ?? 'loose';
           const shouldRethrowForMode = unitMode === 'strict';
@@ -1219,7 +1808,9 @@ export class Call extends Node<CallValue, CallOptions> {
       if (n === 'calc') {
         context.calcFrames++;
       }
-      const evaluatedArgs = await this.evalArgNodes(context, args)
+      const evaluatedArgs = await this.evalArgNodes(context, args, {
+        ownResults: !(this._options?.silentFail && typeof this.name !== 'string')
+      })
         .finally(() => {
           if (n === 'calc') {
             context.calcFrames--;

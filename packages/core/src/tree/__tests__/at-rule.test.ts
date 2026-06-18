@@ -1762,6 +1762,39 @@ describe('AtRule', () => {
     expect(writer.previews).toBe(0);
   });
 
+  it('writes scalar leaf at-rules without header string transport', () => {
+    const writer = new CountingWriter();
+    const node = atrule({
+      name: any('@namespace', { role: 'atkeyword' }),
+      prelude: any('svg')
+    });
+    node.getHeaderString = () => {
+      throw new Error('scalar leaf at-rule writeSyntax should not use header string transport');
+    };
+
+    expect(() => node.writeSyntax(getPrintOptions({ writer }))).not.toThrow();
+    expect(writer.toString()).toBe('@namespace svg;');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(writer.restores).toBe(0);
+  });
+
+  it('writes non-scalar no-trivia leaf at-rules without header string transport', () => {
+    const writer = new CountingWriter();
+    const node = atrule({
+      name: any('@custom-media', { role: 'atkeyword' }),
+      prelude: spaced([any('--narrow'), any('(max-width: 30em)')])
+    });
+    node.getHeaderString = () => {
+      throw new Error('non-scalar no-trivia leaf at-rule writeSyntax should not use header string transport');
+    };
+
+    expect(() => node.writeSyntax(getPrintOptions({ writer }))).not.toThrow();
+    expect(writer.toString()).toBe('@custom-media --narrow (max-width: 30em);');
+    expect(writer.captures).toBe(0);
+    expect(writer.previews).toBe(0);
+  });
+
   it('renders keyword and anonymous leaf at-rule preludes without syntax rollback', () => {
     const writer = new CountingWriter();
     const first = atrule({

@@ -191,9 +191,13 @@ export class Operation extends Node<OperationValue> {
     if (output instanceof Node) {
       return this.renderOutput(context, output, bufferOrOptions, options);
     }
-    const printOptions = isRenderBuffer(bufferOrOptions)
+    const renderBuffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const explicitWriter = renderBuffer ? undefined : bufferOrOptions?.writer;
+    const printOptions = renderBuffer
       ? prepareBufferPrintState(context, options)
-      : bufferOrOptions;
+      : explicitWriter
+        ? prepareBufferPrintState(context, bufferOrOptions)
+        : bufferOrOptions;
     const finish = (leftOut: string): MaybePromise<string> => {
       const right = output.right.render(context, printOptions);
       const combine = (rightOut: string): string => `${leftOut} ${this.operator} ${rightOut}`;
@@ -205,12 +209,23 @@ export class Operation extends Node<OperationValue> {
     const rendered = isThenable(left)
       ? left.then(finish)
       : finish(left);
-    if (!isRenderBuffer(bufferOrOptions)) {
+    if (!renderBuffer && !explicitWriter) {
       return rendered;
     }
     return isThenable(rendered)
-      ? (rendered as Promise<string>).then(out => writeRenderText(bufferOrOptions, out))
-      : writeRenderText(bufferOrOptions, rendered as string);
+      ? (rendered as Promise<string>).then((out) => {
+          if (renderBuffer) {
+            return writeRenderText(renderBuffer, out);
+          }
+          explicitWriter!.add(out, this);
+          return out;
+        })
+      : renderBuffer
+        ? writeRenderText(renderBuffer, rendered as string)
+        : (() => {
+            explicitWriter!.add(rendered as string, this);
+            return rendered as string;
+          })();
   }
 
   private evaluateOperands(context: Context): MaybePromise<Node> {

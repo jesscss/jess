@@ -383,6 +383,9 @@ describe('Rule', () => {
     leaf.toTrimmedString = () => {
       throw new Error('ruleset leaf serialization should write at-rule syntax directly');
     };
+    leaf.getHeaderString = () => {
+      throw new Error('ruleset leaf serialization should not use at-rule header string transport');
+    };
     const node = ruleset({
       selector: sellist([sel([el('.box')])]),
       rules: rules([leaf])
@@ -397,6 +400,7 @@ describe('Rule', () => {
       expect(writer.previews).toBe(0);
     } finally {
       delete leaf.toTrimmedString;
+      delete leaf.getHeaderString;
     }
   });
 
@@ -1398,6 +1402,37 @@ describe('Rule', () => {
       expect(composeHeaderSelectorCalls).toBeGreaterThan(0);
     } finally {
       node.composeHeaderSelector = originalComposeHeaderSelector;
+    }
+  });
+
+  it('serializeRulesContainer writes no-trivia ruleset headers without header string transport', () => {
+    const node = ruleset({
+      selector: sel([el('.child')]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const options = getPrintOptions({
+      writer: new OutputWriter(),
+      collapseNesting: true
+    });
+    const originalGetHeaderString = node.getHeaderString;
+    let headerStringCalls = 0;
+    node.getHeaderString = function countHeaderStringCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalGetHeaderString>
+    ): ReturnType<typeof originalGetHeaderString> {
+      headerStringCalls++;
+      return originalGetHeaderString.apply(this, args);
+    };
+
+    try {
+      const out = serializeRulesContainer(node, options);
+
+      expect(out).toContain('.child');
+      expect(headerStringCalls).toBe(0);
+    } finally {
+      node.getHeaderString = originalGetHeaderString;
     }
   });
 

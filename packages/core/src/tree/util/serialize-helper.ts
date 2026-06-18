@@ -419,6 +419,8 @@ function renderHoistedParentHeader(
   return normalizeIndent(selectorOut.replace(/\s+$/, '') + ' {', indent(depth)) + '\n';
 }
 
+const DIRECT_RULESET_HEADER = '\u0000';
+
 function renderHoistedParentComparableHeader(
   parent: { frame: Ruleset; selector: Selector },
   options: FinalPrintOptions
@@ -493,7 +495,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
       // Leaf at-rules (no body) are not "frame headers". Always emit them with comments
       // preserved; comment-stripping should only apply to repeated *frame* headers.
-      w.add(node.getHeaderString(options, false));
+      node.writeSyntax(options);
       return w.getSince(mark);
     }
     const rulesToRender = flattenVisibleRulesForRender(
@@ -674,22 +676,28 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           const f = leafFrames[i]!;
           lastRenderedFrames.push(f);
           options.depth = i;
-          if (s === undefined) {
+          if (s === undefined || s === DIRECT_RULESET_HEADER) {
             s = (
               hoistedParent && i === leafFrames.length - 1 && f === hoistedParent.frame
             )
               ? renderHoistedParentHeader(hoistedParent, options, i)
-              : leafFrames[i]!.getHeaderString(options);
+              : isNode(f, N.Ruleset) && !options.trivia
+                ? (f.writeHeader(options) ? DIRECT_RULESET_HEADER : '')
+                : leafFrames[i]!.getHeaderString(options);
             frameHeaders[i] = s;
           } else if (s === '') {
             s = (
               hoistedParent && i === leafFrames.length - 1 && f === hoistedParent.frame
             )
               ? renderHoistedParentHeader(hoistedParent, options, i)
-              : leafFrames[i]!.getHeaderString(options, true);
+              : isNode(f, N.Ruleset) && !options.trivia
+                ? (f.writeHeader(options, true) ? DIRECT_RULESET_HEADER : '')
+                : leafFrames[i]!.getHeaderString(options, true);
             frameHeaders[i] = s;
           }
-          w.add(s!);
+          if (s !== DIRECT_RULESET_HEADER) {
+            w.add(s!);
+          }
         }
       };
 

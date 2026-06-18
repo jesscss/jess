@@ -125,6 +125,8 @@ describe('QueryCondition', () => {
 
     expect(node.toTrimmedString({ writer })).toBe('screen and (color)');
     expect(writer.captures).toBe(0);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('writes query-condition source children without public toString transport', () => {
@@ -177,6 +179,17 @@ describe('QueryCondition', () => {
     expect(toStringCalls).toBe(0);
   });
 
+  it('renders static query conditions without returning prefixed writer contents', () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const node = query([any('screen'), any('and'), any('(color)')]);
+
+    expect(node.render(context, { writer })).toBe('screen and (color)');
+    expect(writer.toString()).toBe('prefix|screen and (color)');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
   it('renders dynamic sync query conditions directly without materialized values', () => {
     const dynamicItem = op([num(1), '+', num(2)]);
     dynamicItem.resolve = () => {
@@ -197,7 +210,22 @@ describe('QueryCondition', () => {
 
     expect(queryNode.render(context, { writer })).toBe('3 and (color)');
     expect(writer.toString()).toBe('3 and (color)');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
+  });
+
+  it('renders dynamic query conditions without returning prefixed writer contents', () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const queryNode = query([
+      op([num(1), '+', num(2)]),
+      any('and'),
+      any('(color)')
+    ]);
+
+    expect(queryNode.render(context, { writer })).toBe('3 and (color)');
+    expect(writer.toString()).toBe('prefix|3 and (color)');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('renders resolved query-condition values through render(context)', async () => {
@@ -244,6 +272,20 @@ describe('QueryCondition', () => {
 
     expect(queryNode.render(context, buffer)).toBe('screen and (color)');
     expect(buffer.parts).toEqual(['screen', ' ', 'and', ' ', '(color)']);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
+  it('renders static shared-buffer query conditions without returning prefixed buffer contents', () => {
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    buffer.parts.push('prefix|');
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const queryNode = query([any('screen'), any('and'), any('(color)')]);
+
+    expect(queryNode.render(context, buffer)).toBe('screen and (color)');
+    expect(buffer.parts).toEqual(['prefix|', 'screen', ' ', 'and', ' ', '(color)']);
     expect(writer.marks).toBe(0);
     expect(writer.reads).toBe(0);
   });
@@ -318,7 +360,26 @@ describe('QueryCondition', () => {
 
     await expect(Promise.resolve(queryNode.render(context, { writer }))).resolves.toBe('print and (color)');
     expect(writer.toString()).toBe('print and (color)');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
+  });
+
+  it('renders async query conditions without returning prefixed writer contents', async () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const asyncItem = any('screen');
+    asyncItem.render = async () => 'print';
+    const queryNode = query([
+      asyncItem,
+      any('and'),
+      any('(color)')
+    ]);
+    queryNode.addFlag(F_MAY_ASYNC);
+    queryNode.removeFlag(F_STATIC);
+
+    await expect(Promise.resolve(queryNode.render(context, { writer }))).resolves.toBe('print and (color)');
+    expect(writer.toString()).toBe('prefix|print and (color)');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('resolves query-condition values without touching render state', async () => {
@@ -420,8 +481,8 @@ describe('QueryCondition', () => {
 
     expect(node.toTrimmedString({ writer })).toBe('screen and (10px > 1px)');
     expect(writer.toString()).toBe('screen and (10px > 1px)');
-    expect(writer.marks).toBe(1);
-    expect(writer.reads).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
     expect(writer.hasContentReads).toBe(0);
   });
 
@@ -435,8 +496,23 @@ describe('QueryCondition', () => {
 
     expect(node.toTrimmedString({ writer })).toBe('screen and 10px > 1px');
     expect(writer.toString()).toBe('screen and 10px > 1px');
-    expect(writer.marks).toBe(2);
-    expect(writer.reads).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(writer.hasContentReads).toBe(0);
+  });
+
+  it('writes exact paren children through the direct source child contract', () => {
+    const writer = new CountingWriter();
+    const node = query([
+      any('screen'),
+      any('and'),
+      paren(any('color', { role: 'keyword' }))
+    ]);
+
+    expect(node.toTrimmedString({ writer })).toBe('screen and (color)');
+    expect(writer.toString()).toBe('screen and (color)');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
     expect(writer.hasContentReads).toBe(0);
   });
 
@@ -498,8 +574,30 @@ describe('QueryCondition', () => {
 
     expect(node.render(context, { writer })).toBe('screen and (custom)');
     expect(writer.toString()).toBe('screen and (custom)');
-    expect(writer.marks).toBe(1);
-    expect(writer.reads).toBe(1);
+    expect(writer.marks).toBe(2);
+    expect(writer.reads).toBe(2);
+    expect(writer.hasContentReads).toBe(0);
+  });
+
+  it('keeps static fallback query returns local when the writer already has content', () => {
+    class CustomParen extends Paren {
+      override writeSyntax(options: Parameters<Paren['writeSyntax']>[0]): void {
+        options.writer.add('(custom)');
+      }
+    }
+
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const node = query([
+      any('screen'),
+      any('and'),
+      new CustomParen(any('color', { role: 'keyword' }))
+    ]);
+
+    expect(node.render(context, { writer })).toBe('screen and (custom)');
+    expect(writer.toString()).toBe('prefix|screen and (custom)');
+    expect(writer.marks).toBe(2);
+    expect(writer.reads).toBe(2);
     expect(writer.hasContentReads).toBe(0);
   });
 
@@ -515,7 +613,7 @@ describe('QueryCondition', () => {
 
     expect(rendered).toBe('screen and custom');
     expect(writer.toString()).toBe(rendered);
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.reads).toBe(0);
     expect(writer.hasContentReads).toBe(1);
     expect(writer.captures).toBe(0);
@@ -533,7 +631,7 @@ describe('QueryCondition', () => {
 
     expect(rendered).toBe('screen and written');
     expect(writer.toString()).toBe(rendered);
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(1);
     expect(writer.captures).toBe(0);

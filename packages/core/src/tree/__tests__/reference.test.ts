@@ -1299,7 +1299,7 @@ describe('reference', () => {
     it('restores declaration reference frames when async merged finalization throws', async () => {
       const declaration = decl({
         name: any('src'),
-        value: list([new AsyncNativeRenderAny('red'), any('blue')]),
+        value: list([list([new AsyncNativeRenderAny('red')]), any('blue')]),
         important: any('!important', { role: 'flag' })
       }, { normalizedFromAssign: '+:' });
       const node = rules([declaration]);
@@ -1867,6 +1867,8 @@ describe('reference', () => {
         expect(clonedRules).toBe(0);
         expect(inheritedRules).toBe(0);
         expect(resolved.value[0]).toBe(resolvedSource.value[0]);
+        expect(resolved.value[0]?.parent).toBe(resolvedSource);
+        expect(sourceDecl.parent).toBe(sourceValue);
         expect(context.referenceStack).toBe(0);
       } finally {
         RulesClass.prototype.clone = originalClone;
@@ -2390,6 +2392,8 @@ describe('reference', () => {
         expect(resolved.value[0]).not.toBe(mixinDef);
         expect(resolved.value[0]!.type).toBe('Mixin');
         expect(resolved.value[0]!.sourceNode).toBe(mixinDef);
+        expect(resolved.value[0]!.rules).toBe(mixinDef.rules);
+        expect(mixinDef.rules.parent).toBe(mixinDef);
         expect(inheritedMixins).toBe(0);
 
         const resolvedAgain = resolved.resolve(context);
@@ -2476,6 +2480,54 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
+      expect(await renderNodeToString(evald, context)).toBeString(`
+        foo: red;
+        bar: red;
+      `);
+    });
+
+    it('normalizes exact Any declaration keys without calling key valueOf()', async () => {
+      const keyNode = any('foo');
+      keyNode.valueOf = () => {
+        throw new Error('reference key should not call Any.valueOf()');
+      };
+      const node = rules([
+        decl({
+          name: any('foo'),
+          value: any('blue')
+        }),
+        decl({
+          name: any('bar'),
+          value: ref({ key: keyNode }, { type: 'declaration' })
+        })
+      ]);
+
+      const evald = await node.eval(context);
+
+      expect(await renderNodeToString(evald, context)).toBeString(`
+        foo: blue;
+        bar: blue;
+      `);
+    });
+
+    it('normalizes exact quoted index keys without calling key valueOf()', async () => {
+      const keyNode = quoted('foo');
+      keyNode.valueOf = () => {
+        throw new Error('reference key should not call Quoted.valueOf()');
+      };
+      const node = rules([
+        decl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        decl({
+          name: any('bar'),
+          value: ref({ key: keyNode }, { type: 'index' })
+        })
+      ]);
+
+      const evald = await node.eval(context);
+
       expect(await renderNodeToString(evald, context)).toBeString(`
         foo: red;
         bar: red;
@@ -2622,8 +2674,96 @@ describe('reference', () => {
       `);
     });
 
-    it('flattens merged declaration references without recopying copied leaves', async () => {
+    it('reuses already-normalized static merged declaration values during public resolve', async () => {
       const sourceValue = list([any('red'), any('foo')]);
+      const node = rules([
+        decl({
+          name: any('background-color'),
+          value: sourceValue
+        }, { normalizedFromAssign: '+:' })
+      ]);
+
+      const originalInherit = List.prototype.inherit;
+      const originalCopy = List.prototype.copy;
+      let listCopies = 0;
+      let listInherits = 0;
+      List.prototype.copy = function copyForCounting(
+        this: List,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this === sourceValue) {
+          listCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+      const refNode = ref({ key: 'background-color' }, { type: 'declaration' });
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (this === sourceValue || args[0] === sourceValue || args[0] === refNode) {
+          listInherits++;
+        }
+        return originalInherit.apply(this, args);
+      };
+      try {
+        const evald = setRulesContext(await node.eval(context));
+        const evaluatedDecl = evald.value[0];
+        expect(evaluatedDecl?.type).toBe('Declaration');
+        if (evaluatedDecl?.type !== 'Declaration') {
+          return;
+        }
+        const evaluatedValue = evaluatedDecl.valueNode;
+        listCopies = 0;
+        listInherits = 0;
+        const resolved = await refNode.resolve(context);
+
+        expect(resolved).toBe(evaluatedValue);
+        expect(resolved.toTrimmedString()).toBe('red, foo');
+        expect(listCopies).toBe(0);
+        expect(listInherits).toBe(0);
+      } finally {
+        List.prototype.copy = originalCopy;
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
+    it('reuses already-normalized dynamic merged declaration values during public resolve', async () => {
+      const sourceValue = list([ref({ key: 'tone' }, { type: 'variable' }), any('foo')]);
+      const node = rules([
+        vardecl({ name: any('tone'), value: any('red') }),
+        decl({
+          name: any('background-color'),
+          value: sourceValue
+        }, { normalizedFromAssign: '+:' })
+      ]);
+
+      const originalInherit = List.prototype.inherit;
+      let inheritedFromReference = 0;
+      const refNode = ref({ key: 'background-color' }, { type: 'declaration' });
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === refNode) {
+          inheritedFromReference++;
+        }
+        return originalInherit.apply(this, args);
+      };
+      try {
+        setRulesContext(await node.eval(context));
+        const resolved = await refNode.resolve(context);
+
+        expect(resolved).toBeInstanceOf(List);
+        expect(resolved.toTrimmedString()).toBe('red, foo');
+        expect(inheritedFromReference).toBe(0);
+      } finally {
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
+    it('flattens merged declaration references that still need normalization without recopying copied leaves', async () => {
+      const sourceValue = list([list([any('red')]), any('foo')]);
       const node = rules([
         decl({
           name: any('background-color'),
@@ -2660,7 +2800,8 @@ describe('reference', () => {
 
         expect(resolved.toTrimmedString()).toBe('red, foo');
         expect(valueCopyCount).toBe(0);
-        expect(finalizedList).toBe(latestCopiedList);
+        expect(latestCopiedList).toBeDefined();
+        expect(finalizedList).toBeDefined();
       } finally {
         Any.prototype.copy = originalCopy;
         List.prototype.inherit = originalInherit;

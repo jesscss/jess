@@ -13,6 +13,80 @@ import {
   writeRenderText
 } from './util/render-buffer.js';
 
+function getKnownQueryConditionSourceText(node: Node): string | undefined {
+  switch (node.type) {
+    case 'Any':
+    case 'Anonymous':
+    case 'Keyword':
+      return typeof node.value === 'string' ? node.value : undefined;
+    case 'Dimension':
+    case 'Num':
+      return typeof node.number === 'number'
+        ? `${node.number}${'unit' in node && node.unit ? node.unit : ''}`
+        : undefined;
+    case 'Bool':
+      return node.value ? 'true' : 'false';
+    case 'Color':
+      return typeof node.node === 'string' ? node.node : undefined;
+    default:
+      if (node.constructor === QueryCondition) {
+        const parts = new Array(node.items.length);
+        for (let i = 0; i < node.items.length; i++) {
+          const text = getKnownQueryConditionSourceText(node.items[i]!);
+          if (text === undefined) {
+            return undefined;
+          }
+          parts[i] = text;
+        }
+        return parts.join(' ');
+      }
+      if (node.constructor === Paren) {
+        const open = node.options?.delimiter === 'square' ? '[' : '(';
+        const close = node.options?.delimiter === 'square' ? ']' : ')';
+        if (!node.value) {
+          return `${node.options?.escaped ? '~' : ''}${open}${close}`;
+        }
+        const value = getKnownQueryConditionSourceText(node.value);
+        if (value === undefined) {
+          return undefined;
+        }
+        return `${node.options?.escaped ? '~' : ''}${open}${value}${close}`;
+      }
+      if (node.constructor === Condition) {
+        const left = getKnownQueryConditionSourceText(node.left);
+        if (left === undefined) {
+          return undefined;
+        }
+        const needsParens = Boolean(node.right || node.negate);
+        let out = node.negate ? 'not ' : '';
+        if (needsParens) {
+          out += '(';
+        }
+        out += left;
+        if (node.operator && node.right) {
+          const right = getKnownQueryConditionSourceText(node.right);
+          if (right === undefined) {
+            return undefined;
+          }
+          out += ` ${node.operator} ${right}`;
+        }
+        if (needsParens) {
+          out += ')';
+        }
+        return out;
+      }
+      if (node.constructor === Operation) {
+        const left = getKnownQueryConditionSourceText(node.left);
+        const right = getKnownQueryConditionSourceText(node.right);
+        if (left === undefined || right === undefined) {
+          return undefined;
+        }
+        return `${left} ${node.operator} ${right}`;
+      }
+      return undefined;
+  }
+}
+
 /**
  * Used by `@media`, `@supports`, and `@container`
  *
@@ -85,6 +159,23 @@ export class QueryCondition extends Sequence {
     }
   }
 
+  /**
+   * Dynamic query children can only skip the localized writer readback when
+   * their concrete render contract is known to return the same text they emit.
+   *
+   * Keep this exact-constructor whitelist narrow so custom subclasses and
+   * instance-owned render overrides continue to use the readback fallback when
+   * they write different text than they return.
+   */
+  private canTrustDynamicChildRenderText(node: Node): boolean {
+    return (
+      node.constructor === QueryCondition
+      || node.constructor === Paren
+      || node.constructor === Condition
+      || node.constructor === Operation
+    );
+  }
+
   private writeQueryConditionSyntax(value: Node[], options: FinalPrintOptions): void {
     const w = options.writer;
     const length = value.length;
@@ -122,18 +213,21 @@ export class QueryCondition extends Sequence {
       return w.getSince(mark);
     }
 
+    let out = '';
     for (let i = 0; i < length; i++) {
       if (i > 0) {
         w.add(' ');
+        out += ' ';
       }
       const rendered = this.renderQueryConditionChild(value[i]!, options, context);
       if (isThenable(rendered)) {
         return (rendered as Promise<string | void>)
-          .then(() => this.renderQueryConditionRest(value, options, context, i + 1));
+          .then((text) => this.renderQueryConditionRest(value, options, context, i + 1, out + (text ?? '')));
       }
+      out += rendered ?? '';
     }
 
-    return w.toString();
+    return out;
   }
 
   private renderQueryConditionChild(
@@ -148,7 +242,7 @@ export class QueryCondition extends Sequence {
       try {
         const rendered = node.render(context, options);
         if (isThenable(rendered)) {
-          const before = w.mark();
+          const before = w.position();
           return rendered.then(
             (out) => {
               if (!w.hasContentSince(before)) {
@@ -171,8 +265,9 @@ export class QueryCondition extends Sequence {
       }
     }
 
-    const before = w.mark();
+    const before = w.position();
     let asyncOut = false;
+    const canTrustText = this.canTrustDynamicChildRenderText(node);
     try {
       const out = node.render(context, options);
       if (isThenable(out)) {
@@ -181,6 +276,8 @@ export class QueryCondition extends Sequence {
           (rendered) => {
             if (w.position() === before) {
               w.add(rendered);
+            } else if (!canTrustText) {
+              return w.getSince(before);
             }
             options.suppressBoundaryTrivia = saved;
             return rendered;
@@ -194,7 +291,7 @@ export class QueryCondition extends Sequence {
       if (typeof out === 'string') {
         if (!w.hasContentSince(before)) {
           w.add(out);
-        } else {
+        } else if (!canTrustText) {
           return w.getSince(before);
         }
       }
@@ -211,17 +308,19 @@ export class QueryCondition extends Sequence {
     value: Node[],
     options: FinalPrintOptions,
     context: Context,
-    start: number
+    start: number,
+    out: string
   ): Promise<string> {
     const w = options.writer;
     const length = value.length;
     for (let i = start; i < length; i++) {
       if (i > 0) {
         w.add(' ');
+        out += ' ';
       }
-      await this.renderQueryConditionChild(value[i]!, options, context);
+      out += (await this.renderQueryConditionChild(value[i]!, options, context)) ?? '';
     }
-    return w.toString();
+    return out;
   }
 
   /** @internal */
@@ -234,6 +333,13 @@ export class QueryCondition extends Sequence {
       return '';
     }
     const printOptions = getPrintOptions(options);
+    if (!printOptions.trivia) {
+      const out = getKnownQueryConditionSourceText(this);
+      if (out !== undefined) {
+        printOptions.writer.add(out, this);
+        return out;
+      }
+    }
     const mark = printOptions.writer.mark();
     this.writeSyntax(printOptions);
     return printOptions.writer.getSince(mark);
@@ -256,12 +362,21 @@ export class QueryCondition extends Sequence {
         : prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, printOptions);
     if (this.hasFlag(F_STATIC)) {
+      const directText = !prepared.trivia ? getKnownQueryConditionSourceText(this) : undefined;
+      if (directText !== undefined) {
+        if (buffer) {
+          if (sharesWriter) {
+            this.writeQueryConditionSyntax(this.items, prepared);
+            return directText;
+          }
+          return writeRenderText(buffer, directText);
+        }
+        prepared.writer.add(directText, this);
+        return directText;
+      }
+      const mark = prepared.writer.mark();
       this.writeQueryConditionSyntax(this.items, prepared);
-      const rendered = sharesWriter
-        ? buffer!.kind === 'flat'
-          ? buffer!.parts.join('')
-          : prepared.writer.toString()
-        : prepared.writer.toString();
+      const rendered = prepared.writer.getSince(mark);
       return buffer
         ? sharesWriter ? rendered : writeRenderText(buffer, rendered)
         : rendered;

@@ -1,6 +1,7 @@
 import type { IToken } from 'chevrotain';
+import { beforeEach, describe, expect, it } from 'vitest';
 import * as treeIndex from '../index.js';
-import { Any, Call, Color, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, fn, list, mixin, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Any, Call, Color, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, condition, decl, dimension, el, fn, list, mixin, negative, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import {
   getCallRawArgDiagnosticMessageSource,
   getCallRawArgDiagnosticSource,
@@ -98,6 +99,27 @@ class SyncOverrideAny extends Any<string> {
   }
 }
 
+class CustomSyntaxNode extends Node<string> {
+  constructor(value: string) {
+    super(value);
+  }
+
+  override writeSyntax(options?: Parameters<Node['writeSyntax']>[0]): void {
+    getPrintOptions(options).writer.add(`custom-${this.value}`);
+  }
+}
+
+class AsyncCustomSyntaxAny extends Any<string> {
+  constructor(value: string) {
+    super(value);
+    this.addFlag(F_MAY_ASYNC);
+  }
+
+  override eval() {
+    return Promise.resolve(new CustomSyntaxNode(this.value));
+  }
+}
+
 function countDeriveCallUse(): { readonly count: number; restore(): void } {
   const descriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
   const original = descriptor?.value;
@@ -176,8 +198,8 @@ describe('Call', () => {
 
     expect(rule.toTrimmedString({ writer })).toBe('rgb(100, 100, 100)');
     expect(writer.captures).toBe(0);
-    expect(writer.marks).toBe(1);
-    expect(writer.readbacks).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('serializes token CSS call arguments without source arg-list trim marks', () => {
@@ -189,8 +211,50 @@ describe('Call', () => {
 
     expect(rule.toTrimmedString({ writer })).toBe('var(--brand, red)');
     expect(writer.toString()).toBe('var(--brand, red)');
-    expect(writer.marks).toBe(1);
-    expect(writer.readbacks).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes scalar list call source args without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([list([num(10), num(20)]), num(30)])
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('fn(10, 20, 30)');
+    expect(writer.toString()).toBe('fn(10, 20, 30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes escaped scalar list call source args without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'func',
+      args: list([
+        paren(list([any('a'), any('b')]), { escaped: true }),
+        any('c')
+      ], { sep: ';' })
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('func(~(a, b); c)');
+    expect(writer.toString()).toBe('func(~(a, b); c)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes exact quoted call source args without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'say',
+      args: list([quoted('hello'), quoted(any('world'))])
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('say("hello", "world")');
+    expect(writer.toString()).toBe('say("hello", "world")');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('serializes call source syntax through direct child writers', () => {
@@ -215,7 +279,7 @@ describe('Call', () => {
     expect(rule.toTrimmedString()).toBe('$rgb?(100, 100, 100) !important: raw body');
   });
 
-  it('serializes call source syntax through writeSyntax ownership', () => {
+  it('serializes exact call source syntax without falling through writeSyntax', () => {
     const originalWriteSyntax = Call.prototype.writeSyntax;
     let writeSyntaxCalls = 0;
     Call.prototype.writeSyntax = function countWriteSyntax(
@@ -232,7 +296,7 @@ describe('Call', () => {
 
     try {
       expect(rule.toTrimmedString()).toBe('rgb(100, 100, 100)');
-      expect(writeSyntaxCalls).toBe(1);
+      expect(writeSyntaxCalls).toBe(0);
     } finally {
       Call.prototype.writeSyntax = originalWriteSyntax;
     }
@@ -279,6 +343,62 @@ describe('Call', () => {
     expect(writer.readbacks).toBe(0);
   });
 
+  it('writes scalar list call source args without arg trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([list([num(10), num(20)]), num(30)])
+    });
+
+    rule.writeSyntax(getPrintOptions({ writer }));
+
+    expect(writer.toString()).toBe('fn(10, 20, 30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('writes custom source call args without arg trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([new CustomSyntaxNode('arg'), num(30)])
+    });
+
+    rule.writeSyntax(getPrintOptions({ writer }));
+
+    expect(writer.toString()).toBe('fn(custom-arg, 30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('writes exact source call content without source trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'wrap',
+      contentNode: seq([any('raw'), any('content')])
+    });
+
+    rule.writeSyntax(getPrintOptions({ writer }));
+
+    expect(writer.toString()).toBe('wrap(): raw content');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('writes exact negative source call args without arg trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([negative(num(20)), negative(any('token'))])
+    });
+
+    rule.writeSyntax(getPrintOptions({ writer }));
+
+    expect(writer.toString()).toBe('fn(-20, -token)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
   it('serializes comment trivia owned by function argument separators', () => {
     const first = new Any('#333', undefined, [20, 1, 21, 23, 1, 24]);
     const second = new Any('#111', undefined, [40, 1, 41, 43, 1, 44]);
@@ -293,6 +413,27 @@ describe('Call', () => {
     }) satisfies TriviaMap;
 
     expect(rule.toString({ trivia })).toBe('linear-gradient(#333 /*{comment}*/, #111)');
+  });
+
+  it('writes trivia-bearing call args without arg-list trim marks', () => {
+    const writer = new CountingWriter();
+    const first = new Any('#333', undefined, [20, 1, 21, 23, 1, 24]);
+    const second = new Any('#111', undefined, [40, 1, 41, 43, 1, 44]);
+    const rule = new Call({
+      name: 'linear-gradient',
+      args: new List([first, second])
+    });
+    const tokens = [token(' '), token('/*{comment}*/', 'BlockComment')];
+    const trivia = createTriviaMap({
+      before: new Map([[38, tokens]]),
+      after: new Map([[first.location[3], tokens]])
+    }) satisfies TriviaMap;
+
+    rule.writeSyntax(getPrintOptions({ writer, trivia }));
+
+    expect(writer.toString()).toBe('linear-gradient(#333 /*{comment}*/, #111)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('should serialize an optional function lookup', () => {
@@ -353,7 +494,62 @@ describe('Call', () => {
 
     expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
     expect(buffer.parts).toEqual(['rgb', '(', '100', ', ', '100', ', ', '100', ')']);
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes exact operation call source args without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'calc',
+      args: list([op([dimension([10, 'px']), '+', dimension([5, 'px'])])])
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('calc(10px + 5px)');
+    expect(writer.toString()).toBe('calc(10px + 5px)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes exact query-condition call content without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'wrap',
+      contentNode: query([any('screen'), any('and'), any('(color)')])
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('wrap(): screen and (color)');
+    expect(writer.toString()).toBe('wrap(): screen and (color)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('writes dynamic finalized call render output into shared flat buffers without whole-string writeback', async () => {
+    const root = rules([
+      vardecl({
+        name: any('fnName'),
+        value: any('rgb')
+      })
+    ]);
+    const evald = await root.eval(context);
+    expect(evald).toBeInstanceOf(Rules);
+    if (!(evald instanceof Rules)) {
+      throw new TypeError('Expected Rules root');
+    }
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const rule = call({
+      name: ref({ key: 'fnName' }, { type: 'variable' }),
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
+    expect(buffer.parts).toEqual(['rgb', '(', '100', ', ', '100', ', ', '100', ')']);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -488,6 +684,45 @@ describe('Call', () => {
     expect(rule.registrationPrepared).toBe(false);
   });
 
+  it('renders exact paren CSS call arguments without fallback readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([paren(seq([any('red'), num(10)])), num(30)])
+    });
+
+    expect(rule.render(context, { writer })).toBe('fn((red 10), 30)');
+    expect(writer.toString()).toBe('fn((red 10), 30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders exact quoted CSS call arguments without fallback readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'say',
+      args: list([quoted('hello'), quoted(any('world'))])
+    });
+
+    expect(rule.render(context, { writer })).toBe('say("hello", "world")');
+    expect(writer.toString()).toBe('say("hello", "world")');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders exact operation CSS call arguments without fallback readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'calc',
+      args: list([op([dimension([10, 'px']), '+', dimension([5, 'px'])])])
+    });
+
+    expect(rule.render(context, { writer })).toBe('calc(10px + 5px)');
+    expect(writer.toString()).toBe('calc(10px + 5px)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
   it('renders evaluated CSS call content without public string transport', async () => {
     const content = any('source-content');
     const renderedContent = any('body-output');
@@ -508,6 +743,75 @@ describe('Call', () => {
     expect(renderedContentPublicStringCalls).toBe(0);
     expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders exact paren call content without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'wrap',
+      contentNode: paren(seq([any('raw'), any('content')]))
+    });
+
+    expect(rule.render(context, { writer })).toBe('wrap(): (raw content)');
+    expect(writer.toString()).toBe('wrap(): (raw content)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders exact quoted call content without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'wrap',
+      contentNode: quoted('raw content')
+    });
+
+    expect(rule.render(context, { writer })).toBe('wrap(): "raw content"');
+    expect(writer.toString()).toBe('wrap(): "raw content"');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders exact query-condition CSS call arguments without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([query([
+        any('screen'),
+        any('and'),
+        any('(color)')
+      ])])
+    });
+
+    expect(rule.render(context, { writer })).toBe('fn(screen and (color))');
+    expect(writer.toString()).toBe('fn(screen and (color))');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders exact negative CSS call arguments without fallback readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([negative(num(20)), negative(any('token'))])
+    });
+
+    expect(rule.render(context, { writer })).toBe('fn(-20, -token)');
+    expect(writer.toString()).toBe('fn(-20, -token)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders exact negative call content without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'wrap',
+      contentNode: negative(num(20))
+    });
+
+    expect(rule.render(context, { writer })).toBe('wrap(): -20');
+    expect(writer.toString()).toBe('wrap(): -20');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('renders dynamic calc names through one name eval with calc frames', async () => {
@@ -593,16 +897,27 @@ describe('Call', () => {
       name,
       args: originalArgs
     });
+    const originalCollectionEvalCall = MixinCollection.prototype.evalCall;
+    let collectionEvalCalls = 0;
+    MixinCollection.prototype.evalCall = async function evalCallForCounting(
+      this: MixinCollection,
+      ...args: Parameters<typeof originalCollectionEvalCall>
+    ): ReturnType<typeof originalCollectionEvalCall> {
+      collectionEvalCalls++;
+      return originalCollectionEvalCall.apply(this, args);
+    };
 
     CountingSequence.countConstructions = true;
     try {
       const result = await rule.eval(context);
 
       expect(result.toTrimmedString()).toBe('red 10px');
-      expect(CountingSequence.constructedCopies).toBe(1);
+      expect(CountingSequence.constructedCopies).toBe(2);
+      expect(collectionEvalCalls).toBe(0);
       expect(originalArg.parent).toBe(originalArgs);
       expect(originalArgs.parent).toBe(rule);
     } finally {
+      MixinCollection.prototype.evalCall = originalCollectionEvalCall;
       CountingSequence.countConstructions = false;
       CountingSequence.constructedCopies = 0;
     }
@@ -1213,7 +1528,7 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('var(--brand, red)');
     expect(writer.toString()).toBe('var(--brand, red)');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -1226,7 +1541,47 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('mix(#ff0000, #0000ff)');
     expect(writer.toString()).toBe('mix(#ff0000, #0000ff)');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders scalar list CSS call arguments without per-arg trim or whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([list([num(10), num(20)]), num(30)])
+    });
+
+    expect(rule.render(context, { writer })).toBe('fn(10, 20, 30)');
+    expect(writer.toString()).toBe('fn(10, 20, 30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders scalar sequence CSS call arguments without nested readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([seq([any('red'), num(10)]), num(30)])
+    });
+
+    expect(rule.render(context, { writer })).toBe('fn(red 10, 30)');
+    expect(writer.toString()).toBe('fn(red 10, 30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders evaluated scalar node names without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: any('rgb'),
+      args: list([num(10), num(20)])
+    });
+    rule.evaluated = true;
+
+    expect(rule.render(context, { writer })).toBe('rgb(10, 20)');
+    expect(writer.toString()).toBe('rgb(10, 20)');
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -1240,7 +1595,7 @@ describe('Call', () => {
 
     await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('rgb(10, 20, 30)');
     expect(writer.toString()).toBe('rgb(10, 20, 30)');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -1254,7 +1609,64 @@ describe('Call', () => {
 
     await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('wrap(): body-output');
     expect(writer.toString()).toBe('wrap(): body-output');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders custom fallback CSS call arguments without returning prefixed writer contents', () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const rule = call({
+      name: 'fn',
+      args: list([new CustomSyntaxNode('arg'), num(30)])
+    });
+
+    expect(rule.render(context, { writer })).toBe('fn(custom-arg, 30)');
+    expect(writer.toString()).toBe('prefix|fn(custom-arg, 30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders async custom fallback CSS call content without returning prefixed writer contents', async () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const rule = call({
+      name: 'wrap',
+      contentNode: new AsyncCustomSyntaxAny('body')
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('wrap(): custom-body');
+    expect(writer.toString()).toBe('prefix|wrap(): custom-body');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders custom fallback CSS call names without whole-call readback', async () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const rule = call({
+      name: new CustomSyntaxNode('name'),
+      args: list([num(30)])
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('custom-name(30)');
+    expect(writer.toString()).toBe('prefix|custom-name(30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders escaped custom fallback CSS call arguments without inner trim readback', async () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const arg = new AsyncCustomSyntaxAny('body');
+    const rule = call({
+      name: 'fn',
+      args: list([paren(arg, { escaped: true }), num(30)])
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('fn((custom-body), 30)');
+    expect(writer.toString()).toBe('prefix|fn((custom-body), 30)');
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 
@@ -1474,6 +1886,22 @@ describe('Call', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('renders escaped list call arguments without inner trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'func',
+      args: list([
+        paren(list([any('a'), any('b')]), { escaped: true }),
+        any('c')
+      ], { sep: ';' })
+    });
+
+    expect(rule.render(context, { writer })).toBe('func((a, b), c)');
+    expect(writer.toString()).toBe('func((a, b), c)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
   /** @todo */
   it('should serialize a mixin call', () => {
     let rule = call({
@@ -1485,7 +1913,9 @@ describe('Call', () => {
 
   it('keeps detached collection calls on the collection surface', async () => {
     const originalClone = Rules.prototype.clone;
+    const originalCollectionEvalCall = MixinCollection.prototype.evalCall;
     let collectionClones = 0;
+    let collectionEvalCalls = 0;
 
     Rules.prototype.clone = function cloneForCounting(
       this: Rules,
@@ -1496,6 +1926,13 @@ describe('Call', () => {
         collectionClones++;
       }
       return originalClone.apply(this, args);
+    };
+    MixinCollection.prototype.evalCall = async function evalCallForCounting(
+      this: MixinCollection,
+      ...args: Parameters<typeof originalCollectionEvalCall>
+    ): ReturnType<typeof originalCollectionEvalCall> {
+      collectionEvalCalls++;
+      return originalCollectionEvalCall.apply(this, args);
     };
 
     try {
@@ -1517,8 +1954,10 @@ describe('Call', () => {
       expect(isNode(result, N.Collection)).toBe(true);
       expect(result.toTrimmedString()).toContain('background-color');
       expect(collectionClones).toBe(0);
+      expect(collectionEvalCalls).toBe(0);
     } finally {
       Rules.prototype.clone = originalClone;
+      MixinCollection.prototype.evalCall = originalCollectionEvalCall;
     }
   });
 
@@ -2287,6 +2726,45 @@ describe('Call', () => {
     }
   });
 
+  it('does not reconstruct source-free static arg containers for finalized fallback syntax', async () => {
+    class CountingSequence extends Sequence {
+      static countConstructions = false;
+      static constructedCopies = 0;
+
+      constructor(...args: ConstructorParameters<typeof Sequence>) {
+        super(...args);
+        if (CountingSequence.countConstructions) {
+          CountingSequence.constructedCopies++;
+        }
+      }
+    }
+
+    const dynamicName = any('source-name');
+    dynamicName.eval = function evalForFinalizedFallbackName() {
+      return any('noop');
+    };
+    const originalArg = new CountingSequence([any('red'), dimension([10, 'px'])]);
+    const originalArgs = list([originalArg]);
+    const rule = call({
+      name: dynamicName,
+      args: originalArgs
+    }, { silentFail: true });
+
+    CountingSequence.countConstructions = true;
+    try {
+      const resolved = await rule.eval(context);
+
+      expect(isNode(resolved, N.Call)).toBe(false);
+      expect(resolved.toTrimmedString()).toBe('noop(red 10px)');
+      expect(CountingSequence.constructedCopies).toBe(0);
+      expect(originalArg.parent).toBe(originalArgs);
+      expect(originalArgs.parent).toBe(rule);
+    } finally {
+      CountingSequence.countConstructions = false;
+      CountingSequence.constructedCopies = 0;
+    }
+  });
+
   it('keeps source fallback call content canonical when optional function evaluation falls back', async () => {
     const originalCopy = Sequence.prototype.copy;
     let sequenceCopies = 0;
@@ -2644,7 +3122,7 @@ describe('Call', () => {
   it('renders empty optional JS failure fallback syntax without call-level readback', async () => {
     const writer = new CountingWriter();
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('bad', new JsFunction({
       name: 'bad',
       fn: () => {
         throw new Error('bad function');
