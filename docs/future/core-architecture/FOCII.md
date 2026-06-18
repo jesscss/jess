@@ -66,12 +66,15 @@ paths require it.
 
 ## Focus: Binding / Lookup
 
-**Goal prompt:** Complete the Jess binding / lookup focus queue by deleting
-remaining registry-shaped fallback bridges and hot-path materialization where
-frame/binding facts already prove the answer, preserving Less/Jess semantics,
-updating `BINDING-LOOKUP-REMAINING.md` and aggressive self-prosecution
-evidence, committing, pushing, and continuing until the active binding queue is
-drained or a real semantic/design blocker is reached.
+**Goal prompt:** Complete the Jess binding / lookup / registryless focus by
+draining every remaining work cluster in `BINDING-LOOKUP-REMAINING.md`, not
+just the currently visible checklist. Repeatedly reseed the active queue from
+the remaining clusters, deleting registry-shaped fallback bridges, hot-path
+materialization, unnecessary child scans, broad invalidation, and object-heavy
+handle/result shapes where frame/binding facts already prove the answer.
+Preserve Less/Jess semantics, update binding tracker evidence and aggressive
+self-prosecution, commit, push, and continue until the binding completion
+criteria are satisfied or a real semantic/design blocker is reached.
 
 **Required docs:**
 
@@ -85,9 +88,10 @@ drained or a real semantic/design blocker is reached.
 **Active queue:** `BINDING-LOOKUP-REMAINING.md`.
 
 **Current priority:** use modeled scope frames, child-surface facts, reference
-handles, and per-key versions to delete fallback ladders, recursive child
-rediscovery, object-heavy handle/result shapes, and public `Rules.find*`
-materialization on ordinary reads.
+handles, and per-key versions to close the full registryless family: direct
+declaration/property lookup, scope-frame current cells, callable/namespace
+reference-import paths, reference-handle slimming, fallback bridge deletion,
+and final simple-read proof.
 
 **Boundaries:**
 
@@ -97,9 +101,12 @@ materialization on ordinary reads.
 - Guarded/configured/imported surfaces may keep a bridge only when the dynamic
   uncertainty is explicitly modeled and tested.
 
-**Stop rule:** stop when the active binding queue is drained, the next deletion
-needs semantic judgment, focused tests expose an unmodeled Less/Jess behavior,
-or profile/counter evidence shows the approach is wrong.
+**Stop rule:** stop when the binding tracker has no remaining active cluster
+and the completion criteria are satisfied, the next deletion needs semantic
+judgment, focused tests expose an unmodeled Less/Jess behavior, or
+profile/counter evidence shows the approach is wrong. An empty checklist is not
+a stop condition if `Remaining Work Clusters` still names registryless
+binding/lookup work.
 
 **Gates:** focused lookup/reference/mixin tests first, then `git diff --check`,
 `pnpm run verify:aggressive-cutting-review`, binding tracker gates, and

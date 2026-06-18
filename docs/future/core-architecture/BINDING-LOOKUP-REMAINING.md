@@ -19,6 +19,12 @@ which item remains, what blocked immediate continuation, and why stopping was
 necessary. Before committing a pass, leave 15 sizable unchecked binding tasks
 unless this lane is genuinely within 15 tasks of completion.
 
+If the checked active queue is empty but `Remaining Work Clusters` still names
+binding/lookup/registryless work, the next pass must first reseed the active
+queue from those clusters. Do not treat cluster prose as background, optional
+follow-up, or a separate focus. The active goal is to drain every cluster or
+mark it closed with evidence against the completion criteria below.
+
 ## Scope Correction
 
 The old `DeclarationRegistry`, `MixinRegistry`, core `FunctionRegistry`, and
@@ -1399,6 +1405,12 @@ needed for this item.
   write args.
 
 ## Remaining Work Clusters
+
+This section is active backlog for the binding / lookup / registryless goal.
+Each cluster must be converted into sizable queue work, completed with tests or
+repo evidence, or explicitly closed as no-op/rejected with the reason recorded.
+When no unchecked queue items remain, reseed from this section before stopping
+unless every cluster below is closed.
 
 ### A. Direct Declaration And Property Lookup
 
