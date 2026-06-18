@@ -103,6 +103,34 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Rules.toTrimmedString(...)` direct writer ownership.
+- Verdict: accepted as a localized serialization transport deletion. Public
+  rules-body source stringification no longer duplicates the visible/full-render
+  guard plus source-body emitter dispatch; the non-fast-path wrapper now
+  delegates to `writeSyntax(...)` and keeps the same caller-writer
+  mark/readback boundary. No speed claim.
+- New traversal: none. No new tree walk, parent walk, callback scan, side-map
+  lookup, or array materialization was added.
+- New node/materialization: none. No runtime node copies, wrappers, inherited
+  metadata, frozen state, or new hot-path arrays were added.
+- Render path: no render path changed. This pass only removes duplicated public
+  source-string dispatch inside `Rules.toTrimmedString(...)`.
+- Helper/API surface: none. No new helper or public API surface was added.
+- Metadata mutations: none.
+- Routine error control: the review-flagged thrown test error is focused
+  `rules.test.ts` proof scaffolding around a temporary method swap used to
+  assert `toTrimmedString(...)` now goes through `writeSyntax(...)`; no
+  production error/control flow changed.
+- Allocation changes: deletes one duplicated source-dispatch path and reuses
+  the existing rules writer implementation for non-fast-path public source
+  capture.
+- Rejected/observed in this pass: broader rules body render, indentation
+  capture, placement state, merge output, duplicate declaration materialization,
+  and remaining root serializer capture remain queued.
+- Evidence: focused `rules.test.ts` source leaf/wrapper proof plus the new
+  `writeSyntax(...)` ownership proof, targeted ESLint, `git diff --check`,
+  `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` passed.
 - Latest pass: `Ruleset.toTrimmedString(...)` direct writer ownership.
 - Verdict: accepted as a localized serialization transport deletion. Public
   ruleset source stringification no longer duplicates the hoist/reference-mode

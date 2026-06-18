@@ -3091,13 +3091,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    if (!this.visible && !this.fullRender) {
-      return '';
-    }
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    this._emitSourceRulesBody(options);
+    this.writeSyntax(options);
     return w.getSince(mark);
   }
 
