@@ -44,7 +44,7 @@ Complete every item in this queue before committing the next binding/lookup
 pass unless a semantic blocker, rejected approach, or unsafe test failure
 forces a focused stop.
 
-1. [ ] Finish callable retry-frame bridge deletion where retry frames are
+1. [x] Finish callable retry-frame bridge deletion where retry frames are
 covered. Scope: parent/fallback frame loops in `Rules.findMixin`, fallback
 frame `prepareCallableLookupFrame`, recursive namespace starts, and
 reference-import fallback frames. Goal: covered retry-frame misses do not keep
@@ -55,9 +55,12 @@ Current evidence: `Rules.findMixin(string)` now exits before parent/fallback
 retry whenever the caller requested `searchParents: false` and the current
 frame produced any miss/uncovered state after the current-frame narrow attempt.
 A focused candidate test proves a current compound-prefix candidate does not
-climb to parent or fallback exact hits when parent search is disabled.
+climb to parent or fallback exact hits when parent search is disabled. Focused
+retry-frame tests also prove fallback-frame hits resolve before the direct
+bridge, parent/fallback covered misses skip `findMixinsFast(...)`, and uncovered
+fallback reference-import misses skip the empty direct bridge.
 
-2. [ ] Extend narrow uncovered-child fallback proof to namespaced
+2. [x] Extend narrow uncovered-child fallback proof to namespaced
 reference-import child surfaces. Scope: the uncovered child-only fallback in
 `findMixinsFastForUncoveredCallable`, reference-import siblings, rendered
 reference imports, selector-list reference imports, and namespace offsets.
@@ -67,7 +70,12 @@ child surfaces are not reopened; configured guarded and simple
 reference-import guarded calls stay zero-bridge; remaining dynamic positives
 still resolve. Current evidence: array-path namespace starts now use the
 narrow helper for child-surface misses; unresolved reference-import namespace
-starts still fall back when the helper cannot produce candidates.
+starts still fall back when the helper cannot produce candidates. Focused
+reference-import tests prove covered sibling child surfaces are not reopened,
+guarded namespace starts avoid broad crawl, reference-import namespace-start
+misses avoid broad array fallback, compound-prefix and selector-list
+reference-import hit/miss paths avoid generated array fallback, and child
+uncovered misses respect `searchParents: false` after the narrow bridge.
 
 3. [x] Delete any remaining simple exact callable child scans that are
 provably covered by frame facts. Scope: current-frame miss, child-entry family
@@ -82,7 +90,7 @@ no-frame mixin-only misses skip ruleset-only child surface bridges, prepared
 null child entries prevent recursive rediscovery, and ruleset path misses skip
 mixin-only child surfaces.
 
-4. [ ] Retry `ReferencePlan` only for source-static facts. Scope:
+4. [x] Retry `ReferencePlan` only for source-static facts. Scope:
 `_lookupStrategy`, key node identity, read mode, target presence, `inCall`, and
 static parent/start shape. Goal: cache repeated preparation only when generated
 control/mixin surfaces cannot change the facts. Acceptance: control loop matrix
@@ -93,9 +101,13 @@ start, read mode, target/filter, leaky/search-scope, interpolated, and
 nontrivial handle shapes still fall through to normal preparation. The
 source-static read now validates the stored handle fields directly and reuses
 the shared freshness tail, so it no longer allocates a temporary
-`RulesLookupHandleShape` object just to re-read a covered handle.
+`RulesLookupHandleShape` object just to re-read a covered handle. Focused
+reference tests prove cached variable handles avoid current-binding map rereads,
+source-static handles read before rebuilding lookup strategy, unstable facts
+rebuild normally, and property/declaration assignment constraints still reuse
+source-static handles.
 
-5. [ ] Finish reference-import namespace offset coverage. Scope:
+5. [x] Finish reference-import namespace offset coverage. Scope:
 namespaced reference-import rulesets, reference-import child surfaces reached
 through array-path keys, selector-list reference-import namespaces,
 `findMixinNamespacePathFast(...)` unsupported returns, and
@@ -128,23 +140,35 @@ callable-only namespace offsets. Fallback-frame imported ruleset namespace
 hit/miss tests now prove `#parent -> #imported -> .leaf` resolves/misses
 through carried fallback prefix facts instead of broad start crawl. Imported
 terminal mixin-only tests prove parameterized terminal lookup keeps imported
-ruleset namespace containers while excluding imported terminal rulesets. Keep
-this open for fallback-frame mixin ambiguity around ruleset prefixes and any
-imported namespace positive/miss shape not covered by the current
-reference-import fixtures.
+ruleset namespace containers while excluding imported terminal rulesets. The
+fallback-frame ambiguity test now proves an imported fallback ruleset namespace
+and imported fallback mixin namespace with the same first segment preserve both
+ordinary terminals, while terminal mixin-only filters the ruleset terminal and
+keeps broad `findMixinsFast(...)` starts plus nested array fallback at zero.
 
-6. [ ] Extend stable namespace no-fallback proof to imported namespace
+6. [x] Extend stable namespace no-fallback proof to imported namespace
 surfaces. Scope: namespace path offsets, reference imports, terminal
 mixin-only mode, and parameterized terminals. Goal: stable positives stay on
 offset paths without breaking Less semantics. Acceptance: Less fixture,
 reference-import namespace tests, and bridge spies. Guarded namespace positives
-already have zero broad-crawl and zero array-fallback proof.
+already have zero broad-crawl and zero array-fallback proof. Current evidence:
+reference-import callable and fallback namespace offset hit tests avoid broad
+start crawl and nested array fallback; imported terminal mixin-only tests keep
+ruleset namespace containers while excluding imported terminal rulesets; the
+parser-backed real Less stable namespace fixture renders expected CSS with no
+broad `findMixinsFast(...)` hits and no nested array fallback.
 
-7. [ ] Prove reference-import declaration/callable misses stay on modeled
+7. [x] Prove reference-import declaration/callable misses stay on modeled
 frames after retry-frame cleanup. Scope: reference import roots, rendered
 reference imports, parent/fallback frames, and optional callable misses. Goal:
 no regression to frame-less broad crawl. Acceptance: real reference-import
-fixtures plus broad-bridge spies.
+fixtures plus broad-bridge spies. Current evidence: direct variable/property
+reference-import tests prove reference-import children are entered only through
+carried child-entry facts and misses do not widen ordinary sibling scans;
+import-style fixtures spy on the deleted declaration bridge and stay green for
+reference-import declaration hits/misses; callable reference-import miss tests
+prove uncovered fallback/reference-import misses skip broad `findMixinsFast(...)`
+bridges and generated array fallback.
 
 8. [x] Move remaining declaration-constraint reference options toward
 semantic names or internal constraint construction. Scope:
@@ -167,20 +191,28 @@ fixtures, ruleset render interaction with lookup work, and branch-local
 failures. Goal: use baseline evidence as a gate again. Acceptance:
 `pnpm run verify:baseline -- --changed` either passes or has a lookup-owned
 failure recorded with a fix. Current evidence: the changed baseline was rerun
-after the generic handle-shape split. It built `@jesscss/core`, entered the
-broad core suite, surfaced the same non-lookup render/serialization-family
-failures visible in `node-render-buffer.test.ts`, `at-rule.test.ts`, and
-`cloning.test.ts`, then stopped producing output while the PTY still reported
-a live session. It was interrupted after the child PID was gone rather than
-counted as a pass. No visible failure pointed at `reference.ts` handle-shape
-behavior; keep this item open until the baseline can finish cleanly or the
-non-lookup failures are separated upstream.
+after the terminal namespace/queue-close pass. No baseline packages were changed
+or affected, so the verifier ran frontier checks only, then failed
+`verify:node-copy-frontier` on an unexpected ordinary production `.clone()` in
+`packages/core/src/tree/selector-pseudo.ts`. No lookup-owned fixture failure was
+observed. Keep this item open until that non-lookup frontier failure is handled
+or separated upstream and the changed-baseline gate can finish.
 
 10. [ ] Refresh lookup profile and one-iteration hotpath smoke after the next
 bridge deletion batch. Scope: `scope-lookup-stress.less`, direct lookup
 counters, old registry counters, and smoke timings. Goal: keep counter
 evidence current without claiming speed. Acceptance: profile recorded with old
 `Rules.find`/registry counters empty and smoke values labeled smoke-only.
+Current evidence: `node scripts/profile-less-benchmark.mjs
+--fixture=scripts/fixtures/less-hotpath/scope-lookup-stress.less` reports empty
+old `rulesFindByType` / `registryFindByType` counters, direct declaration
+counters at `declaration.cacheMiss: 7560`, `declaration.childEntriesScanned:
+1575`, `declaration.childEntryEntered: 1575`, and `declaration.framePrep: 1`,
+and profiler elapsed `348.78ms`. This is counter/profiler evidence only. The
+one-iteration smoke is blocked: both stress-fixture and default
+`node scripts/measure-less-hotpath.mjs --iterations 1 --warmup 0` fail during
+parse with `JessError: args.set is not a function`, including default
+`functions.less`, so no smoke timing was recorded.
 
 11. [ ] Extend namespace frame-chain proof to callable mixin namespaces with
 reference-import descendants. Scope: no-param namespace mixins, nested
@@ -1138,14 +1170,22 @@ broad start-key crawl and no generated nested array fallback after the definite
 terminal miss. The surrounding parameterized mixin-ruleset, imported terminal,
 callable/ruleset namespace union, and guarded namespace tests stay green.
 
-71. [ ] Eliminate remaining positive-path namespace remainder arrays. Scope:
+71. [x] Eliminate remaining positive-path namespace remainder arrays. Scope:
 `collectKeyRemainder(...)`, `findMixinNamespacePathFast(...)`,
 `findRulesetNamespacePathFast(...)`, `findCompoundPrefixCallableRulesetPathFast(...)`,
 guarded/imported namespaces, and cold unsupported fallbacks. Goal: positive
 nested namespace hits use offsets end-to-end; remainder arrays are reserved for
 unsupported/cold fallback only. Acceptance: focused namespace tests spy on
 nested array fallback and prove stable guarded/imported positives stay zero
-array-materialization.
+array-materialization. Current evidence: the only remaining
+`collectKeyRemainder(...)` call sites are inside `resolved === undefined`
+fallbacks after `findMixinNamespacePathFast(...)`; definite misses return a
+definite empty result and positives return entries through offsets. Existing
+focused tests cover
+mixin namespace, ruleset namespace, compound-prefix namespace, definite misses,
+guarded namespace unions, real Less stable namespaces, and reference-import
+prefix hit/miss paths with nested array-path spies empty. No production edit was
+needed for this item.
 
 ## Latest Binding Baseline
 

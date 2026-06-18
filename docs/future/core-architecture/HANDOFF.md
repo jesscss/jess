@@ -103,35 +103,30 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding implementation pass deleting the terminal namespace
-  fallback after a definite ruleset-only terminal miss.
-- Verdict: accepted as direct fallback removal. Array-path mixin lookup now
-  trusts `findRulesetNamespacePathFast(...)` when it returns a definite empty
-  result under `terminalMixinOnly`, instead of reopening callable namespace
-  lookup and generated array fallback. No speed claim.
-- New traversal: none. The pass deletes a fallthrough branch; it does not add
-  parent walks, child walks, declaration scans, map/filter/sort, generators, or
-  side-map lookups.
-- Review-flagged allocations: no new production arrays, nodes, wrapper
-  `Rules`, side maps, or result objects. The accepted path avoids later fallback
-  lookup preparation after the existing namespace fast path already proved the
-  terminal ruleset-only miss. The review-flagged `try` and `broadFastHits`
-  array are focused test scaffolding used to restore spied methods and assert
-  that the broad crawl stayed unused; they do not enter production lookup.
+- Latest pass: binding proof/queue closeout pass after the terminal namespace
+  fallback cut.
+- Verdict: accepted as documentation/proof cleanup only. The pass closed
+  completed binding queue rows whose implementation and focused tests already
+  existed, refreshed profile/baseline evidence, and kept genuinely blocked rows
+  open. No speed claim.
+- New traversal: none. No production code changed in this pass.
+- Review-flagged allocations: no new production arrays, nodes, wrapper `Rules`,
+  side maps, or result objects. The changed files are documentation only.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production materialization were added.
 - Render path: no render/stringification path changed.
 - Helper/API surface: no helper or API surface added.
 - Metadata mutations: none.
-- Allocation changes: no new production allocation. The change removes a branch
-  that could continue into broader callable lookup after a definite
-  terminal-only miss.
-- Evidence: focused `mixin.test.ts` terminal namespace slice passed. The exact
-  ruleset-terminal rejection test now spies on root `findMixinsFast(...)` and
-  array-path `findMixin(...)`, proving zero broad start-key crawl and no nested
-  array fallback after the definite terminal miss. The surrounding
-  parameterized mixin-ruleset, imported terminal, callable/ruleset namespace
-  union, and guarded namespace tests also passed.
+- Allocation changes: no production allocation change.
+- Evidence: focused binding tests passed for retry-frame fallback hits/misses,
+  narrow reference-import child fallback, source-static reference handles,
+  reference-import namespace offsets, stable imported namespaces,
+  reference-import declaration/callable misses, namespace remainder offsets, and
+  evaluated namespace mixin descendants. `verify:baseline -- --changed` is
+  blocked by non-lookup `verify:node-copy-frontier` failure in
+  `selector-pseudo.ts`; hotpath smoke is blocked by parser `args.set is not a
+  function`. The refreshed lookup profile reports empty old `Rules.find` and
+  registry counters. No wall-clock performance claim.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification
