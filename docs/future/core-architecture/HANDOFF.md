@@ -141,7 +141,13 @@ with `--no-verify` after the explicit gates pass.
   reference-import selector-list prefixes, compound-prefix ruleset lookup,
   definite namespace misses, terminal mixin-only filtering,
   mixin-ruleset-with-args filtering, namespace fast paths, and simple misses on
-  compound-prefix candidates. No wall-clock performance claim.
+  compound-prefix candidates. Rows 11 and 12 are closed in
+  `BINDING-LOOKUP-REMAINING.md`; only gate rows 9 and 10 remain open. Changed
+  baseline is still blocked before fixtures by non-lookup
+  `selector-pseudo.ts` node-copy frontier fallout. Lookup profile still reports
+  empty old `Rules.find`/registry counters, and one-iteration hotpath smoke is
+  still blocked by parser `args.set is not a function`. No wall-clock
+  performance claim.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification

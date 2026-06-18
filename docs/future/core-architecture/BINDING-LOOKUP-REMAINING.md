@@ -191,7 +191,7 @@ fixtures, ruleset render interaction with lookup work, and branch-local
 failures. Goal: use baseline evidence as a gate again. Acceptance:
 `pnpm run verify:baseline -- --changed` either passes or has a lookup-owned
 failure recorded with a fix. Current evidence: the changed baseline was rerun
-after the terminal namespace/queue-close pass. No baseline packages were changed
+after the selector-prefix frame-bucket pass. No baseline packages were changed
 or affected, so the verifier ran frontier checks only, then failed
 `verify:node-copy-frontier` on an unexpected ordinary production `.clone()` in
 `packages/core/src/tree/selector-pseudo.ts`. No lookup-owned fixture failure was
@@ -208,13 +208,13 @@ Current evidence: `node scripts/profile-less-benchmark.mjs
 old `rulesFindByType` / `registryFindByType` counters, direct declaration
 counters at `declaration.cacheMiss: 7560`, `declaration.childEntriesScanned:
 1575`, `declaration.childEntryEntered: 1575`, and `declaration.framePrep: 1`,
-and profiler elapsed `348.78ms`. This is counter/profiler evidence only. The
+and profiler elapsed `462ms`. This is counter/profiler evidence only. The
 one-iteration smoke is blocked: both stress-fixture and default
 `node scripts/measure-less-hotpath.mjs --iterations 1 --warmup 0` fail during
 parse with `JessError: args.set is not a function`, including default
 `functions.less`, so no smoke timing was recorded.
 
-11. [ ] Extend namespace frame-chain proof to callable mixin namespaces with
+11. [x] Extend namespace frame-chain proof to callable mixin namespaces with
 reference-import descendants. Scope: no-param namespace mixins, nested
 reference imports inside mixin namespace bodies, fallback frames, and
 `findCallableDescendantsWithinMixinNamespaces(...)`. Goal: prevent callable
@@ -233,11 +233,14 @@ mixin bodies now build/read the child frame on the descendant path and skip
 both nested `findMixin(...)` and broad `findMixinsFast(...)`; the existing
 guard proves ordinary callable lookup still does not build a scope frame merely
 to try the shortcut. Never-evaluated import-in-uncalled-mixin namespace
-positives are still open and must not be claimed covered, because sync lookup
-cannot see async import content until a reference-import preparation edge
-exists.
+positives were resolved by item 37 as an intentional cold boundary: sync lookup
+cannot await `StyleImport.evalNode(...)` / `Context.getTree(...)` or evaluate
+an uncalled namespace mixin body without turning lookup into async
+materialization. The focused import test proves that cold case stays unresolved
+and confines broad fallback to the namespace body, while evaluated-body
+descendants use frame facts.
 
-12. [ ] Revisit `findVisibleCallableRulesetPrefixMatches(...)` recursive child
+12. [x] Revisit `findVisibleCallableRulesetPrefixMatches(...)` recursive child
 walk after selector-list coverage. Scope: direct child-entry flags,
 reference-import child surfaces, selector-list prefix matches, and visited-set
 allocation. Goal: skip child recursion when carried flags prove no ruleset
@@ -249,6 +252,13 @@ misses do not yet model nested/owned selector-body prefixes, and replacing
 `getScopeFrame()` with `_scopeFrame` in ruleset namespace ambiguity checks
 breaks existing nested compound selector lookups. Do not retry either cut until
 selector-body prefix candidates are explicitly carried by callable frame facts.
+Item 38 now carries those prefix candidates through prepared callable frame
+buckets and reference-import child frames, with recursive prefix search kept as
+the uncovered fallback. Focused selector-list hit/miss proof spies on
+`findVisibleCallableRulesetPrefixMatches(...)` and observes zero recursive
+prefix crawls when frame facts cover the ruleset-prefix family; adjacent
+compound-prefix, selector-list prefix, namespace miss, terminal mixin-only, and
+mixin-ruleset-with-args tests stayed green.
 
 13. [x] Finish explicit declaration visibility/import no-fallback proof.
 Scope: `DeclarationLookupStrategy`, reference-import child entries, import
