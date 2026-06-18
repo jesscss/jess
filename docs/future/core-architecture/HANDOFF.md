@@ -103,34 +103,44 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: direct declaration per-key cache invalidation.
-- Verdict: accepted as a binding/cache-state cut. Static declaration writes now
-  invalidate only the affected direct declaration bucket/cache entries instead
-  of discarding unrelated direct declaration state. Dynamic names, imports,
-  nested rules, and child declaration surfaces still promote to global
-  invalidation. No speed claim.
-- New traversal: `invalidateDirectDeclarationLookup(key)` iterates the current
-  `directDeclarationLookupCache.keys()` only when registering a static
-  declaration/key. The traversal is bounded to existing cache entries and
-  replaces the previous broader work of discarding every direct declaration
-  bucket/cache entry for unrelated names. Test-only cache-key snapshots iterate
-  and filter cache keys to prove unrelated entries survive the write.
+- Latest pass: declaration/import key-version proof and dynamic promotion
+  invalidation.
+- Verdict: accepted as a binding/cache-state cut and proof pass. Dynamic
+  declarations queued on the scope frame that resolve to static names now bump
+  the resolved key's declaration lookup version and invalidate only that key's
+  direct declaration bucket/cache entries. Static declaration writes keep the
+  prior per-key invalidation behavior; nested `Rules` child declaration
+  surfaces still use global direct declaration cache invalidation. No speed
+  claim.
+- New traversal: no new production traversal beyond the existing
+  `invalidateDirectDeclarationLookupKey(...)` loop over
+  `directDeclarationLookupCache.keys()` in `reference.ts` and the prior
+  `Rules.invalidateDirectDeclarationLookup(key)` loop. Test-only cache-key
+  snapshots iterate and filter cache keys to prove unrelated entries survive
+  per-key invalidation and that global child-surface invalidation clears the
+  cache.
 - New node/materialization: none in runtime. No nodes, wrappers, copied rules,
   inherited metadata, or runtime materialized arrays were added. The focused
-  test builds arrays/new empty maps only to snapshot and compare cache keys.
+  tests build arrays only to snapshot and compare cache keys.
 - Render path: no render/stringification path changed.
-- Helper/API surface: one private helper,
-  `Rules.invalidateDirectDeclarationLookup(key?)`, replaces inline global cache
-  clearing in `registerNode(...)`. It is not exported or public API.
+- Helper/API surface: no new helper or public method. The existing
+  `invalidateDirectDeclarationLookupKey(...)` helper in `reference.ts` now also
+  advances the resolved key's declaration lookup version so cached reference
+  handles cannot survive dynamic-name promotion.
 - Metadata mutations: none.
-- Allocation changes: no new runtime object shape. Static declaration
-  registration now preserves unrelated `directDeclarationsByName` map/buckets
-  and unrelated direct lookup cache entries instead of forcing them to be
-  rebuilt on the next read.
-- Evidence: focused reference tests prove `color`/`missing` cache entries and
-  the `color` bucket survive an unrelated static declaration write while the
-  stale `unrelated` miss is cleared; focused setDefined tests still pass.
-  Full gates are required before commit.
+- Allocation changes: dynamic promotion may allocate the existing per-key
+  declaration version map when the first promoted key needs a version bump; the
+  map is already the declaration-handle freshness mechanism used by static
+  declaration writes. This is accepted because it prevents stale reference
+  handles for the promoted key while avoiding global direct declaration cache
+  discard for unrelated keys. Test-only arrays collect declaration bridge hits
+  and cache-key snapshots for assertions.
+- Evidence: focused reference tests prove static per-key invalidation,
+  dynamic-name promotion key-version bumping, unrelated miss-cache preservation,
+  and global cache clearing for nested `Rules` declaration surfaces. The real
+  `@import(reference)` fixture now includes imported property occurrence
+  hit/miss proof and declaration-bridge spies for rendered variable hit/miss
+  references. Full gates are required before commit.
 - Merge note: latest `origin/dev` also carries serialization work for
   `Operation`, `QueryCondition`, and scalar token-family at-rule header/leaf
   syntax readback cuts; keep that progress in `NODE-REWRITE-TRACKER.md` while

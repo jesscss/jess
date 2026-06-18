@@ -3249,6 +3249,29 @@ describe('reference', () => {
       expect(findPropertyDeclarationOccurrence(node, 'unrelated')?.node.valueNode.valueOf()).toBe('1');
     });
 
+    it('direct declaration cache resets for child declaration surface writes', async () => {
+      const node = rules([
+        decl({ name: any('color'), value: any('blue') })
+      ]);
+
+      await node.eval(context);
+
+      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.valueNode.valueOf()).toBe('blue');
+      expect(findPropertyDeclarationOccurrence(node, 'missing')).toBeUndefined();
+      const declarationLookupVersion = node.declarationLookupVersion;
+      expect(node.directDeclarationsByName).toBeDefined();
+      expect(node.directDeclarationLookupCache?.size).toBeGreaterThan(0);
+
+      node.push(rules([
+        decl({ name: any('child-color'), value: any('green') })
+      ]));
+
+      expect(node.declarationLookupVersion).toBeGreaterThan(declarationLookupVersion);
+      expect(node.directDeclarationsByName).toBeUndefined();
+      expect(node.directDeclarationLookupCache).toBeUndefined();
+      expect(findPropertyDeclarationOccurrence(node, 'child-color', { searchParents: false })?.node.valueNode.valueOf()).toBe('green');
+    });
+
     it('direct VarDeclaration lookup ignores empty candidate sets', async () => {
       const node = rules([
         vardecl({ name: 'color', value: any('red') })
@@ -4008,10 +4031,13 @@ describe('reference', () => {
 
         expect(declarationHits).toHaveLength(0);
         expect(node.directDeclarationsByName?.get('x')).toBeUndefined();
-        expect(node.directDeclarationsByName?.get('unaffected')).toBeUndefined();
+        expect(node.directDeclarationsByName?.get('unaffected')).toBeNull();
         expect([...(node.directDeclarationLookupCache?.keys() ?? [])].filter(key => key.startsWith('x\u001f'))).toHaveLength(0);
+        expect([...(node.directDeclarationLookupCache?.keys() ?? [])].filter(key => key.startsWith('unaffected\u001f')).length).toBeGreaterThan(0);
         expect(frame.pendingDeclarationNames).toHaveLength(0);
         expect(frame.declarationBucketsByName.get('x')?.at(-1)?.sourceNode).toBe(dynamicDecl);
+        expect(node.getDeclarationLookupVersion('x')).toBeGreaterThan(0);
+        expect(node.getDeclarationLookupVersion('unaffected')).toBe(0);
         const promotedHit = lookupScopeFrameVariable(frame, 'x', {
           bailOnPendingDeclarations: true
         });
