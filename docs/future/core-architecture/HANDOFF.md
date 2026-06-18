@@ -103,6 +103,37 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: nested `Rules` preview-string deletion in container serialization.
+- Verdict: accepted as a bounded `Rules`/`Ruleset` serializer cut. Leaf
+  `Rules` wrappers inside `serializeRulesContainer(...)` no longer preview
+  their body into a detached `OutputWriter` before re-inserting the resulting
+  string; they now write directly through the active caller writer under the
+  existing depth/reference state and let the surrounding container serializer
+  keep ownership of leading/trailing trivia and newline boundaries. No speed
+  claim.
+- New traversal: none added. This pass deletes the detached preview branch and
+  its state restore/reset bookkeeping instead of introducing a new scan.
+- Review-flagged allocations: none added on the production path. The pass
+  removes the detached preview writer and preview-local emitted-trivia set for
+  leaf `Rules` children.
+- New node/materialization: none.
+- Render path: serializer/container output still stringifies directly. The pass
+  removes the child-body preview string boundary for nested `Rules`; it does
+  not materialize intermediate nodes or wrapper bodies to decide whether to
+  emit them.
+- Helper/API surface: none added. The change deletes one whole preview branch
+  from `serializeRulesContainerInternal(...)` and leans on existing
+  `Rules.writeSyntax(...)` ownership.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: deletes the detached child body string plus detached
+  emitted-trivia staging previously used for nested `Rules` leaves in
+  `serializeRulesContainer(...)`.
+- Evidence: the focused `ruleset.test.ts` cases for no-trivia header transport,
+  repeated comparable headers, child `Rules` body transport on the caller
+  writer, and declaration fallback transport all passed. Full
+  `ruleset.test.ts`, full `rules.test.ts`, and `@jesscss/core` build passed.
+
 - Latest pass: `Call` active-writer custom render text split.
 - Verdict: accepted as a bounded `Call` row cut. Custom rendered CSS-call
   args, escaped-paren inner args, dynamic rendered names, and dynamic rendered

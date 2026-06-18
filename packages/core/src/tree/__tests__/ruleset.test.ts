@@ -1553,7 +1553,7 @@ describe('Rule', () => {
     }
   });
 
-  it('serializeRulesContainer keeps child Rules body transport off the caller writer', () => {
+  it('serializeRulesContainer keeps child Rules body transport on the caller writer', () => {
     const writer = new CountingWriter();
     const childRules = rules([
       decl({ name: 'color', value: any('red') })
@@ -1583,7 +1583,7 @@ describe('Rule', () => {
 
     try {
       void serializeRulesContainer(node, options);
-      expect(childSawDetachedWriter).toBe(true);
+      expect(childSawDetachedWriter).toBe(false);
     } finally {
       childRules.writeSyntax = originalWriteSyntax;
       childRules.toTrimmedString = originalToTrimmedString;

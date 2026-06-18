@@ -750,48 +750,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         if (hoistedParent) {
           leafFrames = [...inFrames, hoistedParent.frame];
         }
-        let renderedRulesOutput: string | undefined;
-        let renderedRulesTrivia: Set<IToken[]> | undefined;
         if (isNode(nn, N.Rules)) {
           const hasRenderableChild = nn.rules.some(child =>
             child.visible || child.fullRender || hasPrintableTrivia(child, options)
           );
           if (!hasRenderableChild && !hasPrintableTrivia(nn, options)) {
-            continue;
-          }
-          const ownReferenceMode = (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
-          const childReferenceMode = inReferenceMode || ownReferenceMode;
-          const enteringReferenceMode = !inReferenceMode && ownReferenceMode;
-          const childReferenceRenderEnabled = childReferenceMode
-            ? (enteringReferenceMode ? false : renderEnabled)
-            : true;
-          const rulesSaved = savePrintState(options, [
-            'depth',
-            'referenceMode',
-            'referenceRenderEnabled'
-          ]);
-          const rulesInFramesLength = options.inFrames.length;
-          const rulesTreeFramesLength = options.treeFrames.length;
-          const rulesLastRenderedFramesLength = options.lastRenderedFrames.length;
-          const rulesFrameHeadersLength = options.frameHeaders.length;
-          const rulesComposedSelectorStackLength = options.composedSelectorStack?.length;
-          renderedRulesTrivia = new Set<IToken[]>();
-          const previousEmittedTrivia = options.emittedTrivia;
-          options.depth = leafFrames.length;
-          options.referenceMode = childReferenceMode;
-          options.referenceRenderEnabled = childReferenceRenderEnabled;
-          options.emittedTrivia = renderedRulesTrivia;
-          renderedRulesOutput = renderNodeText(nn, getPrintOptions(options), 'rules-preview');
-          options.emittedTrivia = previousEmittedTrivia;
-          options.inFrames.length = rulesInFramesLength;
-          options.treeFrames.length = rulesTreeFramesLength;
-          options.lastRenderedFrames.length = rulesLastRenderedFramesLength;
-          options.frameHeaders.length = rulesFrameHeadersLength;
-          if (options.composedSelectorStack && rulesComposedSelectorStackLength !== undefined) {
-            options.composedSelectorStack.length = rulesComposedSelectorStackLength;
-          }
-          restorePrintState(options, rulesSaved);
-          if (!renderedRulesOutput && !hasPrintableTrivia(nn, options)) {
             continue;
           }
         }
@@ -825,19 +788,29 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         options.referenceRenderEnabled = childReferenceRenderEnabled;
         const isHiddenStructuralNode = !nn.visible && !nn.fullRender;
         const leading = captureNodeTrivia(nn, 'before', options);
+        if (isNode(nn, N.Rules)) {
+          if (!/^\s*$/.test(leading)) {
+            w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
+          }
+          const before = w.position();
+          nn.writeSyntax(getPrintOptions(options));
+          const wrote = w.position() !== before;
+          restorePrintState(options, leafSaved);
+          if (!wrote && !leading.trim() && !hasPrintableTrivia(nn, options)) {
+            continue;
+          }
+          w.add('\n');
+          const trailing = captureNodeTrivia(nn, 'after', options);
+          if (!/^\s*$/.test(trailing)) {
+            w.add(/\/\*/u.test(trailing) ? normalizeBlockTrivia(trailing, idt) : normalizeIndent(trailing, idt));
+          }
+          continue;
+        }
         const out = isHiddenStructuralNode
           ? ''
           : isNode(nn, N.Declaration)
             ? renderNodeText(nn, options, 'declaration-fallback')
-            : renderedRulesOutput !== undefined
-              ? renderedRulesOutput
-              : renderNodeText(nn, options);
-        if (renderedRulesTrivia) {
-          const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
-          for (const tokens of renderedRulesTrivia) {
-            emittedTrivia.add(tokens);
-          }
-        }
+            : renderNodeText(nn, options);
         restorePrintState(options, leafSaved);
         // Suppress pure-void Any nodes from generating blank output lines.
         if (
