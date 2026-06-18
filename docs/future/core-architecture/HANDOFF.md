@@ -103,6 +103,49 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` writer-owned rendered-arg transport.
+- Verdict: accepted as a localized serialization transport cut. Plain and
+  finalized CSS-call render paths no longer bounce through a recursive
+  rendered-args helper that returns discarded intermediate strings; they now
+  drive a writer-owned indexed arg loop directly and only switch to one async
+  continuation after the first thenable appears. No speed claim.
+- New traversal: one shared indexed arg loop plus one async rest loop in
+  `writeRenderedArgs(...)` inside `packages/core/src/tree/call.ts`. This
+  replaces the previous recursive `serializeArgAt(...)` ladder and does not add
+  any new tree walk beyond the existing arg scan work.
+- New node/materialization: none. No new node copies, inherited wrappers, or
+  arg containers were added by this pass.
+- Render path: rendered call args now write directly into the caller-owned
+  writer instead of returning an inner args string that the caller throws away.
+  Whole-call string return compatibility stays at the existing outer call
+  boundary.
+- Helper/API surface: one private helper was renamed and simplified from
+  `serializeRenderedArgs(...) -> MaybePromise<string>` to
+  `writeRenderedArgs(...) -> MaybePromise<void>`. The caller contract is
+  smaller because it no longer threads discarded rendered-args text back
+  through plain/finalized render.
+- Metadata mutations: none.
+- Routine error control: none added. Calc-frame cleanup remains on the existing
+  plain-call render boundary; this pass did not add production catch/rethrow or
+  fallback branches.
+- Allocation changes: deletes the recursive rendered-args string-return ladder
+  and its discarded inner args readback; async work now allocates one rest
+  continuation only after the first thenable is observed.
+- Rejected/observed in this pass: non-scalar/custom/trivia arg trim-mark
+  cleanup, callable output, and remaining `evalArgNodes(...)` ownership work
+  stay queued in `Call`. A broader `call.test.ts` run still contains unrelated
+  existing expectation mismatches outside this helper rewrite, so proof for
+  this pass stays on the focused render/serialization subsets that cover the
+  touched path.
+- Evidence: focused `call.test.ts` render-path subset covering direct CSS-call
+  render, flat-buffer output, direct arg rendering without public resolve,
+  evaluated/escaped arg syntax, dynamic arg streaming, async arg buffer/render
+  paths, calc-frame rejection cleanup, and escaped rendered args passed; a
+  focused `call.test.ts` source-syntax subset covering direct-child writer
+  ownership, `writeSyntax(...)` ownership, optional lookup syntax, and comment
+  trivia separators also passed; targeted ESLint, `git diff --check`,
+  `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` remain the commit-boundary gates.
 - Latest pass: `Reference` dynamic merged declaration direct-reuse cutoff.
 - Verdict: accepted as a localized public materialization cut. Already-final
   dynamic merged declaration values no longer pay a final

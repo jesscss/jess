@@ -483,84 +483,99 @@ export class Call extends Node<CallValue, CallOptions> {
     });
   }
 
-  private serializeRenderedArgs(
+  private writeRenderedArgs(
     args: List<Node> | undefined,
     context: Context,
     options: PrintOptions
-  ): MaybePromise<string> {
+  ): MaybePromise<void> {
     if (!args || args.items.length === 0) {
-      return '';
+      return;
     }
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
-    const mark = w.mark();
     const rawArgs = args.items;
     const last = rawArgs.length - 1;
-    const serializeArgAt = (start: number): MaybePromise<string> => {
+    const findNextArgIndex = (start: number): number => {
       let i = start;
       while (i <= last && !rawArgs[i]) {
         i++;
       }
-      if (i > last) {
-        return w.getSince(mark);
+      return i;
+    };
+    const writeArgSeparator = (arg: Node, next: number): void => {
+      if (next > last) {
+        return;
       }
+      emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
+      w.add(', ');
+    };
+    const finishArg = (arg: Node, argMark: number, next: number): void => {
+      w.trimHorizontalStartSince(argMark);
+      w.trimHorizontalEndSince(argMark);
+      writeArgSeparator(arg, next);
+    };
+    const finishEscapedParenArg = (arg: Paren, innerMark: number, next: number): void => {
+      w.trimHorizontalStartSince(innerMark);
+      w.trimHorizontalEndSince(innerMark);
+      w.add(')', arg);
+      writeArgSeparator(arg, next);
+    };
+    const writeArgAt = (i: number): MaybePromise<void> => {
       const arg = rawArgs[i]!;
-      let next = i + 1;
-      while (next <= last && !rawArgs[next]) {
-        next++;
-      }
-      const hasNext = next <= last;
-      const writeArgSeparator = (): void => {
-        if (!hasNext) {
-          return;
-        }
-        emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
-        w.add(', ');
-      };
-      const finishArg = (argMark: number): MaybePromise<string> => {
-        w.trimHorizontalStartSince(argMark);
-        w.trimHorizontalEndSince(argMark);
-        writeArgSeparator();
-        return serializeArgAt(next);
-      };
+      const next = findNextArgIndex(i + 1);
       if (arg instanceof Paren && arg.options?.escaped) {
         w.add('(', arg);
-        if (arg.value) {
-          const innerMark = w.mark();
-          const rendered = arg.value.eval(context);
-          const finishParen = (): MaybePromise<string> => {
-            w.trimHorizontalStartSince(innerMark);
-            w.trimHorizontalEndSince(innerMark);
-            w.add(')', arg);
-            writeArgSeparator();
-            return serializeArgAt(next);
-          };
-          if (isThenable(rendered)) {
-            return rendered.then((value) => {
-              value.writeSyntax(printOptions);
-              return finishParen();
-            });
-          }
-          (rendered as Node).writeSyntax(printOptions);
-          return finishParen();
+        if (!arg.value) {
+          w.add(')', arg);
+          writeArgSeparator(arg, next);
+          return;
         }
-        w.add(')', arg);
-        writeArgSeparator();
-        return serializeArgAt(next);
-      } else {
-        const argMark = w.mark();
-        const rendered = arg.eval(context);
+        const innerMark = w.mark();
+        const rendered = arg.value.eval(context);
         if (isThenable(rendered)) {
           return rendered.then((value) => {
             value.writeSyntax(printOptions);
-            return finishArg(argMark);
+            finishEscapedParenArg(arg, innerMark, next);
           });
         }
         (rendered as Node).writeSyntax(printOptions);
-        return finishArg(argMark);
+        finishEscapedParenArg(arg, innerMark, next);
+        return;
+      }
+      const argMark = w.mark();
+      const rendered = arg.eval(context);
+      if (isThenable(rendered)) {
+        return rendered.then((value) => {
+          value.writeSyntax(printOptions);
+          finishArg(arg, argMark, next);
+        });
+      }
+      (rendered as Node).writeSyntax(printOptions);
+      finishArg(arg, argMark, next);
+      return;
+    };
+    const writeArgsAsync = async (start: number): Promise<void> => {
+      for (let i = start; i <= last;) {
+        const nextIndex = findNextArgIndex(i);
+        if (nextIndex > last) {
+          return;
+        }
+        await writeArgAt(nextIndex);
+        i = nextIndex + 1;
       }
     };
-    return serializeArgAt(0);
+
+    for (let i = 0; i <= last;) {
+      const nextIndex = findNextArgIndex(i);
+      if (nextIndex > last) {
+        return;
+      }
+      const rendered = writeArgAt(nextIndex);
+      if (isThenable(rendered)) {
+        return rendered.then(() => writeArgsAsync(nextIndex + 1));
+      }
+      i = nextIndex + 1;
+    }
   }
 
   private renderPlainFunctionCall(
@@ -612,9 +627,9 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       return w.getSince(mark);
     };
-    let renderedArgs: MaybePromise<string>;
+    let renderedArgs: MaybePromise<void>;
     try {
-      renderedArgs = this.serializeRenderedArgs(callNode.args, context, prepared);
+      renderedArgs = this.writeRenderedArgs(callNode.args, context, prepared);
     } catch (error) {
       if (isCalc) {
         context.calcFrames--;
@@ -671,7 +686,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       return w.getSince(mark);
     };
-    const renderedArgs = this.serializeRenderedArgs(args, context, prepared);
+    const renderedArgs = this.writeRenderedArgs(args, context, prepared);
     return isThenable(renderedArgs)
       ? renderedArgs.then(finishCall)
       : finishCall();
