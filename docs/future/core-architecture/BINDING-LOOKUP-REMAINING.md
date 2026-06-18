@@ -786,7 +786,7 @@ assignment-target hits, and `lookupScopeFrameVariable(...)` reports readonly
 on the resolved hit without cloning or mutating the source binding cell.
 Focused setDefined/readonly tests stay green.
 
-50. [ ] Collapse assignment-target readonly overlay allocation into the
+50. [x] Collapse assignment-target readonly overlay allocation into the
 smallest possible carried fact. Scope: `assignmentReadonlyByName` Sets on
 `RulesEntryLike` and `ScopeFrame`, inherited readonly imports, direct readonly
 cells, and setDefined readonly errors. Goal: keep the no-clone shape from item
@@ -794,9 +794,14 @@ cells, and setDefined readonly errors. Goal: keep the no-clone shape from item
 entry/frame boolean for all bindings or skipped entirely when cells are already
 readonly. Acceptance: focused readonly import tests stay green, aggressive
 review either shows the extra Set allocation removed or documents why per-name
-readonly is semantically required.
+readonly is semantically required. Current evidence: the overlay cannot safely
+collapse to one whole-summary boolean because a public Rules summary can mix
+writable own assignment targets with readonly child-edge targets. Cells that
+are directly readonly still carry `cell.readonly`; the sparse
+`assignmentReadonlyByName` Set is only for names whose readonly fact comes from
+a child/import edge while the canonical source cell stays writable.
 
-51. [ ] Delete assignment-target summary recomputation on late child
+51. [x] Delete assignment-target summary recomputation on late child
 registration where a single new static variable can patch the carried entry.
 Scope: `refreshDirectDeclarationChildEntryAssignmentSummary(...)`,
 `registerNode(VarDeclaration)`, static/dynamic child names, and uncovered
@@ -805,7 +810,31 @@ after adding one modeled public variable when the entry can be patched by key,
 while still widening to uncovered for dynamic names. Acceptance: late
 registration tests prove no parent/public/child `Rules.value` crawl, dynamic
 late names still mark uncovered, and aggressive review shows the full summary
-rebuild is gone or isolated to dynamic/uncovered cases.
+rebuild is gone or isolated to dynamic/uncovered cases. Current evidence:
+static late child variable registration now patches the matching
+`RulesEntryLike` by key, updates the parent frame assignment target only when
+that entry wins source order, and marks dynamic public child variables
+uncovered without rebuilding the child summary. Focused tests prove late
+registration does not rebuild public `Rules.value`, and duplicate public
+assignment targets now keep the later target on the no-crawl path.
+
+52. [ ] Replace assignment-target summary object allocation with caller-owned
+accumulators. Scope: `AssignmentTargetBindingSummary`, recursive summary
+collection, child-entry construction, and focused setDefined tests. Goal:
+remove the small per-call `{ bindingsByName, readonlyByName }` object while
+keeping the canonical cell plus sparse readonly overlay model. Acceptance:
+aggressive review no longer flags the summary object allocation, setDefined
+tests stay green, and no cloned readonly maps return.
+
+53. [ ] Patch parent assignment frame state for late static variables without
+allocating a frame assignment map when the key is shadowed by current bindings
+or a later child entry. Scope:
+`refreshDirectDeclarationChildEntryAssignmentSummary(...)`,
+`directDeclarationChildEntryWinsAssignmentName(...)`, `ScopeFrame.assignmentBindingsByName`,
+and duplicate/late registration tests. Goal: keep the single-key patch path
+from allocating assignment storage when the new target cannot be consulted.
+Acceptance: tests cover current binding shadow, later child shadow, and winning
+late child update while aggressive review explains any remaining Map allocation.
 
 ## Latest Binding Baseline
 

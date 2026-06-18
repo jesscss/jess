@@ -2003,6 +2003,80 @@ describe('Rules', () => {
         expect(optionalDecl.valueNode.toString()).toBe('one');
       });
 
+      it('uses the later public imported setDefined assignment target without direct crawl', () => {
+        const earlierDecl = vardecl({ name: 'one', value: any('one') });
+        const laterDecl = vardecl({ name: 'one', value: any('two') });
+        const publicRules = rules([
+          earlierDecl,
+          laterDecl
+        ], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          publicRules,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        child.scopeFrame = child.getScopeFrame(parentFrame, false);
+        const originalParentValue = node.value;
+        const originalPublicValue = publicRules.value;
+        const originalChildValue = child.value;
+
+        Object.defineProperties(node, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('duplicate public setDefined path should not crawl parent Rules.value');
+            }
+          }
+        });
+        Object.defineProperties(publicRules, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('duplicate public setDefined path should not crawl public Rules.value');
+            }
+          }
+        });
+        Object.defineProperties(child, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('duplicate public setDefined path should not crawl child Rules.value');
+            }
+          }
+        });
+
+        try {
+          child.registerNode(assignment, undefined, context);
+        } finally {
+          Object.defineProperty(child, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalChildValue
+          });
+          Object.defineProperty(publicRules, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalPublicValue
+          });
+          Object.defineProperty(node, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalParentValue
+          });
+        }
+
+        expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
+        expect(earlierDecl.valueNode.toString()).toBe('one');
+        expect(laterDecl.valueNode.toString()).toBe('three');
+      });
+
       it('refreshes carried imported setDefined assignment summaries after late child registration', () => {
         const publicRules = rules([], {
           rulesVisibility: { VarDeclaration: 'public' }
@@ -2018,9 +2092,26 @@ describe('Rules', () => {
         ]);
         const parentFrame = node.getScopeFrame(undefined, false);
         const publicDecl = vardecl({ name: 'one', value: any('one') });
+        const originalPublicRegistrationValue = publicRules.value;
         publicRules.adopt(publicDecl);
         publicRules.rules.push(publicDecl);
-        publicRules.registerNode(publicDecl);
+        Object.defineProperties(publicRules, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('late child registration should not rebuild public Rules.value');
+            }
+          }
+        });
+        try {
+          publicRules.registerNode(publicDecl);
+        } finally {
+          Object.defineProperty(publicRules, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalPublicRegistrationValue
+          });
+        }
         child.scopeFrame = child.getScopeFrame(parentFrame, false);
         const originalParentValue = node.value;
         const originalPublicValue = publicRules.value;

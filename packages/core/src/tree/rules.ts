@@ -745,6 +745,21 @@ function addAssignmentTargetBinding(
   }
 }
 
+function setAssignmentTargetBinding(
+  summary: AssignmentTargetBindingSummary,
+  name: string,
+  cell: BindingCell,
+  readonlyOverlay: boolean
+): void {
+  const bindings = summary.bindingsByName ?? (summary.bindingsByName = new Map());
+  bindings.set(name, cell);
+  if (readonlyOverlay && !cell.readonly) {
+    (summary.readonlyByName ??= new Set()).add(name);
+  } else {
+    summary.readonlyByName?.delete(name);
+  }
+}
+
 /**
  * The class representing a "declaration list".
  * CSS calls it this even though CSS Nesting
@@ -1054,7 +1069,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ) {
           continue;
         }
-        addAssignmentTargetBinding(summary, String(node.name.valueOf()), {
+        setAssignmentTargetBinding(summary, String(node.name.valueOf()), {
           value: node.valueNode,
           sourceNode: node,
           readonly: localReadonly || Boolean(node.options?.readonly)
@@ -1688,15 +1703,55 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     });
   }
 
-  private refreshDirectDeclarationChildEntryAssignmentSummary(child: Rules): void {
+  private refreshDirectDeclarationChildEntryAssignmentSummary(child: Rules, changedVariable?: VarDeclaration): void {
     const entries = this.directDeclarationChildEntries;
     if (!entries?.length) {
       return;
     }
+    let patched = false;
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i]!;
       if (entry.node !== child) {
         continue;
+      }
+      if (changedVariable) {
+        entry.hasDeclarationSurface = true;
+        entry.hasVarDeclarationSurface = true;
+        if (!child._hasStaticName(changedVariable)) {
+          if (isPublicRulesEntry(entry, 'VarDeclaration')) {
+            entry.hasUncoveredAssignmentTargetSurface = true;
+            if (this._scopeFrame) {
+              this._scopeFrame.hasUncoveredAssignmentTargetSurface = true;
+            }
+          }
+          patched = true;
+          continue;
+        }
+        if (
+          !changedVariable.options?.setDefined
+          && isPublicRulesEntry(entry, 'VarDeclaration')
+          && canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration' })
+          && canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration' })
+        ) {
+          const name = String(changedVariable.name.valueOf());
+          const cell: BindingCell = {
+            value: changedVariable.valueNode,
+            sourceNode: changedVariable,
+            readonly: Boolean(entry.readonly || changedVariable.options?.readonly)
+          };
+          (entry.assignmentBindingsByName ??= new Map()).set(name, cell);
+          entry.assignmentReadonlyByName?.delete(name);
+          if (
+            this._scopeFrame
+            && !this._scopeFrame.currentBindingsByName.has(name)
+            && this.directDeclarationChildEntryWinsAssignmentName(entries, i, name)
+          ) {
+            (this._scopeFrame.assignmentBindingsByName ??= new Map()).set(name, cell);
+            this._scopeFrame.assignmentReadonlyByName?.delete(name);
+          }
+          patched = true;
+          continue;
+        }
       }
       entry.hasDeclarationSurface = rulesMayContainDeclarationSurface(child);
       entry.hasVarDeclarationSurface = rulesMayContainVarDeclarationSurface(child);
@@ -1706,6 +1761,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       entry.assignmentReadonlyByName = assignmentSummary.readonlyByName;
       entry.hasUncoveredAssignmentTargetSurface = child.getHasUncoveredAssignmentTargetEntrySurface();
     }
+    if (changedVariable && patched) {
+      return;
+    }
     if (this._scopeFrame) {
       this._scopeFrame.assignmentBindingsByName = undefined;
       this._scopeFrame.assignmentReadonlyByName = undefined;
@@ -1714,9 +1772,38 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  private refreshParentDeclarationChildEntryAssignmentSummary(): void {
+  private directDeclarationChildEntryWinsAssignmentName(
+    entries: Array<RulesEntryLike>,
+    entryIndex: number,
+    name: string
+  ): boolean {
+    for (let i = entries.length - 1; i > entryIndex; i--) {
+      const entry = entries[i]!;
+      if (
+        entry.hasVarDeclarationSurface === false
+        && entry.hasReferenceImportSurface !== true
+      ) {
+        continue;
+      }
+      if (!canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration' })) {
+        continue;
+      }
+      if (!canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration' })) {
+        continue;
+      }
+      if (!isPublicRulesEntry(entry, 'VarDeclaration')) {
+        continue;
+      }
+      if (entry.assignmentBindingsByName?.has(name)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private refreshParentDeclarationChildEntryAssignmentSummary(changedVariable?: VarDeclaration): void {
     if (isNode(this.parent, N.Rules)) {
-      this.parent.refreshDirectDeclarationChildEntryAssignmentSummary(this);
+      this.parent.refreshDirectDeclarationChildEntryAssignmentSummary(this, changedVariable);
     }
   }
 
@@ -3754,7 +3841,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               }
             }
           }
-          this.refreshParentDeclarationChildEntryAssignmentSummary();
+          this.refreshParentDeclarationChildEntryAssignmentSummary(node as VarDeclaration);
         } else if (this._scopeFrame) {
           let hasPendingDeclaration = false;
           for (let i = 0; i < this._scopeFrame.pendingDeclarationNames.length; i++) {
@@ -3766,6 +3853,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (!hasPendingDeclaration) {
             this._scopeFrame.pendingDeclarationNames.push(node as VarDeclaration);
           }
+          this.refreshParentDeclarationChildEntryAssignmentSummary(node as VarDeclaration);
         }
       }
     } else if (isNode(node, N.Ruleset) || isNode(node, N.Mixin)) {
