@@ -11,7 +11,12 @@ import { indent, normalizeIndent, serializeRulesContainer } from './util/seriali
 import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
-import { createTriviaMap, emitCommentTriviaAfterNode } from './util/trivia.js';
+import {
+  createTriviaMap,
+  emitCommentTriviaAfterNode,
+  emitCommentTriviaBetweenNodes,
+  emitNodeSourceSyntaxWithTrivia
+} from './util/trivia.js';
 import { canReuseLeaf, copyWithReusableLeaves, copyWithReusableLeavesPreservingComments, reuseLeaf } from './util/cloning.js';
 import { withRulesContext } from './util/context.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
@@ -109,20 +114,12 @@ function renderAtRuleLeafNodeSyntax(
   node: Node,
   printOptions: FinalPrintOptions
 ): string {
-  const scalarText = !printOptions.trivia
-    ? atRuleScalarTokenText(node)
-    : undefined;
-  if (scalarText !== undefined) {
-    return scalarText;
-  }
-  const writer = printOptions.writer;
-  const mark = writer.mark();
-  try {
-    node.writeSyntax(printOptions);
-    return writer.getSince(mark);
-  } finally {
-    writer.restore(mark);
-  }
+  const writer = new OutputWriter(printOptions.compress);
+  emitNodeSourceSyntaxWithTrivia(node, {
+    ...printOptions,
+    writer
+  });
+  return writer.toString();
 }
 
 function writeDirectLeafAtRuleHeader(
@@ -190,7 +187,7 @@ function renderAtRuleHeaderNodeSyntax(
   }
   try {
     const writer = new OutputWriter(printOptions.compress);
-    node.writeSyntax({
+    emitNodeSourceSyntaxWithTrivia(node, {
       ...printOptions,
       writer
     });
@@ -210,6 +207,40 @@ function renderAtRulePostPreludeTrivia(
     writer
   });
   return writer.toString();
+}
+
+function renderAtRuleBetweenNameAndPreludeTrivia(
+  name: Node,
+  prelude: Node,
+  printOptions: FinalPrintOptions
+): string {
+  const writer = new OutputWriter(printOptions.compress);
+  emitCommentTriviaBetweenNodes(name, prelude, {
+    ...printOptions,
+    writer
+  });
+  return writer.toString();
+}
+
+function buildComparableAtRuleHeader(
+  nameOut: string,
+  preludeOut: string | undefined
+): string {
+  if (!preludeOut || !hasNonAtRuleWhitespace(preludeOut)) {
+    return trimAtRuleTrailingWhitespace(nameOut);
+  }
+  const nameEndsWithSpace = endsWithAtRuleWhitespace(nameOut);
+  const preludeStartsWithSpace = startsWithAtRuleWhitespace(preludeOut);
+  let out = nameOut;
+  if (preludeStartsWithSpace) {
+    out += trimAtRuleLeadingWhitespace(preludeOut, nameEndsWithSpace ? '' : ' ');
+  } else {
+    if (!nameEndsWithSpace) {
+      out += ' ';
+    }
+    out += preludeOut;
+  }
+  return trimAtRuleTrailingWhitespace(out);
 }
 
 function isAtRuleWhitespace(code: number): boolean {
@@ -1232,6 +1263,38 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       : finish(preparedRules);
   }
 
+  getComparableHeaderString(options: FinalPrintOptions): string {
+    let { name } = this;
+    let prelude = options.atRuleHeaderNode === this
+      ? (options.atRuleHeaderPrelude ?? this.prelude)
+      : this.prelude;
+
+    if (hasCommentChild(name) || hasCommentChild(prelude)) {
+      name = this.ownName(name);
+      if (prelude) {
+        prelude = this.ownNode(prelude);
+      }
+    }
+
+    const nameOut = renderAtRuleHeaderNodeSyntax(name, options, true);
+    const preludeTrivia = createTriviaMap();
+    const preludePrintOptions: FinalPrintOptions = options.context && prelude
+      ? {
+          ...options,
+          context: undefined,
+          trivia: preludeTrivia,
+          emittedTrivia: options.emittedTrivia
+        }
+      : {
+          ...options,
+          trivia: preludeTrivia
+        };
+    const preludeOut = prelude
+      ? renderAtRuleHeaderNodeSyntax(prelude, preludePrintOptions, true)
+      : undefined;
+    return buildComparableAtRuleHeader(nameOut, preludeOut);
+  }
+
   /** Render the opening of this at-rule (name and prelude) */
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     let { name } = this;
@@ -1253,7 +1316,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
 
     const nameOut = renderAtRuleHeaderNodeSyntax(name, options, withoutComments);
-    const nameEndsWithSpace = endsWithAtRuleWhitespace(nameOut);
     if (prelude) {
       const preludeTrivia = withoutComments
         ? createTriviaMap()
@@ -1276,13 +1338,22 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         }
         return out;
       }
+      const nameEndsWithSpace = endsWithAtRuleWhitespace(nameOut);
       const preludeStartsWithSpace = startsWithAtRuleWhitespace(preludeOut);
+      const interstitialTrivia = withoutComments
+        ? ''
+        : renderAtRuleBetweenNameAndPreludeTrivia(name, prelude, options);
 
       out += nameOut;
+      if (interstitialTrivia) {
+        out += interstitialTrivia;
+      }
       // If name ends with space AND prelude starts with space, trim the prelude's leading space
       // Otherwise, add a space only if neither has spacing
       let finalPreludeOut = preludeOut;
-      if (preludeStartsWithSpace) {
+      if (interstitialTrivia) {
+        finalPreludeOut = trimAtRuleLeadingWhitespace(preludeOut);
+      } else if (preludeStartsWithSpace) {
         finalPreludeOut = trimAtRuleLeadingWhitespace(preludeOut, nameEndsWithSpace ? '' : ' ');
       } else if (!nameEndsWithSpace && !preludeStartsWithSpace) {
         out += ' ';

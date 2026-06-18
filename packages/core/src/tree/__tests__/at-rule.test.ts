@@ -1861,6 +1861,77 @@ describe('AtRule', () => {
     expect(prelude.parent).toBe(node);
   });
 
+  it('compares repeated at-rule headers through comparable header keys', async () => {
+    const first = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([any('screen', { role: 'keyword' })]),
+      rules: rules([
+        decl({ name: 'case', value: any('1') })
+      ])
+    });
+    const second = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([any('screen', { role: 'keyword' })]),
+      rules: rules([
+        decl({ name: 'case', value: any('2') })
+      ])
+    });
+    const node = rules([first, second]);
+    let withoutCommentsHeaderCalls = 0;
+    let comparableHeaderCalls = 0;
+    const atRulePrototypeCandidate = Object.getPrototypeOf(first);
+    if (
+      !atRulePrototypeCandidate
+      || typeof atRulePrototypeCandidate !== 'object'
+      || !('getHeaderString' in atRulePrototypeCandidate)
+      || typeof atRulePrototypeCandidate.getHeaderString !== 'function'
+      || !('getComparableHeaderString' in atRulePrototypeCandidate)
+      || typeof atRulePrototypeCandidate.getComparableHeaderString !== 'function'
+    ) {
+      throw new TypeError('Expected at-rule prototype with header helpers');
+    }
+    const atRulePrototype: {
+      getHeaderString: typeof first.getHeaderString;
+      getComparableHeaderString: typeof first.getComparableHeaderString;
+    } = atRulePrototypeCandidate;
+    const originalGetHeaderString = atRulePrototype.getHeaderString;
+    const originalGetComparableHeaderString = atRulePrototype.getComparableHeaderString;
+    atRulePrototype.getHeaderString = function countWithoutCommentsCalls(
+      this: typeof first,
+      ...args: Parameters<typeof originalGetHeaderString>
+    ): ReturnType<typeof originalGetHeaderString> {
+      if (args[1] === true) {
+        withoutCommentsHeaderCalls++;
+      }
+      return originalGetHeaderString.apply(this, args);
+    };
+    atRulePrototype.getComparableHeaderString = function countComparableCalls(
+      this: typeof first,
+      ...args: Parameters<typeof originalGetComparableHeaderString>
+    ): ReturnType<typeof originalGetComparableHeaderString> {
+      comparableHeaderCalls++;
+      return originalGetComparableHeaderString.apply(this, args);
+    };
+
+    try {
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
+
+      expect(css).toBeString(`
+        @media screen {
+          case: 1;
+        }
+        @media screen {
+          case: 2;
+        }`
+      );
+      expect(withoutCommentsHeaderCalls).toBe(0);
+      expect(comparableHeaderCalls).toBeGreaterThan(0);
+    } finally {
+      atRulePrototype.getHeaderString = originalGetHeaderString;
+      atRulePrototype.getComparableHeaderString = originalGetComparableHeaderString;
+    }
+  });
+
   it('normalizes leading prelude whitespace at the at-rule name boundary', () => {
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),

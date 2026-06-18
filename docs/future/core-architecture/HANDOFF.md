@@ -103,6 +103,41 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `AtRule` comparable-header and boundary-trivia split.
+- Verdict: accepted as a bounded serializer cut inside the active `AtRule`
+  row. Frame comparison in `serializeRulesContainer(...)` no longer routes the
+  hot repeated-header path through full `getHeaderString(..., true)` assembly,
+  and comment-bearing header boundaries now explicitly own the name-to-prelude
+  trivia gap instead of depending on detached prelude rendering to rediscover
+  it. No speed claim.
+- New traversal: none.
+- Review-flagged allocations: detached `OutputWriter` boundaries remain for
+  comment-bearing header fragments and the explicit name-to-prelude trivia
+  bridge. They stay isolated to cold comparable-header/comment paths and
+  replace caller-writer rollback/preview transport.
+- New node/materialization: none.
+- Render path: `AtRule.getComparableHeaderString(...)` now owns the repeated
+  frame-compare key, while `getHeaderString(...)` emits explicit boundary
+  trivia between `name` and `prelude` before writing the detached prelude text.
+  The hot container-merge comparison now reads those comparable keys directly.
+- Helper/API surface: one node-local helper,
+  `renderAtRuleBetweenNameAndPreludeTrivia(...)`, plus
+  `AtRule.getComparableHeaderString(...)`. Both isolate comment/comparison-only
+  work away from the main header formatter and replace broader full-header
+  formatting on repeated-frame checks.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: no node copies, wrapper materialization, or carried
+  caches; only the detached comment/comparison writers above.
+- Evidence: focused `at-rule.test.ts` now proves repeated frame comparisons
+  call `getComparableHeaderString(...)` instead of `getHeaderString(..., true)`,
+  dynamic leaf preludes still avoid at-rule eval transport, and
+  `@-webkit-keyframes /* Safari */ hover /* and Chrome */ {` preserves the
+  interstitial comment gap. Full `at-rule.test.ts`, focused `ruleset.test.ts`
+  repeated-header coverage, `git diff --check`,
+  `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` still need to run after this handoff
+  update.
 - Latest pass: `Call` calc render-frame alignment.
 - Verdict: accepted as a bounded render-behavior cut inside the active `Call`
   serialization lane. Plain/buffer calc render no longer takes the exact-text
@@ -222,6 +257,17 @@ with `--no-verify` after the explicit gates pass.
   Ruleset frame-header compare-key split in
   `packages/core/src/tree/ruleset.ts` and
   `packages/core/src/tree/util/serialize-helper.ts`.
+- Merge-carried serialization review: latest `origin/dev` also carries the
+  AtRule comparable-header split in `packages/core/src/tree/at-rule.ts`,
+  `packages/core/src/tree/util/serialize-helper.ts`, and
+  `packages/core/src/tree/__tests__/at-rule.test.ts`. Repeated at-rule frame
+  comparison now reads `AtRule.getComparableHeaderString(...)` instead of full
+  `getHeaderString(..., true)` output, and comment-bearing header boundaries
+  explicitly emit name-to-prelude trivia so detached prelude rendering no
+  longer drops interstitial comments. Review-flagged detached writers,
+  `CountingWriter`, thrown errors, and `try/finally` are focused serialization
+  proof scaffolding or bounded comment/comparison string boundaries. No
+  binding lookup runtime path changed.
 - Merge-carried serialization review: latest `origin/dev` also carries the
   duplicate declaration comparison writer cut in
   `packages/core/src/tree/util/serialize-helper.ts`. Review-flagged

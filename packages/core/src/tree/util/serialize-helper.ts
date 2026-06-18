@@ -633,16 +633,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
               hoistedParent && i === leafFrames.length - 1 && currentFrame === hoistedParent.frame
             )
               ? renderHoistedParentComparableHeader(hoistedParent, options)
-              : isNode(currentFrame, N.Ruleset)
-                ? currentFrame.getComparableHeaderString(options)
-                : currentFrame.getHeaderString(options, true),
+              : currentFrame.getComparableHeaderString(options),
             (
               hoistedParent && i === leafFrames.length - 1 && priorFrame === hoistedParent.frame
             )
               ? renderHoistedParentComparableHeader(hoistedParent, options)
-              : isNode(priorFrame, N.Ruleset)
-                ? priorFrame.getComparableHeaderString(options)
-                : priorFrame.getHeaderString(options, true)
+              : priorFrame.getComparableHeaderString(options)
           ]);
           const sameRenderedRulesetFrame = isNode(currentFrame, N.Ruleset)
             && isNode(priorFrame, N.Ruleset)
