@@ -139,3 +139,11 @@ with `--no-verify` after the explicit gates pass.
   materialization was added, and detailed status remains in
   `BINDING-LOOKUP-REMAINING.md`. The serialization pass keeps
   `NODE-REWRITE-TRACKER.md` as the active queue.
+- Merge-carried binding review: latest `origin/dev` also carries direct
+  declaration per-key cache invalidation in `packages/core/src/tree/rules.ts`
+  with focused reference tests. It is lookup/cache-only: no
+  render/stringification path changed. Review-flagged loop/map findings are
+  the accepted bounded cache-key invalidation walk plus test-only cache-key
+  snapshots/maps used to prove unrelated direct declaration entries survive.
+  Detailed status remains in `BINDING-LOOKUP-REMAINING.md`. The serialization
+  pass keeps `NODE-REWRITE-TRACKER.md` as the active queue.
