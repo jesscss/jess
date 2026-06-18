@@ -4988,6 +4988,32 @@ describe('reference', () => {
       }
     });
 
+    it('source-static handles rebuild lookup strategy for unstable reference facts', async () => {
+      const node = rules([
+        vardecl({ name: 'tone-var', value: any('purple') }),
+        decl({ name: 'tone-prop', value: any('orange') })
+      ]);
+      setRulesContext(await node.eval(context));
+
+      const snapshotRef = ref({ key: 'tone-var' }, { type: 'variable' });
+      expect(snapshotRef.eval(context).valueOf()).toBe('purple');
+      expect(snapshotRef._rulesLookupHandle?.lookupType).toBe('variable');
+      snapshotRef._lookupStrategy = undefined;
+      snapshotRef.options.readMode = 'snapshot';
+
+      expect(snapshotRef.eval(context).valueOf()).toBe('purple');
+      expect(snapshotRef._lookupStrategy?.lookupType).toBe('variable');
+
+      const filteredRef = ref({ key: 'tone-prop' }, { type: 'property' });
+      expect(filteredRef.eval(context).valueOf()).toBe('orange');
+      expect(filteredRef._rulesLookupHandle?.lookupType).toBe('property');
+      filteredRef._lookupStrategy = undefined;
+      filteredRef.options.filter = (node) => node.type === 'Declaration';
+
+      expect(filteredRef.eval(context).valueOf()).toBe('orange');
+      expect(filteredRef._lookupStrategy?.lookupType).toBe('property');
+    });
+
     it('static property occurrence handles invalidate when owner rules changes', async () => {
       const childRules = rules([
         decl({ name: 'color', value: any('blue') })

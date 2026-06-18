@@ -132,6 +132,19 @@ with `--no-verify` after the explicit gates pass.
   `at-rule.test.ts` non-leaf at-rule writer proof, targeted ESLint,
   `git diff --check`, `pnpm run verify:aggressive-cutting-review`, and
   `pnpm --filter @jesscss/core build` passed.
+- Merge-carried binding review: latest `origin/dev` also carries positional
+  reference handle reader/writer/source-static strategy APIs in
+  `packages/core/src/tree/reference.ts` plus the binding verifier. It is
+  binding handle-access only: private
+  `ReadRulesLookupHandleArgs*`, `WriteRulesLookupHandleArgs*`, and
+  `SourceStaticRulesLookupHandleArgs` object shapes are deleted, strategy
+  read/write methods plus family/source-static helpers now pass positional
+  facts directly, generic handle dispatch no longer allocates argument
+  objects, and `verify:binding-lookup-hot-paths` guards against stale
+  object-call shapes and deleted handle arg type names. No
+  render/stringification path changed, no runtime node materialization was
+  added, and detailed status remains in
+  `BINDING-LOOKUP-REMAINING.md`.
 - Merge-carried binding review: latest `origin/dev` also carries
   strategy-owned rules lookup handle readers, typed strategy policy, and
   slimmer handle dispatch in `packages/core/src/tree/reference.ts` plus the
@@ -146,6 +159,14 @@ with `--no-verify` after the explicit gates pass.
   by `verify:binding-lookup-hot-paths`. No render/stringification path
   changed, no runtime node materialization was added, and detailed status
   remains in `BINDING-LOOKUP-REMAINING.md`.
+- Merge-carried serialization review: latest `origin/dev` also carries the
+  child `Rules` body transport direct `writeSyntax(...)` cut in
+  `packages/core/src/tree/rules.ts` and
+  `packages/core/src/tree/util/serialize-helper.ts`. Detached child `Rules`
+  body transport now writes through `Rules.writeSyntax(...)` instead of the
+  public `toTrimmedString(...)` wrapper. Review-flagged detached writers,
+  thrown errors, and `try/finally` are serialization proof scaffolding or
+  bounded detached string boundaries. No binding lookup runtime path changed.
 - Merge-carried serialization review: latest `origin/dev` also carries the
   declaration fallback preview-transport cut in
   `packages/core/src/tree/util/serialize-helper.ts`. Review-flagged

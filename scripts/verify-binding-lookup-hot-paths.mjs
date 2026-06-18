@@ -181,7 +181,18 @@ if (referenceSource.includes('requiresHandleDeclarationConstraints')) {
   console.error('declaration-constraint handle policy should be a strategy type shape, not a boolean strategy flag');
   failed = true;
 }
-for (const token of ['const readArgs =', '...readArgs', '...baseArgs', 'writeStrategyRulesLookupHandle({']) {
+for (const token of [
+  'const readArgs =',
+  '...readArgs',
+  '...baseArgs',
+  'tryReadSourceStaticHandle({',
+  'strategy.readHandle({',
+  'strategy.writeHandle({',
+  'writeStrategyRulesLookupHandle({',
+  'ReadRulesLookupHandleArgs',
+  'WriteRulesLookupHandleArgs',
+  'SourceStaticRulesLookupHandleArgs'
+]) {
   if (referenceSource.includes(token)) {
     console.error(`handle read/write dispatch should not use stale temp/spread object shape ${token}`);
     failed = true;
@@ -208,12 +219,12 @@ for (const token of [
   'type ReferencePlainLookupStrategy',
   'function isReferenceDeclarationLookupStrategy(',
   'readHandle',
-  'function readDeclarationRulesLookupHandle(args: ReadDeclarationRulesLookupHandleArgs)',
-  'function readVariableRulesLookupHandle(args: ReadDeclarationRulesLookupHandleArgs)',
-  'function readFunctionRulesLookupHandle(args: ReadRulesLookupHandleArgsBase)',
-  'function readCallableRulesLookupHandle(args: ReadRulesLookupHandleArgsBase)',
-  'function writeVariableRulesLookupHandle(args: WriteDeclarationRulesLookupHandleArgs)',
-  'function writeDeclarationRulesLookupHandle(args: WriteDeclarationRulesLookupHandleArgs)'
+  'function readDeclarationRulesLookupHandle(',
+  'function readVariableRulesLookupHandle(',
+  'function readFunctionRulesLookupHandle(',
+  'function readCallableRulesLookupHandle(',
+  'function writeVariableRulesLookupHandle(',
+  'function writeDeclarationRulesLookupHandle('
 ]) {
   if (!referenceSource.includes(token)) {
     console.error(`declaration handle writer is missing declaration-only args: ${token}`);
