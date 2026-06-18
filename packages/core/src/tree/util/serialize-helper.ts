@@ -100,6 +100,13 @@ function renderNodeText(
       incrementSerializeProfileCounter('emissionRenderNodeTextLeafCalls');
     }
   }
+  if (reason === 'rules-preview') {
+    const writer = new OutputWriter();
+    return node.toTrimmedString(getPrintOptions({
+      ...options,
+      writer
+    }));
+  }
   return options.writer.preview(() => node.toTrimmedString(options));
 }
 

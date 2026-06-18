@@ -1258,6 +1258,37 @@ describe('Rule', () => {
     }
   });
 
+  it('serializeRulesContainer keeps child Rules body transport off the caller writer', () => {
+    const writer = new CountingWriter();
+    const childRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ], {
+      referenceMode: true
+    });
+    const originalToTrimmedString = childRules.toTrimmedString;
+    let childSawDetachedWriter = false;
+    childRules.toTrimmedString = function countDetachedWriter(
+      ...args: Parameters<typeof originalToTrimmedString>
+    ): ReturnType<typeof originalToTrimmedString> {
+      childSawDetachedWriter = args[0]?.writer !== writer;
+      return originalToTrimmedString.apply(this, args);
+    };
+    const node = ruleset({
+      selector: sel([el('.box')]),
+      rules: rules([
+        childRules
+      ])
+    });
+    const options = getPrintOptions({ writer });
+
+    try {
+      void serializeRulesContainer(node, options);
+      expect(childSawDetachedWriter).toBe(true);
+    } finally {
+      childRules.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
   it('getHeaderString does not cache uncomposed selectors onto the ruleset', () => {
     const node = ruleset({
       selector: sel([el('.foo')]),

@@ -103,34 +103,34 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: declaration merge-sequence inner readback cut in
-  `packages/core/src/tree/declaration.ts`.
-- Verdict: accepted as localized render/writeSyntax readback deletion. No
-  speed claim.
+- Latest pass: nested child `Rules` preview-transport cut in
+  `packages/core/src/tree/util/serialize-helper.ts`.
+- Verdict: accepted as localized serialization transport deletion. No speed
+  claim.
 - New traversal: none.
 - New node/materialization: no production nodes or materialized containers.
-  The review-flagged `new CountingWriter()` and `new Nil()` are focused
-  merge-sequence test fixtures only.
-- Render path: merge-sequence declaration rendering still uses the existing
-  outer declaration normalization window, but `renderSpaceValueSyntax(...)`
-  no longer opens its own inner mark/getSince readback just to hand control
-  back to the caller-owned `replaceSince(...)` boundary.
-- Helper/API surface: none. The review-flagged `Node[]` token is the existing
-  helper signature on `renderSpaceValueSyntax(...)`, not a new materialized
-  array boundary.
-- Metadata mutations: none in production. The review-flagged `Reflect.get(...)`
-  reads are test-only instrumentation replacing earlier unsafe casts in
-  `declaration.test.ts`.
-- Allocation changes: deletes one dead inner writer mark/getSince readback per
-  merge-sequence declaration render. The remaining declaration readbacks are
-  the outer declaration string boundary and the caller-owned value formatting
-  boundary.
-- Rejected/observed in this pass: raw-source custom property branches,
-  remaining merge state, internal mark/replace, and declaration
-  materialization remain open in the Declaration row.
-- Evidence: focused `declaration.test.ts` slices for merged lists/sequences,
-  the new merge-sequence readback assertion, and merge-adapter state plus
-  targeted ESLint, `git diff --check`,
+  The review-flagged `new OutputWriter()` is the detached string boundary that
+  replaces caller-writer preview transport for nested child `Rules`, and the
+  focused `new CountingWriter()` fixture in `ruleset.test.ts` is test-only
+  proof scaffolding.
+- Render path: nested child `Rules` container serialization still calls the
+  existing public body string boundary, but it now does so through a fresh
+  detached writer instead of previewing `toTrimmedString(...)` on the active
+  caller writer.
+- Helper/API surface: none.
+- Metadata mutations: none.
+- Routine error control: the review-flagged `try/finally` is the focused
+  `ruleset.test.ts` restoration scaffold for swapping `toTrimmedString(...)`
+  during the detached-writer assertion; no production control flow changed.
+- Allocation changes: deletes one caller-writer `preview(...)` rollback window
+  per nested child `Rules` container emission and replaces it with a detached
+  writer boundary that leaves the caller writer untouched.
+- Rejected/observed in this pass: hot frame header comparison, duplicate
+  declaration materialization, broader Rules body transport, and remaining
+  Ruleset header capture stay open in the Rules / Ruleset rows.
+- Evidence: focused `ruleset.test.ts` slices for serialize-helper render-local
+  behavior plus the new detached-writer assertion, targeted ESLint,
+  `git diff --check`,
   `pnpm run verify:aggressive-cutting-review`, and
   `pnpm --filter @jesscss/core build` passed.
 - Merge-carried binding review: latest `origin/dev` also carries
