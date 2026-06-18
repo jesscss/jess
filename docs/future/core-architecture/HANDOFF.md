@@ -103,6 +103,39 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` calc render-frame alignment.
+- Verdict: accepted as a bounded render-behavior cut inside the active `Call`
+  serialization lane. Plain/buffer calc render no longer takes the exact-text
+  shortcut for `Operation` args that need calc evaluation, and dynamic
+  finalized calc names now establish calc frames before rendering args. This
+  keeps direct/buffer calc normalization aligned with the live call tests while
+  preserving the explicit-writer exact operation syntax path. No speed claim.
+- New traversal: none.
+- Review-flagged allocations: none beyond one tiny render-options record on the
+  render path.
+- New node/materialization: none.
+- Render path: `Call.writeRenderedArgs(...)` now gates the exact `Operation`
+  text shortcut on whether the active render mode is preserving explicit writer
+  syntax or evaluating calc args. `renderFinalizedCallSyntax(...)` now mirrors
+  the calc-frame setup/cleanup already used by plain call render so dynamic
+  calc names normalize their args on the same path.
+- Helper/API surface: one tiny render-options record,
+  `CallRenderArgOptions`, plus `getRenderedCallNameText(...)` to classify calc
+  names without re-evaluating them. This removes special-case drift between the
+  plain and finalized render branches.
+- Metadata mutations: none added.
+- Routine error control: existing calc-frame cleanup `try/catch` and rejection
+  handling were widened to cover finalized calc render too; no new routine
+  fallback/error channel was introduced.
+- Allocation changes: none meaningful beyond the tiny render-options object; no
+  node copies or wrapper materialization added.
+- Evidence: focused `call.test.ts` coverage now proves the explicit-writer
+  exact operation path stays `calc(10px + 5px)`, direct and buffer calc render
+  reduce safe arithmetic to `calc(20px)` / `calc(15vh)`, and dynamic calc
+  names still evaluate the name once. Full `call.test.ts`, `git diff --check`,
+  `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` still need to run after this handoff
+  update.
 - Latest pass: binding changed-baseline closeout after gate cleanup.
 - Verdict: accepted as a documentation-only binding closeout. The binding-owned
   changed-baseline audit is complete: the prior selector-pseudo frontier

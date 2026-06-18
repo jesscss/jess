@@ -155,6 +155,7 @@ export type CallRawArgDiagnosticSource = {
 
 type OptionalFallbackRenderOutput = Node | string;
 type CallRenderTextState = { text: string | undefined };
+type CallRenderArgOptions = { evaluateCalcArgs: boolean };
 
 function renderDetachedCallNodeText(node: Node, printOptions: FinalPrintOptions): string {
   const writer = new OutputWriter(printOptions.compress);
@@ -179,6 +180,16 @@ function trimHorizontalCallText(text: string): string {
     end--;
   }
   return start === 0 && end === text.length ? text : text.slice(start, end);
+}
+
+function getRenderedCallNameText(name: string | Node | unknown): string | undefined {
+  if (typeof name === 'string') {
+    return name;
+  }
+  if (name instanceof Node) {
+    return getKnownRenderedCallText(name);
+  }
+  return undefined;
 }
 
 function getKnownRenderedCallText(node: Node): string | undefined {
@@ -859,7 +870,8 @@ export class Call extends Node<CallValue, CallOptions> {
     args: List<Node> | undefined,
     context: Context,
     options: PrintOptions,
-    textState?: CallRenderTextState
+    textState?: CallRenderTextState,
+    renderOptions: CallRenderArgOptions = { evaluateCalcArgs: true }
   ): MaybePromise<void> {
     if (!args || args.items.length === 0) {
       return;
@@ -953,7 +965,19 @@ export class Call extends Node<CallValue, CallOptions> {
         finishEscapedParenArg(arg, renderDetachedCallNodeText(rendered as Node, printOptions), next);
         return;
       }
-      if (
+      if (context.calcFrames !== 0 && arg.constructor === Operation) {
+        if (!renderOptions.evaluateCalcArgs) {
+          const argText = getKnownRenderedCallText(arg);
+          if (argText !== undefined) {
+            w.add(argText, arg);
+            if (textState?.text !== undefined) {
+              textState.text += argText;
+            }
+            writeArgSeparator(arg, next);
+            return;
+          }
+        }
+      } else if (
         arg.eval === Node.prototype.eval
         && appendKnownRenderedText(arg)
       ) {
@@ -1004,7 +1028,8 @@ export class Call extends Node<CallValue, CallOptions> {
   private renderPlainFunctionCall(
     callNode: Call,
     context: Context,
-    prepared: PrintOptions
+    prepared: PrintOptions,
+    renderOptions: CallRenderArgOptions = { evaluateCalcArgs: true }
   ): MaybePromise<string> {
     const printOptions = getPrintOptions(prepared);
     const w = printOptions.writer!;
@@ -1038,7 +1063,7 @@ export class Call extends Node<CallValue, CallOptions> {
     if (textState.text !== undefined) {
       textState.text += '(';
     }
-    const isCalc = name === 'calc';
+    const isCalc = getRenderedCallNameText(name) === 'calc';
     if (isCalc) {
       context.calcFrames++;
     }
@@ -1101,7 +1126,7 @@ export class Call extends Node<CallValue, CallOptions> {
     };
     let renderedArgs: MaybePromise<void>;
     try {
-      renderedArgs = this.writeRenderedArgs(callNode.args, context, prepared, textState);
+      renderedArgs = this.writeRenderedArgs(callNode.args, context, prepared, textState, renderOptions);
     } catch (error) {
       if (isCalc) {
         context.calcFrames--;
@@ -1124,7 +1149,8 @@ export class Call extends Node<CallValue, CallOptions> {
     state: CallEvalState,
     context: Context,
     prepared: PrintOptions,
-    syntax?: { args?: List<Node>; contentNode?: Node }
+    syntax?: { args?: List<Node>; contentNode?: Node },
+    renderOptions: CallRenderArgOptions = { evaluateCalcArgs: true }
   ): MaybePromise<string> {
     const printOptions = getPrintOptions(prepared);
     const w = printOptions.writer!;
@@ -1165,7 +1191,14 @@ export class Call extends Node<CallValue, CallOptions> {
     if (textState.text !== undefined) {
       textState.text += '(';
     }
+    const isCalc = getRenderedCallNameText(name) === 'calc';
+    if (isCalc) {
+      context.calcFrames++;
+    }
     const finishCall = (): MaybePromise<string> => {
+      if (isCalc) {
+        context.calcFrames--;
+      }
       w.add(')');
       if (textState.text !== undefined) {
         textState.text += ')';
@@ -1219,9 +1252,22 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       return textState.text ?? '';
     };
-    const renderedArgs = this.writeRenderedArgs(args, context, prepared, textState);
+    let renderedArgs: MaybePromise<void>;
+    try {
+      renderedArgs = this.writeRenderedArgs(args, context, prepared, textState, renderOptions);
+    } catch (error) {
+      if (isCalc) {
+        context.calcFrames--;
+      }
+      throw error;
+    }
     return isThenable(renderedArgs)
-      ? renderedArgs.then(finishCall)
+      ? renderedArgs.then(finishCall, (error: unknown) => {
+          if (isCalc) {
+            context.calcFrames--;
+          }
+          throw error;
+        })
       : finishCall();
   }
 
@@ -1568,6 +1614,7 @@ export class Call extends Node<CallValue, CallOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    const evaluateCalcArgs = isRenderBuffer(bufferOrOptions) || !bufferOrOptions?.writer;
     if (isRenderBuffer(bufferOrOptions)) {
       const sharesWriter = callRenderSharesWriter(bufferOrOptions);
       const prepared = sharesWriter
@@ -1579,7 +1626,7 @@ export class Call extends Node<CallValue, CallOptions> {
           })
         : prepareBufferPrintState(context, options);
       if (this.evaluated) {
-        const rendered = this.renderPlainFunctionCall(this, context, prepared);
+        const rendered = this.renderPlainFunctionCall(this, context, prepared, { evaluateCalcArgs });
         return sharesWriter
           ? rendered
           : writeRenderTextResult(bufferOrOptions, rendered);
@@ -1589,17 +1636,17 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       // Plain CSS calls render args/content explicitly so async child failures
       // keep calc-frame cleanup instead of falling back to source text.
-      const rendered = this.renderPlainFunctionCall(this, context, prepared);
+      const rendered = this.renderPlainFunctionCall(this, context, prepared, { evaluateCalcArgs });
       return sharesWriter
         ? rendered
         : writeRenderTextResult(bufferOrOptions, rendered);
     }
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
     if (this.evaluated) {
-      return this.renderPlainFunctionCall(this, context, prepared);
+      return this.renderPlainFunctionCall(this, context, prepared, { evaluateCalcArgs });
     }
     if (typeof this.name === 'string') {
-      return this.renderPlainFunctionCall(this, context, prepared);
+      return this.renderPlainFunctionCall(this, context, prepared, { evaluateCalcArgs });
     }
     return this.renderDynamicFunctionOutput(context, prepared, bufferOrOptions, options);
   }

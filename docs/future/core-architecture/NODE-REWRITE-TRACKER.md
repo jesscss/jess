@@ -383,6 +383,12 @@ Current hard leftovers after the broad hook sweep:
   transport now trims detached child text locally instead of opening
   caller-writer trim/readback windows, so custom fallback names/args/content no
   longer pay whole-call or per-arg slice recovery just to return text.
+  Calc render now distinguishes direct/buffer reduction from explicit-writer
+  exact syntax: plain and buffer calc render evaluate operation args instead of
+  taking the exact-text shortcut, while explicit writer rendering still keeps
+  the exact operation syntax path that the call serialization tests cover.
+  Dynamic finalized calc names now also establish calc frames before rendering
+  args, so one-eval dynamic calc names normalize like direct calc render.
   Plain/evaluated CSS-call buffer render reuses the buffer
   writer mark for the whole-call readback instead of nesting a second
   call-level mark. Scalar-contract args (`Num`, `Dimension`, `Color`, `Bool`,
