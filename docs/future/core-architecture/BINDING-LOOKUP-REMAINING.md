@@ -92,7 +92,16 @@ through array-path keys, selector-list reference-import namespaces,
 and misses stop reopening generated remainder-array fallback or broad direct
 crawl once placement facts prove the surface. Acceptance: reference-import
 namespace array-path spies show zero generated remainder-array fallback and
-record/eliminate any remaining `findMixinsFast(...)` bridge hits.
+record/eliminate any remaining `findMixinsFast(...)` bridge hits. Current
+evidence: uncovered callable child-entry lookup now returns explicit
+hit/miss/unsupported states instead of overloading `undefined`.
+No-prefix reference-import namespace-start misses use those states to skip both
+broad start-key `findMixinsFast(...)` and generated nested array fallback.
+Focused synthetic and real import tests cover namespaced reference-import
+rulesets, selector-list imported rulesets, and misses staying off direct crawl.
+Keep this open for `findMixinNamespacePathFast(...)` unsupported returns,
+prefix-heavy ruleset namespace cases, and any imported namespace positive/miss
+shape not covered by the current reference-import fixtures.
 
 6. [ ] Extend stable namespace no-fallback proof to imported namespace
 surfaces. Scope: namespace path offsets, reference imports, terminal
@@ -479,7 +488,7 @@ has requested no parent search. Acceptance: focused spy tests for
 `searchParents: false` simple callable misses, fallback-frame hits/misses, and
 no direct `findMixinsFast(...)` bridge after a covered current-frame miss.
 
-34. [ ] Convert callable uncovered direct-crawl bridge to explicit child-entry
+34. [x] Convert callable uncovered direct-crawl bridge to explicit child-entry
 result states. Scope: `findMixinsFastForUncoveredCallable(...)`,
 `UncoveredCallableCoverage`, child `lookupScopeFrameCallable(...)` results,
 and reference-import child entries. Goal: distinguish `modeled-miss`,
@@ -487,7 +496,24 @@ and reference-import child entries. Goal: distinguish `modeled-miss`,
 "no hit" and "must try another bridge". Acceptance: existing
 reference-import guarded positives, namespaced reference-import misses,
 covered sibling child-surface tests, and verifier/aggressive review proving no
-new broad fallback state object is added to the hot simple path.
+new broad fallback state object is added to the hot simple path. Current
+evidence: `UncoveredCallableCoverage` is deleted. The helper now returns
+singleton `UNCOVERED_CALLABLE_MISS` / `UNCOVERED_CALLABLE_UNSUPPORTED` states
+or direct hit arrays. Callers in no-prefix ruleset namespace starts, simple
+prefix resolution, namespace-descendant lookup, retry frames, and
+namespace-start lookup distinguish modeled misses from unsupported uncertainty
+without a side coverage object. Focused callable bucket tests,
+reference-import import fixtures, namespace fast-path tests, binding hot-path
+verifier, aggressive review, and core build passed.
+
+35. [ ] Collapse remaining uncovered-callable result-state branching where it
+is now duplicated across callers. Scope: the repeated
+`UNCOVERED_CALLABLE_MISS` / `UNCOVERED_CALLABLE_UNSUPPORTED` checks in
+`findRulesetNamespacePathFast(...)`, `findCallableDescendantsWithinMixinNamespaces(...)`,
+`findMixin(...)`, and retry/fallback frames. Goal: keep the explicit states
+without growing a new helper ladder or branch tax. Acceptance: no new object
+state, focused callable/reference-import tests stay green, and aggressive
+review explains any retained duplicated checks as cheaper than a wrapper.
 
 ## Latest Binding Baseline
 

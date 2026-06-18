@@ -118,9 +118,12 @@ type CallableRulesetPathResult = {
 };
 const DEFINITE_MIXIN_NAMESPACE_MISS = Symbol('definite-mixin-namespace-miss');
 type CallableNamespaceFastResult = CallableRulesetPathResult | typeof DEFINITE_MIXIN_NAMESPACE_MISS | undefined;
-type UncoveredCallableCoverage = {
-  modeled: boolean;
-};
+const UNCOVERED_CALLABLE_MISS = Symbol('uncovered-callable-miss');
+const UNCOVERED_CALLABLE_UNSUPPORTED = Symbol('uncovered-callable-unsupported');
+type UncoveredCallableResult =
+  | MixinEntry[]
+  | typeof UNCOVERED_CALLABLE_MISS
+  | typeof UNCOVERED_CALLABLE_UNSUPPORTED;
 
 function syncDeclarationValueNode(declaration: Declaration, value: Node): void {
   declaration.value.value = value;
@@ -1148,21 +1151,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     key: string,
     reason: Extract<ScopeFrameCallableLookupResult, { kind: 'uncovered' }>['reason'],
     includeRulesets: boolean,
-    options: CallableFindOptions,
-    coverage?: UncoveredCallableCoverage
-  ): MixinEntry[] | undefined {
+    options: CallableFindOptions
+  ): UncoveredCallableResult {
     if (reason !== 'child-surface' && reason !== 'reference-import') {
-      return undefined;
+      return UNCOVERED_CALLABLE_UNSUPPORTED;
     }
     const childEntries = this.directChildRuleEntries !== undefined
       ? (this.directChildRuleEntries ?? undefined)
       : this.collectDirectChildRulesEntries();
     if (!childEntries?.length) {
-      return undefined;
+      return UNCOVERED_CALLABLE_MISS;
     }
     let firstUncoveredChild: Rules | undefined;
     let uncoveredChildren: Rules[] | undefined;
     let frameResults: MixinEntry[] | undefined;
+    let modeledChildSurface = false;
     for (let i = childEntries.length - 1; i >= 0; i--) {
       const entry = childEntries[i]!;
       if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options.hasTarget })) {
@@ -1187,10 +1190,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (options.local && entry.node.options?.local) {
         continue;
       }
-      if (coverage) {
-        if (reason === 'child-surface' || entry.hasReferenceImportSurface === true) {
-          coverage.modeled = true;
-        }
+      if (reason === 'child-surface' || entry.hasReferenceImportSurface === true) {
+        modeledChildSurface = true;
       }
       const childFrame = entry.node.getScopeFrame();
       entry.node.prepareCallableLookupFrame(childFrame, key, includeRulesets);
@@ -1203,7 +1204,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (results) {
           (frameResults ??= []).push(...results);
         }
-      } else if (frameHit.kind === 'uncovered') {
+      } else if (frameHit.kind === 'uncovered' && frameHit.reason !== 'reference-import') {
         if (firstUncoveredChild === undefined) {
           firstUncoveredChild = entry.node;
         } else {
@@ -1215,7 +1216,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return frameResults;
     }
     if (!firstUncoveredChild) {
-      return undefined;
+      return modeledChildSurface ? UNCOVERED_CALLABLE_MISS : UNCOVERED_CALLABLE_UNSUPPORTED;
     }
     if (uncoveredChildren) {
       for (let i = 0; i < uncoveredChildren.length; i++) {
@@ -1240,7 +1241,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         frameResults = direct;
       }
     }
-    return frameResults;
+    return frameResults ?? UNCOVERED_CALLABLE_UNSUPPORTED;
   }
 
   private addCallableEntry(
@@ -1793,7 +1794,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                   includeRulesets,
                   options
                 );
-                if (directFallback) {
+                if (
+                  directFallback !== UNCOVERED_CALLABLE_MISS
+                  && directFallback !== UNCOVERED_CALLABLE_UNSUPPORTED
+                ) {
                   matches = directFallback;
                   break;
                 }
@@ -2063,10 +2067,26 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           || frameHit.reason === 'reference-import'
           || frameHit.reason === 'frame'
         ) {
-          if (this.frameChainHasExactMixinNamespace(scopeFrame, segment, searchParents)) {
+          if (frameHit.reason === 'reference-import' && prefixMatches.length === 0) {
+            const uncovered = scope.findMixinsFastForUncoveredCallable(
+              segment,
+              frameHit.reason,
+              false,
+              options
+            );
+            if (uncovered === UNCOVERED_CALLABLE_MISS) {
+              mixinNamespaceCovered = true;
+            } else if (uncovered !== UNCOVERED_CALLABLE_UNSUPPORTED) {
+              hasMixinNamespace = uncovered.length > 0;
+              mixinNamespaceCovered = true;
+            }
+          }
+          if (!mixinNamespaceCovered && this.frameChainHasExactMixinNamespace(scopeFrame, segment, searchParents)) {
             hasMixinNamespace = true;
             mixinNamespaceCovered = true;
           } else if (
+            !mixinNamespaceCovered
+            &&
             prefixMatches.length > 0
             && this.visibleChildMixinNamespaceUncertaintyIsLimitedToPrefixes(
               scope,
@@ -2146,13 +2166,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             } else if (simpleHit.kind === 'miss') {
               simpleCallableCovered = true;
             } else if (simpleHit.reason === 'child-surface' || simpleHit.reason === 'reference-import') {
-              resolved = ruleset.rules.findMixinsFastForUncoveredCallable(
+              const uncovered = ruleset.rules.findMixinsFastForUncoveredCallable(
                 segment,
                 simpleHit.reason,
                 includeRulesets,
                 simpleLookupOptions
               );
-              simpleCallableCovered = true;
+              if (uncovered === UNCOVERED_CALLABLE_MISS) {
+                simpleCallableCovered = true;
+              } else if (uncovered !== UNCOVERED_CALLABLE_UNSUPPORTED) {
+                resolved = uncovered;
+                simpleCallableCovered = true;
+              }
             }
           }
           if (resolved === undefined && !simpleCallableCovered) {
@@ -2305,23 +2330,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           && keys.length === 2
           && (firstRemainderHit.reason === 'child-surface' || firstRemainderHit.reason === 'reference-import')
         ) {
-          const uncoveredCoverage: UncoveredCallableCoverage = { modeled: false };
-          nested = entryRules.findMixinsFastForUncoveredCallable(
+          const uncovered = entryRules.findMixinsFastForUncoveredCallable(
             firstRemainder,
             firstRemainderHit.reason,
             firstRemainderIncludesRulesets,
-            options,
-            uncoveredCoverage
+            options
           );
-          if (
-            nested === undefined
-            && (
-              firstRemainderHit.reason === 'child-surface'
-              || (firstRemainderHit.reason === 'reference-import' && uncoveredCoverage.modeled)
-            )
-          ) {
+          if (uncovered === UNCOVERED_CALLABLE_MISS) {
             descendantMissCovered = true;
             continue;
+          } else if (uncovered !== UNCOVERED_CALLABLE_UNSUPPORTED) {
+            nested = uncovered;
           }
         }
       }
@@ -2399,8 +2418,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             includeRulesets,
             options
           );
-          frameMissCovered = true;
-          if (direct) {
+          if (direct === UNCOVERED_CALLABLE_MISS) {
+            frameMissCovered = true;
+          } else if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED) {
+            frameMissCovered = true;
             return direct;
           }
         }
@@ -2448,7 +2469,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                   includeRulesets,
                   options
                 );
-                if (direct) {
+                if (
+                  direct !== UNCOVERED_CALLABLE_MISS
+                  && direct !== UNCOVERED_CALLABLE_UNSUPPORTED
+                ) {
                   return direct;
                 }
               }
@@ -2514,14 +2538,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           } else if (
             frameHit.reason === 'child-surface'
             || frameHit.reason === 'reference-import'
+            || (frameHit.reason === 'key' && this._scopeFrame.hasReferenceImports)
           ) {
-            namespaceMixins = this.findMixinsFastForUncoveredCallable(
+            const reason = frameHit.reason === 'key' ? 'reference-import' : frameHit.reason;
+            const uncovered = this.findMixinsFastForUncoveredCallable(
               namespaceKey,
-              frameHit.reason,
+              reason,
               false,
               options
             );
-            namespaceMixinMissCovered = frameHit.reason === 'child-surface' || namespaceMixins !== undefined;
+            if (uncovered === UNCOVERED_CALLABLE_MISS) {
+              namespaceMixinMissCovered = true;
+            } else if (uncovered !== UNCOVERED_CALLABLE_UNSUPPORTED) {
+              namespaceMixins = uncovered;
+              namespaceMixinMissCovered = true;
+            }
           }
         }
         if (namespaceMixins === undefined && !namespaceMixinMissCovered) {

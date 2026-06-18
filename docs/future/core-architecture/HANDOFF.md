@@ -103,50 +103,49 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: reference handle/no-handle strategy split plus callable reader
-  freshness cleanup.
-- Verdict: accepted as a binding handle-access cut. Index lookup is now an
-  explicit no-handle strategy instead of a fake strategy with no-op handle
-  readers/writers. The old `readNoRulesLookupHandle`,
-  `tryReadNoSourceStaticRulesLookupHandle`, `getNoRulesLookupHandleValueKey`,
-  and `clearRulesLookupHandle` helpers are deleted. Normal and source-static
-  function/callable readers now rely on the shared exact handle freshness tail
-  instead of repeating local `handle.lookupType` checks. No speed claim.
-- New traversal: no new production traversal. This pass adds no tree walk,
-  parent walk, child scan, map/filter/sort, or side-map lookup. The
-  review-flagged loops are verifier token scans and function/constant source
-  checks, plus the existing focused reference tests. The review-flagged
-  `slice(...)` calls are verifier-only source-block extraction for private
-  function/constant checks.
-- New node/materialization: no runtime nodes, wrappers, copied rules, inherited
-  metadata, frozen state, or production arrays were added. Review-flagged
-  `ReferenceLookupStrategyBase`, `ReferenceHandleLookupStrategyBase`,
-  `ReferenceNoHandleLookupStrategy`, and `string[]` entries are type-only
-  strategy/key annotations, not materialized runtime arrays or objects.
+- Latest pass: explicit uncovered-callable result states and reference-import
+  namespace-start miss coverage.
+- Verdict: accepted as a binding fallback-bridge cut. The uncovered callable
+  child-entry bridge no longer overloads `undefined`; it now returns direct hit
+  arrays, `UNCOVERED_CALLABLE_MISS`, or `UNCOVERED_CALLABLE_UNSUPPORTED`.
+  No-prefix namespaced reference-import misses use those states to skip broad
+  start-key `findMixinsFast(...)` and nested remainder-array fallback when
+  child/frame facts modeled the miss. Prefix-heavy ruleset namespace paths
+  still keep their legacy fallback because the current full-suite baseline
+  already has complex compound-selector failures there. No speed claim.
+- New traversal: no new production tree traversal. Existing narrow child-entry
+  and child-frame checks remain, but the helper now stops before the older
+  child `findMixinsFast(...)` crawl when an entered reference-import child
+  frame still reports reference-import uncertainty. Review-flagged loops are
+  existing verifier/test loops and existing direct-crawl code paths that this
+  pass narrows. Review-flagged error-control and typed spy-storage tokens are
+  test-only prototype restoration and spy storage in the new focused mixin
+  test.
+- New node/materialization: no runtime nodes, wrapper Rules, copied rules,
+  inherited metadata, frozen state, or production arrays were added. The new
+  result states are module-level singleton symbols, not per-lookup objects.
 - Render path: no render/stringification path changed.
-- Helper/API surface: removes four private no-op index handle helpers and adds
-  one private type guard, `isReferenceHandleLookupStrategy(...)`, so the
-  ordinary lookup path can skip handle shape/value-key/source-static prep for
-  index reads. The verifier now guards the no-handle index boundary and the
-  shared callable reader freshness policy.
+- Helper/API surface: deletes the private `UncoveredCallableCoverage` side
+  object shape and adds two private singleton result states. No public API was
+  added. Existing callers now branch on explicit modeled-miss vs unsupported
+  states instead of carrying a side coverage object.
 - Metadata mutations: none.
-- Allocation changes: no new runtime node/materialization allocation is
-  introduced. Index target reads no longer run handle shape/value-key/
-  source-static handle prep and no longer call through no-op handle
-  reader/writer functions. Remaining objects are actual handle values,
-  reference context, semantic declaration constraints, and test/verifier
-  scaffolding.
-- Evidence: focused reference tests prove index target reads clear stale
-  handles without handle strategy prep, source-static stable-handle reuse,
-  unstable read-mode/filter fall-through, cold handle disqualification under
-  searchScope/leaky contexts, reference strategy cache type changes, terminal
-  mixin-only invalidation, function/callable ignored declaration options,
-  mixin-ruleset cached lookup reuse, source-static declaration assignment
-  constraints, and declaration exclusion/output-binding invalidation.
-  `@jesscss/core` build passed. `verify:binding-lookup-hot-paths` passed with
-  guards against no-op index handle plumbing, index strategy handle hooks,
-  stale object-call shapes, deleted handle arg type names, and duplicated
-  callable/function reader lookup-type checks.
+- Allocation changes: removes one per-call `{ modeled: boolean }` coverage
+  object on the namespace-descendant reference-import path. Adds no per-lookup
+  replacement object; singleton symbols carry the explicit states. The
+  review-flagged array union arm is type-only.
+- Evidence: focused callable bucket tests prove reference-import namespace
+  start misses skip broad array fallback, covered sibling child surfaces stay
+  closed, fallback-frame hits/misses still work, terminal mixin-only behavior
+  still skips ruleset-only surfaces, and parent lookup still works where
+  intended. Real import fixtures prove reference-imported mixin/ruleset/
+  selector-list positives still resolve and namespaced array-path misses stay
+  off direct crawl. Namespace fast-path and mixin-ruleset-args tests stayed
+  green. `git diff --check`, `verify:binding-lookup-hot-paths`,
+  `verify:aggressive-cutting-review`, and `@jesscss/core` build passed. Full
+  `mixin.test.ts` is not a clean gate at current `HEAD`: a throwaway
+  detached-HEAD run reproduced the existing missing `isNode` import and
+  complex compound-selector failures before this pass.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification

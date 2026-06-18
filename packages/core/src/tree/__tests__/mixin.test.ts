@@ -3019,6 +3019,54 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: reference-import namespace start miss skips broad array fallback', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const namespaceKey = '#missing-imported-namespace';
+      const rootBroadStarts: string[] = [];
+      let nestedArrayFallbacks = 0;
+      const referenceChild = rules([
+        style({
+          path: quoted(any('reference-import.jess'))
+        }, {
+          type: 'import',
+          importOptions: { reference: true }
+        })
+      ]);
+      const root = rules([referenceChild]);
+
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (this === root && key === namespaceKey) {
+          rootBroadStarts.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== root && Array.isArray(args[0])) {
+          nestedArrayFallbacks++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        root.getScopeFrame();
+        referenceChild.getScopeFrame();
+        root.collectDirectChildRulesEntries();
+        expect(root.directChildRuleEntries?.[0]).toMatchObject({
+          hasReferenceImportSurface: true,
+          hasExactCallableSurface: false
+        });
+
+        expect(root.findMixin([namespaceKey, '.leaf'], undefined)).toBeUndefined();
+        expect(rootBroadStarts).toEqual([]);
+        expect(nestedArrayFallbacks).toBe(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
     it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when child frames cover exact misses', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];
