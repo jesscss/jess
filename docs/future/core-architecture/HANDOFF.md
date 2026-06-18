@@ -103,30 +103,45 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: item 37 cold-boundary proof for never-evaluated namespace mixin
-  body reference imports.
-- Verdict: accepted as a semantic no-op/cold-boundary proof plus one focused
-  test. Sync lookup cannot await `StyleImport.evalNode(...)` /
-  `Context.getTree(...)` or evaluate an uncalled namespace mixin body without
-  turning lookup into async materialization, so the never-evaluated
-  reference-import case stays cold. No production lookup change. No speed claim.
-- New traversal: none. No production code changed in this pass.
-- Review-flagged allocations: no new production arrays, nodes, wrapper `Rules`,
-  side maps, or result objects. The review-flagged `try`/`finally`,
-  `broadFastHits` array, and import/mixin fixtures are focused test scaffolding
-  for restoring the spied lookup method and proving broad fallback stays inside
-  the namespace body rather than the root.
+- Latest pass: item 38 selector-body callable prefix facts from frame buckets.
+- Verdict: accepted as a lookup hot-path replacement. Ruleset namespace lookup
+  now collects selector-prefix matches from prepared callable frame buckets and
+  reference-import child frames before using the old recursive prefix crawl.
+  The recursive `findVisibleCallableRulesetPrefixMatches(...)` path remains
+  only when frame facts cannot cover a child prefix/ruleset surface. No speed
+  claim.
+- New traversal: three private frame/bucket walks in `Rules`: one scans an
+  already-prepared callable bucket for ruleset prefix entries, one scans direct
+  child entries to prepare child frames and collect their prefix entries, and
+  one walks the visible frame chain with the existing non-classic import
+  boundary rule. These replace the covered-case recursive child prefix crawl;
+  uncovered child surfaces still fall back to the old recursive helper.
+- Review-flagged allocations: production allocates consumed prefix arrays only
+  for actual ruleset prefix matches, replacing the old recursive key-path
+  discovery path for covered frames. The review-flagged `path: string[]` and
+  `results: CallableRulesetPrefixMatch[]` lines are helper signatures that
+  thread the caller's existing path/result arrays; they are not new side
+  stores. No side maps, wrapper `Rules`, copied nodes, or registry/index
+  objects were added. Review-flagged `try`/`finally`, fixture nodes, and the
+  `recursivePrefixCrawls` counter are focused test scaffolding for restoring
+  the spied private prefix helper.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
-  inherited metadata, frozen state, or production materialization were added.
+  inherited metadata, frozen state, or production node materialization were
+  added. The only production array materialization is the existing
+  `CallableRulesetPrefixMatch.consumed` shape for actual prefix matches.
 - Render path: no render/stringification path changed.
-- Helper/API surface: no helper or API surface added.
+- Helper/API surface: three private helpers were added inside `Rules`; no public
+  API was added. They are accepted because they move the covered selector-body
+  prefix path onto existing callable frame/cache state and leave the broader
+  recursive helper as the uncovered fallback.
 - Metadata mutations: none.
 - Allocation changes: no production allocation change.
-- Evidence: focused import-style tests pass for evaluated namespace mixin
-  descendants and the new uncalled namespace body reference-import cold
-  boundary. The new test proves root registration leaves the namespace body
-  unevaluated, the reference-import callable descendant unresolved, and broad
-  fallback confined to the namespace body. No wall-clock performance claim.
+- Evidence: focused mixin tests pass for selector-list frame-covered prefix
+  hit/miss without recursive prefix crawl, reference-import compound prefixes,
+  reference-import selector-list prefixes, compound-prefix ruleset lookup,
+  definite namespace misses, terminal mixin-only filtering,
+  mixin-ruleset-with-args filtering, namespace fast paths, and simple misses on
+  compound-prefix candidates. No wall-clock performance claim.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification

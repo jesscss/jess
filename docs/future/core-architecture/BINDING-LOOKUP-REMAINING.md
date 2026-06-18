@@ -648,14 +648,22 @@ still proves that once the namespace body is explicitly evaluated, frame facts
 find the imported callable descendant without nested `findMixin(...)` or broad
 `findMixinsFast(...)`.
 
-38. [ ] Split selector-body callable prefix facts from recursive prefix crawls.
+38. [x] Split selector-body callable prefix facts from recursive prefix crawls.
 Scope: selector-list/compound ruleset bodies, reference-import child surfaces,
 `findVisibleCallableRulesetPrefixMatches(...)`, and callable frame facts.
 Goal: carry enough ruleset-prefix facts on scope frames to skip recursive child
 prefix walks where no prefix can exist, without losing selector-list and
 compound-prefix positives. Acceptance: focused namespace/import positives and
 misses prove prefix lookup avoids child recursion when frame facts cover the
-family, and rejected shortcuts from item 12 stay guarded.
+family, and rejected shortcuts from item 12 stay guarded. Current evidence:
+ruleset namespace lookup now collects selector-prefix matches from prepared
+callable frame buckets first, including reference-import child frames, and only
+falls back to `findVisibleCallableRulesetPrefixMatches(...)` when a child frame
+cannot prove its prefix/ruleset surface is covered. A focused selector-list
+reference-import hit/miss test spies on the recursive prefix helper and proves
+frame-covered prefix lookup keeps that count at zero, while adjacent compound
+prefix, selector-list prefix, namespace miss, terminal mixin-only, and
+mixin-ruleset-with-args guards stay green.
 
 39. [x] Move `setDefined` declaration writes fully onto current live binding
 cells before occurrence fallback. Scope: `Rules.registerNode(...)`

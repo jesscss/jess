@@ -2264,6 +2264,128 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return false;
   }
 
+  private collectCallableRulesetPrefixMatchesFromFrame(
+    frame: ScopeFrame,
+    path: string[],
+    results: CallableRulesetPrefixMatch[]
+  ): void {
+    const segment = path[0];
+    if (!segment || !isNode(frame.rulesNode, N.Rules)) {
+      return;
+    }
+    const bucket = frame.callableBucketsByName?.get(segment);
+    if (!bucket?.length) {
+      return;
+    }
+    const scope = frame.rulesNode as Rules;
+    for (let i = bucket.length - 1; i >= 0; i--) {
+      const entry = bucket[i]!;
+      if (!isNode(entry.value, N.Ruleset)) {
+        continue;
+      }
+      const consumedLength = entry.match.length + 1;
+      if (consumedLength >= path.length) {
+        continue;
+      }
+      let matchesPath = true;
+      for (let matchIndex = 0; matchIndex < entry.match.length; matchIndex++) {
+        if (entry.match[matchIndex] !== path[matchIndex + 1]) {
+          matchesPath = false;
+          break;
+        }
+      }
+      if (!matchesPath) {
+        continue;
+      }
+      results.push({
+        ruleset: entry.value,
+        consumed: entry.match.length === 0 ? [segment] : [segment, ...entry.match],
+        scope
+      });
+    }
+  }
+
+  private collectChildCallableRulesetPrefixMatchesFromFrames(
+    scope: Rules,
+    path: string[],
+    options: CallableFindOptions,
+    results: CallableRulesetPrefixMatch[]
+  ): boolean {
+    const segment = path[0];
+    if (!segment) {
+      return true;
+    }
+    const childEntries = scope.directChildRuleEntries !== undefined
+      ? (scope.directChildRuleEntries ?? undefined)
+      : scope.collectDirectChildRulesEntries();
+    if (!childEntries?.length) {
+      return true;
+    }
+    let covered = true;
+    for (let i = childEntries.length - 1; i >= 0; i--) {
+      const entry = childEntries[i]!;
+      if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options.hasTarget })) {
+        continue;
+      }
+      if (entry.hasExactRulesetSurface === false) {
+        continue;
+      }
+      if (entry.node.options?.forward) {
+        continue;
+      }
+      if (options.local && entry.node.options?.local) {
+        continue;
+      }
+      const childFrame = entry.node.getScopeFrame();
+      entry.node.prepareCallableLookupFrame(childFrame, segment, true);
+      this.collectCallableRulesetPrefixMatchesFromFrame(childFrame, path, results);
+      if (
+        (!childFrame.callableMissCoverageKnown || !childFrame.callableMissesCovered)
+        && !this.prefixOwnsChildRules(scope, entry.node, segment, results)
+      ) {
+        covered = false;
+      }
+    }
+    return covered;
+  }
+
+  private collectVisibleCallableRulesetPrefixMatchesFromFrames(
+    frame: ScopeFrame,
+    path: string[],
+    searchParents: boolean,
+    options: CallableFindOptions,
+    results: CallableRulesetPrefixMatch[]
+  ): boolean {
+    const segment = path[0];
+    if (!segment) {
+      return true;
+    }
+    let cursor: ScopeFrame | undefined = frame;
+    let covered = true;
+    let first = true;
+    while (cursor) {
+      if (!isNode(cursor.rulesNode, N.Rules)) {
+        covered = false;
+        break;
+      }
+      const scope = cursor.rulesNode as Rules;
+      if (!first && isNonClassicImportBoundary(scope)) {
+        break;
+      }
+      first = false;
+      scope.prepareCallableLookupFrame(cursor, segment, true);
+      this.collectCallableRulesetPrefixMatchesFromFrame(cursor, path, results);
+      if (!this.collectChildCallableRulesetPrefixMatchesFromFrames(scope, path, options, results)) {
+        covered = false;
+      }
+      if (!searchParents) {
+        break;
+      }
+      cursor = cursor.parent;
+    }
+    return covered;
+  }
+
   private prefixOwnsChildRules(
     scope: Rules,
     entryRules: Rules,
@@ -2382,17 +2504,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!segment) {
         return DEFINITE_MISS;
       }
-      let prefixMatches = scope.findVisibleCallableRulesetPrefixMatches(path, {
-        hasTarget: options.hasTarget,
-        local: options.local,
-        searchParents
-      });
+      let prefixMatches: CallableRulesetPrefixMatch[] = [];
+      let prefixMatchesCovered = false;
       let hasMixinNamespace = false;
       let mixinNamespaceCovered = false;
       const scopeFrame = !options.hasTarget && !options.local
         ? scope.getScopeFrame()
         : undefined;
       if (scopeFrame) {
+        prefixMatchesCovered = this.collectVisibleCallableRulesetPrefixMatchesFromFrames(
+          scopeFrame,
+          path,
+          searchParents,
+          options,
+          prefixMatches
+        );
         this.prepareCallableLookupFrameChain(scopeFrame, segment, false, searchParents);
         const frameHit = lookupScopeFrameCallable(scopeFrame, segment, {
           includeRulesets: false,
@@ -2487,6 +2613,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             fallbackFrame = fallbackFrame.fallbackFrame;
           }
         }
+      }
+      if (!prefixMatchesCovered) {
+        prefixMatches = scope.findVisibleCallableRulesetPrefixMatches(path, {
+          hasTarget: options.hasTarget,
+          local: options.local,
+          searchParents
+        });
       }
       if (!mixinNamespaceCovered) {
         hasMixinNamespace = scope.findMixinsFast(segment, {

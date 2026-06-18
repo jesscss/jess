@@ -3778,6 +3778,52 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: selector-list prefix hit and miss avoid recursive prefix crawl when frames cover rulesets', () => {
+      type PrefixProbeRules = RulesClass & {
+        findVisibleCallableRulesetPrefixMatches(
+          path: string[],
+          options?: { hasTarget?: boolean; local?: boolean; searchParents?: boolean }
+        ): unknown[];
+      };
+      const proto = RulesClass.prototype as unknown as PrefixProbeRules;
+      const originalPrefixSearch = proto.findVisibleCallableRulesetPrefixMatches;
+      const importedLeaf = mixin({
+        name: any('.leaf'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+      const referenceChild = rules([
+        ruleset({
+          selector: sellist([
+            compound([el('#imported'), el('.branch')]),
+            compound([el('#other'), el('.branch')])
+          ]),
+          rules: rules([importedLeaf])
+        })
+      ], { referenceMode: true });
+      const root = rules([referenceChild]);
+      let recursivePrefixCrawls = 0;
+
+      proto.findVisibleCallableRulesetPrefixMatches = function(path, options) {
+        recursivePrefixCrawls++;
+        return originalPrefixSearch.call(this, path, options);
+      };
+
+      try {
+        root.getScopeFrame();
+        referenceChild.getScopeFrame();
+        root.collectDirectChildRulesEntries();
+        expect(root.findMixin(['#imported', '.branch', '.leaf'], undefined, {
+          searchParents: false
+        })).toEqual([importedLeaf]);
+        expect(root.findMixin(['#imported', '.branch', '.missing'], undefined, {
+          searchParents: false
+        })).toBeUndefined();
+        expect(recursivePrefixCrawls).toBe(0);
+      } finally {
+        proto.findVisibleCallableRulesetPrefixMatches = originalPrefixSearch;
+      }
+    });
+
     it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when child frames cover exact misses', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];
