@@ -221,9 +221,11 @@ when choosing among unfinished serialization rows. Hot unfinished rows include
   `getSince(...)` fallback that remains for custom/instance-owned writers. The
   dynamic render loop no longer allocates a per-call child-render closure or
   nested async rest function, the dead post-static render branch check is
-  gone, and covered dynamic query returns now carry local text through the
+  gone, covered dynamic query returns now carry local text through the
   sync/async loop instead of returning the whole current writer or shared-
-  buffer contents via `toString()`.
+  buffer contents via `toString()`, and static fallback render now uses a
+  query-local mark window instead of returning the whole prepared writer state
+  when exact direct text is unavailable.
 - [x] `Operation`: direct `writeSyntax(...)` operand/operator writer; source
   and render operands avoid public string transport.
 - [x] `Paren`: direct wrapper writer, child syntax transport, list path, and

@@ -374,12 +374,9 @@ export class QueryCondition extends Sequence {
         prepared.writer.add(directText, this);
         return directText;
       }
+      const mark = prepared.writer.mark();
       this.writeQueryConditionSyntax(this.items, prepared);
-      const rendered = sharesWriter
-        ? buffer!.kind === 'flat'
-          ? buffer!.parts.join('')
-          : prepared.writer.toString()
-        : prepared.writer.toString();
+      const rendered = prepared.writer.getSince(mark);
       return buffer
         ? sharesWriter ? rendered : writeRenderText(buffer, rendered)
         : rendered;

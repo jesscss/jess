@@ -574,8 +574,30 @@ describe('QueryCondition', () => {
 
     expect(node.render(context, { writer })).toBe('screen and (custom)');
     expect(writer.toString()).toBe('screen and (custom)');
-    expect(writer.marks).toBe(1);
-    expect(writer.reads).toBe(1);
+    expect(writer.marks).toBe(2);
+    expect(writer.reads).toBe(2);
+    expect(writer.hasContentReads).toBe(0);
+  });
+
+  it('keeps static fallback query returns local when the writer already has content', () => {
+    class CustomParen extends Paren {
+      override writeSyntax(options: Parameters<Paren['writeSyntax']>[0]): void {
+        options.writer.add('(custom)');
+      }
+    }
+
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const node = query([
+      any('screen'),
+      any('and'),
+      new CustomParen(any('color', { role: 'keyword' }))
+    ]);
+
+    expect(node.render(context, { writer })).toBe('screen and (custom)');
+    expect(writer.toString()).toBe('prefix|screen and (custom)');
+    expect(writer.marks).toBe(2);
+    expect(writer.reads).toBe(2);
     expect(writer.hasContentReads).toBe(0);
   });
 

@@ -103,6 +103,34 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `QueryCondition` static fallback local return window.
+- Verdict: accepted as a localized static render-return cut. When exact direct
+  query text is unavailable, static `QueryCondition` render now returns the
+  local query slice through a mark/getSince window instead of returning the
+  whole prepared writer state via `toString()`. That fixes prefixed-writer
+  contamination on the custom/static fallback path while keeping the existing
+  child-level fallback semantics. No speed claim.
+- New traversal: none.
+- New node/materialization: none.
+- Render path: static fallback render still writes through the same child
+  syntax writer and child-local fallback branches, but the outer query return
+  now comes from the query's own writer boundary instead of whole-writer
+  readback.
+- Helper/API surface: no new helper.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: none new beyond the existing local mark/readback window;
+  this pass deletes the outer dependency on whole prepared writer state for
+  static fallback return values.
+- Rejected/observed in this pass: this does not change the child-level static
+  fallback inside `writeStaticChild(...)`; custom/static children still keep
+  their localized mark/readback path until their own syntax contracts are made
+  direct.
+- Evidence: focused `query-condition.test.ts` coverage now proves a custom
+  static `Paren` fallback returns `screen and (custom)` even when the provided
+  writer already contains `prefix|`, while the existing custom fallback
+  mark/read counts and covered direct static/dynamic return tests remain green.
+  Full commit-boundary gates still need to run after this handoff update.
 - Latest pass: `QueryCondition` built-in dynamic child readback cut.
 - Verdict: accepted as a localized dynamic child render cut. Covered built-in
   `QueryCondition` children now trust their own returned render text when they
