@@ -1270,6 +1270,32 @@ describe('Call', () => {
     expect(writer.readbacks).toBe(0);
   });
 
+  it('renders scalar list CSS call arguments without per-arg trim or whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([list([num(10), num(20)]), num(30)])
+    });
+
+    expect(rule.render(context, { writer })).toBe('fn(10, 20, 30)');
+    expect(writer.toString()).toBe('fn(10, 20, 30)');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders scalar sequence CSS call arguments without nested readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([seq([any('red'), num(10)]), num(30)])
+    });
+
+    expect(rule.render(context, { writer })).toBe('fn(red 10, 30)');
+    expect(writer.toString()).toBe('fn(red 10, 30)');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(0);
+  });
+
   it('renders async scalar CSS call arguments without per-arg trim readback', async () => {
     const writer = new CountingWriter();
     const arg = new AsyncRenderedAny('source', '20');
@@ -1527,7 +1553,7 @@ describe('Call', () => {
     expect(rule.render(context, { writer })).toBe('func((a, b), c)');
     expect(writer.toString()).toBe('func((a, b), c)');
     expect(writer.marks).toBe(1);
-    expect(writer.readbacks).toBe(1);
+    expect(writer.readbacks).toBe(0);
   });
 
   /** @todo */

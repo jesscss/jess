@@ -103,6 +103,50 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` recursive scalar list/sequence arg text carry.
+- Verdict: accepted as a localized render-text carry cut. Exact rendered
+  `List`/`Sequence` CSS-call args whose descendants are already known scalar
+  text now stay on the direct text path instead of forcing `textState` cold
+  and reopening per-arg or whole-call writer readback boundaries. No speed
+  claim.
+- New traversal: one recursive exact-text walk inside
+  `getKnownRenderedCallText(...)` for exact `List`/`Sequence` arg descendants.
+  It only runs on the already-covered direct-text branch after value selection,
+  and it replaces the old per-arg trim/readback plus covered whole-call
+  readback boundaries for those exact scalar-descendant containers.
+- New node/materialization: none. This pass only derives direct string text
+  from already-evaluated scalar/list/sequence arg nodes and does not add a
+  replacement arg node, copied list, or detached writer boundary.
+- Render path: `Call.writeRenderedArgs(...)` still evaluates each arg once, but
+  exact rendered `List`/`Sequence` values now flow through the same direct text
+  carry as exact scalar leaves. Covered normal and escaped arg renders no
+  longer fall back to `writeSyntax(...)` plus trim windows just to recover text
+  the node family already structurally owns.
+- Helper/API surface: no new public/API surface. The existing
+  `getKnownRenderedCallText(...)` helper in `call.ts` now recursively covers
+  exact `List`/`Sequence` render text, and the local escaped-paren direct-close
+  helper remains.
+- Metadata mutations: none added. This pass only changes how already-evaluated
+  arg output text is carried.
+- Routine error control: none added. Existing sync/async arg evaluation and
+  calc cleanup stay in place.
+- Allocation changes: adds one short-lived string-parts array for covered exact
+  `List`/`Sequence` text assembly, but deletes the covered per-arg
+  trim-mark/readback windows and keeps the covered whole-call return off
+  `getSince(mark)` by preserving `textState` through those args.
+- Rejected/observed in this pass: this remains an exact scalar-descendant cut.
+  Non-scalar/custom/trivia list or sequence args still force the existing
+  trim/readback fallback, and broader `Call` helper ladders plus other
+  remaining render readback paths stay queued.
+- Evidence: focused `call.test.ts` coverage now proves canonical source syntax
+  still renders as `func(~(a, b); c)`, escaped rendered args still stream
+  without capture scaffolding, escaped list args now avoid both the old inner
+  trim mark and the fallback whole-call readback, scalar list args now render
+  with one outer call mark and zero readbacks, and scalar sequence args now
+  avoid the previous nested mark/readback stack entirely. The adjacent focused
+  subset covering evaluated escaped arg transport plus token/color/async scalar
+  arg direct-write paths also passed. Full commit-boundary gates still need to
+  run after this handoff update.
 - Latest pass: `Call` escaped paren direct list/sequence arg write.
 - Verdict: accepted as a localized render-mark cut. Escaped paren CSS-call
   args that evaluate to direct `List`/`Sequence` syntax no longer open an

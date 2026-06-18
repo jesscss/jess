@@ -122,6 +122,35 @@ function getKnownRenderedCallText(node: Node): string | undefined {
       return typeof node.number === 'number' ? `${node.number}` : undefined;
     case 'Color':
       return typeof node.node === 'string' ? node.node : undefined;
+    case 'List': {
+      const parts = new Array<string>(node.items.length);
+      for (let i = 0; i < node.items.length; i++) {
+        const text = getKnownRenderedCallText(node.items[i]!);
+        if (text === undefined) {
+          return undefined;
+        }
+        parts[i] = text;
+      }
+      const sep = node.options?.sep ?? ',';
+      if (sep === '/') {
+        return parts.join(' / ');
+      }
+      return parts.join(`${sep} `);
+    }
+    case 'Sequence': {
+      if (node.preserveWhitespace) {
+        return undefined;
+      }
+      const parts = new Array<string>(node.items.length);
+      for (let i = 0; i < node.items.length; i++) {
+        const text = getKnownRenderedCallText(node.items[i]!);
+        if (text === undefined) {
+          return undefined;
+        }
+        parts[i] = text;
+      }
+      return parts.join(' ');
+    }
     default:
       return undefined;
   }
@@ -625,8 +654,6 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       return true;
     };
-    const canWriteEscapedParenInnerDirect = (node: Node): boolean =>
-      isNode(node, N.List | N.Sequence);
     const writeArgAt = (i: number): MaybePromise<void> => {
       const arg = rawArgs[i]!;
       const next = findNextArgIndex(i + 1);
@@ -650,14 +677,6 @@ export class Call extends Node<CallValue, CallOptions> {
               finishDirectEscapedParenArg(arg, next);
               return;
             }
-            if (canWriteEscapedParenInnerDirect(value)) {
-              if (textState) {
-                textState.text = undefined;
-              }
-              value.writeSyntax(printOptions);
-              finishDirectEscapedParenArg(arg, next);
-              return;
-            }
             const innerMark = w.mark();
             if (textState) {
               textState.text = undefined;
@@ -667,14 +686,6 @@ export class Call extends Node<CallValue, CallOptions> {
           });
         }
         if (appendKnownRenderedText(rendered as Node)) {
-          finishDirectEscapedParenArg(arg, next);
-          return;
-        }
-        if (canWriteEscapedParenInnerDirect(rendered as Node)) {
-          if (textState) {
-            textState.text = undefined;
-          }
-          (rendered as Node).writeSyntax(printOptions);
           finishDirectEscapedParenArg(arg, next);
           return;
         }
