@@ -585,6 +585,20 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     return serializeRulesContainer(this, opts);
   }
 
+  override writeSyntax(options: FinalPrintOptions): void {
+    if (
+      options.referenceMode === true
+      && options.referenceRenderEnabled !== false
+      && this.hoistToRoot
+    ) {
+      const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
+      if (ownSelector && Ruleset.isBareAmpersandSelector(ownSelector)) {
+        return;
+      }
+    }
+    serializeRulesContainer(this, options);
+  }
+
   private canSourceRenderStaticRule(rule: Node, context: Context): boolean {
     if (isNode(rule, N.Comment) || isNode(rule, N.Nil)) {
       return true;

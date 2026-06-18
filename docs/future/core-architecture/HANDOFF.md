@@ -147,6 +147,19 @@ with `--no-verify` after the explicit gates pass.
   guards against no-op index handle plumbing, index strategy handle hooks,
   stale object-call shapes, deleted handle arg type names, and duplicated
   callable/function reader lookup-type checks.
+- Merge-carried serialization review: latest `origin/dev` also carries
+  `Call.toTrimmedString(...)` direct writer ownership in
+  `packages/core/src/tree/call.ts`. Public call source stringification now
+  delegates to `writeSyntax(...)` instead of duplicating source assembly.
+  Review-flagged `try/finally` and thrown errors are focused serialization
+  test scaffolding. No binding lookup runtime path changed.
+- Merge-carried serialization review: latest `origin/dev` also carries
+  AtRule/Ruleset public-string-wrapper assertion tests in
+  `packages/core/src/tree/__tests__/at-rule.test.ts` and
+  `packages/core/src/tree/__tests__/ruleset.test.ts`. Review-flagged
+  `CountingWriter`, thrown errors, and `try/finally` are focused
+  serialization proof scaffolding around public wrapper bypass checks. No
+  binding lookup runtime path changed.
 - Merge-carried serialization review: latest `origin/dev` also carries the
   child `Rules` body transport direct `writeSyntax(...)` cut in
   `packages/core/src/tree/rules.ts` and

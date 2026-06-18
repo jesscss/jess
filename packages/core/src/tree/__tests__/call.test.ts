@@ -215,6 +215,29 @@ describe('Call', () => {
     expect(rule.toTrimmedString()).toBe('$rgb?(100, 100, 100) !important: raw body');
   });
 
+  it('serializes call source syntax through writeSyntax ownership', () => {
+    const originalWriteSyntax = Call.prototype.writeSyntax;
+    let writeSyntaxCalls = 0;
+    Call.prototype.writeSyntax = function countWriteSyntax(
+      this: Call,
+      ...args: Parameters<typeof originalWriteSyntax>
+    ): ReturnType<typeof originalWriteSyntax> {
+      writeSyntaxCalls++;
+      return originalWriteSyntax.apply(this, args);
+    };
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    try {
+      expect(rule.toTrimmedString()).toBe('rgb(100, 100, 100)');
+      expect(writeSyntaxCalls).toBe(1);
+    } finally {
+      Call.prototype.writeSyntax = originalWriteSyntax;
+    }
+  });
+
   it('serializes empty CSS calls without writer readback scaffolding', () => {
     const writer = new CountingWriter();
     const rule = call({ name: 'button' });
