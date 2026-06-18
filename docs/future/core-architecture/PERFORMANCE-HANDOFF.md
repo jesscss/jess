@@ -460,6 +460,63 @@ The next focus should be an implementation focus chosen from this evidence,
 most likely direct declaration lookup scanning or serialization fallback
 readback.
 
+### 2026-06-18 Property-Merge Typed Lookup Pass
+
+Focus: direct declaration lookup family narrowing from the broad
+`benchmark.less` evidence above.
+
+Harness correction discovered during the pass:
+
+- `/Users/matthew/git/worktrees/jess/less.js/packages/less/node_modules`
+  was still linked to `/Users/matthew/git/oss/jess/packages/*`, so early broad
+  profiles were measuring the base checkout instead of this worktree;
+- for this pass, the external Less harness links were pointed at
+  `/Users/matthew/git/worktrees/jess/performance-evidence/packages/{core,jess,jess-plugin-less,jess-plugin-less-compat}`;
+- before future external `benchmark.less` comparisons, verify with
+  `realpath /Users/matthew/git/worktrees/jess/less.js/packages/less/node_modules/@jesscss/core`
+  and `realpath /Users/matthew/git/worktrees/jess/less.js/packages/less/node_modules/jess`
+  that the harness resolves to the active worktree.
+
+Patch kept:
+
+- property merge normalization in `Declaration._normalizeAssignmentValue(...)`
+  now creates its synthetic lookup reference as `type: 'property'`; only
+  `VarDeclaration` merge normalization creates `type: 'variable'`;
+- this removes the avoidable `findAnyDeclarationOccurrence(...)` lane for
+  ordinary property merges and routes the lookup through
+  `findPropertyDeclarationOccurrence(...)`.
+
+Fair A/B profile evidence with the external harness linked to this worktree:
+
+- reversed/baseline broad `benchmark.less`:
+  `declaration.cacheMiss` `56446`, `declaration.childEntryEntered` `53217`,
+  `declaration.scope.d` `51984`, `declaration.childEntriesScanned` `18731`,
+  `declaration.childEntryFamilySkip` `18180`;
+- patched broad `benchmark.less`:
+  `declaration.cacheMiss` `54780`, `declaration.childEntryEntered` `51551`,
+  `declaration.scope.p` `50318`, `declaration.childEntriesScanned` `18527`,
+  `declaration.childEntryFamilySkip` `18826`;
+- lookup-stress fixture stayed in the same variable-only counter shape:
+  `declaration.cacheMiss` `7560`, `declaration.scope.v` `7560`,
+  `declaration.childEntriesScanned` `1575`, and
+  `declaration.scopeBindingHit` `1575`.
+
+Wall-clock status:
+
+- patched stable run 1: all fixtures were unstable/noisy;
+- reversed/baseline stable run: only `mixins-guards.less` was usable
+  (`trimmedMedian` `23.03ms`); other fixtures were unstable/noisy;
+- patched stable run 2: only `mixins-guards.less` was usable
+  (`trimmedMedian` `23.44ms`); other fixtures were unstable/noisy.
+
+Interpretation: keep as a semantic lookup-family narrowing and counter cut,
+not as a speed claim. The reliable counter movement is useful, but the
+wall-clock runs are too noisy to claim faster. The next declaration-lookup
+target is no longer "why are property merges using any-declaration lookup";
+it is reducing the still-hot property child-entry traversal:
+`declaration.scope.p` about `50318`, `childEntryEntered` about `51551`, and
+`childEntriesScanned` about `18527` on broad `benchmark.less`.
+
 ### 2026-06-06 ScopeFrame Callable Hit/Miss Prototype
 
 Hypothesis: simple static callable hits, and the subset of simple misses whose

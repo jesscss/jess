@@ -107,6 +107,25 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: property-merge typed lookup.
+- Verdict: accepted as a semantic lookup-family narrowing and counter cut, not
+  as a wall-clock speed claim. Property merge normalization now asks for the
+  property lookup lane instead of the broad any-declaration lane; variable
+  merge normalization remains on the variable lane.
+- New traversal: none.
+- New node/materialization: none.
+- Render path: no render/stringification path changed.
+- Helper/API surface: none added.
+- Metadata mutations: none.
+- Evidence: package-scoped merge/reference tests passed; benchmark-path
+  `@jesscss/core` and `jess` builds passed. With the external Less harness
+  linked to this worktree, reversed broad `benchmark.less` showed
+  `declaration.scope.d` `51984`, `cacheMiss` `56446`, and
+  `childEntryEntered` `53217`; patched broad `benchmark.less` showed
+  `declaration.scope.p` `50318`, `cacheMiss` `54780`, and
+  `childEntryEntered` `51551`. Stable hot-path wall-clock runs were mostly
+  unstable/noisy, so this pass makes no speed claim.
+
 - Latest pass: Performance Evidence focus refresh.
 - Verdict: accepted as a documentation/evidence pass. No runtime code changed;
   the pass refreshed wall-clock benchmark, profiler/counter, CPU-profile, and

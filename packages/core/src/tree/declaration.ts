@@ -1252,9 +1252,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const normalizedAssign = assign;
       const referenceKey = state.renderOnly ? this.copyNameForDerived(key) : key;
       const inputValue = state.renderOnly ? this.ownRenderAssignmentInput(value) : value;
-      /** Reference type */
-      let type: 'declaration' | 'variable' =
-        this.type === 'VarDeclaration' ? 'variable' : 'declaration';
+      const type: 'property' | 'variable' =
+        this.type === 'VarDeclaration' ? 'variable' : 'property';
       let outputNode: Declaration | undefined;
       state.bindOutput = (node: Declaration) => {
         outputNode = node;
