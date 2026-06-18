@@ -77,16 +77,8 @@ describe('Rule', () => {
     const writer = new CountingWriter();
     const colorDecl = decl({ name: 'color', value: any('red') });
     const sizeDecl = decl({ name: 'font-size', value: any('12px') });
-    const originalToTrimmedString = colorDecl.toTrimmedString;
-    let colorUsedCallerWriter = false;
-    colorDecl.toTrimmedString = function countCallerWriterUse(
-      ...args: Parameters<typeof originalToTrimmedString>
-    ): ReturnType<typeof originalToTrimmedString> {
-      const options = args[0];
-      if (options?.writer === writer) {
-        colorUsedCallerWriter = true;
-      }
-      return originalToTrimmedString.apply(this, args);
+    colorDecl.toTrimmedString = () => {
+      throw new Error('Unique declaration emission should write syntax directly');
     };
     const node = ruleset({
       selector: sel([el('.box')]),
@@ -103,20 +95,28 @@ describe('Rule', () => {
           font-size: 12px;
         }
       `);
-      expect(colorUsedCallerWriter).toBe(false);
     } finally {
-      colorDecl.toTrimmedString = originalToTrimmedString;
+      delete colorDecl.toTrimmedString;
     }
   });
 
   it('renders duplicate declarations without public string transport during duplicate comparison', () => {
     const firstDecl = decl({ name: 'color', value: any('red') });
     const secondDecl = decl({ name: 'color', value: any('blue') });
-    firstDecl.toTrimmedString = () => {
-      throw new Error('Duplicate declaration comparison should write syntax directly');
+    const originalFirstToTrimmedString = firstDecl.toTrimmedString;
+    const originalSecondToTrimmedString = secondDecl.toTrimmedString;
+    let publicStringCalls = 0;
+    firstDecl.toTrimmedString = function countPublicStringCalls(
+      ...args: Parameters<typeof originalFirstToTrimmedString>
+    ): ReturnType<typeof originalFirstToTrimmedString> {
+      publicStringCalls++;
+      return originalFirstToTrimmedString.apply(this, args);
     };
-    secondDecl.toTrimmedString = () => {
-      throw new Error('Duplicate declaration comparison should write syntax directly');
+    secondDecl.toTrimmedString = function countPublicStringCalls(
+      ...args: Parameters<typeof originalSecondToTrimmedString>
+    ): ReturnType<typeof originalSecondToTrimmedString> {
+      publicStringCalls++;
+      return originalSecondToTrimmedString.apply(this, args);
     };
     const node = ruleset({
       selector: sel([el('.box')]),
@@ -126,12 +126,18 @@ describe('Rule', () => {
       ])
     });
 
-    expect(node.toTrimmedString()).toBeString(`
-      .box {
-        color: red;
-        color: blue;
-      }
-    `);
+    try {
+      expect(node.toTrimmedString()).toBeString(`
+        .box {
+          color: red;
+          color: blue;
+        }
+      `);
+      expect(publicStringCalls).toBe(0);
+    } finally {
+      firstDecl.toTrimmedString = originalFirstToTrimmedString;
+      secondDecl.toTrimmedString = originalSecondToTrimmedString;
+    }
   });
 
   it('keeps authored literal and interpolated sibling rulesets separate without collapse', async () => {

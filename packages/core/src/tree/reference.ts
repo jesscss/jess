@@ -1173,7 +1173,7 @@ function getNoRulesLookupHandleValueKey(_valueKey: NormalizedLookupKey): undefin
 }
 
 function getHandleableDeclarationConstraints(
-  referenceNode: Reference,
+  referenceNode: Reference
 ): ReferenceRulesLookupDeclarationConstraints | undefined {
   return hasHandleableDeclarationConstraints(referenceNode)
     ? getRulesLookupHandleDeclarationConstraints(referenceNode)
