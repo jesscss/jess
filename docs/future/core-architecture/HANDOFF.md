@@ -103,39 +103,35 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: generic leaf container preview-transport cut plus leaf
-  `AtRule.writeSyntax(...)` ownership.
-- Verdict: accepted as a localized serialization transport deletion. Generic
-  container leaves in `serialize-helper.ts` no longer preview public
-  `toTrimmedString(...)` on the caller writer, and source leaf at-rules no
-  longer fall through the base `writeSyntax(...) -> toTrimmedString(...)`
-  wrapper when container serialization asks for direct syntax. No speed claim.
+- Latest pass: child `Rules` body transport direct `writeSyntax(...)` cut.
+- Verdict: accepted as a localized serialization transport deletion. Detached
+  child `Rules` body transport in `serialize-helper.ts` no longer routes
+  through the public `toTrimmedString(...)` wrapper; it writes detached syntax
+  through `Rules.writeSyntax(...)` instead. No speed claim.
 - New traversal: none. No new tree walk, parent walk, callback scan, side-map
   lookup, or array materialization was added.
 - New node/materialization: none. The only new `OutputWriter` remains the
-  detached syntax boundary used to replace caller-writer preview transport; no
-  runtime node copies, wrappers, inherited metadata, or frozen state were
-  added.
-- Render path: generic leaf container serialization now writes detached child
-  syntax through `writeSyntax(...)` instead of `writer.preview(() =>
-  node.toTrimmedString(...))`. Leaf at-rules now satisfy that contract
-  directly via `AtRule.writeSyntax(...)` for source leaf headers, so the cut is
-  no longer masked by the base node fallback.
+  detached syntax boundary used to hold child `Rules` body text off the caller
+  writer; no runtime node copies, wrappers, inherited metadata, or frozen
+  state were added.
+- Render path: `renderNodeText(..., 'rules-preview')` now writes detached child
+  `Rules` syntax through `writeSyntax(...)` instead of the public
+  `toTrimmedString(...)` wrapper. `Rules.writeSyntax(...)` itself now owns the
+  direct `_emitSourceRulesBody(...)` path for visible source bodies, so this
+  no longer bounces through a public string-return method.
 - Helper/API surface: none.
 - Metadata mutations: none.
 - Routine error control: the review-flagged thrown error and `try/finally`
   remain focused `ruleset.test.ts` proof scaffolding around temporarily swapped
   public wrappers; no production error/control flow changed.
-- Allocation changes: deletes one caller-writer preview/readback boundary per
-  generic container leaf emission. Detached writer output still remains as the
-  bounded string boundary consumed by container serialization.
-- Rejected/observed in this pass: non-leaf `AtRule.writeSyntax(...)` still
-  falls back to public `toTrimmedString(...)`, `Rules` preview transport
-  remains on its dedicated row, and broader AtRule body-state/import/render
-  branch cleanup is still queued.
-- Evidence: focused `ruleset.test.ts` leaf at-rule proof, focused
-  `nesting-collapse.test.ts` collapsed leaf at-rule proof, focused
-  `at-rule.test.ts` leaf/header slices, targeted ESLint, `git diff --check`,
+- Allocation changes: deletes one public string-wrapper call per detached child
+  `Rules` body serialization. The detached writer output remains as the bounded
+  string boundary consumed by container serialization.
+- Rejected/observed in this pass: broader `Rules` render/body transport,
+  remaining declaration materialization, and deeper AtRule body-state/import/
+  render cleanup remain queued.
+- Evidence: focused `ruleset.test.ts` child `Rules` body transport proof plus
+  the adjacent leaf at-rule proof, targeted ESLint, `git diff --check`,
   `pnpm run verify:aggressive-cutting-review`, and
   `pnpm --filter @jesscss/core build` passed.
 - Merge-carried binding review: latest `origin/dev` also carries

@@ -1429,13 +1429,18 @@ describe('Rule', () => {
     ], {
       referenceMode: true
     });
+    const originalWriteSyntax = childRules.writeSyntax;
     const originalToTrimmedString = childRules.toTrimmedString;
     let childSawDetachedWriter = false;
-    childRules.toTrimmedString = function countDetachedWriter(
-      ...args: Parameters<typeof originalToTrimmedString>
-    ): ReturnType<typeof originalToTrimmedString> {
-      childSawDetachedWriter = args[0]?.writer !== writer;
-      return originalToTrimmedString.apply(this, args);
+    childRules.writeSyntax = function countDetachedWriter(
+      this: typeof childRules,
+      nextOptions: Parameters<typeof originalWriteSyntax>[0]
+    ): void {
+      childSawDetachedWriter = nextOptions.writer !== writer;
+      originalWriteSyntax.call(this, nextOptions);
+    };
+    childRules.toTrimmedString = () => {
+      throw new Error('child Rules body transport should not use public string wrappers');
     };
     const node = ruleset({
       selector: sel([el('.box')]),
@@ -1449,6 +1454,7 @@ describe('Rule', () => {
       void serializeRulesContainer(node, options);
       expect(childSawDetachedWriter).toBe(true);
     } finally {
+      childRules.writeSyntax = originalWriteSyntax;
       childRules.toTrimmedString = originalToTrimmedString;
     }
   });

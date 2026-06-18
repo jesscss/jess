@@ -109,10 +109,11 @@ function renderNodeText(
   }
   if (reason === 'rules-preview') {
     const writer = new OutputWriter();
-    return node.toTrimmedString(getPrintOptions({
+    node.writeSyntax(getPrintOptions({
       ...options,
       writer
     }));
+    return writer.toString();
   }
   const writer = new OutputWriter();
   node.writeSyntax(getPrintOptions({
