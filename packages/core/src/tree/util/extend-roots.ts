@@ -338,6 +338,7 @@ export class ExtendRootRegistry {
   private layerName = new WeakMap<Rules, string>();
   private isProtected = new WeakMap<Rules, boolean>();
   private isCompose = new WeakMap<Rules, boolean>();
+  private sameOrDescendantRootCache = new WeakMap<Rules, WeakMap<Rules, boolean>>();
   private rootsByLayerName = new Map<string, Set<Rules>>();
   private rootsByNamespace = new Map<string, Set<Rules>>();
   private allRoots = new Set<Rules>();
@@ -354,6 +355,7 @@ export class ExtendRootRegistry {
     parent?: Rules,
     options?: { layerName?: string; isProtected?: boolean; isCompose?: boolean; namespace?: string }
   ): void {
+    this.sameOrDescendantRootCache = new WeakMap();
     this.allRoots.add(rules);
     if (parent) {
       this.allRoots.add(parent);
@@ -455,6 +457,18 @@ export class ExtendRootRegistry {
   }
 
   isSameOrDescendantRoot(rulesetRoot: Rules, extendRoot: Rules): boolean {
+    let cachedByExtendRoot = this.sameOrDescendantRootCache.get(rulesetRoot);
+    if (cachedByExtendRoot?.has(extendRoot)) {
+      return cachedByExtendRoot.get(extendRoot) === true;
+    }
+    cachedByExtendRoot ??= new WeakMap<Rules, boolean>();
+    this.sameOrDescendantRootCache.set(rulesetRoot, cachedByExtendRoot);
+    const result = this.computeSameOrDescendantRoot(rulesetRoot, extendRoot);
+    cachedByExtendRoot.set(extendRoot, result);
+    return result;
+  }
+
+  private computeSameOrDescendantRoot(rulesetRoot: Rules, extendRoot: Rules): boolean {
     if (rulesetRoot === extendRoot) {
       return true;
     }

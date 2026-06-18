@@ -90,10 +90,13 @@ In benchmark-leashed cutting mode:
 - choose measured performance targets from actual time attribution first:
   V8/CPU profile samples, benchmark phase timing, or scoped elapsed-time
   instrumentation for named functions/tasks;
-- use counters only as supporting diagnostics after a timed hot surface is
-  identified. Counters can explain why V8 shows a function is hot, prove a
-  specific branch/traversal was removed, or guard a rejected experiment; they
-  must not be the sole reason to pick a performance target;
+- use counters only as supporting diagnostics after V8/CPU samples, scoped
+  timing, or wall-clock evidence has already identified a timed hot surface.
+  Counters answer narrow volume/branch questions that a CPU profile may not
+  distinguish, such as which semantic path inside a hot function fired, whether
+  a supposed fast path is actually reached, whether a deleted traversal stayed
+  deleted, or whether a rejected prototype merely moved work elsewhere. They
+  must not pick a performance target by themselves;
 - do not claim speed wins without real benchmark evidence;
 - reject or reshape changes that reduce local object counts but slow or fail
   to improve the real benchmark, unless the change fixes correctness and the
@@ -318,8 +321,10 @@ JESS_PROFILE=1 node scripts/profile-less-benchmark.mjs --file=benchmark-v37.less
 - **CPU profile** sample counts and scoped elapsed-time instrumentation identify
   hot stacks/tasks for target selection; they are not benchmark timings.
 - **Instrumented counters** are diagnostic volume/context only. They are useful
-  after a timed hotspot is known, but they do not supersede V8/CPU or scoped
-  timing evidence.
+  after a timed hotspot is known, mainly for branch-path attribution inside a
+  profiled function and for proving that a tested edit changed the intended
+  work volume. They do not supersede V8/CPU or scoped timing evidence and are
+  not target-selection evidence by themselves.
 - Static node/object audits are supporting evidence only.
 
 If a patch reduces local object counts but slows real benchmarks, reject or
@@ -435,6 +440,75 @@ observed; removing the prototype and rebuilding still left the same focused
 test failing, so that test file is not currently a clean regression gate for
 this pass. Use broader Less behavior gates and/or repair that test before
 relying on it for extend work.
+
+### 2026-06-18 Extend Root Descendant Memoization
+
+Focus: CPU-profile-selected extend stack. This pass does not use counters for
+target selection.
+
+Implementation: `ExtendRootRegistry.isSameOrDescendantRoot(...)` now memoizes
+root-pair results in a per-registry WeakMap and clears that memo table at
+`registerRoot(...)`, the boundary that mutates root graph membership. The
+uncached parent walk moved into a private `computeSameOrDescendantRoot(...)`.
+
+Focused behavior proof:
+
+```sh
+pnpm --filter @jesscss/core build
+pnpm --filter @jesscss/core test -- --run src/tree/util/__tests__/extend-unit.test.ts src/tree/util/__tests__/extend-utils.test.ts src/tree/__tests__/mixin.test.ts -t "namespace fast path|mixin-ruleset calls with args|extendSelector|applyExtendsToSelector|ruleset namespace path|mixin namespace path"
+pnpm --filter @jesscss/core test -- --run src/tree/__tests__/ruleset.test.ts -t "extend|prepareRegistration|registration"
+```
+
+All passed. The ordered benchmark-path rebuild also passed:
+
+```sh
+pnpm --filter styles-config build &&
+pnpm --filter @jesscss/awaitable-pipe build &&
+pnpm --filter @jesscss/core build &&
+pnpm --filter @jesscss/css-parser build &&
+pnpm --filter @jesscss/less-parser build &&
+pnpm --filter @jesscss/plugin-less build &&
+pnpm --filter @jesscss/plugin-less-compat build &&
+pnpm --filter @jesscss/plugin-js build &&
+pnpm --filter jess build
+```
+
+External Less alpha CPU-profiled benchmark from
+`/Users/matthew/git/worktrees/jess/less.js/packages/less`:
+
+```sh
+node --cpu-prof --cpu-prof-dir=/Users/matthew/git/worktrees/jess/performance-evidence/profiling/core-architecture/20260618-142636-extend-root-cache-post-cpu benchmark/benchmark-runner.cjs benchmark/benchmark.less --runs=12 --warmup=4 --math=parens-division
+```
+
+Benchmark output completed but was too noisy for a speed claim: median
+`587.80ms`, average `711.62ms`, stddev `309.73ms`, variance `43.53%`, samples
+`8`.
+
+Profile artifact:
+`profiling/core-architecture/20260618-142636-extend-root-cache-post-cpu/CPU.20260618.142636.41574.0.001.cpuprofile`.
+
+Relevant self-time comparison: previous post-surface-copy broad profile showed
+`isSameOrDescendantRoot(...)` around `144.60ms`; this profile reports
+`isSameOrDescendantRoot(...)` `8.76ms` and
+`computeSameOrDescendantRoot(...)` `8.76ms`. `processExtends(...)` remains hot
+at `113.87ms`, `applyExtendsToSelector(...)` remains hot at `97.60ms`, and
+copy/GC pressure is still dominant.
+
+Stable hot-path sanity after the edit:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result: all reported fixtures were `unstable` or `noisy`
+(`functions.less`, `import-reference.less`, `mixins-guards.less`,
+`extend-chaining.less`, `media.less`). Treat this as sanity only, not
+decision-quality wall-clock evidence.
+
+Verdict: keep as a CPU-profile-backed reduction in a named hot stack, not as a
+real benchmark speed win. Next timed targets should come from the remaining V8
+clusters, especially `processExtends(...)`, `applyExtendsToSelector(...)`,
+copy/constructor work, and GC pressure.
 
 ### 2026-06-18 Performance Evidence Focus Refresh
 
