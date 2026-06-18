@@ -95,11 +95,8 @@ type AtRuleLeafState = {
   parts: AtRuleValue;
 };
 
-function atRuleLeafScalarText(
-  node: Node,
-  printOptions: FinalPrintOptions
-): string | undefined {
-  return !printOptions.trivia && (
+function atRuleScalarTokenText(node: Node): string | undefined {
+  return (
     node.constructor === Any
     || node.constructor === Anonymous
     || node.constructor === Keyword
@@ -112,7 +109,9 @@ function renderAtRuleLeafNodeSyntax(
   node: Node,
   printOptions: FinalPrintOptions
 ): string {
-  const scalarText = atRuleLeafScalarText(node, printOptions);
+  const scalarText = !printOptions.trivia
+    ? atRuleScalarTokenText(node)
+    : undefined;
   if (scalarText !== undefined) {
     return scalarText;
   }
@@ -131,6 +130,10 @@ function renderAtRuleHeaderNodeSyntax(
   printOptions: FinalPrintOptions,
   withoutComments?: boolean
 ): string {
+  const scalarText = atRuleScalarTokenText(node);
+  if (scalarText !== undefined) {
+    return scalarText;
+  }
   const savedTrivia = printOptions.trivia;
   if (withoutComments) {
     printOptions.trivia = createTriviaMap();

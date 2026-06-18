@@ -103,7 +103,7 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: scalar token-family dynamic leaf AtRule syntax readback cut in
+- Latest pass: scalar token-family AtRule header/leaf syntax readback cut in
   `packages/core/src/tree/at-rule.ts`.
 - Verdict: accepted as a localized source/writeSyntax writer-readback cut. No
   speed claim.
@@ -112,17 +112,18 @@ with `--no-verify` after the explicit gates pass.
   `CountingWriter` construction, `any(...)` fixtures, and explicit
   `new Anonymous('html')` are test-only proof scaffolding for no-readback
   assertions.
-- Render path: exact `Any`/`Anonymous`/`Keyword` dynamic leaf at-rule
-  name/prelude pieces now read owned scalar text directly when no trivia is
-  active, instead of writing into the active writer and rolling back with
-  mark/get/restore. Non-scalar, interpolated, custom, and trivia-backed leaves
-  stay on the existing fallback.
+- Render path: exact `Any`/`Anonymous`/`Keyword` at-rule header fragments read
+  owned scalar text directly instead of allocating a detached writer; dynamic
+  leaf name/prelude pieces in the same scalar family also skip active-writer
+  mark/get/restore when no trivia is active. Non-scalar, interpolated, custom,
+  comment-bearing, and trivia-backed leaves stay on existing fallback paths.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: removes the dynamic leaf scalar mark/get/restore window
-  for exact `Any`/`Anonymous`/`Keyword` name/prelude nodes. The final leaf
-  render still returns a string on the public render path unless a render
-  buffer is supplied.
+- Allocation changes: removes detached-writer allocation for exact scalar
+  token-family header fragments and removes the dynamic leaf scalar
+  mark/get/restore window for exact `Any`/`Anonymous`/`Keyword` name/prelude
+  nodes. The final leaf render still returns a string on the public render
+  path unless a render buffer is supplied.
 - Rejected/observed in this pass: static at-rule serialization uses the
   container serializer and is not affected by this helper; broad leaf
   whitelisting remains rejected because trivia and non-scalar syntax still own
@@ -130,9 +131,8 @@ with `--no-verify` after the explicit gates pass.
 - Evidence: focused `at-rule.test.ts` leaf/header slice, targeted ESLint
   (exits 0 with pre-existing line 555 warning), `git diff --check`,
   `pnpm run verify:aggressive-cutting-review`, and
-  `pnpm --filter @jesscss/core build` passed. The aggressive verifier flags
-  only the test-only `CountingWriter` and `Anonymous` constructions covered
-  above.
+  `pnpm --filter @jesscss/core build` passed. Aggressive verifier reports no
+  danger tokens in the scoped diff.
 - Merge-carried binding review: latest `origin/dev` also carries binding/lookup
   queue cleanup plus two rejected namespace-prefix shortcut audits. It is
   lookup-only: no render/stringification path changed, no runtime node

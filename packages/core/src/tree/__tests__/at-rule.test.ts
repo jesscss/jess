@@ -1691,6 +1691,22 @@ describe('AtRule', () => {
     }
   });
 
+  it('writes exact scalar at-rule headers without child syntax capture', () => {
+    const name = any('@namespace', { role: 'atkeyword' });
+    const prelude = keyword('svg');
+    const node = atrule({
+      name,
+      prelude
+    });
+    let preludeWriteSyntaxCalls = 0;
+    prelude.writeSyntax = () => {
+      preludeWriteSyntaxCalls++;
+    };
+
+    expect(node.getHeaderString(getPrintOptions())).toBe('@namespace svg;');
+    expect(preludeWriteSyntaxCalls).toBe(0);
+  });
+
   it('renders leaf at-rules without preview scaffolding', () => {
     const writer = new CountingWriter();
     const node = atrule({
