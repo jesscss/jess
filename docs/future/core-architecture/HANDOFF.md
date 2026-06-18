@@ -103,6 +103,38 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` exact operation/query-condition text carry.
+- Verdict: accepted as a localized exact-text carry cut. `Call`'s known source
+  and render text helpers now cover exact `Dimension`, `Operation`, and
+  `QueryCondition` surfaces, so those covered args/content stay off the
+  whole-call readback boundary and the inner arg trim/readback fallback. No
+  speed claim.
+- New traversal: one recursive helper descent in `getKnownRenderedCallText(...)`
+  and one in `getKnownSourceCallText(...)` for exact `Operation` and
+  `QueryCondition` nodes, plus direct scalar reads for `Dimension`. These only
+  run on the exact-text branch.
+- New node/materialization: none.
+- Render path: covered exact operation args and exact query-condition args now
+  return known text directly through the existing call text path instead of
+  dropping `textState` cold and reading back the whole call; exact
+  query-condition content now also stays on the source helper path for public
+  source serialization.
+- Helper/API surface: no new helper. This pass extends the existing known-text
+  helpers instead of adding another call-only adapter.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: none beyond the existing helper recursion/part arrays; the
+  pass deletes covered whole-call readback reliance for those exact surfaces.
+- Rejected/observed in this pass: render-time `Condition`/`QueryCondition`
+  semantics that evaluate to booleans stay on the runtime render contract; this
+  cut only covers exact syntax surfaces that actually remain syntax at the call
+  boundary.
+- Evidence: focused `call.test.ts` coverage now proves exact operation source
+  args serialize as `calc(10px + 5px)` with zero marks/readbacks, exact
+  operation render args return `calc(10px + 5px)` with one outer call mark and
+  zero readbacks, and exact query-condition args/content stay off whole-call
+  readback on the covered source/render paths. Full commit-boundary gates still
+  need to run after this handoff update.
 - Latest pass: `QueryCondition` static fallback local return window.
 - Verdict: accepted as a localized static render-return cut. When exact direct
   query text is unavailable, static `QueryCondition` render now returns the

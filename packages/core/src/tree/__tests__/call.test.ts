@@ -1,6 +1,7 @@
 import type { IToken } from 'chevrotain';
+import { beforeEach, describe, expect, it } from 'vitest';
 import * as treeIndex from '../index.js';
-import { Any, Call, Color, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, fn, list, mixin, num, op, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Any, Call, Color, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, condition, decl, dimension, el, fn, list, mixin, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import {
   getCallRawArgDiagnosticMessageSource,
   getCallRawArgDiagnosticSource,
@@ -427,6 +428,32 @@ describe('Call', () => {
     expect(writer.readbacks).toBe(0);
   });
 
+  it('serializes exact operation call source args without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'calc',
+      args: list([op([dimension([10, 'px']), '+', dimension([5, 'px'])])])
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('calc(10px + 5px)');
+    expect(writer.toString()).toBe('calc(10px + 5px)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes exact query-condition call content without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'wrap',
+      contentNode: query([any('screen'), any('and'), any('(color)')])
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('wrap(): screen and (color)');
+    expect(writer.toString()).toBe('wrap(): screen and (color)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
   it('writes dynamic finalized call render output into shared flat buffers without whole-string writeback', async () => {
     const root = rules([
       vardecl({
@@ -613,6 +640,19 @@ describe('Call', () => {
     expect(writer.readbacks).toBe(0);
   });
 
+  it('renders exact operation CSS call arguments without fallback readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'calc',
+      args: list([op([dimension([10, 'px']), '+', dimension([5, 'px'])])])
+    });
+
+    expect(rule.render(context, { writer })).toBe('calc(10px + 5px)');
+    expect(writer.toString()).toBe('calc(10px + 5px)');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(0);
+  });
+
   it('renders evaluated CSS call content without public string transport', async () => {
     const content = any('source-content');
     const renderedContent = any('body-output');
@@ -657,6 +697,23 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('wrap(): "raw content"');
     expect(writer.toString()).toBe('wrap(): "raw content"');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders exact query-condition CSS call arguments without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([query([
+        any('screen'),
+        any('and'),
+        any('(color)')
+      ])])
+    });
+
+    expect(rule.render(context, { writer })).toBe('fn(screen and (color))');
+    expect(writer.toString()).toBe('fn(screen and (color))');
     expect(writer.marks).toBe(1);
     expect(writer.readbacks).toBe(0);
   });

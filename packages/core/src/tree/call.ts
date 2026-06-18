@@ -22,6 +22,9 @@ import {
 } from './util/render-buffer.js';
 import { emitCommentTriviaBetweenNodes } from './util/trivia.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
+import { Condition } from './condition.js';
+import { Operation } from './operation.js';
+import { QueryCondition } from './query-condition.js';
 
 function stringifyValueOf(value: unknown): string {
   if (value && typeof value === 'object' && 'valueOf' in value) {
@@ -118,6 +121,10 @@ function getKnownRenderedCallText(node: Node): string | undefined {
       return typeof node.value === 'string' ? node.value : undefined;
     case 'Bool':
       return node.value ? 'true' : 'false';
+    case 'Dimension':
+      return typeof node.number === 'number'
+        ? `${node.number}${node.unit ?? ''}`
+        : undefined;
     case 'Num':
       return typeof node.number === 'number' ? `${node.number}` : undefined;
     case 'Color':
@@ -175,6 +182,48 @@ function getKnownRenderedCallText(node: Node): string | undefined {
       return node.escaped ? value : `${quote}${value}${quote}`;
     }
     default:
+      if (node.constructor === QueryCondition) {
+        const parts = new Array<string>(node.items.length);
+        for (let i = 0; i < node.items.length; i++) {
+          const text = getKnownRenderedCallText(node.items[i]!);
+          if (text === undefined) {
+            return undefined;
+          }
+          parts[i] = text;
+        }
+        return parts.join(' ');
+      }
+      if (node.constructor === Condition) {
+        const left = getKnownRenderedCallText(node.left);
+        if (left === undefined) {
+          return undefined;
+        }
+        const needsParens = Boolean(node.right || node.negate);
+        let out = node.negate ? 'not ' : '';
+        if (needsParens) {
+          out += '(';
+        }
+        out += left;
+        if (node.operator && node.right) {
+          const right = getKnownRenderedCallText(node.right);
+          if (right === undefined) {
+            return undefined;
+          }
+          out += ` ${node.operator} ${right}`;
+        }
+        if (needsParens) {
+          out += ')';
+        }
+        return out;
+      }
+      if (node.constructor === Operation) {
+        const left = getKnownRenderedCallText(node.left);
+        const right = getKnownRenderedCallText(node.right);
+        if (left === undefined || right === undefined) {
+          return undefined;
+        }
+        return `${left} ${node.operator} ${right}`;
+      }
       return undefined;
   }
 }
@@ -187,6 +236,10 @@ function getKnownSourceCallText(node: Node): string | undefined {
       return typeof node.value === 'string' ? node.value : undefined;
     case 'Bool':
       return node.value ? 'true' : 'false';
+    case 'Dimension':
+      return typeof node.number === 'number'
+        ? `${node.number}${node.unit ?? ''}`
+        : undefined;
     case 'Num':
       return typeof node.number === 'number' ? `${node.number}` : undefined;
     case 'Color':
@@ -244,6 +297,48 @@ function getKnownSourceCallText(node: Node): string | undefined {
       return node.escaped ? `~${quote}${value}${quote}` : `${quote}${value}${quote}`;
     }
     default:
+      if (node.constructor === QueryCondition) {
+        const parts = new Array<string>(node.items.length);
+        for (let i = 0; i < node.items.length; i++) {
+          const text = getKnownSourceCallText(node.items[i]!);
+          if (text === undefined) {
+            return undefined;
+          }
+          parts[i] = text;
+        }
+        return parts.join(' ');
+      }
+      if (node.constructor === Condition) {
+        const left = getKnownSourceCallText(node.left);
+        if (left === undefined) {
+          return undefined;
+        }
+        const needsParens = Boolean(node.right || node.negate);
+        let out = node.negate ? 'not ' : '';
+        if (needsParens) {
+          out += '(';
+        }
+        out += left;
+        if (node.operator && node.right) {
+          const right = getKnownSourceCallText(node.right);
+          if (right === undefined) {
+            return undefined;
+          }
+          out += ` ${node.operator} ${right}`;
+        }
+        if (needsParens) {
+          out += ')';
+        }
+        return out;
+      }
+      if (node.constructor === Operation) {
+        const left = getKnownSourceCallText(node.left);
+        const right = getKnownSourceCallText(node.right);
+        if (left === undefined || right === undefined) {
+          return undefined;
+        }
+        return `${left} ${node.operator} ${right}`;
+      }
       return undefined;
   }
 }
