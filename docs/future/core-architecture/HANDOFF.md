@@ -103,32 +103,36 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: scalar dynamic leaf AtRule syntax readback cut in
+- Latest pass: scalar token-family dynamic leaf AtRule syntax readback cut in
   `packages/core/src/tree/at-rule.ts`.
 - Verdict: accepted as a localized source/writeSyntax writer-readback cut. No
   speed claim.
 - New traversal: none.
 - New node/materialization: none in production. The review-flagged
-  `CountingWriter` construction and `any(...)` fixtures are test-only proof
-  scaffolding for no-readback assertions.
-- Render path: exact `Any` dynamic leaf at-rule name/prelude pieces now read
-  owned scalar text directly when no trivia is active, instead of writing into
-  the active writer and rolling back with mark/get/restore. Non-scalar,
-  interpolated, custom, and trivia-backed leaves stay on the existing fallback.
+  `CountingWriter` construction, `any(...)` fixtures, and explicit
+  `new Anonymous('html')` are test-only proof scaffolding for no-readback
+  assertions.
+- Render path: exact `Any`/`Anonymous`/`Keyword` dynamic leaf at-rule
+  name/prelude pieces now read owned scalar text directly when no trivia is
+  active, instead of writing into the active writer and rolling back with
+  mark/get/restore. Non-scalar, interpolated, custom, and trivia-backed leaves
+  stay on the existing fallback.
 - Helper/API surface: none.
 - Metadata mutations: none.
 - Allocation changes: removes the dynamic leaf scalar mark/get/restore window
-  for exact `Any` name/prelude nodes. The final leaf render still returns a
-  string on the public render path unless a render buffer is supplied.
+  for exact `Any`/`Anonymous`/`Keyword` name/prelude nodes. The final leaf
+  render still returns a string on the public render path unless a render
+  buffer is supplied.
 - Rejected/observed in this pass: static at-rule serialization uses the
   container serializer and is not affected by this helper; broad leaf
   whitelisting remains rejected because trivia and non-scalar syntax still own
   compatibility behavior.
 - Evidence: focused `at-rule.test.ts` leaf/header slice, targeted ESLint
-  (exits 0 with pre-existing line 554 warning), `git diff --check`,
+  (exits 0 with pre-existing line 555 warning), `git diff --check`,
   `pnpm run verify:aggressive-cutting-review`, and
-  `pnpm --filter @jesscss/core build` passed. Post-merge aggressive verifier
-  reported no danger tokens in the scoped diff.
+  `pnpm --filter @jesscss/core build` passed. The aggressive verifier flags
+  only the test-only `CountingWriter` and `Anonymous` constructions covered
+  above.
 - Merge-carried binding review: latest `origin/dev` also carries binding/lookup
   queue cleanup plus two rejected namespace-prefix shortcut audits. It is
   lookup-only: no render/stringification path changed, no runtime node

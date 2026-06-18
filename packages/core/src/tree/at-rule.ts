@@ -1,6 +1,6 @@
 import { Node, defineType, F_STATIC, F_VISIBLE, type LocationInfo, type NodeOptions } from './node.js';
 import { Ruleset } from './ruleset.js';
-import { Any } from './any.js';
+import { Anonymous, Any, Keyword } from './any.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
@@ -99,7 +99,11 @@ function atRuleLeafScalarText(
   node: Node,
   printOptions: FinalPrintOptions
 ): string | undefined {
-  return !printOptions.trivia && node.constructor === Any
+  return !printOptions.trivia && (
+    node.constructor === Any
+    || node.constructor === Anonymous
+    || node.constructor === Keyword
+  )
     ? node.value
     : undefined;
 }

@@ -2,7 +2,8 @@ import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule,
   vardecl, ref, mixin, call, list, op,
   num, dimension, amp, F_MAY_ASYNC,
-  F_STATIC, paren, seq, comment, nil, quoted, color, co, interpolated
+  F_STATIC, paren, seq, comment, nil, quoted, color, co, interpolated,
+  keyword, Anonymous
 } from '../index.js';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
@@ -1716,6 +1717,30 @@ describe('AtRule', () => {
 
     const rendered = '@namespace svg;';
     expect(node.render(context, options)).toBe(rendered);
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(writer.restores).toBe(0);
+    expect(writer.captures).toBe(0);
+    expect(writer.previews).toBe(0);
+  });
+
+  it('renders keyword and anonymous leaf at-rule preludes without syntax rollback', () => {
+    const writer = new CountingWriter();
+    const first = atrule({
+      name: any('@namespace', { role: 'atkeyword' }),
+      prelude: keyword('svg')
+    });
+    const second = atrule({
+      name: any('@namespace', { role: 'atkeyword' }),
+      prelude: new Anonymous('html')
+    });
+    first.removeFlag(F_STATIC);
+    second.removeFlag(F_STATIC);
+    const options = getPrintOptions({ writer });
+
+    expect(first.render(context, options)).toBe('@namespace svg;');
+    expect(second.render(context, options)).toBe('@namespace html;');
     expect(writer.toString()).toBe('');
     expect(writer.marks).toBe(0);
     expect(writer.reads).toBe(0);
