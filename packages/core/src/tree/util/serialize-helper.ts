@@ -100,7 +100,7 @@ function renderNodeText(
       incrementSerializeProfileCounter('emissionRenderNodeTextLeafCalls');
     }
   }
-  if (reason === 'rules-preview') {
+  if (reason !== 'leaf') {
     const writer = new OutputWriter();
     return node.toTrimmedString(getPrintOptions({
       ...options,

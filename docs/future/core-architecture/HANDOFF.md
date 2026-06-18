@@ -103,31 +103,31 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: nested child `Rules` preview-transport cut in
+- Latest pass: declaration fallback preview-transport cut in
   `packages/core/src/tree/util/serialize-helper.ts`.
 - Verdict: accepted as localized serialization transport deletion. No speed
   claim.
 - New traversal: none.
 - New node/materialization: no production nodes or materialized containers.
   The review-flagged `new OutputWriter()` is the detached string boundary that
-  replaces caller-writer preview transport for nested child `Rules`, and the
-  focused `new CountingWriter()` fixture in `ruleset.test.ts` is test-only
-  proof scaffolding.
-- Render path: nested child `Rules` container serialization still calls the
-  existing public body string boundary, but it now does so through a fresh
-  detached writer instead of previewing `toTrimmedString(...)` on the active
-  caller writer.
+  replaces caller-writer preview transport for declaration fallback
+  serialization, and the focused `new CountingWriter()` fixture in
+  `ruleset.test.ts` is test-only proof scaffolding.
+- Render path: declaration fallback inside container serialization still calls
+  the existing public declaration string boundary, but it now does so through
+  a fresh detached writer instead of previewing `toTrimmedString(...)` on the
+  active caller writer.
 - Helper/API surface: none.
 - Metadata mutations: none.
 - Routine error control: the review-flagged `try/finally` is the focused
   `ruleset.test.ts` restoration scaffold for swapping `toTrimmedString(...)`
   during the detached-writer assertion; no production control flow changed.
 - Allocation changes: deletes one caller-writer `preview(...)` rollback window
-  per nested child `Rules` container emission and replaces it with a detached
+  per declaration fallback emission and replaces it with a detached
   writer boundary that leaves the caller writer untouched.
 - Rejected/observed in this pass: hot frame header comparison, duplicate
   declaration materialization, broader Rules body transport, and remaining
-  Ruleset header capture stay open in the Rules / Ruleset rows.
+  Ruleset header capture stay open in the Declaration / Rules / Ruleset rows.
 - Evidence: focused `ruleset.test.ts` slices for serialize-helper render-local
   behavior plus the new detached-writer assertion, targeted ESLint,
   `git diff --check`,
