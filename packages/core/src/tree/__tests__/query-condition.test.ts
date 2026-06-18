@@ -179,6 +179,17 @@ describe('QueryCondition', () => {
     expect(toStringCalls).toBe(0);
   });
 
+  it('renders static query conditions without returning prefixed writer contents', () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const node = query([any('screen'), any('and'), any('(color)')]);
+
+    expect(node.render(context, { writer })).toBe('screen and (color)');
+    expect(writer.toString()).toBe('prefix|screen and (color)');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
   it('renders dynamic sync query conditions directly without materialized values', () => {
     const dynamicItem = op([num(1), '+', num(2)]);
     dynamicItem.resolve = () => {
@@ -246,6 +257,20 @@ describe('QueryCondition', () => {
 
     expect(queryNode.render(context, buffer)).toBe('screen and (color)');
     expect(buffer.parts).toEqual(['screen', ' ', 'and', ' ', '(color)']);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
+  it('renders static shared-buffer query conditions without returning prefixed buffer contents', () => {
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    buffer.parts.push('prefix|');
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const queryNode = query([any('screen'), any('and'), any('(color)')]);
+
+    expect(queryNode.render(context, buffer)).toBe('screen and (color)');
+    expect(buffer.parts).toEqual(['prefix|', 'screen', ' ', 'and', ' ', '(color)']);
     expect(writer.marks).toBe(0);
     expect(writer.reads).toBe(0);
   });

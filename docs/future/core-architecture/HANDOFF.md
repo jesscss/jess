@@ -103,6 +103,33 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `QueryCondition` exact static render return carry.
+- Verdict: accepted as a localized render-return cut. Covered static query
+  conditions now return their own exact text directly instead of reading whole
+  writer/buffer state back via `toString()` on the static path, which fixed
+  prefixed-writer/shared-buffer return contamination while preserving shared
+  flat-buffer segmentation. No speed claim.
+- New traversal: none beyond the exact-source helper reuse already introduced
+  in the previous `QueryCondition` pass.
+- New node/materialization: none.
+- Render path: static render now reuses exact source text for the covered
+  no-trivia contract; shared flat buffers still stream child pieces through the
+  existing direct syntax writer, but now return the exact query text instead of
+  joining all current buffer parts.
+- Helper/API surface: no new helper.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: none new on the covered path; this pass deletes the
+  static-path dependency on whole-writer / whole-buffer string state for
+  return values.
+- Rejected/observed in this pass: this remains limited to static no-trivia
+  query conditions on the exact-source contract. Dynamic child probing and
+  custom/static fallback behavior stay where they were.
+- Evidence: focused `query-condition.test.ts` coverage now proves static query
+  conditions return `screen and (color)` even when the provided writer or
+  shared flat buffer already contains a `prefix|` segment, while the existing
+  shared-flat zero-mark path and the custom paren fallback proof remain green.
+  Full commit-boundary gates still need to run after this handoff update.
 - Latest pass: `QueryCondition` exact source child text carry.
 - Verdict: accepted as a localized source-text carry cut. Exact no-trivia query
   conditions now return direct source text for covered scalar, `Condition`,

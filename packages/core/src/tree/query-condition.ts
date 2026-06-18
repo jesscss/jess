@@ -337,6 +337,18 @@ export class QueryCondition extends Sequence {
         : prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, printOptions);
     if (this.hasFlag(F_STATIC)) {
+      const directText = !prepared.trivia ? getKnownQueryConditionSourceText(this) : undefined;
+      if (directText !== undefined) {
+        if (buffer) {
+          if (sharesWriter) {
+            this.writeQueryConditionSyntax(this.items, prepared);
+            return directText;
+          }
+          return writeRenderText(buffer, directText);
+        }
+        prepared.writer.add(directText, this);
+        return directText;
+      }
       this.writeQueryConditionSyntax(this.items, prepared);
       const rendered = sharesWriter
         ? buffer!.kind === 'flat'
