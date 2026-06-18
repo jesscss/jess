@@ -103,36 +103,36 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: scalar token-family AtRule header/leaf syntax readback cut in
-  `packages/core/src/tree/at-rule.ts`.
+- Latest pass: non-basic Ampersand template selector public string transport
+  cut in `packages/core/src/tree/ampersand.ts`.
 - Verdict: accepted as a localized source/writeSyntax writer-readback cut. No
   speed claim.
-- New traversal: none.
-- New node/materialization: none in production. The review-flagged
-  `CountingWriter` construction, `any(...)` fixtures, and explicit
-  `new Anonymous('html')` are test-only proof scaffolding for no-readback
-  assertions.
-- Render path: exact `Any`/`Anonymous`/`Keyword` at-rule header fragments read
-  owned scalar text directly instead of allocating a detached writer; dynamic
-  leaf name/prelude pieces in the same scalar family also skip active-writer
-  mark/get/restore when no trivia is active. Non-scalar, interpolated, custom,
-  comment-bearing, and trivia-backed leaves stay on existing fallback paths.
-- Helper/API surface: none.
-- Metadata mutations: none.
-- Allocation changes: removes detached-writer allocation for exact scalar
-  token-family header fragments and removes the dynamic leaf scalar
-  mark/get/restore window for exact `Any`/`Anonymous`/`Keyword` name/prelude
-  nodes. The final leaf render still returns a string on the public render
-  path unless a render buffer is supplied.
-- Rejected/observed in this pass: static at-rule serialization uses the
-  container serializer and is not affected by this helper; broad leaf
-  whitelisting remains rejected because trivia and non-scalar syntax still own
-  compatibility behavior.
-- Evidence: focused `at-rule.test.ts` leaf/header slice, targeted ESLint
-  (exits 0 with pre-existing line 555 warning), `git diff --check`,
-  `pnpm run verify:aggressive-cutting-review`, and
-  `pnpm --filter @jesscss/core build` passed. Aggressive verifier reports no
-  danger tokens in the scoped diff.
+- New traversal: none in production beyond the existing replacement loop. The
+  review-flagged loops are test-only setup/restore of monkeypatched selector
+  methods.
+- New node/materialization: no new production nodes. Existing detached
+  selector syntax capture allocates one `OutputWriter` only for non-basic
+  template text that already needed a string boundary. The review-flagged
+  array is test-only storage for original selector methods.
+- Render path: no render output path changed. Ampersand template replacement
+  now captures non-basic selector text through direct `writeSyntax(...)`
+  instead of public `toTrimmedString(...)`; exact `BasicSelector` keeps the
+  owned scalar text path.
+- Helper/API surface: added one private selector syntax text helper and removed
+  the public string fallback at the template replacement call site.
+- Metadata mutations: none in production. Test-only method monkeypatching is
+  local to the focused assertion and restored before source selector
+  serialization assertions.
+- Allocation changes: exact basic selectors still allocate nothing; non-basic
+  selectors use a detached direct writer instead of calling the public string
+  wrapper. This is a transport cut, not an allocation win.
+- Rejected/observed in this pass: broader raw string assembly and structural
+  selector replacement remain open in the Ampersand row.
+- Evidence: focused `ampersand.test.ts` basic/complex template slices, targeted
+  ESLint, `git diff --check`, `pnpm run verify:aggressive-cutting-review`,
+  and `pnpm --filter @jesscss/core build` passed. The aggressive verifier flags
+  the intentional detached `OutputWriter` cold string boundary plus test-only
+  loops/array/method monkeypatching covered above.
 - Merge-carried binding review: latest `origin/dev` also carries binding/lookup
   queue cleanup plus two rejected namespace-prefix shortcut audits. It is
   lookup-only: no render/stringification path changed, no runtime node
