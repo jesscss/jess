@@ -103,6 +103,34 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` direct source writer exact arg/content carry.
+- Verdict: accepted as a localized source-writer cut. `Call.writeSyntax(...)`
+  now writes covered exact no-trivia names, args, and content directly instead
+  of opening the inner args trim-mark path or routing covered content through
+  generic child writers. No speed claim.
+- New traversal: one direct arg loop inside `Call.writeSyntax(...)` for the
+  covered exact-source path. It replaces the old inner args `mark()/trim` path
+  on that exact branch.
+- New node/materialization: none.
+- Render path: unchanged.
+- Helper/API surface: no new helper. This pass reuses the existing
+  `getKnownSourceCallText(...)` helper instead of adding another writer-only
+  adapter.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: no new hot-path arrays beyond the existing exact-source
+  helper allocations from the previous pass; this pass deletes the covered
+  writer mark/trim boundary for exact args and the generic child writer hop for
+  covered exact content.
+- Rejected/observed in this pass: this stays no-trivia and exact-source only.
+  Non-scalar/custom/trivia-bearing args or content still use the existing
+  generic source writer paths.
+- Evidence: focused `call.test.ts` coverage now proves explicit empty args,
+  scalar list args, and exact sequence content all write through
+  `Call.writeSyntax(...)` with zero marks/readbacks, while the covered
+  `toTrimmedString(...)` source fast paths for canonical/scalar/escaped source
+  calls remain green. Full commit-boundary gates still need to run after this
+  handoff update.
 - Latest pass: `Call` exact source text carry.
 - Verdict: accepted as a localized source-text carry cut. `Call.toTrimmedString(...)`
   now returns exact scalar/list/sequence/escaped-paren source syntax directly

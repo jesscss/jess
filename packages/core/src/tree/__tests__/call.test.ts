@@ -308,6 +308,34 @@ describe('Call', () => {
     expect(writer.readbacks).toBe(0);
   });
 
+  it('writes scalar list call source args without arg trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([list([num(10), num(20)]), num(30)])
+    });
+
+    rule.writeSyntax(getPrintOptions({ writer }));
+
+    expect(writer.toString()).toBe('fn(10, 20, 30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('writes exact source call content without source trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'wrap',
+      contentNode: seq([any('raw'), any('content')])
+    });
+
+    rule.writeSyntax(getPrintOptions({ writer }));
+
+    expect(writer.toString()).toBe('wrap(): raw content');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
   it('serializes comment trivia owned by function argument separators', () => {
     const first = new Any('#333', undefined, [20, 1, 21, 23, 1, 24]);
     const second = new Any('#111', undefined, [40, 1, 41, 43, 1, 44]);

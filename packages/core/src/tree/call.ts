@@ -1307,8 +1307,12 @@ export class Call extends Node<CallValue, CallOptions> {
     const silentFail = this._options?.silentFail;
     const w = options.writer;
     const { name, contentNode, args } = this;
-    if (typeof name === 'string') {
-      w.add(name, this);
+    const directSource = !options.trivia;
+    const nameText = typeof name === 'string'
+      ? name
+      : directSource ? getKnownSourceCallText(name) : undefined;
+    if (nameText !== undefined) {
+      w.add(nameText, typeof name === 'string' ? this : name);
     } else {
       name.writeSyntax(options);
     }
@@ -1317,10 +1321,33 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     w.add('(');
     if (args && args.items.length > 0) {
-      const argsMark = w.mark();
-      args.writeSyntax(options);
-      w.trimHorizontalStartSince(argsMark);
-      w.trimHorizontalEndSince(argsMark);
+      if (directSource) {
+        const sep = args.options?.sep ?? ',';
+        const joiner = sep === '/' ? ' / ' : `${sep} `;
+        let directArgs = true;
+        for (let i = 0; i < args.items.length; i++) {
+          const argText = getKnownSourceCallText(args.items[i]!);
+          if (argText === undefined) {
+            directArgs = false;
+            break;
+          }
+          if (i > 0) {
+            w.add(joiner);
+          }
+          w.add(argText, args.items[i]!);
+        }
+        if (!directArgs) {
+          const argsMark = w.mark();
+          args.writeSyntax(options);
+          w.trimHorizontalStartSince(argsMark);
+          w.trimHorizontalEndSince(argsMark);
+        }
+      } else {
+        const argsMark = w.mark();
+        args.writeSyntax(options);
+        w.trimHorizontalStartSince(argsMark);
+        w.trimHorizontalEndSince(argsMark);
+      }
     }
     w.add(')');
     if (this._options?.markImportant) {
@@ -1328,7 +1355,12 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     if (contentNode) {
       w.add(': ');
-      contentNode.writeSyntax(options);
+      const contentText = directSource ? getKnownSourceCallText(contentNode) : undefined;
+      if (contentText !== undefined) {
+        w.add(contentText, contentNode);
+      } else {
+        contentNode.writeSyntax(options);
+      }
     }
   }
 
