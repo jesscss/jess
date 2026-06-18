@@ -24,12 +24,13 @@ const checks = [
     ]
   },
   {
-    label: 'setDefined assignment lookup stays on setDefined-only apply helper',
+    label: 'setDefined assignment lookup stays on setDefined-only writable occurrence helper',
     file: 'packages/core/src/tree/rules.ts',
     required: [
-      'applySetDefinedDeclarationReadonlyOccurrence('
+      'findWritableSetDefinedDeclarationOccurrence('
     ],
     forbidden: [
+      'applySetDefinedDeclarationReadonlyOccurrence(',
       'findSetDefinedDeclarationReadonlyOccurrence(',
       'findVariableDeclarationReadonlyOccurrence',
       'findPropertyDeclarationReadonlyOccurrence',
@@ -103,7 +104,7 @@ const expectedDirectLookupExports = [
   'findVariableDeclarationOccurrence',
   'findPropertyDeclarationOccurrence',
   'findPropertyDeclarationOccurrence',
-  'applySetDefinedDeclarationReadonlyOccurrence',
+  'findWritableSetDefinedDeclarationOccurrence',
   'findAnyDeclarationOccurrence'
 ];
 if (directLookupExports.join('\n') !== expectedDirectLookupExports.join('\n')) {
@@ -130,6 +131,9 @@ if (directLookup.includes('includeReadonly')) {
   failed = true;
 }
 for (const token of [
+  'SetDefinedDeclarationMatchHandler',
+  'onSetDefinedMatch',
+  'applySetDefinedDeclarationReadonlyOccurrence',
   'findVariableDeclarationReadonlyOccurrence',
   'findPropertyDeclarationReadonlyOccurrence',
   'findSetDefinedDeclarationReadonlyOccurrence',

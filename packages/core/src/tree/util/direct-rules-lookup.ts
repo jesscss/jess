@@ -114,7 +114,6 @@ type DeclarationMatchState = {
 };
 
 type CachedDeclarationMatchState = Readonly<DeclarationMatchState>;
-type SetDefinedDeclarationMatchHandler = (occurrence: DirectDeclarationOccurrence, readonly: boolean) => void;
 const EMPTY_DECLARATION_MISS_STATE: DeclarationMatchState = {
   optionalMatch: undefined,
   publicMatch: undefined,
@@ -279,7 +278,10 @@ function chooseCandidateMatch(
   candidates: Set<Node> | undefined,
   key: string,
   strategy: DeclarationLookupStrategy,
-  options: Pick<DeclarationFindOptions, 'excludedNodes' | 'filter' | 'requiredNormalizedFromAssign'>
+  options: Pick<
+    DeclarationFindOptions,
+    'excludedNode0' | 'excludedNode1' | 'excludedNodes' | 'excludedNodesLength' | 'filter' | 'requiredNormalizedFromAssign'
+  >
 ): DirectDeclarationOccurrence | undefined {
   if (!candidates?.size) {
     return current;
@@ -368,6 +370,11 @@ function getRecursiveLookupCacheKey(
     || start !== undefined
     || readonly
     || options.filter
+    || options.excludedNodes
+    || options.excludedNode0
+    || options.excludedNode1
+    || options.excludedNodesLength !== undefined
+    || options.requiredNormalizedFromAssign !== undefined
     || Boolean(options.candidates?.size)
     || Boolean(options.optionalCandidates?.size)
   ) {
@@ -414,7 +421,10 @@ function findLocalDeclaration(
   scope: Rules,
   key: string,
   strategy: DeclarationLookupStrategy,
-  options: Pick<DeclarationFindOptions, 'excludedNodes' | 'filter' | 'requiredNormalizedFromAssign'>,
+  options: Pick<
+    DeclarationFindOptions,
+    'excludedNode0' | 'excludedNode1' | 'excludedNodes' | 'excludedNodesLength' | 'filter' | 'requiredNormalizedFromAssign'
+  >,
   start: number | undefined,
   skipVarDeclarations = false
 ): DirectDeclarationOccurrence | undefined {
@@ -671,7 +681,7 @@ function findDeclarationLookupWithStrategy(
   key: string,
   strategy: DeclarationLookupStrategy,
   options?: DirectDeclarationFindOptions,
-  onSetDefinedMatch?: SetDefinedDeclarationMatchHandler
+  requireWritableSetDefined?: boolean
 ): DirectDeclarationOccurrence | undefined {
   const lookupOptions = options ?? EMPTY_DIRECT_DECLARATION_FIND_OPTIONS;
   const searchParents = lookupOptions.searchParents ?? true;
@@ -718,8 +728,9 @@ function findDeclarationLookupWithStrategy(
     readonly ||= state.readonly;
     publicMatch = chooseTraversalMatch(publicMatch, state.publicMatch);
     if (publicMatch) {
-      onSetDefinedMatch?.(publicMatch, readonly);
-      return publicMatch;
+      return requireWritableSetDefined
+        ? assertWritableSetDefinedOccurrence(publicMatch, readonly, key)
+        : publicMatch;
     }
     optionalMatch = chooseTraversalMatch(optionalMatch, state.optionalMatch);
     if (searchingFallback) {
@@ -744,10 +755,20 @@ function findDeclarationLookupWithStrategy(
     }
   }
 
-  if (optionalMatch) {
-    onSetDefinedMatch?.(optionalMatch, readonly);
+  return optionalMatch && requireWritableSetDefined
+    ? assertWritableSetDefinedOccurrence(optionalMatch, readonly, key)
+    : optionalMatch;
+}
+
+function assertWritableSetDefinedOccurrence(
+  occurrence: DirectDeclarationOccurrence,
+  inheritedReadonly: boolean,
+  key: string
+): DirectDeclarationOccurrence {
+  if (occurrence.node.options?.readonly || inheritedReadonly) {
+    throw new ReferenceError(`"${key}" is readonly`);
   }
-  return optionalMatch;
+  return occurrence;
 }
 
 export function findVariableDeclarationOccurrence(
@@ -776,18 +797,17 @@ export function findPropertyDeclarationOccurrence(
   return findDeclarationLookupWithStrategy(startRules, key, PROPERTY_LOOKUP, options);
 }
 
-export function applySetDefinedDeclarationReadonlyOccurrence(
+export function findWritableSetDefinedDeclarationOccurrence(
   startRules: Rules,
   key: string,
   isVariable: boolean,
-  options: DirectDeclarationFindOptions | undefined,
-  onMatch: SetDefinedDeclarationMatchHandler
-): boolean {
+  options?: DirectDeclarationFindOptions
+): DirectDeclarationOccurrence | undefined {
   const strategy = isVariable ? VARIABLE_LOOKUP : PROPERTY_LOOKUP;
   const lookupOptions = isVariable && options?.includeLiveBindings !== false
     ? { ...options, includeLiveBindings: false }
     : options;
-  return findDeclarationLookupWithStrategy(startRules, key, strategy, lookupOptions, onMatch) !== undefined;
+  return findDeclarationLookupWithStrategy(startRules, key, strategy, lookupOptions, true);
 }
 
 export function findAnyDeclarationOccurrence(

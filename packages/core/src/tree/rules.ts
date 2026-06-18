@@ -76,7 +76,7 @@ import type { CallableLookupEntry, MixinEntry } from './util/callable-entry.js';
 import { isIndexedRuleChild } from './util/callable-surface.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
-  applySetDefinedDeclarationReadonlyOccurrence,
+  findWritableSetDefinedDeclarationOccurrence,
   type DirectDeclarationOccurrence
 } from './util/direct-rules-lookup.js';
 const { isArray } = Array;
@@ -3364,67 +3364,60 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             return;
           }
         }
-        let foundSetDefinedTarget = false;
         const lookupOptions: DeclarationFindOptions = { searchParents: true };
-        applySetDefinedDeclarationReadonlyOccurrence(
+        const resultOccurrence = findWritableSetDefinedDeclarationOccurrence(
           this,
           key,
           isNode(node, N.VarDeclaration),
-          lookupOptions,
-          (resultOccurrence, inheritedReadonly) => {
-            foundSetDefinedTarget = true;
-            const result = resultOccurrence.node;
-            if (result.options?.readonly || inheritedReadonly) {
-              throw new ReferenceError(`"${key}" is readonly`);
-            }
-            if (isNode(node, N.VarDeclaration) && isNode(result, N.VarDeclaration)) {
-              let assignedValue = node.valueNode;
-              if (context) {
-                const evaluatedValue = assignedValue.eval(context);
-                if (!isThenable(evaluatedValue)) {
-                  assignedValue = evaluatedValue;
-                }
-              }
-              if (isNode(result.parent, N.Rules)) {
-                syncDeclarationValueNode(result, assignedValue);
-                assignScopeFrameVariable(result.parent._scopeFrame, key, assignedValue);
-              }
-              return;
-            }
-
-            // Find the Rules node that contains the found declaration
-            if (!isNode(result.parent, N.Rules)) {
-              throw new Error(`Could not find parent Rules for declaration '${key}'`);
-            }
-            const foundRules = result.parent;
-
-            // Create a new declaration with the same name but our value.
-            const newDeclaration = node.deriveWithOptions({
-              ...node.options,
-              setDefined: undefined
-            });
-
-            // Adopt the new declaration to the found Rules
-            foundRules.adopt(newDeclaration);
-
-            // Add to the value array AFTER the found declaration
-            // This ensures it shadows the original and is evaluated after it
-            const foundIndex = foundRules.rules.indexOf(result);
-            if (foundIndex !== -1) {
-              foundRules.rules.splice(foundIndex + 1, 0, newDeclaration);
-            } else {
-              // If not found in array, add at the beginning
-              foundRules.rules.unshift(newDeclaration);
-            }
-
-            // Re-run child bookkeeping for the inserted declaration. We skip
-            // setDefined processing since we already removed the flag.
-            foundRules.registerNode(newDeclaration);
-          }
+          lookupOptions
         );
-        if (!foundSetDefinedTarget) {
+        if (!resultOccurrence) {
           throw new ReferenceError(`"${key}" is not defined`);
         }
+        const result = resultOccurrence.node;
+        if (isNode(node, N.VarDeclaration) && isNode(result, N.VarDeclaration)) {
+          let assignedValue = node.valueNode;
+          if (context) {
+            const evaluatedValue = assignedValue.eval(context);
+            if (!isThenable(evaluatedValue)) {
+              assignedValue = evaluatedValue;
+            }
+          }
+          if (isNode(result.parent, N.Rules)) {
+            syncDeclarationValueNode(result, assignedValue);
+            assignScopeFrameVariable(result.parent._scopeFrame, key, assignedValue);
+          }
+          return;
+        }
+
+        // Find the Rules node that contains the found declaration
+        if (!isNode(result.parent, N.Rules)) {
+          throw new Error(`Could not find parent Rules for declaration '${key}'`);
+        }
+        const foundRules = result.parent;
+
+        // Create a new declaration with the same name but our value.
+        const newDeclaration = node.deriveWithOptions({
+          ...node.options,
+          setDefined: undefined
+        });
+
+        // Adopt the new declaration to the found Rules
+        foundRules.adopt(newDeclaration);
+
+        // Add to the value array AFTER the found declaration
+        // This ensures it shadows the original and is evaluated after it
+        const foundIndex = foundRules.rules.indexOf(result);
+        if (foundIndex !== -1) {
+          foundRules.rules.splice(foundIndex + 1, 0, newDeclaration);
+        } else {
+          // If not found in array, add at the beginning
+          foundRules.rules.unshift(newDeclaration);
+        }
+
+        // Re-run child bookkeeping for the inserted declaration. We skip
+        // setDefined processing since we already removed the flag.
+        foundRules.registerNode(newDeclaration);
       }
 
       if (isNode(node, N.VarDeclaration)) {
