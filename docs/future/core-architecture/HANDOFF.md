@@ -103,48 +103,32 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Ruleset frame-header compare-key split in
-  `packages/core/src/tree/ruleset.ts` and
-  `packages/core/src/tree/util/serialize-helper.ts`.
+- Latest pass: source-mode leaf `Rules` writer cut in
+  `packages/core/src/tree/rules.ts`.
 - Verdict: accepted as localized serialization transport deletion. No speed
   claim.
 - New traversal: none.
-- New node/materialization: no production nodes or materialized containers.
-  The review-flagged `new OutputWriter()` boundaries are the detached
-  commentless selector capture and hoisted-parent comparable-header writers
-  that replace full formatted header transport on the hot compare path, and
-  the focused `new CountingWriter()` fixture in `ruleset.test.ts` is test-only
-  proof scaffolding. The flagged `composedSelectorStack: []` literal remains
-  the existing hoisted-parent helper reset so nested comparable selector
-  capture stays out of the caller's collapse stack; it is semantic print-state
-  isolation, not a new render-only container surface.
-- Render path: repeated frame-header comparison now reads a commentless
-  comparable selector key from `Ruleset.getComparableHeaderString(...)` and a
-  matching hoisted-parent comparable helper instead of formatting full
-  `getHeaderString(..., true)` header strings just to compare them. Full
-  header formatting stays on the emit/cache path.
-- Helper/API surface: adds one small `Ruleset.getComparableHeaderString(...)`
-  boundary plus a shared private selector-string helper in `ruleset.ts`, and a
-  local hoisted-parent comparable helper in `serialize-helper.ts`; they remove
-  full header formatting work from the hot compare path rather than adding a
-  new public transport layer.
+- New node/materialization: none. The review-flagged `new WholeBufferCountingWriter()`
+  in `rules.test.ts` is focused proof scaffolding only.
+- Render path: source-mode non-container leaf emission in `Rules._emitRulesBody(...)`
+  now calls `writeSyntax(...)` directly and checks the active writer for output
+  instead of routing through public `toTrimmedString(...)`. Render-mode leaf
+  emission is unchanged.
+- Helper/API surface: none.
 - Metadata mutations: none.
-- Routine error control: the review-flagged `try/finally` is the focused
-  `ruleset.test.ts` restoration scaffold for swapping header helpers and
-  `writeSyntax(...)` during the detached-writer assertions; no production
-  control flow changed. The flagged `TypeError(...)` throws are the same
-  focused test-only prototype guard scaffolding before monkeypatching helper
-  methods; no production error path changed.
-- Allocation changes: removes full header string normalization/brace assembly
-  from the repeated frame compare path and replaces it with detached selector
-  text boundaries that still leave the caller writer untouched.
-- Rejected/observed in this pass: hot frame header comparison, duplicate
-  declaration materialization, broader Rules body transport, and remaining
-  Ruleset header emit/cache capture stay open in the Declaration / Rules /
+- Routine error control: the review-flagged thrown error is the focused
+  `rules.test.ts` assertion scaffold proving source-mode leaf emission no
+  longer calls public `toTrimmedString(...)`; no production control flow
+  changed.
+- Allocation changes: deletes one public string-return wrapper call per
+  source-mode leaf emission. The writer mark/restore boundary remains the
+  existing `Rules` body emission ownership surface.
+- Rejected/observed in this pass: duplicate declaration materialization,
+  broader render-mode leaf/body transport, remaining Ruleset header emit/cache
+  capture, and deeper Declaration seams stay open in the Declaration / Rules /
   Ruleset rows.
-- Evidence: focused `ruleset.test.ts` slices for serialize-helper render-local
-  behavior plus the comparable-header helper/assertion coverage, targeted
-  ESLint,
+- Evidence: focused `rules.test.ts` slices for source-leaf, root charset/import,
+  and child `Rules` wrapper transport plus targeted ESLint,
   `git diff --check`,
   `pnpm run verify:aggressive-cutting-review`, and
   `pnpm --filter @jesscss/core build` passed.
