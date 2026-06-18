@@ -25,6 +25,19 @@ class CountingWriter extends OutputWriter {
   }
 }
 
+class WholeBufferCountingWriter extends OutputWriter {
+  wholeBufferReads = 0;
+  readbacks = 0;
+
+  override getSince(mark: number): string {
+    this.readbacks++;
+    if (mark === 0) {
+      this.wholeBufferReads++;
+    }
+    return super.getSince(mark);
+  }
+}
+
 async function setEvaluatedRoot(context: Context, node: Rules): Promise<Rules> {
   const evald = await node.eval(context);
   expect(evald).toBeInstanceOf(Rules);
@@ -68,6 +81,14 @@ describe('Operation', () => {
 
     expect(op([left, '+', right]).toTrimmedString()).toBe('10 + 20');
     expect(stringCalls).toBe(0);
+  });
+
+  it('captures operation source syntax without outer whole-buffer readback', () => {
+    const writer = new WholeBufferCountingWriter();
+    const rule = op([num(10), '+', ref({ key: 'rhs' }, { type: 'variable' })]);
+
+    expect(rule.toTrimmedString({ writer })).toBe('10 + $rhs');
+    expect(writer.wholeBufferReads).toBe(0);
   });
 
   it('writes operation syntax without public string readback', () => {

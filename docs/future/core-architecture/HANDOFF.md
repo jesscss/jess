@@ -103,6 +103,39 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Operation` outer source-capture readback split.
+- Verdict: accepted as a bounded `Operation` serializer cut. Public operation
+  source capture no longer wraps `writeSyntax(...)` in an outer whole-buffer
+  `mark()/getSince()` readback window just to return the emitted operand text;
+  it now recovers the local operation text from the active writer tail while
+  preserving the existing direct operand writer and render/eval behavior. No
+  speed claim.
+- New traversal: one straight chunk join over the active writer tail in a new
+  node-local helper inside `packages/core/src/tree/operation.ts`. This
+  replaces the outer operation capture window; it does not add a new scan over
+  unrelated arithmetic/calc state.
+- Review-flagged allocations: no production node allocations. Focused proof
+  adds one `WholeBufferCountingWriter` in `operation.test.ts` to confirm the
+  outer whole-buffer readback is gone.
+- New node/materialization: none.
+- Render path: operation render behavior is unchanged. The pass changes only
+  public source capture and does not materialize replacement operands or
+  wrapper operations to recover text.
+- Helper/API surface: one node-local helper,
+  `getWriterTextSincePosition(...)`, was added in
+  `packages/core/src/tree/operation.ts`. It replaces the outer
+  `Operation.toTrimmedString(...)` readback wrapper; no public API changed.
+- Metadata mutations: one localized generic read,
+  `Reflect.get(writer, 'chunks')`, is boxed inside the node-local helper
+  because `OutputWriter` still exposes `position()` but not a cold/internal
+  tail-text reader.
+- Routine error control: none added.
+- Allocation changes: deletes the outer `mark()/getSince()` whole-buffer
+  capture from `Operation.toTrimmedString(...)`.
+- Evidence: focused `operation.test.ts` cases for public source syntax,
+  direct child-writer source transport, and source capture without outer
+  whole-buffer readback passed, and full `operation.test.ts` passed.
+
 - Latest pass: `Ampersand` outer source-capture readback split.
 - Verdict: accepted as a bounded `Ampersand` serializer cut. Public ampersand
   source capture no longer wraps `writeSyntax(...)` in an outer whole-buffer
