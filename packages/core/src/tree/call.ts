@@ -151,6 +151,18 @@ function getKnownRenderedCallText(node: Node): string | undefined {
       }
       return parts.join(' ');
     }
+    case 'Paren': {
+      const open = node.options?.delimiter === 'square' ? '[' : '(';
+      const close = node.options?.delimiter === 'square' ? ']' : ')';
+      if (!node.value) {
+        return `${open}${close}`;
+      }
+      const value = getKnownRenderedCallText(node.value);
+      if (value === undefined) {
+        return undefined;
+      }
+      return `${open}${value}${close}`;
+    }
     default:
       return undefined;
   }

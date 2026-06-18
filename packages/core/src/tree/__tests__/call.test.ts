@@ -574,6 +574,19 @@ describe('Call', () => {
     expect(rule.registrationPrepared).toBe(false);
   });
 
+  it('renders exact paren CSS call arguments without fallback readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([paren(seq([any('red'), num(10)])), num(30)])
+    });
+
+    expect(rule.render(context, { writer })).toBe('fn((red 10), 30)');
+    expect(writer.toString()).toBe('fn((red 10), 30)');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(0);
+  });
+
   it('renders evaluated CSS call content without public string transport', async () => {
     const content = any('source-content');
     const renderedContent = any('body-output');
@@ -594,6 +607,19 @@ describe('Call', () => {
     expect(renderedContentPublicStringCalls).toBe(0);
     expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders exact paren call content without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'wrap',
+      contentNode: paren(seq([any('raw'), any('content')]))
+    });
+
+    expect(rule.render(context, { writer })).toBe('wrap(): (raw content)');
+    expect(writer.toString()).toBe('wrap(): (raw content)');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('renders dynamic calc names through one name eval with calc frames', async () => {

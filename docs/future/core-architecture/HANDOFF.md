@@ -103,6 +103,35 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` exact paren render text carry.
+- Verdict: accepted as a localized render-text carry cut. Exact rendered
+  `Paren` values now participate in `Call`'s known-text path, so covered args
+  and content stay off fallback `writeSyntax(...)` plus whole-call readback.
+  No speed claim.
+- New traversal: one recursive step in `getKnownRenderedCallText(...)` for
+  exact `Paren` children. It only runs on the covered exact-text branch after
+  value selection.
+- New node/materialization: none.
+- Render path: covered exact `Paren` args and content now write known text
+  directly; non-exact/custom/trivia-bearing paren values still use the
+  existing generic render fallback.
+- Helper/API surface: no new helper. This pass extends the existing
+  `getKnownRenderedCallText(...)` helper instead of adding another paren-only
+  path.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: none beyond the existing exact-text helper recursion; the
+  pass deletes covered fallback whole-call readback reliance for exact paren
+  args/content.
+- Rejected/observed in this pass: escaped paren render already had its own
+  dedicated branch; this cut only closes the remaining exact non-escaped paren
+  carry inside the generic known-text path.
+- Evidence: focused `call.test.ts` coverage now proves exact paren args render
+  as `fn((red 10), 30)` and exact paren content renders as
+  `wrap(): (raw content)` with one outer call mark and zero readbacks, while
+  adjacent scalar sequence, evaluated scalar name, async scalar content, and
+  escaped source fast paths remain green. Full commit-boundary gates still need
+  to run after this handoff update.
 - Latest pass: `Call` direct source writer exact arg/content carry.
 - Verdict: accepted as a localized source-writer cut. `Call.writeSyntax(...)`
   now writes covered exact no-trivia names, args, and content directly instead
