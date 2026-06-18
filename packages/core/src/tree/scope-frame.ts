@@ -6,7 +6,7 @@
  * declaration names without cloning node trees or rewriting parent pointers.
  *
  * Relationship to existing infrastructure:
- *   - declarationBucketsByName is built from Rules.varsByName.
+ *   - declarationBucketsByName is built from Rules.varsByName entries.
  *     Only static-key VarDeclarations are stored here; dynamic keys
  *     (Interpolated name nodes) go into pendingDeclarationNames.
  *   - currentBindingsByName holds the current read path for both live slots
@@ -274,13 +274,13 @@ function setCurrentBindingCell(
  * node parent chain to find the nearest ancestor frame when no explicit parent
  * is supplied.
  *
- * @param varsByName  Rules.varsByName — the per-scope static VarDecl index
+ * @param varsByName  Rules.varsByName — the per-scope static VarDecl binding index
  * @param rulesNode   Back-pointer for debugging
  * @param parent      Enclosing scope's frame (undefined = auto-wire via node chain)
  * @param liveSlots   Pre-built live binding map (params, @arguments)
  */
 export function buildScopeFrame(
-  varsByName: Map<string, VarDeclaration[]> | undefined,
+  varsByName: Map<string, BindingEntry[]> | undefined,
   rulesNode: object,
   parent: ScopeFrame | undefined,
   liveSlots?: Map<string, BindingCell>,
@@ -298,19 +298,10 @@ export function buildScopeFrame(
   const currentBindingsByName = new Map<string, BindingCell>();
 
   if (varsByName) {
-    for (const [name, decls] of varsByName) {
-      const entries: BindingEntry[] = [];
-      for (let i = 0; i < decls.length; i++) {
-        const decl = decls[i]!;
-        entries[i] = {
-          cell: {
-            value: decl.valueNode,
-            lookupIdentity: nextBindingCellLookupIdentity++,
-            sourceNode: decl,
-            readonly: decl.options?.readonly
-          },
-          sourceNode: decl
-        };
+    for (const [name, sourceEntries] of varsByName) {
+      const entries = sourceEntries.slice();
+      for (let i = 0; i < entries.length; i++) {
+        ensureBindingCellLookupIdentity(entries[i]!.cell);
       }
       declarationBucketsByName.set(name, entries);
       const currentEntry = entries[entries.length - 1];

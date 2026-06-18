@@ -54,6 +54,7 @@ import {
   lookupScopeFrameVariable,
   setScopeFrameDeclarationBinding,
   type BindingCell,
+  type BindingEntry,
   type ScopeFrame,
   type ScopeFrameCallableLookupResult
 } from './scope-frame.js';
@@ -764,6 +765,17 @@ function setAssignmentTargetBinding(
   }
 }
 
+function createVarDeclarationBindingEntry(decl: VarDeclaration): BindingEntry {
+  return {
+    cell: {
+      value: decl.valueNode,
+      sourceNode: decl,
+      readonly: decl.options?.readonly
+    },
+    sourceNode: decl
+  };
+}
+
 /**
  * The class representing a "declaration list".
  * CSS calls it this even though CSS Nesting
@@ -787,8 +799,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override allowRoot = true;
 
   functionsByName: Map<string, JsFunction | Func> | undefined;
-  /** Fast map: var name → ordered list of VarDeclarations registered in this scope. */
-  varsByName: Map<string, VarDeclaration[]> | undefined;
+  /** Fast map: var name -> ordered static VarDeclaration binding entries in this scope. */
+  varsByName: Map<string, BindingEntry[]> | undefined;
   /** Per-request cache: callable start-key -> ordered entries with remaining path keys. */
   callableLookupCache: Map<string, CallableLookupEntry[] | null> | undefined;
   directChildRuleEntries: Array<RulesEntryLike> | null | undefined;
@@ -1030,7 +1042,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!bucket) {
         varsByName.set(name, bucket = []);
       }
-      bucket.push(node);
+      bucket.push(createVarDeclarationBindingEntry(node));
     }
     return pendingDeclarationNames;
   }
@@ -1050,21 +1062,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): void {
     const localReadonly = inheritedReadonly || Boolean(this.options.readonly);
     if (this.options.rulesVisibility?.VarDeclaration === 'public') {
-      const value = this.rules;
-      for (let i = 0; i < value.length; i++) {
-        const node = value[i]!;
-        if (
-          !isNode(node, N.VarDeclaration)
-          || node.options?.setDefined
-          || !this._hasStaticName(node)
-        ) {
-          continue;
+      if (this.varsByName === undefined) {
+        this.prepareScopeFrameDeclarationIndex();
+      }
+      if (this.varsByName) {
+        for (const [name, entries] of this.varsByName) {
+          for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i]!;
+            setAssignmentTargetBinding(target, name, entry.cell, localReadonly && !entry.cell.readonly);
+          }
         }
-        setAssignmentTargetBinding(target, String(node.name.valueOf()), {
-          value: node.valueNode,
-          sourceNode: node,
-          readonly: localReadonly || Boolean(node.options?.readonly)
-        }, false);
       }
     }
 
@@ -1718,20 +1725,39 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           && canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration' })
         ) {
           const name = String(changedVariable.name.valueOf());
-          const cell: BindingCell = {
+          const varEntries = child.varsByName?.get(name);
+          let varEntry: BindingEntry | undefined;
+          if (varEntries?.length) {
+            for (let i = varEntries.length - 1; i >= 0; i--) {
+              const candidate = varEntries[i]!;
+              if (candidate.sourceNode === changedVariable) {
+                varEntry = candidate;
+                break;
+              }
+            }
+          }
+          const cell = varEntry?.cell ?? {
             value: changedVariable.valueNode,
             sourceNode: changedVariable,
-            readonly: Boolean(entry.readonly || changedVariable.options?.readonly)
+            readonly: Boolean(changedVariable.options?.readonly)
           };
           (entry.assignmentBindingsByName ??= new Map()).set(name, cell);
-          entry.assignmentReadonlyByName?.delete(name);
+          if (entry.readonly && !cell.readonly) {
+            (entry.assignmentReadonlyByName ??= new Set()).add(name);
+          } else {
+            entry.assignmentReadonlyByName?.delete(name);
+          }
           if (
             this._scopeFrame
             && !this._scopeFrame.currentBindingsByName.has(name)
             && this.directDeclarationChildEntryWinsAssignmentName(entries, i, name)
           ) {
             (this._scopeFrame.assignmentBindingsByName ??= new Map()).set(name, cell);
-            this._scopeFrame.assignmentReadonlyByName?.delete(name);
+            if (entry.assignmentReadonlyByName?.has(name)) {
+              (this._scopeFrame.assignmentReadonlyByName ??= new Set()).add(name);
+            } else {
+              this._scopeFrame.assignmentReadonlyByName?.delete(name);
+            }
           }
           patched = true;
           continue;
@@ -3794,7 +3820,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (!arr) {
             map.set(name, arr = []);
           }
-          arr.push(node as VarDeclaration);
+          const newEntry = createVarDeclarationBindingEntry(node as VarDeclaration);
+          arr.push(newEntry);
           if (this._scopeFrame) {
             let bucket = this._scopeFrame.declarationBucketsByName.get(name);
             if (!bucket) {
@@ -3808,16 +3835,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               }
             }
             if (!hasBucketEntry) {
-              const entry = {
-                cell: {
-                  value: (node as VarDeclaration).valueNode,
-                  sourceNode: node,
-                  readonly: node.options?.readonly
-                },
-                sourceNode: node as VarDeclaration
-              };
-              bucket.push(entry);
-              setScopeFrameDeclarationBinding(this._scopeFrame, name, entry);
+              bucket.push(newEntry);
+              setScopeFrameDeclarationBinding(this._scopeFrame, name, newEntry);
             } else {
               const currentEntry = bucket[bucket.length - 1];
               if (currentEntry) {

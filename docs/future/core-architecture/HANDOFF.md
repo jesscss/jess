@@ -103,9 +103,9 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding implementation pass deleting assignment-summary object
-  allocation, collapsing duplicate assignment child-entry scans, and tightening
-  late static assignment frame patches.
+- Latest pass: binding implementation pass moving static variable binding-cell
+  ownership into registration/indexing and rejecting assignment-map entry-shape
+  churn.
 - Verdict: accepted as an allocation cleanup on the registryless
   assignment-target path. `RulesEntryLike` now carries canonical
   `assignmentBindingsByName` plus an `assignmentReadonlyByName` overlay when an
@@ -114,38 +114,36 @@ with `--no-verify` after the explicit gates pass.
   `lookupScopeFrameVariable(...)` reports readonly on the resolved hit. Public
   assignment cells still win over uncovered surfaces; optional-only and dynamic
   public child targets stay uncovered so `setDefined` can use the existing
-  direct fallback. Assignment target collection now writes into caller-owned
-  child entries or directly into the destination `ScopeFrame`; the temporary
-  `{ bindingsByName, readonlyByName }` summary object is gone. The frame and
-  entry assignment-target paths now share the same child-entry scan, with an
-  optional frame-shadow guard for current bindings. Late static public child
-  variable registration patches the parent child-entry summary and frame
-  assignment target by key only when that key can be consulted. No speed claim.
-- New traversal: no new ordinary lookup traversal was added. This pass keeps
-  the existing child-entry scan for assignment summary construction; the
-  duplicate frame-target scan was collapsed back into the same accumulator path
-  with an optional frame-shadow guard. The
-  `directDeclarationChildEntryWinsAssignmentName(...)` loop still scans later
-  sibling entries only on late static variable registration, not ordinary
-  lookup, to preserve source-order winner semantics without rebuilding the
-  child summary. The inner assignment-map loops copy carried entry facts into
-  caller-owned targets and replace the deleted summary object handoff.
+  direct fallback. `Rules.varsByName` now stores `BindingEntry` records instead
+  of bare `VarDeclaration`s, so static registration/indexing owns the canonical
+  cell before frame construction. Assignment maps keep the simpler
+  `BindingCell` value shape and reuse those cells instead of switching to
+  `BindingEntry` values. No speed claim.
+- New traversal: no new ordinary lookup traversal was added. Static
+  assignment-target collection now iterates `varsByName` binding entries rather
+  than rescanning `Rules.value`, so the existing static registration index
+  feeds both frame buckets and assignment targets. `buildScopeFrame(...)`
+  clones the entry array but reuses each entry/cell; follow-up item 58 checks
+  whether that array clone is still needed for snapshot isolation.
 - Review-flagged allocations: the previous cloned readonly assignment map was
   deleted. Production still lazily allocates `assignmentBindingsByName` only
   for `ScopeFrame`s that have modeled public child/import variable assignment
   facts, and may allocate `assignmentReadonlyByName` Sets when an edge carries
   readonly semantics not already present on the canonical cell. The per-name
   overlay is retained because a child-entry target can mix writable own
-  assignment targets with readonly child-edge targets. Focused tests prove
-  ordinary current reads do not see assignment-only cells, writable/readonly
-  imported assignments do not crawl parent/imported/child `Rules.value`,
-  duplicate public assignment targets use the later target, late static child
-  registration does not rebuild child `Rules.value`, current-binding shadows
-  avoid frame assignment map allocation, later child assignment targets keep
-  winning when an earlier child registers late, and readonly assignment rejects
-  before RHS eval. The test-only `adopt(...)` calls create late-registration
-  fixtures; the thrown errors and `try/finally` blocks are test-only crawl
-  guards.
+  assignment targets with readonly child-edge targets. `varsByName` now
+  allocates `BindingEntry` cells as semantic binding state during static
+  declaration indexing; assignment targets reuse those cells. Focused tests
+  prove ordinary current reads do not see assignment-only cells,
+  writable/readonly imported assignments do not crawl parent/imported/child
+  `Rules.value`, duplicate public assignment targets use the later target, late
+  static child registration does not rebuild child `Rules.value`,
+  current-binding shadows avoid frame assignment map allocation, later child
+  assignment targets keep winning when an earlier child registers late,
+  assignment target cells are identical to the child current-binding cells, and
+  readonly assignment rejects before RHS eval. The test-only `adopt(...)` calls
+  create late-registration fixtures; the thrown errors and `try/finally` blocks
+  are test-only crawl guards.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production arrays were added. The
   `RulesEntryLike` object literals are the existing child-entry records, now
@@ -159,12 +157,14 @@ with `--no-verify` after the explicit gates pass.
 - Allocation changes: no new runtime nodes or public materialization. The
   cloned readonly map allocation and temporary assignment summary object are
   gone; readonly assignment semantics still ride a sparse per-name overlay Set.
-  The late static variable patch avoids frame assignment map allocation when a
-  current binding or later child entry shadows the key, but still may allocate
-  or touch assignment maps and one `BindingCell` when the patched key wins.
-  Items 55 and 56 track remaining binding-cell ownership tightening. The
-  frame-owned assignment map remains lazy and ordinary reads still do not
-  consult assignment cells.
+  Static `BindingCell` creation moved to `varsByName` `BindingEntry`
+  construction, so assignment targets no longer create parallel cells for known
+  static declarations. Late static registration now reuses that same entry for
+  an already-built `ScopeFrame` bucket instead of creating a second cell.
+  Assignment maps still allocate lazily when consulted, and
+  `buildScopeFrame(...)` currently clones entry arrays while reusing cells;
+  items 57 and 58 track the remaining dynamic-promotion constructor and array
+  allocation tightening. Ordinary reads still do not consult assignment cells.
 - Evidence: focused `import-style.test.ts` slices prove configured `with`/`set`
   child-surface property hits and reference-import selector-list/nested
   property hits stay off `Rules.find(...)`; focused `reference.test.ts` slices

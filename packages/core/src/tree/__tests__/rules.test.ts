@@ -1934,6 +1934,7 @@ describe('Rules', () => {
           child
         ]);
         const parentFrame = node.getScopeFrame(undefined, false);
+        const publicFrame = publicRules.getScopeFrame(parentFrame, false);
         child.scopeFrame = child.getScopeFrame(parentFrame, false);
         const originalParentValue = node.value;
         const originalOptionalValue = optional.value;
@@ -1999,6 +2000,7 @@ describe('Rules', () => {
         }
 
         expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
+        expect(parentFrame.assignmentBindingsByName?.get('one')).toBe(publicFrame.currentBindingsByName.get('one'));
         expect(publicDecl.valueNode.toString()).toBe('three');
         expect(optionalDecl.valueNode.toString()).toBe('one');
       });
@@ -2022,6 +2024,7 @@ describe('Rules', () => {
           child
         ]);
         const parentFrame = node.getScopeFrame(undefined, false);
+        const publicFrame = publicRules.getScopeFrame(parentFrame, false);
         child.scopeFrame = child.getScopeFrame(parentFrame, false);
         const originalParentValue = node.value;
         const originalPublicValue = publicRules.value;
@@ -2073,6 +2076,7 @@ describe('Rules', () => {
         }
 
         expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
+        expect(parentFrame.assignmentBindingsByName?.get('one')).toBe(publicFrame.currentBindingsByName.get('one'));
         expect(earlierDecl.valueNode.toString()).toBe('one');
         expect(laterDecl.valueNode.toString()).toBe('three');
       });
@@ -2112,6 +2116,7 @@ describe('Rules', () => {
             value: originalPublicRegistrationValue
           });
         }
+        const publicFrame = publicRules.getScopeFrame(parentFrame, false);
         child.scopeFrame = child.getScopeFrame(parentFrame, false);
         const originalParentValue = node.value;
         const originalPublicValue = publicRules.value;
@@ -2163,6 +2168,7 @@ describe('Rules', () => {
         }
 
         expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
+        expect(parentFrame.assignmentBindingsByName?.get('one')).toBe(publicFrame.currentBindingsByName.get('one'));
         expect(publicDecl.valueNode.toString()).toBe('three');
       });
 

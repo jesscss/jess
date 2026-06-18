@@ -864,7 +864,7 @@ child-entry targets or the destination `ScopeFrame`, with an optional
 frame-shadow guard that skips current bindings before assignment maps allocate.
 Focused setDefined tests keep current-shadow and later-child-shadow cases green.
 
-55. [ ] Move assignment target binding cell creation onto declaration
+55. [x] Move assignment target binding cell creation onto declaration
 registration/adoption when the declaration is already known static. Scope:
 `collectPublicVariableAssignmentBindingsInto(...)`, direct child entry
 construction, late static registration patching, and `VarDeclaration` static
@@ -873,8 +873,16 @@ objects during summary collection when registration already has the canonical
 declaration and can carry or reuse a cell. Acceptance: focused setDefined tests
 stay green, ordinary reads still ignore assignment targets, and aggressive
 review accounts for any remaining cell allocation as semantic placement state.
+Current evidence: `Rules.varsByName` now stores `BindingEntry` values instead
+of raw `VarDeclaration` nodes, so static declaration registration/indexing owns
+the canonical binding cell before a `ScopeFrame` exists. `buildScopeFrame(...)`
+reuses those entries, assignment-target collection writes their cells into
+child/frame assignment maps, and late static child registration reuses the
+already-registered entry cell. Focused setDefined tests prove parent
+assignment targets share the child current-binding cell identity and ordinary
+reads still ignore assignment-only cells.
 
-56. [ ] Decide whether assignment target maps can store `BindingEntry`
+56. [x] Decide whether assignment target maps can store `BindingEntry`
 directly instead of bare `BindingCell`. Scope:
 `ScopeFrame.assignmentBindingsByName`, `RulesEntryLike.assignmentBindingsByName`,
 `lookupScopeFrameVariable(...includeAssignmentTargets)`, and reference handle
@@ -882,7 +890,35 @@ identity. Goal: see if assignment targets can reuse declaration bucket entries
 and avoid parallel source-node/value cell construction without making ordinary
 reads consult assignment targets. Acceptance: focused setDefined tests stay
 green, handle identity remains stable, and the tracker records whether this
-unblocks item 55 or is rejected as too much hot-path shape churn.
+unblocks item 55 or is rejected as too much hot-path shape churn. Current
+evidence: rejected for now. Storing `BindingEntry` directly in assignment maps
+is unnecessary after item 55 because `varsByName` owns `BindingEntry` and
+assignment maps can keep the simpler `BindingCell` value shape while reusing
+the same canonical cell. Focused reference handle tests prove static variable
+binding handle identity/freshness still holds, and setDefined tests prove
+assignment-target identity reuse.
+
+57. [ ] Collapse duplicate static binding entry creation between
+`createVarDeclarationBindingEntry(...)` and pending dynamic promotion. Scope:
+`createVarDeclarationBindingEntry(...)`, `promoteResolvedPendingVarDecls(...)`
+in `reference.ts`, static registration, and dynamic-name promotion tests.
+Goal: ensure every path that turns a `VarDeclaration` into a frame binding uses
+one shared entry/cell constructor without adding an import cycle or helper
+ladder. Acceptance: focused reference dynamic promotion tests and setDefined
+tests stay green, aggressive review accounts for any remaining object creation
+as semantic binding state. Current evidence: late static registration now
+pushes the same `BindingEntry` into `Rules.varsByName` and the already-built
+`ScopeFrame` bucket, so that path no longer creates a parallel cell. Dynamic
+pending promotion still needs the shared-constructor audit.
+
+58. [ ] Revisit `varsByName` array cloning during `buildScopeFrame(...)` after
+entries own cells. Scope: `buildScopeFrame(...)`, `Rules.varsByName` mutation
+after frame creation, late static registration, and declaration bucket
+source-order tests. Goal: prove whether `declarationBucketsByName` can reuse
+the `varsByName` entry arrays directly, or document why cloning the array is
+needed to keep frame snapshots stable. Acceptance: focused source-order,
+late-registration, and reference handle tests stay green; aggressive review
+records clone retention or deletion.
 
 ## Latest Binding Baseline
 
