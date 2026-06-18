@@ -2819,7 +2819,7 @@ function finalizeDeclarationReferenceResult(
   };
   try {
     if (hasImportant) {
-      context.pushImportantSource();
+      context.pushImportantSource(declaration.important);
       importantPushed = true;
     }
     const evaluated = evaluateReferenceValueNode(declarationValue, context);

@@ -1155,6 +1155,17 @@ describe('Declaration', () => {
     expect(context.hasImportantSource).toBe(false);
   });
 
+  it('finalizes public contextual important state with the exact source flag when available', () => {
+    const important = any('!important', { role: 'flag' });
+    context.pushImportantSource(important);
+
+    const state = finalizeContextualImportantPublicState(context, undefined);
+
+    expect(state.important).toBe(important);
+    expect(state.importantText).toBeUndefined();
+    expect(context.hasImportantSource).toBe(false);
+  });
+
   it('collects declaration merge adapter items without empty placeholders', () => {
     expect(collectDeclarationMergeAdapterItems(list([new Nil(), any(''), any('1px')])).map(item => item.valueOf())).toEqual(['1px']);
   });

@@ -403,22 +403,21 @@ export class Context {
   }
 
   /**
-   * Stack to track when a value comes from an important declaration
-   * Used to propagate !important flag to containing declarations
+   * Stack to track when a value comes from an important declaration.
+   * The exact source leaf is carried when available so downstream render/public
+   * surfaces can preserve it instead of synthesizing a replacement flag node.
    */
-  private _importantSourceStack: number = 0;
+  private _importantSourceStack: (Any<'flag'> | true)[] = [];
   get hasImportantSource() {
-    return this._importantSourceStack > 0;
+    return this._importantSourceStack.length > 0;
   }
 
-  pushImportantSource() {
-    this._importantSourceStack++;
+  pushImportantSource(source?: Any<'flag'>) {
+    this._importantSourceStack.push(source ?? true);
   }
 
   popImportantSource() {
-    if (this._importantSourceStack > 0) {
-      this._importantSourceStack--;
-    }
+    return this._importantSourceStack.pop();
   }
 
   popReference() {

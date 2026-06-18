@@ -5197,6 +5197,35 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       return new List(mergedItems);
     };
+    const inlineCrossScopeMergedLeadingReference = (
+      decl: Node,
+      priorValue: Node,
+      assign: string
+    ): Node => {
+      if (!isNode(decl, N.Declaration)) {
+        return decl;
+      }
+      const currentValue = getDeclValue(decl);
+      const container = assign === '&_:'
+        ? (isNode(currentValue, N.Sequence) ? currentValue : undefined)
+        : (isNode(currentValue, N.List) ? currentValue : undefined);
+      if (!container || container.items.length === 0) {
+        return decl;
+      }
+      const first = container.items[0];
+      if (!isNode(first, N.Reference) || first.options?.type !== 'declaration') {
+        return decl;
+      }
+      const inlinedItems = new Array<Node>(container.items.length);
+      inlinedItems[0] = copyMergedValue(priorValue);
+      for (let i = 1; i < container.items.length; i++) {
+        inlinedItems[i] = copyMergedValue(container.items[i]!);
+      }
+      const inlinedValue = assign === '&_:'
+        ? spaced(inlinedItems)
+        : new List(inlinedItems);
+      return replaceDeclarationValue(decl, inlinedValue);
+    };
     const composeMergedValue = (
       decl: Node,
       ownerRules: Rules,
@@ -5298,15 +5327,26 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let currentAccumulatedValue: Node | undefined;
 
       const prior = lastVisibleByName.get(name);
+      const priorAccumulatedValue = accumulatedValueByName.get(name);
       const needsCrossScopeCompose = prior
         && prior.ownerRules !== ownerRules;
-      if (prior && needsCrossScopeCompose) {
+      const crossesMixinOutputBoundary = Boolean(
+        prior?.ownerRules.options.mixinOutputSlot
+        || ownerRules.options.mixinOutputSlot
+      );
+      const shouldComposeAcrossScopes = Boolean(
+        needsCrossScopeCompose && !crossesMixinOutputBoundary
+      );
+      if (priorAccumulatedValue && shouldComposeAcrossScopes) {
+        currentNode = inlineCrossScopeMergedLeadingReference(currentNode, priorAccumulatedValue, assign);
+      }
+      if (prior && shouldComposeAcrossScopes) {
         const composed = composeMergedValue(
           currentNode,
           ownerRules,
           prior.node,
           assign,
-          accumulatedValueByName.get(name)
+          priorAccumulatedValue
         );
         currentAccumulatedValue = composed?.value ?? currentAccumulatedValue;
         currentNode = composed?.node ?? currentNode;

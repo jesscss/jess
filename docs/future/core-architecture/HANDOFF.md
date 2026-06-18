@@ -103,6 +103,53 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Declaration` important-source transport plus callable-ruleset
+  merge replay split.
+- Verdict: accepted as a bounded declaration-lane fix. Context now carries the
+  exact source `!important` leaf when a declaration reference contributes it, so
+  public declaration finalization can preserve the real flag node instead of
+  minting a replacement. Cross-scope merged declaration coalescing also stops
+  replaying already-carried merge history across mixin-output `Rules` wrappers,
+  so callable-ruleset property chains keep one canonical merged sequence
+  instead of concatenating the same prior items again. No speed claim.
+- New traversal: none. The new `inlineCrossScopeMergedLeadingReference(...)`
+  helper only rewrites the first merged container slot when an existing
+  declaration-reference placeholder is present; it does not add a new scan over
+  declaration families beyond the existing coalesce walk.
+- Review-flagged allocations: one inlined item array can be built when a
+  cross-scope merged declaration still carries the leading declaration-reference
+  placeholder. That array replaces duplicate merged output growth on the
+  callable-ruleset lane and stays inside the existing coalesce boundary.
+- New node/materialization: no new public materialization lane. The pass may
+  build one replacement merged `List`/`Sequence` only when rewriting the
+  carried leading declaration-reference placeholder or preserving the exact
+  source `!important` leaf on the emitted declaration surface.
+- Render path: render still writes declaration text directly. The important
+  source fix only changes which flag node public declaration finalization
+  carries forward; the callable-ruleset fix prevents mixin-output coalescing
+  from re-merging history that the current declaration render state already
+  carries.
+- Helper/API surface: one local `Rules._coalesceMergedDeclarations(...)`
+  helper, `inlineCrossScopeMergedLeadingReference(...)`, plus the context
+  important-source stack now carrying an optional exact flag node. No public API
+  added.
+- Metadata mutations: none added. The context important-source stack now stores
+  an optional exact `Any<'flag'>` source leaf instead of a bare counter so the
+  downstream declaration boundary can preserve the real node identity.
+- Routine error control: none added. Existing reference cleanup still pops the
+  important-source stack on rejection paths.
+- Allocation changes: deletes the public `!important` replacement-node synthesis
+  for exact-source declaration references and rejects the repeated merged output
+  concatenation across mixin-output boundaries.
+- Evidence: focused declaration tests passed for `finalizes public contextual
+  important state with the exact source flag when available`, `continues a
+  property merge chain with direct important state after mixin output`, and
+  `continues a property merge chain after a callable ruleset emits the first
+  declaration`. The full `declaration.test.ts` suite passed. Focused reference
+  cleanup tests for async important-source rejection and merged-finalization
+  rejection also passed, and a focused mixin-ruleset placement test still
+  passed after the mixin-output coalesce change.
+
 - Latest pass: `Declaration` synthetic scalar `writeSyntax` direct emit split.
 - Verdict: accepted as a bounded serializer cut inside the active
   `Declaration` row. Plain writer-only `Declaration.writeSyntax(...)` calls for

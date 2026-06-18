@@ -139,8 +139,13 @@ export function finalizeContextualImportantPublicState(
   if (!context.hasImportantSource) {
     return important ? { important } : {};
   }
-  context.popImportantSource();
-  return important ? { important } : { important: any('!important', { role: 'flag' }) };
+  const sourceImportant = context.popImportantSource();
+  if (important) {
+    return { important };
+  }
+  return sourceImportant && sourceImportant !== true
+    ? { important: sourceImportant }
+    : { important: any('!important', { role: 'flag' }) };
 }
 
 export function collectDeclarationMergeAdapterItems(
