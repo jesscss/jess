@@ -1,5 +1,6 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, AssignmentType, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
 import { Context } from '../../context.js';
+import type { ReferenceOptions } from '../reference.js';
 import { isNode } from '../util/is-node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
@@ -5324,6 +5325,54 @@ describe('reference', () => {
       excludedNodes[0] = earlier;
 
       expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(firstHandle);
+    });
+
+    it('static property handles invalidate when bindOutput exposes the output identity', async () => {
+      const source = decl({ name: 'color', value: any('red') }, {
+        normalizedFromAssign: AssignmentType.MergeList
+      });
+      const output = decl({ name: 'color', value: any('blue') }, {
+        normalizedFromAssign: AssignmentType.MergeList
+      });
+      const node = rules([source, output]);
+      setRulesContext(node);
+      let boundOutputNode: Node | undefined;
+      const options: ReferenceOptions & {
+        excludedNode0: Node;
+        readonly excludedNode1?: Node;
+        readonly excludedNodesLength: number;
+      } = {
+        type: 'property',
+        fallbackValue: any('fallback'),
+        excludedNode0: source,
+        get excludedNode1() {
+          return boundOutputNode;
+        },
+        get excludedNodesLength() {
+          return boundOutputNode ? 2 : 1;
+        },
+        requiredNormalizedFromAssign: [
+          AssignmentType.MergeList,
+          AssignmentType.MergeSequence,
+          '+,:',
+          '+_:'
+        ]
+      };
+      const lookupRef = ref({ key: 'color' }, options);
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const firstHandle = lookupRef._rulesLookupHandle;
+      expect(firstHandle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+      if (!firstHandle || firstHandle.returnVal === 'cached-rules-lookup-miss' || !('node' in firstHandle.returnVal)) {
+        expect.fail('Expected direct declaration occurrence handle');
+      }
+
+      boundOutputNode = firstHandle.returnVal.node;
+
+      expect(lookupRef.eval(context).valueOf()).toBe('fallback');
       expect(lookupRef._rulesLookupHandle).not.toBe(firstHandle);
     });
 

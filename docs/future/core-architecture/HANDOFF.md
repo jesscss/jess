@@ -103,41 +103,64 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: variable reference facade collapse plus source-static handle
-  read allocation trim.
-- Verdict: accepted as a binding/lookup hot-path machinery cut with behavior
-  proof. No speed claim.
+- Latest pass: setDefined callback closure deletion plus constrained direct
+  declaration cache guard.
+- Verdict: accepted as a binding/lookup machinery cut with behavior proof. No
+  speed claim.
 - New traversal: no new runtime traversal, recursion, sort, map/filter, parent
-  walk, or child scan. Variable lookup still uses the existing scope-frame
-  lookup and occurrence fallback only for uncovered/unsupported cases.
+  walk, or child scan. The setDefined fallback still uses the existing direct
+  declaration parent/fallback walk. Constrained declaration lookups now avoid
+  the recursive direct-declaration cache instead of adding a replacement cache.
 - New node/materialization: no runtime node materialization. No render-only or
-  eval-to-string nodes were added.
-- Render path: no render/stringification path change. The variable lookup path
-  still returns the same binding handle or occurrence values, and source-static
-  handle reads still return through the existing freshness semantics.
-- Helper/API surface: deleted private `lookupVariableReference(...)` and added
-  one private `readCurrentRulesLookupHandleValue(...)` tail shared by normal
-  and source-static handle reads. The net effect removes a facade/fallback
-  call layer and avoids constructing declaration fallback options for covered
-  variable frame hits/misses.
+  eval-to-string nodes were added. One focused test constructs declarations and
+  a reference to prove scalar output-binding identity invalidation.
+- Render path: no render/stringification path change. Reference/property
+  lookup still returns the same occurrence or fallback value; the changed cache
+  guard only prevents constrained lookups from reusing a key/family recursive
+  match that ignored scalar exclusions.
+- Helper/API surface: deleted
+  `applySetDefinedDeclarationReadonlyOccurrence(...)`,
+  `SetDefinedDeclarationMatchHandler`, and the `onSetDefinedMatch` callback
+  lane. Added one setDefined-only
+  `findWritableSetDefinedDeclarationOccurrence(...)` helper that returns the
+  final occurrence or throws readonly for the final chosen match. Mutation
+  still lives in `Rules.registerNode(...)`. Review-flagged `throw new Error`
+  and `foundRules.adopt(newDeclaration)` lines are the pre-existing
+  non-variable setDefined fallback mutation/error path moved out of the
+  callback closure, not new hot-path machinery.
 - Metadata mutations: none. No source/parent/frozen metadata changed.
-- Allocation changes: `performVariableRulesLookup(...)` now tries scope-frame
-  facts before building declaration fallback options; covered variable misses
-  return immediately. `tryReadSourceStaticRulesLookupHandle(...)` compares the
-  stored handle fields directly and no longer creates a temporary
-  `RulesLookupHandleShape` object to call the generic reader.
-- Rejected/observed in this pass: the setDefined callback closure remains open
-  because the callback carries occurrence plus inherited readonly into mutation
-  semantics; a read-only sub-agent audit is running for the next safe shape.
-- Evidence: focused `reference.test.ts` variable/source-static/search-scope
-  matrix passed, and `verify:binding-lookup-hot-paths` passed with a new guard
-  against reintroducing `lookupVariableReference(...)`. Focused
-  `control.test.ts` and `rules.test.ts` setDefined/current-binding slices,
-  targeted ESLint, `@jesscss/core` build, `git diff --check`, and
-  `verify:aggressive-cutting-review` passed. No speed claim.
+- Allocation changes: setDefined fallback no longer allocates a callback
+  closure to carry the selected occurrence/readonly state back into `Rules`.
+  Direct declaration recursive cache entries are skipped for constrained
+  lookups (`excludedNode0/1`, `excludedNodes`, `excludedNodesLength`, filters,
+  or `requiredNormalizedFromAssign`) so scalar bind-output identity changes
+  cannot reuse stale unconstrained cache state.
+- Rejected/observed in this pass: a broader callable child-surface cut was
+  inspected but not forced without a sharper failing proof; the existing tests
+  already cover many simple callable miss surfaces. The changed baseline run
+  surfaced broader render/string transport failures and then stopped producing
+  output while core Vitest workers stayed active, so it was interrupted and
+  recorded in `BINDING-LOOKUP-REMAINING.md` rather than claimed green.
+- Review-flagged objects/errors: the new `ReferenceOptions` object is test
+  scaffolding to model the existing `bindOutput` scalar getter shape. The new
+  `ReferenceError` creation is the existing readonly semantic exception moved
+  into the returned-occurrence helper; misses still use `undefined`/fallback,
+  not routine error control.
+- Evidence: focused `rules.test.ts`, `reference.test.ts`, `mixin.test.ts`, and
+  `control.test.ts` setDefined slices passed. Focused `reference.test.ts`
+  static property handle/constraint slices passed, including the new
+  bind-output scalar exclusion invalidation proof. `verify:binding-lookup-hot-paths`
+  passed with guards against the deleted setDefined callback shape.
+  `@jesscss/core` build passed before tracker updates. No speed claim.
 - Merge note: the branch also incorporates the latest serialization transport
   work from `origin/dev`; keep that progress tracked in
   `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.
+- Merge-carried serialization review: `origin/dev` also includes Ruleset
+  source-direct/bare-ampersand callback predicate cleanup in
+  `packages/core/src/tree/ruleset.ts`. `canRenderSourceDirectly(...)` and
+  `isBareAmpersandSelector(...)` now use indexed loops over existing child
+  arrays instead of `.every(...)` callback predicates. That is tracked in the
+  serialization focus, not new binding lookup logic. No speed claim.
 - Merge-carried serialization review: `origin/dev` also includes the AtRule
   no-op eval rethrow deletion in `packages/core/src/tree/at-rule.ts` plus
   serialization tracker updates. That removes catch/rethrow scaffolding and is
