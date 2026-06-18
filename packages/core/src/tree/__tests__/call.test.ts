@@ -13,7 +13,7 @@ import { N } from '../node-type.js';
 import { paren } from '../paren.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
-import { OutputWriter } from '../util/print.js';
+import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { defineFunction } from '../../define-function.js';
 import { MixinCollection } from '../util/callable-collection.js';
@@ -225,12 +225,33 @@ describe('Call', () => {
     expect(writer.readbacks).toBe(0);
   });
 
+  it('serializes explicit empty CSS call args without writer readback scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = call({ name: 'button', args: list([]) });
+
+    expect(rule.toTrimmedString({ writer })).toBe('button()');
+    expect(writer.toString()).toBe('button()');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
   it('serializes empty optional-important CSS calls without writer readback scaffolding', () => {
     const writer = new CountingWriter();
     const rule = call({ name: 'missing' }, { silentFail: true, markImportant: true });
 
     expect(rule.toTrimmedString({ writer })).toBe('missing?() !important');
     expect(writer.toString()).toBe('missing?() !important');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('writes explicit empty CSS call args without arg trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({ name: 'button', args: list([]) });
+
+    rule.writeSyntax(getPrintOptions({ writer }));
+
+    expect(writer.toString()).toBe('button()');
     expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });

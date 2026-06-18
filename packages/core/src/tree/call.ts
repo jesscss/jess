@@ -927,7 +927,7 @@ export class Call extends Node<CallValue, CallOptions> {
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    if (!this.args && !this.contentNode && typeof this.name === 'string') {
+    if ((!this.args || this.args.items.length === 0) && !this.contentNode && typeof this.name === 'string') {
       const out = `${this.name}${this._options?.silentFail ? '?' : ''}()${this._options?.markImportant ? ' !important' : ''}`;
       w.add(out, this);
       return out;
@@ -971,7 +971,7 @@ export class Call extends Node<CallValue, CallOptions> {
       w.add('?');
     }
     w.add('(');
-    if (args) {
+    if (args && args.items.length > 0) {
       const argsMark = w.mark();
       args.writeSyntax(options);
       w.trimHorizontalStartSince(argsMark);

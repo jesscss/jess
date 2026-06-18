@@ -103,27 +103,25 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Declaration source-free assignment child predicate cleanup in
-  `packages/core/src/tree/declaration.ts`.
-- Verdict: accepted as a localized callback-allocation cut matching the
-  Declaration tracker row. No speed claim.
-- New traversal: one indexed loop over the existing source-free
-  `List`/`Sequence` child array, replacing the prior `.every(...)` callback
-  scan in `canReuseSourceFreeAssignmentInput(...)`. No new parent/source walk
-  or additional collection is introduced; the loop carries the same boolean
-  predicate result without callback allocation.
-- New node/materialization: none.
-- Render path: source-free static assignment input reuse keeps the same
-  `reuseLeaf(...)`/copy decision, but checks reusable child leaves directly
-  instead of allocating a predicate callback. No declaration output,
-  merge-adapter state, or custom-property text path changed.
+- Latest pass: Call explicit-empty-args source fast path in
+  `packages/core/src/tree/call.ts`.
+- Verdict: accepted as a localized source/writeSyntax writer-readback and
+  trim-mark cut. No speed claim.
+- New traversal: none.
+- New node/materialization: none in production. The review-flagged
+  `CountingWriter` constructions and `list([])` call fixtures are test-only
+  proof scaffolding for the no-mark/no-readback assertions.
+- Render path: no dynamic render behavior changed. Source serialization now
+  treats explicit empty arg lists like absent args for string-name empty calls,
+  returning the known `name?() !important` text without writer readback; direct
+  `writeSyntax(...)` skips the empty-args trim mark.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: removes one `.every(...)` callback allocation from the
-  source-free assignment input reuse predicate.
-- Rejected/observed in this pass: custom-property raw source,
-  duplicate-comparison/materialization, and merge-state boundaries remain open
-  in the Declaration row.
+- Allocation changes: removes the source empty-list call mark/readback and the
+  empty-list args trim mark.
+- Rejected/observed in this pass: callable output value selection,
+  `evalArgNodes(...)` copy pressure, non-scalar/custom/trivia arg trim marks,
+  async/helper ladders, and repeated eval remain open in the Call row.
 - Merge-carried binding review: merging `origin/dev` also brought the variable
   reference facade collapse and source-static handle read allocation trim in
   `packages/core/src/tree/reference.ts`, plus binding tracker/verifier
@@ -131,8 +129,7 @@ with `--no-verify` after the explicit gates pass.
   runtime node materialization was added, and detailed status remains in
   `BINDING-LOOKUP-REMAINING.md`. The serialization pass keeps
   `NODE-REWRITE-TRACKER.md` as the active queue.
-- Evidence: focused `declaration.test.ts` custom-property/source-free reuse
-  slices and `reference.test.ts` declaration-container/source-static slices
+- Evidence: focused `call.test.ts` empty-call/source/writeSyntax/content slices
   passed. Full gates are required before commit.
 - Merge-carried binding review: merging `origin/dev` also brought setDefined
   callback closure deletion plus constrained direct declaration cache guards in
