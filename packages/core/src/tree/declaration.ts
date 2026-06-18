@@ -374,6 +374,20 @@ const maybeTrimmedScalarText = (node: Node): string | undefined => {
     : text;
 };
 
+const maybeDirectSyntheticDeclarationLeafText = (node: Node): string | undefined => {
+  if (
+    node.type !== 'Any'
+    && node.type !== 'Anonymous'
+    && node.type !== 'Keyword'
+  ) {
+    return undefined;
+  }
+  if (node._location !== undefined) {
+    return undefined;
+  }
+  return maybeTrimmedScalarText(node);
+};
+
 const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions): string | undefined => {
   const atomicValue = unwrapAtomicCustomValue(node);
   if (!isLessFunctionFallbackCall(atomicValue)) {
@@ -716,7 +730,38 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return this.declTrimmedString(options);
   }
 
+  private writeDirectSyntheticScalarSyntax(options: ReturnType<typeof getPrintOptions>): boolean {
+    if (options.context !== undefined) {
+      return false;
+    }
+    const nameText = maybeDirectSyntheticDeclarationLeafText(this.name);
+    const valueText = maybeDirectSyntheticDeclarationLeafText(this.valueNode);
+    if (nameText === undefined || valueText === undefined || nameText.startsWith('--')) {
+      return false;
+    }
+    const importantText = this.important === undefined
+      ? undefined
+      : maybeDirectSyntheticDeclarationLeafText(this.important);
+    if (this.important !== undefined && importantText === undefined) {
+      return false;
+    }
+    const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
+    const printedAssign = normalizedFromAssign ? AssignmentType.Default : assign;
+    const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
+    const w = options.writer!;
+    w.add(nameText, this.name);
+    w.add(effAssign === ':' ? ': ' : ` ${effAssign} `);
+    w.add(valueText, this.valueNode);
+    if (importantText !== undefined) {
+      w.add(` ${importantText}`, this.important);
+    }
+    return true;
+  }
+
   override writeSyntax(options: ReturnType<typeof getPrintOptions>): void {
+    if (this.writeDirectSyntheticScalarSyntax(options)) {
+      return;
+    }
     this.writeDeclarationValueSyntax({
       name: this.name,
       value: this.valueNode,

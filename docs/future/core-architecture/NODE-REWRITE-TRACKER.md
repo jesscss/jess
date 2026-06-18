@@ -144,7 +144,11 @@ when choosing among unfinished serialization rows. Hot unfinished rows include
   directly without a value mark/readback window, and merge-adapter render state
   no longer carries the stale `value` field. Source-free assignment input reuse
   now checks child leaf reuse with an indexed loop instead of a callback
-  predicate.
+  predicate. Plain writer-only `writeSyntax(...)` calls for synthetic scalar
+  declaration leaves now emit direct `name` / assign / value / `!important`
+  text without the outer declaration mark/readback window, while context-backed
+  render/string normalization stays on the existing declaration formatting
+  boundary.
   Custom-property raw source,
   duplicate-comparison/materialization, and merge-state boundaries remain.
 - [x] `Any` / `Keyword` / `Anonymous`: scalar token emission is owned by

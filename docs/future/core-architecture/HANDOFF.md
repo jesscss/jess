@@ -103,6 +103,42 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Declaration` synthetic scalar `writeSyntax` direct emit split.
+- Verdict: accepted as a bounded serializer cut inside the active
+  `Declaration` row. Plain writer-only `Declaration.writeSyntax(...)` calls for
+  synthetic scalar `Any`/`Anonymous`/`Keyword` leaves now emit `name`, assign,
+  value, and direct `!important` text without opening the outer declaration
+  mark/readback window that only normalized string/render paths need. Render
+  and context-backed declaration formatting stay on the existing declaration
+  normalization boundary. No speed claim.
+- New traversal: none.
+- Review-flagged allocations: none added on the declaration source path.
+- New node/materialization: none.
+- Render path: unchanged. The direct scalar fast path is explicitly disabled
+  when `options.context` is present, so render/context-backed declaration output
+  still goes through `writeDeclarationValueSyntax(...)` and
+  `formatNonCustomValue(...)`.
+- Helper/API surface: one node-private helper,
+  `writeDirectSyntheticScalarSyntax(...)`, plus a tiny scalar leaf predicate,
+  replace an outer writer mark/readback on the plain syntax surface without
+  adding public API.
+- Metadata mutations: no mutations added. One direct `_location` probe now
+  limits the fast path to synthetic leaves only, so parsed/source-backed
+  declarations stay on the established trivia/normalization path instead of
+  rediscovering exact-safe source semantics later.
+- Routine error control: none added.
+- Allocation changes: deletes one outer declaration `mark()` plus
+  `getSince(...)` readback on the covered plain `writeSyntax(...)` surface;
+  render and string-return paths keep their existing normalization boundary.
+- Evidence: focused declaration writer proof
+  `writes non-custom declaration syntax without outer string readback` passed.
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/declaration.test.ts`
+  still has two existing failures on `HEAD` and on a detached `HEAD`
+  verification worktree: `continues a property merge chain with direct
+  important state after mixin output` and `continues a property merge chain
+  after a callable ruleset emits the first declaration`. This pass does not add
+  a new declaration-suite failure.
+
 - Latest pass: binding callable frame-prep and final registryless lookup
   closure proof.
 - Verdict: accepted as a focused binding/lookup closeout. Ordinary static
