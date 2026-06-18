@@ -103,44 +103,47 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: declaration/import key-version proof and dynamic promotion
-  invalidation.
-- Verdict: accepted as a binding/cache-state cut and proof pass. Dynamic
-  declarations queued on the scope frame that resolve to static names now bump
-  the resolved key's declaration lookup version and invalidate only that key's
-  direct declaration bucket/cache entries. Static declaration writes keep the
-  prior per-key invalidation behavior; nested `Rules` child declaration
-  surfaces still use global direct declaration cache invalidation. No speed
-  claim.
-- New traversal: no new production traversal beyond the existing
-  `invalidateDirectDeclarationLookupKey(...)` loop over
-  `directDeclarationLookupCache.keys()` in `reference.ts` and the prior
-  `Rules.invalidateDirectDeclarationLookup(key)` loop. Test-only cache-key
-  snapshots iterate and filter cache keys to prove unrelated entries survive
-  per-key invalidation and that global child-surface invalidation clears the
-  cache.
-- New node/materialization: none in runtime. No nodes, wrappers, copied rules,
-  inherited metadata, or runtime materialized arrays were added. The focused
-  tests build arrays only to snapshot and compare cache keys.
-- Render path: no render/stringification path changed.
-- Helper/API surface: no new helper or public method. The existing
-  `invalidateDirectDeclarationLookupKey(...)` helper in `reference.ts` now also
-  advances the resolved key's declaration lookup version so cached reference
-  handles cannot survive dynamic-name promotion.
+- Latest pass: declaration-constraint option cleanup and merge-chain
+  output-binding proof.
+- Verdict: accepted as a binding/API-shape and handle-proof cut. The direct
+  declaration lookup option surface no longer accepts scalar exclusion fields,
+  and `ReferenceOptions` now uses semantic `excludedDeclarations` /
+  `requiredDeclarationAssignments` names instead of the old
+  `excludedNodes` / `requiredNormalizedFromAssign` reference-option names.
+  Production merge assignment carries source/output exclusions as one mutable
+  semantic list. No speed claim.
+- New traversal: no new production traversal. Direct declaration filtering
+  still checks the existing exclusion list with `includes(...)`; this pass
+  deletes the separate scalar option checks from direct lookup. The new loops
+  are verifier-only forbidden-token scans in
+  `verify:binding-lookup-hot-paths`, not runtime lookup work.
+- New node/materialization: no nodes, wrappers, copied rules, inherited
+  metadata, or runtime materialized arrays were added. Merge assignment already
+  needed an exclusion carrier; it is now one array allocated with the reference
+  and mutated at `bindOutput`, replacing hidden scalar getter fields. Focused
+  tests allocate semantic exclusion arrays and an options object to exercise
+  the public shape; those are test-only proof scaffolding.
+- Render path: declaration merge rendering still resolves through the existing
+  reference lookup path and writes the same output; no render-to-string readback
+  or public materialization path was added.
+- Helper/API surface: removed `ReferenceDeclarationConstraintOptions` and
+  `getReferenceDeclarationConstraintOptions(...)`. No new runtime helper was
+  added. `verify:binding-lookup-hot-paths` gained guard checks for the deleted
+  direct/public option fields.
 - Metadata mutations: none.
-- Allocation changes: dynamic promotion may allocate the existing per-key
-  declaration version map when the first promoted key needs a version bump; the
-  map is already the declaration-handle freshness mechanism used by static
-  declaration writes. This is accepted because it prevents stale reference
-  handles for the promoted key while avoiding global direct declaration cache
-  discard for unrelated keys. Test-only arrays collect declaration bridge hits
-  and cache-key snapshots for assertions.
-- Evidence: focused reference tests prove static per-key invalidation,
-  dynamic-name promotion key-version bumping, unrelated miss-cache preservation,
-  and global cache clearing for nested `Rules` declaration surfaces. The real
-  `@import(reference)` fixture now includes imported property occurrence
-  hit/miss proof and declaration-bridge spies for rendered variable hit/miss
-  references. Full gates are required before commit.
+- Allocation changes: the merge-assignment reference now keeps one semantic
+  exclusion array instead of scalar getter properties. Private reference handle
+  snapshots still store the first two excluded declaration identities and count
+  for freshness comparison; slimming or proving those internals is queued in
+  `BINDING-LOOKUP-REMAINING.md`.
+- Evidence: focused reference tests prove mutable assignment constraints,
+  mutable source/output declaration exclusions, output-binding handle
+  invalidation, wider exclusion lists staying cold, and the real Less
+  merge-chain fixture avoiding public property/declaration lookup bridges.
+  Focused declaration merge/assignment tests and
+  `verify:binding-lookup-hot-paths` passed. The full reference file still has
+  pre-existing complex-selector callable failures outside this declaration
+  constraint slice, so it is not used as this pass's completion gate.
 - Merge note: latest `origin/dev` also carries serialization work for
   `Operation`, `QueryCondition`, and scalar token-family at-rule header/leaf
   syntax readback cuts, plus Ruleset/Ampersand serialization cuts from the

@@ -4812,15 +4812,15 @@ describe('reference', () => {
           fn: () => any('blue')
         }));
         setRulesContext(await node.eval(context));
-        const ignoredExcludedNodes = [
+        const ignoredExcludedDeclarations = [
           decl({ name: 'color', value: any('red') }),
           decl({ name: 'color', value: any('green') }),
           decl({ name: 'color', value: any('black') })
         ];
         const lookupRef = ref({ key: 'paint' }, {
           type: 'function',
-          excludedNodes: ignoredExcludedNodes,
-          requiredNormalizedFromAssign: ['one', 'two', 'three', 'four', 'five']
+          excludedDeclarations: ignoredExcludedDeclarations,
+          requiredDeclarationAssignments: ['one', 'two', 'three', 'four', 'five']
         });
 
         const first = lookupRef.eval(context);
@@ -4831,10 +4831,10 @@ describe('reference', () => {
         expect(functionLookups).toBe(1);
         const firstHandle = lookupRef._rulesLookupHandle;
         expect(firstHandle?.lookupType).toBe('function');
-        expect(firstHandle && 'requiredNormalizedFromAssignKey' in firstHandle).toBe(false);
-        expect(firstHandle && 'excludedNodesLength' in firstHandle).toBe(false);
+        expect(firstHandle && 'requiredDeclarationAssignmentsKey' in firstHandle).toBe(false);
+        expect(firstHandle && 'excludedDeclarationCount' in firstHandle).toBe(false);
 
-        ignoredExcludedNodes[0] = decl({ name: 'color', value: any('mutated') });
+        ignoredExcludedDeclarations[0] = decl({ name: 'color', value: any('mutated') });
         const second = lookupRef.eval(context);
         expect(isNode(second)).toBe(true);
         if (isNode(second)) {
@@ -5353,10 +5353,10 @@ describe('reference', () => {
         decl({ name: 'background-color', value: any('blue') }, { normalizedFromAssign: '+,:' })
       ]);
       setRulesContext(await node.eval(context));
-      const requiredNormalizedFromAssign = ['+,:'];
+      const requiredDeclarationAssignments = ['+,:'];
       const lookupRef = ref({ key: 'background-color' }, {
         type: 'property',
-        requiredNormalizedFromAssign
+        requiredDeclarationAssignments
       });
 
       expect(lookupRef.eval(context).valueOf()).toBe('blue');
@@ -5374,10 +5374,10 @@ describe('reference', () => {
       const later = decl({ name: 'color', value: any('blue') });
       const node = rules([earlier, later]);
       setRulesContext(await node.eval(context));
-      const excludedNodes: Node[] = [later];
+      const excludedDeclarations: Node[] = [later];
       const lookupRef = ref({ key: 'color' }, {
         type: 'property',
-        excludedNodes
+        excludedDeclarations
       });
 
       expect(lookupRef.eval(context).valueOf()).toBe('red');
@@ -5386,7 +5386,7 @@ describe('reference', () => {
         kind: 'direct-declaration-occurrence'
       });
 
-      excludedNodes[0] = earlier;
+      excludedDeclarations[0] = earlier;
 
       expect(lookupRef.eval(context).valueOf()).toBe('blue');
       expect(lookupRef._rulesLookupHandle).not.toBe(firstHandle);
@@ -5401,22 +5401,12 @@ describe('reference', () => {
       });
       const node = rules([source, output]);
       setRulesContext(node);
-      let boundOutputNode: Node | undefined;
-      const options: ReferenceOptions & {
-        excludedNode0: Node;
-        readonly excludedNode1?: Node;
-        readonly excludedNodesLength: number;
-      } = {
+      const excludedDeclarations: Node[] = [source];
+      const options: ReferenceOptions = {
         type: 'property',
         fallbackValue: any('fallback'),
-        excludedNode0: source,
-        get excludedNode1() {
-          return boundOutputNode;
-        },
-        get excludedNodesLength() {
-          return boundOutputNode ? 2 : 1;
-        },
-        requiredNormalizedFromAssign: [
+        excludedDeclarations,
+        requiredDeclarationAssignments: [
           AssignmentType.MergeList,
           AssignmentType.MergeSequence,
           '+,:',
@@ -5434,7 +5424,7 @@ describe('reference', () => {
         expect.fail('Expected direct declaration occurrence handle');
       }
 
-      boundOutputNode = firstHandle.returnVal.node;
+      excludedDeclarations[1] = firstHandle.returnVal.node;
 
       expect(lookupRef.eval(context).valueOf()).toBe('fallback');
       expect(lookupRef._rulesLookupHandle).not.toBe(firstHandle);
@@ -5466,7 +5456,7 @@ describe('reference', () => {
       setRulesContext(await node.eval(context));
       const lookupRef = ref({ key: 'color' }, {
         type: 'property',
-        excludedNodes: [first, second, third],
+        excludedDeclarations: [first, second, third],
         fallbackValue: any('fallback')
       });
 
@@ -5500,10 +5490,10 @@ describe('reference', () => {
         decl({ name: 'background-color', value: any('green') }, { normalizedFromAssign: '+,:' })
       ]);
       setRulesContext(await node.eval(context));
-      const requiredNormalizedFromAssign = ['&,:'];
+      const requiredDeclarationAssignments = ['&,:'];
       const lookupRef = ref({ key: 'background-color' }, {
         type: 'declaration',
-        requiredNormalizedFromAssign
+        requiredDeclarationAssignments
       });
 
       expect(lookupRef.eval(context).valueOf()).toBe('blue');
@@ -5512,7 +5502,7 @@ describe('reference', () => {
         kind: 'direct-declaration-occurrence'
       });
 
-      requiredNormalizedFromAssign[0] = '+,:';
+      requiredDeclarationAssignments[0] = '+,:';
 
       expect(lookupRef.eval(context).valueOf()).toBe('green');
       expect(lookupRef._rulesLookupHandle).not.toBe(handle);
@@ -5607,15 +5597,15 @@ describe('reference', () => {
           })
         ]);
         setRulesContext(await node.eval(context));
-        const ignoredExcludedNodes = [
+        const ignoredExcludedDeclarations = [
           decl({ name: 'color', value: any('red') }),
           decl({ name: 'color', value: any('green') }),
           decl({ name: 'color', value: any('black') })
         ];
         const lookupRef = ref({ key: '.callable-handle' }, {
           type: 'mixin',
-          excludedNodes: ignoredExcludedNodes,
-          requiredNormalizedFromAssign: ['one', 'two', 'three', 'four', 'five']
+          excludedDeclarations: ignoredExcludedDeclarations,
+          requiredDeclarationAssignments: ['one', 'two', 'three', 'four', 'five']
         });
 
         const first = lookupRef.eval(context);
@@ -5627,10 +5617,10 @@ describe('reference', () => {
         const firstHandle = lookupRef._rulesLookupHandle;
         expect(callableCache).toBeDefined();
         expect(firstHandle?.lookupType).toBe('mixin');
-        expect(firstHandle && 'requiredNormalizedFromAssignKey' in firstHandle).toBe(false);
-        expect(firstHandle && 'excludedNodesLength' in firstHandle).toBe(false);
+        expect(firstHandle && 'requiredDeclarationAssignmentsKey' in firstHandle).toBe(false);
+        expect(firstHandle && 'excludedDeclarationCount' in firstHandle).toBe(false);
 
-        ignoredExcludedNodes[0] = decl({ name: 'color', value: any('mutated') });
+        ignoredExcludedDeclarations[0] = decl({ name: 'color', value: any('mutated') });
         node.push(decl({ name: 'unrelated', value: any('1') }));
         const second = lookupRef.eval(context);
         expect(second).toBeDefined();

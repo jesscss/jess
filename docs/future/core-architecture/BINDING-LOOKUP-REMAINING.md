@@ -107,14 +107,20 @@ reference imports, parent/fallback frames, and optional callable misses. Goal:
 no regression to frame-less broad crawl. Acceptance: real reference-import
 fixtures plus broad-bridge spies.
 
-8. [ ] Move remaining declaration-constraint reference options toward
+8. [x] Move remaining declaration-constraint reference options toward
 semantic names or internal constraint construction. Scope:
-`ReferenceOptions.requiredNormalizedFromAssign`, `excludedNodes`, merge
+`ReferenceOptions.requiredDeclarationAssignments`, `excludedDeclarations`, merge
 normalization, and tests that construct filtered references. Goal: keep
 semantic merge/exclusion behavior without exposing handle/cache-looking knobs.
-Acceptance: existing semantic tests for mutable `excludedNodes` and
-`requiredNormalizedFromAssign` stay green, and any renamed/internalized fields
-are guarded by `verify:binding-lookup-hot-paths`.
+Acceptance: existing semantic tests for mutable `excludedDeclarations` and
+`requiredDeclarationAssignments` stay green, and any renamed/internalized fields
+are guarded by `verify:binding-lookup-hot-paths`. Current evidence:
+`ReferenceOptions` and `DeclarationFindOptions` now expose semantic
+`excludedDeclarations` / `requiredDeclarationAssignments` only. Production
+merge assignment uses one mutable `excludedDeclarations` list instead of hidden
+scalar getter options, and `verify:binding-lookup-hot-paths` forbids the old
+`excludedNodes` / `requiredNormalizedFromAssign` names plus scalar option
+fields on the public/direct lookup surfaces.
 
 9. [ ] Run changed-baseline and fix any lookup-owned fallout now that the
 ruleset header streaming blocker is repaired. Scope: changed Less/Jess
@@ -180,11 +186,15 @@ the public declaration bridge. Property references inside later nested rulesets
 do not share the same visibility semantics as direct imported property
 occurrence lookup, so broader rendered property-reference proof remains open.
 
-14. [ ] Finish property merge-chain output-binding handle identity proof.
+14. [x] Finish property merge-chain output-binding handle identity proof.
 Scope: merge normalization, source/output exclusions, same-parent source
 ordering slots, and pre/post `bindOutput` identity. Goal: merge-chain property
 reads keep using direct occurrences and reject only stale constrained handles.
 Acceptance: lower-level handle tests plus real Less merge-chain fixture proof.
+Current evidence: focused reference tests prove mutable assignment constraints,
+source/output exclusion identity mutation after `bindOutput`, and wider
+external exclusion lists staying cold; the real Less merge-chain fixture still
+avoids public property/declaration lookup bridges.
 
 15. [ ] Finish declaration/property key-versioning dynamic promotion proof.
 Scope: `Rules.getDeclarationLookupVersion(key)`, dynamic names, import/rules
@@ -202,6 +212,22 @@ and lookup-cache entries, and preserve unrelated miss cache entries. Nested
 `Rules` child declaration surfaces still clear the whole direct declaration
 bucket/cache and bump the global declaration lookup version. Style import
 promotion remains open.
+
+16. [ ] Audit and slim private declaration-constraint handle snapshots. Scope:
+`ReferenceRulesLookupDeclarationConstraints`, `RulesLookupHandleShape`,
+source-static declaration/property handle reads, and mutable exclusion/
+assignment tests. Goal: keep the private scalar snapshot only if it is cheaper
+than a semantic fingerprint or direct pointer comparison, without reintroducing
+declaration constraint option plumbing. Acceptance: focused handle tests plus
+aggressive review explaining retained scalar fields or deleting them.
+
+17. [ ] Rename remaining constraint test/prose labels from normalized/excluded-
+node wording to declaration assignment/exclusion wording. Scope: focused test
+names, tracker text, and guard messages only. Goal: keep future agents from
+looking for deleted `excludedNodes` / `requiredNormalizedFromAssign` API while
+preserving Less normalized-assignment semantics where that is the actual
+declaration option. Acceptance: grep shows old reference-option names only
+inside verifier forbidden-token lists or historical notes.
 
 ## Latest Binding Baseline
 
@@ -242,9 +268,12 @@ promotion remains open.
   baseline asserts AST structure instead of invoking runtime lookup. This
   removes the unreleased public-looking materialization facade rather than
   preserving it for test convenience.
-- `ReferenceOptions` no longer exports scalar declaration-exclusion handle
-  fields (`excludedNode0`, `excludedNode1`, `excludedNodesLength`). Internal
-  lookup still reads them through a declaration-constraint view when present.
+- `ReferenceOptions` and `DeclarationFindOptions` no longer expose scalar
+  declaration-exclusion fields or the old `excludedNodes` /
+  `requiredNormalizedFromAssign` reference-option names. Production merge
+  assignment now carries source/output exclusion as one semantic
+  `excludedDeclarations` list; only the private reference handle snapshot keeps
+  scalar declaration pointers/counts for freshness comparison.
 - `pnpm run verify:binding-lookup-hot-paths` now guards that reference reads,
   selector attribute interpolation, and stylesheet function return lookup use
   occurrence helpers instead of public `Rules.find*` materialization wrappers;
@@ -340,10 +369,9 @@ promotion remains open.
   namespace-focused tests and build for this pass were green; the baseline
   fallout should be triaged separately unless lookup evidence points at one of
   those failures.
-- Remaining public `ReferenceOptions.excludedNodes` and
-  `requiredNormalizedFromAssign` have semantic tests that mutate those inputs
-  and verify handle invalidation. They are not scalar handle fields, but their
-  names still need a follow-up API-shape decision.
+- Public `ReferenceOptions.excludedDeclarations` and
+  `requiredDeclarationAssignments` have semantic tests that mutate those inputs
+  and verify handle invalidation. They are not scalar handle fields.
 
 ## Remaining Work Clusters
 
@@ -358,13 +386,14 @@ promotion remains open.
 2. **Property merge-chain occurrence follow-through.**
    Property lookup returns `DirectDeclarationOccurrence`, and occurrences now
    carry a `slot` for same-parent source ordering. Filtered merge-chain/
-   property assignment modes now use typed `requiredNormalizedFromAssign`
+   property assignment modes now use typed `requiredDeclarationAssignments`
    constraints instead of a generic merge filter, and source-static typed
    property/declaration constraints are handleable. Merge assignment now carries
-   source/output exclusions as scalar fields instead of a temporary array.
-   Wider external excluded-node filters stay cold. A real Less merge-chain
-   fixture now proves public property/declaration lookup bridges stay unused.
-   Remaining work is proving pre/post output-binding handle identity.
+   source/output exclusions as one semantic mutable list instead of hidden
+   scalar option fields. Wider external declaration-exclusion filters stay
+   cold. A real Less merge-chain fixture proves public property/declaration
+   lookup bridges stay unused, and focused tests prove pre/post output-binding
+   handle identity.
 
 3. **Declaration/property key versioning follow-through.**
    Reference handles now use `Rules.getDeclarationLookupVersion(key)`, but the
