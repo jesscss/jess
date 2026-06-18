@@ -488,12 +488,12 @@ export class Call extends Node<CallValue, CallOptions> {
     context: Context,
     options: PrintOptions
   ): MaybePromise<string> {
+    if (!args || args.items.length === 0) {
+      return '';
+    }
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
     const mark = w.mark();
-    if (!args) {
-      return '';
-    }
     const rawArgs = args.items;
     const last = rawArgs.length - 1;
     const serializeArgAt = (start: number): MaybePromise<string> => {
@@ -570,8 +570,13 @@ export class Call extends Node<CallValue, CallOptions> {
   ): MaybePromise<string> {
     const printOptions = getPrintOptions(prepared);
     const w = printOptions.writer!;
-    const mark = w.mark();
     const { name, contentNode } = callNode.value;
+    if (!callNode.args && !contentNode && typeof name === 'string') {
+      const out = `${name}${callNode.options?.silentFail ? '?' : ''}()${callNode.options?.markImportant ? ' !important' : ''}`;
+      w.add(out, callNode);
+      return out;
+    }
+    const mark = w.mark();
     if (typeof name === 'string') {
       w.add(name, callNode);
     } else {
