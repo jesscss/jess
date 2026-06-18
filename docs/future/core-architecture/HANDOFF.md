@@ -103,35 +103,30 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding proof/queue closeout pass plus parent retry-frame proof.
-- Verdict: accepted as documentation/proof cleanup plus one focused test. The
-  pass closed completed binding queue rows, refreshed profile/baseline evidence,
-  proved the remaining parent retry-frame loop is semantic parent search rather
-  than a direct-crawl bridge, and kept genuinely blocked rows open. No speed
-  claim.
+- Latest pass: item 37 cold-boundary proof for never-evaluated namespace mixin
+  body reference imports.
+- Verdict: accepted as a semantic no-op/cold-boundary proof plus one focused
+  test. Sync lookup cannot await `StyleImport.evalNode(...)` /
+  `Context.getTree(...)` or evaluate an uncalled namespace mixin body without
+  turning lookup into async materialization, so the never-evaluated
+  reference-import case stays cold. No production lookup change. No speed claim.
 - New traversal: none. No production code changed in this pass.
 - Review-flagged allocations: no new production arrays, nodes, wrapper `Rules`,
-  side maps, or result objects. The review-flagged `try`, `fastPathHits` array,
-  and empty `childRules` fixture are focused test scaffolding for method-spy
-  restoration and a minimal parent/child frame chain; production lookup is
-  unchanged.
+  side maps, or result objects. The review-flagged `try`/`finally`,
+  `broadFastHits` array, and import/mixin fixtures are focused test scaffolding
+  for restoring the spied lookup method and proving broad fallback stays inside
+  the namespace body rather than the root.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production materialization were added.
 - Render path: no render/stringification path changed.
 - Helper/API surface: no helper or API surface added.
 - Metadata mutations: none.
 - Allocation changes: no production allocation change.
-- Evidence: focused binding tests passed for retry-frame fallback hits/misses,
-  narrow reference-import child fallback, source-static reference handles,
-  reference-import namespace offsets, stable imported namespaces,
-  reference-import declaration/callable misses, namespace remainder offsets, and
-  evaluated namespace mixin descendants. A new parent retry-frame test proves an
-  unprepared parent frame can be prepared and hit without entering
-  `findMixinsFast(...)`. `verify:baseline -- --changed` is blocked by non-lookup
-  `verify:node-copy-frontier` failure in `selector-pseudo.ts`; hotpath smoke is
-  blocked by parser `args.set is not a function`. The refreshed lookup profile
-  reports empty old `Rules.find` and registry counters. No wall-clock
-  performance claim.
+- Evidence: focused import-style tests pass for evaluated namespace mixin
+  descendants and the new uncalled namespace body reference-import cold
+  boundary. The new test proves root registration leaves the namespace body
+  unevaluated, the reference-import callable descendant unresolved, and broad
+  fallback confined to the namespace body. No wall-clock performance claim.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification

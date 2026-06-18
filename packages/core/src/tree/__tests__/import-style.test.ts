@@ -3594,6 +3594,53 @@ describe('Style import', () => {
       }
     });
 
+    it('import-reference: uncalled namespace mixin body imports stay cold until evaluated', async () => {
+      const localContext = createTestContext();
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const referencedPath = resolve(process.cwd(), 'reference-uncalled-namespace-mixin-callable.jess');
+      localContext.sourceTrees.set(referencedPath, rules([
+        mixin({
+          name: any('.reference-leaf'),
+          rules: rules([decl({ name: any('color'), value: any('green') })])
+        })
+      ]));
+      const namespaceBody = rules([
+        style({
+          path: quoted(any('reference-uncalled-namespace-mixin-callable.jess'))
+        }, {
+          type: 'import',
+          importOptions: { reference: true }
+        })
+      ]);
+      const node = rules([
+        mixin({
+          name: any('#parent-namespace'),
+          rules: namespaceBody
+        })
+      ]);
+      const broadFastHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if ((this === namespaceBody || this === node) && key === '.reference-leaf') {
+          broadFastHits.push(this === namespaceBody ? 'namespace' : 'root');
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        await node.prepareRegistration(localContext);
+        const found = node.findMixin(['#parent-namespace', '.reference-leaf'], undefined, {
+          context: localContext
+        });
+        expect(found).toBeUndefined();
+        expect(namespaceBody.evaluated).toBe(false);
+        expect(broadFastHits.length).toBeGreaterThan(0);
+        expect(broadFastHits.every(hit => hit === 'namespace')).toBe(true);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('import-reference: reference-imported selector-list rulesets remain callable as mixins', async () => {
       const localContext = createTestContext();
       localContext.opts.collapseNesting = true;

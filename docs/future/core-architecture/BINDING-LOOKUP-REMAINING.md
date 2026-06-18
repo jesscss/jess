@@ -628,7 +628,7 @@ child declarations without entering the public declaration bridge. Focused
 reference tests cover ordinary carried child-entry reuse and same-parent later
 child misses.
 
-37. [ ] Design and prove a reference-import preparation edge for never-evaluated
+37. [x] Design and prove a reference-import preparation edge for never-evaluated
 namespace mixin bodies. Scope: style imports inside uncalled no-param namespace
 mixins, async import path resolution, registration prep boundaries, and
 `findCallableDescendantsWithinMixinNamespaces(...)`. Goal: let callable
@@ -638,8 +638,15 @@ Acceptance: a real import-in-uncalled-mixin namespace positive either resolves
 without nested `findMixin(...)`/broad `findMixinsFast(...)`, or the tracker
 records the semantic reason it must remain a cold async/materialization path.
 Current evidence: evaluated namespace mixin bodies now use frame facts, but
-never-evaluated bodies remain open because sync lookup cannot see unresolved
-import content.
+never-evaluated bodies remain a cold boundary because sync lookup cannot await
+`StyleImport.evalNode(...)` / `Context.getTree(...)` or evaluate the mixin body
+without turning lookup into async materialization. A focused real import test
+proves root registration alone leaves the namespace body unevaluated, the
+reference-import callable descendant unresolved, and any broad fallback confined
+to the namespace body rather than root lookup. The evaluated-body companion test
+still proves that once the namespace body is explicitly evaluated, frame facts
+find the imported callable descendant without nested `findMixin(...)` or broad
+`findMixinsFast(...)`.
 
 38. [ ] Split selector-body callable prefix facts from recursive prefix crawls.
 Scope: selector-list/compound ruleset bodies, reference-import child surfaces,
