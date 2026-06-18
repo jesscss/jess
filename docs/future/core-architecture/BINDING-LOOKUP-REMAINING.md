@@ -316,7 +316,7 @@ mixin-only mode, and ignored declaration constraints stayed green; the verifier
 now forbids the old generic eligibility helper and requires strategy-owned
 handle policy fields.
 
-23. [ ] Collapse `lookupTypeUsesDeclarationConstraints(...)` to declaration
+23. [x] Collapse `lookupTypeUsesDeclarationConstraints(...)` to declaration
 strategy/type guards only. Scope: `prepareRulesLookupShape(...)`,
 `readRulesLookupHandle(...)`, declaration handle unions, and declaration
 constraint freshness checks. Goal: eliminate remaining generic lookup-type
@@ -324,9 +324,14 @@ branching by giving declaration-capable strategies/readers a typed declaration
 handle path, while preserving function/callable fast reads. Acceptance:
 focused declaration/property/variable/function/callable handle tests plus a
 verifier guard that declaration-constraint checks do not run through generic
-lookup-type predicates outside declaration-only helpers.
+lookup-type predicates outside declaration-only helpers. Current evidence:
+the generic `lookupTypeUsesDeclarationConstraints(...)` predicate is gone.
+Handle freshness now uses a declaration-handle type guard/read helper for
+declaration/property/variable constraints, while function/callable handle
+reads only validate common handle fields. The binding hot-path verifier now
+forbids the old generic predicate.
 
-24. [ ] Split handle write args or writer functions by family so
+24. [x] Split handle write args or writer functions by family so
 function/callable writes do not receive declaration-constraint plumbing. Scope:
 `WriteRulesLookupHandleArgs`, `writeVariableRulesLookupHandle`,
 `writeDeclarationRulesLookupHandle`, `writeFunctionRulesLookupHandle`,
@@ -335,7 +340,32 @@ function/callable writes do not receive declaration-constraint plumbing. Scope:
 function/callable writers and make each writer's required inputs match its
 handle family. Acceptance: focused async/sync handle write tests for variable,
 property/declaration, function, mixin, and mixin-ruleset plus
-`verify:binding-lookup-hot-paths`.
+`verify:binding-lookup-hot-paths`. Current evidence: declaration and variable
+handle writers now accept `WriteDeclarationRulesLookupHandleArgs`, the base
+writer args reject `declarationConstraints`, and sync/async writeback routes
+through one strategy dispatcher that supplies declaration constraints only for
+strategies that require them. Function/callable writer bodies do not receive or
+read declaration constraint plumbing, and the verifier guards that shape.
+
+25. [ ] Split generic handle reads by strategy/family so non-declaration
+reads do not receive a declaration-constraint parameter at all. Scope:
+`readRulesLookupHandle(...)`, `tryReadSourceStatic*RulesLookupHandle(...)`,
+strategy-owned readers, and the sync/async reference lookup read path. Goal:
+move from one generic reader with a declaration-only optional argument to
+assigned family readers where function/callable read paths cannot even be
+called with declaration constraints. Acceptance: focused source-static and
+normal handle tests for declaration/property/variable/function/mixin/
+mixin-ruleset plus verifier guards against passing declaration constraints to
+function/callable readers.
+
+26. [ ] Remove `preparedDeclarationConstraints` from generic
+`RulesReferenceLookupContext` or move it behind declaration-only context state.
+Scope: `prepareRulesLookupShape(...)`, `RulesReferenceLookupContext`, lookup
+adapters, and declaration writer/read preparation. Goal: keep declaration
+constraint state off the generic lookup context when function/callable/index
+lookups cannot use it. Acceptance: build, focused handle tests, and verifier
+guard that generic lookup context fields do not grow declaration-handle
+plumbing.
 
 ## Latest Binding Baseline
 
@@ -487,6 +517,11 @@ property/declaration, function, mixin, and mixin-ruleset plus
 - Focused mutation-edge tests prove the first-two excluded declaration identity
   snapshot invalidates handles across zero, one, and two-slot exclusion changes
   without the removed count field.
+- Declaration-constraint handle policy is now declaration-only on both reads
+  and writes. The generic `lookupTypeUsesDeclarationConstraints(...)` predicate
+  is gone; declaration/property/variable handle freshness uses typed
+  declaration-handle helpers, and function/callable handle writers do not
+  receive declaration constraint fields.
 
 ## Remaining Work Clusters
 

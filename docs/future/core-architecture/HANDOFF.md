@@ -103,39 +103,42 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: strategy-owned rules lookup handle policy.
+- Latest pass: declaration-only rules lookup handle read/write constraints.
 - Verdict: accepted as a binding handle-policy cut. The old generic
-  `isRulesLookupHandleEligible(...)` and generic
-  `tryReadSourceStaticRulesLookupHandle(...)` helpers are deleted. Each
-  `ReferenceLookupStrategy` now owns its handle lookup type, handle key shape,
-  optional declaration-constraint policy, and source-static handle reader. No
-  speed claim.
+  `lookupTypeUsesDeclarationConstraints(...)` predicate is deleted, declaration
+  handle freshness is checked through declaration-handle guards, and
+  declaration/property/variable handle writers now use declaration-only args.
+  Function/callable writer bodies no longer receive declaration constraint
+  plumbing. No speed claim.
 - New traversal: no new production traversal. This pass adds no tree walk,
   parent walk, child scan, map/filter/sort, or side-map lookup. The only
   review-flagged loops are verifier token scans that reject the deleted generic
-  helper names and require strategy-owned handle policy fields.
+  helper names, require declaration-only writer signatures, and inspect the
+  function/callable writer bodies for forbidden declaration-constraint reads.
 - New node/materialization: no runtime nodes, wrappers, copied rules, inherited
   metadata, frozen state, or production arrays were added. Review-flagged
-  `string[]` entries are existing handle key type annotations and the new
-  `SourceStaticRulesLookupHandleArgs` type shape, not materialized runtime
-  arrays or objects.
+  `WriteRulesLookupHandleArgsBase` and `string[]` entries are type-only handle
+  writer/key annotations, not materialized runtime arrays or objects.
 - Render path: no render/stringification path changed.
-- Helper/API surface: removes two private generic helpers and replaces them
-  with family-specific private source-static readers plus strategy fields. The
-  new helpers do not create public API; they assign the existing handle read
-  path by lookup family so function/callable reads do not evaluate declaration
-  constraint eligibility.
+- Helper/API surface: removes one private generic predicate and adds private
+  declaration-handle guard/read helpers plus a private strategy write
+  dispatcher. The dispatcher keeps sync/async writeback in one place while
+  omitting declaration constraints for non-declaration strategies. The next
+  binding tasks are to split the remaining generic handle reader and move
+  declaration constraints off generic lookup context state.
 - Metadata mutations: none.
-- Allocation changes: no new runtime allocation is introduced. Declaration
-  constraints are computed once for eligible declaration-capable writes; source
-  static hits still read through an uncached strategy and avoid rebuilding
-  `_lookupStrategy`.
+- Allocation changes: no new runtime node/materialization allocation is
+  introduced. Function/callable handle write argument objects no longer carry
+  declaration constraints; declaration constraints remain computed for
+  declaration-capable paths.
 - Evidence: focused reference tests prove source-static handle reuse, cold
   handle disqualification under searchScope/leaky contexts, reference strategy
   cache type changes, terminal mixin-only invalidation, function/callable
-  ignored declaration options, and mixin-ruleset cached lookup reuse.
-  `verify:binding-lookup-hot-paths` passed with new guards for strategy-owned
-  handle policy.
+  ignored declaration options, mixin-ruleset cached lookup reuse, source-static
+  declaration assignment constraints, and declaration exclusion/output-binding
+  invalidation. `@jesscss/core` build passed. `verify:binding-lookup-hot-paths`
+  passed with guards against the deleted generic predicate and against
+  function/callable writers reading declaration constraints.
 - Merge-carried serialization review: latest `origin/dev` also carries the
   declaration fallback preview-transport cut in
   `packages/core/src/tree/util/serialize-helper.ts`. Review-flagged
@@ -147,7 +150,6 @@ with `--no-verify` after the explicit gates pass.
 - Merge-carried serialization review: latest `origin/dev` also carries the
   Ruleset frame-header compare-key split in
   `packages/core/src/tree/ruleset.ts` and
-  `packages/core/src/tree/util/serialize-helper.ts`.
   `packages/core/src/tree/util/serialize-helper.ts`.
 - Merge-carried serialization review: latest `origin/dev` also carries the
   duplicate declaration comparison writer cut in

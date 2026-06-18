@@ -158,6 +158,37 @@ if (referenceSource.includes('function tryReadSourceStaticRulesLookupHandle(')) 
   console.error('source-static rules lookup handle reads should be split by lookup strategy');
   failed = true;
 }
+if (referenceSource.includes('function lookupTypeUsesDeclarationConstraints(')) {
+  console.error('declaration-constraint handle policy should be on declaration helpers, not a generic lookup-type predicate');
+  failed = true;
+}
+if (!referenceSource.includes('function writeStrategyRulesLookupHandle(')) {
+  console.error('rules lookup handle writes should route through the strategy writer dispatcher');
+  failed = true;
+}
+for (const token of [
+  'function writeVariableRulesLookupHandle(args: WriteDeclarationRulesLookupHandleArgs)',
+  'function writeDeclarationRulesLookupHandle(args: WriteDeclarationRulesLookupHandleArgs)'
+]) {
+  if (!referenceSource.includes(token)) {
+    console.error(`declaration handle writer is missing declaration-only args: ${token}`);
+    failed = true;
+  }
+}
+for (const name of ['writeFunctionRulesLookupHandle', 'writeCallableRulesLookupHandle']) {
+  const start = referenceSource.indexOf(`function ${name}(`);
+  const nextFunction = start === -1 ? -1 : referenceSource.indexOf('\nfunction ', start + 1);
+  const body = start === -1
+    ? ''
+    : referenceSource.slice(start, nextFunction === -1 ? undefined : nextFunction);
+  if (start === -1) {
+    console.error(`could not find ${name}`);
+    failed = true;
+  } else if (body.includes('declarationConstraints')) {
+    console.error(`${name} should not receive or read declaration constraint plumbing`);
+    failed = true;
+  }
+}
 for (const token of [
   'tryReadSourceStaticPropertyRulesLookupHandle',
   'tryReadSourceStaticVariableRulesLookupHandle',
