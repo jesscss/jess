@@ -378,6 +378,9 @@ Current hard leftovers after the broad hook sweep:
   helper, public source `toTrimmedString(...)` now delegates to
   `writeSyntax(...)` instead of duplicating call source assembly, and
   plain/finalized call rendering no longer allocates per-call finish closures.
+  Unknown render-side name/content syntax now uses detached child writers
+  instead of caller-writer mark/readback transport, so custom fallback names
+  and content no longer pay whole-call slice recovery just to return text.
   Plain/evaluated CSS-call buffer render reuses the buffer
   writer mark for the whole-call readback instead of nesting a second
   call-level mark. Scalar-contract args (`Num`, `Dimension`, `Color`, `Bool`,

@@ -1637,8 +1637,22 @@ describe('Call', () => {
 
     await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('wrap(): custom-body');
     expect(writer.toString()).toBe('prefix|wrap(): custom-body');
-    expect(writer.marks).toBe(1);
-    expect(writer.readbacks).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders custom fallback CSS call names without whole-call readback', async () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const rule = call({
+      name: new CustomSyntaxNode('name'),
+      args: list([num(30)])
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('custom-name(30)');
+    expect(writer.toString()).toBe('prefix|custom-name(30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('resolves CSS calls without touching render state', async () => {

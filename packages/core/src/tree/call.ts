@@ -156,6 +156,15 @@ export type CallRawArgDiagnosticSource = {
 type OptionalFallbackRenderOutput = Node | string;
 type CallRenderTextState = { text: string | undefined };
 
+function renderDetachedCallNodeText(node: Node, printOptions: FinalPrintOptions): string {
+  const writer = new OutputWriter(printOptions.compress);
+  node.writeSyntax({
+    ...printOptions,
+    writer
+  });
+  return writer.toString();
+}
+
 function getKnownRenderedCallText(node: Node): string | undefined {
   switch (node.type) {
     case 'Any':
@@ -1007,9 +1016,9 @@ export class Call extends Node<CallValue, CallOptions> {
     } else if (textState.text !== undefined) {
       w.add(textState.text, name);
     } else {
-      const nameMark = w.mark();
-      name.writeSyntax(printOptions);
-      textState.text = w.getSince(nameMark);
+      const nameText = renderDetachedCallNodeText(name, printOptions);
+      textState.text = nameText;
+      w.add(nameText, name);
     }
     if (callNode.options?.silentFail) {
       w.add('?');
@@ -1055,10 +1064,10 @@ export class Call extends Node<CallValue, CallOptions> {
                 return textState.text;
               }
             } else {
-              const contentMark = w.mark();
-              value.writeSyntax(printOptions);
+              const contentText = renderDetachedCallNodeText(value, printOptions);
+              w.add(contentText, value);
               if (textState.text !== undefined) {
-                textState.text += w.getSince(contentMark);
+                textState.text += contentText;
               }
             }
             return textState.text ?? '';
@@ -1072,10 +1081,10 @@ export class Call extends Node<CallValue, CallOptions> {
             return textState.text;
           }
         } else {
-          const contentMark = w.mark();
-          (renderedContent as Node).writeSyntax(printOptions);
+          const contentText = renderDetachedCallNodeText(renderedContent as Node, printOptions);
+          w.add(contentText, renderedContent as Node);
           if (textState.text !== undefined) {
-            textState.text += w.getSince(contentMark);
+            textState.text += contentText;
           }
         }
         return textState.text ?? '';
@@ -1135,9 +1144,9 @@ export class Call extends Node<CallValue, CallOptions> {
       if (textState.text !== undefined) {
         w.add(textState.text, name);
       } else {
-        const nameMark = w.mark();
-        name.writeSyntax(printOptions);
-        textState.text = w.getSince(nameMark);
+        const nameText = renderDetachedCallNodeText(name, printOptions);
+        textState.text = nameText;
+        w.add(nameText, name);
       }
     } else {
       const text = stringifyValueOf(name);
@@ -1175,10 +1184,10 @@ export class Call extends Node<CallValue, CallOptions> {
                 return textState.text;
               }
             } else {
-              const contentMark = w.mark();
-              value.writeSyntax(printOptions);
+              const contentText = renderDetachedCallNodeText(value, printOptions);
+              w.add(contentText, value);
               if (textState.text !== undefined) {
-                textState.text += w.getSince(contentMark);
+                textState.text += contentText;
               }
             }
             return textState.text ?? '';
@@ -1192,10 +1201,10 @@ export class Call extends Node<CallValue, CallOptions> {
             return textState.text;
           }
         } else {
-          const contentMark = w.mark();
-          (renderedContent as Node).writeSyntax(printOptions);
+          const contentText = renderDetachedCallNodeText(renderedContent as Node, printOptions);
+          w.add(contentText, renderedContent as Node);
           if (textState.text !== undefined) {
-            textState.text += w.getSince(contentMark);
+            textState.text += contentText;
           }
         }
         return textState.text ?? '';

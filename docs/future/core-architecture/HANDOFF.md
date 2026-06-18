@@ -103,6 +103,36 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` detached render fallback text transport.
+- Verdict: accepted as a localized render transport cut. Plain and finalized
+  call render paths now recover unknown name/content syntax through a detached
+  child writer instead of marking the caller writer and reading back the
+  emitted slice. Covered custom fallback names/content still use
+  `writeSyntax(...)`, but they no longer pay whole-call slice recovery just to
+  produce the returned text. No speed claim.
+- New traversal: none.
+- New node/materialization: none.
+- Render path: covered fallback name/content emission now serializes once into
+  a detached writer, writes that text onto the active render writer, and
+  appends it to the local text state. The remaining arg fallback path still
+  keeps localized child mark/readback because it trims emitted arg boundaries
+  in place.
+- Helper/API surface: one node-local helper,
+  `renderDetachedCallNodeText(...)`, shared by plain/finalized call render for
+  the remaining unknown name/content fallback transport. It deletes more
+  caller-writer mark/readback surface than it adds.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: one detached fallback writer/string on the remaining
+  unknown name/content path replaces caller-writer mark/getSince transport; no
+  new node copies or wrapper materialization.
+- Rejected/observed in this pass: this does not widen exact-text coverage or
+  touch the remaining arg fallback trim/readback boundary.
+- Evidence: focused `call.test.ts` coverage now proves dynamic custom fallback
+  names render as `custom-name(30)` and async custom fallback content renders
+  as `wrap(): custom-body` with zero caller-writer marks/readbacks, while the
+  adjacent evaluated-name/content and async scalar content paths remain green.
+  Full commit-boundary gates still need to run after this handoff update.
 - Latest pass: `Call` exact negative text carry.
 - Verdict: accepted as a localized exact-text carry cut. Built-in `Negative`
   nodes now participate in `Call`'s known source/render text helpers, so exact
