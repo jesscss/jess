@@ -724,39 +724,57 @@ function collectCallableBucketResults(
   return results;
 }
 
-type AssignmentTargetBindingSummary = {
-  bindingsByName?: Map<string, BindingCell>;
-  readonlyByName?: Set<string>;
+type AssignmentTargetBindingTarget = {
+  assignmentBindingsByName?: Map<string, BindingCell>;
+  assignmentReadonlyByName?: Set<string>;
 };
 
 function addAssignmentTargetBinding(
-  summary: AssignmentTargetBindingSummary,
+  target: AssignmentTargetBindingTarget,
   name: string,
   cell: BindingCell,
   readonlyOverlay: boolean
 ): void {
-  const bindings = summary.bindingsByName ?? (summary.bindingsByName = new Map());
+  const bindings = target.assignmentBindingsByName ?? (target.assignmentBindingsByName = new Map());
   if (bindings.has(name)) {
     return;
   }
   bindings.set(name, cell);
   if (readonlyOverlay && !cell.readonly) {
-    (summary.readonlyByName ??= new Set()).add(name);
+    (target.assignmentReadonlyByName ??= new Set()).add(name);
   }
 }
 
 function setAssignmentTargetBinding(
-  summary: AssignmentTargetBindingSummary,
+  target: AssignmentTargetBindingTarget,
   name: string,
   cell: BindingCell,
   readonlyOverlay: boolean
 ): void {
-  const bindings = summary.bindingsByName ?? (summary.bindingsByName = new Map());
+  const bindings = target.assignmentBindingsByName ?? (target.assignmentBindingsByName = new Map());
   bindings.set(name, cell);
   if (readonlyOverlay && !cell.readonly) {
-    (summary.readonlyByName ??= new Set()).add(name);
+    (target.assignmentReadonlyByName ??= new Set()).add(name);
   } else {
-    summary.readonlyByName?.delete(name);
+    target.assignmentReadonlyByName?.delete(name);
+  }
+}
+
+function addFrameAssignmentTargetBinding(
+  frame: ScopeFrame,
+  name: string,
+  cell: BindingCell,
+  readonlyOverlay: boolean
+): void {
+  if (frame.currentBindingsByName.has(name)) {
+    return;
+  }
+  if (frame.assignmentBindingsByName?.has(name)) {
+    return;
+  }
+  (frame.assignmentBindingsByName ??= new Map()).set(name, cell);
+  if (readonlyOverlay && !cell.readonly) {
+    (frame.assignmentReadonlyByName ??= new Set()).add(name);
   }
 }
 
@@ -1032,31 +1050,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private prepareScopeFrameAssignmentBindings(frame: ScopeFrame): void {
-    const childSummary = this.collectPublicChildVariableAssignmentBindingSummary(false);
-    const childBindings = childSummary.bindingsByName;
-    if (childBindings?.size) {
-      for (const [name, cell] of childBindings) {
-        if (!frame.currentBindingsByName.has(name)) {
-          (frame.assignmentBindingsByName ??= new Map()).set(name, cell);
-          if (childSummary.readonlyByName?.has(name)) {
-            (frame.assignmentReadonlyByName ??= new Set()).add(name);
-          }
-        }
-      }
-    }
+    this.collectPublicChildVariableAssignmentBindingsIntoFrame(false, frame);
     frame.hasUncoveredAssignmentTargetSurface = this.hasUncoveredChildVariableAssignmentSurface();
-  }
-
-  private getAssignmentTargetEntrySummary(inheritedReadonly: boolean): AssignmentTargetBindingSummary {
-    return this.collectPublicVariableAssignmentBindingSummary(inheritedReadonly);
   }
 
   private getHasUncoveredAssignmentTargetEntrySurface(): boolean {
     return this.hasUncoveredVariableAssignmentSurface();
   }
 
-  private collectPublicVariableAssignmentBindingSummary(inheritedReadonly: boolean): AssignmentTargetBindingSummary {
-    const summary: AssignmentTargetBindingSummary = {};
+  private collectPublicVariableAssignmentBindingsInto(
+    inheritedReadonly: boolean,
+    target: RulesEntryLike
+  ): void {
     const localReadonly = inheritedReadonly || Boolean(this.options.readonly);
     if (this.options.rulesVisibility?.VarDeclaration === 'public') {
       const value = this.rules;
@@ -1069,7 +1074,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ) {
           continue;
         }
-        setAssignmentTargetBinding(summary, String(node.name.valueOf()), {
+        setAssignmentTargetBinding(target, String(node.name.valueOf()), {
           value: node.valueNode,
           sourceNode: node,
           readonly: localReadonly || Boolean(node.options?.readonly)
@@ -1077,22 +1082,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     }
 
-    const childSummary = this.collectPublicChildVariableAssignmentBindingSummary(localReadonly);
-    const childBindings = childSummary.bindingsByName;
-    if (!childBindings?.size) {
-      return summary;
-    }
-    for (const [name, cell] of childBindings) {
-      addAssignmentTargetBinding(summary, name, cell, Boolean(childSummary.readonlyByName?.has(name)));
-    }
-    return summary;
+    this.collectPublicChildVariableAssignmentBindingsInto(localReadonly, target);
   }
 
-  private collectPublicChildVariableAssignmentBindingSummary(inheritedReadonly: boolean): AssignmentTargetBindingSummary {
-    const summary: AssignmentTargetBindingSummary = {};
+  private collectPublicChildVariableAssignmentBindingsInto(
+    inheritedReadonly: boolean,
+    target: RulesEntryLike
+  ): void {
     const childEntries = this.collectDirectDeclarationChildEntries();
     if (!childEntries?.length) {
-      return summary;
+      return;
     }
     for (let i = childEntries.length - 1; i >= 0; i--) {
       const entry = childEntries[i]!;
@@ -1117,14 +1116,53 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       for (const [name, cell] of entryBindings) {
         addAssignmentTargetBinding(
-          summary,
+          target,
           name,
           cell,
           inheritedReadonly || Boolean(entry.assignmentReadonlyByName?.has(name))
         );
       }
     }
-    return summary;
+  }
+
+  private collectPublicChildVariableAssignmentBindingsIntoFrame(
+    inheritedReadonly: boolean,
+    frame: ScopeFrame
+  ): void {
+    const childEntries = this.collectDirectDeclarationChildEntries();
+    if (!childEntries?.length) {
+      return;
+    }
+    for (let i = childEntries.length - 1; i >= 0; i--) {
+      const entry = childEntries[i]!;
+      if (
+        entry.hasVarDeclarationSurface === false
+        && entry.hasReferenceImportSurface !== true
+      ) {
+        continue;
+      }
+      if (!canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration' })) {
+        continue;
+      }
+      if (!canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration' })) {
+        continue;
+      }
+      if (!isPublicRulesEntry(entry, 'VarDeclaration')) {
+        continue;
+      }
+      const entryBindings = entry.assignmentBindingsByName;
+      if (!entryBindings?.size) {
+        continue;
+      }
+      for (const [name, cell] of entryBindings) {
+        addFrameAssignmentTargetBinding(
+          frame,
+          name,
+          cell,
+          inheritedReadonly || Boolean(entry.assignmentReadonlyByName?.has(name))
+        );
+      }
+    }
   }
 
   private hasUncoveredVariableAssignmentSurface(): boolean {
@@ -1651,18 +1689,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.hasDeclarationChildSurface ||= hasDeclarationSurface;
       this.hasVarDeclarationChildSurface ||= hasVarDeclarationSurface;
       this.hasReferenceImportChildSurface ||= hasReferenceImportSurface;
-      const assignmentSummary = child.getAssignmentTargetEntrySummary(Boolean(child.options.readonly));
-      (out ??= []).push({
+      const entry: RulesEntryLike = {
         node: child,
         rulesVisibility: this.getDirectChildRulesVisibility(child),
         readonly: Boolean(child.options.readonly),
         hasDeclarationSurface,
         hasVarDeclarationSurface,
         hasReferenceImportSurface,
-        assignmentBindingsByName: assignmentSummary.bindingsByName,
-        assignmentReadonlyByName: assignmentSummary.readonlyByName,
         hasUncoveredAssignmentTargetSurface: child.getHasUncoveredAssignmentTargetEntrySurface()
-      });
+      };
+      child.collectPublicVariableAssignmentBindingsInto(Boolean(child.options.readonly), entry);
+      (out ??= []).push(entry);
     }
     this.directDeclarationChildEntries = out ?? null;
     return out;
@@ -1689,18 +1726,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     const visibility = mergeDirectChildRulesVisibility(child.options.rulesVisibility, rulesVisibility);
     const entries = this.directDeclarationChildEntries ?? (this.directDeclarationChildEntries = []);
-    const assignmentSummary = child.getAssignmentTargetEntrySummary(readonly);
-    entries.push({
+    const entry: RulesEntryLike = {
       node: child,
       rulesVisibility: visibility,
       readonly,
       hasDeclarationSurface,
       hasVarDeclarationSurface,
       hasReferenceImportSurface,
-      assignmentBindingsByName: assignmentSummary.bindingsByName,
-      assignmentReadonlyByName: assignmentSummary.readonlyByName,
       hasUncoveredAssignmentTargetSurface: child.getHasUncoveredAssignmentTargetEntrySurface()
-    });
+    };
+    child.collectPublicVariableAssignmentBindingsInto(readonly, entry);
+    entries.push(entry);
   }
 
   private refreshDirectDeclarationChildEntryAssignmentSummary(child: Rules, changedVariable?: VarDeclaration): void {
@@ -1756,9 +1792,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       entry.hasDeclarationSurface = rulesMayContainDeclarationSurface(child);
       entry.hasVarDeclarationSurface = rulesMayContainVarDeclarationSurface(child);
       entry.hasReferenceImportSurface = rulesMayContainReferenceImports(child);
-      const assignmentSummary = child.getAssignmentTargetEntrySummary(Boolean(entry.readonly));
-      entry.assignmentBindingsByName = assignmentSummary.bindingsByName;
-      entry.assignmentReadonlyByName = assignmentSummary.readonlyByName;
+      entry.assignmentBindingsByName = undefined;
+      entry.assignmentReadonlyByName = undefined;
+      child.collectPublicVariableAssignmentBindingsInto(Boolean(entry.readonly), entry);
       entry.hasUncoveredAssignmentTargetSurface = child.getHasUncoveredAssignmentTargetEntrySurface();
     }
     if (changedVariable && patched) {

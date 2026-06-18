@@ -2166,6 +2166,69 @@ describe('Rules', () => {
         expect(publicDecl.valueNode.toString()).toBe('three');
       });
 
+      it('does not allocate late setDefined assignment frame cells shadowed by current bindings', () => {
+        const parentDecl = vardecl({ name: 'one', value: any('root') });
+        const publicRules = rules([], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          parentDecl,
+          publicRules,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        const publicDecl = vardecl({ name: 'one', value: any('public') });
+        publicRules.adopt(publicDecl);
+        publicRules.rules.push(publicDecl);
+        publicRules.registerNode(publicDecl);
+        child.scopeFrame = child.getScopeFrame(parentFrame, false);
+
+        expect(parentFrame.assignmentBindingsByName?.has('one')).not.toBe(true);
+
+        child.registerNode(assignment, undefined, context);
+
+        expect(parentDecl.valueNode.toString()).toBe('three');
+        expect(publicDecl.valueNode.toString()).toBe('public');
+      });
+
+      it('keeps later child setDefined assignment frame cells when earlier children register late', () => {
+        const earlierRules = rules([], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const laterDecl = vardecl({ name: 'one', value: any('later') });
+        const laterRules = rules([laterDecl], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          earlierRules,
+          laterRules,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        const earlierDecl = vardecl({ name: 'one', value: any('earlier') });
+        earlierRules.adopt(earlierDecl);
+        earlierRules.rules.push(earlierDecl);
+        earlierRules.registerNode(earlierDecl);
+        child.scopeFrame = child.getScopeFrame(parentFrame, false);
+
+        expect(parentFrame.assignmentBindingsByName?.get('one')?.sourceNode).toBe(laterDecl);
+
+        child.registerNode(assignment, undefined, context);
+
+        expect(earlierDecl.valueNode.toString()).toBe('earlier');
+        expect(laterDecl.valueNode.toString()).toBe('three');
+      });
+
       it('keeps property setDefined on declaration occurrence insertion fallback', () => {
         const assignment = decl(
           { name: any('color'), value: any('blue') },

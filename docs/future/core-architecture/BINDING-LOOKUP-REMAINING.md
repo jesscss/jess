@@ -818,15 +818,20 @@ uncovered without rebuilding the child summary. Focused tests prove late
 registration does not rebuild public `Rules.value`, and duplicate public
 assignment targets now keep the later target on the no-crawl path.
 
-52. [ ] Replace assignment-target summary object allocation with caller-owned
+52. [x] Replace assignment-target summary object allocation with caller-owned
 accumulators. Scope: `AssignmentTargetBindingSummary`, recursive summary
 collection, child-entry construction, and focused setDefined tests. Goal:
 remove the small per-call `{ bindingsByName, readonlyByName }` object while
 keeping the canonical cell plus sparse readonly overlay model. Acceptance:
 aggressive review no longer flags the summary object allocation, setDefined
-tests stay green, and no cloned readonly maps return.
+tests stay green, and no cloned readonly maps return. Current evidence:
+`AssignmentTargetBindingSummary` and `getAssignmentTargetEntrySummary(...)`
+were deleted. Assignment target collection now writes directly into existing
+`RulesEntryLike` entries or into the destination `ScopeFrame`, preserving
+same-Rules later-wins overwrite and reverse child-entry add-if-absent ordering
+without allocating a temporary summary object.
 
-53. [ ] Patch parent assignment frame state for late static variables without
+53. [x] Patch parent assignment frame state for late static variables without
 allocating a frame assignment map when the key is shadowed by current bindings
 or a later child entry. Scope:
 `refreshDirectDeclarationChildEntryAssignmentSummary(...)`,
@@ -835,6 +840,34 @@ and duplicate/late registration tests. Goal: keep the single-key patch path
 from allocating assignment storage when the new target cannot be consulted.
 Acceptance: tests cover current binding shadow, later child shadow, and winning
 late child update while aggressive review explains any remaining Map allocation.
+Current evidence: frame assignment target writes now go through
+`addFrameAssignmentTargetBinding(...)`, which returns before allocating when a
+current binding already shadows the key. Late static child registration only
+patches `ScopeFrame.assignmentBindingsByName` when the child entry wins
+source-order against later child entries. Focused setDefined tests prove both
+current-binding shadow and later-child shadow keep the modeled winning target,
+while the earlier winning late-registration proof still updates the new cell.
+
+54. [ ] Collapse duplicated assignment child-entry scan between entry targets
+and frame targets without reintroducing temporary summary objects. Scope:
+`collectPublicChildVariableAssignmentBindingsInto(...)`,
+`collectPublicChildVariableAssignmentBindingsIntoFrame(...)`,
+`addAssignmentTargetBinding(...)`, and `addFrameAssignmentTargetBinding(...)`.
+Goal: avoid maintaining two near-identical child-entry loops while preserving
+the frame-specific current-binding shadow skip and no summary-object
+allocation. Acceptance: focused setDefined tests stay green, aggressive review
+shows no new callback/helper ladder on ordinary lookup, and current-shadow
+frame map allocation remains avoided.
+
+55. [ ] Move assignment target binding cell creation onto declaration
+registration/adoption when the declaration is already known static. Scope:
+`collectPublicVariableAssignmentBindingsInto(...)`, direct child entry
+construction, late static registration patching, and `VarDeclaration` static
+registration. Goal: stop allocating fresh assignment-only `BindingCell`
+objects during summary collection when registration already has the canonical
+declaration and can carry or reuse a cell. Acceptance: focused setDefined tests
+stay green, ordinary reads still ignore assignment targets, and aggressive
+review accounts for any remaining cell allocation as semantic placement state.
 
 ## Latest Binding Baseline
 
