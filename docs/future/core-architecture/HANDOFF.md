@@ -133,20 +133,29 @@ with `--no-verify` after the explicit gates pass.
   targeted ESLint, `git diff --check`,
   `pnpm run verify:aggressive-cutting-review`, and
   `pnpm --filter @jesscss/core build` passed.
+- Merge-carried binding review: latest `origin/dev` also carries
+  declaration-constraint option cleanup and merge-chain output-binding proof
+  in `packages/core/src/tree/reference.ts` and related lookup helpers. It is
+  binding/API-shape only: direct declaration lookup no longer accepts scalar
+  exclusion fields, `ReferenceOptions` uses semantic
+  `excludedDeclarations` / `requiredDeclarationAssignments` names, and merge
+  assignment keeps one mutable semantic exclusion list instead of hidden scalar
+  getter fields. No render/stringification path changed. Review-flagged loops,
+  arrays, and option objects belong to verifier/test/public-shape proof
+  scaffolding. Detailed status remains in
+  `BINDING-LOOKUP-REMAINING.md`.
 - Merge-carried binding review: latest `origin/dev` also carries binding/lookup
   queue cleanup plus two rejected namespace-prefix shortcut audits. It is
   lookup-only: no render/stringification path changed, no runtime node
   materialization was added, and detailed status remains in
-  `BINDING-LOOKUP-REMAINING.md`. The serialization pass keeps
-  `NODE-REWRITE-TRACKER.md` as the active queue.
+  `BINDING-LOOKUP-REMAINING.md`.
 - Merge-carried binding review: latest `origin/dev` also carries direct
   declaration per-key cache invalidation in `packages/core/src/tree/rules.ts`
   with focused reference tests. It is lookup/cache-only: no
   render/stringification path changed. Review-flagged loop/map findings are
   the accepted bounded cache-key invalidation walk plus test-only cache-key
   snapshots/maps used to prove unrelated direct declaration entries survive.
-  Detailed status remains in `BINDING-LOOKUP-REMAINING.md`. The serialization
-  pass keeps `NODE-REWRITE-TRACKER.md` as the active queue.
+  Detailed status remains in `BINDING-LOOKUP-REMAINING.md`.
 - Merge-carried binding review: latest `origin/dev` also carries
   declaration/import key-version proof and dynamic promotion invalidation in
   `packages/core/src/tree/reference.ts`. It is binding/cache-state only:
@@ -155,15 +164,21 @@ with `--no-verify` after the explicit gates pass.
   key's direct declaration bucket/cache entries; no render/stringification path
   changed. Review-flagged loops/maps/arrays are the existing per-key cache
   invalidation walk and focused cache-key snapshots. Detailed status remains in
-  `BINDING-LOOKUP-REMAINING.md`; the serialization pass keeps
-  `NODE-REWRITE-TRACKER.md` as the active queue.
+  `BINDING-LOOKUP-REMAINING.md`.
 - Merge note: latest `origin/dev` also carries serialization work for
   `Operation`, `QueryCondition`, and scalar token-family at-rule header/leaf
   syntax readback cuts, plus Ruleset/Ampersand serialization cuts from the
-  latest merge; keep that progress in `NODE-REWRITE-TRACKER.md` while this
-  worktree continues serialization. Review-flagged `CountingWriter`
+  latest merge and the child `Rules` wrapper preview-transport cut; keep that
+  progress in `NODE-REWRITE-TRACKER.md` while this worktree continues
+  serialization. Review-flagged `CountingWriter`
   constructions, detached `OutputWriter` header string boundaries, custom
   syntax subclass constructions, scalar `any(...)` fixtures, explicit
   `new Anonymous('html')`, and empty-arg `call(...)` test fixtures are
   serialization proof scaffolding from merges; they are not new binding runtime
   machinery.
+- Merge-carried serialization review: latest `origin/dev` also carries `For`
+  source writer work in `control.ts`, including the existing pattern/range
+  child loop plus focused `If`/`For`/`While` construction fixtures and
+  `WholeBufferCountingWriter` assertions. Those review-flagged loops, arrays,
+  node constructions, and thrown test errors belong to the serialization
+  tracker and are not new binding lookup runtime machinery.

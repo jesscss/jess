@@ -151,11 +151,45 @@ if (!referenceOptionsMatch) {
   console.error('could not find exported ReferenceOptions block');
   failed = true;
 } else {
-  for (const token of ['excludedNode0', 'excludedNode1', 'excludedNodesLength']) {
+  for (const token of ['excludedDeclaration0', 'excludedDeclaration1', 'excludedDeclarationCount']) {
     if (referenceOptionsMatch[0].includes(token)) {
       console.error(`exported ReferenceOptions still exposes internal scalar exclusion field ${token}`);
       failed = true;
     }
+  }
+  for (const token of ['excludedNodes', 'requiredNormalizedFromAssign']) {
+    if (referenceOptionsMatch[0].includes(token)) {
+      console.error(`exported ReferenceOptions still exposes old declaration-constraint option ${token}`);
+      failed = true;
+    }
+  }
+}
+
+const lookupUtilsSource = readFileSync(resolve(root, 'packages/core/src/tree/util/lookup-utils.ts'), 'utf8');
+const declarationFindOptionsMatch = lookupUtilsSource.match(/export type DeclarationFindOptions = \{[\s\S]*?\n\};/);
+if (!declarationFindOptionsMatch) {
+  console.error('could not find exported DeclarationFindOptions block');
+  failed = true;
+} else {
+  for (const token of [
+    'excludedNode0',
+    'excludedNode1',
+    'excludedNodes',
+    'excludedNodesLength',
+    'requiredNormalizedFromAssign'
+  ]) {
+    if (declarationFindOptionsMatch[0].includes(token)) {
+      console.error(`DeclarationFindOptions still exposes stale declaration constraint option ${token}`);
+      failed = true;
+    }
+  }
+}
+
+const declarationSource = readFileSync(resolve(root, 'packages/core/src/tree/declaration.ts'), 'utf8');
+for (const token of ['excludedNode0', 'excludedNode1', 'excludedNodesLength', 'requiredNormalizedFromAssign']) {
+  if (declarationSource.includes(token)) {
+    console.error(`Declaration assignment merge path still constructs stale declaration constraint ${token}`);
+    failed = true;
   }
 }
 

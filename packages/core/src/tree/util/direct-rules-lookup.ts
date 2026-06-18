@@ -148,30 +148,27 @@ function passesDeclarationFilter(
   strategy: DeclarationLookupStrategy,
   options: Pick<
     DeclarationFindOptions,
-    'excludedNode0' | 'excludedNode1' | 'excludedNodes' | 'excludedNodesLength' | 'filter' | 'requiredNormalizedFromAssign'
+    'excludedDeclarations' | 'filter' | 'requiredDeclarationAssignments'
   >,
   start: number | undefined
 ): node is Declaration {
   if (!strategy.acceptsNode(node)) {
     return false;
   }
-  if (options.excludedNode0 === node || options.excludedNode1 === node) {
-    return false;
-  }
-  if (options.excludedNodes?.includes(node)) {
+  if (options.excludedDeclarations?.includes(node)) {
     return false;
   }
   if (node.options?.setDefined) {
     return false;
   }
-  const requiredNormalizedFromAssign = options.requiredNormalizedFromAssign;
-  if (requiredNormalizedFromAssign !== undefined) {
+  const requiredDeclarationAssignments = options.requiredDeclarationAssignments;
+  if (requiredDeclarationAssignments !== undefined) {
     const normalizedFromAssign = String(node.options?.normalizedFromAssign ?? '');
-    if (Array.isArray(requiredNormalizedFromAssign)) {
-      if (!requiredNormalizedFromAssign.includes(normalizedFromAssign)) {
+    if (Array.isArray(requiredDeclarationAssignments)) {
+      if (!requiredDeclarationAssignments.includes(normalizedFromAssign)) {
         return false;
       }
-    } else if (normalizedFromAssign !== requiredNormalizedFromAssign) {
+    } else if (normalizedFromAssign !== requiredDeclarationAssignments) {
       return false;
     }
   }
@@ -280,7 +277,7 @@ function chooseCandidateMatch(
   strategy: DeclarationLookupStrategy,
   options: Pick<
     DeclarationFindOptions,
-    'excludedNode0' | 'excludedNode1' | 'excludedNodes' | 'excludedNodesLength' | 'filter' | 'requiredNormalizedFromAssign'
+    'excludedDeclarations' | 'filter' | 'requiredDeclarationAssignments'
   >
 ): DirectDeclarationOccurrence | undefined {
   if (!candidates?.size) {
@@ -370,11 +367,8 @@ function getRecursiveLookupCacheKey(
     || start !== undefined
     || readonly
     || options.filter
-    || options.excludedNodes
-    || options.excludedNode0
-    || options.excludedNode1
-    || options.excludedNodesLength !== undefined
-    || options.requiredNormalizedFromAssign !== undefined
+    || options.excludedDeclarations
+    || options.requiredDeclarationAssignments !== undefined
     || Boolean(options.candidates?.size)
     || Boolean(options.optionalCandidates?.size)
   ) {
@@ -423,7 +417,7 @@ function findLocalDeclaration(
   strategy: DeclarationLookupStrategy,
   options: Pick<
     DeclarationFindOptions,
-    'excludedNode0' | 'excludedNode1' | 'excludedNodes' | 'excludedNodesLength' | 'filter' | 'requiredNormalizedFromAssign'
+    'excludedDeclarations' | 'filter' | 'requiredDeclarationAssignments'
   >,
   start: number | undefined,
   skipVarDeclarations = false
