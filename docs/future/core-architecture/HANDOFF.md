@@ -103,34 +103,32 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: direct container `writeSyntax(...)` ownership for `Ruleset` and
-  non-leaf `AtRule`.
-- Verdict: accepted as a localized serialization transport deletion. Container
-  `writeSyntax(...)` for `Ruleset` and non-leaf `AtRule` no longer falls
-  through public `toTrimmedString(...)`; both now delegate straight to the
-  shared container serializer. No speed claim.
+- Latest pass: `Call.toTrimmedString(...)` direct writer ownership.
+- Verdict: accepted as a localized serialization transport deletion. Public
+  call source stringification no longer duplicates source assembly; the
+  non-fast-path wrapper now delegates to `writeSyntax(...)` and keeps the same
+  caller-writer mark/readback boundary. No speed claim.
 - New traversal: none. No new tree walk, parent walk, callback scan, side-map
   lookup, or array materialization was added.
 - New node/materialization: none. No runtime node copies, wrappers, inherited
   metadata, frozen state, or new hot-path arrays were added.
-- Render path: both container node families now satisfy direct syntax requests
-  through `writeSyntax(...)` without bouncing through their public string
-  wrappers first. The underlying serializer path is unchanged; this cut deletes
-  only the extra public method hop.
+- Render path: no render path changed. This pass only removes duplicated public
+  source-string assembly inside `Call.toTrimmedString(...)`.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Routine error control: the review-flagged thrown errors are focused
-  `ruleset.test.ts` / `at-rule.test.ts` proof scaffolding asserting these
-  direct writer calls do not re-enter public wrappers; no production
-  error/control flow changed.
-- Allocation changes: deletes one public string-wrapper call per direct
-  `writeSyntax(...)` container serialization request on these node families.
-- Rejected/observed in this pass: broader `Rules` render/body transport,
-  remaining declaration materialization, `Call`/`Mixin` source-wrapper cleanup,
-  and deeper AtRule body-state/import/render cleanup remain queued.
-- Evidence: focused `ruleset.test.ts` direct ruleset writer proof, focused
-  `at-rule.test.ts` non-leaf at-rule writer proof, targeted ESLint,
-  `git diff --check`, `pnpm run verify:aggressive-cutting-review`, and
+- Routine error control: the review-flagged `try/finally` and thrown test error
+  are focused `call.test.ts` proof scaffolding around a temporary prototype
+  swap used to assert `toTrimmedString(...)` now goes through `writeSyntax(...)`;
+  no production error/control flow changed.
+- Allocation changes: deletes one duplicated source-assembly path and reuses
+  the existing call writer implementation for non-fast-path public source
+  capture.
+- Rejected/observed in this pass: broader `Call` callable output selection and
+  arg-trimming fallbacks, `Rules`/`AtRule` deeper body work, remaining
+  declaration materialization, and `Mixin` cleanup remain queued.
+- Evidence: focused `call.test.ts` direct child-writer proof plus the new
+  `writeSyntax(...)` ownership proof, targeted ESLint, `git diff --check`,
+  `pnpm run verify:aggressive-cutting-review`, and
   `pnpm --filter @jesscss/core build` passed.
 - Merge-carried binding review: latest `origin/dev` also carries positional
   reference handle reader/writer/source-static strategy APIs in

@@ -933,27 +933,7 @@ export class Call extends Node<CallValue, CallOptions> {
       return out;
     }
     const mark = w.mark();
-    const { name, contentNode, args } = this;
-    if (typeof name === 'string') {
-      w.add(name, this);
-    } else {
-      name.writeSyntax(options);
-    }
-    if (this._options?.silentFail) {
-      w.add('?');
-    }
-    w.add('(');
-    if (args) {
-      args.writeSyntax(options);
-    }
-    w.add(')');
-    if (this._options?.markImportant) {
-      w.add(' !important');
-    }
-    if (contentNode) {
-      w.add(': ');
-      contentNode.writeSyntax(options);
-    }
+    this.writeSyntax(options);
     return w.getSince(mark);
   }
 
