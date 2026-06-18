@@ -103,6 +103,34 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Reference.toTrimmedString(...)` direct writer ownership.
+- Verdict: accepted as a localized serialization transport deletion. Public
+  reference source stringification no longer duplicates source assembly; the
+  non-fast-path wrapper now delegates to `writeSyntax(...)` and keeps the same
+  caller-writer mark/readback boundary. No speed claim.
+- New traversal: none. No new tree walk, parent walk, callback scan, side-map
+  lookup, or array materialization was added.
+- New node/materialization: none. No runtime node copies, wrappers, inherited
+  metadata, frozen state, or new hot-path arrays were added.
+- Render path: no render path changed. This pass only removes duplicated public
+  source-string assembly inside `Reference.toTrimmedString(...)`.
+- Helper/API surface: deletes private `renderReferenceSyntax(...)`; no new
+  helper or public API surface was added.
+- Metadata mutations: none.
+- Routine error control: the review-flagged thrown test error is focused
+  `reference.test.ts` proof scaffolding around a temporary prototype swap used
+  to assert `toTrimmedString(...)` now goes through `writeSyntax(...)`; no
+  production error/control flow changed.
+- Allocation changes: deletes one duplicated source-assembly path and reuses
+  the existing reference writer implementation for non-fast-path public source
+  capture.
+- Rejected/observed in this pass: broader `Reference` rules-like surfaces,
+  public value materialization, merged assign normalization, and key
+  conversion remain queued.
+- Evidence: focused `reference.test.ts` direct child-writer proof plus the new
+  `writeSyntax(...)` ownership proof, targeted ESLint, `git diff --check`,
+  `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` passed.
 - Latest pass: `Call.toTrimmedString(...)` direct writer ownership.
 - Verdict: accepted as a localized serialization transport deletion. Public
   call source stringification no longer duplicates source assembly; the

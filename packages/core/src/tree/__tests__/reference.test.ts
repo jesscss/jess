@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, AssignmentType, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, Reference, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, AssignmentType, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
 import { Context } from '../../context.js';
 import type { ReferenceOptions } from '../reference.js';
 import { isNode } from '../util/is-node.js';
@@ -184,6 +184,26 @@ describe('reference', () => {
       node.writeSyntax(getPrintOptions({ writer }));
 
       expect(chunks).toEqual(['$', '[', '#theme', '.dark', ']']);
+    });
+
+    it('serializes reference source syntax through writeSyntax ownership', () => {
+      const originalWriteSyntax = Reference.prototype.writeSyntax;
+      let writeSyntaxCalls = 0;
+      Reference.prototype.writeSyntax = function countWriteSyntax(
+        this: Reference,
+        ...args: Parameters<typeof originalWriteSyntax>
+      ): ReturnType<typeof originalWriteSyntax> {
+        writeSyntaxCalls++;
+        return originalWriteSyntax.apply(this, args);
+      };
+      const node = ref({ key: 'foo' }, { type: 'variable' });
+
+      try {
+        expect(node.toTrimmedString()).toBe('$foo');
+        expect(writeSyntaxCalls).toBe(1);
+      } finally {
+        Reference.prototype.writeSyntax = originalWriteSyntax;
+      }
     });
   });
 
@@ -5008,7 +5028,7 @@ describe('reference', () => {
       expect(filteredRef.eval(context).valueOf()).toBe('orange');
       expect(filteredRef._rulesLookupHandle?.lookupType).toBe('property');
       filteredRef._lookupStrategy = undefined;
-      filteredRef.options.filter = (node) => node.type === 'Declaration';
+      filteredRef.options.filter = node => node.type === 'Declaration';
 
       expect(filteredRef.eval(context).valueOf()).toBe('orange');
       expect(filteredRef._lookupStrategy?.lookupType).toBe('property');

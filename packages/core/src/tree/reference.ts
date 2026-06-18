@@ -2104,22 +2104,22 @@ function lookupResolvedReference(args: {
     }
     const handleResult = isReferenceDeclarationLookupStrategy(strategy)
       ? strategy.readHandle(
-        referenceNode,
-        targetRules,
-        handleLookupType,
-        handleValueKey,
-        env.inCall,
-        handleShape,
-        handleDeclarationConstraints
-      )
+          referenceNode,
+          targetRules,
+          handleLookupType,
+          handleValueKey,
+          env.inCall,
+          handleShape,
+          handleDeclarationConstraints
+        )
       : strategy.readHandle(
-        referenceNode,
-        targetRules,
-        handleLookupType,
-        handleValueKey,
-        env.inCall,
-        handleShape
-      );
+          referenceNode,
+          targetRules,
+          handleLookupType,
+          handleValueKey,
+          env.inCall,
+          handleShape
+        );
     if (handleResult !== undefined) {
       return {
         returnVal: handleResult === CACHED_RULES_LOOKUP_MISS ? undefined : handleResult,
@@ -3360,14 +3360,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     }
   }
 
-  private renderReferenceSyntax(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    this.writeReferenceSyntax(options);
-    return w.getSince(mark);
-  }
-
   override writeSyntax(options: FinalPrintOptions): void {
     this.writeReferenceSyntax(options);
   }
@@ -3376,7 +3368,11 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
    * @note - A reference renders a $ only if it has no target.
    */
   override toTrimmedString(options?: PrintOptions): string {
-    return this.renderReferenceSyntax(options);
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    this.writeSyntax(options);
+    return w.getSince(mark);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
