@@ -178,6 +178,7 @@ function copyCallableRulesChildren(sourceRules: Rules): Node[] {
 
 function createStaticCallableRulesSurface(sourceRules: Rules): Rules {
   const output = sourceRules.derive([]);
+  output.sourceNode = sourceRules.sourceNode ?? sourceRules;
   const source = sourceRules.rules;
   for (let i = 0; i < source.length; i++) {
     output.value.push(source[i]!);

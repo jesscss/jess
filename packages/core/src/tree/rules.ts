@@ -4572,9 +4572,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     prepState: RegistrationPrepState,
     context: Context
   ): void {
+    const sourceRules = sourceRulesOf(rules);
+    const reusesSourceChild = sourceRules !== rules && node.parent === sourceRules;
     rules.rules[index] = node;
     node.index = nodeIndex;
-    rules.adopt(node);
+    if (!reusesSourceChild) {
+      rules.adopt(node);
+    }
     // After prep, check if it still has a static name.
     if (this._hasStaticName(node)) {
       const registrationContext = rules._scopeFrame?.hasLiveBindings

@@ -360,9 +360,8 @@ describe('Mixin', () => {
       expect(secondDecl?.parent).toBe(mixinBody);
       expect(sourceDecl.parent).toBe(mixinBody);
       expect(sourceValue.parent).toBe(sourceDecl);
-      if (!isNode(firstDecl, N.VarDeclaration) || !isNode(secondDecl, N.VarDeclaration)) {
-        throw new Error('Expected VarDeclaration output children');
-      }
+      expect(firstDecl?.type).toBe('Declaration');
+      expect(secondDecl?.type).toBe('Declaration');
       expect(firstDecl.valueNode).toBe(sourceValue);
       expect(secondDecl.valueNode).toBe(sourceValue);
     });

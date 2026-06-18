@@ -103,6 +103,36 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Mixin` callable-wrapper source-parent preservation.
+- Verdict: accepted as a bounded callable-output ownership pass inside the
+  still-open `Mixin` row. Static direct mixin output and ruleset-as-mixin
+  placement now keep reused canonical declaration children attached to their
+  source `Rules` during registration prep instead of re-parenting them onto the
+  transient output wrapper before eval completes. No speed claim.
+- New traversal: none.
+- Review-flagged allocations: none added.
+- New node/materialization: none. The pass preserves the existing reused-child
+  contract rather than introducing a new copied output surface.
+- Render path: unchanged. This pass only changes registration/eval ownership
+  behavior for reused callable output children and does not add a new render
+  string boundary.
+- Helper/API surface: none added.
+- Metadata mutations: one existing registration-prep `adopt(...)` point in
+  `Rules._storePreparedRegistrationNode(...)` now skips the re-parenting write
+  when the prepared node is an already-reused child owned by the carried source
+  `Rules`, and static callable wrappers now stamp `sourceNode` eagerly so that
+  ownership check has the final source identity available before output-slot
+  attachment. No generic defensive read was added.
+- Routine error control: none added.
+- Allocation changes: none added.
+- Evidence: focused
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts -t "source-backed without moving source children|ruleset-as-mixin placement children owned"`
+  now passes. Full reruns of `mixin.test.ts` and `import-style.test.ts` show
+  the earlier ownership failures are gone; remaining red is confined to four
+  callable namespace / child-surface lookup misses in `mixin.test.ts` and four
+  import child-surface / namespace / parent-chain misses in
+  `import-style.test.ts`.
+
 - Latest pass: `ComplexSelector` leading-combinator spacing truth-sync.
 - Verdict: accepted as a small serializer truth-sync inside the already-closed
   `ComplexSelector` row. Relative selectors that start with a combinator now
