@@ -103,6 +103,37 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: preserved `Operation` explicit-writer render ownership.
+- Verdict: accepted as a localized render transport fix. Preserved operations
+  with an explicit writer no longer let child renders write directly while the
+  operator boundary exists only in the return string; child renders now run
+  with a detached writer and the final combined operation text is written once.
+  No speed claim.
+- New traversal: none. No new tree walk, parent walk, callback scan, side-map
+  lookup, or array materialization was added.
+- New node/materialization: none. No runtime node copies, wrappers, inherited
+  metadata, frozen state, or new hot-path arrays were added.
+- Render path: preserved-operation direct render still uses the existing left
+  and right child string results, but explicit-writer calls now keep child side
+  effects off the caller writer and emit the final operation text once.
+- Helper/API surface: none.
+- Metadata mutations: none.
+- Routine error control: the review-flagged thrown test errors are focused
+  `operation.test.ts` proof scaffolding around `withOperands(...)` materialization
+  guards; no production error/control flow changed.
+- Review-flagged node construction: the danger-token hit is the focused
+  `CountingWriter` test fixture in `operation.test.ts`, not a production node
+  or runtime wrapper allocation.
+- Allocation changes: no new runtime objects were added. This pass deletes one
+  explicit-writer child-output leak and reuses the existing detached-print
+  option path before the final writer add.
+- Rejected/observed in this pass: broader arithmetic/list materialization,
+  calc fallback ownership, and remaining repeated eval/render ladders stay
+  queued.
+- Evidence: focused `operation.test.ts` preserved-operation explicit-writer and
+  unresolved render proof, targeted ESLint, `git diff --check`,
+  `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` passed.
 - Latest pass: `Paren` dead string-coercion branch deletion.
 - Verdict: accepted as a localized serialization guard cleanup. `Paren`
   source/eval normalization no longer carries unreachable non-`Node`

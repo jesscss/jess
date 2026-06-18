@@ -207,6 +207,27 @@ describe('Operation', () => {
     expect(writer.marks).toBe(0);
   });
 
+  it('writes preserved operation render output to explicit writers once', async () => {
+    const node = rules([
+      vardecl({
+        name: any('div-op'),
+        value: list([dimension([10, 'px']), num(2)], { sep: '/' })
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+    const writer = new CountingWriter();
+    const operationNode = op([
+      ref({ key: 'div-op' }, { type: 'variable' }),
+      '*',
+      num(2)
+    ]);
+
+    expect(await Promise.resolve(operationNode.render(context, { writer }))).toBe('10px / 2 * 2');
+    expect(writer.toString()).toBe('10px / 2 * 2');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
   it('resolves operation values without touching render state', async () => {
     const node = rules([
       vardecl({
