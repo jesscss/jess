@@ -868,9 +868,6 @@ export class Call extends Node<CallValue, CallOptions> {
               return;
             }
             const innerMark = w.mark();
-            if (textState) {
-              textState.text = undefined;
-            }
             value.writeSyntax(printOptions);
             finishEscapedParenArg(arg, innerMark, next);
           });
@@ -880,9 +877,6 @@ export class Call extends Node<CallValue, CallOptions> {
           return;
         }
         const innerMark = w.mark();
-        if (textState) {
-          textState.text = undefined;
-        }
         (rendered as Node).writeSyntax(printOptions);
         finishEscapedParenArg(arg, innerMark, next);
         return;
@@ -899,9 +893,6 @@ export class Call extends Node<CallValue, CallOptions> {
         return rendered.then((value) => {
           if (!appendKnownRenderedText(value)) {
             const argMark = w.mark();
-            if (textState) {
-              textState.text = undefined;
-            }
             value.writeSyntax(printOptions);
             finishArg(arg, argMark, next);
             return;
@@ -911,9 +902,6 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       if (!appendKnownRenderedText(rendered as Node)) {
         const argMark = w.mark();
-        if (textState) {
-          textState.text = undefined;
-        }
         (rendered as Node).writeSyntax(printOptions);
         finishArg(arg, argMark, next);
         return;

@@ -99,6 +99,27 @@ class SyncOverrideAny extends Any<string> {
   }
 }
 
+class CustomSyntaxNode extends Node<string> {
+  constructor(value: string) {
+    super(value);
+  }
+
+  override writeSyntax(options?: Parameters<Node['writeSyntax']>[0]): void {
+    getPrintOptions(options).writer.add(`custom-${this.value}`);
+  }
+}
+
+class AsyncCustomSyntaxAny extends Any<string> {
+  constructor(value: string) {
+    super(value);
+    this.addFlag(F_MAY_ASYNC);
+  }
+
+  override eval() {
+    return Promise.resolve(new CustomSyntaxNode(this.value));
+  }
+}
+
 function countDeriveCallUse(): { readonly count: number; restore(): void } {
   const descriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
   const original = descriptor?.value;
@@ -1517,6 +1538,34 @@ describe('Call', () => {
     expect(writer.readbacks).toBe(0);
   });
 
+  it('renders custom fallback CSS call arguments without returning prefixed writer contents', () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const rule = call({
+      name: 'fn',
+      args: list([new CustomSyntaxNode('arg'), num(30)])
+    });
+
+    expect(rule.render(context, { writer })).toBe('fn(custom-arg, 30)');
+    expect(writer.toString()).toBe('prefix|fn(custom-arg, 30)');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(1);
+  });
+
+  it('renders async custom fallback CSS call content without returning prefixed writer contents', async () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const rule = call({
+      name: 'wrap',
+      contentNode: new AsyncCustomSyntaxAny('body')
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('wrap(): custom-body');
+    expect(writer.toString()).toBe('prefix|wrap(): custom-body');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(1);
+  });
+
   it('resolves CSS calls without touching render state', async () => {
     const rule = call({
       name: 'rgb',
@@ -1745,7 +1794,7 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('func((a, b), c)');
     expect(writer.toString()).toBe('func((a, b), c)');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
 

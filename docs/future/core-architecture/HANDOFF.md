@@ -103,35 +103,45 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: `Call` local render return carry after text-state fallback.
+- Latest pass: `Call` fallback child-local render return carry.
 - Verdict: accepted as a localized render-return cut. Plain/finalized `Call`
   render now keeps a local return string alive even after exact-text coverage
-  falls cold, by appending child-local emitted slices as args/content are
-  written instead of returning `w.getSince(mark)` for the whole call at the
-  end. Covered exact call render paths also drop the old outer call-level mark.
-  No speed claim.
+  falls cold, by appending child-local emitted slices as fallback args/content
+  are written instead of dropping `textState` cold and returning
+  `w.getSince(mark)` for the whole call at the end. Covered exact/plain call
+  render paths still drop the old outer call-level mark; custom/non-exact
+  fallback children keep their existing localized child mark/readback only to
+  recover the emitted slice after trim. No speed claim.
 - New traversal: none.
 - New node/materialization: none.
 - Render path: exact/plain/finalized call render still writes to the active
   writer directly, but returned text now comes from carried local state rather
-  than a whole-call writer readback. Fallback arg/content branches still use
-  local child mark windows where they need the exact emitted slice after trim.
+  than a whole-call writer readback. Non-exact/custom fallback arg/content
+  branches now append their local child slice into that carried text state
+  instead of dropping back to outer readback, while still using local child
+  mark windows where they need the exact emitted slice after trim.
 - Helper/API surface: no new helper.
 - Metadata mutations: none added.
 - Routine error control: none added.
 - Allocation changes: none new beyond the existing child-local mark windows;
   this pass deletes the outer call-level readback boundary and the exact-path
-  outer call-level mark on covered render paths.
+  outer call-level mark on covered render paths, but keeps the localized child
+  windows for custom/non-exact fallback slice recovery.
 - Rejected/observed in this pass: custom/non-scalar child surfaces still keep
   their localized child readback where the exact emitted slice must be recovered
-  after trimming or fallback syntax writes. This cut does not yet change the
-  broader callable-output or metadata-function lanes.
+  after trimming or fallback syntax writes; this pass only makes those child
+  slices feed the local call return string instead of reintroducing whole-call
+  readback. This cut does not yet change the broader callable-output or
+  metadata-function lanes.
 - Evidence: focused `call.test.ts` coverage now proves shared flat-buffer plain
   CSS calls, exact paren/quoted/operation/query-condition render args, exact
   paren/quoted content, scalar list/sequence/color args, evaluated scalar names,
-  and async scalar arg/content renders all return correct text with zero
-  readbacks and now zero outer call marks on the covered render path. Full
-  commit-boundary gates still need to run after this handoff update.
+  async scalar arg/content renders, and prefixed-writer custom fallback
+  arg/content paths all return the correct local call text. Covered exact/plain
+  paths stay at zero outer call marks/readbacks, while custom fallback paths
+  keep one localized child mark/readback and no longer return prefixed writer
+  contents. Full commit-boundary gates still need to run after this handoff
+  update.
 - Latest pass: `Call` exact operation/query-condition text carry.
 - Verdict: accepted as a localized exact-text carry cut. `Call`'s known source
   and render text helpers now cover exact `Dimension`, `Operation`, and

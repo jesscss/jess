@@ -389,7 +389,11 @@ Current hard leftovers after the broad hook sweep:
   mark/readback. Plain and finalized render paths now carry a string-only text
   state for known
   scalar/no-trivia args and content, including async scalar resolutions, so
-  covered paths return known text without whole-call writer readback.
+  covered paths return known text without whole-call writer readback. Non-exact
+  custom fallback args/content now also feed that same local return state by
+  appending their child-local emitted slice after fallback syntax writes,
+  instead of dropping back to whole-call readback; those paths still keep the
+  localized child mark/readback needed to recover the trimmed emitted slice.
   `evalArgNodes(...)` now takes a straight sync path for non-async args whose
   base `Node.eval` contract is intact, keeps custom sync eval overrides on
   their existing public-override path, and only switches to an async rest
