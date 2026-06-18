@@ -259,13 +259,16 @@ export class Call extends Node<CallValue, CallOptions> {
 
   private async evalArgNodes(
     context: Context,
-    nodes?: List<Node>
+    nodes?: List<Node>,
+    options?: { ownResults?: boolean }
   ): Promise<List<Node> | undefined> {
     if (!nodes) {
       return undefined;
     }
+    const ownResults = options?.ownResults ?? true;
     const source = nodes.items;
     const out = new Array<Node>(source.length);
+    let changed = false;
     const evalImmediate = (node: Node): Node => {
       const evald = node.evaluated ? node : node.evalNode(context);
       if (!(evald instanceof Node)) {
@@ -280,8 +283,9 @@ export class Call extends Node<CallValue, CallOptions> {
     const continueAsync = async (startIndex: number, first: Promise<Node>): Promise<List<Node>> => {
       let evald = await first;
       out[startIndex] = evald === source[startIndex]!
-        ? copyWithReusableLeaves(evald)
+        ? ownResults ? copyWithReusableLeaves(evald) : evald
         : evald;
+      changed ||= evald !== source[startIndex]!;
       for (let i = startIndex + 1; i < source.length; i++) {
         const next = source[i]!;
         let nextEvald: Node;
@@ -293,9 +297,12 @@ export class Call extends Node<CallValue, CallOptions> {
         } else {
           nextEvald = await next.eval(context) as Node;
         }
-        out[i] = nextEvald === next ? copyWithReusableLeaves(nextEvald) : nextEvald;
+        out[i] = nextEvald === next
+          ? ownResults ? copyWithReusableLeaves(nextEvald) : nextEvald
+          : nextEvald;
+        changed ||= nextEvald !== next;
       }
-      return list(out, nodes.options);
+      return !ownResults && !changed ? nodes : list(out, nodes.options);
     };
     for (let i = 0; i < source.length; i++) {
       const node = source[i]!;
@@ -304,7 +311,10 @@ export class Call extends Node<CallValue, CallOptions> {
         && node.eval === Node.prototype.eval
       ) {
         const evald = evalImmediate(node);
-        out[i] = evald === node ? copyWithReusableLeaves(evald) : evald;
+        out[i] = evald === node
+          ? ownResults ? copyWithReusableLeaves(evald) : evald
+          : evald;
+        changed ||= evald !== node;
         continue;
       }
       const evald = node.eval(context);
@@ -312,9 +322,12 @@ export class Call extends Node<CallValue, CallOptions> {
         return continueAsync(i, evald as Promise<Node>);
       }
       const resolved = evald as Node;
-      out[i] = resolved === node ? copyWithReusableLeaves(resolved) : resolved;
+      out[i] = resolved === node
+        ? ownResults ? copyWithReusableLeaves(resolved) : resolved
+        : resolved;
+      changed ||= resolved !== node;
     }
-    return list(out, nodes.options);
+    return !ownResults && !changed ? nodes : list(out, nodes.options);
   }
 
   private markCallOutput<T extends Node>(node: T, ownOutput = true): T {
@@ -1416,7 +1429,9 @@ export class Call extends Node<CallValue, CallOptions> {
       if (n === 'calc') {
         context.calcFrames++;
       }
-      const evaluatedArgs = await this.evalArgNodes(context, args)
+      const evaluatedArgs = await this.evalArgNodes(context, args, {
+        ownResults: !(this._options?.silentFail && typeof this.name !== 'string')
+      })
         .finally(() => {
           if (n === 'calc') {
             context.calcFrames--;

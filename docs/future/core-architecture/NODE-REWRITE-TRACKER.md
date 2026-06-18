@@ -391,7 +391,13 @@ Current hard leftovers after the broad hook sweep:
   application, single-rule `Rules` collapse, and `markCallOutput(...)`
   handoff instead of duplicating that ladder across dynamic JS/callable
   branches.
-  Remaining work is split callable output value selection,
+  Render-only finalized fallback evaluation now tells `evalArgNodes(...)` not
+  to own same-identity arg results, so source-free static arg containers are
+  no longer reconstructed just to stringify finalized fallback syntax; when
+  every evaluated arg stays identity-equal on that render-only path,
+  `evalArgNodes(...)` now reuses the original arg `List` surface instead of
+  wrapping the same nodes in a replacement list that would re-parent them.
+  Remaining work is split
   `evalArgNodes(...)` copy pressure for calc/finalized CSS fallback paths,
   non-scalar/custom/trivia arg trim marks, async/helper ladders, and repeated
   eval.

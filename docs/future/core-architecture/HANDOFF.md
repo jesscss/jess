@@ -103,6 +103,48 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` finalized fallback arg ownership skip.
+- Verdict: accepted as a localized ownership cut. The render-only finalized
+  fallback path in `Call.evalFromStateInFrame(...)` now tells
+  `evalArgNodes(...)` not to own same-identity arg results, so source-free
+  static arg containers are not reconstructed just to stringify finalized
+  fallback syntax. No speed claim.
+- New traversal: none.
+- New node/materialization: none added. This pass removes one render-only
+  owned-surface construction case by letting the finalized fallback branch
+  reuse identity-equal evaluated args when it immediately stringifies them into
+  fallback syntax, and it reuses the original arg `List` when every evaluated
+  arg stayed identity-equal on that render-only path.
+- Render path: finalized fallback render still goes through
+  `renderFinalizedCallSyntax(...)`, but it now receives the existing evaluated
+  arg nodes instead of rebuilt same-identity owned copies when ownership is not
+  needed for the render-only branch.
+- Helper/API surface: no new helper. `evalArgNodes(...)` now takes one
+  node-local `{ ownResults?: boolean }` option so callers can declare when
+  ownership is actually needed.
+- Metadata mutations: none added. This pass avoids new parent/ownership churn
+  in the covered fallback branch rather than introducing more of it.
+- Routine error control: none added. Existing finalized fallback, calc cleanup,
+  and sync/async arg-eval branches stay where they were.
+- Allocation changes: deletes one static-container reconstruction case on the
+  render-only finalized fallback path and avoids a replacement arg `List` when
+  the render-only finalized fallback evaluation leaves every arg identity-equal.
+  The existing owned-surface path remains in place for branches that still need
+  independent arg ownership.
+- Rejected/observed in this pass: the cut is intentionally narrower than the
+  full `evalArgNodes(...)` ownership queue; calc and other owned-result paths
+  still keep their current ownership behavior, and non-scalar/custom/trivia arg
+  transport remains queued.
+- Evidence: a new focused `call.test.ts` proof for finalized fallback syntax
+  showed a real red where a source-free static `Sequence` arg container was
+  being reconstructed once; after the cut it passed with `constructedCopies`
+  back at `0`, and the existing fallback-canonicality proofs now also confirm
+  the original arg/list parent links stay on the source call surface. The
+  adjacent focused subset covering optional fallback arg canonicality,
+  non-async immediate sync arg eval, custom sync overrides, calc reduction,
+  sync calc-frame cleanup, async arg buffer/render, async calc await, and
+  async calc-frame rejection cleanup also passed. Full commit-boundary gates
+  still need to run after this handoff update.
 - Latest pass: `Call` callable output finalization collapse.
 - Verdict: accepted as a localized helper-ladder cut. Repeated `Call`
   branches that previously reimplemented “eval node result, optionally mark

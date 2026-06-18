@@ -2338,6 +2338,45 @@ describe('Call', () => {
     }
   });
 
+  it('does not reconstruct source-free static arg containers for finalized fallback syntax', async () => {
+    class CountingSequence extends Sequence {
+      static countConstructions = false;
+      static constructedCopies = 0;
+
+      constructor(...args: ConstructorParameters<typeof Sequence>) {
+        super(...args);
+        if (CountingSequence.countConstructions) {
+          CountingSequence.constructedCopies++;
+        }
+      }
+    }
+
+    const dynamicName = any('source-name');
+    dynamicName.eval = function evalForFinalizedFallbackName() {
+      return any('noop');
+    };
+    const originalArg = new CountingSequence([any('red'), dimension([10, 'px'])]);
+    const originalArgs = list([originalArg]);
+    const rule = call({
+      name: dynamicName,
+      args: originalArgs
+    }, { silentFail: true });
+
+    CountingSequence.countConstructions = true;
+    try {
+      const resolved = await rule.eval(context);
+
+      expect(isNode(resolved, N.Call)).toBe(false);
+      expect(resolved.toTrimmedString()).toBe('noop(red 10px)');
+      expect(CountingSequence.constructedCopies).toBe(0);
+      expect(originalArg.parent).toBe(originalArgs);
+      expect(originalArgs.parent).toBe(rule);
+    } finally {
+      CountingSequence.countConstructions = false;
+      CountingSequence.constructedCopies = 0;
+    }
+  });
+
   it('keeps source fallback call content canonical when optional function evaluation falls back', async () => {
     const originalCopy = Sequence.prototype.copy;
     let sequenceCopies = 0;
