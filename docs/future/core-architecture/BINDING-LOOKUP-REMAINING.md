@@ -116,11 +116,16 @@ reference-import child ruleset surfaces. Prefix ownership now recognizes
 prefixes found inside the child entry itself, not only one-segment parent-owned
 prefixes. Focused compound reference-import prefix hit/miss tests prove
 `#imported .branch -> .leaf` paths avoid both root start-key
-`findMixinsFast(...)` and generated nested array fallback. Keep this open for
-`findMixinNamespacePathFast(...)` unsupported returns, selector-list namespace
-prefixes, terminal mixin-only imported namespace cases, and any imported
-namespace positive/miss shape not covered by the current reference-import
-fixtures.
+`findMixinsFast(...)` and generated nested array fallback. Selector-list
+reference-import prefix hit/miss tests prove the same carried prefix ownership
+for selector-list ruleset prefixes. `findMixinNamespacePathFast(...)` now
+routes uncovered child/reference states through the narrow child-entry helper
+before broad `findMixinsFast(...)`; a callable namespace reference-import
+offset-path test proves `#parent-namespace -> #imported -> .leaf` avoids both
+broad start crawl and generated array fallback. Keep this open for terminal
+mixin-only imported namespace cases, fallback-frame uncovered offsets, and any
+imported namespace positive/miss shape not covered by the current
+reference-import fixtures.
 
 6. [ ] Extend stable namespace no-fallback proof to imported namespace
 surfaces. Scope: namespace path offsets, reference imports, terminal
@@ -934,7 +939,7 @@ late registration updates the current binding explicitly after pushing, and
 new names after frame creation still allocate their frame bucket. Focused
 source-order, pending-dynamic, setDefined, and scope-frame tests are green.
 
-59. [ ] Prove selector-list reference-import namespace prefixes use the same
+59. [x] Prove selector-list reference-import namespace prefixes use the same
 carried prefix ownership as compound prefixes. Scope:
 `findVisibleCallableRulesetPrefixMatches(...)`, `prefixOwnsChildRules(...)`,
 selector-list imported rulesets, and hit/miss spies for broad
@@ -942,16 +947,57 @@ selector-list imported rulesets, and hit/miss spies for broad
 reference-import namespace positives and misses stay on carried prefix facts
 without reopening generated fallback. Acceptance: focused selector-list
 reference-import prefix hit/miss tests and adjacent callable namespace slices
-stay green.
+stay green. Current evidence: selector-list prefix hit and miss tests now
+cover imported rulesets with `#imported .branch` and `#other .branch` selector
+alternatives. Both prove zero root start-key `findMixinsFast('#imported')`
+and zero generated nested array fallback; adjacent compound-prefix,
+reference-import namespace, terminal mixin-only, and namespace fast-path slices
+stayed green.
 
-60. [ ] Audit initial-vs-late callable child aggregate parity after carrying
+60. [x] Audit initial-vs-late callable child aggregate parity after carrying
 exact child flags during `collectDirectChildRulesEntries(...)`. Scope:
 `collectDirectChildRulesEntries(...)`, `addDirectChildRuleEntry(...)`,
 `registerNode(...)`, StyleImport/reference children, mixin-output children, and
 frame miss coverage bits. Goal: ensure initial collection and late registration
 set the same aggregate facts without broad child rediscovery. Acceptance:
 focused tests prove initial and late exact mixin/ruleset/reference child
-surfaces expose identical aggregate flags and miss coverage behavior.
+surfaces expose identical aggregate flags and miss coverage behavior. Current
+evidence: a parity test now compares initial collection and late `push(...)`
+registration for mixin-only, ruleset-only, mixed callable, reference-import,
+and empty child shapes. The audit found and removed late callable child-entry
+allocation for children with neither exact callable nor reference-import
+surface, matching initial collection and avoiding a useless prepared child
+entry.
+
+61. [ ] Prove fallback-frame uncovered namespace offsets use the narrow
+child-entry path. Scope: `findMixinNamespacePathFast(...)` fallback frame loop,
+fallback frames with reference-import child surfaces, child-surface misses,
+and `searchParents` behavior. Goal: fallback-frame uncovered child/reference
+states should use `findMixinsFastForUncoveredCallable(...)` only for the
+specific fallback frame, without reopening parent/root broad start-key crawl.
+Acceptance: focused fallback-frame namespace hit/miss spies prove zero broad
+`findMixinsFast(...)` outside the modeled fallback child entries.
+
+62. [ ] Split terminal mixin-only imported namespace proof from generic
+reference-import namespace coverage. Scope: parameterized mixin-ruleset calls,
+terminal ruleset exclusion after namespace resolution, reference-import
+ruleset namespaces, and `terminalMixinOnly` propagation through offset paths.
+Goal: once a namespace chain is resolved and the terminal call has parameters,
+lookup should consider only mixins at the terminal unless an explicit Less
+error path requires a cold secondary search. Acceptance: focused imported
+namespace terminal mixin-only hit/miss tests show ruleset terminals are skipped
+without broad fallback, while existing parameterized namespace Less semantics
+stay green.
+
+63. [ ] Collapse duplicated namespace-offset fallback checks if the remaining
+fallback-frame proof matches the current-frame proof. Scope:
+`findMixinNamespacePathFast(...)`, `findRulesetNamespacePathFast(...)`,
+`findCallableDescendantsWithinMixinNamespaces(...)`, and local
+`UNCOVERED_CALLABLE_UNSUPPORTED` checks. Goal: remove repeated branch ladders
+only if it reduces hot-path code without adding a helper-call/object tax.
+Acceptance: either a small direct local reshaping with focused namespace tests
+green, or a documented rejection that the duplication is cheaper than another
+hot helper layer.
 
 ## Latest Binding Baseline
 

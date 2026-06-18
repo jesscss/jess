@@ -1836,6 +1836,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this.hasExactRulesetChildSurface = true;
       }
     }
+    if (!hasReferenceImportSurface && !hasExactCallableSurface) {
+      return;
+    }
     const visibility = mergeDirectChildRulesVisibility(child.options.rulesVisibility, rulesVisibility);
 
     if (this.directChildRuleEntries === undefined) {
@@ -2111,6 +2114,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
           if (matches === undefined) {
             return DEFINITE_MIXIN_NAMESPACE_MISS;
+          }
+        } else if (
+          frameHit.kind === 'uncovered'
+          && (frameHit.reason === 'child-surface' || frameHit.reason === 'reference-import')
+        ) {
+          const direct = scope.findMixinsFastForUncoveredCallable(
+            segment,
+            frameHit.reason,
+            includeRulesets,
+            options
+          );
+          if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED) {
+            matches = direct;
           }
         }
       }

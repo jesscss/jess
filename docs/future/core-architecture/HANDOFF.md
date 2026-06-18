@@ -103,42 +103,44 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding implementation pass carrying initial callable child
-  aggregate flags and closing a reference-import compound-prefix namespace
-  fallback.
-- Verdict: accepted as a registryless callable lookup correction. Initial
-  `collectDirectChildRulesEntries(...)` now carries the same exact callable,
-  mixin, and ruleset child-surface aggregate facts that late
-  `addDirectChildRuleEntry(...)` already carried. That lets prefix lookup trust
-  existing child-entry facts instead of falling through to broad start-key
-  callable search. `prefixOwnsChildRules(...)` now recognizes prefix matches
-  found inside the child entry itself, so reference-import compound ruleset
-  prefixes can prove namespace uncertainty is limited to that prefix path. No
+- Latest pass: binding implementation pass closing selector-list
+  reference-import prefix proof, deleting late empty callable child-entry
+  allocation, and routing namespace-offset uncovered child/reference states
+  through the narrow child-entry helper.
+- Verdict: accepted as registryless callable lookup cleanup. Selector-list
+  reference-import ruleset prefixes now have the same zero-broad-crawl proof as
+  compound prefixes. Late child registration now matches initial collection by
+  skipping callable child-entry records when the child has neither exact
+  callable nor reference-import surface. `findMixinNamespacePathFast(...)` now
+  asks `findMixinsFastForUncoveredCallable(...)` before reopening broad
+  `findMixinsFast(...)` for current-frame child/reference uncovered states. No
   speed claim.
-- New traversal: no new ordinary lookup traversal was added. The existing
-  child-entry collection loop writes aggregate booleans while it already has
-  per-entry `hasExact*Surface` facts. The existing prefix-match loop performs
-  one extra source comparison against the child-entry scope before deciding
-  whether to reopen broad mixin namespace search.
-- Review-flagged allocations: no new runtime arrays, nodes, wrapper `Rules`, or
-  side maps. The tests add spy arrays only. Production reuses the existing
-  `prefixMatches` array and child-entry records.
+- New traversal: no new recursive lookup traversal was added. The namespace
+  offset path reuses the existing narrow child-entry scan only when the scope
+  frame already reported child/reference uncertainty; this replaces a broader
+  start-key `findMixinsFast(...)` crawl for the covered test shape. The parity
+  audit deletes a late child-entry insertion for empty/non-callable children.
+- Review-flagged allocations: no new production arrays, nodes, wrapper
+  `Rules`, side maps, or result objects. Tests add spy arrays and a small
+  snapshot object for parity assertions only.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
-  inherited metadata, frozen state, or production arrays were added.
+  inherited metadata, frozen state, or production materialization were added.
 - Render path: no render/stringification path changed.
 - Helper/API surface: no public Jess API was added. No helper was added; the
-  existing `prefixOwnsChildRules(...)` predicate was narrowed to the carried
-  child-entry prefix fact it already models.
+  pass reuses existing child-entry and namespace-offset functions.
 - Metadata mutations: none.
-- Allocation changes: no new runtime nodes or public materialization. Initial
-  aggregate flag writes reuse booleans already computed for each child entry.
-  Prefix ownership checks use existing source identity comparisons.
-- Evidence: a focused red/green `mixin.test.ts` slice proves reference-import
-  compound prefix hits and misses avoid both root start-key
-  `findMixinsFast(...)` and generated nested array fallback. Adjacent callable
-  bucket slices for reference imports, static misses, terminal mixin-only,
-  fallback/retry frames, recursive namespaces, and stable namespace fixtures
-  stayed green. No performance measurement was run.
+- Allocation changes: late empty/non-callable child `Rules` no longer allocate
+  a callable child-entry record after `directChildRuleEntries` has been
+  prepared. No public materialization changed.
+- Evidence: focused `mixin.test.ts` slices prove selector-list
+  reference-import prefix hits/misses avoid root start-key
+  `findMixinsFast(...)` and generated nested array fallback; initial and late
+  child aggregate facts match for mixin, ruleset, mixed callable,
+  reference-import, and empty child shapes; and a callable namespace
+  reference-import offset path avoids broad `#imported` crawl plus generated
+  array fallback. Adjacent reference-import, terminal mixin-only, namespace
+  offset, and ruleset namespace slices stayed green. No performance
+  measurement was run.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification
