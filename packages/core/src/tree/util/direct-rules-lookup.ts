@@ -413,6 +413,26 @@ function getRecursiveLookupCacheKey(
   ].join('\u001f');
 }
 
+function isMergeDeclarationAssignment(assign: string): boolean {
+  return assign === '&,:' || assign === '&_:' || assign === '+,:' || assign === '+_:';
+}
+
+function requiresMergeDeclarationSurface(options: DirectDeclarationFindOptions): boolean {
+  const required = options.requiredDeclarationAssignments;
+  if (required === undefined) {
+    return false;
+  }
+  if (Array.isArray(required)) {
+    for (let i = 0; i < required.length; i++) {
+      if (isMergeDeclarationAssignment(required[i]!)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  return isMergeDeclarationAssignment(required);
+}
+
 function readCachedMatch(scope: Rules, cacheKey: string | undefined): CachedDeclarationMatchState | undefined {
   if (!cacheKey) {
     return undefined;
@@ -639,6 +659,16 @@ function findWithinScopeSurface(
     writeCachedMatch(scope, cacheKey, state);
     return state;
   }
+  const requireMergeDeclarationSurface = requiresMergeDeclarationSurface(options);
+  if (
+    requireMergeDeclarationSurface
+    && !scope.hasMergeDeclarationChildSurface
+    && !scope.hasReferenceImportChildSurface
+  ) {
+    countDirectLookup?.('declaration.childEntriesMergeFamilySkip');
+    writeCachedMatch(scope, cacheKey, state);
+    return state;
+  }
 
   countDirectLookup?.('declaration.childEntriesScanned');
   const lookupType = strategy.lookupVisibility;
@@ -647,6 +677,14 @@ function findWithinScopeSurface(
     const entry = childEntries[i]!;
     if (!childEntryMayContainFamily(entry)) {
       countDirectLookup?.('declaration.childEntryFamilySkip');
+      continue;
+    }
+    if (
+      requireMergeDeclarationSurface
+      && entry.hasMergeDeclarationSurface !== true
+      && entry.hasReferenceImportSurface !== true
+    ) {
+      countDirectLookup?.('declaration.childEntryMergeFamilySkip');
       continue;
     }
     if (!canEnterRulesEntryForLookup(entry, {

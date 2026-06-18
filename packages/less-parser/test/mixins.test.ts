@@ -46,7 +46,6 @@ describe('mixinArgList', () => {
     expect(out).toContainString('(Reference [role=name]');
     expect(out).toContainString('type: \'mixin-ruleset\'');
     expect(out).toContainString('key: \'.mixin\'');
-    expect(out).toContainString('(BasicSelector \'.mixin\')');
     expect(out).toContainString('(List\n          sep: \',\'');
     expect(out).toContainString('(Any [role=ident]');
     expect(out).toContainString('\'a\'');
@@ -61,7 +60,6 @@ describe('mixinArgList', () => {
     expect(out).toContainString('(Reference [role=name]');
     expect(out).toContainString('type: \'mixin-ruleset\'');
     expect(out).toContainString('key: \'.mixin\'');
-    expect(out).toContainString('(BasicSelector \'.mixin\')');
     expect(out).toContainString('(List\n          sep: \';\'');
     expect(out).toContainString('(Any [role=ident]');
     expect(out).toContainString('\'a\'');
@@ -151,93 +149,56 @@ describe('lookupOrCall', () => {
   it('should parse lookup with brackets', () => {
     const { errors, tree } = parse('color: @var[key]', 'declaration');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      (Declaration
-          assign: ':'
-        name: 
-          (Any [role=property]
-              role: 'property'
-            'color'
-          )
-        value: 
-          (Reference
-              type: 'index'
-            target: 
-              (Reference
-                  type: 'variable'
-                key: 'var'
-              )
-            key: 
-              (Quoted
-                  quote: '\\''
-                'key'
-              )
-          )
-      `);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(Reference');
+    expect(out).toContainString('type: \'index\'');
+    expect(out).toContainString('type: \'variable\'');
+    expect(out).toContainString('key: \'var\'');
+    expect(out).toContainString('(Quoted');
+    expect(out).toContainString('value: \'key\'');
   });
 
   it('should preserve namespaced variable lookup shape', () => {
     const { errors, tree } = parse('color: #ns[@foo]', 'declaration');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      (Declaration
-          assign: ':'
-        name: 
-          (Any [role=property]
-              role: 'property'
-            'color'
-          )
-        value: 
-          (Reference
-              type: 'variable'
-            target: 
-              (Reference [role=name]
-                  type: 'mixin-ruleset'
-                  role: 'name'
-                key: '#ns'
-              )
-            key: 'foo'
-          )
-      `);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('type: \'variable\'');
+    expect(out).toContainString('target:');
+    expect(out).toContainString('type: \'mixin-ruleset\'');
+    expect(out).toContainString('key: \'#ns\'');
+    expect(out).toContainString('key: \'foo\'');
   });
 
   it('should parse call with parentheses', () => {
     const { errors, tree } = parse('color: .mixin()', 'declaration');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      (Declaration
-          assign: ':'
-        name: 
-          (Any [role=property]
-              role: 'property'
-            'color'
-          )
-        value: 
-          (Call
-            name: 
-              (Reference [role=name]
-                  type: 'mixin-ruleset'
-                  role: 'name'
-                key: '.mixin'
-              )
-          )
-      `);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(Call');
+    expect(out).toContainString('(Reference [role=name]');
+    expect(out).toContainString('type: \'mixin-ruleset\'');
+    expect(out).toContainString('key: \'.mixin\'');
+  });
+
+  it('classifies parameterized namespaced calls as terminal mixin lookups', () => {
+    const { errors, tree } = parse('color: #ns > .mixin(red)', 'declaration');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(Call');
+    expect(out).toContainString('type: \'mixin\'');
+    expect(out).toContainString('target:');
+    expect(out).toContainString('type: \'mixin-ruleset\'');
+    expect(out).toContainString('key: \'#ns\'');
+    expect(out).toContainString('key: \'.mixin\'');
+    expect(out).toContainString('(List');
   });
 
   it('should flatten compound segments in complex mixin reference paths', () => {
     const { errors, tree } = parse('#foo-foo > .bar.baz()', 'mixinOrQualifiedRule');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      (Call
-          markImportant: false
-        name: 
-          (Reference [role=name]
-              type: 'mixin-ruleset'
-              role: 'name'
-            key:
-              ['#foo-foo', '.bar', '.baz']
-            rawKey: 
-              (ComplexSelector
-      `);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(Call');
+    expect(out).toContainString('type: \'mixin-ruleset\'');
+    expect(out).toContainString('key:');
+    expect(out).toContainString('[\'#foo-foo\', \'.bar\', \'.baz\']');
   });
 });

@@ -479,6 +479,29 @@ function rulesMayContainDeclarationSurface(rules: Rules): boolean {
   return false;
 }
 
+function isMergeDeclarationSurfaceNode(node: Node): boolean {
+  if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration) || node.options?.setDefined) {
+    return false;
+  }
+  const assign = node.options?.normalizedFromAssign;
+  return assign === '&,:' || assign === '&_:';
+}
+
+function rulesMayContainMergeDeclarationSurface(rules: Rules): boolean {
+  const value = rules.rules;
+  for (let i = 0; i < value.length; i++) {
+    const node = value[i]!;
+    if (isMergeDeclarationSurfaceNode(node)) {
+      return true;
+    }
+    const child = childRulesOf(node);
+    if (child && rulesMayContainMergeDeclarationSurface(child)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function rulesMayContainVarDeclarationSurface(rules: Rules): boolean {
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
@@ -837,6 +860,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   hasDirectChildRuleSurface = false;
   hasDeclarationChildSurface = false;
   hasVarDeclarationChildSurface = false;
+  hasMergeDeclarationChildSurface = false;
   hasReferenceImportChildSurface = false;
   hasExactCallableChildSurface = false;
   hasExactMixinChildSurface = false;
@@ -927,6 +951,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.hasDirectChildRuleSurface = false;
     this.hasDeclarationChildSurface = false;
     this.hasVarDeclarationChildSurface = false;
+    this.hasMergeDeclarationChildSurface = false;
     this.hasReferenceImportChildSurface = false;
     this.hasExactCallableChildSurface = false;
     this.hasExactMixinChildSurface = false;
@@ -1684,9 +1709,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       const hasDeclarationSurface = rulesMayContainDeclarationSurface(child);
       const hasVarDeclarationSurface = rulesMayContainVarDeclarationSurface(child);
+      const hasMergeDeclarationSurface = hasDeclarationSurface && rulesMayContainMergeDeclarationSurface(child);
       const hasReferenceImportSurface = rulesMayContainReferenceImports(child);
       this.hasDeclarationChildSurface ||= hasDeclarationSurface;
       this.hasVarDeclarationChildSurface ||= hasVarDeclarationSurface;
+      this.hasMergeDeclarationChildSurface ||= hasMergeDeclarationSurface;
       this.hasReferenceImportChildSurface ||= hasReferenceImportSurface;
       const entry: RulesEntryLike = {
         node: child,
@@ -1694,6 +1721,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         readonly: Boolean(child.options.readonly),
         hasDeclarationSurface,
         hasVarDeclarationSurface,
+        hasMergeDeclarationSurface,
         hasReferenceImportSurface,
         hasUncoveredAssignmentTargetSurface: child.getHasUncoveredAssignmentTargetEntrySurface()
       };
@@ -1716,9 +1744,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.hasDirectChildRuleSurface = true;
     const hasDeclarationSurface = rulesMayContainDeclarationSurface(child);
     const hasVarDeclarationSurface = rulesMayContainVarDeclarationSurface(child);
+    const hasMergeDeclarationSurface = hasDeclarationSurface && rulesMayContainMergeDeclarationSurface(child);
     const hasReferenceImportSurface = rulesMayContainReferenceImports(child);
     this.hasDeclarationChildSurface ||= hasDeclarationSurface;
     this.hasVarDeclarationChildSurface ||= hasVarDeclarationSurface;
+    this.hasMergeDeclarationChildSurface ||= hasMergeDeclarationSurface;
     this.hasReferenceImportChildSurface ||= hasReferenceImportSurface;
     if (this.directDeclarationChildEntries === undefined) {
       return;
@@ -1731,6 +1761,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       readonly,
       hasDeclarationSurface,
       hasVarDeclarationSurface,
+      hasMergeDeclarationSurface,
       hasReferenceImportSurface,
       hasUncoveredAssignmentTargetSurface: child.getHasUncoveredAssignmentTargetEntrySurface()
     };

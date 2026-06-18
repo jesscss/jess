@@ -107,25 +107,38 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: rejected structured merge-exclusion handle prototype.
-- Verdict: rejected as a performance implementation pass; accepted only as
-  evidence. Runtime code is back to clean. Turning merge-reference
-  self-exclusion into structured source/location handle constraints preserved
-  focused behavior but did not reduce broad `benchmark.less` or
-  `scope-lookup-stress.less` lookup counters.
-- New traversal: none kept.
-- New node/materialization: none kept.
+- Latest pass: merge declaration surface pruning plus terminal mixin parse
+  classification.
+- Verdict: accepted as a counter-proven traversal cut and parser
+  classification cleanup, not as a wall-clock speed claim. Merge-constrained
+  property lookup now uses carried merge-declaration child-surface facts to
+  avoid entering child rules that cannot contain merge candidates. Parsed
+  non-empty-arg namespace calls now classify the terminal segment as `mixin`
+  while preserving namespace prefixes as `mixin-ruleset` targets.
+- New traversal: `rulesMayContainMergeDeclarationSurface(...)` scans child
+  rules beside existing declaration-surface collection and registration; it
+  pays at the same derived-state boundary that already scans child rules, and
+  broad `benchmark.less` shows it deletes tens of thousands of recursive
+  lookup entries. `requiresMergeDeclarationSurface(...)` scans only the small
+  `requiredDeclarationAssignments` option list already passed to merge lookups
+  and exists solely to select the narrower child-surface gate.
+- New node/materialization: parsed non-empty-arg namespace calls may create one
+  parse-time prefix `Reference` so the terminal call can be `type: 'mixin'`
+  while namespace containers remain `type: 'mixin-ruleset'`. This replaces a
+  flattened broad lookup shape; it is parser AST classification, not runtime
+  eval/render materialization.
 - Render path: no render/stringification path changed.
-- Helper/API surface: none kept.
+- Helper/API surface: parser-local `createTerminalMixinCallReference(...)` and
+  lookup-local merge-assignment predicates. No public API added.
 - Metadata mutations: none kept.
-- Evidence: ordered package rebuilds passed; focused reference/property merge
-  and live-binding/setDefined slices passed. Broad `benchmark.less` stayed at
-  `declaration.cacheMiss` `54780`, `declaration.scope.p` `50318`,
-  `childEntryEntered` `51551`, and `childEntriesScanned` `18527`; lookup
-  stress stayed at `cacheMiss` `7560` and `scope.v` `7560`. See
-  `PERFORMANCE-HANDOFF.md` for the next target: replace synthetic merge
-  `Reference` reads with a direct typed occurrence path instead of adding more
-  declaration-handle constraint state.
+- Evidence: ordered package rebuilds passed. Focused reference/property merge,
+  live-binding/setDefined, runtime callable terminal-args, and full
+  less-parser `mixins.test.ts` passed. Broad `benchmark.less`
+  `declaration.cacheMiss` dropped `54780` -> `4766`, `scope.p` dropped
+  `50318` -> `304`, `childEntryEntered` dropped `51551` -> `1537`, and
+  `childEntriesScanned` dropped `18527` -> `1085`; lookup stress stayed
+  unchanged on the variable-heavy path. Stable wall-clock remained noisy, so
+  this is not a speed claim. See `PERFORMANCE-HANDOFF.md`.
 
 - Latest pass: property-merge typed lookup.
 - Verdict: accepted as a semantic lookup-family narrowing and counter cut, not

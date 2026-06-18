@@ -626,6 +626,55 @@ export function mixinArgs(this: P, T: TokenMap) {
   };
 }
 
+function createTerminalMixinCallReference(
+  name: Node,
+  args: List | undefined,
+  context: P['context']
+): Node {
+  if (
+    !args?.items.length
+    || !isNode(name, N.Reference)
+    || name.options.type !== 'mixin-ruleset'
+  ) {
+    return name;
+  }
+  const options = {
+    ...name.options,
+    type: 'mixin' as const
+  };
+  delete options.mixinRulesetCallHasArgs;
+  const location = name.location.length === 0 ? undefined : name.location;
+  if (Array.isArray(name.key) && name.key.length > 1 && name.target === undefined) {
+    const prefix = name.key.slice(0, -1);
+    const target = new Reference(
+      {
+        key: prefix.length === 1 ? prefix[0]! : prefix
+      },
+      {
+        type: 'mixin-ruleset',
+        role: name.role
+      },
+      location,
+      context
+    );
+    return new Reference(
+      {
+        target,
+        key: name.key[name.key.length - 1]!
+      },
+      options,
+      location,
+      context
+    );
+  }
+  return new Reference(
+    name.value,
+    options,
+    location,
+    context
+  );
+}
+
 export function lookupOrCall(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
@@ -711,7 +760,8 @@ export function lookupOrCall(this: P, T: TokenMap) {
           if ($.RECORDING_PHASE) {
             return;
           }
-          return new Call({ name: ctx.node!, args }, undefined, $.endRule(), $.context);
+          const name = createTerminalMixinCallReference(ctx.node!, args, $.context);
+          return new Call({ name, args }, undefined, $.endRule(), $.context);
         }
       }
     ]);

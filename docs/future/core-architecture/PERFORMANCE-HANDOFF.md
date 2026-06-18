@@ -623,6 +623,75 @@ should delete the generic synthetic-`Reference` merge read or make it a direct
 typed occurrence read that can share live binding/cache state without freezing
 values.
 
+### 2026-06-18 Merge Declaration Surface Pruning + Terminal Mixin Parse Classification
+
+Focus: keep the generic merge-reference path for semantics, but stop merge
+assignment lookups from entering child declaration surfaces that cannot contain
+merge declarations. Also classify parsed parameterized terminal namespace calls
+as terminal `mixin` lookups up front so runtime does not need to discover the
+terminal-only shape from a broad `mixin-ruleset` reference.
+
+Patch kept:
+
+- `Rules` now carries `hasMergeDeclarationChildSurface` and each declaration
+  child entry carries `hasMergeDeclarationSurface`;
+- direct declaration lookup checks this carried fact only when
+  `requiredDeclarationAssignments` is merge-shaped (`&,:`, `&_:` or the Less
+  normalized `+,:`, `+_:` forms);
+- merge-constrained property lookup still enters reference-import surfaces,
+  but skips ordinary declaration child entries that cannot contain merge
+  declaration candidates;
+- Less parser `lookupOrCall(...)` rewrites non-empty-arg terminal
+  `mixin-ruleset` references into a terminal `mixin` reference while preserving
+  the namespace prefix as a `mixin-ruleset` target. Empty-paren calls stay in
+  the older broad `mixin-ruleset` shape.
+
+Counter evidence:
+
+- broad `benchmark.less` before this patch was:
+  `declaration.cacheMiss` `54780`, `declaration.scope.p` `50318`,
+  `declaration.childEntryEntered` `51551`, `declaration.childEntriesScanned`
+  `18527`;
+- patched broad `benchmark.less` is:
+  `declaration.cacheMiss` `4766`, `declaration.scope.p` `304`,
+  `declaration.childEntryEntered` `1537`, `declaration.childEntriesScanned`
+  `1085`, with `declaration.childEntryMergeFamilySkip` `14654`;
+- `scope-lookup-stress.less --compat=false` stayed in its variable-heavy shape:
+  `declaration.cacheMiss` `7560`, `declaration.scope.v` `7560`,
+  `declaration.childEntriesScanned` `1575`, and
+  `declaration.childEntryEntered` `1575`.
+
+Wall-clock status:
+
+- repo `pnpm run measure:less:hotpath -- --stable` was unstable for every
+  fixture, so it is not decision-quality;
+- external Less alpha `benchmark.less` runner was directionally mixed/noisy in
+  adjacent runs: reversed baseline `avg` `454.12ms`, `median` `460.56ms`;
+  patched rerun `avg` `431.61ms`, `median` `413.50ms`; a later patched run
+  reported `avg` `541.61ms`, `median` `514.35ms`. Treat wall-clock as noisy,
+  not as a speed claim.
+
+Behavior proof:
+
+- ordered rebuild passed for `@jesscss/core`, `@jesscss/css-parser`,
+  `@jesscss/less-parser`, and `jess`;
+- focused reference/property merge slice passed:
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/reference.test.ts -t "property handles|merge-chain|property refs|direct property lookup|static property|Less property merges"`
+  (`17` passed, `189` skipped);
+- focused live-binding/setDefined slice passed:
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/rules.test.ts -t "setDefined|ScopeFrame|direct"`
+  (`24` passed, `67` skipped);
+- focused runtime callable terminal-args slice passed:
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts -t "mixin-ruleset calls with args|terminal mixin-only|parameterized|namespace"`
+  (`39` passed, `156` skipped);
+- full Less parser `mixins.test.ts` passed (`22` passed).
+
+Verdict: keep as a counter-proven traversal cut and parser classification
+cleanup, not as a wall-clock speed claim. The next target should continue this
+shape: carry cheap family facts at registration/parse time and use them to
+avoid recursive lookup work, while avoiding broad filtered result caches that
+can freeze live values or add option-shape overhead.
+
 ### 2026-06-06 ScopeFrame Callable Hit/Miss Prototype
 
 Hypothesis: simple static callable hits, and the subset of simple misses whose

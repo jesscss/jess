@@ -11,6 +11,7 @@ export type RulesEntryLike = {
   readonly?: boolean;
   hasDeclarationSurface?: boolean;
   hasVarDeclarationSurface?: boolean;
+  hasMergeDeclarationSurface?: boolean;
   hasReferenceImportSurface?: boolean;
   assignmentBindingsByName?: Map<string, BindingCell>;
   assignmentReadonlyByName?: Set<string>;
