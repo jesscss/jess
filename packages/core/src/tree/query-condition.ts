@@ -142,7 +142,7 @@ export class QueryCondition extends Sequence {
    *
    * The fallback exists only to keep custom overrides, such as a subclassed
    * `Paren.writeSyntax`, correct while the node family migration is incomplete.
-   * It intentionally performs a small writer readback for unknown static
+   * It intentionally keeps a localized ownership check for unknown static
    * children, so those children must not be normalized into the fast path until
    * their concrete class owns direct syntax output.
    *
@@ -156,10 +156,9 @@ export class QueryCondition extends Sequence {
       node.writeSyntax(options);
       return;
     }
-    const mark = options.writer.mark();
+    const before = options.writer.position();
     node.writeSyntax(options);
-    const text = options.writer.getSince(mark);
-    if (text === '') {
+    if (options.writer.position() === before) {
       node.toTrimmedString(options);
     }
   }

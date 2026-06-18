@@ -550,8 +550,8 @@ describe('QueryCondition', () => {
 
     expect(node.toTrimmedString({ writer })).toBe('screen and custom-operation');
     expect(writer.toString()).toBe('screen and custom-operation');
-    expect(writer.marks).toBe(2);
-    expect(writer.reads).toBe(2);
+    expect(writer.marks).toBe(1);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
   });
 
@@ -571,8 +571,8 @@ describe('QueryCondition', () => {
 
     expect(node.toTrimmedString({ writer })).toBe('screen and (custom-condition)');
     expect(writer.toString()).toBe('screen and (custom-condition)');
-    expect(writer.marks).toBe(2);
-    expect(writer.reads).toBe(2);
+    expect(writer.marks).toBe(1);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
   });
 
@@ -592,8 +592,8 @@ describe('QueryCondition', () => {
 
     expect(node.render(context, { writer })).toBe('screen and (custom)');
     expect(writer.toString()).toBe('screen and (custom)');
-    expect(writer.marks).toBe(2);
-    expect(writer.reads).toBe(2);
+    expect(writer.marks).toBe(1);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
   });
 
@@ -614,8 +614,8 @@ describe('QueryCondition', () => {
 
     expect(node.render(context, { writer })).toBe('screen and (custom)');
     expect(writer.toString()).toBe('prefix|screen and (custom)');
-    expect(writer.marks).toBe(2);
-    expect(writer.reads).toBe(2);
+    expect(writer.marks).toBe(1);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
   });
 

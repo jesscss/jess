@@ -431,8 +431,43 @@ with `--no-verify` after the explicit gates pass.
 - Evidence: focused red-to-green proof came from
   `query-condition.test.ts` case
   `trusts exact dynamic scalar children that write their rendered text`.
-  Full `query-condition.test.ts` still needs to be rerun after this handoff
-  update.
+  Full `query-condition.test.ts`, `git diff --check`, and
+  `pnpm --filter @jesscss/core build` also passed. The current
+  `verify:aggressive-cutting-review` run still reports only this pass's cold
+  test-side `new CountingWriter()` token, which is prosecuted here.
+- Latest pass: `QueryCondition` static fallback position probe split.
+- Verdict: accepted as a bounded serializer cut inside the active
+  `QueryCondition` row. Custom/subclass static children that stay on
+  `writeStaticChild(...)` no longer pay an inner child `mark()/getSince()`
+  readback just to detect whether `writeSyntax(...)` emitted anything; that
+  fallback now snapshots plain writer position and only drops to
+  `toTrimmedString(...)` when the child wrote nothing. The outer public
+  query-condition wrapper still owns its normal whole-query mark/readback
+  boundary. No speed claim.
+- New traversal: none.
+- Review-flagged allocations: none added on the static query fallback path.
+- Review-flagged diff tokens: the focused test still contributes cold
+  `new CountingWriter()` construction and assertion arrays, but this pass adds
+  no new production nodes, helper arrays, or fallback wrappers.
+- New node/materialization: none.
+- Render path: static custom `Operation`/`Condition`/`Paren` overrides still
+  stay correct on the localized fallback path, but they now rely on a writer
+  position ownership check instead of child readback when the override already
+  emitted its final syntax. The remaining readback on those tests is the outer
+  public query-condition wrapper boundary, not a second inner child probe.
+- Helper/API surface: none added.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: deleted the inner child `mark()/getSince()` fallback in
+  `QueryCondition.writeStaticChild(...)` and replaced it with
+  `writer.position()` ownership detection.
+- Evidence: focused red-to-green proof came from
+  `query-condition.test.ts` case
+  `keeps custom operation syntax overrides on the static fallback path`.
+  Full `query-condition.test.ts`, `git diff --check`, and
+  `pnpm --filter @jesscss/core build` also passed. The current
+  `verify:aggressive-cutting-review` run still reports only this pass's cold
+  test-side `new CountingWriter()` token, which is prosecuted here.
 - Latest pass: `AtRule` no-trivia frame-header direct write split.
 - Verdict: accepted as a bounded serializer cut inside the active `AtRule`
   row. No-trivia at-rule frame opens in `serializeRulesContainer(...)` no
