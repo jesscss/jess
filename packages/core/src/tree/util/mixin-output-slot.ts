@@ -13,6 +13,7 @@ export type RulesEntryLike = {
   hasVarDeclarationSurface?: boolean;
   hasReferenceImportSurface?: boolean;
   assignmentBindingsByName?: Map<string, BindingCell>;
+  assignmentReadonlyByName?: Set<string>;
   hasUncoveredAssignmentTargetSurface?: boolean;
   hasExactCallableSurface?: boolean;
   hasExactMixinSurface?: boolean;

@@ -67,12 +67,14 @@ export type ScopeFrameVariableLookupResult =
     cell: BindingCell;
     sourceNode?: Node;
     frame: ScopeFrame;
+    readonly?: boolean;
   }
   | {
     kind: 'declaration';
     cell: BindingCell;
     sourceNode: Node;
     frame: ScopeFrame;
+    readonly?: boolean;
   }
   | {
     kind: 'miss';
@@ -138,6 +140,13 @@ export interface ScopeFrame {
    * recursive child declaration crawl.
    */
   assignmentBindingsByName?: Map<string, BindingCell>;
+
+  /**
+   * Per-name readonly overlay for assignment target cells. The cell remains the
+   * canonical declaration binding; this set carries readonly facts introduced
+   * by an import/child edge without cloning the cell.
+   */
+  assignmentReadonlyByName?: Set<string>;
 
   /**
    * True when a child/import variable assignment surface exists but is not
@@ -440,7 +449,8 @@ export function lookupScopeFrameVariable(
               kind: 'live',
               cell: currentCell,
               sourceNode,
-              frame: f
+              frame: f,
+              readonly: currentCell.readonly
             };
           }
           currentCellRejectedByGuard = sourceNode !== undefined
@@ -459,7 +469,8 @@ export function lookupScopeFrameVariable(
               kind: 'declaration',
               cell: currentCell,
               sourceNode: currentCell.sourceNode,
-              frame: f
+              frame: f,
+              readonly: currentCell.readonly
             };
           }
           currentCellRejectedByGuard = true;
@@ -483,7 +494,8 @@ export function lookupScopeFrameVariable(
             kind: 'declaration',
             cell: assignmentCell,
             sourceNode,
-            frame: f
+            frame: f,
+            readonly: assignmentCell.readonly || f.assignmentReadonlyByName?.has(name)
           };
         }
       }
@@ -526,7 +538,8 @@ export function lookupScopeFrameVariable(
               kind: 'declaration',
               cell: entry.cell,
               sourceNode: entry.sourceNode,
-              frame: f
+              frame: f,
+              readonly: entry.cell.readonly
             };
           }
         }

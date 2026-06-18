@@ -724,20 +724,25 @@ function collectCallableBucketResults(
   return results;
 }
 
-function cloneReadonlyAssignmentBindings(
-  bindings: Map<string, BindingCell> | undefined
-): Map<string, BindingCell> | undefined {
-  if (!bindings?.size) {
-    return undefined;
+type AssignmentTargetBindingSummary = {
+  bindingsByName?: Map<string, BindingCell>;
+  readonlyByName?: Set<string>;
+};
+
+function addAssignmentTargetBinding(
+  summary: AssignmentTargetBindingSummary,
+  name: string,
+  cell: BindingCell,
+  readonlyOverlay: boolean
+): void {
+  const bindings = summary.bindingsByName ?? (summary.bindingsByName = new Map());
+  if (bindings.has(name)) {
+    return;
   }
-  const out = new Map<string, BindingCell>();
-  for (const [name, cell] of bindings) {
-    out.set(name, {
-      ...cell,
-      readonly: true
-    });
+  bindings.set(name, cell);
+  if (readonlyOverlay && !cell.readonly) {
+    (summary.readonlyByName ??= new Set()).add(name);
   }
-  return out;
 }
 
 /**
@@ -1012,31 +1017,31 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private prepareScopeFrameAssignmentBindings(frame: ScopeFrame): void {
-    const childBindings = this.collectPublicChildVariableAssignmentBindings(false);
+    const childSummary = this.collectPublicChildVariableAssignmentBindingSummary(false);
+    const childBindings = childSummary.bindingsByName;
     if (childBindings?.size) {
       for (const [name, cell] of childBindings) {
         if (!frame.currentBindingsByName.has(name)) {
           (frame.assignmentBindingsByName ??= new Map()).set(name, cell);
+          if (childSummary.readonlyByName?.has(name)) {
+            (frame.assignmentReadonlyByName ??= new Set()).add(name);
+          }
         }
       }
     }
     frame.hasUncoveredAssignmentTargetSurface = this.hasUncoveredChildVariableAssignmentSurface();
   }
 
-  private getAssignmentTargetEntryBindings(inheritedReadonly: boolean): Map<string, BindingCell> | undefined {
-    const bindings = this.collectPublicVariableAssignmentBindings(inheritedReadonly);
-    if (!bindings?.size) {
-      return undefined;
-    }
-    return bindings;
+  private getAssignmentTargetEntrySummary(inheritedReadonly: boolean): AssignmentTargetBindingSummary {
+    return this.collectPublicVariableAssignmentBindingSummary(inheritedReadonly);
   }
 
   private getHasUncoveredAssignmentTargetEntrySurface(): boolean {
     return this.hasUncoveredVariableAssignmentSurface();
   }
 
-  private collectPublicVariableAssignmentBindings(inheritedReadonly: boolean): Map<string, BindingCell> | undefined {
-    let out: Map<string, BindingCell> | undefined;
+  private collectPublicVariableAssignmentBindingSummary(inheritedReadonly: boolean): AssignmentTargetBindingSummary {
+    const summary: AssignmentTargetBindingSummary = {};
     const localReadonly = inheritedReadonly || Boolean(this.options.readonly);
     if (this.options.rulesVisibility?.VarDeclaration === 'public') {
       const value = this.rules;
@@ -1049,33 +1054,31 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ) {
           continue;
         }
-        (out ??= new Map()).set(String(node.name.valueOf()), {
+        addAssignmentTargetBinding(summary, String(node.name.valueOf()), {
           value: node.valueNode,
           sourceNode: node,
           readonly: localReadonly || Boolean(node.options?.readonly)
-        });
+        }, false);
       }
     }
 
-    const childBindings = this.collectPublicChildVariableAssignmentBindings(localReadonly);
+    const childSummary = this.collectPublicChildVariableAssignmentBindingSummary(localReadonly);
+    const childBindings = childSummary.bindingsByName;
     if (!childBindings?.size) {
-      return out;
+      return summary;
     }
-    out ??= new Map();
     for (const [name, cell] of childBindings) {
-      if (!out.has(name)) {
-        out.set(name, cell);
-      }
+      addAssignmentTargetBinding(summary, name, cell, Boolean(childSummary.readonlyByName?.has(name)));
     }
-    return out;
+    return summary;
   }
 
-  private collectPublicChildVariableAssignmentBindings(inheritedReadonly: boolean): Map<string, BindingCell> | undefined {
+  private collectPublicChildVariableAssignmentBindingSummary(inheritedReadonly: boolean): AssignmentTargetBindingSummary {
+    const summary: AssignmentTargetBindingSummary = {};
     const childEntries = this.collectDirectDeclarationChildEntries();
     if (!childEntries?.length) {
-      return undefined;
+      return summary;
     }
-    let out: Map<string, BindingCell> | undefined;
     for (let i = childEntries.length - 1; i >= 0; i--) {
       const entry = childEntries[i]!;
       if (
@@ -1093,20 +1096,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!isPublicRulesEntry(entry, 'VarDeclaration')) {
         continue;
       }
-      const entryBindings = inheritedReadonly
-        ? cloneReadonlyAssignmentBindings(entry.assignmentBindingsByName)
-        : entry.assignmentBindingsByName;
+      const entryBindings = entry.assignmentBindingsByName;
       if (!entryBindings?.size) {
         continue;
       }
-      out ??= new Map();
       for (const [name, cell] of entryBindings) {
-        if (!out.has(name)) {
-          out.set(name, cell);
-        }
+        addAssignmentTargetBinding(
+          summary,
+          name,
+          cell,
+          inheritedReadonly || Boolean(entry.assignmentReadonlyByName?.has(name))
+        );
       }
     }
-    return out;
+    return summary;
   }
 
   private hasUncoveredVariableAssignmentSurface(): boolean {
@@ -1633,6 +1636,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.hasDeclarationChildSurface ||= hasDeclarationSurface;
       this.hasVarDeclarationChildSurface ||= hasVarDeclarationSurface;
       this.hasReferenceImportChildSurface ||= hasReferenceImportSurface;
+      const assignmentSummary = child.getAssignmentTargetEntrySummary(Boolean(child.options.readonly));
       (out ??= []).push({
         node: child,
         rulesVisibility: this.getDirectChildRulesVisibility(child),
@@ -1640,7 +1644,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         hasDeclarationSurface,
         hasVarDeclarationSurface,
         hasReferenceImportSurface,
-        assignmentBindingsByName: child.getAssignmentTargetEntryBindings(Boolean(child.options.readonly)),
+        assignmentBindingsByName: assignmentSummary.bindingsByName,
+        assignmentReadonlyByName: assignmentSummary.readonlyByName,
         hasUncoveredAssignmentTargetSurface: child.getHasUncoveredAssignmentTargetEntrySurface()
       });
     }
@@ -1669,6 +1674,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     const visibility = mergeDirectChildRulesVisibility(child.options.rulesVisibility, rulesVisibility);
     const entries = this.directDeclarationChildEntries ?? (this.directDeclarationChildEntries = []);
+    const assignmentSummary = child.getAssignmentTargetEntrySummary(readonly);
     entries.push({
       node: child,
       rulesVisibility: visibility,
@@ -1676,7 +1682,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       hasDeclarationSurface,
       hasVarDeclarationSurface,
       hasReferenceImportSurface,
-      assignmentBindingsByName: child.getAssignmentTargetEntryBindings(readonly),
+      assignmentBindingsByName: assignmentSummary.bindingsByName,
+      assignmentReadonlyByName: assignmentSummary.readonlyByName,
       hasUncoveredAssignmentTargetSurface: child.getHasUncoveredAssignmentTargetEntrySurface()
     });
   }
@@ -1694,11 +1701,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       entry.hasDeclarationSurface = rulesMayContainDeclarationSurface(child);
       entry.hasVarDeclarationSurface = rulesMayContainVarDeclarationSurface(child);
       entry.hasReferenceImportSurface = rulesMayContainReferenceImports(child);
-      entry.assignmentBindingsByName = child.getAssignmentTargetEntryBindings(Boolean(entry.readonly));
+      const assignmentSummary = child.getAssignmentTargetEntrySummary(Boolean(entry.readonly));
+      entry.assignmentBindingsByName = assignmentSummary.bindingsByName;
+      entry.assignmentReadonlyByName = assignmentSummary.readonlyByName;
       entry.hasUncoveredAssignmentTargetSurface = child.getHasUncoveredAssignmentTargetEntrySurface();
     }
     if (this._scopeFrame) {
       this._scopeFrame.assignmentBindingsByName = undefined;
+      this._scopeFrame.assignmentReadonlyByName = undefined;
       this._scopeFrame.hasUncoveredAssignmentTargetSurface = false;
       this.prepareScopeFrameAssignmentBindings(this._scopeFrame);
     }
@@ -3610,7 +3620,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             includeAssignmentTargets: true
           });
           if (variableHit.kind === 'live' || variableHit.kind === 'declaration') {
-            if (variableHit.cell.readonly) {
+            if (variableHit.readonly || variableHit.cell.readonly) {
               throw new ReferenceError(`"${key}" is readonly`);
             }
             let assignedValue = node.valueNode;

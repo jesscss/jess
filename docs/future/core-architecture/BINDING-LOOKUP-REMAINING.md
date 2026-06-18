@@ -711,14 +711,15 @@ focused public-vs-optional child tests prove public wins stay modeled,
 optional-only positives either model or explicitly remain uncovered, and
 mixed optional/public source-order cases match direct lookup behavior without
 recursive fallback on covered public hits. Current evidence:
-`ScopeFrame.hasOptionalAssignmentTargetSurface` now records optional child
+`ScopeFrame.hasUncoveredAssignmentTargetSurface` now records unmodeled child
 variable assignment surfaces separately from modeled public assignment cells.
 `lookupScopeFrameVariable(...includeAssignmentTargets)` returns `uncovered`
-for optional-only assignment targets, so `setDefined` keeps the old direct
-fallback for optional semantics instead of throwing a covered miss. Focused
-`rules.test.ts` proofs cover optional-only fallback updating the optional
-declaration, and mixed optional/public children updating the modeled public
-cell without crawling any parent/optional/public/child `Rules.value` surface.
+for optional-only and dynamic assignment targets, so `setDefined` keeps the old
+direct fallback for unmodeled assignment semantics instead of throwing a
+covered miss. Focused `rules.test.ts` proofs cover unmodeled assignment
+fallback updating the optional declaration, and mixed optional/public children
+updating the modeled public cell without crawling any parent/optional/public/
+child `Rules.value` surface.
 
 46. [x] Replace assignment-target frame prep recursion with carried child
 surface summaries where registration already knows the facts. Scope:
@@ -739,33 +740,37 @@ prepares the parent frame before adding a child variable, then proves the
 refreshed child-entry summary updates the modeled assignment cell without
 crawling parent/public/child `Rules.value`.
 
-47. [x] Collapse optional assignment-target uncertainty into carried child
+47. [x] Collapse unmodeled assignment-target uncertainty into carried child
 surface summaries after item 46. Scope:
-`ScopeFrame.hasOptionalAssignmentTargetSurface`, optional child/import
+`ScopeFrame.hasUncoveredAssignmentTargetSurface`, optional/dynamic child/import
 `VarDeclaration` visibility, late child registration, and direct lookup
-optional precedence. Goal: make optional assignment coverage a carried entry
+unmodeled precedence. Goal: make unmodeled assignment coverage a carried entry
 fact rather than another frame-prep recursive rediscovery step, while still
-leaving optional-only targets uncovered until/if a modeled optional assignment
-cell exists. Acceptance: item 45 focused tests stay green, aggressive review
-shows the optional recursive scan is removed, and mixed optional/public cases
-still avoid direct fallback when a public modeled target exists. Current
-evidence: the optional bit was widened to carried
+leaving optional-only or dynamic targets uncovered until/if a modeled
+assignment cell exists. Acceptance: item 45 focused tests stay green,
+aggressive review shows the recursive rediscovery scan is removed, and mixed
+optional/public cases still avoid direct fallback when a public modeled target
+exists. Current evidence: the optional-only bit was widened to carried
 `hasUncoveredAssignmentTargetSurface`, so optional-only and dynamic public
 child variable assignment targets both return `uncovered` before authoritative
 miss. Focused `rules.test.ts` proofs cover optional-only fallback, dynamic
 public child variables staying uncovered, and public modeled targets still
 winning without fallback when optional siblings exist.
 
-48. [ ] Rename assignment-target uncovered frame state away from optional
+48. [x] Rename assignment-target uncovered frame state away from optional
 legacy wording everywhere in docs/tests. Scope:
 `ScopeFrame.hasUncoveredAssignmentTargetSurface`, tests that describe optional
 coverage, and binding tracker wording. Goal: keep the code/document vocabulary
 aligned with the widened semantic fact: unmodeled assignment surfaces, not only
 optional surfaces. Acceptance: no production behavior change, focused
 setDefined tests stay green, and tracker/handoff no longer imply only optional
-surfaces can force assignment fallback.
+surfaces can force assignment fallback. Current evidence: production state is
+named `hasUncoveredAssignmentTargetSurface`; the focused setDefined test name
+now describes unmodeled imported assignment targets; tracker current-evidence
+wording now calls the state unmodeled rather than optional-only while retaining
+historical optional rows as completed context.
 
-49. [ ] Carry assignment target summaries without allocating cloned readonly
+49. [x] Carry assignment target summaries without allocating cloned readonly
 maps when only inherited readonly changes. Scope:
 `cloneReadonlyAssignmentBindings(...)`, `RulesEntryLike.assignmentBindingsByName`,
 readonly import/compose entries, and `setDefined` readonly tests. Goal: avoid
@@ -774,6 +779,33 @@ readonly at entry construction or by a cheaper readonly-overlay fact.
 Acceptance: readonly imported assignments still reject before RHS eval, writable
 imports still update modeled cells, aggressive review shows clone allocation is
 removed or isolated, and no ordinary read path consults assignment cells.
+Current evidence: `cloneReadonlyAssignmentBindings(...)` was deleted. Child
+entries now carry `assignmentReadonlyByName` beside canonical
+`assignmentBindingsByName`, frames carry the same readonly overlay for
+assignment-target hits, and `lookupScopeFrameVariable(...)` reports readonly
+on the resolved hit without cloning or mutating the source binding cell.
+Focused setDefined/readonly tests stay green.
+
+50. [ ] Collapse assignment-target readonly overlay allocation into the
+smallest possible carried fact. Scope: `assignmentReadonlyByName` Sets on
+`RulesEntryLike` and `ScopeFrame`, inherited readonly imports, direct readonly
+cells, and setDefined readonly errors. Goal: keep the no-clone shape from item
+49 while proving whether readonly overlays can be represented by a single
+entry/frame boolean for all bindings or skipped entirely when cells are already
+readonly. Acceptance: focused readonly import tests stay green, aggressive
+review either shows the extra Set allocation removed or documents why per-name
+readonly is semantically required.
+
+51. [ ] Delete assignment-target summary recomputation on late child
+registration where a single new static variable can patch the carried entry.
+Scope: `refreshDirectDeclarationChildEntryAssignmentSummary(...)`,
+`registerNode(VarDeclaration)`, static/dynamic child names, and uncovered
+surface refresh. Goal: avoid rebuilding an entire child assignment summary
+after adding one modeled public variable when the entry can be patched by key,
+while still widening to uncovered for dynamic names. Acceptance: late
+registration tests prove no parent/public/child `Rules.value` crawl, dynamic
+late names still mark uncovered, and aggressive review shows the full summary
+rebuild is gone or isolated to dynamic/uncovered cases.
 
 ## Latest Binding Baseline
 

@@ -1872,7 +1872,7 @@ describe('Rules', () => {
         expect(importedDecl.valueNode.toString()).toBe('three');
       });
 
-      it('leaves optional-only imported setDefined assignment targets uncovered for direct fallback', () => {
+      it('leaves unmodeled imported setDefined assignment targets uncovered for direct fallback', () => {
         const optionalDecl = vardecl({ name: 'one', value: any('one') });
         const optional = rules([optionalDecl], {
           rulesVisibility: { VarDeclaration: 'optional' }
