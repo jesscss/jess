@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, call, Call, decl, dimension, List, list, num, op, Operation, paren, ref, rules, Rules, ruleset, vardecl } from '../index.js';
-import { OutputWriter } from '../util/print.js';
+import { OutputWriter, getPrintOptions } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
   marks = 0;
+  reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
@@ -16,6 +17,11 @@ class CountingWriter extends OutputWriter {
   override mark(): number {
     this.marks++;
     return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
   }
 }
 
@@ -62,6 +68,18 @@ describe('Operation', () => {
 
     expect(op([left, '+', right]).toTrimmedString()).toBe('10 + 20');
     expect(stringCalls).toBe(0);
+  });
+
+  it('writes operation syntax without public string readback', () => {
+    const writer = new CountingWriter();
+    const rule = op([num(10), '+', num(20)]);
+
+    rule.writeSyntax(getPrintOptions({ writer }));
+
+    expect(writer.toString()).toBe('10 + 20');
+    expect(writer.marks).toBe(1);
+    expect(writer.reads).toBe(0);
+    expect(writer.captures).toBe(0);
   });
 
   it('renders resolved operation values through render(context)', async () => {
@@ -244,9 +262,7 @@ describe('Operation', () => {
         value: list([dimension([10, 'px']), num(2)], { sep: '/' })
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    const evald = await setEvaluatedRoot(context, node);
 
     const renderedOperation = op([
       ref({ key: 'div-op' }, { type: 'variable' }),

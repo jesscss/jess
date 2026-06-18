@@ -103,42 +103,33 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Call explicit-empty-args source fast path in
-  `packages/core/src/tree/call.ts`.
-- Verdict: accepted as a localized source/writeSyntax writer-readback and
-  trim-mark cut. No speed claim.
+- Latest pass: Operation direct `writeSyntax(...)` ownership plus exact
+  `QueryCondition` operation-child fast path in
+  `packages/core/src/tree/operation.ts` and
+  `packages/core/src/tree/query-condition.ts`.
+- Verdict: accepted as a localized source/writeSyntax writer-readback cut. No
+  speed claim.
 - New traversal: none.
 - New node/materialization: none in production. The review-flagged
-  `CountingWriter` constructions and `list([])` call fixtures are test-only
-  proof scaffolding for the no-mark/no-readback assertions.
-- Render path: no dynamic render behavior changed. Source serialization now
-  treats explicit empty arg lists like absent args for string-name empty calls,
-  returning the known `name?() !important` text without writer readback; direct
-  `writeSyntax(...)` skips the empty-args trim mark.
+  `CountingWriter` constructions and custom `Operation` subclass are test-only
+  proof scaffolding for no-readback and custom-fallback assertions.
+- Render path: no dynamic render behavior changed. `Operation.writeSyntax(...)`
+  now writes operands/operator directly instead of inheriting the base public
+  `toTrimmedString(...)` bridge, and exact `Operation` children inside
+  `QueryCondition` skip the static fallback mark/readback. Custom operation
+  subclasses remain on the fallback path.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: removes the source empty-list call mark/readback and the
-  empty-list args trim mark.
-- Rejected/observed in this pass: callable output value selection,
-  `evalArgNodes(...)` copy pressure, non-scalar/custom/trivia arg trim marks,
-  async/helper ladders, and repeated eval remain open in the Call row.
-- Merge-carried binding review: merging `origin/dev` also brought the variable
-  reference facade collapse and source-static handle read allocation trim in
-  `packages/core/src/tree/reference.ts`, plus binding tracker/verifier
-  updates. It is lookup-only: no render/stringification path changed, no
-  runtime node materialization was added, and detailed status remains in
-  `BINDING-LOOKUP-REMAINING.md`. The serialization pass keeps
-  `NODE-REWRITE-TRACKER.md` as the active queue.
-- Evidence: focused `call.test.ts` empty-call/source/writeSyntax/content slices
-  passed. Full gates are required before commit.
-- Merge-carried binding review: merging `origin/dev` also brought setDefined
-  callback closure deletion plus constrained direct declaration cache guards in
-  `packages/core/src/tree/rules.ts` and `util/direct-rules-lookup.ts`, with
-  focused reference tests and binding verifier updates. It is lookup-only: no
-  render/stringification path changed, no runtime node materialization was
-  added, and detailed status remains in `BINDING-LOOKUP-REMAINING.md`. The
-  serialization pass keeps `NODE-REWRITE-TRACKER.md` as the active queue.
-  Review-flagged `throw new Error`, `ReferenceError`, and
-  `foundRules.adopt(newDeclaration)` are the incoming setDefined semantic
-  mutation/error path, not serialization transport; the flagged object literal
-  is test scaffolding for the existing bind-output scalar getter shape.
+- Allocation changes: removes one public string-readback bridge for
+  `Operation.writeSyntax(...)` and removes `QueryCondition` static fallback
+  mark/readback for exact operation children. The remaining operation
+  left-operand trim mark is still required by operator spacing.
+- Rejected/observed in this pass: broad query-child whitelisting remains
+  rejected; only exact `Operation` is admitted because custom/subclass syntax
+  still needs the compatibility fallback.
+- Evidence: focused and full-file `operation.test.ts`/`query-condition.test.ts`
+  passed; targeted ESLint, `git diff --check`,
+  `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` passed. The aggressive verifier flags
+  only test-only `CountingWriter`/custom `Operation` constructions covered
+  above.

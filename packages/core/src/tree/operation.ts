@@ -2,7 +2,7 @@ import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation, type Node
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getPrintOptions, type PrintOptions } from './util/print.js';
+import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Call } from './call.js';
@@ -59,7 +59,7 @@ export class Operation extends Node<OperationValue> {
     return node.inherit(this);
   }
 
-  private createCalcFallback(left: Node, right: Node, baseLeft: Node, baseRight: Node): Call {
+  private createCalcFallback(left: Node, right: Node): Call {
     const operationNode = this.withOperands(left, right);
     operationNode.evaluated = true;
     return (new Call(
@@ -85,10 +85,9 @@ export class Operation extends Node<OperationValue> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer!;
-    const mark = w.mark();
     const { left, operator: op, right } = this;
     const leftMark = w.mark();
     left.writeSyntax(options);
@@ -108,6 +107,13 @@ export class Operation extends Node<OperationValue> {
     } finally {
       options.suppressBoundaryTrivia = saved;
     }
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    this.writeSyntax(options);
     return w.getSince(mark);
   }
 
@@ -145,7 +151,7 @@ export class Operation extends Node<OperationValue> {
             return out;
           } catch (error) {
             if (error instanceof TypeError) {
-              return this.createCalcFallback(l, r, left, right);
+              return this.createCalcFallback(l, r);
             }
             throw error;
           }
@@ -239,7 +245,7 @@ export class Operation extends Node<OperationValue> {
           } catch (error) {
             // If it's a unit error (TypeError), return calc(operation)
             if (error instanceof TypeError) {
-              return n.createCalcFallback(l, r, left, right);
+              return n.createCalcFallback(l, r);
             }
             // Re-throw non-unit errors
             throw error;

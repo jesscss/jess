@@ -13,6 +13,7 @@ import {
   Node,
   num,
   op,
+  Operation,
   paren,
   Paren,
   query,
@@ -421,6 +422,42 @@ describe('QueryCondition', () => {
     expect(writer.toString()).toBe('screen and (10px > 1px)');
     expect(writer.marks).toBe(1);
     expect(writer.reads).toBe(1);
+    expect(writer.hasContentReads).toBe(0);
+  });
+
+  it('writes exact operation children through the direct source child contract', () => {
+    const writer = new CountingWriter();
+    const node = query([
+      any('screen'),
+      any('and'),
+      op([dimension([10, 'px']), '>', dimension([1, 'px'])])
+    ]);
+
+    expect(node.toTrimmedString({ writer })).toBe('screen and 10px > 1px');
+    expect(writer.toString()).toBe('screen and 10px > 1px');
+    expect(writer.marks).toBe(2);
+    expect(writer.reads).toBe(1);
+    expect(writer.hasContentReads).toBe(0);
+  });
+
+  it('keeps custom operation syntax overrides on the static fallback path', () => {
+    class CustomOperation extends Operation {
+      override writeSyntax(options: Parameters<Operation['writeSyntax']>[0]): void {
+        options.writer.add('custom-operation');
+      }
+    }
+
+    const writer = new CountingWriter();
+    const node = query([
+      any('screen'),
+      any('and'),
+      new CustomOperation([dimension([10, 'px']), '>', dimension([1, 'px'])])
+    ]);
+
+    expect(node.toTrimmedString({ writer })).toBe('screen and custom-operation');
+    expect(writer.toString()).toBe('screen and custom-operation');
+    expect(writer.marks).toBe(2);
+    expect(writer.reads).toBe(2);
     expect(writer.hasContentReads).toBe(0);
   });
 
