@@ -134,6 +134,16 @@ with `--no-verify` after the explicit gates pass.
   `pnpm run verify:aggressive-cutting-review`, and
   `pnpm --filter @jesscss/core build` passed.
 - Merge-carried binding review: latest `origin/dev` also carries
+  declaration-constraint handle snapshot slimming and proof in
+  `packages/core/src/tree/reference.ts` and related lookup helpers. It is
+  binding handle-shape only: private declaration/property/variable lookup
+  handles no longer store the scalar `excludedDeclarationCount` field, and the
+  existing handleability gate keeps only the declaration-assignment key plus
+  the first two excluded declaration identities when forming fresh handles.
+  No render/stringification path changed, no runtime node materialization was
+  added, and the focused exclusion-array mutation proof remains in the binding
+  lane. Detailed status remains in `BINDING-LOOKUP-REMAINING.md`.
+- Merge-carried binding review: latest `origin/dev` also carries
   declaration-constraint option cleanup and merge-chain output-binding proof
   in `packages/core/src/tree/reference.ts` and related lookup helpers. It is
   binding/API-shape only: direct declaration lookup no longer accepts scalar
@@ -176,6 +186,12 @@ with `--no-verify` after the explicit gates pass.
   `new Anonymous('html')`, and empty-arg `call(...)` test fixtures are
   serialization proof scaffolding from merges; they are not new binding runtime
   machinery.
+- Merge-carried serialization review: latest `origin/dev` also carries
+  declaration merge-sequence inner readback deletion in
+  `packages/core/src/tree/declaration.ts`. Review-flagged `CountingWriter`,
+  `Nil`, `Node[]`, and `Reflect.get(...)` findings belong to focused
+  serialization fixtures or existing helper signatures in the serialization
+  tracker; they are not new binding lookup runtime machinery.
 - Merge-carried serialization review: latest `origin/dev` also carries `For`
   source writer work in `control.ts`, including the existing pattern/range
   child loop plus focused `If`/`For`/`While` construction fixtures and

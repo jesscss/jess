@@ -4832,7 +4832,8 @@ describe('reference', () => {
         const firstHandle = lookupRef._rulesLookupHandle;
         expect(firstHandle?.lookupType).toBe('function');
         expect(firstHandle && 'requiredDeclarationAssignmentsKey' in firstHandle).toBe(false);
-        expect(firstHandle && 'excludedDeclarationCount' in firstHandle).toBe(false);
+        expect(firstHandle && 'excludedDeclaration0' in firstHandle).toBe(false);
+        expect(firstHandle && 'excludedDeclaration1' in firstHandle).toBe(false);
 
         ignoredExcludedDeclarations[0] = decl({ name: 'color', value: any('mutated') });
         const second = lookupRef.eval(context);
@@ -5347,7 +5348,7 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle).not.toBe(handle);
     });
 
-    it('static property handles reuse source-static normalized assignment constraints', async () => {
+    it('static property handles reuse source-static declaration assignment constraints', async () => {
       const node = rules([
         decl({ name: 'background-color', value: any('red') }),
         decl({ name: 'background-color', value: any('blue') }, { normalizedFromAssign: '+,:' })
@@ -5390,6 +5391,43 @@ describe('reference', () => {
 
       expect(lookupRef.eval(context).valueOf()).toBe('blue');
       expect(lookupRef._rulesLookupHandle).not.toBe(firstHandle);
+    });
+
+    it('static property handles track first and second declaration exclusions without count state', async () => {
+      const first = decl({ name: 'color', value: any('red') });
+      const second = decl({ name: 'color', value: any('blue') });
+      const third = decl({ name: 'color', value: any('green') });
+      const node = rules([first, second, third]);
+      setRulesContext(await node.eval(context));
+      const excludedDeclarations: Node[] = [];
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'property',
+        excludedDeclarations
+      });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('green');
+      const firstHandle = lookupRef._rulesLookupHandle;
+      expect(firstHandle).toBeDefined();
+      expect(firstHandle && 'excludedDeclarationCount' in firstHandle).toBe(false);
+
+      excludedDeclarations[0] = third;
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const secondHandle = lookupRef._rulesLookupHandle;
+      expect(secondHandle).not.toBe(firstHandle);
+      expect(secondHandle && 'excludedDeclarationCount' in secondHandle).toBe(false);
+
+      excludedDeclarations[1] = second;
+
+      expect(lookupRef.eval(context).valueOf()).toBe('red');
+      const thirdHandle = lookupRef._rulesLookupHandle;
+      expect(thirdHandle).not.toBe(secondHandle);
+      expect(thirdHandle && 'excludedDeclarationCount' in thirdHandle).toBe(false);
+
+      excludedDeclarations[1] = first;
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(thirdHandle);
     });
 
     it('static property handles invalidate when bindOutput exposes the output identity', async () => {
@@ -5448,7 +5486,7 @@ describe('reference', () => {
       expect(css).toContain('background: red, blue;');
     });
 
-    it('keeps wider excluded-node filters cold instead of caching generic filter shape', async () => {
+    it('keeps wider declaration-exclusion filters cold instead of caching generic filter shape', async () => {
       const first = decl({ name: 'color', value: any('red') });
       const second = decl({ name: 'color', value: any('blue') });
       const third = decl({ name: 'other', value: any('green') });
@@ -5483,7 +5521,7 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle?.targetLookupVersion).toBe(handleVersion);
     });
 
-    it('static declaration handles reuse source-static normalized assignment constraints', async () => {
+    it('static declaration handles reuse source-static declaration assignment constraints', async () => {
       const node = rules([
         decl({ name: 'background-color', value: any('red') }),
         decl({ name: 'background-color', value: any('blue') }, { normalizedFromAssign: '&,:' }),
@@ -5618,7 +5656,8 @@ describe('reference', () => {
         expect(callableCache).toBeDefined();
         expect(firstHandle?.lookupType).toBe('mixin');
         expect(firstHandle && 'requiredDeclarationAssignmentsKey' in firstHandle).toBe(false);
-        expect(firstHandle && 'excludedDeclarationCount' in firstHandle).toBe(false);
+        expect(firstHandle && 'excludedDeclaration0' in firstHandle).toBe(false);
+        expect(firstHandle && 'excludedDeclaration1' in firstHandle).toBe(false);
 
         ignoredExcludedDeclarations[0] = decl({ name: 'color', value: any('mutated') });
         node.push(decl({ name: 'unrelated', value: any('1') }));

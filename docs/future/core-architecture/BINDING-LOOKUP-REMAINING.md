@@ -213,21 +213,59 @@ and lookup-cache entries, and preserve unrelated miss cache entries. Nested
 bucket/cache and bump the global declaration lookup version. Style import
 promotion remains open.
 
-16. [ ] Audit and slim private declaration-constraint handle snapshots. Scope:
+16. [x] Audit and slim private declaration-constraint handle snapshots. Scope:
 `ReferenceRulesLookupDeclarationConstraints`, `RulesLookupHandleShape`,
 source-static declaration/property handle reads, and mutable exclusion/
 assignment tests. Goal: keep the private scalar snapshot only if it is cheaper
 than a semantic fingerprint or direct pointer comparison, without reintroducing
 declaration constraint option plumbing. Acceptance: focused handle tests plus
-aggressive review explaining retained scalar fields or deleting them.
+aggressive review explaining retained scalar fields or deleting them. Current
+evidence: the private `excludedDeclarationCount` snapshot is deleted. Handle
+freshness now keeps only the declaration-assignment key plus the first two
+excluded declaration identities; lists longer than two remain cold, and
+focused mutable exclusion/assignment tests prove stale handles are rejected
+without the count field.
 
-17. [ ] Rename remaining constraint test/prose labels from normalized/excluded-
+17. [x] Rename remaining constraint test/prose labels from normalized/excluded-
 node wording to declaration assignment/exclusion wording. Scope: focused test
 names, tracker text, and guard messages only. Goal: keep future agents from
 looking for deleted `excludedNodes` / `requiredNormalizedFromAssign` API while
 preserving Less normalized-assignment semantics where that is the actual
 declaration option. Acceptance: grep shows old reference-option names only
-inside verifier forbidden-token lists or historical notes.
+inside verifier forbidden-token lists or historical notes. Current evidence:
+focused reference labels now use declaration assignment/exclusion wording, and
+grep shows the old reference-option names only in verifier forbidden-token
+lists or tracker/handoff notes describing deleted API.
+
+18. [ ] Collapse declaration-handle constraint shape branching where possible.
+Scope: `lookupTypeUsesDeclarationConstraints(...)`,
+`getRulesLookupHandleDeclarationConstraintShape(...)`,
+`prepareRulesLookupShape(...)`, source-static early handle reads, and variable
+handles that can carry declaration occurrences. Goal: keep declaration
+constraint checks assigned to the declaration/property/variable paths that need
+them without making function/callable paths carry generic shape branches.
+Acceptance: focused variable/property/declaration/function/callable handle
+tests plus no regression in `verify:binding-lookup-hot-paths`.
+
+19. [x] Add explicit proof for handleable two-exclusion mutation edges. Scope:
+mutable `excludedDeclarations` arrays with zero, one, and two declaration
+slots; transitions from no output to output binding; and mutation between
+first/second excluded declarations. Goal: prove the first-two-identity snapshot
+is sufficient now that the count snapshot is gone. Acceptance: focused
+reference tests covering mutation-to-hit, mutation-to-miss, and cold fallback
+for lists longer than two. Current evidence: a focused reference test mutates
+zero, first, and second excluded declaration slots and proves each stale handle
+is rejected while `excludedDeclarationCount` remains absent; the existing wider
+declaration-exclusion test keeps lists longer than two cold.
+
+20. [ ] Split declaration-constraint handle shape from generic
+`RulesLookupHandleShape`. Scope: shape construction, `prepareRulesLookupShape`,
+`readRulesLookupHandle`, source-static handle reads, and handle write helpers.
+Goal: keep generic lookup shape to start/local/terminal facts, and pass
+declaration constraints only on declaration-capable handle paths without adding
+function/callable branches. Acceptance: focused handle tests plus
+`verify:binding-lookup-hot-paths`; aggressive review must show fewer generic
+shape fields or fewer declaration-constraint branches.
 
 ## Latest Binding Baseline
 
@@ -372,6 +410,13 @@ inside verifier forbidden-token lists or historical notes.
 - Public `ReferenceOptions.excludedDeclarations` and
   `requiredDeclarationAssignments` have semantic tests that mutate those inputs
   and verify handle invalidation. They are not scalar handle fields.
+- Private declaration/property/variable handle snapshots no longer store
+  `excludedDeclarationCount`; freshness compares only the declaration-
+  assignment key and the first two excluded declaration identities after the
+  handleability gate proves lists longer than two stay cold.
+- Focused mutation-edge tests prove the first-two excluded declaration identity
+  snapshot invalidates handles across zero, one, and two-slot exclusion changes
+  without the removed count field.
 
 ## Remaining Work Clusters
 

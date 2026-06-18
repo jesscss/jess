@@ -371,7 +371,6 @@ type ReferenceRulesLookupDeclarationConstraints = {
   requiredDeclarationAssignmentsKey: string | undefined;
   excludedDeclaration0: Node | undefined;
   excludedDeclaration1: Node | undefined;
-  excludedDeclarationCount: number;
 };
 
 type ReferenceRulesLookupHandle =
@@ -681,7 +680,6 @@ function prepareRulesLookupShape(
     shape.requiredDeclarationAssignmentsKey = declarationConstraints.requiredDeclarationAssignmentsKey;
     shape.excludedDeclaration0 = declarationConstraints.excludedDeclaration0;
     shape.excludedDeclaration1 = declarationConstraints.excludedDeclaration1;
-    shape.excludedDeclarationCount = declarationConstraints.excludedDeclarationCount;
   }
   lookupContext.preparedRules = targetRules;
   lookupContext.preparedShape = shape;
@@ -1132,17 +1130,15 @@ function getRequiredDeclarationAssignmentsHandleKey(
 
 function getRulesLookupHandleDeclarationConstraintShape(referenceNode: Reference): Pick<
   RulesLookupHandleShape,
-  'requiredDeclarationAssignmentsKey' | 'excludedDeclaration0' | 'excludedDeclaration1' | 'excludedDeclarationCount'
+  'requiredDeclarationAssignmentsKey' | 'excludedDeclaration0' | 'excludedDeclaration1'
 > {
   const excludedDeclarations = referenceNode.options.excludedDeclarations;
-  const excludedDeclarationCount = excludedDeclarations?.length ?? 0;
   return {
     requiredDeclarationAssignmentsKey: getRequiredDeclarationAssignmentsHandleKey(
       referenceNode.options.requiredDeclarationAssignments
     ),
     excludedDeclaration0: excludedDeclarations?.[0],
-    excludedDeclaration1: excludedDeclarations?.[1],
-    excludedDeclarationCount
+    excludedDeclaration1: excludedDeclarations?.[1]
   };
 }
 
@@ -1208,7 +1204,6 @@ type RulesLookupHandleShape = {
   requiredDeclarationAssignmentsKey?: string;
   excludedDeclaration0?: Node;
   excludedDeclaration1?: Node;
-  excludedDeclarationCount?: number;
 };
 
 type WriteRulesLookupHandleArgs = {
@@ -1398,7 +1393,6 @@ function readRulesLookupHandle(
       lookupTypeUsesDeclarationConstraints(handle.lookupType)
       && (
         handle.requiredDeclarationAssignmentsKey !== shape.requiredDeclarationAssignmentsKey
-        || handle.excludedDeclarationCount !== (shape.excludedDeclarationCount ?? 0)
         || handle.excludedDeclaration0 !== shape.excludedDeclaration0
         || handle.excludedDeclaration1 !== shape.excludedDeclaration1
       )
@@ -1476,7 +1470,6 @@ function tryReadSourceStaticRulesLookupHandle(args: {
     const declarationConstraints = getRulesLookupHandleDeclarationConstraintShape(referenceNode);
     if (
       handle.requiredDeclarationAssignmentsKey !== declarationConstraints.requiredDeclarationAssignmentsKey
-      || handle.excludedDeclarationCount !== (declarationConstraints.excludedDeclarationCount ?? 0)
       || handle.excludedDeclaration0 !== declarationConstraints.excludedDeclaration0
       || handle.excludedDeclaration1 !== declarationConstraints.excludedDeclaration1
     ) {
@@ -1523,7 +1516,6 @@ function writeVariableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void 
     requiredDeclarationAssignmentsKey: shape.requiredDeclarationAssignmentsKey,
     excludedDeclaration0: shape.excludedDeclaration0,
     excludedDeclaration1: shape.excludedDeclaration1,
-    excludedDeclarationCount: shape.excludedDeclarationCount ?? 0,
     currentBindingKey: currentBindingFact?.currentBindingKey,
     currentBindingFrame: currentBindingFact?.currentBindingFrame,
     currentBindingVersion: currentBindingFact?.currentBindingVersion,
@@ -1561,7 +1553,6 @@ function writeDeclarationRulesLookupHandle(args: WriteRulesLookupHandleArgs): vo
     requiredDeclarationAssignmentsKey: shape.requiredDeclarationAssignmentsKey,
     excludedDeclaration0: shape.excludedDeclaration0,
     excludedDeclaration1: shape.excludedDeclaration1,
-    excludedDeclarationCount: shape.excludedDeclarationCount ?? 0,
     lookupType,
     inCall,
     start,
