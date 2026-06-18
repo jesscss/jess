@@ -103,39 +103,28 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding gate cleanup after rows 11/12 drained.
-- Verdict: accepted as a non-lookup gate cleanup. The pass removes the
-  selector-pseudo ordinary child `.clone(...)` frontier by delegating the cold
-  public clone path through the same `super.clone(...)` form already used by
-  selector classes, preserves pseudo generated-placement/tree-context state,
-  and fixes cloning helpers so copy paths read raw `_options` without
-  allocating empty source options. No lookup runtime change. No speed claim.
+- Latest pass: binding changed-baseline closeout after gate cleanup.
+- Verdict: accepted as a documentation-only binding closeout. The binding-owned
+  changed-baseline audit is complete: the prior selector-pseudo frontier
+  blocker is fixed, smoke/profile evidence is refreshed, and the only remaining
+  full-baseline blocker is pre-existing `Call` serialization/render fallout
+  that reproduces with the latest diff reversed on clean `53ffb2baf`. No
+  lookup runtime change. No speed claim.
 - New traversal: none.
-- Review-flagged allocations: no new production arrays, side maps, wrapper
-  `Rules`, copied eval trees, or registry/index objects were added. The raw
-  `_options` helper avoids a lazy empty-options allocation on source nodes.
-- New node/materialization: no new hot-path materialization. The only touched
-  materialization path is cold public clone/copy helper behavior; it replaces a
-  generic child `.clone(...)` call with the existing base `super.clone(...)`
-  materialization boundary.
+- Review-flagged allocations: none in this docs-only pass.
+- New node/materialization: none in this docs-only pass.
 - Render path: no render/stringification path changed.
-- Helper/API surface: one private raw-options helper was added inside
-  `util/cloning.ts`; it deletes a source-node options allocation rather than
-  adding a new runtime lookup/helper layer. `verify-node-copy-frontier` now
-  allows `PseudoSelector` only for explicit `super.clone(...)`, matching the
-  existing selector-class allowance.
-- Metadata mutations: `PseudoSelector.clone(...)` preserves the existing
-  `_treeContext` and generated pseudo placement override on the cloned cold
-  surface; no parent/source restoration or lookup metadata mutation was added.
-- Allocation changes: cold copy helpers no longer allocate empty source
-  options objects when copying optionless nodes.
-- Evidence: focused pseudo/cloning tests pass, `verify:node-copy-frontier`
-  passes, lookup profile still reports empty old `Rules.find`/registry
-  counters, and one-iteration hotpath smoke is usable again after rebuilding
-  the parser/Jess/plugin-js libs. `verify:baseline -- --changed` reaches the
-  full affected baseline but is blocked by 11 pre-existing `call.test.ts`
-  serialization/render failures that reproduce with this diff reversed on
-  clean `53ffb2baf`; row 9 remains open for that non-lookup blocker. No
+- Helper/API surface: none in this docs-only pass.
+- Metadata mutations: none in this docs-only pass.
+- Allocation changes: none in this docs-only pass.
+- Evidence: `BINDING-LOOKUP-REMAINING.md` has no unchecked binding rows.
+  Focused rerun of representative `call.test.ts` failures still shows the
+  non-lookup writer-mark/readback and `root.register(...)` failures. Prior
+  batch evidence remains: focused pseudo/cloning tests passed,
+  `verify:node-copy-frontier` passed, `verify:binding-lookup-hot-paths`
+  passed, `verify:aggressive-cutting-review` passed, core build passed, lookup
+  profile reported empty old `Rules.find`/registry counters, and one-iteration
+  hotpath smoke was usable after rebuilding parser/Jess/plugin-js libs. No
   wall-clock performance claim.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in

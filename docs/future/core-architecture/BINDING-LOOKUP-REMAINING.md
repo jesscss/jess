@@ -185,7 +185,7 @@ scalar getter options, and `verify:binding-lookup-hot-paths` forbids the old
 `excludedNodes` / `requiredNormalizedFromAssign` names plus scalar option
 fields on the public/direct lookup surfaces.
 
-9. [ ] Run changed-baseline and fix any lookup-owned fallout now that the
+9. [x] Run changed-baseline and fix any lookup-owned fallout now that the
 ruleset header streaming blocker is repaired. Scope: changed Less/Jess
 fixtures, ruleset render interaction with lookup work, and branch-local
 failures. Goal: use baseline evidence as a gate again. Acceptance:
@@ -194,11 +194,13 @@ failure recorded with a fix. Current evidence: the selector-pseudo frontier
 blocker is fixed: `PseudoSelector.clone(...)` now delegates through the same
 cold `super.clone(...)` shape used by selector classes, the frontier verifier
 allows that specific form, and `pnpm run verify:node-copy-frontier` passes.
-`pnpm run verify:baseline -- --changed` now reaches the full affected baseline,
-but `@jesscss/core` is blocked by pre-existing `call.test.ts` render/
-serialization failures. The same 11 `call.test.ts` failures reproduce with the
-current diff reversed on clean `53ffb2baf`, so they are not lookup-owned and
-not introduced by the selector-pseudo frontier fix.
+`pnpm run verify:baseline -- --changed` now reaches the full affected baseline.
+The remaining `@jesscss/core` blocker is pre-existing `call.test.ts` render/
+serialization fallout, not lookup fallout: the same 11 failures reproduce with
+the current diff reversed on clean `53ffb2baf`, and a focused rerun still shows
+the representative `Call` writer-mark/readback and `root.register(...)`
+serialization failures. This closes the binding-owned changed-baseline audit;
+the remaining full-baseline failure belongs to the serialization/Call lane.
 
 10. [x] Refresh lookup profile and one-iteration hotpath smoke after the next
 bridge deletion batch. Scope: `scope-lookup-stress.less`, direct lookup
