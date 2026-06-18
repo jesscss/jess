@@ -127,5 +127,11 @@ with `--no-verify` after the explicit gates pass.
 - Evidence: focused `at-rule.test.ts` leaf/header slice, targeted ESLint
   (exits 0 with pre-existing line 554 warning), `git diff --check`,
   `pnpm run verify:aggressive-cutting-review`, and
-  `pnpm --filter @jesscss/core build` passed. The aggressive verifier flags
-  only the test-only `CountingWriter` construction covered above.
+  `pnpm --filter @jesscss/core build` passed. Post-merge aggressive verifier
+  reported no danger tokens in the scoped diff.
+- Merge-carried binding review: latest `origin/dev` also carries binding/lookup
+  queue cleanup plus two rejected namespace-prefix shortcut audits. It is
+  lookup-only: no render/stringification path changed, no runtime node
+  materialization was added, and detailed status remains in
+  `BINDING-LOOKUP-REMAINING.md`. The serialization pass keeps
+  `NODE-REWRITE-TRACKER.md` as the active queue.
