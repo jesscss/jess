@@ -16,6 +16,7 @@ import { PseudoSelector } from './selector-pseudo.js';
 import {
   type PrintOptions,
   type FinalPrintOptions,
+  OutputWriter,
   getPrintOptions,
   prepareRenderPrintState,
   savePrintState,
@@ -1207,17 +1208,17 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     if (withoutComments) {
       options.trivia = createTriviaMap();
     }
-    let selOut: string;
-    const writer = options.writer;
-    const mark = writer.mark();
+    const writer = new OutputWriter(options.compress);
     try {
-      renderSelector.writeSyntax(options);
-      writer.trimEndSince(mark);
-      selOut = writer.getSince(mark);
+      renderSelector.writeSyntax({
+        ...options,
+        writer
+      });
+      writer.trimEndSince(0);
     } finally {
-      writer.restore(mark);
       options.trivia = savedTrivia;
     }
+    const selOut = writer.toString();
     restorePrintState(options, saved);
     const header = selOut + ' {';
     return (/^\s*\/\*/u.test(header)

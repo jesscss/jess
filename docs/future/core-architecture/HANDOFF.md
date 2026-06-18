@@ -103,36 +103,31 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: non-basic Ampersand template selector public string transport
-  cut in `packages/core/src/tree/ampersand.ts`.
+- Latest pass: Ruleset header caller-writer rollback cut in
+  `packages/core/src/tree/ruleset.ts`.
 - Verdict: accepted as a localized source/writeSyntax writer-readback cut. No
   speed claim.
-- New traversal: none in production beyond the existing replacement loop. The
-  review-flagged loops are test-only setup/restore of monkeypatched selector
-  methods.
-- New node/materialization: no new production nodes. Existing detached
-  selector syntax capture allocates one `OutputWriter` only for non-basic
-  template text that already needed a string boundary. The review-flagged
-  array is test-only storage for original selector methods.
-- Render path: no render output path changed. Ampersand template replacement
-  now captures non-basic selector text through direct `writeSyntax(...)`
-  instead of public `toTrimmedString(...)`; exact `BasicSelector` keeps the
-  owned scalar text path.
-- Helper/API surface: added one private selector syntax text helper and removed
-  the public string fallback at the template replacement call site.
-- Metadata mutations: none in production. Test-only method monkeypatching is
-  local to the focused assertion and restored before source selector
-  serialization assertions.
-- Allocation changes: exact basic selectors still allocate nothing; non-basic
-  selectors use a detached direct writer instead of calling the public string
-  wrapper. This is a transport cut, not an allocation win.
-- Rejected/observed in this pass: broader raw string assembly and structural
-  selector replacement remain open in the Ampersand row.
-- Evidence: focused `ampersand.test.ts` basic/complex template slices, targeted
-  ESLint, `git diff --check`, `pnpm run verify:aggressive-cutting-review`,
-  and `pnpm --filter @jesscss/core build` passed. The aggressive verifier flags
-  the intentional detached `OutputWriter` cold string boundary plus test-only
-  loops/array/method monkeypatching covered above.
+- New traversal: none.
+- New node/materialization: no nodes or semantic materialization. Header string
+  capture now uses a detached `OutputWriter` instead of the caller writer
+  mark/get/restore window.
+- Render path: no render output path changed. `Ruleset.getHeaderString(...)`
+  still writes selector syntax directly; it just isolates the string boundary
+  from the caller writer.
+- Helper/API surface: none.
+- Metadata mutations: none.
+- Allocation changes: replaces caller-writer mark/get/restore traffic with a
+  detached writer allocation for the existing header string boundary. This is a
+  transport/isolation cut, not an allocation win.
+- Rejected/observed in this pass: deeper selector composition, body prep,
+  direct container writer splitting, wrappers, and render branches remain open
+  in the Ruleset row.
+- Evidence: focused `ruleset.test.ts` header slices, targeted ESLint,
+  `git diff --check`,
+  `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` passed. The aggressive verifier flags
+  only the intentional detached `OutputWriter` header string boundary covered
+  above.
 - Merge-carried binding review: latest `origin/dev` also carries binding/lookup
   queue cleanup plus two rejected namespace-prefix shortcut audits. It is
   lookup-only: no render/stringification path changed, no runtime node
