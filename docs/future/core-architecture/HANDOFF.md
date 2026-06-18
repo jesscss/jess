@@ -103,49 +103,45 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: explicit uncovered-callable result states and reference-import
-  namespace-start miss coverage.
-- Verdict: accepted as a binding fallback-bridge cut. The uncovered callable
-  child-entry bridge no longer overloads `undefined`; it now returns direct hit
-  arrays, `UNCOVERED_CALLABLE_MISS`, or `UNCOVERED_CALLABLE_UNSUPPORTED`.
-  No-prefix namespaced reference-import misses use those states to skip broad
-  start-key `findMixinsFast(...)` and nested remainder-array fallback when
-  child/frame facts modeled the miss. Prefix-heavy ruleset namespace paths
-  still keep their legacy fallback because the current full-suite baseline
-  already has complex compound-selector failures there. No speed claim.
-- New traversal: no new production tree traversal. Existing narrow child-entry
-  and child-frame checks remain, but the helper now stops before the older
-  child `findMixinsFast(...)` crawl when an entered reference-import child
-  frame still reports reference-import uncertainty. Review-flagged loops are
-  existing verifier/test loops and existing direct-crawl code paths that this
-  pass narrows. Review-flagged error-control and typed spy-storage tokens are
-  test-only prototype restoration and spy storage in the new focused mixin
-  test.
+- Latest pass: callable retry-frame no-parent cut plus uncovered-callable
+  modeled-miss sentinel collapse.
+- Verdict: accepted as a binding fallback-bridge cut. `Rules.findMixin(string)`
+  now exits before parent/fallback retry when the caller requested
+  `searchParents: false` and the current frame produced a miss or uncovered
+  result after the current-frame narrow attempt. Modeled uncovered-callable
+  misses now reuse one module-level empty hit-array sentinel; unsupported
+  uncertainty remains the only non-array state. Prefix-heavy ruleset namespace
+  paths still keep their legacy fallback because the current full-suite
+  baseline already has complex compound-selector failures there. No speed
+  claim.
+- New traversal: no new production tree traversal. The pass deletes one
+  parent/fallback retry route when parent search is explicitly disabled and
+  records retry/fallback modeled misses so they do not fall through to the
+  broad direct bridge. Review-flagged loops are existing verifier/test loops
+  and existing direct-crawl code paths that this pass narrows.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
-  inherited metadata, frozen state, or production arrays were added. The new
-  result states are module-level singleton symbols, not per-lookup objects.
+  inherited metadata, frozen state, or production arrays were added. The
+  modeled-miss state is one module-level empty array, not a per-lookup
+  materialization.
 - Render path: no render/stringification path changed.
-- Helper/API surface: deletes the private `UncoveredCallableCoverage` side
-  object shape and adds two private singleton result states. No public API was
-  added. Existing callers now branch on explicit modeled-miss vs unsupported
-  states instead of carrying a side coverage object.
+- Helper/API surface: no public API was added. No new helper ladder was added
+  for uncovered-callable result consumption; callers keep local unsupported
+  checks because that is cheaper than another hot-path wrapper call.
 - Metadata mutations: none.
-- Allocation changes: removes one per-call `{ modeled: boolean }` coverage
-  object on the namespace-descendant reference-import path. Adds no per-lookup
-  replacement object; singleton symbols carry the explicit states. The
-  review-flagged array union arm is type-only.
-- Evidence: focused callable bucket tests prove reference-import namespace
-  start misses skip broad array fallback, covered sibling child surfaces stay
-  closed, fallback-frame hits/misses still work, terminal mixin-only behavior
-  still skips ruleset-only surfaces, and parent lookup still works where
-  intended. Real import fixtures prove reference-imported mixin/ruleset/
-  selector-list positives still resolve and namespaced array-path misses stay
-  off direct crawl. Namespace fast-path and mixin-ruleset-args tests stayed
-  green. `git diff --check`, `verify:binding-lookup-hot-paths`,
-  `verify:aggressive-cutting-review`, and `@jesscss/core` build passed. Full
-  `mixin.test.ts` is not a clean gate at current `HEAD`: a throwaway
-  detached-HEAD run reproduced the existing missing `isNode` import and
-  complex compound-selector failures before this pass.
+- Allocation changes: no new per-lookup allocation. The previous modeled-miss
+  symbol is replaced by one shared empty hit-array sentinel, which lets callers
+  use array length for hit-vs-miss without carrying a second sentinel branch.
+- Evidence: focused callable bucket tests prove fallback-frame hits/misses
+  still work, `searchParents: false` stops retry frames after current
+  candidate uncertainty, reference-import namespace-start misses still skip
+  broad array fallback, covered sibling child surfaces stay closed, terminal
+  mixin-only behavior still skips ruleset-only surfaces, and parent lookup
+  still works where intended. Real import fixtures prove reference-imported
+  mixin/ruleset/selector-list positives still resolve and namespaced
+  array-path misses stay off direct crawl. Full `mixin.test.ts` is still not a
+  clean gate at current `HEAD`: a detached baseline reproduced existing
+  missing `isNode` import and complex compound-selector failures before this
+  pass.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification

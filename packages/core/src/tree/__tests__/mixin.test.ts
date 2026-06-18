@@ -2493,6 +2493,36 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: searchParents false stops retry frames after current candidate', () => {
+      const parentMixin = mixin({
+        name: any('.retry-local-only'),
+        rules: rules([decl({ name: 'color', value: any('blue') })])
+      });
+      const fallbackMixin = mixin({
+        name: any('.retry-local-only'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+      const parentRules = rules([parentMixin]);
+      const fallbackRules = rules([fallbackMixin]);
+      const childRules = rules([
+        ruleset({
+          selector: compound([el('.retry-local-only'), el('.candidate')]),
+          rules: rules([decl({ name: 'color', value: any('red') })])
+        })
+      ]);
+      const childFrame = childRules.getScopeFrame(parentRules.getScopeFrame());
+      childFrame.fallbackFrame = fallbackRules.getScopeFrame();
+
+      expect(childRules.findMixin('.retry-local-only', undefined, { searchParents: false })).toBeUndefined();
+      expect(lookupScopeFrameCallable(childRules._scopeFrame, '.retry-local-only', {
+        includeRulesets: true,
+        searchParents: false
+      })).toEqual({
+        kind: 'uncovered',
+        reason: 'candidate'
+      });
+    });
+
     it('ScopeFrame callable buckets: uncovered fallback reference-import miss skips empty direct bridge', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];

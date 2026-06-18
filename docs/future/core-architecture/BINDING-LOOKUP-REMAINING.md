@@ -51,6 +51,11 @@ reference-import fallback frames. Goal: covered retry-frame misses do not keep
 walking into broad direct crawls, and disabled parent search does not retry
 parent/fallback frames after a narrowed current-frame miss. Acceptance:
 parent/fallback callable miss spy tests plus existing fallback hit tests.
+Current evidence: `Rules.findMixin(string)` now exits before parent/fallback
+retry whenever the caller requested `searchParents: false` and the current
+frame produced any miss/uncovered state after the current-frame narrow attempt.
+A focused candidate test proves a current compound-prefix candidate does not
+climb to parent or fallback exact hits when parent search is disabled.
 
 2. [ ] Extend narrow uncovered-child fallback proof to namespaced
 reference-import child surfaces. Scope: the uncovered child-only fallback in
@@ -487,6 +492,11 @@ cannot survive preparation or delete any parent/fallback retry after the caller
 has requested no parent search. Acceptance: focused spy tests for
 `searchParents: false` simple callable misses, fallback-frame hits/misses, and
 no direct `findMixinsFast(...)` bridge after a covered current-frame miss.
+Current evidence: the no-parent retry cut is in place for current-frame
+miss/uncovered states, including candidate uncertainty, and focused callable
+bucket tests cover fallback hits, fallback misses, and the new no-parent
+candidate case. Keep this open for the remaining parent/fallback retry loop
+when parent search is enabled.
 
 34. [x] Convert callable uncovered direct-crawl bridge to explicit child-entry
 result states. Scope: `findMixinsFastForUncoveredCallable(...)`,
@@ -514,6 +524,13 @@ is now duplicated across callers. Scope: the repeated
 without growing a new helper ladder or branch tax. Acceptance: no new object
 state, focused callable/reference-import tests stay green, and aggressive
 review explains any retained duplicated checks as cheaper than a wrapper.
+Current evidence: modeled miss now reuses one module-level empty `MixinEntry`
+array sentinel instead of a second symbol state, so callers branch only on the
+unsupported sentinel and use `length` where they need hit-vs-miss behavior.
+No wrapper helper was added; retained local unsupported checks are cheaper than
+another hot-path function call. Focused callable/reference-import tests stayed
+green. Keep this open until the remaining unsupported checks are either proven
+minimal or assigned to a cheaper caller-specific path.
 
 ## Latest Binding Baseline
 
