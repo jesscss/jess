@@ -2,7 +2,7 @@ import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule,
   vardecl, ref, mixin, call, list, op,
   num, dimension, amp, F_MAY_ASYNC,
-  paren, seq, comment, nil, quoted, color, co, interpolated
+  F_STATIC, paren, seq, comment, nil, quoted, color, co, interpolated
 } from '../index.js';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
@@ -1701,6 +1701,25 @@ describe('AtRule', () => {
     const rendered = '@custom-media --narrow (max-width: 30em);';
     expect(node.render(context, options)).toBe(rendered);
     expect(writer.toString()).toBe(rendered);
+    expect(writer.captures).toBe(0);
+    expect(writer.previews).toBe(0);
+  });
+
+  it('renders scalar leaf at-rules without leaf syntax rollback', () => {
+    const writer = new CountingWriter();
+    const node = atrule({
+      name: any('@namespace', { role: 'atkeyword' }),
+      prelude: any('svg')
+    });
+    node.removeFlag(F_STATIC);
+    const options = getPrintOptions({ writer });
+
+    const rendered = '@namespace svg;';
+    expect(node.render(context, options)).toBe(rendered);
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(writer.restores).toBe(0);
     expect(writer.captures).toBe(0);
     expect(writer.previews).toBe(0);
   });

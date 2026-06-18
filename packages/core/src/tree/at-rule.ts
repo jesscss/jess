@@ -95,10 +95,23 @@ type AtRuleLeafState = {
   parts: AtRuleValue;
 };
 
+function atRuleLeafScalarText(
+  node: Node,
+  printOptions: FinalPrintOptions
+): string | undefined {
+  return !printOptions.trivia && node.constructor === Any
+    ? node.value
+    : undefined;
+}
+
 function renderAtRuleLeafNodeSyntax(
   node: Node,
   printOptions: FinalPrintOptions
 ): string {
+  const scalarText = atRuleLeafScalarText(node, printOptions);
+  if (scalarText !== undefined) {
+    return scalarText;
+  }
   const writer = printOptions.writer;
   const mark = writer.mark();
   try {
