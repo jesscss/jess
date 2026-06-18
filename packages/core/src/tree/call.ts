@@ -769,9 +769,15 @@ export class Call extends Node<CallValue, CallOptions> {
       return out;
     }
     const mark = w.mark();
-    const textState: CallRenderTextState = { text: typeof name === 'string' ? name : undefined };
+    const textState: CallRenderTextState = {
+      text: typeof name === 'string'
+        ? name
+        : getKnownRenderedCallText(name)
+    };
     if (typeof name === 'string') {
       w.add(name, callNode);
+    } else if (textState.text !== undefined) {
+      w.add(textState.text, name);
     } else {
       name.writeSyntax(printOptions);
     }

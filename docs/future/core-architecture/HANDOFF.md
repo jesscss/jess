@@ -103,6 +103,37 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` evaluated scalar name text carry.
+- Verdict: accepted as a localized render-text carry cut. Plain evaluated
+  calls whose `name` node is already an exact scalar-text surface now stay on
+  the same known-text path as finalized call names instead of forcing
+  `writeSyntax(...)` plus fallback whole-call readback for the return string.
+  No speed claim.
+- New traversal: none.
+- New node/materialization: none. This pass reads existing evaluated name text
+  and does not add wrapper calls, copied nodes, or detached writer state.
+- Render path: `renderPlainFunctionCall(...)` now seeds `textState` from
+  `getKnownRenderedCallText(name)` for node-valued names and writes that text
+  directly when present, matching the existing finalized-call name path. The
+  old direct `writeSyntax(...)` branch remains for non-scalar/custom/trivia
+  name nodes that still need generic emission.
+- Helper/API surface: no new helper. This pass reuses the existing
+  `getKnownRenderedCallText(...)` helper instead of adding another name-only
+  wrapper.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: none on the covered path; this pass deletes one covered
+  fallback whole-call `getSince(mark)` return dependency for evaluated scalar
+  name nodes by keeping `textState` live.
+- Rejected/observed in this pass: the cut is limited to plain evaluated calls
+  whose `name` already has exact known text. Non-scalar/custom/trivia name
+  nodes and other remaining readback paths still stay on their existing
+  fallback branches.
+- Evidence: focused `call.test.ts` coverage now proves evaluated scalar node
+  names render as `rgb(10, 20)` with one outer mark and zero readbacks, while
+  adjacent scalar list/sequence arg, token/color arg, async scalar content,
+  and baseline plain render behavior still pass. Full commit-boundary gates
+  still need to run after this handoff update.
 - Latest pass: `Call` recursive scalar list/sequence arg text carry.
 - Verdict: accepted as a localized render-text carry cut. Exact rendered
   `List`/`Sequence` CSS-call args whose descendants are already known scalar

@@ -1296,6 +1296,20 @@ describe('Call', () => {
     expect(writer.readbacks).toBe(0);
   });
 
+  it('renders evaluated scalar node names without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: any('rgb'),
+      args: list([num(10), num(20)])
+    });
+    rule.evaluated = true;
+
+    expect(rule.render(context, { writer })).toBe('rgb(10, 20)');
+    expect(writer.toString()).toBe('rgb(10, 20)');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(0);
+  });
+
   it('renders async scalar CSS call arguments without per-arg trim readback', async () => {
     const writer = new CountingWriter();
     const arg = new AsyncRenderedAny('source', '20');
